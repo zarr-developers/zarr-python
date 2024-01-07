@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Optional, Type
 from typing import TYPE_CHECKING, Optional, Type
 
 import numpy as np
-from zarr.v3.array.base import RuntimeConfiguration
+from zarr.v3.common import ChunkMetadata, RuntimeConfiguration
 
 from zarr.v3.types import SliceSelection
 from zarr.v3.store import StorePath
@@ -25,7 +25,7 @@ from zarr.v3.types import BytesLike
 
 
 if TYPE_CHECKING:
-    from zarr.v3.array.base import ChunkMetadata, CodecMetadata
+    from zarr.v3.array.base import CodecMetadata
 
 
 class Codec(ABC):

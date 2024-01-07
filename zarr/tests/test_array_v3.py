@@ -43,7 +43,7 @@ async def test_array(
     store_path = str(tmpdir)
     arr: Union[v2.AsyncArray, v3.Array]
     if zarr_version == "2":
-        arr = await v2.Array.create(
+        arr = await v2.AsyncArray.create(
             store=store_path,
             shape=shape,
             dtype=dtype,
@@ -54,7 +54,7 @@ async def test_array(
             exists_ok=True,
         )
     else:
-        arr = await v3.Array.create(
+        arr = await v3.AsyncArray.create(
             store=store_path,
             shape=shape,
             dtype=dtype,

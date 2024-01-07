@@ -18,7 +18,6 @@ from typing import (
 )
 
 import numpy as np
-from attr import frozen
 from zarr.util import is_total_slice
 from zarr.v3.abc.store import ReadStore, WriteStore
 from zarr.v3.codecs.sharding import CodecPipeline, ShardingCodec
@@ -26,19 +25,6 @@ from zarr.v3.common import RuntimeConfiguration, concurrent_map
 from zarr.v3.store import Store, StorePath
 
 from zarr.v3.types import Attributes, BytesLike, ChunkCoords, Selection, SliceSelection
-
-
-@frozen
-class ChunkMetadata:
-    array_shape: ChunkCoords
-    chunk_shape: ChunkCoords
-    # data_type: DataType
-    dtype: np.dtype
-    fill_value: Any
-
-    @property
-    def ndim(self) -> int:
-        return len(self.array_shape)
 
 
 class BaseArray(ABC):

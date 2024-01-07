@@ -3,12 +3,29 @@ Models for objects described in zarr version 3
 """
 
 from dataclasses import dataclass
-from typing import Any, Dict, Literal, Optional, Protocol, Tuple, Union, runtime_checkable
+import json
+from typing import (
+    Any,
+    Dict,
+    Literal,
+    Optional,
+    Protocol,
+    Tuple,
+    TypedDict,
+    Union,
+    runtime_checkable,
+)
 
 import numpy as np
-from attr import frozen
+import attr
 
 from zarr.v3.types import Attributes
+
+
+class NamedConfigDict(TypedDict):
+    name: str
+    configuration: Attributes
+
 
 # not clear how useful these protocols are, but lets try it
 @runtime_checkable
@@ -22,38 +39,121 @@ class CodecMetadata(Protocol):
     name: str
 
 
-@frozen
+class RegularChunkGridConfigDict(TypedDict):
+    chunk_shape: tuple[int, ...]
+
+
 class RegularChunkGridConfig:
     chunk_shape: Tuple[int, ...]
 
+    def __init__(self, chunk_shape) -> None:
+        self.chunk_shape = chunk_shape
 
-@frozen
+    def to_dict(self) -> RegularChunkGridConfigDict:
+        return {"chunk_shape": self.chunk_shape}
+
+
+class RegularChunkGridDict(TypedDict):
+    configuration: RegularChunkGridConfigDict
+    name: str
+
+
 class RegularChunkGrid(NamedConfig):
     configuration: RegularChunkGridConfig
     name: Literal["regular"] = "regular"
 
+    def __init__(self, configuration: RegularChunkGridConfig) -> None:
+        self.configuration = configuration
+        self.name = "regular"
 
-@frozen
+    def to_dict(self) -> RegularChunkGridDict:
+        return {"configuration": self.configuration.to_dict(), "name": self.name}
+
+
+class DefaultChunkKeyConfigDict(TypedDict):
+    separator: Literal[".", "/"]
+
+
 class DefaultChunkKeyConfig:
-    separator: Literal[".", "/"] = "/"
+    separator: Literal[".", "/"]
+
+    def __init__(self, *, separator: Literal[".", "/"] = "/") -> None:
+        self.separator = parse_dimension_separator
+
+    def to_dict(self) -> DefaultChunkKeyConfigDict:
+        return {"separator": self.separator}
 
 
-@frozen
+def parse_dimension_separator(separator: Any) -> Literal[".", "/"]:
+    if separator not in (".", "/"):
+        raise ValueError
+    return separator
+
+
+class DefaultChunkKeyEncodingDict(TypedDict):
+    configuration: DefaultChunkKeyConfigDict
+    name: Literal["default", "v2"]
+
+
 class DefaultChunkKeyEncoding(NamedConfig):
-    configuration: DefaultChunkKeyConfig = DefaultChunkKeyConfig()
-    name: Literal["default", "V2"] = "default"
+    configuration: DefaultChunkKeyConfig
+    name: Literal["default", "V2"]
+
+    def __init__(self, *, configuration=DefaultChunkKeyConfig(), name="default") -> None:
+        self.configuration = configuration
+        self.name = name
+
+    def to_dict(self) -> DefaultChunkKeyEncodingDict:
+        return {"configuration": self.configuration.to_dict(), "name": self.name}
 
 
-@frozen
+class V2ChunkKeyEncodingDict(TypedDict):
+    configuration: DefaultChunkKeyConfigDict
+    name: Literal["V2"]
+
+
 class V2ChunkKeyEncoding(NamedConfig):
     configuration: DefaultChunkKeyConfig = DefaultChunkKeyConfig()
-    name: Literal["default"] = "V2"
+    name: Literal["V2"] = "V2"
+
+    def __init__(self, configuration: DefaultChunkKeyConfig) -> None:
+        self.configuration = configuration
+        self.name = "V2"
+
+    def to_dict(self) -> V2ChunkKeyEncodingDict:
+        return {"configuration": self.configuration.to_dict(), "name": self.name}
 
 
 ChunkKeyEncoding = Union[DefaultChunkKeyEncoding, V2ChunkKeyEncoding]
 
 
-@dataclass(frozen=True)
+class _ArrayMetadataDictBase(TypedDict):
+    """
+    This is a private base class with all the required attributes.
+    Because `dimension_names` is an optional attribute, we need a subclass to express this.
+    See https://peps.python.org/pep-0655/ for a cleaner way
+    """
+
+    shape: Tuple[int, ...]
+    data_type: str
+    chunk_grid: RegularChunkGridDict
+    chunk_key_encoding: Union[DefaultChunkKeyConfigDict, V2ChunkKeyEncodingDict]
+    fill_value: Any
+    codecs: list[NamedConfigDict]
+    zarr_format: Literal["3"]
+    node_type: Literal["array"]
+
+
+class ArrayMetadataDict(_ArrayMetadataDictBase, total=False):
+    """
+    This inherits from a private base class with all the required attributes.
+    Because `dimension_names` is an optional attribute, we need a subclass to express this.
+    See https://peps.python.org/pep-0655/ for a cleaner way
+    """
+
+    dimension_names: list[str]
+
+
 class ArrayMetadata:
     """
     A representation of v3 array metadata with no behavior besides
@@ -63,23 +163,23 @@ class ArrayMetadata:
     shape: Tuple[int, ...]
     data_type: np.dtype
     chunk_grid: RegularChunkGrid
-    chunk_key_encoding: DefaultChunkKeyEncoding
+    chunk_key_encoding: Union[DefaultChunkKeyEncoding, V2ChunkKeyEncoding]
     fill_value: Any
     codecs: list[CodecMetadata]
-    attributes: Attributes
-    dimension_names: Optional[Tuple[str, ...]] = None
+    dimension_names: Optional[Tuple[str, ...]]
     zarr_format: Literal[3] = 3
     node_type: Literal["array"] = "array"
 
     def __init__(
         self,
+        *,
         shape,
         data_type,
         chunk_grid,
         chunk_key_encoding,
         fill_value,
         codecs,
-        attributes,
+        dimension_names: Optional[Tuple[str]] = None,
     ):
         """
         The only thing we need to do here is validate inputs.
@@ -90,22 +190,34 @@ class ArrayMetadata:
         self.chunk_key_encoding = parse_chunk_key_encoding(chunk_key_encoding)
         self.fill_value = parse_fill_value(fill_value)
         self.codecs = parse_codecs(codecs)
-        self.attributes = parse_attributes(attributes)
-        parse_metadata(self)
+        self.dimension_names = parse_dimension_names(dimension_names)
+        self = parse_array_metadata(self)
+
+    def to_dict(self) -> ArrayMetadataDict:
+
+        self_dict: ArrayMetadataDict = {
+            "shape": self.shape,
+            "data_type": self.data_type.str,
+            "chunk_grid": self.chunk_grid.to_dict(),
+            "fill_value": self.fill_value,
+            "chunk_key_encoding": self.chunk_grid.to_dict(),
+            "codecs": [codec.to_dict() for codec in self.codecs],
+            "node_type": "array",
+            "zarr_format": 3,
+        }
+        if self.dimension_names is not None:
+            # dimension names cannot by Null in JSON
+            self_dict["dimension_names"] = self.dimension_names
+
+    def to_json(self) -> bytes:
+        return json.dumps(self.to_dict()).encode()
 
     @classmethod
     def from_json(cls, json: bytes) -> "ArrayMetadata":
         ...
 
-    def to_json(self) -> bytes:
-        ...
 
-
-@dataclass(frozen=True)
 class GroupMetadata:
-    attributes: Attributes
-    node_type: Literal["group"] = "group"
-
     @classmethod
     def from_json(cls, json: bytes) -> "GroupMetadata":
         ...
@@ -125,38 +237,39 @@ def to_json(obj: Union[ArrayMetadata, GroupMetadata]) -> bytes:
 
 
 def parse_shape(shape: Any) -> Tuple[int, ...]:
-    ...
+    return shape
 
 
 def parse_data_type(data_type: Any) -> Any:
-    ...
+    return data_type
 
 
 def parse_chunk_grid(chunk_grid: Any) -> RegularChunkGrid:
-    ...
+    return chunk_grid
 
 
 def parse_chunk_key_encoding(chunk_key_encoding: Any) -> DefaultChunkKeyEncoding:
-    ...
+    return chunk_key_encoding
 
 
 def parse_fill_value(fill_value: Any) -> Any:
-    ...
+    return fill_value
 
 
 def parse_codecs(codecs: Any) -> list[CodecMetadata]:
-    ...
+    return codecs
 
 
-def parse_attributes(attributes: Any) -> Attributes:
-    ...
+def parse_dimension_names(dimension_names: Optional[tuple[str, ...]]):
+    return dimension_names
 
 
-def parse_metadata(metadata: ArrayMetadata):
+def parse_array_metadata(metadata: ArrayMetadata):
     """
     Check that all properties are consistent
     """
-    ...
+    # todo: check that dimensional attributes like shape and dimension_names are consistent
+    return metadata
 
 
 dtype_to_data_type = {

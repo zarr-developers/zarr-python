@@ -6,8 +6,14 @@ from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Uni
 
 import numcodecs
 import numpy as np
-from attr import evolve, frozen, asdict
-from zarr.v3.array.base import AsynchronousArray, ChunkKeyEncodingV2, read_chunk, write_chunk
+import attr
+from zarr.v3.array.base import (
+    AsynchronousArray,
+    ChunkKeyEncodingV2,
+    SynchronousArray,
+    read_chunk,
+    write_chunk,
+)
 
 from zarr.v3.array.base import (
     ChunkKeyEncoder,
@@ -22,7 +28,7 @@ from zarr.v3.common import (
     to_thread,
 )
 from zarr.v3.array.indexing import BasicIndexer, all_chunk_coords, is_total_slice
-from zarr.v3.array.base import ChunkMetadata
+from zarr.v3.common import ChunkMetadata
 from zarr.v3.metadata.v3 import DefaultChunkKeyConfig, DefaultChunkKeyEncoding
 import zarr.v3.metadata.v2 as metaV2
 
@@ -34,7 +40,7 @@ if TYPE_CHECKING:
     import zarr.v3.array.v3 as v3
 
 
-@frozen
+@attr.frozen
 class _AsyncArrayProxy:
     array: AsyncArray
 
@@ -42,7 +48,7 @@ class _AsyncArrayProxy:
         return _AsyncArraySelectionProxy(self.array, selection)
 
 
-@frozen
+@attr.frozen
 class _AsyncArraySelectionProxy:
     array: AsyncArray
     selection: Selection
@@ -54,12 +60,15 @@ class _AsyncArraySelectionProxy:
         return await self.array.set_async(self.selection, value)
 
 
-@frozen
 class ArrayMetadata(metaV2.ArrayMetadata):
     @property
     def ndim(self) -> int:
         return len(self.shape)
 
+    def to_bytes(self):
+        return self.to_json()
+
+    """
     def to_bytes(self) -> bytes:
         def _json_convert(o):
             if isinstance(o, np.dtype):
@@ -69,16 +78,17 @@ class ArrayMetadata(metaV2.ArrayMetadata):
                     return o.descr
             raise TypeError
 
-        return json.dumps(asdict(self), default=_json_convert).encode()
+        return json.dumps(attr.asdict(self), default=_json_convert).encode() """
 
     @classmethod
     def from_json(cls, zarr_json: Any) -> ArrayMetadata:
         return make_cattr().structure(zarr_json, cls)
 
 
-@frozen
+@attr.frozen
 class AsyncArray(AsynchronousArray):
     metadata: ArrayMetadata
+    attributes: Attributes
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
     codec_pipeline: CodecPipeline
@@ -102,7 +112,7 @@ class AsyncArray(AsynchronousArray):
 
     @property
     def attrs(self) -> Attributes:
-        return self.metadata.attributes
+        return self.attributes
 
     @classmethod
     async def create(
@@ -165,10 +175,10 @@ class AsyncArray(AsynchronousArray):
         array = cls(
             metadata=metadata,
             store_path=store_path,
-            attributes=attributes,
             runtime_configuration=runtime_configuration,
             codec_pipeline=codec_pipeline,
             chunk_key_encoding=chunk_key_encoding,
+            attributes=attributes,
         )
 
         await array._save_metadata()
@@ -252,7 +262,7 @@ class AsyncArray(AsynchronousArray):
         out.fill(self.metadata.fill_value)
 
         chunk_coords, chunk_selections, out_selections = zip(*indexer)
-        chunk_keys = map(self.metadata.chunk_key_encoding.encode_chunk_key, chunk_coords)
+        chunk_keys = map(self.chunk_key_encoding.encode_key, chunk_coords)
 
         # reading chunks and decoding them
         await concurrent_map(
@@ -277,7 +287,7 @@ class AsyncArray(AsynchronousArray):
     ):
 
         await read_chunk(
-            chunk_key=self.chunk_key_encoding.encode_chunk_key(chunk_coords),
+            chunk_key=self.chunk_key_encoding.encode_key(chunk_coords),
             store_path=self.store_path,
             chunk_selection=chunk_selection,
             codec_pipeline=self.codec_pipeline,
@@ -331,7 +341,7 @@ class AsyncArray(AsynchronousArray):
 
     async def resize_async(self, new_shape: ChunkCoords) -> AsyncArray:
         assert len(new_shape) == len(self.metadata.shape)
-        new_metadata = evolve(self.metadata, shape=new_shape)
+        new_metadata = attr.evolve(self.metadata, shape=new_shape)
 
         # Remove all chunks outside of the new shape
         chunk_shape = self.metadata.chunks
@@ -351,7 +361,7 @@ class AsyncArray(AsynchronousArray):
 
         # Write new metadata
         await (self.store_path / ZARRAY_JSON).set_async(new_metadata.to_bytes())
-        return evolve(self, metadata=new_metadata)
+        return attr.evolve(self, metadata=new_metadata)
 
     def resize(self, new_shape: ChunkCoords) -> AsyncArray:
         return sync(self.resize_async(new_shape), self.runtime_configuration.asyncio_loop)
@@ -459,7 +469,7 @@ class AsyncArray(AsynchronousArray):
 
     async def update_attributes_async(self, new_attributes: Attributes) -> AsyncArray:
         await (self.store_path / ZATTRS_JSON).set_async(json.dumps(new_attributes).encode())
-        return evolve(self, attributes=new_attributes)
+        return attr.evolve(self, attributes=new_attributes)
 
     def update_attributes(self, new_attributes: Attributes) -> AsyncArray:
         return sync(
@@ -472,3 +482,149 @@ class AsyncArray(AsynchronousArray):
 
     def __repr__(self):
         return f"<Array_v2 {self.store_path} shape={self.shape} dtype={self.dtype}>"
+
+    async def info(self):
+        raise NotImplementedError
+
+    async def setitem(self, key, value):
+        raise NotImplementedError
+
+
+@attr.frozen
+class Array(SynchronousArray):
+    _async_array: AsyncArray
+
+    @classmethod
+    def create(
+        cls,
+        store: StoreLike,
+        *,
+        shape: Tuple[int, ...],
+        dtype: np.dtype,
+        chunks: Tuple[int, ...],
+        dimension_separator: Literal[".", "/"] = ".",
+        fill_value: Optional[Union[None, int, float]] = None,
+        order: Literal["C", "F"] = "C",
+        filters: Optional[List[Dict[str, Any]]] = None,
+        compressor: Optional[Dict[str, Any]] = None,
+        attributes: Attributes = {},
+        exists_ok: bool = False,
+        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
+    ) -> Array:
+        async_array = sync(
+            AsyncArray.create(
+                store=store,
+                shape=shape,
+                dtype=dtype,
+                chunks=chunks,
+                fill_value=fill_value,
+                dimension_separator=dimension_separator,
+                order=order,
+                filters=filters,
+                compressor=compressor,
+                attributes=attributes,
+                runtime_configuration=runtime_configuration,
+                exists_ok=exists_ok,
+            ),
+            runtime_configuration.asyncio_loop,
+        )
+        return cls(async_array)
+
+    @classmethod
+    def from_json(
+        cls,
+        store_path: StorePath,
+        zarr_json: Any,
+        runtime_configuration: RuntimeConfiguration,
+    ) -> Array:
+        async_array = AsyncArray.from_json(
+            store_path=store_path, zarr_json=zarr_json, runtime_configuration=runtime_configuration
+        )
+        return cls(async_array)
+
+    @classmethod
+    def open(
+        cls,
+        store: StoreLike,
+        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
+    ) -> Array:
+
+        async_array = sync(
+            AsyncArray.open(store, runtime_configuration=runtime_configuration),
+            runtime_configuration.asyncio_loop,
+        )
+        async_array._validate_metadata()
+        return cls(async_array)
+
+    @classmethod
+    def open_auto(
+        cls,
+        store: StoreLike,
+        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
+    ) -> Array:  # TODO: Union[Array, ArrayV2]:
+        async_array = sync(
+            AsyncArray.open_auto(store, runtime_configuration),
+            runtime_configuration.asyncio_loop,
+        )
+        return cls(async_array)
+
+    @property
+    def ndim(self) -> int:
+        return self._async_array.ndim
+
+    @property
+    def shape(self) -> ChunkCoords:
+        return self._async_array.shape
+
+    @property
+    def size(self) -> int:
+        return self._async_array.size
+
+    @property
+    def dtype(self) -> np.dtype:
+        return self._async_array.dtype
+
+    @property
+    def attrs(self) -> dict:
+        return self._async_array.attrs
+
+    @property
+    def metadata(self) -> ArrayMetadata:
+        return self._async_array.metadata
+
+    @property
+    def store_path(self) -> str:
+        return self._async_array.store_path
+
+    def __getitem__(self, selection: Selection):
+        return sync(
+            self._async_array.getitem(selection),
+            self._async_array.runtime_configuration.asyncio_loop,
+        )
+
+    def __setitem__(self, selection: Selection, value: np.ndarray) -> None:
+        sync(
+            self._async_array.setitem(selection, value),
+            self._async_array.runtime_configuration.asyncio_loop,
+        )
+
+    def resize(self, new_shape: ChunkCoords) -> Array:
+        return sync(
+            self._async_array.resize(new_shape),
+            self._async_array.runtime_configuration.asyncio_loop,
+        )
+
+    def update_attributes(self, new_attributes: Attributes) -> Array:
+        return sync(
+            self._async_array.update_attributes(new_attributes),
+            self._async_array.runtime_configuration.asyncio_loop,
+        )
+
+    def __repr__(self):
+        return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
+
+    def info(self):
+        return sync(
+            self._async_array.info(),
+            self._async_array.runtime_configuration.asyncio_loop,
+        )

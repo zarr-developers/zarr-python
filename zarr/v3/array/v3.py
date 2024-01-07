@@ -33,6 +33,7 @@ from zarr.v3.array.base import (
 from zarr.v3.codecs import CodecMetadata, CodecPipeline, bytes_codec
 from zarr.v3.common import (
     ZARR_JSON,
+    ChunkMetadata,
     RuntimeConfiguration,
     concurrent_map,
     make_cattr,
@@ -40,7 +41,6 @@ from zarr.v3.common import (
 from zarr.v3.array.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.array.base import (
     AsynchronousArray,
-    ChunkMetadata,
 )
 
 from zarr.v3.metadata.v3 import (
@@ -56,7 +56,6 @@ from zarr.v3.types import Attributes, ChunkCoords, Selection, SliceSelection
 import zarr.v3.metadata.v3 as metaV3
 
 
-@frozen
 class ArrayMetadata(metaV3.ArrayMetadata):
     @property
     def ndim(self) -> int:
@@ -71,6 +70,10 @@ class ArrayMetadata(metaV3.ArrayMetadata):
         )
 
     def to_bytes(self) -> bytes:
+        return self.to_json()
+
+    """
+    def to_bytes(self) -> bytes:
         def _json_convert(o):
             if isinstance(o, np.dtype):
                 return str(o)
@@ -84,7 +87,8 @@ class ArrayMetadata(metaV3.ArrayMetadata):
                 filter=lambda attr, value: attr.name != "dimension_names" or value is not None,
             ),
             default=_json_convert,
-        ).encode()
+        ).encode() 
+        """
 
     @classmethod
     def from_json(cls, zarr_json: Any) -> ArrayMetadata:
@@ -98,6 +102,7 @@ class AsyncArray(AsynchronousArray):
     runtime_configuration: RuntimeConfiguration
     codec_pipeline: CodecPipeline
     chunk_key_encoding: ChunkKeyEncoder
+    attributes: Attributes
 
     @property
     def ndim(self) -> int:
@@ -171,7 +176,6 @@ class AsyncArray(AsynchronousArray):
             fill_value=fill_value,
             codecs=codecs,
             dimension_names=tuple(dimension_names) if dimension_names else None,
-            attributes=attributes or {},
         )
         runtime_configuration = runtime_configuration or RuntimeConfiguration()
 
@@ -194,6 +198,7 @@ class AsyncArray(AsynchronousArray):
                 metadata.codecs, metadata.get_core_metadata()
             ),
             chunk_key_encoding=cke,
+            attributes=attributes or {},
         )
 
         await array._save_metadata()

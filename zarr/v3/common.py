@@ -14,6 +14,7 @@ from typing import (
     Optional,
     Tuple,
     TypeVar,
+    TypedDict,
     Union,
 )
 from attr import frozen
@@ -152,3 +153,36 @@ def runtime_configuration(
     order: Literal["C", "F"], concurrency: Optional[int] = None
 ) -> RuntimeConfiguration:
     return RuntimeConfiguration(order=order, concurrency=concurrency)
+
+
+class ChunkMetadataDict(TypedDict):
+    array_shape: Tuple[int, ...]
+    chunk_shape: Tuple[int, ...]
+    dtype: str
+    fill_value: Any
+
+
+class ChunkMetadata:
+    array_shape: Tuple[int, ...]
+    chunk_shape: Tuple[int, ...]
+    # data_type: DataType
+    dtype: np.dtype
+    fill_value: Any
+
+    def __init__(self, array_shape, chunk_shape, dtype, fill_value) -> None:
+        self.array_shape = array_shape
+        self.chunk_shape = chunk_shape
+        self.dtype = dtype
+        self.fill_value = fill_value
+
+    @property
+    def ndim(self) -> int:
+        return len(self.array_shape)
+
+    def to_dict(self) -> ChunkMetadataDict:
+        return {
+            "array_shape": self.array_shape,
+            "chunk_shape": self.chunk_shape,
+            "fill_value": self.fill_value,
+            "dtype": self.dtype.str,
+        }

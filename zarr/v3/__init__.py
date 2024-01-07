@@ -6,7 +6,7 @@ from zarr.v3.array.v3 import Array as ArrayV3  # noqa: F401
 from zarr.v3.array.v2 import AsyncArray as ArrayV2  # noqa: F401
 from zarr.v3.group import Group  # noqa: F401
 from zarr.v3.group_v2 import GroupV2  # noqa: F401
-from zarr.v3.array.base import RuntimeConfiguration, runtime_configuration  # noqa: F401
+from zarr.v3.common import RuntimeConfiguration, runtime_configuration  # noqa: F401
 from zarr.v3.store import (  # noqa: F401
     LocalStore,
     RemoteStore,

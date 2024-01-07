@@ -12,13 +12,13 @@ from attr import frozen, field
 from crc32c import crc32c
 
 from zarr.v3.abc.codec import BytesBytesCodec
-from zarr.v3.array.base import RuntimeConfiguration
+from zarr.v3.common import RuntimeConfiguration
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.types import BytesLike
 from zarr.v3.metadata.v3 import CodecMetadata
 
 if TYPE_CHECKING:
-    from zarr.v3.array.base import ChunkMetadata
+    from zarr.v3.common import ChunkMetadata
 
 
 @frozen

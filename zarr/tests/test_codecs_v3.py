@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import zarr
 from zarr.v3 import codecs
-from zarr.v3.array.base import runtime_configuration
+from zarr.v3.common import runtime_configuration
 from zarr.v3.array.v3 import Array, AsyncArray
 from zarr.v3.types import Selection
 from zarr.v3.array.indexing import morton_order_iter

@@ -14,7 +14,7 @@ from attr import asdict, evolve, frozen, field
 from numcodecs.blosc import Blosc
 
 from zarr.v3.abc.codec import BytesBytesCodec
-from zarr.v3.array.base import RuntimeConfiguration
+from zarr.v3.common import RuntimeConfiguration
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import to_thread
 from zarr.v3.metadata.v3 import CodecMetadata

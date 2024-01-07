@@ -16,7 +16,7 @@ import numpy as np
 from attr import frozen
 
 from zarr.v3.abc.codec import Codec, ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
-from zarr.v3.array.base import RuntimeConfiguration
+from zarr.v3.common import RuntimeConfiguration
 from zarr.v3.types import BytesLike
 from zarr.v3.metadata.v3 import CodecMetadata
 from zarr.v3.codecs.registry import get_codec_class

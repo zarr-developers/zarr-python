@@ -5,37 +5,68 @@ from typing import (
     Literal,
     Optional,
     Type,
+    TypedDict,
 )
 
 import numpy as np
-from attr import frozen, field
 
 from zarr.v3.abc.codec import ArrayBytesCodec
-from zarr.v3.array.base import RuntimeConfiguration
+from zarr.v3.common import RuntimeConfiguration
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.types import BytesLike
 from zarr.v3.metadata.v3 import CodecMetadata, to_numpy_shortname
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ChunkMetadata
+    from zarr.v3.common import ChunkMetadata, ChunkMetadataDict
 
 
-@frozen
+class BytesCodecConfigurationMetadataDict(TypedDict):
+    endian: Optional[Literal["big", "little"]]
+
+
 class BytesCodecConfigurationMetadata:
     endian: Optional[Literal["big", "little"]] = "little"
 
+    def __init__(self, endian: Optional[Literal["big", "little"]]):
+        self.endian = endian
 
-@frozen
+    def to_dict(self) -> BytesCodecConfigurationMetadataDict:
+        return {"endian": self.endian}
+
+
+class BytesCodecMetadataDict(TypedDict):
+    configuration: BytesCodecConfigurationMetadataDict
+    name: Literal["bytes"]
+
+
 class BytesCodecMetadata:
     configuration: BytesCodecConfigurationMetadata
-    name: Literal["bytes"] = field(default="bytes", init=False)
+    name: Literal["bytes"]
+
+    def __init__(self, configuration: BytesCodecConfigurationMetadata):
+        # note: the only degree of freedom for this class is the "endian" property of `BytesConfigurationMetadata`
+        self.configuration = configuration
+        self.name = "bytes"
+
+    def to_dict(self) -> BytesCodecMetadataDict:
+        return {"configuration": self.configuration.to_dict(), "name": self.name}
 
 
-@frozen
+class BytesCodecDict(TypedDict):
+    array_metadata: ChunkMetadataDict
+    configuration: BytesCodecConfigurationMetadataDict
+
+
 class BytesCodec(ArrayBytesCodec):
     array_metadata: ChunkMetadata
     configuration: BytesCodecConfigurationMetadata
     is_fixed_size = True
+
+    def __init__(
+        self, array_metadata: ChunkMetadata, configuration: BytesCodecConfigurationMetadata
+    ) -> None:
+        self.array_metadata = array_metadata
+        self.configuration = configuration
 
     @classmethod
     def from_metadata(
@@ -95,6 +126,12 @@ class BytesCodec(ArrayBytesCodec):
 
     def compute_encoded_size(self, input_byte_length: int) -> int:
         return input_byte_length
+
+    def to_dict(self) -> BytesCodecDict:
+        return {
+            "array_metadata": self.array_metadata.to_dict(),
+            "configuration": self.configuration.to_dict(),
+        }
 
 
 register_codec("bytes", BytesCodec)
