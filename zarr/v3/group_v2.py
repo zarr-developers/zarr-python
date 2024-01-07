@@ -6,11 +6,12 @@ from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
 
 from attr import asdict, evolve, frozen
 
-from zarr.v3.array.v2 import Array
-from zarr.v3.common import ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, Attributes, make_cattr
+from zarr.v3.array.v2 import AsyncArray
+from zarr.v3.common import ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, make_cattr
 from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
+from zarr.v3.types import Attributes
 
 if TYPE_CHECKING:
     from zarr.v3.group import Group
@@ -33,14 +34,14 @@ class GroupV2:
     metadata: GroupV2Metadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
-    attributes: Dict[str, Any] = None
+    attributes: Optional[Attributes] = None
 
     @classmethod
     async def create_async(
         cls,
         store: StoreLike,
         *,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: Optional[Attributes] = None,
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> GroupV2:
@@ -61,7 +62,7 @@ class GroupV2:
         cls,
         store: StoreLike,
         *,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: Optional[Attributes] = None,
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> GroupV2:
@@ -112,7 +113,7 @@ class GroupV2:
         store_path: StorePath,
         zarr_json: Any,
         runtime_configuration: RuntimeConfiguration,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: Optional[Attributes] = None,
     ) -> GroupV2:
         group = cls(
             metadata=GroupV2Metadata.from_json(zarr_json),
@@ -126,7 +127,7 @@ class GroupV2:
     async def open_or_array(
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> Union[Array, GroupV2]:
+    ) -> Union[AsyncArray, GroupV2]:
         store_path = make_store_path(store)
         zgroup_bytes, zattrs_bytes = await asyncio.gather(
             (store_path / ZGROUP_JSON).get_async(),
@@ -139,7 +140,7 @@ class GroupV2:
             )
         zarray_bytes = await (store_path / ZARRAY_JSON).get_async()
         if zarray_bytes is not None:
-            return Array.from_json(
+            return AsyncArray.from_json(
                 store_path, json.loads(zarray_bytes), attributes, runtime_configuration
             )
         raise KeyError
@@ -153,12 +154,12 @@ class GroupV2:
         else:
             await (self.store_path / ZATTRS_JSON).delete_async()
 
-    async def get_async(self, path: str) -> Union[Array, GroupV2]:
+    async def get_async(self, path: str) -> Union[AsyncArray, GroupV2]:
         return await self.__class__.open_or_array(
             self.store_path / path, self.runtime_configuration
         )
 
-    def __getitem__(self, path: str) -> Union[Array, GroupV2]:
+    def __getitem__(self, path: str) -> Union[AsyncArray, GroupV2]:
         return sync(self.get_async(path), self.runtime_configuration.asyncio_loop)
 
     async def create_group_async(self, path: str, **kwargs) -> GroupV2:
@@ -172,15 +173,15 @@ class GroupV2:
     def create_group(self, path: str, **kwargs) -> GroupV2:
         return sync(self.create_group_async(path), self.runtime_configuration.asyncio_loop)
 
-    async def create_array_async(self, path: str, **kwargs) -> Array:
+    async def create_array_async(self, path: str, **kwargs) -> AsyncArray:
         runtime_configuration = kwargs.pop("runtime_configuration", self.runtime_configuration)
-        return await Array.create_async(
+        return await AsyncArray.create(
             self.store_path / path,
             runtime_configuration=runtime_configuration,
             **kwargs,
         )
 
-    def create_array(self, path: str, **kwargs) -> Array:
+    def create_array(self, path: str, **kwargs) -> AsyncArray:
         return sync(
             self.create_array_async(path, **kwargs),
             self.runtime_configuration.asyncio_loop,
@@ -201,11 +202,11 @@ class GroupV2:
             runtime_configuration=self.runtime_configuration,
         )
 
-    async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> GroupV2:
+    async def update_attributes_async(self, new_attributes: Attributes) -> GroupV2:
         await (self.store_path / ZATTRS_JSON).set_async(json.dumps(new_attributes).encode())
         return evolve(self, attributes=new_attributes)
 
-    def update_attributes(self, new_attributes: Dict[str, Any]) -> GroupV2:
+    def update_attributes(self, new_attributes: Attributes) -> GroupV2:
         return sync(
             self.update_attributes_async(new_attributes),
             self.runtime_configuration.asyncio_loop,

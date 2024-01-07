@@ -6,10 +6,11 @@ from typing import Any, Dict, Literal, Optional, Union
 from attr import asdict, evolve, field, frozen
 
 from zarr.v3.array.v3 import Array
-from zarr.v3.common import ZARR_JSON, Attributes, make_cattr
+from zarr.v3.common import ZARR_JSON, make_cattr
 from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
+from zarr.v3.types import Attributes
 
 
 @frozen
@@ -37,7 +38,7 @@ class Group:
         cls,
         store: StoreLike,
         *,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: Optional[Attributes] = None,
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Group:
@@ -57,7 +58,7 @@ class Group:
         cls,
         store: StoreLike,
         *,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: Optional[Attributes] = None,
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Group:
@@ -162,14 +163,14 @@ class Group:
             self.runtime_configuration.asyncio_loop,
         )
 
-    async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> Group:
+    async def update_attributes_async(self, new_attributes: Attributes) -> Group:
         new_metadata = evolve(self.metadata, attributes=new_attributes)
 
         # Write new metadata
         await (self.store_path / ZARR_JSON).set_async(new_metadata.to_bytes())
         return evolve(self, metadata=new_metadata)
 
-    def update_attributes(self, new_attributes: Dict[str, Any]) -> Group:
+    def update_attributes(self, new_attributes: Attributes) -> Group:
         return sync(
             self.update_attributes_async(new_attributes),
             self.runtime_configuration.asyncio_loop,

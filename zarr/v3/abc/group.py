@@ -4,10 +4,12 @@ from abc import abstractproperty, ABC
 from collections.abc import MutableMapping
 from typing import Dict, Any
 
+from zarr.v3.types import Attributes
+
 
 class BaseGroup(ABC):
     @abstractproperty
-    def attrs(self) -> Dict[str, Any]:
+    def attrs(self) -> Attributes:
         """User-defined attributes."""
         ...
 

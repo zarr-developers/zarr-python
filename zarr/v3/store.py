@@ -12,7 +12,8 @@ import io
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, MutableMapping, Optional, Tuple, Union
 
-from zarr.v3.common import BytesLike, to_thread
+from zarr.v3.common import to_thread
+from zarr.v3.types import BytesLike
 
 if TYPE_CHECKING:
     from upath import UPath

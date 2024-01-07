@@ -8,10 +8,11 @@ import numpy as np
 import pytest
 import zarr
 from zarr.v3 import codecs
+from zarr.v3.array.base import runtime_configuration
 from zarr.v3.array.v3 import Array, AsyncArray
-from zarr.v3.common import Selection
+from zarr.v3.types import Selection
 from zarr.v3.array.indexing import morton_order_iter
-from zarr.v3.metadata import CodecMetadata, ShardingCodecIndexLocation, runtime_configuration
+from zarr.v3.metadata.v3 import CodecMetadata
 
 from zarr.v3.store import MemoryStore, Store
 
@@ -46,12 +47,8 @@ def sample_data() -> np.ndarray:
     return np.arange(0, 128 * 128 * 128, dtype="uint16").reshape((128, 128, 128), order="F")
 
 
-@pytest.mark.parametrize(
-    "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
-)
-def test_sharding(
-    store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
-):
+@pytest.mark.parametrize("index_location", ["start", "end"])
+def test_sharding(store: Store, sample_data: np.ndarray, index_location: Literal["start", "end"]):
     a = Array.create(
         store / "sample",
         shape=sample_data.shape,
@@ -78,11 +75,9 @@ def test_sharding(
     assert np.array_equal(sample_data, read_data)
 
 
-@pytest.mark.parametrize(
-    "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
-)
+@pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding_partial(
-    store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
+    store: Store, sample_data: np.ndarray, index_location: Literal["start", "end"]
 ):
     a = Array.create(
         store / "sample",
@@ -113,11 +108,9 @@ def test_sharding_partial(
     assert np.array_equal(sample_data, read_data)
 
 
-@pytest.mark.parametrize(
-    "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
-)
+@pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding_partial_read(
-    store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
+    store: Store, sample_data: np.ndarray, index_location: Literal["start", "end"]
 ):
     a = Array.create(
         store / "sample",
@@ -142,11 +135,9 @@ def test_sharding_partial_read(
     assert np.all(read_data == 1)
 
 
-@pytest.mark.parametrize(
-    "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
-)
+@pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding_partial_overwrite(
-    store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
+    store: Store, sample_data: np.ndarray, index_location: Literal["start", "end"]
 ):
     data = sample_data[:10, :10, :10]
 
@@ -182,17 +173,17 @@ def test_sharding_partial_overwrite(
 
 @pytest.mark.parametrize(
     "outer_index_location",
-    [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end],
+    ["start", "end"],
 )
 @pytest.mark.parametrize(
     "inner_index_location",
-    [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end],
+    ["start", "end"],
 )
 def test_nested_sharding(
     store: Store,
     sample_data: np.ndarray,
-    outer_index_location: ShardingCodecIndexLocation,
-    inner_index_location: ShardingCodecIndexLocation,
+    outer_index_location: Literal["start", "end"],
+    inner_index_location: Literal["start", "end"],
 ):
     a = Array.create(
         store / "l4_sample" / "color" / "1",
@@ -243,7 +234,7 @@ async def test_order(
         else [codecs.transpose_codec(store_order, data.ndim), codecs.bytes_codec()]
     )
 
-    a = await AsyncArray.create(
+    a_create = await AsyncArray.create(
         store / "order",
         shape=data.shape,
         chunk_shape=(32, 8),
@@ -254,15 +245,15 @@ async def test_order(
         runtime_configuration=runtime_configuration(runtime_write_order),
     )
 
-    await _AsyncArrayProxy(a)[:, :].set(data)
-    read_data = await _AsyncArrayProxy(a)[:, :].get()
+    await _AsyncArrayProxy(a_create)[:, :].set(data)
+    read_data = await _AsyncArrayProxy(a_create)[:, :].get()
     assert np.array_equal(data, read_data)
 
-    a = await AsyncArray.open(
+    a_open = await AsyncArray.open(
         store / "order",
         runtime_configuration=runtime_configuration(order=runtime_read_order),
     )
-    read_data = await _AsyncArrayProxy(a)[:, :].get()
+    read_data = await _AsyncArrayProxy(a_open)[:, :].get()
     assert np.array_equal(data, read_data)
 
     if runtime_read_order == "F":
@@ -922,7 +913,7 @@ def test_invalid_metadata(store: Store):
 async def test_resize(store: Store):
     data = np.zeros((16, 18), dtype="uint16")
 
-    a = await AsyncArray.create(
+    a_create = await AsyncArray.create(
         store / "resize",
         shape=data.shape,
         chunk_shape=(10, 10),
@@ -931,14 +922,14 @@ async def test_resize(store: Store):
         fill_value=1,
     )
 
-    await _AsyncArrayProxy(a)[:16, :18].set(data)
+    await _AsyncArrayProxy(a_create)[:16, :18].set(data)
     assert await store.get_async("resize/0.0") is not None
     assert await store.get_async("resize/0.1") is not None
     assert await store.get_async("resize/1.0") is not None
     assert await store.get_async("resize/1.1") is not None
 
-    a = await a.resize((10, 12))
-    assert a.metadata.shape == (10, 12)
+    a_resize = await a_create.resize((10, 12))
+    assert a_resize.metadata.shape == (10, 12)
     assert await store.get_async("resize/0.0") is not None
     assert await store.get_async("resize/0.1") is not None
     assert await store.get_async("resize/1.0") is None

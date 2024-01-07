@@ -18,56 +18,46 @@ from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple, Union
 import numpy as np
 from attr import asdict, evolve, frozen, field
 
-from zarr.v3.abc.array import SynchronousArray, AsynchronousArray
-from zarr.v3.metadata import (
-    DefaultChunkKeyEncodingConfigurationMetadata,
-    RegularChunkGridConfigurationMetadata,
-    RegularChunkGridMetadata,
-    DefaultChunkKeyEncodingMetadata,
-    DefaultChunkKeyEncodingMetadata,
-    ChunkKeyEncodingMetadata,
-    V2ChunkKeyEncodingConfigurationMetadata,
-)
-from zarr.v3.array.chunk import (
-    V2ChunkKeyEncodingMetadata,
-    read_chunk,
+from zarr.v3.array.base import (
+    ChunkKeyEncodingV2,
+    ChunkKeyEncodingV3,
+    SynchronousArray,
+    read_chunks,
     write_chunk,
+)
+
+from zarr.v3.array.base import (
+    ChunkKeyEncoder,
 )
 
 from zarr.v3.codecs import CodecMetadata, CodecPipeline, bytes_codec
 from zarr.v3.common import (
     ZARR_JSON,
-    Attributes,
-    ChunkCoords,
-    Selection,
-    SliceSelection,
+    RuntimeConfiguration,
     concurrent_map,
     make_cattr,
 )
 from zarr.v3.array.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.array.base import (
+    AsynchronousArray,
     ChunkMetadata,
-    RuntimeConfiguration,
-    dtype_to_data_type,
 )
-from zarr.v3.codecs.sharding import ShardingCodec
+
+from zarr.v3.metadata.v3 import (
+    DefaultChunkKeyConfig,
+    DefaultChunkKeyEncoding,
+    RegularChunkGrid,
+    RegularChunkGridConfig,
+    V2ChunkKeyEncoding,
+)
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
+from zarr.v3.types import Attributes, ChunkCoords, Selection, SliceSelection
+import zarr.v3.metadata.v3 as metaV3
 
 
 @frozen
-class ArrayMetadata:
-    shape: ChunkCoords
-    data_type: np.dtype
-    chunk_grid: RegularChunkGridMetadata
-    chunk_key_encoding: ChunkKeyEncodingMetadata
-    fill_value: Any
-    codecs: list[CodecMetadata]
-    attributes: Dict[str, Any] = field(factory=dict)
-    dimension_names: Optional[Tuple[str, ...]] = None
-    zarr_format: Literal[3] = 3
-    node_type: Literal["array"] = "array"
-
+class ArrayMetadata(metaV3.ArrayMetadata):
     @property
     def ndim(self) -> int:
         return len(self.shape)
@@ -107,15 +97,36 @@ class AsyncArray(AsynchronousArray):
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
     codec_pipeline: CodecPipeline
+    chunk_key_encoding: ChunkKeyEncoder
+
+    @property
+    def ndim(self) -> int:
+        return len(self.metadata.shape)
+
+    @property
+    def shape(self) -> ChunkCoords:
+        return self.metadata.shape
+
+    @property
+    def size(self) -> int:
+        return np.prod(self.metadata.shape)
+
+    @property
+    def dtype(self) -> np.dtype:
+        return self.metadata.data_type
+
+    @property
+    def attrs(self) -> Attributes:
+        return self.metadata.attributes
 
     @classmethod
     async def create(
         cls,
         store: StoreLike,
         *,
-        shape: ChunkCoords,
+        shape: Tuple[int, ...],
         dtype: Union[str, np.dtype],
-        chunk_shape: ChunkCoords,
+        chunk_shape: Tuple[int, ...],
         fill_value: Optional[Any] = None,
         chunk_key_encoding: Union[
             Tuple[Literal["default"], Literal[".", "/"]],
@@ -123,19 +134,13 @@ class AsyncArray(AsynchronousArray):
         ] = ("default", "/"),
         codecs: Optional[Iterable[CodecMetadata]] = None,
         dimension_names: Optional[Iterable[str]] = None,
-        attributes: Dict[str, Any] = None,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
+        attributes: Attributes = {},
         exists_ok: bool = False,
+        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> AsyncArray:
         store_path = make_store_path(store)
         if not exists_ok:
             assert not await (store_path / ZARR_JSON).exists_async()
-
-            """     
-            data_type = (
-            DataType[dtype] if isinstance(dtype, str) else DataType[dtype_to_data_type[dtype.str]]
-            )
-            """
         if isinstance(dtype, str):
             data_type = np.dtype(dtype)
         else:
@@ -148,31 +153,38 @@ class AsyncArray(AsynchronousArray):
             else:
                 fill_value = 0
 
+        if chunk_key_encoding[0] == "default":
+            _chunk_key_encoding = DefaultChunkKeyEncoding(
+                configuration=DefaultChunkKeyConfig(separator=chunk_key_encoding[1])
+            )
+        else:
+            _chunk_key_encoding = V2ChunkKeyEncoding(
+                configuration=DefaultChunkKeyConfig(separator=chunk_key_encoding[1])
+            )
         metadata = ArrayMetadata(
             shape=shape,
             data_type=data_type,
-            chunk_grid=RegularChunkGridMetadata(
-                configuration=RegularChunkGridConfigurationMetadata(chunk_shape=chunk_shape)
+            chunk_grid=RegularChunkGrid(
+                configuration=RegularChunkGridConfig(chunk_shape=chunk_shape)
             ),
-            chunk_key_encoding=(
-                V2ChunkKeyEncodingMetadata(
-                    configuration=V2ChunkKeyEncodingConfigurationMetadata(
-                        separator=chunk_key_encoding[1]
-                    )
-                )
-                if chunk_key_encoding[0] == "v2"
-                else DefaultChunkKeyEncodingMetadata(
-                    configuration=DefaultChunkKeyEncodingConfigurationMetadata(
-                        separator=chunk_key_encoding[1]
-                    )
-                )
-            ),
+            chunk_key_encoding=_chunk_key_encoding,
             fill_value=fill_value,
             codecs=codecs,
             dimension_names=tuple(dimension_names) if dimension_names else None,
             attributes=attributes or {},
         )
         runtime_configuration = runtime_configuration or RuntimeConfiguration()
+
+        # this logic should live in a `normalize_chunk_key_encoding` function
+        if chunk_key_encoding[0] == "default":
+            cke = ChunkKeyEncodingV3(separator=chunk_key_encoding[1])
+        elif chunk_key_encoding[0] == "v2":
+            cke = ChunkKeyEncodingV2(separator=chunk_key_encoding[1])
+        else:
+            raise ValueError(
+                f"Chunk key encoding {chunk_key_encoding[0]} is not recognized. "
+                'Must be one one of ("default", "v2")'
+            )
 
         array = cls(
             metadata=metadata,
@@ -181,6 +193,7 @@ class AsyncArray(AsynchronousArray):
             codec_pipeline=CodecPipeline.from_metadata(
                 metadata.codecs, metadata.get_core_metadata()
             ),
+            chunk_key_encoding=cke,
         )
 
         await array._save_metadata()
@@ -194,6 +207,16 @@ class AsyncArray(AsynchronousArray):
         runtime_configuration: RuntimeConfiguration,
     ) -> AsyncArray:
         metadata = ArrayMetadata.from_json(zarr_json)
+
+        if metadata.chunk_key_encoding.name == "V2":
+            chunk_key_encoding = ChunkKeyEncodingV2(
+                separator=metadata.chunk_key_encoding.configuration.separator
+            )
+        else:
+            chunk_key_encoding = ChunkKeyEncodingV3(
+                separator=metadata.chunk_key_encoding.configuration.separator
+            )
+
         async_array = cls(
             metadata=metadata,
             store_path=store_path,
@@ -201,6 +224,7 @@ class AsyncArray(AsynchronousArray):
             codec_pipeline=CodecPipeline.from_metadata(
                 metadata.codecs, metadata.get_core_metadata()
             ),
+            chunk_key_encoding=chunk_key_encoding,
         )
         async_array._validate_metadata()
         return async_array
@@ -238,27 +262,8 @@ class AsyncArray(AsynchronousArray):
             raise ValueError("no v2 support yet")
             # return await ArrayV2.open_async(store_path)
 
-    @property
-    def ndim(self) -> int:
-        return len(self.metadata.shape)
-
-    @property
-    def shape(self) -> ChunkCoords:
-        return self.metadata.shape
-
-    @property
-    def size(self) -> int:
-        return np.prod(self.metadata.shape)
-
-    @property
-    def dtype(self) -> np.dtype:
-        return self.metadata.data_type
-
-    @property
-    def attrs(self) -> Attributes:
-        return self.metadata.attributes
-
     async def getitem(self, selection: Selection):
+
         indexer = BasicIndexer(
             selection,
             shape=self.shape,
@@ -272,23 +277,17 @@ class AsyncArray(AsynchronousArray):
             order=self.runtime_configuration.order,
         )
         out.fill(self.metadata.fill_value)
+        chunk_coords, chunk_selections, out_selections = zip(*indexer)
+        chunk_keys = map(self.chunk_key_encoding.encode_key, chunk_coords)
 
-        # reading chunks and decoding them
-        await concurrent_map(
-            [
-                (
-                    self.metadata.chunk_key_encoding.encode_chunk_key(chunk_coords),
-                    self.store_path,
-                    self.codec_pipeline,
-                    chunk_selection,
-                    out_selection,
-                    out,
-                    self.runtime_configuration,
-                )
-                for chunk_coords, chunk_selection, out_selection in indexer
-            ],
-            read_chunk,
-            self.runtime_configuration.concurrency,
+        await read_chunks(
+            chunk_keys=chunk_keys,
+            store_path=self.store_path,
+            codec_pipeline=self.codec_pipeline,
+            chunk_selections=chunk_selections,
+            out_selections=out_selections,
+            out=out,
+            config=self.runtime_configuration,
         )
 
         if out.shape:
@@ -335,7 +334,7 @@ class AsyncArray(AsynchronousArray):
         await concurrent_map(
             [
                 (
-                    self.metadata.chunk_key_encoding,
+                    self.chunk_key_encoding,
                     self.store_path,
                     self.codec_pipeline,
                     value,
@@ -358,7 +357,7 @@ class AsyncArray(AsynchronousArray):
 
         # Remove all chunks outside of the new shape
         chunk_shape = self.metadata.chunk_grid.configuration.chunk_shape
-        chunk_key_encoding = self.metadata.chunk_key_encoding
+        chunk_key_encoding = self.chunk_key_encoding
         old_chunk_coords = set(all_chunk_coords(self.metadata.shape, chunk_shape))
         new_chunk_coords = set(all_chunk_coords(new_shape, chunk_shape))
 
@@ -367,7 +366,7 @@ class AsyncArray(AsynchronousArray):
 
         await concurrent_map(
             [
-                (chunk_key_encoding.encode_chunk_key(chunk_coords),)
+                (chunk_key_encoding.encode_key(chunk_coords),)
                 for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
             ],
             _delete_key,
@@ -378,7 +377,7 @@ class AsyncArray(AsynchronousArray):
         await (self.store_path / ZARR_JSON).set_async(new_metadata.to_bytes())
         return evolve(self, metadata=new_metadata)
 
-    async def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
+    async def update_attributes(self, new_attributes: Attributes) -> Array:
         new_metadata = evolve(self.metadata, attributes=new_attributes)
 
         # Write new metadata
@@ -411,7 +410,7 @@ class Array(SynchronousArray):
         ] = ("default", "/"),
         codecs: Optional[Iterable[CodecMetadata]] = None,
         dimension_names: Optional[Iterable[str]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: Optional[Attributes] = None,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         exists_ok: bool = False,
     ) -> Array:
@@ -517,7 +516,7 @@ class Array(SynchronousArray):
             self._async_array.runtime_configuration.asyncio_loop,
         )
 
-    def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
+    def update_attributes(self, new_attributes: Attributes) -> Array:
         return sync(
             self._async_array.update_attributes(new_attributes),
             self._async_array.runtime_configuration.asyncio_loop,

@@ -11,10 +11,10 @@ import numpy as np
 from attr import frozen, field
 
 from zarr.v3.abc.codec import ArrayBytesCodec
-from zarr.v3.array.base import RuntimeConfiguration, to_numpy_shortname
+from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import BytesLike
-from zarr.v3.metadata import CodecMetadata
+from zarr.v3.types import BytesLike
+from zarr.v3.metadata.v3 import CodecMetadata, to_numpy_shortname
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import ChunkMetadata

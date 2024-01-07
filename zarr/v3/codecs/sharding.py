@@ -26,9 +26,6 @@ from zarr.v3.array.base import ChunkMetadata, RuntimeConfiguration
 from zarr.v3.codecs import CodecPipeline
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import (
-    BytesLike,
-    ChunkCoords,
-    SliceSelection,
     concurrent_map,
     product,
 )
@@ -38,12 +35,11 @@ from zarr.v3.array.indexing import (
     is_total_slice,
     morton_order_iter,
 )
-from zarr.v3.metadata import (
-    DataType,
+from zarr.v3.metadata.v3 import (
     CodecMetadata,
-    ShardingCodecIndexLocation,
 )
 from zarr.v3.store import StorePath
+from zarr.v3.types import BytesLike, ChunkCoords, SliceSelection
 
 MAX_UINT_64 = 2**64 - 1
 
@@ -53,7 +49,7 @@ class ShardingCodecConfigurationMetadata:
     chunk_shape: ChunkCoords
     codecs: List["CodecMetadata"]
     index_codecs: List["CodecMetadata"]
-    index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end
+    index_location: Literal["start", "end"] = "end"
 
 
 @frozen
@@ -132,7 +128,7 @@ class _ShardProxy(Mapping):
         shard_index_size = codec._shard_index_size()
         obj = cls()
         obj.buf = memoryview(buf)
-        if codec.configuration.index_location == ShardingCodecIndexLocation.start:
+        if codec.configuration.index_location == "start":
             shard_index_bytes = obj.buf[:shard_index_size]
         else:
             shard_index_bytes = obj.buf[-shard_index_size:]
@@ -198,12 +194,12 @@ class _ShardBuilder(_ShardProxy):
 
     async def finalize(
         self,
-        index_location: ShardingCodecIndexLocation,
+        index_location: Literal["start", "end"],
         index_encoder: Callable[[_ShardIndex], Awaitable[BytesLike]],
         config: RuntimeConfiguration,
     ) -> BytesLike:
         index_bytes = await index_encoder(self.index, config)
-        if index_location == ShardingCodecIndexLocation.start:
+        if index_location == "start":
             self.index.offsets_and_lengths[..., 0] += len(index_bytes)
             index_bytes = await index_encoder(
                 self.index, config=config
@@ -554,7 +550,7 @@ class ShardingCodec(
         self, store_path: StorePath, config: RuntimeConfiguration
     ) -> Optional[_ShardIndex]:
         shard_index_size = self._shard_index_size()
-        if self.configuration.index_location == ShardingCodecIndexLocation.start:
+        if self.configuration.index_location == "start":
             index_bytes = await store_path.get_async((0, shard_index_size))
         else:
             index_bytes = await store_path.get_async((-shard_index_size, None))

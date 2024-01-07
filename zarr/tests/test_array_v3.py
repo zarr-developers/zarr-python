@@ -4,10 +4,11 @@ import pytest
 from typing import Any, Dict, Literal, Tuple, Union
 import numpy as np
 
-from zarr.v3.common import ChunkCoords
-from zarr.v3.metadata import DefaultChunkKeyEncodingMetadata, RegularChunkGridMetadata
+from zarr.v3.types import Attributes, ChunkCoords
+from zarr.v3.metadata.v3 import DefaultChunkKeyEncoding, RegularChunkGrid, RegularChunkGridConfig
 
 # todo: parametrize by chunks
+@pytest.mark.asyncio
 @pytest.mark.parametrize("zarr_version", ("2", "3"))
 @pytest.mark.parametrize(
     "shape",
@@ -30,19 +31,19 @@ from zarr.v3.metadata import DefaultChunkKeyEncodingMetadata, RegularChunkGridMe
 @pytest.mark.parametrize("attributes", ({}, dict(a=10, b=10)))
 @pytest.mark.parametrize("fill_value", (0, 1, 2))
 @pytest.mark.parametrize("dimension_separator", (".", "/"))
-def test_array(
+async def test_array(
     tmpdir,
     zarr_version: Literal["2", "3"],
     shape: Tuple[int, ...],
     dtype: Union[str, np.dtype],
-    attributes: Dict[str, Any],
+    attributes: Attributes,
     fill_value: float,
     dimension_separator: Literal[".", "/"],
 ):
     store_path = str(tmpdir)
-    arr: Union[v2.Array, v3.Array]
+    arr: Union[v2.AsyncArray, v3.Array]
     if zarr_version == "2":
-        arr = v2.Array.create(
+        arr = await v2.Array.create(
             store=store_path,
             shape=shape,
             dtype=dtype,
@@ -53,7 +54,7 @@ def test_array(
             exists_ok=True,
         )
     else:
-        arr = v3.Array.create(
+        arr = await v3.Array.create(
             store=store_path,
             shape=shape,
             dtype=dtype,
@@ -82,16 +83,18 @@ def test_init_format(zarr_format: Literal[2, 3]):
     shape = (10,)
     if zarr_format == 2:
         with pytest.raises(ValueError):
-            arr = v2.ArrayMetadata(shape=shape, dtype=dtype, chunks=shape, zarr_format=3)
+            arr1 = v2.ArrayMetadata(shape=shape, dtype=dtype, chunks=shape, zarr_format=3)
     else:
         with pytest.raises(ValueError):
-            arr = v3.ArrayMetadata(
+            arr2 = v3.ArrayMetadata(
                 shape=shape,
                 data_type=dtype,
                 codecs=[],
-                chunk_grid=RegularChunkGridMetadata(configuration={"chunk_shape": shape}),
+                chunk_grid=RegularChunkGrid(
+                    configuration=RegularChunkGridConfig(chunk_shape=shape)
+                ),
                 fill_value=0,
-                chunk_key_encoding=DefaultChunkKeyEncodingMetadata(),
+                chunk_key_encoding=DefaultChunkKeyEncoding(),
                 zarr_format=2,
             )
 
@@ -109,8 +112,10 @@ def test_init_node_type(zarr_format: Literal["2", "3"]):
                 shape=shape,
                 data_type=dtype,
                 codecs=[],
-                chunk_grid=RegularChunkGridMetadata(configuration={"chunk_shape": shape}),
+                chunk_grid=RegularChunkGrid(
+                    configuration=RegularChunkGridConfig(chunk_shape=shape)
+                ),
                 fill_value=0,
-                chunk_key_encoding=DefaultChunkKeyEncodingMetadata(),
+                chunk_key_encoding=DefaultChunkKeyEncoding(),
                 node_type="group",
             )

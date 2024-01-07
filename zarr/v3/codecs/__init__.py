@@ -17,8 +17,8 @@ from attr import frozen
 
 from zarr.v3.abc.codec import Codec, ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
 from zarr.v3.array.base import RuntimeConfiguration
-from zarr.v3.common import BytesLike
-from zarr.v3.metadata import CodecMetadata, ShardingCodecIndexLocation
+from zarr.v3.types import BytesLike
+from zarr.v3.metadata.v3 import CodecMetadata
 from zarr.v3.codecs.registry import get_codec_class
 
 if TYPE_CHECKING:
@@ -222,7 +222,7 @@ def sharding_codec(
     chunk_shape: Tuple[int, ...],
     codecs: Optional[List[CodecMetadata]] = None,
     index_codecs: Optional[List[CodecMetadata]] = None,
-    index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end,
+    index_location: Literal["start", "end"] = "end",
 ) -> "ShardingCodecMetadata":
     from zarr.v3.codecs.sharding import ShardingCodecMetadata, ShardingCodecConfigurationMetadata
 

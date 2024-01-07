@@ -4,7 +4,7 @@ from typing import Dict, NamedTuple, Type
 from importlib.metadata import EntryPoint, entry_points as get_entry_points
 
 from zarr.v3.abc.codec import Codec
-from zarr.v3.metadata import CodecMetadata
+from zarr.v3.metadata.v3 import CodecMetadata
 
 
 class CodecRegistryItem(NamedTuple):

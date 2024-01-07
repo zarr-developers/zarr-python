@@ -16,8 +16,9 @@ from numcodecs.blosc import Blosc
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.array.base import RuntimeConfiguration
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import BytesLike, to_thread
-from zarr.v3.metadata import CodecMetadata
+from zarr.v3.common import to_thread
+from zarr.v3.metadata.v3 import CodecMetadata
+from zarr.v3.types import BytesLike
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import ChunkMetadata
@@ -46,7 +47,7 @@ blosc_shuffle_int_to_str: Dict[int, BloscShuffle] = {
 
 
 @frozen
-class BloscCodecMetadata:
+class BloscCodecMetadata(CodecMetadata):
     configuration: BloscCodecConfigurationMetadata
     name: Literal["blosc"] = field(default="blosc", init=False)
 

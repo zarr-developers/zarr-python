@@ -4,7 +4,8 @@ import itertools
 import math
 from typing import Iterator, List, NamedTuple, Optional, Tuple
 
-from zarr.v3.common import ChunkCoords, Selection, SliceSelection, product
+from zarr.v3.common import product
+from zarr.v3.types import ChunkCoords, Selection, SliceSelection
 
 
 def _ensure_tuple(v: Selection) -> SliceSelection:
