@@ -6,6 +6,7 @@
 - @d-v-b (Davis Bennett)
 - @jakirkham (jakirkham)
 - @martindurant (Martin Durant)
+- @normanrz (Norman Rzepka)
 
 ## Emeritus core-developers
 - @alimanfoo (Alistair Miles)
