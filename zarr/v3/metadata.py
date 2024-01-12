@@ -24,6 +24,10 @@ def runtime_configuration(
     return RuntimeConfiguration(order=order, concurrency=concurrency)
 
 
+# For type checking
+_bool = bool
+
+
 class DataType(Enum):
     bool = "bool"
     int8 = "int8"
@@ -53,6 +57,11 @@ class DataType(Enum):
             DataType.float64: 8,
         }
         return data_type_byte_counts[self]
+
+    @property
+    def has_endianness(self) -> _bool:
+        # This might change in the future, e.g. for a complex with 2 8-bit floats
+        return self.byte_count != 1
 
     def to_numpy_shortname(self) -> str:
         data_type_to_numpy = {
@@ -154,12 +163,11 @@ class ShardingCodecIndexLocation(Enum):
 
 
 @frozen
-class CoreArrayMetadata:
-    shape: ChunkCoords
+class ChunkMetadata:
     chunk_shape: ChunkCoords
     data_type: DataType
     fill_value: Any
-    runtime_configuration: RuntimeConfiguration
+    runtime_configuration: RuntimeConfiguration = runtime_configuration("C")
 
     @property
     def dtype(self) -> np.dtype:
@@ -167,7 +175,7 @@ class CoreArrayMetadata:
 
     @property
     def ndim(self) -> int:
-        return len(self.shape)
+        return len(self.chunk_shape)
 
 
 @frozen
@@ -191,9 +199,13 @@ class ArrayMetadata:
     def ndim(self) -> int:
         return len(self.shape)
 
-    def get_core_metadata(self, runtime_configuration: RuntimeConfiguration) -> CoreArrayMetadata:
-        return CoreArrayMetadata(
-            shape=self.shape,
+    def get_chunk_metadata(
+        self, _chunk_coords: ChunkCoords, runtime_configuration: RuntimeConfiguration
+    ) -> ChunkMetadata:
+        assert isinstance(
+            self.chunk_grid, RegularChunkGridMetadata
+        ), "Currently, only regular chunk grid is supported"
+        return ChunkMetadata(
             chunk_shape=self.chunk_grid.configuration.chunk_shape,
             data_type=self.data_type,
             fill_value=self.fill_value,

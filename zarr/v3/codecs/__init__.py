@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from functools import reduce
 from typing import (
     TYPE_CHECKING,
     Iterable,
+    Iterator,
     List,
     Literal,
     Optional,
@@ -11,17 +11,16 @@ from typing import (
     Union,
 )
 from warnings import warn
+from attr import frozen
 
 import numpy as np
-from attr import frozen
 
 from zarr.v3.abc.codec import Codec, ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
 from zarr.v3.common import BytesLike
 from zarr.v3.metadata import CodecMetadata, ShardingCodecIndexLocation
-from zarr.v3.codecs.registry import get_codec_class
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CoreArrayMetadata
+    from zarr.v3.metadata import ArrayMetadata, ChunkMetadata
     from zarr.v3.codecs.sharding import ShardingCodecMetadata
     from zarr.v3.codecs.blosc import BloscCodecMetadata
     from zarr.v3.codecs.bytes import BytesCodecMetadata
@@ -31,35 +30,29 @@ if TYPE_CHECKING:
     from zarr.v3.codecs.crc32c_ import Crc32cCodecMetadata
 
 
+def _find_array_bytes_codec(
+    codecs: Iterable[Tuple[Codec, ChunkMetadata]]
+) -> Tuple[ArrayBytesCodec, ChunkMetadata]:
+    for codec, chunk_metadata in codecs:
+        if isinstance(codec, ArrayBytesCodec):
+            return (codec, chunk_metadata)
+    raise KeyError
+
+
 @frozen
 class CodecPipeline:
     codecs: List[Codec]
 
-    @classmethod
-    def from_metadata(
-        cls,
-        codecs_metadata: Iterable[CodecMetadata],
-        array_metadata: CoreArrayMetadata,
-    ) -> CodecPipeline:
-        out: List[Codec] = []
-        for codec_metadata in codecs_metadata or []:
-            codec_cls = get_codec_class(codec_metadata.name)
-            codec = codec_cls.from_metadata(codec_metadata, array_metadata)
-            out.append(codec)
-            array_metadata = codec.resolve_metadata()
-        CodecPipeline._validate_codecs(out, array_metadata)
-        return cls(out)
-
-    @staticmethod
-    def _validate_codecs(codecs: List[Codec], array_metadata: CoreArrayMetadata) -> None:
+    def validate(self, array_metadata: ArrayMetadata) -> None:
         from zarr.v3.codecs.sharding import ShardingCodec
 
         assert any(
-            isinstance(codec, ArrayBytesCodec) for codec in codecs
+            isinstance(codec, ArrayBytesCodec) for codec in self.codecs
         ), "Exactly one array-to-bytes codec is required."
 
         prev_codec: Optional[Codec] = None
-        for codec in codecs:
+        for codec in self.codecs:
+            codec.validate(array_metadata)
             if prev_codec is not None:
                 assert not isinstance(codec, ArrayBytesCodec) or not isinstance(
                     prev_codec, ArrayBytesCodec
@@ -86,72 +79,69 @@ class CodecPipeline:
                     f"ArrayArrayCodec '{type(codec)}' cannot follow after "
                     + f"BytesBytesCodec '{type(prev_codec)}'."
                 )
-
-            if isinstance(codec, ShardingCodec):
-                assert len(codec.configuration.chunk_shape) == len(array_metadata.shape), (
-                    "The shard's `chunk_shape` and array's `shape` need to have the "
-                    + "same number of dimensions."
-                )
-                assert all(
-                    s % c == 0
-                    for s, c in zip(
-                        array_metadata.chunk_shape,
-                        codec.configuration.chunk_shape,
-                    )
-                ), (
-                    "The array's `chunk_shape` needs to be divisible by the "
-                    + "shard's inner `chunk_shape`."
-                )
             prev_codec = codec
 
-        if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
+        if any(isinstance(codec, ShardingCodec) for codec in self.codecs) and len(self.codecs) > 1:
             warn(
                 "Combining a `sharding_indexed` codec disables partial reads and "
                 + "writes, which may lead to inefficient performance."
             )
 
-    def _array_array_codecs(self) -> List[ArrayArrayCodec]:
-        return [codec for codec in self.codecs if isinstance(codec, ArrayArrayCodec)]
+    def _codecs_with_resolved_metadata(
+        self, chunk_metadata: ChunkMetadata
+    ) -> Iterator[Tuple[Codec, ChunkMetadata]]:
+        for codec in self.codecs:
+            yield (codec, chunk_metadata)
+            chunk_metadata = codec.resolve_metadata(chunk_metadata)
 
-    def _array_bytes_codec(self) -> ArrayBytesCodec:
-        return next(codec for codec in self.codecs if isinstance(codec, ArrayBytesCodec))
+    async def decode(self, chunk_bytes: BytesLike, chunk_metadata: ChunkMetadata) -> np.ndarray:
+        codecs = list(self._codecs_with_resolved_metadata(chunk_metadata))[::-1]
 
-    def _bytes_bytes_codecs(self) -> List[BytesBytesCodec]:
-        return [codec for codec in self.codecs if isinstance(codec, BytesBytesCodec)]
+        for bb_codec, chunk_metadata in codecs:
+            if isinstance(bb_codec, BytesBytesCodec):
+                chunk_bytes = await bb_codec.decode(chunk_bytes, chunk_metadata)
 
-    async def decode(self, chunk_bytes: BytesLike) -> np.ndarray:
-        for bb_codec in self._bytes_bytes_codecs()[::-1]:
-            chunk_bytes = await bb_codec.decode(chunk_bytes)
+        ab_codec, chunk_metadata = _find_array_bytes_codec(codecs)
+        chunk_array = await ab_codec.decode(chunk_bytes, chunk_metadata)
 
-        chunk_array = await self._array_bytes_codec().decode(chunk_bytes)
-
-        for aa_codec in self._array_array_codecs()[::-1]:
-            chunk_array = await aa_codec.decode(chunk_array)
+        for aa_codec, chunk_metadata in codecs:
+            if isinstance(aa_codec, ArrayArrayCodec):
+                chunk_array = await aa_codec.decode(chunk_array, chunk_metadata)
 
         return chunk_array
 
-    async def encode(self, chunk_array: np.ndarray) -> Optional[BytesLike]:
-        for aa_codec in self._array_array_codecs():
-            chunk_array_maybe = await aa_codec.encode(chunk_array)
-            if chunk_array_maybe is None:
-                return None
-            chunk_array = chunk_array_maybe
+    async def encode(
+        self, chunk_array: np.ndarray, chunk_metadata: ChunkMetadata
+    ) -> Optional[BytesLike]:
+        codecs = list(self._codecs_with_resolved_metadata(chunk_metadata))
 
-        chunk_bytes_maybe = await self._array_bytes_codec().encode(chunk_array)
+        for aa_codec, chunk_metadata in codecs:
+            if isinstance(aa_codec, ArrayArrayCodec):
+                chunk_array_maybe = await aa_codec.encode(chunk_array, chunk_metadata)
+                if chunk_array_maybe is None:
+                    return None
+                chunk_array = chunk_array_maybe
+
+        ab_codec, chunk_metadata = _find_array_bytes_codec(codecs)
+        chunk_bytes_maybe = await ab_codec.encode(chunk_array, chunk_metadata)
         if chunk_bytes_maybe is None:
             return None
         chunk_bytes = chunk_bytes_maybe
 
-        for bb_codec in self._bytes_bytes_codecs():
-            chunk_bytes_maybe = await bb_codec.encode(chunk_bytes)
-            if chunk_bytes_maybe is None:
-                return None
-            chunk_bytes = chunk_bytes_maybe
+        for bb_codec, chunk_metadata in codecs:
+            if isinstance(bb_codec, BytesBytesCodec):
+                chunk_bytes_maybe = await bb_codec.encode(chunk_bytes, chunk_metadata)
+                if chunk_bytes_maybe is None:
+                    return None
+                chunk_bytes = chunk_bytes_maybe
 
         return chunk_bytes
 
-    def compute_encoded_size(self, byte_length: int) -> int:
-        return reduce(lambda acc, codec: codec.compute_encoded_size(acc), self.codecs, byte_length)
+    def compute_encoded_size(self, byte_length: int, chunk_metadata: ChunkMetadata) -> int:
+        for codec in self.codecs:
+            byte_length = codec.compute_encoded_size(byte_length, chunk_metadata)
+            chunk_metadata = codec.resolve_metadata(chunk_metadata)
+        return byte_length
 
 
 def blosc_codec(
@@ -217,14 +207,16 @@ def crc32c_codec() -> "Crc32cCodecMetadata":
 
 def sharding_codec(
     chunk_shape: Tuple[int, ...],
-    codecs: Optional[List[CodecMetadata]] = None,
-    index_codecs: Optional[List[CodecMetadata]] = None,
+    codecs: Optional[Iterable[CodecMetadata]] = None,
+    index_codecs: Optional[Iterable[CodecMetadata]] = None,
     index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end,
 ) -> "ShardingCodecMetadata":
     from zarr.v3.codecs.sharding import ShardingCodecMetadata, ShardingCodecConfigurationMetadata
 
-    codecs = codecs or [bytes_codec()]
-    index_codecs = index_codecs or [bytes_codec(), crc32c_codec()]
+    codecs = tuple(codecs) if codecs is not None else (bytes_codec(),)
+    index_codecs = (
+        tuple(index_codecs) if index_codecs is not None else (bytes_codec(), crc32c_codec())
+    )
     return ShardingCodecMetadata(
         configuration=ShardingCodecConfigurationMetadata(
             chunk_shape, codecs, index_codecs, index_location

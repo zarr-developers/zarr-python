@@ -13,10 +13,9 @@ from zstandard import ZstdCompressor, ZstdDecompressor
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike, to_thread
-from zarr.v3.metadata import CodecMetadata
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CoreArrayMetadata
+    from zarr.v3.metadata import ChunkMetadata, CodecMetadata
 
 
 @frozen
@@ -33,19 +32,13 @@ class ZstdCodecMetadata:
 
 @frozen
 class ZstdCodec(BytesBytesCodec):
-    array_metadata: CoreArrayMetadata
     configuration: ZstdCodecConfigurationMetadata
     is_fixed_size = True
 
     @classmethod
-    def from_metadata(
-        cls, codec_metadata: CodecMetadata, array_metadata: CoreArrayMetadata
-    ) -> ZstdCodec:
+    def from_metadata(cls, codec_metadata: CodecMetadata) -> ZstdCodec:
         assert isinstance(codec_metadata, ZstdCodecMetadata)
-        return cls(
-            array_metadata=array_metadata,
-            configuration=codec_metadata.configuration,
-        )
+        return cls(configuration=codec_metadata.configuration)
 
     @classmethod
     def get_metadata_class(cls) -> Type[ZstdCodecMetadata]:
@@ -61,19 +54,15 @@ class ZstdCodec(BytesBytesCodec):
         ctx = ZstdDecompressor()
         return ctx.decompress(data)
 
-    async def decode(
-        self,
-        chunk_bytes: bytes,
-    ) -> BytesLike:
+    async def decode(self, chunk_bytes: bytes, _chunk_metadata: ChunkMetadata) -> BytesLike:
         return await to_thread(self._decompress, chunk_bytes)
 
     async def encode(
-        self,
-        chunk_bytes: bytes,
+        self, chunk_bytes: bytes, _chunk_metadata: ChunkMetadata
     ) -> Optional[BytesLike]:
         return await to_thread(self._compress, chunk_bytes)
 
-    def compute_encoded_size(self, _input_byte_length: int) -> int:
+    def compute_encoded_size(self, _input_byte_length: int, _chunk_metadata: ChunkMetadata) -> int:
         raise NotImplementedError
 
 

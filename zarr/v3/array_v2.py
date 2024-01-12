@@ -83,12 +83,14 @@ class ArrayV2:
             order=order,
             dimension_separator=dimension_separator,
             fill_value=0 if fill_value is None else fill_value,
-            compressor=numcodecs.get_codec(compressor).get_config()
-            if compressor is not None
-            else None,
-            filters=[numcodecs.get_codec(filter).get_config() for filter in filters]
-            if filters is not None
-            else None,
+            compressor=(
+                numcodecs.get_codec(compressor).get_config() if compressor is not None else None
+            ),
+            filters=(
+                [numcodecs.get_codec(filter).get_config() for filter in filters]
+                if filters is not None
+                else None
+            ),
         )
         array = cls(
             metadata=metadata,
@@ -441,21 +443,29 @@ class ArrayV2:
         from zarr.v3.common import ZARR_JSON
         from zarr.v3.metadata import (
             ArrayMetadata,
-            BloscCodecConfigurationMetadata,
-            BloscCodecMetadata,
-            BytesCodecConfigurationMetadata,
-            BytesCodecMetadata,
             DataType,
-            GzipCodecConfigurationMetadata,
-            GzipCodecMetadata,
             RegularChunkGridConfigurationMetadata,
             RegularChunkGridMetadata,
-            TransposeCodecConfigurationMetadata,
-            TransposeCodecMetadata,
             V2ChunkKeyEncodingConfigurationMetadata,
             V2ChunkKeyEncodingMetadata,
-            blosc_shuffle_int_to_str,
             dtype_to_data_type,
+        )
+        from zarr.v3.codecs.blosc import (
+            BloscCodecConfigurationMetadata,
+            BloscCodecMetadata,
+            blosc_shuffle_int_to_str,
+        )
+        from zarr.v3.codecs.bytes import (
+            BytesCodecConfigurationMetadata,
+            BytesCodecMetadata,
+        )
+        from zarr.v3.codecs.gzip import (
+            GzipCodecConfigurationMetadata,
+            GzipCodecMetadata,
+        )
+        from zarr.v3.codecs.transpose import (
+            TransposeCodecConfigurationMetadata,
+            TransposeCodecMetadata,
         )
 
         data_type = DataType[dtype_to_data_type[self.metadata.dtype.str]]
@@ -475,7 +485,11 @@ class ArrayV2:
 
         if self.metadata.order == "F":
             codecs.append(
-                TransposeCodecMetadata(configuration=TransposeCodecConfigurationMetadata(order="F"))
+                TransposeCodecMetadata(
+                    configuration=TransposeCodecConfigurationMetadata(
+                        order=tuple(self.metadata.ndim - x - 1 for x in range(self.metadata.ndim))
+                    )
+                )
             )
         codecs.append(
             BytesCodecMetadata(configuration=BytesCodecConfigurationMetadata(endian=endian))

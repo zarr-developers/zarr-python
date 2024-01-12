@@ -45,6 +45,11 @@ def _get_codec_item(key: str) -> CodecRegistryItem:
     raise KeyError(key)
 
 
+def get_codec_from_metadata(val: CodecMetadata) -> Codec:
+    key = val.name
+    return _get_codec_item(key).codec_cls.from_metadata(val)
+
+
 def get_codec_metadata_class(key: str) -> Type[CodecMetadata]:
     return _get_codec_item(key).codec_metadata_cls
 
