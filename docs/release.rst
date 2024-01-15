@@ -51,6 +51,9 @@ Docs
 Maintenance
 ~~~~~~~~~~~
 
+* Drop Python 3.8 and NumPy 1.20
+  By :user:`Josh Moore <joshmoore>`; :issue:`1557`.
+
 * Cache result of ``FSStore._fsspec_installed()``.
   By :user:`Janick Martinez Esturo <ph03>` :issue:`1581`.
 
