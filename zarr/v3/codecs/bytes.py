@@ -15,7 +15,7 @@ from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CodecMetadata, ChunkMetadata, ArrayMetadata
+    from zarr.v3.metadata import CodecMetadata, ChunkMetadata, ArrayMetadata, RuntimeConfiguration
 
 
 Endian = Literal["big", "little"]
@@ -65,6 +65,7 @@ class BytesCodec(ArrayBytesCodec):
         self,
         chunk_bytes: BytesLike,
         chunk_metadata: ChunkMetadata,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         if chunk_metadata.dtype.itemsize > 0:
             if self.configuration.endian == "little":
@@ -87,6 +88,7 @@ class BytesCodec(ArrayBytesCodec):
         self,
         chunk_array: np.ndarray,
         _chunk_metadata: ChunkMetadata,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         if chunk_array.dtype.itemsize > 1:
             byteorder = self._get_byteorder(chunk_array)

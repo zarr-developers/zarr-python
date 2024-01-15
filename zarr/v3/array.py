@@ -258,7 +258,7 @@ class AsyncArray(AsynchronousArray):
         out_selection: SliceSelection,
         out: np.ndarray,
     ):
-        chunk_metadata = self.metadata.get_chunk_metadata(chunk_coords, self.runtime_configuration)
+        chunk_metadata = self.metadata.get_chunk_metadata(chunk_coords)
         chunk_key_encoding = self.metadata.chunk_key_encoding
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
         store_path = self.store_path / chunk_key
@@ -267,9 +267,7 @@ class AsyncArray(AsynchronousArray):
             self.codec_pipeline.codecs[0], ArrayBytesCodecPartialDecodeMixin
         ):
             chunk_array = await self.codec_pipeline.codecs[0].decode_partial(
-                store_path,
-                chunk_selection,
-                chunk_metadata,
+                store_path, chunk_selection, chunk_metadata, self.runtime_configuration
             )
             if chunk_array is not None:
                 out[out_selection] = chunk_array
@@ -278,7 +276,9 @@ class AsyncArray(AsynchronousArray):
         else:
             chunk_bytes = await store_path.get_async()
             if chunk_bytes is not None:
-                chunk_array = await self.codec_pipeline.decode(chunk_bytes, chunk_metadata)
+                chunk_array = await self.codec_pipeline.decode(
+                    chunk_bytes, chunk_metadata, self.runtime_configuration
+                )
                 tmp = chunk_array[chunk_selection]
                 out[out_selection] = tmp
             else:
@@ -329,7 +329,7 @@ class AsyncArray(AsynchronousArray):
         chunk_selection: SliceSelection,
         out_selection: SliceSelection,
     ):
-        chunk_metadata = self.metadata.get_chunk_metadata(chunk_coords, self.runtime_configuration)
+        chunk_metadata = self.metadata.get_chunk_metadata(chunk_coords)
         chunk_key_encoding = self.metadata.chunk_key_encoding
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
         store_path = self.store_path / chunk_key
@@ -352,7 +352,11 @@ class AsyncArray(AsynchronousArray):
             codec_with_partial_encode = self.codec_pipeline.codecs[0]
             # print("encode_partial", chunk_coords, chunk_selection, repr(self))
             await codec_with_partial_encode.encode_partial(
-                store_path, value[out_selection], chunk_selection, chunk_metadata
+                store_path,
+                value[out_selection],
+                chunk_selection,
+                chunk_metadata,
+                self.runtime_configuration,
             )
         else:
             # writing partial chunks
@@ -368,7 +372,9 @@ class AsyncArray(AsynchronousArray):
                 chunk_array.fill(self.metadata.fill_value)
             else:
                 chunk_array = (
-                    await self.codec_pipeline.decode(chunk_bytes, chunk_metadata)
+                    await self.codec_pipeline.decode(
+                        chunk_bytes, chunk_metadata, self.runtime_configuration
+                    )
                 ).copy()  # make a writable copy
             chunk_array[chunk_selection] = value[out_selection]
 
@@ -382,8 +388,7 @@ class AsyncArray(AsynchronousArray):
             await store_path.delete_async()
         else:
             chunk_bytes = await self.codec_pipeline.encode(
-                chunk_array,
-                chunk_metadata,
+                chunk_array, chunk_metadata, self.runtime_configuration
             )
             if chunk_bytes is None:
                 await store_path.delete_async()

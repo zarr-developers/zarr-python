@@ -15,7 +15,7 @@ from zarr.v3.abc.codec import ArrayArrayCodec
 from zarr.v3.codecs.registry import register_codec
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ChunkMetadata, CodecMetadata
+    from zarr.v3.metadata import ChunkMetadata, CodecMetadata, RuntimeConfiguration
 
 
 @frozen
@@ -78,18 +78,25 @@ class TransposeCodec(ArrayArrayCodec):
             ),
             data_type=chunk_metadata.data_type,
             fill_value=chunk_metadata.fill_value,
-            runtime_configuration=chunk_metadata.runtime_configuration,
         )
 
-    async def decode(self, chunk_array: np.ndarray, chunk_metadata: ChunkMetadata) -> np.ndarray:
-        inverse_order = [0 for _ in range(chunk_metadata.ndim)]
+    async def decode(
+        self,
+        chunk_array: np.ndarray,
+        chunk_metadata: ChunkMetadata,
+        _runtime_configuration: RuntimeConfiguration,
+    ) -> np.ndarray:
+        inverse_order = [0] * chunk_metadata.ndim
         for x, i in enumerate(self.order):
             inverse_order[x] = i
         chunk_array = chunk_array.transpose(inverse_order)
         return chunk_array
 
     async def encode(
-        self, chunk_array: np.ndarray, chunk_metadata: ChunkMetadata
+        self,
+        chunk_array: np.ndarray,
+        chunk_metadata: ChunkMetadata,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         chunk_array = chunk_array.transpose(self.order)
         return chunk_array

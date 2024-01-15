@@ -167,7 +167,6 @@ class ChunkMetadata:
     chunk_shape: ChunkCoords
     data_type: DataType
     fill_value: Any
-    runtime_configuration: RuntimeConfiguration = runtime_configuration("C")
 
     @property
     def dtype(self) -> np.dtype:
@@ -199,9 +198,7 @@ class ArrayMetadata:
     def ndim(self) -> int:
         return len(self.shape)
 
-    def get_chunk_metadata(
-        self, _chunk_coords: ChunkCoords, runtime_configuration: RuntimeConfiguration
-    ) -> ChunkMetadata:
+    def get_chunk_metadata(self, _chunk_coords: ChunkCoords) -> ChunkMetadata:
         assert isinstance(
             self.chunk_grid, RegularChunkGridMetadata
         ), "Currently, only regular chunk grid is supported"
@@ -209,7 +206,6 @@ class ArrayMetadata:
             chunk_shape=self.chunk_grid.configuration.chunk_shape,
             data_type=self.data_type,
             fill_value=self.fill_value,
-            runtime_configuration=runtime_configuration,
         )
 
     def to_bytes(self) -> bytes:

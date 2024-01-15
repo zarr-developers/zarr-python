@@ -15,7 +15,7 @@ from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike, to_thread
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ChunkMetadata, CodecMetadata
+    from zarr.v3.metadata import ChunkMetadata, CodecMetadata, RuntimeConfiguration
 
 
 @frozen
@@ -44,15 +44,27 @@ class GzipCodec(BytesBytesCodec):
     def get_metadata_class(cls) -> Type[GzipCodecMetadata]:
         return GzipCodecMetadata
 
-    async def decode(self, chunk_bytes: bytes, _chunk_metadata: ChunkMetadata) -> BytesLike:
+    async def decode(
+        self,
+        chunk_bytes: bytes,
+        _chunk_metadata: ChunkMetadata,
+        _runtime_configuration: RuntimeConfiguration,
+    ) -> BytesLike:
         return await to_thread(GZip(self.configuration.level).decode, chunk_bytes)
 
     async def encode(
-        self, chunk_bytes: bytes, _chunk_metadata: ChunkMetadata
+        self,
+        chunk_bytes: bytes,
+        _chunk_metadata: ChunkMetadata,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         return await to_thread(GZip(self.configuration.level).encode, chunk_bytes)
 
-    def compute_encoded_size(self, _input_byte_length: int, _chunk_metadata: ChunkMetadata) -> int:
+    def compute_encoded_size(
+        self,
+        _input_byte_length: int,
+        _chunk_metadata: ChunkMetadata,
+    ) -> int:
         raise NotImplementedError
 
 

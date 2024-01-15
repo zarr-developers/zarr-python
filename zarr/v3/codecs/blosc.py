@@ -19,7 +19,7 @@ from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike, to_thread
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ChunkMetadata, CodecMetadata, DataType
+    from zarr.v3.metadata import ChunkMetadata, CodecMetadata, DataType, RuntimeConfiguration
 
 
 BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
@@ -83,13 +83,19 @@ class BloscCodec(BytesBytesCodec):
         }
         return Blosc.from_config(config_dict)
 
-    async def decode(self, chunk_bytes: bytes, _chunk_metadata: ChunkMetadata) -> BytesLike:
+    async def decode(
+        self,
+        chunk_bytes: bytes,
+        _chunk_metadata: ChunkMetadata,
+        _runtime_configuration: RuntimeConfiguration,
+    ) -> BytesLike:
         return await to_thread(self.get_blosc_codec().decode, chunk_bytes)
 
     async def encode(
         self,
         chunk_bytes: bytes,
         chunk_metadata: ChunkMetadata,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         chunk_array = np.frombuffer(chunk_bytes, dtype=chunk_metadata.dtype)
         return await to_thread(self.get_blosc_codec().encode, chunk_array)

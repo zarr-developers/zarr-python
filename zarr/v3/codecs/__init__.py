@@ -17,7 +17,7 @@ import numpy as np
 
 from zarr.v3.abc.codec import Codec, ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
 from zarr.v3.common import BytesLike
-from zarr.v3.metadata import CodecMetadata, ShardingCodecIndexLocation
+from zarr.v3.metadata import CodecMetadata, ShardingCodecIndexLocation, RuntimeConfiguration
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import ArrayMetadata, ChunkMetadata
@@ -94,43 +94,61 @@ class CodecPipeline:
             yield (codec, chunk_metadata)
             chunk_metadata = codec.resolve_metadata(chunk_metadata)
 
-    async def decode(self, chunk_bytes: BytesLike, chunk_metadata: ChunkMetadata) -> np.ndarray:
+    async def decode(
+        self,
+        chunk_bytes: BytesLike,
+        chunk_metadata: ChunkMetadata,
+        runtime_configuration: RuntimeConfiguration,
+    ) -> np.ndarray:
         codecs = list(self._codecs_with_resolved_metadata(chunk_metadata))[::-1]
 
         for bb_codec, chunk_metadata in codecs:
             if isinstance(bb_codec, BytesBytesCodec):
-                chunk_bytes = await bb_codec.decode(chunk_bytes, chunk_metadata)
+                chunk_bytes = await bb_codec.decode(
+                    chunk_bytes, chunk_metadata, runtime_configuration
+                )
 
         ab_codec, chunk_metadata = _find_array_bytes_codec(codecs)
-        chunk_array = await ab_codec.decode(chunk_bytes, chunk_metadata)
+        chunk_array = await ab_codec.decode(chunk_bytes, chunk_metadata, runtime_configuration)
 
         for aa_codec, chunk_metadata in codecs:
             if isinstance(aa_codec, ArrayArrayCodec):
-                chunk_array = await aa_codec.decode(chunk_array, chunk_metadata)
+                chunk_array = await aa_codec.decode(
+                    chunk_array, chunk_metadata, runtime_configuration
+                )
 
         return chunk_array
 
     async def encode(
-        self, chunk_array: np.ndarray, chunk_metadata: ChunkMetadata
+        self,
+        chunk_array: np.ndarray,
+        chunk_metadata: ChunkMetadata,
+        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         codecs = list(self._codecs_with_resolved_metadata(chunk_metadata))
 
         for aa_codec, chunk_metadata in codecs:
             if isinstance(aa_codec, ArrayArrayCodec):
-                chunk_array_maybe = await aa_codec.encode(chunk_array, chunk_metadata)
+                chunk_array_maybe = await aa_codec.encode(
+                    chunk_array, chunk_metadata, runtime_configuration
+                )
                 if chunk_array_maybe is None:
                     return None
                 chunk_array = chunk_array_maybe
 
         ab_codec, chunk_metadata = _find_array_bytes_codec(codecs)
-        chunk_bytes_maybe = await ab_codec.encode(chunk_array, chunk_metadata)
+        chunk_bytes_maybe = await ab_codec.encode(
+            chunk_array, chunk_metadata, runtime_configuration
+        )
         if chunk_bytes_maybe is None:
             return None
         chunk_bytes = chunk_bytes_maybe
 
         for bb_codec, chunk_metadata in codecs:
             if isinstance(bb_codec, BytesBytesCodec):
-                chunk_bytes_maybe = await bb_codec.encode(chunk_bytes, chunk_metadata)
+                chunk_bytes_maybe = await bb_codec.encode(
+                    chunk_bytes, chunk_metadata, runtime_configuration
+                )
                 if chunk_bytes_maybe is None:
                     return None
                 chunk_bytes = chunk_bytes_maybe

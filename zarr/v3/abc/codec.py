@@ -10,7 +10,13 @@ from zarr.v3.store import StorePath
 
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ChunkMetadata, ArrayMetadata, DataType, CodecMetadata
+    from zarr.v3.metadata import (
+        ChunkMetadata,
+        ArrayMetadata,
+        DataType,
+        CodecMetadata,
+        RuntimeConfiguration,
+    )
 
 
 class Codec(ABC):
@@ -46,6 +52,7 @@ class ArrayArrayCodec(Codec):
         self,
         chunk_array: np.ndarray,
         chunk_metadata: ChunkMetadata,
+        runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         pass
 
@@ -54,6 +61,7 @@ class ArrayArrayCodec(Codec):
         self,
         chunk_array: np.ndarray,
         chunk_metadata: ChunkMetadata,
+        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         pass
 
@@ -64,6 +72,7 @@ class ArrayBytesCodec(Codec):
         self,
         chunk_array: BytesLike,
         chunk_metadata: ChunkMetadata,
+        runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         pass
 
@@ -72,6 +81,7 @@ class ArrayBytesCodec(Codec):
         self,
         chunk_array: np.ndarray,
         chunk_metadata: ChunkMetadata,
+        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         pass
 
@@ -83,6 +93,7 @@ class ArrayBytesCodecPartialDecodeMixin:
         store_path: StorePath,
         selection: SliceSelection,
         chunk_metadata: ChunkMetadata,
+        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         pass
 
@@ -95,6 +106,7 @@ class ArrayBytesCodecPartialEncodeMixin:
         chunk_array: np.ndarray,
         selection: SliceSelection,
         chunk_metadata: ChunkMetadata,
+        runtime_configuration: RuntimeConfiguration,
     ) -> None:
         pass
 
@@ -105,6 +117,7 @@ class BytesBytesCodec(Codec):
         self,
         chunk_array: BytesLike,
         chunk_metadata: ChunkMetadata,
+        runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         pass
 
@@ -113,5 +126,6 @@ class BytesBytesCodec(Codec):
         self,
         chunk_array: BytesLike,
         chunk_metadata: ChunkMetadata,
+        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         pass

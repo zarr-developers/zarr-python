@@ -487,7 +487,7 @@ class ArrayV2:
             codecs.append(
                 TransposeCodecMetadata(
                     configuration=TransposeCodecConfigurationMetadata(
-                        order=tuple(self.metadata.ndim - x - 1 for x in range(self.metadata.ndim))
+                        order=tuple(reversed(range(self.metadata.ndim)))
                     )
                 )
             )
