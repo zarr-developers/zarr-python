@@ -191,7 +191,7 @@ class AsyncGroup:
 
     async def _save_metadata(self) -> None:
         to_save = self.metadata.to_bytes()
-        awaitables = [(self.store_path / key).set_async(value) for key, value in to_save.items()]
+        awaitables = [(self.store_path / key).set(value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 
     @property
@@ -227,9 +227,9 @@ class AsyncGroup:
         to_save = self.metadata.to_bytes()
         if self.metadata.zarr_format == 2:
             # only save the .zattrs object
-            await (self.store_path / ZATTRS_JSON).set_async(to_save[ZATTRS_JSON])
+            await (self.store_path / ZATTRS_JSON).set(to_save[ZATTRS_JSON])
         else:
-            await (self.store_path / ZARR_JSON).set_async(to_save[ZARR_JSON])
+            await (self.store_path / ZARR_JSON).set(to_save[ZARR_JSON])
 
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -333,7 +333,7 @@ class Group(SyncMixin):
             return Group(obj)
 
     def __delitem__(self, key) -> None:
-        self._sync(self._async_group.delitem(path))
+        self._sync(self._async_group.delitem(key))
 
     def __iter__(self):
         raise NotImplementedError

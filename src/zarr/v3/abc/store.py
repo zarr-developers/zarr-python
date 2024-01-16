@@ -1,20 +1,19 @@
 from abc import abstractmethod, ABC
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 
 class Store(ABC):
-    pass
-
-
-class ReadStore(Store):
     @abstractmethod
-    async def get(self, key: str) -> bytes:
+    async def get(
+        self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
+    ) -> Optional[bytes]:
         """Retrieve the value associated with a given key.
 
         Parameters
         ----------
         key : str
+        byte_range : tuple[int, Optional[int]], optional
 
         Returns
         -------
@@ -23,7 +22,9 @@ class ReadStore(Store):
         ...
 
     @abstractmethod
-    async def get_partial_values(self, key_ranges: List[Tuple[str, Tuple[int, int]]]) -> List[bytes]:
+    async def get_partial_values(
+        self, key_ranges: List[Tuple[str, Tuple[int, int]]]
+    ) -> List[bytes]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
@@ -38,6 +39,7 @@ class ReadStore(Store):
         """
         ...
 
+    @abstractmethod
     async def exists(self, key: str) -> bool:
         """Check if a key exists in the store.
 
@@ -51,8 +53,12 @@ class ReadStore(Store):
         """
         ...
 
+    @property
+    @abstractmethod
+    def supports_writes(self) -> bool:
+        """Does the store support writes?"""
+        ...
 
-class WriteStore(ReadStore):
     @abstractmethod
     async def set(self, key: str, value: bytes) -> None:
         """Store a (key, value) pair.
@@ -64,7 +70,8 @@ class WriteStore(ReadStore):
         """
         ...
 
-    async def delete(self, key: str) -> None
+    @abstractmethod
+    async def delete(self, key: str) -> None:
         """Remove a key from the store
 
         Parameters
@@ -73,10 +80,11 @@ class WriteStore(ReadStore):
         """
         ...
 
-
-class PartialWriteStore(WriteStore):
-    # TODO, instead of using this, should we just check if the store is a PartialWriteStore?
-    supports_partial_writes = True 
+    @property
+    @abstractmethod
+    def supports_partial_writes(self) -> bool:
+        """Does the store support partial writes?"""
+        ...
 
     @abstractmethod
     async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
@@ -91,8 +99,12 @@ class PartialWriteStore(WriteStore):
         """
         ...
 
+    @property
+    @abstractmethod
+    def supports_listing(self) -> bool:
+        """Does the store support listing?"""
+        ...
 
-class ListMixin:
     @abstractmethod
     async def list(self) -> List[str]:
         """Retrieve all keys in the store.
@@ -132,11 +144,3 @@ class ListMixin:
         list[str]
         """
         ...
-
-
-class ReadListStore(ReadStore, ListMixin):
-    pass
-
-
-class WriteListStore(WriteStore, ListMixin):
-    pass

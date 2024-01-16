@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
-from zarr.v3.abc.store import WriteListStore
-from zarr.v3.stores.core import BaseStore
+from zarr.v3.abc.store import Store
+from zarr.v3.store.core import _dereference_path
+from zarr.v3.common import BytesLike
 
 
 if TYPE_CHECKING:
@@ -11,7 +12,11 @@ if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
 
 
-class RemoteStore(WriteListStore, BaseStore):
+class RemoteStore(Store):
+    supports_writes: bool = True
+    supports_partial_writes: bool = False
+    supports_listing: bool = True
+
     root: UPath
 
     def __init__(self, url: Union[UPath, str], **storage_options: Dict[str, Any]):
@@ -30,7 +35,13 @@ class RemoteStore(WriteListStore, BaseStore):
         fs, _ = fsspec.core.url_to_fs(str(self.root), asynchronous=True, **self.root._kwargs)
         assert fs.__class__.async_impl, "FileSystem needs to support async operations."
 
-    def make_fs(self) -> Tuple[AsyncFileSystem, str]:
+    def __str__(self) -> str:
+        return str(self.root)
+
+    def __repr__(self) -> str:
+        return f"RemoteStore({repr(str(self))})"
+
+    def _make_fs(self) -> Tuple[AsyncFileSystem, str]:
         import fsspec
 
         storage_options = self.root._kwargs.copy()
@@ -43,7 +54,7 @@ class RemoteStore(WriteListStore, BaseStore):
         self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
     ) -> Optional[BytesLike]:
         assert isinstance(key, str)
-        fs, root = self.make_fs()
+        fs, root = self._make_fs()
         path = _dereference_path(root, key)
 
         try:
@@ -61,7 +72,7 @@ class RemoteStore(WriteListStore, BaseStore):
         self, key: str, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None
     ) -> None:
         assert isinstance(key, str)
-        fs, root = self.make_fs()
+        fs, root = self._make_fs()
         path = _dereference_path(root, key)
 
         # write data
@@ -73,18 +84,12 @@ class RemoteStore(WriteListStore, BaseStore):
             await fs._pipe_file(path, value)
 
     async def delete(self, key: str) -> None:
-        fs, root = self.make_fs()
+        fs, root = self._make_fs()
         path = _dereference_path(root, key)
         if await fs._exists(path):
             await fs._rm(path)
 
     async def exists(self, key: str) -> bool:
-        fs, root = self.make_fs()
+        fs, root = self._make_fs()
         path = _dereference_path(root, key)
         return await fs._exists(path)
-
-    def __str__(self) -> str:
-        return str(self.root)
-
-    def __repr__(self) -> str:
-        return f"RemoteStore({repr(str(self))})"
