@@ -45,6 +45,8 @@ Docs
 * Minor tweak to advanced indexing tutorial examples.
   By :user:`Ross Barnowski <rossbar>` :issue:`1550`.
 
+* Added section about accessing zip files that are on s3.
+  By :user:`Jeff Peck <jeffpeck10x>` :issue:`1613`.
 
 Maintenance
 ~~~~~~~~~~~
