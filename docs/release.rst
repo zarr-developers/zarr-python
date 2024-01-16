@@ -45,9 +45,14 @@ Docs
 * Minor tweak to advanced indexing tutorial examples.
   By :user:`Ross Barnowski <rossbar>` :issue:`1550`.
 
+* Added section about accessing zip files that are on s3.
+  By :user:`Jeff Peck <jeffpeck10x>` :issue:`1613`.
 
 Maintenance
 ~~~~~~~~~~~
+
+* Drop Python 3.8 and NumPy 1.20
+  By :user:`Josh Moore <joshmoore>`; :issue:`1557`.
 
 * Cache result of ``FSStore._fsspec_installed()``.
   By :user:`Janick Martinez Esturo <ph03>` :issue:`1581`.
