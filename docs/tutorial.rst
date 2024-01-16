@@ -1005,7 +1005,7 @@ Accessing Zip Files on S3
 
 The built-in `ZipStore` will only work with paths on the local file-system, however
 it is also possible to access ``.zarr.zip`` data on the cloud. Here is an example of
-accessing a ``.zarr.zip`` file on s3:
+accessing a zipped Zarr file on s3:
 
     >>> s3_path = "s3://path/to/my.zarr.zip"
     >>> 
@@ -1022,9 +1022,8 @@ This store can also be generated with ``fsspec``'s handler chaining, like so:
 
     >>> store = zarr.storage.FSStore(url=f"zip::{s3_path}",  mode="r")
 
-Note that this is intended for a read-only data source. However, this can be
-especially useful if you have a very large ``.zarr.zip`` file on s3 and only need
-to access a small portion of it.
+This can be especially useful if you have a very large ``.zarr.zip`` file on s3
+and only need to access a small portion of it.
 
 Consolidating metadata
 ~~~~~~~~~~~~~~~~~~~~~~
