@@ -27,7 +27,7 @@ body:
     attributes:
       label: Python Version
       description: Version of Python interpreter
-      placeholder: 3.8.5, 3.9, 3.10, etc.
+      placeholder: 3.9, 3.10, 3.11, etc.
     validations:
       required: true
   - type: input
