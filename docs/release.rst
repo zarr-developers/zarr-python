@@ -18,6 +18,11 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.16.2:
+
+2.16.2
+------
+
 Enhancements
 ~~~~~~~~~~~~
 
@@ -48,6 +53,14 @@ Docs
 * Automatically document array members using sphinx-automodapi.
   By :user:`David Stansby <dstansby>` :issue:`1547`.
 
+* Add a markdown file documenting the current and former core-developer team.
+  By :user:`Joe Hamman <jhamman>` :issue:`1628`.
+
+* Add Norman Rzepka to core-dev team.
+  By :user:`Joe Hamman <jhamman>` :issue:`1630`.
+
+* Add V3 roadmap and design document.
+  By :user:`Joe Hamman <jhamman>` :issue:`1583`.
 
 Maintenance
 ~~~~~~~~~~~
