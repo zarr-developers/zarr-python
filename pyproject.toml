@@ -10,10 +10,10 @@ readme = { file = "README.md", content-type = "text/markdown" }
 maintainers = [
     { name = "Alistair Miles", email = "alimanfoo@googlemail.com" }
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     'asciitree',
-    'numpy>=1.20,!=1.21.0',
+    'numpy>=1.24',
     'fasteners',
     'numcodecs>=0.10.0',
 ]
@@ -30,10 +30,9 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Operating System :: Unix',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.8',
-    'Programming Language :: Python :: 3.9',
     'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
 ]
 license = { text = "MIT" }
 
