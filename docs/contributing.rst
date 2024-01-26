@@ -335,7 +335,7 @@ of the storage specification that is currently implemented is stored under the
 
 Note that the Zarr test suite includes a data fixture and tests to try and ensure that
 data format compatibility is not accidentally broken. See the
-:func:`test_format_compatibility` function in the :mod:`.tests.test_storage` module
+:func:`test_format_compatibility` function in the :mod:`tests.test_storage` module
 for details.
 
 When to make a release
