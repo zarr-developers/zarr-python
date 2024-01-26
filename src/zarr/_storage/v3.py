@@ -163,7 +163,7 @@ class FSStoreV3(FSStore, StoreV3):
         values = {self._normalize_key(key): val for key, val in values.items()}
 
         # initialize the /data/root/... folder corresponding to the array!
-        # Note: zarr.tests.test_core_v3.TestArrayWithFSStoreV3PartialRead fails
+        # Note: .tests.test_core_v3.TestArrayWithFSStoreV3PartialRead fails
         # without this explicit creation of directories
         subdirectories = set(os.path.dirname(v) for v in values.keys())
         for subdirectory in subdirectories:

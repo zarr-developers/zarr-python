@@ -40,7 +40,7 @@ from zarr._storage.v3 import (
     StoreV3,
     ZipStoreV3,
 )
-from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var, mktemp
+from tests.util import CountingDictV3, have_fsspec, skip_test_env_var, mktemp
 
 # pytest will fail to run if the following fixtures aren't imported here
 from .test_storage import StoreTests as _StoreTests

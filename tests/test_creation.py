@@ -30,8 +30,8 @@ from zarr.storage import DirectoryStore, KVStore
 from zarr._storage.store import v3_api_available
 from zarr._storage.v3 import DirectoryStoreV3, KVStoreV3
 from zarr.sync import ThreadSynchronizer
-from zarr.tests.test_storage_v3 import DummyStorageTransfomer
-from zarr.tests.util import mktemp, have_fsspec
+from tests.test_storage_v3 import DummyStorageTransfomer
+from tests.util import mktemp, have_fsspec
 
 
 _VERSIONS = (None, 2, 3) if v3_api_available else (None, 2)

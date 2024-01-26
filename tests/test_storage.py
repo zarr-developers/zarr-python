@@ -59,7 +59,7 @@ from zarr.storage import (
 )
 from zarr.storage import FSStore, rename, listdir
 from zarr._storage.v3 import KVStoreV3
-from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
+from tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
 from zarr.util import ConstantMap, json_dumps
 
 

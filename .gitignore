@@ -62,8 +62,8 @@ target/
 # Jupyter
 .ipynb_checkpoints/
 
-# setuptools-scm
-zarr/version.py
+# VCS versioning
+src/zarr/_version.py
 
 # emacs
 *~

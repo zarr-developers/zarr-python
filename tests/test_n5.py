@@ -9,7 +9,7 @@ from typing import Tuple
 import json
 import atexit
 
-from zarr.tests.util import have_fsspec
+from tests.util import have_fsspec
 
 
 def test_make_n5_chunk_wrapper():

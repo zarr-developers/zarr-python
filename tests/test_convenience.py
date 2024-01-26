@@ -43,7 +43,7 @@ from zarr._storage.v3 import (
     MemoryStoreV3,
     SQLiteStoreV3,
 )
-from zarr.tests.util import have_fsspec
+from tests.util import have_fsspec
 
 _VERSIONS = (2, 3) if v3_api_available else (2,)
 

@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64.0.0", "setuptools-scm>1.5.4"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 
 [project]
@@ -35,7 +35,7 @@ classifiers = [
     'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
 ]
-license = { text = "MIT" }
+license = "MIT"
 
 [project.optional-dependencies]
 jupyter = [
@@ -73,14 +73,9 @@ omit = [
     "bench/compress_normal.py",
 ]
 
-[tool.setuptools]
-packages = ["zarr", "zarr._storage", "zarr.tests"]
-license-files = ["LICENSE.txt"]
-
-[tool.setuptools_scm]
-version_scheme = "guess-next-dev"
-local_scheme = "dirty-tag"
-write_to = "zarr/version.py"
+[tool.hatch]
+version.source = "vcs"
+build.hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.ruff]
 line-length = 100
