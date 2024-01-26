@@ -69,7 +69,7 @@ exclude_lines = [
 
 [tool.coverage.run]
 omit = [
-    "zarr/meta_v1.py",
+    "src/zarr/meta_v1.py",
     "bench/compress_normal.py",
 ]
 
