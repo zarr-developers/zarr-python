@@ -20,7 +20,7 @@ from zarr.v3.common import BytesLike
 from zarr.v3.metadata import CodecMetadata, ShardingCodecIndexLocation, RuntimeConfiguration
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ArrayMetadata, ChunkMetadata
+    from zarr.v3.metadata import ArrayMetadata, ArraySpec
     from zarr.v3.codecs.sharding import ShardingCodecMetadata
     from zarr.v3.codecs.blosc import BloscCodecMetadata
     from zarr.v3.codecs.bytes import BytesCodecMetadata
@@ -31,8 +31,8 @@ if TYPE_CHECKING:
 
 
 def _find_array_bytes_codec(
-    codecs: Iterable[Tuple[Codec, ChunkMetadata]]
-) -> Tuple[ArrayBytesCodec, ChunkMetadata]:
+    codecs: Iterable[Tuple[Codec, ArraySpec]]
+) -> Tuple[ArrayBytesCodec, ArraySpec]:
     for codec, chunk_metadata in codecs:
         if isinstance(codec, ArrayBytesCodec):
             return (codec, chunk_metadata)
@@ -88,8 +88,8 @@ class CodecPipeline:
             )
 
     def _codecs_with_resolved_metadata(
-        self, chunk_metadata: ChunkMetadata
-    ) -> Iterator[Tuple[Codec, ChunkMetadata]]:
+        self, chunk_metadata: ArraySpec
+    ) -> Iterator[Tuple[Codec, ArraySpec]]:
         for codec in self.codecs:
             yield (codec, chunk_metadata)
             chunk_metadata = codec.resolve_metadata(chunk_metadata)
@@ -97,7 +97,7 @@ class CodecPipeline:
     async def decode(
         self,
         chunk_bytes: BytesLike,
-        chunk_metadata: ChunkMetadata,
+        chunk_metadata: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         codecs = list(self._codecs_with_resolved_metadata(chunk_metadata))[::-1]
@@ -122,7 +122,7 @@ class CodecPipeline:
     async def encode(
         self,
         chunk_array: np.ndarray,
-        chunk_metadata: ChunkMetadata,
+        chunk_metadata: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         codecs = list(self._codecs_with_resolved_metadata(chunk_metadata))
@@ -155,7 +155,7 @@ class CodecPipeline:
 
         return chunk_bytes
 
-    def compute_encoded_size(self, byte_length: int, chunk_metadata: ChunkMetadata) -> int:
+    def compute_encoded_size(self, byte_length: int, chunk_metadata: ArraySpec) -> int:
         for codec in self.codecs:
             byte_length = codec.compute_encoded_size(byte_length, chunk_metadata)
             chunk_metadata = codec.resolve_metadata(chunk_metadata)

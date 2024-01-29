@@ -33,7 +33,7 @@ from zarr.v3.common import (
 from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.metadata import (
     ArrayMetadata,
-    ChunkMetadata,
+    ArraySpec,
     DataType,
     DefaultChunkKeyEncodingConfigurationMetadata,
     DefaultChunkKeyEncodingMetadata,
@@ -381,7 +381,7 @@ class AsyncArray(AsynchronousArray):
             await self._write_chunk_to_store(store_path, chunk_array, chunk_metadata)
 
     async def _write_chunk_to_store(
-        self, store_path: StorePath, chunk_array: np.ndarray, chunk_metadata: ChunkMetadata
+        self, store_path: StorePath, chunk_array: np.ndarray, chunk_metadata: ArraySpec
     ):
         if np.all(chunk_array == self.metadata.fill_value):
             # chunks that only contain fill_value will be removed

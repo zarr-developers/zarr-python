@@ -40,7 +40,7 @@ from zarr.v3.indexing import (
 )
 from zarr.v3.metadata import (
     ArrayMetadata,
-    ChunkMetadata,
+    ArraySpec,
     DataType,
     CodecMetadata,
     RegularChunkGridMetadata,
@@ -262,7 +262,7 @@ class ShardingCodec(
     async def decode(
         self,
         shard_bytes: BytesLike,
-        shard_metadata: ChunkMetadata,
+        shard_metadata: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         # print("decode")
@@ -312,7 +312,7 @@ class ShardingCodec(
         self,
         store_path: StorePath,
         selection: SliceSelection,
-        shard_metadata: ChunkMetadata,
+        shard_metadata: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         shard_shape = shard_metadata.chunk_shape
@@ -382,7 +382,7 @@ class ShardingCodec(
         chunk_coords: ChunkCoords,
         chunk_selection: SliceSelection,
         out_selection: SliceSelection,
-        shard_metadata: ChunkMetadata,
+        shard_metadata: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
         out: np.ndarray,
     ):
@@ -400,7 +400,7 @@ class ShardingCodec(
     async def encode(
         self,
         shard_array: np.ndarray,
-        shard_metadata: ChunkMetadata,
+        shard_metadata: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         shard_shape = shard_metadata.chunk_shape
@@ -467,7 +467,7 @@ class ShardingCodec(
         store_path: StorePath,
         shard_array: np.ndarray,
         selection: SliceSelection,
-        shard_metadata: ChunkMetadata,
+        shard_metadata: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> None:
         # print("encode_partial")
@@ -597,23 +597,23 @@ class ShardingCodec(
         )
 
     @lru_cache
-    def _get_index_chunk_metadata(self, chunks_per_shard: ChunkCoords) -> ChunkMetadata:
-        return ChunkMetadata(
+    def _get_index_chunk_metadata(self, chunks_per_shard: ChunkCoords) -> ArraySpec:
+        return ArraySpec(
             chunk_shape=chunks_per_shard + (2,),
             data_type=DataType.uint64,
             fill_value=MAX_UINT_64,
         )
 
     @lru_cache
-    def _get_chunk_metadata(self, shard_metadata: ChunkMetadata) -> ChunkMetadata:
-        return ChunkMetadata(
+    def _get_chunk_metadata(self, shard_metadata: ArraySpec) -> ArraySpec:
+        return ArraySpec(
             chunk_shape=self.configuration.chunk_shape,
             data_type=shard_metadata.data_type,
             fill_value=shard_metadata.fill_value,
         )
 
     @lru_cache
-    def _get_chunks_per_shard(self, shard_metadata: ChunkMetadata) -> ChunkCoords:
+    def _get_chunks_per_shard(self, shard_metadata: ArraySpec) -> ChunkCoords:
         return tuple(
             s // c
             for s, c in zip(
@@ -660,7 +660,7 @@ class ShardingCodec(
             else None
         )
 
-    def compute_encoded_size(self, input_byte_length: int, shard_metadata: ChunkMetadata) -> int:
+    def compute_encoded_size(self, input_byte_length: int, shard_metadata: ArraySpec) -> int:
         chunks_per_shard = self._get_chunks_per_shard(shard_metadata)
         return input_byte_length + self._shard_index_size(chunks_per_shard)
 

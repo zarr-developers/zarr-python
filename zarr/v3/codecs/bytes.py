@@ -15,7 +15,7 @@ from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CodecMetadata, ChunkMetadata, ArrayMetadata, RuntimeConfiguration
+    from zarr.v3.metadata import CodecMetadata, ArraySpec, ArrayMetadata, RuntimeConfiguration
 
 
 Endian = Literal["big", "little"]
@@ -64,7 +64,7 @@ class BytesCodec(ArrayBytesCodec):
     async def decode(
         self,
         chunk_bytes: BytesLike,
-        chunk_metadata: ChunkMetadata,
+        chunk_metadata: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         if chunk_metadata.dtype.itemsize > 0:
@@ -87,7 +87,7 @@ class BytesCodec(ArrayBytesCodec):
     async def encode(
         self,
         chunk_array: np.ndarray,
-        _chunk_metadata: ChunkMetadata,
+        _chunk_metadata: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         if chunk_array.dtype.itemsize > 1:
@@ -97,7 +97,7 @@ class BytesCodec(ArrayBytesCodec):
                 chunk_array = chunk_array.astype(new_dtype)
         return chunk_array.tobytes()
 
-    def compute_encoded_size(self, input_byte_length: int, _chunk_metadata: ChunkMetadata) -> int:
+    def compute_encoded_size(self, input_byte_length: int, _chunk_metadata: ArraySpec) -> int:
         return input_byte_length
 
 
