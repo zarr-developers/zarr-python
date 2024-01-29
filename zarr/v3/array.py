@@ -18,7 +18,6 @@ import numpy as np
 from attr import evolve, frozen
 
 from zarr.v3.abc.array import SynchronousArray, AsynchronousArray
-from zarr.v3.abc.codec import ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
 
 # from zarr.v3.array_v2 import ArrayV2
 from zarr.v3.codecs import CodecMetadata, CodecPipeline, bytes_codec
@@ -120,7 +119,7 @@ class AsyncArray(AsynchronousArray):
             metadata=metadata,
             store_path=store_path,
             runtime_configuration=runtime_configuration,
-            codec_pipeline=CodecPipeline(
+            codec_pipeline=CodecPipeline.create(
                 [
                     get_codec_from_metadata(codec).evolve(ndim=len(shape), data_type=data_type)
                     for codec in codecs
@@ -149,7 +148,7 @@ class AsyncArray(AsynchronousArray):
             metadata=metadata,
             store_path=store_path,
             runtime_configuration=runtime_configuration,
-            codec_pipeline=CodecPipeline(codecs),
+            codec_pipeline=CodecPipeline.create(codecs),
         )
         async_array._validate_metadata()
         return async_array
@@ -263,10 +262,8 @@ class AsyncArray(AsynchronousArray):
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
         store_path = self.store_path / chunk_key
 
-        if len(self.codec_pipeline.codecs) == 1 and isinstance(
-            self.codec_pipeline.codecs[0], ArrayBytesCodecPartialDecodeMixin
-        ):
-            chunk_array = await self.codec_pipeline.codecs[0].decode_partial(
+        if self.codec_pipeline.supports_partial_decode:
+            chunk_array = await self.codec_pipeline.decode_partial(
                 store_path, chunk_selection, chunk_metadata, self.runtime_configuration
             )
             if chunk_array is not None:
@@ -346,12 +343,9 @@ class AsyncArray(AsynchronousArray):
                 chunk_array = value[out_selection]
             await self._write_chunk_to_store(store_path, chunk_array, chunk_metadata)
 
-        elif len(self.codec_pipeline.codecs) == 1 and isinstance(
-            self.codec_pipeline.codecs[0], ArrayBytesCodecPartialEncodeMixin
-        ):
-            codec_with_partial_encode = self.codec_pipeline.codecs[0]
+        elif self.codec_pipeline.supports_partial_encode:
             # print("encode_partial", chunk_coords, chunk_selection, repr(self))
-            await codec_with_partial_encode.encode_partial(
+            await self.codec_pipeline.encode_partial(
                 store_path,
                 value[out_selection],
                 chunk_selection,

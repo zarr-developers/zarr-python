@@ -624,11 +624,13 @@ class ShardingCodec(
 
     @cached_property
     def _index_codec_pipeline(self) -> CodecPipeline:
-        return CodecPipeline([get_codec_from_metadata(c) for c in self.configuration.index_codecs])
+        return CodecPipeline.create(
+            [get_codec_from_metadata(c) for c in self.configuration.index_codecs]
+        )
 
     @cached_property
     def _codec_pipeline(self) -> CodecPipeline:
-        return CodecPipeline([get_codec_from_metadata(c) for c in self.configuration.codecs])
+        return CodecPipeline.create([get_codec_from_metadata(c) for c in self.configuration.codecs])
 
     async def _load_shard_index_maybe(
         self, store_path: StorePath, chunks_per_shard: ChunkCoords
