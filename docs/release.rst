@@ -45,8 +45,8 @@ Docs
 * Minor tweak to advanced indexing tutorial examples.
   By :user:`Ross Barnowski <rossbar>` :issue:`1550`.
 
-* Added section about accessing zip files that are on s3.
-  By :user:`Jeff Peck <jeffpeck10x>` :issue:`1613`.
+* Added section about accessing ZIP archives on s3.
+  By :user:`Jeff Peck <jeffpeck10x>` :issue:`1613`, :issue:`1615`, and :user:`Davis Bennett <d-v-b>` :issue:`1641`.
 
 Maintenance
 ~~~~~~~~~~~
@@ -117,10 +117,10 @@ Maintenance
   By :user:`Davis Bennett <d-v-b>` :issue:`1462`.
 
 * Style the codebase with ``ruff`` and ``black``.
-  By :user:`Davis Bennett` <d-v-b> :issue:`1459`
+  By :user:`Davis Bennett <d-v-b>` :issue:`1459`
 
 * Ensure that chunks is tuple of ints upon array creation.
-  By :user:`Philipp Hanslovsky` <hanslovsky> :issue:`1461`
+  By :user:`Philipp Hanslovsky <hanslovsky>` :issue:`1461`
 
 .. _release_2.15.0:
 
@@ -508,7 +508,7 @@ Maintenance
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
 
 * Remove option to return None from _ensure_store.
-  By :user:`Greggory Lee <grlee77>` :issue:`1068`.
+  By :user:`Gregory Lee <grlee77>` :issue:`1068`.
 
 * Fix a typo of "integers".
   By :user:`Richard Scott <RichardScottOZ>` :issue:`1056`.
@@ -526,7 +526,7 @@ Enhancements
   Since the format is not yet finalized, the classes and functions are not
   automatically imported into the regular `zarr` name space. Setting the
   `ZARR_V3_EXPERIMENTAL_API` environment variable will activate them.
-  By :user:`Greggory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`
+  By :user:`Gregory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`
   as well as by :user:`Josh Moore <joshmoore>` :issue:`1032`.
 
 * **Create FSStore from an existing fsspec filesystem**. If you have created
@@ -648,7 +648,7 @@ Enhancements
   higher-level array creation and convenience functions still accept plain
   Python dicts or other mutable mappings for the ``store`` argument, but will
   internally convert these to a ``KVStore``.
-  By :user:`Greggory Lee <grlee77>`; :issue:`839`, :issue:`789`, and :issue:`950`.
+  By :user:`Gregory Lee <grlee77>`; :issue:`839`, :issue:`789`, and :issue:`950`.
 
 * Allow to assign array ``fill_values`` and update metadata accordingly.
   By :user:`Ryan Abernathey <rabernat>`, :issue:`662`.
@@ -795,7 +795,7 @@ Bug fixes
 ~~~~~~~~~
 
 * Fix FSStore.listdir behavior for nested directories.
-  By :user:`Greggory Lee <grlee77>`; :issue:`802`.
+  By :user:`Gregory Lee <grlee77>`; :issue:`802`.
 
 .. _release_2.9.4:
 
@@ -879,7 +879,7 @@ Bug fixes
   By :user:`Josh Moore <joshmoore>`; :issue:`781`.
 
 * avoid NumPy 1.21.0 due to https://github.com/numpy/numpy/issues/19325
-  By :user:`Greggory Lee <grlee77>`; :issue:`791`.
+  By :user:`Gregory Lee <grlee77>`; :issue:`791`.
 
 Maintenance
 ~~~~~~~~~~~
@@ -891,7 +891,7 @@ Maintenance
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`799`.
 
 * TST: add missing assert in test_hexdigest.
-  By :user:`Greggory Lee <grlee77>`; :issue:`801`.
+  By :user:`Gregory Lee <grlee77>`; :issue:`801`.
 
 .. _release_2.8.3:
 
