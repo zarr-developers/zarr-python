@@ -18,9 +18,9 @@ Release notes
 Unreleased
 ----------
 
-.. _release_2.16.2:
+.. _release_2.17.0:
 
-2.16.2
+2.17.0
 ------
 
 Enhancements
