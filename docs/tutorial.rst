@@ -774,7 +774,7 @@ the following code::
 
 Any other compatible storage class could be used in place of
 :class:`zarr.storage.DirectoryStore` in the code examples above. For example,
-here is an array stored directly into a Zip file, via the
+here is an array stored directly into a ZIP archive, via the
 :class:`zarr.storage.ZipStore` class::
 
     >>> store = zarr.ZipStore('data/example.zip', mode='w')
@@ -798,12 +798,12 @@ Re-open and check that data have been written::
            [42, 42, 42, ..., 42, 42, 42]], dtype=int32)
     >>> store.close()
 
-Note that there are some limitations on how Zip files can be used, because items
-within a Zip file cannot be updated in place. This means that data in the array
+Note that there are some limitations on how ZIP archives can be used, because items
+within a ZIP archive cannot be updated in place. This means that data in the array
 should only be written once and write operations should be aligned with chunk
 boundaries. Note also that the ``close()`` method must be called after writing
 any data to the store, otherwise essential records will not be written to the
-underlying zip file.
+underlying ZIP archive.
 
 Another storage alternative is the :class:`zarr.storage.DBMStore` class, added
 in Zarr version 2.2. This class allows any DBM-style database to be used for
@@ -846,7 +846,7 @@ respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
 `pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed.
 
 For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
-an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
+an N5 backend (this is currently an experimental feature). Similar to the ZIP storage class, an
 :class:`zarr.n5.N5Store` can be instantiated directly::
 
     >>> store = zarr.N5Store('data/example.n5')
@@ -1000,12 +1000,13 @@ separately from Zarr.
 
 .. _tutorial_copy:
 
-Accessing Zip Files on S3
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Accessing ZIP archives on S3
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The built-in `ZipStore` will only work with paths on the local file-system, however
-it is also possible to access ``.zarr.zip`` data on the cloud. Here is an example of
-accessing a zipped Zarr file on s3:
+The built-in :class:`zarr.storage.ZipStore` will only work with paths on the local file-system; however
+it is possible to access ZIP-archived Zarr data on the cloud via the `ZipFileSystem <https://filesystem-spec.readthedocs.io/en/latest/_modules/fsspec/implementations/zip.html>`_
+class from ``fsspec``. The following example demonstrates how to access
+a ZIP-archived Zarr group on s3 using `s3fs <https://s3fs.readthedocs.io/en/latest/>`_ and ``ZipFileSystem``:
 
     >>> s3_path = "s3://path/to/my.zarr.zip"
     >>> 
@@ -1014,7 +1015,7 @@ accessing a zipped Zarr file on s3:
     >>> fs = ZipFileSystem(f, mode="r")
     >>> store = FSMap("", fs, check=False)
     >>> 
-    >>> # cache is optional, but may be a good idea depending on the situation
+    >>> # caching may improve performance when repeatedly reading the same data
     >>> cache = zarr.storage.LRUStoreCache(store, max_size=2**28)
     >>> z = zarr.group(store=cache)
 
@@ -1022,7 +1023,7 @@ This store can also be generated with ``fsspec``'s handler chaining, like so:
 
     >>> store = zarr.storage.FSStore(url=f"zip::{s3_path}",  mode="r")
 
-This can be especially useful if you have a very large ``.zarr.zip`` file on s3
+This can be especially useful if you have a very large ZIP-archived Zarr array or group on s3
 and only need to access a small portion of it.
 
 Consolidating metadata
@@ -1161,7 +1162,7 @@ re-compression, and so should be faster. E.g.::
      └── spam (100,) int64
     >>> new_root['foo/bar/baz'][:]
     array([ 0,  1,  2,  ..., 97, 98, 99])
-    >>> store2.close()  # zip stores need to be closed
+    >>> store2.close()  # ZIP stores need to be closed
 
 .. _tutorial_strings:
 
