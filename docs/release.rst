@@ -18,6 +18,8 @@ Release notes
 Unreleased (v3)
 ---------------
 
+Maintenance
+~~~~~~~~~~~
 
 * Remedy a situation where ``zarr-python`` was importing ``DummyStorageTransformer`` from the test suite. 
   The dependency relationship is now reversed: the test suite imports this class from ``zarr-python``.
