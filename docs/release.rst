@@ -13,10 +13,20 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
+.. _unreleased(v3):
+
+Unreleased (v3)
+---------------
+
+
+* Remedy a situation where ``zarr-python`` was importing ``DummyStorageTransformer`` from the test suite. 
+  The dependency relationship is now reversed: the test suite imports this class from ``zarr-python``.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1601`.
+
 .. _unreleased:
 
-Unreleased
-----------
+Unreleased (v2)
+---------------
 
 Docs
 ~~~~
@@ -60,10 +70,6 @@ Maintenance
 
 * Remove ``sphinx-rtd-theme`` dependency from ``pyproject.toml``.
   By :user:`Sanket Verma <MSanKeys963>` :issue:`1563`.
-
-* Remedy a situation where ``zarr-python`` was importing ``DummyStorageTransformer`` from the test suite. 
-  The dependency relationship is now reversed: the test suite imports this class from ``zarr-python``.
-  By :user:`Davis Bennett <d-v-b>` :issue:`1601`.
 
 .. _release_2.16.1:
 
