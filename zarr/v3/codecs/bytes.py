@@ -64,30 +64,30 @@ class BytesCodec(ArrayBytesCodec):
     async def decode(
         self,
         chunk_bytes: BytesLike,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
-        if chunk_metadata.dtype.itemsize > 0:
+        if chunk_spec.dtype.itemsize > 0:
             if self.configuration.endian == "little":
                 prefix = "<"
             else:
                 prefix = ">"
-            dtype = np.dtype(f"{prefix}{chunk_metadata.data_type.to_numpy_shortname()}")
+            dtype = np.dtype(f"{prefix}{chunk_spec.data_type.to_numpy_shortname()}")
         else:
-            dtype = np.dtype(f"|{chunk_metadata.data_type.to_numpy_shortname()}")
+            dtype = np.dtype(f"|{chunk_spec.data_type.to_numpy_shortname()}")
         chunk_array = np.frombuffer(chunk_bytes, dtype)
 
         # ensure correct chunk shape
-        if chunk_array.shape != chunk_metadata.chunk_shape:
+        if chunk_array.shape != chunk_spec.shape:
             chunk_array = chunk_array.reshape(
-                chunk_metadata.chunk_shape,
+                chunk_spec.shape,
             )
         return chunk_array
 
     async def encode(
         self,
         chunk_array: np.ndarray,
-        _chunk_metadata: ArraySpec,
+        _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         if chunk_array.dtype.itemsize > 1:
@@ -97,7 +97,7 @@ class BytesCodec(ArrayBytesCodec):
                 chunk_array = chunk_array.astype(new_dtype)
         return chunk_array.tobytes()
 
-    def compute_encoded_size(self, input_byte_length: int, _chunk_metadata: ArraySpec) -> int:
+    def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
 
 

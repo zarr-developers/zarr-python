@@ -164,7 +164,7 @@ class ShardingCodecIndexLocation(Enum):
 
 @frozen
 class ArraySpec:
-    chunk_shape: ChunkCoords
+    shape: ChunkCoords
     data_type: DataType
     fill_value: Any
 
@@ -174,7 +174,7 @@ class ArraySpec:
 
     @property
     def ndim(self) -> int:
-        return len(self.chunk_shape)
+        return len(self.shape)
 
 
 @frozen
@@ -198,12 +198,12 @@ class ArrayMetadata:
     def ndim(self) -> int:
         return len(self.shape)
 
-    def get_chunk_metadata(self, _chunk_coords: ChunkCoords) -> ArraySpec:
+    def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGridMetadata
         ), "Currently, only regular chunk grid is supported"
         return ArraySpec(
-            chunk_shape=self.chunk_grid.configuration.chunk_shape,
+            shape=self.chunk_grid.configuration.chunk_shape,
             data_type=self.data_type,
             fill_value=self.fill_value,
         )

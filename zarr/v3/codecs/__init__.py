@@ -115,7 +115,7 @@ class CodecPipeline:
             self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin
         )
 
-    def all_codecs(self) -> Iterator[Codec]:
+    def __iter__(self) -> Iterator[Codec]:
         for aa_codec in self.array_array_codecs:
             yield aa_codec
 
@@ -125,7 +125,7 @@ class CodecPipeline:
             yield bb_codec
 
     def validate(self, array_metadata: ArrayMetadata) -> None:
-        for codec in self.all_codecs():
+        for codec in self:
             codec.validate(array_metadata)
 
     def _codecs_with_resolved_metadata(
@@ -177,13 +177,13 @@ class CodecPipeline:
         self,
         store_path: StorePath,
         selection: SliceSelection,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         assert self.supports_partial_decode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
         return await self.array_bytes_codec.decode_partial(
-            store_path, selection, chunk_metadata, runtime_configuration
+            store_path, selection, chunk_spec, runtime_configuration
         )
 
     async def encode(
@@ -227,17 +227,17 @@ class CodecPipeline:
         store_path: StorePath,
         chunk_array: np.ndarray,
         selection: SliceSelection,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> None:
         assert self.supports_partial_encode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
         await self.array_bytes_codec.encode_partial(
-            store_path, chunk_array, selection, chunk_metadata, runtime_configuration
+            store_path, chunk_array, selection, chunk_spec, runtime_configuration
         )
 
     def compute_encoded_size(self, byte_length: int, array_spec: ArraySpec) -> int:
-        for codec in self.all_codecs():
+        for codec in self:
             byte_length = codec.compute_encoded_size(byte_length, array_spec)
             array_spec = codec.resolve_metadata(array_spec)
         return byte_length

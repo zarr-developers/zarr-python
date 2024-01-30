@@ -33,11 +33,11 @@ class Codec(ABC):
         pass
 
     @abstractmethod
-    def compute_encoded_size(self, input_byte_length: int, chunk_metadata: ArraySpec) -> int:
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
         pass
 
-    def resolve_metadata(self, chunk_metadata: ArraySpec) -> ArraySpec:
-        return chunk_metadata
+    def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
+        return chunk_spec
 
     def evolve(self, *, ndim: int, data_type: DataType) -> Codec:
         return self
@@ -51,7 +51,7 @@ class ArrayArrayCodec(Codec):
     async def decode(
         self,
         chunk_array: np.ndarray,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         pass
@@ -60,7 +60,7 @@ class ArrayArrayCodec(Codec):
     async def encode(
         self,
         chunk_array: np.ndarray,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         pass
@@ -71,7 +71,7 @@ class ArrayBytesCodec(Codec):
     async def decode(
         self,
         chunk_array: BytesLike,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         pass
@@ -80,7 +80,7 @@ class ArrayBytesCodec(Codec):
     async def encode(
         self,
         chunk_array: np.ndarray,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         pass
@@ -92,7 +92,7 @@ class ArrayBytesCodecPartialDecodeMixin:
         self,
         store_path: StorePath,
         selection: SliceSelection,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         pass
@@ -105,7 +105,7 @@ class ArrayBytesCodecPartialEncodeMixin:
         store_path: StorePath,
         chunk_array: np.ndarray,
         selection: SliceSelection,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> None:
         pass
@@ -116,7 +116,7 @@ class BytesBytesCodec(Codec):
     async def decode(
         self,
         chunk_array: BytesLike,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         pass
@@ -125,7 +125,7 @@ class BytesBytesCodec(Codec):
     async def encode(
         self,
         chunk_array: BytesLike,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         pass

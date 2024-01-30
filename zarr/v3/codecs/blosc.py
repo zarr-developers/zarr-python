@@ -86,7 +86,7 @@ class BloscCodec(BytesBytesCodec):
     async def decode(
         self,
         chunk_bytes: bytes,
-        _chunk_metadata: ArraySpec,
+        _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         return await to_thread(self.get_blosc_codec().decode, chunk_bytes)
@@ -94,13 +94,13 @@ class BloscCodec(BytesBytesCodec):
     async def encode(
         self,
         chunk_bytes: bytes,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
-        chunk_array = np.frombuffer(chunk_bytes, dtype=chunk_metadata.dtype)
+        chunk_array = np.frombuffer(chunk_bytes, dtype=chunk_spec.dtype)
         return await to_thread(self.get_blosc_codec().encode, chunk_array)
 
-    def compute_encoded_size(self, _input_byte_length: int, _chunk_metadata: ArraySpec) -> int:
+    def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
 
 

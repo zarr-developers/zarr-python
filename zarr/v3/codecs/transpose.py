@@ -69,24 +69,22 @@ class TransposeCodec(ArrayArrayCodec):
     def get_metadata_class(cls) -> Type[TransposeCodecMetadata]:
         return TransposeCodecMetadata
 
-    def resolve_metadata(self, chunk_metadata: ArraySpec) -> ArraySpec:
+    def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         from zarr.v3.metadata import ArraySpec
 
         return ArraySpec(
-            chunk_shape=tuple(
-                chunk_metadata.chunk_shape[self.order[i]] for i in range(chunk_metadata.ndim)
-            ),
-            data_type=chunk_metadata.data_type,
-            fill_value=chunk_metadata.fill_value,
+            shape=tuple(chunk_spec.shape[self.order[i]] for i in range(chunk_spec.ndim)),
+            data_type=chunk_spec.data_type,
+            fill_value=chunk_spec.fill_value,
         )
 
     async def decode(
         self,
         chunk_array: np.ndarray,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
-        inverse_order = [0] * chunk_metadata.ndim
+        inverse_order = [0] * chunk_spec.ndim
         for x, i in enumerate(self.order):
             inverse_order[x] = i
         chunk_array = chunk_array.transpose(inverse_order)
@@ -95,13 +93,13 @@ class TransposeCodec(ArrayArrayCodec):
     async def encode(
         self,
         chunk_array: np.ndarray,
-        chunk_metadata: ArraySpec,
+        chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         chunk_array = chunk_array.transpose(self.order)
         return chunk_array
 
-    def compute_encoded_size(self, input_byte_length: int, _chunk_metadata: ArraySpec) -> int:
+    def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
 
 

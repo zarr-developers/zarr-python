@@ -47,7 +47,7 @@ class GzipCodec(BytesBytesCodec):
     async def decode(
         self,
         chunk_bytes: bytes,
-        _chunk_metadata: ArraySpec,
+        _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         return await to_thread(GZip(self.configuration.level).decode, chunk_bytes)
@@ -55,7 +55,7 @@ class GzipCodec(BytesBytesCodec):
     async def encode(
         self,
         chunk_bytes: bytes,
-        _chunk_metadata: ArraySpec,
+        _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         return await to_thread(GZip(self.configuration.level).encode, chunk_bytes)
@@ -63,7 +63,7 @@ class GzipCodec(BytesBytesCodec):
     def compute_encoded_size(
         self,
         _input_byte_length: int,
-        _chunk_metadata: ArraySpec,
+        _chunk_spec: ArraySpec,
     ) -> int:
         raise NotImplementedError
 

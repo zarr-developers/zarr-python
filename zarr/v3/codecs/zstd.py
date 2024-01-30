@@ -57,7 +57,7 @@ class ZstdCodec(BytesBytesCodec):
     async def decode(
         self,
         chunk_bytes: bytes,
-        _chunk_metadata: ArraySpec,
+        _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         return await to_thread(self._decompress, chunk_bytes)
@@ -65,12 +65,12 @@ class ZstdCodec(BytesBytesCodec):
     async def encode(
         self,
         chunk_bytes: bytes,
-        _chunk_metadata: ArraySpec,
+        _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         return await to_thread(self._compress, chunk_bytes)
 
-    def compute_encoded_size(self, _input_byte_length: int, _chunk_metadata: ArraySpec) -> int:
+    def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
 
 
