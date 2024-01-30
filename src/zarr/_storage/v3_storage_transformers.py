@@ -81,6 +81,22 @@ class _ShardIndex(NamedTuple):
         )
 
 
+class DummyStorageTransfomer(StorageTransformer):
+    """For testing purposes. This class was previously defined in the test suite and imported
+    into Zarr, but now it has been moved here and the test suite will import it like any other part
+    of the Zarr library."""
+
+    TEST_CONSTANT = "test1234"
+
+    extension_uri = "https://purl.org/zarr/spec/storage_transformers/dummy/1.0"
+    valid_types = ["dummy_type"]
+
+    def __init__(self, _type, test_value) -> None:
+        super().__init__(_type)
+        assert test_value == self.TEST_CONSTANT
+        self.test_value = test_value
+
+
 class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
     """Implements sharding as a storage transformer, as described in the spec:
     https://zarr-specs.readthedocs.io/en/latest/extensions/storage-transformers/sharding/v1.0.html

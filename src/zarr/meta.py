@@ -459,8 +459,10 @@ class Metadata3(Metadata2):
 
     @classmethod
     def _decode_storage_transformer_metadata(cls, meta: Mapping) -> "StorageTransformer":
-        from tests.test_storage_v3 import DummyStorageTransfomer
-        from zarr._storage.v3_storage_transformers import ShardingStorageTransformer
+        from zarr._storage.v3_storage_transformers import (
+            ShardingStorageTransformer,
+            DummyStorageTransfomer,
+        )
 
         # This might be changed to a proper registry in the future
         KNOWN_STORAGE_TRANSFORMERS = [DummyStorageTransfomer, ShardingStorageTransformer]
