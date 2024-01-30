@@ -35,7 +35,11 @@ from zarr._storage.store import (
     BaseStore,
     v3_api_available,
 )
-from .._storage.v3_storage_transformers import ShardingStorageTransformer, v3_sharding_available
+from .._storage.v3_storage_transformers import (
+    DummyStorageTransfomer,
+    ShardingStorageTransformer,
+    v3_sharding_available,
+)
 from zarr.core import Array
 from zarr.errors import ArrayNotFoundError, ContainsGroupError
 from zarr.meta import json_loads
@@ -70,9 +74,9 @@ from zarr._storage.v3 import (
     SQLiteStoreV3,
     StoreV3,
 )
-from zarr.tests.test_storage_v3 import DummyStorageTransfomer
+
 from zarr.util import buffer_size
-from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec, mktemp
+from .util import abs_container, skip_test_env_var, have_fsspec, mktemp
 
 # noinspection PyMethodMayBeStatic
 

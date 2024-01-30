@@ -10,7 +10,11 @@ import pytest
 
 import zarr
 from zarr._storage.store import _get_hierarchy_metadata, v3_api_available, StorageTransformer
-from zarr._storage.v3_storage_transformers import ShardingStorageTransformer, v3_sharding_available
+from zarr._storage.v3_storage_transformers import (
+    DummyStorageTransfomer,
+    ShardingStorageTransformer,
+    v3_sharding_available,
+)
 from zarr.core import Array
 from zarr.meta import _default_entry_point_metadata_v3
 from zarr.storage import (
@@ -40,7 +44,7 @@ from zarr._storage.v3 import (
     StoreV3,
     ZipStoreV3,
 )
-from zarr.tests.util import CountingDictV3, have_fsspec, skip_test_env_var, mktemp
+from .util import CountingDictV3, have_fsspec, skip_test_env_var, mktemp
 
 # pytest will fail to run if the following fixtures aren't imported here
 from .test_storage import StoreTests as _StoreTests
@@ -106,18 +110,6 @@ class InvalidDummyStore:
 
     def keys(self):
         """keys"""
-
-
-class DummyStorageTransfomer(StorageTransformer):
-    TEST_CONSTANT = "test1234"
-
-    extension_uri = "https://purl.org/zarr/spec/storage_transformers/dummy/1.0"
-    valid_types = ["dummy_type"]
-
-    def __init__(self, _type, test_value) -> None:
-        super().__init__(_type)
-        assert test_value == self.TEST_CONSTANT
-        self.test_value = test_value
 
 
 def test_ensure_store_v3():
