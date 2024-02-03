@@ -16,9 +16,9 @@ from zarr.storage import DirectoryStore, KVStore, atexit_rmtree, init_array, ini
 from zarr.sync import ProcessSynchronizer, ThreadSynchronizer
 
 # zarr_version fixture must be imported although not used directly here
-from tests.test_attrs import TestAttributes, zarr_version  # noqa
-from tests.test_core import TestArray
-from tests.test_hierarchy import TestGroup
+from .test_attrs import TestAttributes, zarr_version  # noqa
+from .test_core import TestArray
+from .test_hierarchy import TestGroup
 
 
 class TestAttributesWithThreadSynchronizer(TestAttributes):
