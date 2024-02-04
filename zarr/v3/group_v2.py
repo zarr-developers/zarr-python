@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import asdict, dataclass, field, replace
 import json
 from typing import TYPE_CHECKING, Any, Dict, Literal, Optional, Union
-
-from attr import asdict, evolve, frozen
+from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.array_v2 import ArrayV2
-from zarr.v3.common import ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, make_cattr
+from zarr.v3.common import ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
 from zarr.v3.metadata import RuntimeConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
@@ -16,19 +16,15 @@ if TYPE_CHECKING:
     from zarr.v3.group import Group
 
 
-@frozen
-class GroupV2Metadata:
-    zarr_format: Literal[2] = 2
+@dataclass(frozen=True)
+class GroupV2Metadata(Metadata):
+    zarr_format: Literal[2] = field(default=2, init=False)
 
     def to_bytes(self) -> bytes:
         return json.dumps(asdict(self)).encode()
 
-    @classmethod
-    def from_json(cls, zarr_json: Any) -> GroupV2Metadata:
-        return make_cattr().structure(zarr_json, cls)
 
-
-@frozen
+@dataclass(frozen=True)
 class GroupV2:
     metadata: GroupV2Metadata
     store_path: StorePath
@@ -88,7 +84,7 @@ class GroupV2:
         metadata = json.loads(zgroup_bytes)
         attributes = json.loads(zattrs_bytes) if zattrs_bytes is not None else None
 
-        return cls.from_json(
+        return cls.from_dict(
             store_path,
             metadata,
             runtime_configuration,
@@ -107,15 +103,15 @@ class GroupV2:
         )
 
     @classmethod
-    def from_json(
+    def from_dict(
         cls,
         store_path: StorePath,
-        zarr_json: Any,
+        data: Dict[str, Any],
         runtime_configuration: RuntimeConfiguration,
         attributes: Optional[Dict[str, Any]] = None,
     ) -> GroupV2:
         group = cls(
-            metadata=GroupV2Metadata.from_json(zarr_json),
+            metadata=GroupV2Metadata.from_dict(data),
             store_path=store_path,
             runtime_configuration=runtime_configuration,
             attributes=attributes,
@@ -134,12 +130,12 @@ class GroupV2:
         )
         attributes = json.loads(zattrs_bytes) if zattrs_bytes is not None else None
         if zgroup_bytes is not None:
-            return GroupV2.from_json(
+            return GroupV2.from_dict(
                 store_path, json.loads(zgroup_bytes), runtime_configuration, attributes
             )
         zarray_bytes = await (store_path / ZARRAY_JSON).get_async()
         if zarray_bytes is not None:
-            return ArrayV2.from_json(
+            return ArrayV2.from_dict(
                 store_path, json.loads(zarray_bytes), attributes, runtime_configuration
             )
         raise KeyError
@@ -195,7 +191,7 @@ class GroupV2:
 
         await (self.store_path / ZARR_JSON).set_async(new_metadata_bytes)
 
-        return Group.from_json(
+        return Group.from_dict(
             store_path=self.store_path,
             zarr_json=json.loads(new_metadata_bytes),
             runtime_configuration=self.runtime_configuration,
@@ -203,7 +199,7 @@ class GroupV2:
 
     async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> GroupV2:
         await (self.store_path / ZATTRS_JSON).set_async(json.dumps(new_attributes).encode())
-        return evolve(self, attributes=new_attributes)
+        return replace(self, attributes=new_attributes)
 
     def update_attributes(self, new_attributes: Dict[str, Any]) -> GroupV2:
         return sync(

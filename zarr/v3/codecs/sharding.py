@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 
 from typing import (
     Awaitable,
@@ -13,7 +14,6 @@ from typing import (
     Tuple,
     Type,
 )
-from attr import field, frozen
 
 import numpy as np
 from zarr.v3.abc.codec import (
@@ -48,7 +48,7 @@ from zarr.v3.store import StorePath
 MAX_UINT_64 = 2**64 - 1
 
 
-@frozen
+@dataclass(frozen=True)
 class ShardingCodecConfigurationMetadata:
     chunk_shape: ChunkCoords
     codecs: List["CodecMetadata"]
@@ -56,7 +56,7 @@ class ShardingCodecConfigurationMetadata:
     index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end
 
 
-@frozen
+@dataclass(frozen=True)
 class ShardingCodecMetadata:
     configuration: ShardingCodecConfigurationMetadata
     name: Literal["sharding_indexed"] = field(default="sharding_indexed", init=False)
@@ -211,7 +211,7 @@ class _ShardBuilder(_ShardProxy):
         return out_buf
 
 
-@frozen
+@dataclass(frozen=True)
 class ShardingCodec(
     ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
 ):

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import asdict, dataclass, field, replace
 
 from typing import (
     TYPE_CHECKING,
@@ -10,7 +11,6 @@ from typing import (
 
 import numcodecs
 import numpy as np
-from attr import asdict, evolve, frozen, field
 from numcodecs.blosc import Blosc
 
 from zarr.v3.abc.codec import BytesBytesCodec
@@ -28,7 +28,7 @@ BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
 numcodecs.blosc.use_threads = False
 
 
-@frozen
+@dataclass(frozen=True)
 class BloscCodecConfigurationMetadata:
     typesize: int
     cname: Literal["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"] = "zstd"
@@ -44,13 +44,13 @@ blosc_shuffle_int_to_str: Dict[int, BloscShuffle] = {
 }
 
 
-@frozen
+@dataclass(frozen=True)
 class BloscCodecMetadata:
     configuration: BloscCodecConfigurationMetadata
     name: Literal["blosc"] = field(default="blosc", init=False)
 
 
-@frozen
+@dataclass(frozen=True)
 class BloscCodec(BytesBytesCodec):
     array_metadata: CoreArrayMetadata
     configuration: BloscCodecConfigurationMetadata
@@ -64,7 +64,7 @@ class BloscCodec(BytesBytesCodec):
         assert isinstance(codec_metadata, BloscCodecMetadata)
         configuration = codec_metadata.configuration
         if configuration.typesize == 0:
-            configuration = evolve(configuration, typesize=array_metadata.data_type.byte_count)
+            configuration = replace(configuration, typesize=array_metadata.data_type.byte_count)
         config_dict = asdict(codec_metadata.configuration)
         config_dict.pop("typesize", None)
         map_shuffle_str_to_int = {"noshuffle": 0, "shuffle": 1, "bitshuffle": 2}

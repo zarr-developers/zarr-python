@@ -1,8 +1,9 @@
 from __future__ import annotations
+from dataclasses import dataclass
 
 import json
 from typing import Iterator, List, Literal, Optional
-from attr import frozen
+
 
 import numpy as np
 import pytest
@@ -16,7 +17,7 @@ from zarr.v3.metadata import CodecMetadata, ShardingCodecIndexLocation, runtime_
 from zarr.v3.store import MemoryStore, Store
 
 
-@frozen
+@dataclass(frozen=True)
 class _AsyncArrayProxy:
     array: AsyncArray
 
@@ -24,7 +25,7 @@ class _AsyncArrayProxy:
         return _AsyncArraySelectionProxy(self.array, selection)
 
 
-@frozen
+@dataclass(frozen=True)
 class _AsyncArraySelectionProxy:
     array: AsyncArray
     selection: Selection

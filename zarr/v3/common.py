@@ -17,7 +17,6 @@ from typing import (
 )
 
 import numpy as np
-from cattr import Converter
 
 ZARR_JSON = "zarr.json"
 ZARRAY_JSON = ".zarray"
@@ -29,8 +28,8 @@ ChunkCoords = Tuple[int, ...]
 SliceSelection = Tuple[slice, ...]
 Selection = Union[slice, SliceSelection]
 
-
-def make_cattr():
+""" 
+def ():
     from zarr.v3.metadata import (
         ChunkKeyEncodingMetadata,
         CodecMetadata,
@@ -102,7 +101,7 @@ def make_cattr():
         lambda d, _: np.dtype(d),
     )
 
-    return converter
+    return converter """
 
 
 def product(tup: ChunkCoords) -> int:

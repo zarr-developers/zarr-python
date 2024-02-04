@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 
 from typing import (
     TYPE_CHECKING,
@@ -7,7 +8,7 @@ from typing import (
     Type,
 )
 
-from attr import frozen, field
+, field
 from numcodecs.gzip import GZip
 
 from zarr.v3.abc.codec import BytesBytesCodec
@@ -19,18 +20,18 @@ if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
 
 
-@frozen
+@dataclass(frozen=True)
 class GzipCodecConfigurationMetadata:
     level: int = 5
 
 
-@frozen
+@dataclass(frozen=True)
 class GzipCodecMetadata:
     configuration: GzipCodecConfigurationMetadata
     name: Literal["gzip"] = field(default="gzip", init=False)
 
 
-@frozen
+@dataclass(frozen=True)
 class GzipCodec(BytesBytesCodec):
     array_metadata: CoreArrayMetadata
     configuration: GzipCodecConfigurationMetadata

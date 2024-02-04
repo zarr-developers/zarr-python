@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass, replace
 import json
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import numcodecs
 import numpy as np
-from attr import evolve, frozen
+
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from zarr.v3.common import (
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
     from zarr.v3.array import Array
 
 
-@frozen
+@dataclass(frozen=True)
 class _AsyncArrayProxy:
     array: ArrayV2
 
@@ -36,7 +37,7 @@ class _AsyncArrayProxy:
         return _AsyncArraySelectionProxy(self.array, selection)
 
 
-@frozen
+@dataclass(frozen=True)
 class _AsyncArraySelectionProxy:
     array: ArrayV2
     selection: Selection
@@ -48,7 +49,7 @@ class _AsyncArraySelectionProxy:
         return await self.array.set_async(self.selection, value)
 
 
-@frozen
+@dataclass(frozen=True)
 class ArrayV2:
     metadata: ArrayV2Metadata
     attributes: Optional[Dict[str, Any]]
@@ -146,7 +147,7 @@ class ArrayV2:
             (store_path / ZATTRS_JSON).get_async(),
         )
         assert zarray_bytes is not None
-        return cls.from_json(
+        return cls.from_dict(
             store_path,
             zarray_json=json.loads(zarray_bytes),
             zattrs_json=json.loads(zattrs_bytes) if zattrs_bytes is not None else None,
@@ -165,14 +166,14 @@ class ArrayV2:
         )
 
     @classmethod
-    def from_json(
+    def from_dict(
         cls,
         store_path: StorePath,
         zarray_json: Any,
         zattrs_json: Optional[Any],
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> ArrayV2:
-        metadata = ArrayV2Metadata.from_json(zarray_json)
+        metadata = ArrayV2Metadata.from_dict(zarray_json)
         out = cls(
             store_path=store_path,
             metadata=metadata,
@@ -409,7 +410,7 @@ class ArrayV2:
 
     async def resize_async(self, new_shape: ChunkCoords) -> ArrayV2:
         assert len(new_shape) == len(self.metadata.shape)
-        new_metadata = evolve(self.metadata, shape=new_shape)
+        new_metadata = replace(self.metadata, shape=new_shape)
 
         # Remove all chunks outside of the new shape
         chunk_shape = self.metadata.chunks
@@ -429,7 +430,7 @@ class ArrayV2:
 
         # Write new metadata
         await (self.store_path / ZARRAY_JSON).set_async(new_metadata.to_bytes())
-        return evolve(self, metadata=new_metadata)
+        return replace(self, metadata=new_metadata)
 
     def resize(self, new_shape: ChunkCoords) -> ArrayV2:
         return sync(self.resize_async(new_shape), self.runtime_configuration.asyncio_loop)
@@ -529,7 +530,7 @@ class ArrayV2:
         new_metadata_bytes = new_metadata.to_bytes()
         await (self.store_path / ZARR_JSON).set_async(new_metadata_bytes)
 
-        return Array.from_json(
+        return Array.from_dict(
             store_path=self.store_path,
             zarr_json=json.loads(new_metadata_bytes),
             runtime_configuration=self.runtime_configuration,
@@ -537,7 +538,7 @@ class ArrayV2:
 
     async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> ArrayV2:
         await (self.store_path / ZATTRS_JSON).set_async(json.dumps(new_attributes).encode())
-        return evolve(self, attributes=new_attributes)
+        return replace(self, attributes=new_attributes)
 
     def update_attributes(self, new_attributes: Dict[str, Any]) -> ArrayV2:
         return sync(

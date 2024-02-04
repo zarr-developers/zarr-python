@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 
 from typing import (
     TYPE_CHECKING,
@@ -8,7 +9,7 @@ from typing import (
 )
 
 import numpy as np
-from attr import frozen, field
+
 from crc32c import crc32c
 
 from zarr.v3.abc.codec import BytesBytesCodec
@@ -20,12 +21,12 @@ if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
 
 
-@frozen
+@dataclass(frozen=True)
 class Crc32cCodecMetadata:
     name: Literal["crc32c"] = field(default="crc32c", init=False)
 
 
-@frozen
+@dataclass(frozen=True)
 class Crc32cCodec(BytesBytesCodec):
     array_metadata: CoreArrayMetadata
     is_fixed_size = True

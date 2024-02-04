@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 
 from typing import (
     TYPE_CHECKING,
@@ -7,7 +8,7 @@ from typing import (
     Type,
 )
 
-from attr import frozen, field
+, field
 from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.v3.abc.codec import BytesBytesCodec
@@ -19,19 +20,19 @@ if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
 
 
-@frozen
+@dataclass(frozen=True)
 class ZstdCodecConfigurationMetadata:
     level: int = 0
     checksum: bool = False
 
 
-@frozen
+@dataclass(frozen=True)
 class ZstdCodecMetadata:
     configuration: ZstdCodecConfigurationMetadata
     name: Literal["zstd"] = field(default="zstd", init=False)
 
 
-@frozen
+@dataclass(frozen=True)
 class ZstdCodec(BytesBytesCodec):
     array_metadata: CoreArrayMetadata
     configuration: ZstdCodecConfigurationMetadata

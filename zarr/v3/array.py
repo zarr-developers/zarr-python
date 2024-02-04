@@ -3,19 +3,19 @@
 # 2. Inherit from abc (SynchronousArray, AsynchronousArray)
 # 3. Added .size and .attrs methods
 # 4. Temporarily disabled the creation of ArrayV2
-# 5. Added from_json to AsyncArray
+# 5. Added from_dict to AsyncArray
 
 # Questions to consider:
 # 1. Was splitting the array into two classes really necessary?
 # 2. Do we really need runtime_configuration? Specifically, the asyncio_loop seems problematic
 
 from __future__ import annotations
+from dataclasses import dataclass, replace
 
 import json
 from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
 
 import numpy as np
-from attr import evolve, frozen
 
 from zarr.v3.abc.array import SynchronousArray, AsynchronousArray
 from zarr.v3.abc.codec import ArrayBytesCodecPartialDecodeMixin
@@ -47,12 +47,27 @@ from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
 
-@frozen
 class AsyncArray(AsynchronousArray):
     metadata: ArrayMetadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
     codec_pipeline: CodecPipeline
+
+    @property
+    def store_path(self):
+        return self._store_path
+
+    def __init__(
+        self,
+        metadata: ArrayMetadata,
+        store_path: StorePath,
+        runtime_configuration: RuntimeConfiguration,
+        codec_pipeline: CodecPipeline,
+    ):
+        self.metadata = metadata
+        self._store_path = store_path
+        self.runtime_configuration = runtime_configuration
+        self.codec_pipeline = codec_pipeline
 
     @classmethod
     async def create(
@@ -76,22 +91,23 @@ class AsyncArray(AsynchronousArray):
         store_path = make_store_path(store)
         if not exists_ok:
             assert not await (store_path / ZARR_JSON).exists_async()
-
+        """ 
         data_type = (
             DataType[dtype] if isinstance(dtype, str) else DataType[dtype_to_data_type[dtype.str]]
         )
 
+        """
         codecs = list(codecs) if codecs is not None else [bytes_codec()]
 
         if fill_value is None:
-            if data_type == DataType.bool:
+            if dtype == np.bool:
                 fill_value = False
             else:
                 fill_value = 0
 
         metadata = ArrayMetadata(
             shape=shape,
-            data_type=data_type,
+            data_type=dtype,
             chunk_grid=RegularChunkGridMetadata(
                 configuration=RegularChunkGridConfigurationMetadata(chunk_shape=chunk_shape)
             ),
@@ -128,13 +144,13 @@ class AsyncArray(AsynchronousArray):
         return array
 
     @classmethod
-    def from_json(
+    def from_dict(
         cls,
         store_path: StorePath,
-        zarr_json: Any,
+        data: Dict[str, Any],
         runtime_configuration: RuntimeConfiguration,
     ) -> AsyncArray:
-        metadata = ArrayMetadata.from_json(zarr_json)
+        metadata = ArrayMetadata.from_dict(data)
         async_array = cls(
             metadata=metadata,
             store_path=store_path,
@@ -155,7 +171,7 @@ class AsyncArray(AsynchronousArray):
         store_path = make_store_path(store)
         zarr_json_bytes = await (store_path / ZARR_JSON).get_async()
         assert zarr_json_bytes is not None
-        return cls.from_json(
+        return cls.from_dict(
             store_path,
             json.loads(zarr_json_bytes),
             runtime_configuration=runtime_configuration,
@@ -170,7 +186,7 @@ class AsyncArray(AsynchronousArray):
         store_path = make_store_path(store)
         v3_metadata_bytes = await (store_path / ZARR_JSON).get_async()
         if v3_metadata_bytes is not None:
-            return cls.from_json(
+            return cls.from_dict(
                 store_path,
                 json.loads(v3_metadata_bytes),
                 runtime_configuration=runtime_configuration or RuntimeConfiguration(),
@@ -376,7 +392,7 @@ class AsyncArray(AsynchronousArray):
 
     async def resize(self, new_shape: ChunkCoords) -> AsyncArray:
         assert len(new_shape) == len(self.metadata.shape)
-        new_metadata = evolve(self.metadata, shape=new_shape)
+        new_metadata = replace(self.metadata, shape=new_shape)
 
         # Remove all chunks outside of the new shape
         chunk_shape = self.metadata.chunk_grid.configuration.chunk_shape
@@ -398,14 +414,14 @@ class AsyncArray(AsynchronousArray):
 
         # Write new metadata
         await (self.store_path / ZARR_JSON).set_async(new_metadata.to_bytes())
-        return evolve(self, metadata=new_metadata)
+        return replace(self, metadata=new_metadata)
 
     async def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
-        new_metadata = evolve(self.metadata, attributes=new_attributes)
+        new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
         await (self.store_path / ZARR_JSON).set_async(new_metadata.to_bytes())
-        return evolve(self, metadata=new_metadata)
+        return replace(self, metadata=new_metadata)
 
     def __repr__(self):
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
@@ -414,7 +430,7 @@ class AsyncArray(AsynchronousArray):
         return NotImplemented
 
 
-@frozen
+@dataclass(frozen=True)
 class Array(SynchronousArray):
     _async_array: AsyncArray
 
@@ -456,14 +472,14 @@ class Array(SynchronousArray):
         return cls(async_array)
 
     @classmethod
-    def from_json(
+    def from_dict(
         cls,
         store_path: StorePath,
-        zarr_json: Any,
+        data: Dict[str, Any],
         runtime_configuration: RuntimeConfiguration,
     ) -> Array:
-        async_array = AsyncArray.from_json(
-            store_path=store_path, zarr_json=zarr_json, runtime_configuration=runtime_configuration
+        async_array = AsyncArray.from_dict(
+            store_path=store_path, data=data, runtime_configuration=runtime_configuration
         )
         return cls(async_array)
 

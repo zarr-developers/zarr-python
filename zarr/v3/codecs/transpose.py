@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 
 from typing import (
     TYPE_CHECKING,
@@ -9,7 +10,6 @@ from typing import (
 )
 
 import numpy as np
-from attr import frozen, field
 
 from zarr.v3.abc.codec import ArrayArrayCodec
 from zarr.v3.codecs.registry import register_codec
@@ -19,18 +19,18 @@ if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
 
 
-@frozen
+@dataclass(frozen=True)
 class TransposeCodecConfigurationMetadata:
     order: Tuple[int, ...]
 
 
-@frozen
+@dataclass(frozen=True)
 class TransposeCodecMetadata:
     configuration: TransposeCodecConfigurationMetadata
     name: Literal["transpose"] = field(default="transpose", init=False)
 
 
-@frozen
+@dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
     array_metadata: CoreArrayMetadata
     order: Tuple[int, ...]

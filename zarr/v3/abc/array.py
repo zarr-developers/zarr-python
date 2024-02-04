@@ -84,7 +84,7 @@ class AsynchronousArray(BaseArray):
 
     @classmethod
     @abstractmethod
-    async def from_json(cls, zarr_json: Any, store: ReadStore) -> AsynchronousArray:
+    async def from_dict(cls, data: Dict[str, Any], store: ReadStore) -> AsynchronousArray:
         ...
 
     @classmethod
@@ -113,7 +113,7 @@ class SynchronousArray(BaseArray):
 
     @classmethod
     @abstractmethod
-    def from_json(cls, zarr_json: Any, store: ReadStore) -> SynchronousArray:
+    def from_dict(cls, data: Dict[str, Any], store: ReadStore) -> SynchronousArray:
         ...
 
     @classmethod

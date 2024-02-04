@@ -1,4 +1,5 @@
 from __future__ import annotations
+from dataclasses import dataclass, field
 
 from typing import (
     TYPE_CHECKING,
@@ -8,7 +9,6 @@ from typing import (
 )
 
 import numpy as np
-from attr import frozen, field
 
 from zarr.v3.abc.codec import ArrayBytesCodec
 from zarr.v3.codecs.registry import register_codec
@@ -19,18 +19,18 @@ if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
 
 
-@frozen
+@dataclass(frozen=True)
 class BytesCodecConfigurationMetadata:
     endian: Optional[Literal["big", "little"]] = "little"
 
 
-@frozen
+@dataclass(frozen=True)
 class BytesCodecMetadata:
     configuration: BytesCodecConfigurationMetadata
     name: Literal["bytes"] = field(default="bytes", init=False)
 
 
-@frozen
+@dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
     array_metadata: CoreArrayMetadata
     configuration: BytesCodecConfigurationMetadata
