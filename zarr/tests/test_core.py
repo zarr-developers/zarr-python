@@ -2039,10 +2039,9 @@ class TestArrayWithDBMStore(TestArray):
 
 
 class TestArrayWithDBMStoreBerkeleyDB(TestArray):
-
     def __init__(self):
         # Skip warning tests as well
-        bsddb3 = pytest.importorskip("bsddb3")
+        pytest.importorskip("bsddb3")
 
     def create_store(self):
         bsddb3 = pytest.importorskip("bsddb3")
@@ -2056,6 +2055,10 @@ class TestArrayWithDBMStoreBerkeleyDB(TestArray):
 
 
 class TestArrayWithLMDBStore(TestArray):
+    def __init__(self):
+        # Skip warning tests as well
+        pytest.importorskip("lmdb")
+
     def create_store(self):
         pytest.importorskip("lmdb")
         path = mktemp(suffix=".lmdb")
@@ -2071,6 +2074,10 @@ class TestArrayWithLMDBStore(TestArray):
 
 
 class TestArrayWithLMDBStoreNoBuffers(TestArray):
+    def __init__(self):
+        # Skip warning tests as well
+        pytest.importorskip("lmdb")
+
     def create_store(self):
         pytest.importorskip("lmdb")
         path = mktemp(suffix=".lmdb")
@@ -2083,6 +2090,10 @@ class TestArrayWithLMDBStoreNoBuffers(TestArray):
 
 
 class TestArrayWithSQLiteStore(TestArray):
+    def __init__(self):
+        # Skip warning tests as well
+        pytest.importorskip("sqlite3")
+
     def create_store(self):
         pytest.importorskip("sqlite3")
         path = mktemp(suffix=".db")
