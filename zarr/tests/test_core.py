@@ -2775,6 +2775,10 @@ class TestArrayWithDBMStoreV3(TestArrayV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
+    def __init__(self):
+        # Skip warning tests as well
+        pytest.importorskip("bsddb3")
+
     def create_store(self) -> DBMStoreV3:
         bsddb3 = pytest.importorskip("bsddb3")
         path = mktemp(suffix=".dbm")
@@ -2789,6 +2793,10 @@ class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithLMDBStoreV3(TestArrayV3):
     lmdb_buffers = True
+
+    def __init__(self):
+        # Skip warning tests as well
+        pytest.importorskip("lmdb")
 
     def create_store(self) -> LMDBStoreV3:
         pytest.importorskip("lmdb")
@@ -2814,6 +2822,10 @@ class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithSQLiteStoreV3(TestArrayV3):
+    def __init__(self):
+        # Skip warning tests as well
+        pytest.importorskip("sqlite3")
+
     def create_store(self):
         pytest.importorskip("sqlite3")
         path = mktemp(suffix=".db")
