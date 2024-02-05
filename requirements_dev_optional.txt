@@ -20,4 +20,4 @@ pytest-timeout==2.2.0
 h5py==3.10.0
 fsspec==2023.12.2
 s3fs==2023.12.2
-moto[server]>=4.0.8
+moto[server]>=5.0.1
