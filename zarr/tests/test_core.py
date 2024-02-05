@@ -2039,6 +2039,11 @@ class TestArrayWithDBMStore(TestArray):
 
 
 class TestArrayWithDBMStoreBerkeleyDB(TestArray):
+
+    def __init__(self):
+        # Skip warning tests as well
+        bsddb3 = pytest.importorskip("bsddb3")
+
     def create_store(self):
         bsddb3 = pytest.importorskip("bsddb3")
         path = mktemp(suffix=".dbm")
