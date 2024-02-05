@@ -2039,7 +2039,7 @@ class TestArrayWithDBMStore(TestArray):
 
 
 class TestArrayWithDBMStoreBerkeleyDB(TestArray):
-    def __init__(self):
+    def __init__(self):  # pragma: no cover
         # Skip warning tests as well
         pytest.importorskip("bsddb3")
 
@@ -2055,7 +2055,7 @@ class TestArrayWithDBMStoreBerkeleyDB(TestArray):
 
 
 class TestArrayWithLMDBStore(TestArray):
-    def __init__(self):
+    def __init__(self):  # pragma: no cover
         # Skip warning tests as well
         pytest.importorskip("lmdb")
 
@@ -2074,7 +2074,7 @@ class TestArrayWithLMDBStore(TestArray):
 
 
 class TestArrayWithLMDBStoreNoBuffers(TestArray):
-    def __init__(self):
+    def __init__(self):  # pragma: no cover
         # Skip warning tests as well
         pytest.importorskip("lmdb")
 
@@ -2090,7 +2090,7 @@ class TestArrayWithLMDBStoreNoBuffers(TestArray):
 
 
 class TestArrayWithSQLiteStore(TestArray):
-    def __init__(self):
+    def __init__(self):  # pragma: no cover
         # Skip warning tests as well
         pytest.importorskip("sqlite3")
 
@@ -2775,7 +2775,7 @@ class TestArrayWithDBMStoreV3(TestArrayV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
-    def __init__(self):
+    def __init__(self):  # pragma: no cover
         # Skip warning tests as well
         pytest.importorskip("bsddb3")
 
@@ -2794,7 +2794,7 @@ class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
 class TestArrayWithLMDBStoreV3(TestArrayV3):
     lmdb_buffers = True
 
-    def __init__(self):
+    def __init__(self):  # pragma: no cover
         # Skip warning tests as well
         pytest.importorskip("lmdb")
 
@@ -2822,7 +2822,7 @@ class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithSQLiteStoreV3(TestArrayV3):
-    def __init__(self):
+    def __init__(self):  # pragma: no cover
         # Skip warning tests as well
         pytest.importorskip("sqlite3")
 
