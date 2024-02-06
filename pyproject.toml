@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64.0.0", "setuptools-scm>1.5.4"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 
 [project]
@@ -34,7 +34,7 @@ classifiers = [
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
 ]
-license = { text = "MIT" }
+license = "MIT"
 
 [project.optional-dependencies]
 jupyter = [
@@ -68,18 +68,31 @@ exclude_lines = [
 
 [tool.coverage.run]
 omit = [
-    "zarr/meta_v1.py",
+    "src/zarr/meta_v1.py",
     "bench/compress_normal.py",
 ]
 
-[tool.setuptools]
-packages = ["zarr", "zarr._storage", "zarr.tests"]
-license-files = ["LICENSE.txt"]
+[tool.hatch]
+version.source = "vcs"
+build.hooks.vcs.version-file = "src/zarr/_version.py"
 
-[tool.setuptools_scm]
-version_scheme = "guess-next-dev"
-local_scheme = "dirty-tag"
-write_to = "zarr/version.py"
+[tool.hatch.envs.test]
+extra-dependencies = [
+    "attrs",
+    "cattrs",
+    "coverage",
+    "pytest",
+    "pytest-cov",
+    "msgpack",
+    "lmdb",
+    "zstandard",
+    "crc32c",
+    "pytest-asyncio"
+]
+
+[tool.hatch.envs.test.scripts]
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
+run = "run-coverage --no-cov"
 
 [tool.ruff]
 line-length = 100

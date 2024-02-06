@@ -12,7 +12,6 @@ from typing import (
 
 from zarr.v3.abc.metadata import Metadata
 
-, field
 from numcodecs.gzip import GZip
 
 from zarr.v3.abc.codec import BytesBytesCodec
@@ -23,11 +22,13 @@ from zarr.v3.common import NamedConfig
 if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
 
+
 def parse_gzip_level(data: Any) -> int:
     if data not in range(0, 10):
-        msg = f'Expected an integer from the inclusive range (0, 9). Got {data} instead.'
+        msg = f"Expected an integer from the inclusive range (0, 9). Got {data} instead."
         raise ValueError(msg)
     return data
+
 
 @dataclass(frozen=True)
 class GzipCodecConfigurationMetadata(Metadata):
@@ -37,6 +38,7 @@ class GzipCodecConfigurationMetadata(Metadata):
         level_parsed = parse_gzip_level(level)
         object.__setattr__(self, "level", level_parsed)
 
+
 @dataclass(frozen=True)
 class GzipCodecMetadata(Metadata):
     configuration: GzipCodecConfigurationMetadata
@@ -45,6 +47,7 @@ class GzipCodecMetadata(Metadata):
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Self:
         return cls(configuration=GzipCodecConfigurationMetadata.from_dict(data["configuration"]))
+
 
 @dataclass(frozen=True)
 class GzipCodec(BytesBytesCodec):
@@ -68,20 +71,17 @@ class GzipCodec(BytesBytesCodec):
         return GzipCodecMetadata
 
     async def decode(
-        self,
-        chunk_bytes: bytes,
-        runtime_configuration: RuntimeConfiguration
+        self, chunk_bytes: bytes, runtime_configuration: RuntimeConfiguration
     ) -> BytesLike:
         return await to_thread(GZip(self.configuration.level).decode, chunk_bytes)
 
     async def encode(
-        self,
-        chunk_bytes: bytes,
-        runtime_configuration: RuntimeConfiguration
+        self, chunk_bytes: bytes, runtime_configuration: RuntimeConfiguration
     ) -> Optional[BytesLike]:
         return await to_thread(GZip(self.configuration.level).encode, chunk_bytes)
 
     def compute_encoded_size(self, _input_byte_length: int) -> int:
         raise NotImplementedError
+
 
 register_codec("gzip", GzipCodec)
