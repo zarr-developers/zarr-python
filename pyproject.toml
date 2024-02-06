@@ -76,6 +76,20 @@ omit = [
 version.source = "vcs"
 build.hooks.vcs.version-file = "src/zarr/_version.py"
 
+[tool.hatch.envs.test]
+extra-dependencies = [
+    "attrs",
+    "cattrs",
+    "coverage",
+    "pytest",
+    "pytest-cov",
+    "msgpack"
+]
+
+[tool.hatch.envs.test.scripts]
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
+run = "run-coverage --no-cov"
+
 [tool.ruff]
 line-length = 100
 exclude = [
