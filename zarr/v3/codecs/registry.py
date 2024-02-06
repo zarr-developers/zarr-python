@@ -4,12 +4,12 @@ from typing import Dict, NamedTuple, Type
 from importlib.metadata import EntryPoint, entry_points as get_entry_points
 
 from zarr.v3.abc.codec import Codec
-from zarr.v3.metadata import CodecMetadata
+from zarr.v3.common import NamedConfig
 
 
 class CodecRegistryItem(NamedTuple):
     codec_cls: Type[Codec]
-    codec_metadata_cls: Type[CodecMetadata]
+    codec_metadata_cls: Type[NamedConfig]
 
 
 __codec_registry: Dict[str, CodecRegistryItem] = {}
@@ -45,7 +45,7 @@ def _get_codec_item(key: str) -> CodecRegistryItem:
     raise KeyError(key)
 
 
-def get_codec_metadata_class(key: str) -> Type[CodecMetadata]:
+def get_codec_metadata_class(key: str) -> Type[NamedConfig]:
     return _get_codec_item(key).codec_metadata_cls
 
 

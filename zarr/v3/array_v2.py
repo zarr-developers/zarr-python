@@ -15,13 +15,15 @@ from zarr.v3.common import (
     ZATTRS_JSON,
     BytesLike,
     ChunkCoords,
+    NamedConfig,
+    RuntimeConfiguration,
     Selection,
     SliceSelection,
     concurrent_map,
     to_thread,
 )
 from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
-from zarr.v3.metadata import ArrayV2Metadata, RuntimeConfiguration
+from zarr.v3.metadata import ArrayV2Metadata
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -446,7 +448,6 @@ class ArrayV2:
             BloscCodecMetadata,
             BytesCodecConfigurationMetadata,
             BytesCodecMetadata,
-            CodecMetadata,
             DataType,
             GzipCodecConfigurationMetadata,
             GzipCodecMetadata,
@@ -473,7 +474,7 @@ class ArrayV2:
             self.metadata.filters is None or len(self.metadata.filters) == 0
         ), "Filters are not supported by v3."
 
-        codecs: List[CodecMetadata] = []
+        codecs: List[NamedConfig] = []
 
         if self.metadata.order == "F":
             codecs.append(

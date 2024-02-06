@@ -15,15 +15,17 @@ from typing import TYPE_CHECKING, Optional, Type
 
 import numpy as np
 
-from zarr.v3.common import BytesLike, SliceSelection
+from zarr.v3.common import BytesLike, NamedConfig, SliceSelection
+from zarr.v3.common import RuntimeConfiguration
 from zarr.v3.store import StorePath
 
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CoreArrayMetadata, CodecMetadata
+    from zarr.v3.metadata import CoreArrayMetadata
 
 
 class Codec(ABC):
+    metadata: NamedConfig
     is_fixed_size: bool
     array_metadata: CoreArrayMetadata
 
@@ -37,28 +39,26 @@ class Codec(ABC):
     @classmethod
     @abstractmethod
     def from_metadata(
-        cls, codec_metadata: "CodecMetadata", array_metadata: CoreArrayMetadata
+        cls, codec_metadata: "NamedConfig", array_metadata: CoreArrayMetadata
     ) -> Codec:
         pass
 
     @classmethod
     @abstractmethod
-    def get_metadata_class(cls) -> "Type[CodecMetadata]":
+    def get_metadata_class(cls) -> "Type[NamedConfig]":
         pass
 
 
 class ArrayArrayCodec(Codec):
     @abstractmethod
     async def decode(
-        self,
-        chunk_array: np.ndarray,
+        self, chunk_array: np.ndarray, runtime_configuration: RuntimeConfiguration
     ) -> np.ndarray:
         pass
 
     @abstractmethod
     async def encode(
-        self,
-        chunk_array: np.ndarray,
+        self, chunk_array: np.ndarray, runtime_configuration: RuntimeConfiguration
     ) -> Optional[np.ndarray]:
         pass
 
@@ -66,15 +66,13 @@ class ArrayArrayCodec(Codec):
 class ArrayBytesCodec(Codec):
     @abstractmethod
     async def decode(
-        self,
-        chunk_array: BytesLike,
+        self, chunk_array: BytesLike, runtime_configuration: RuntimeConfiguration
     ) -> np.ndarray:
         pass
 
     @abstractmethod
     async def encode(
-        self,
-        chunk_array: np.ndarray,
+        self, chunk_array: np.ndarray, runtime_configuration: RuntimeConfiguration
     ) -> Optional[BytesLike]:
         pass
 
@@ -103,14 +101,12 @@ class ArrayBytesCodecPartialEncodeMixin:
 class BytesBytesCodec(Codec):
     @abstractmethod
     async def decode(
-        self,
-        chunk_array: BytesLike,
+        self, chunk_array: BytesLike, runtime_configuration: RuntimeConfiguration
     ) -> BytesLike:
         pass
 
     @abstractmethod
     async def encode(
-        self,
-        chunk_array: BytesLike,
+        self, chunk_array: BytesLike, runtime_configuration: RuntimeConfiguration
     ) -> Optional[BytesLike]:
         pass

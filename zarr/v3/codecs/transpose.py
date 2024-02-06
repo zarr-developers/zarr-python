@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 
 from typing import (
     TYPE_CHECKING,
+    Any,
+    Dict,
     Literal,
     Optional,
     Tuple,
@@ -13,7 +15,7 @@ import numpy as np
 
 from zarr.v3.abc.codec import ArrayArrayCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.metadata import CodecMetadata
+from zarr.v3.common import NamedConfig, RuntimeConfiguration
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
@@ -33,12 +35,13 @@ class TransposeCodecMetadata:
 @dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
     array_metadata: CoreArrayMetadata
+    configuration: TransposeCodecConfigurationMetadata
     order: Tuple[int, ...]
     is_fixed_size = True
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: CodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: NamedConfig, array_metadata: CoreArrayMetadata
     ) -> TransposeCodec:
         assert isinstance(codec_metadata, TransposeCodecMetadata)
 
@@ -67,6 +70,7 @@ class TransposeCodec(ArrayArrayCodec):
 
         return cls(
             array_metadata=array_metadata,
+            configuration=TransposeCodecConfigurationMetadata(order=order),
             order=order,
         )
 
@@ -85,14 +89,12 @@ class TransposeCodec(ArrayArrayCodec):
                 self.array_metadata.chunk_shape[self.order[i]]
                 for i in range(self.array_metadata.ndim)
             ),
-            data_type=self.array_metadata.data_type,
+            dtype=self.array_metadata.dtype,
             fill_value=self.array_metadata.fill_value,
-            runtime_configuration=self.array_metadata.runtime_configuration,
         )
 
     async def decode(
-        self,
-        chunk_array: np.ndarray,
+        self, chunk_array: np.ndarray, runtime_configuration: RuntimeConfiguration
     ) -> np.ndarray:
         inverse_order = [0 for _ in range(self.array_metadata.ndim)]
         for x, i in enumerate(self.order):
@@ -101,8 +103,7 @@ class TransposeCodec(ArrayArrayCodec):
         return chunk_array
 
     async def encode(
-        self,
-        chunk_array: np.ndarray,
+        self, chunk_array: np.ndarray, runtime_configuration: RuntimeConfiguration
     ) -> Optional[np.ndarray]:
         chunk_array = chunk_array.transpose(self.order)
         return chunk_array

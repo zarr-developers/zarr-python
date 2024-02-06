@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from asyncio import AbstractEventLoop
 import contextvars
+from dataclasses import dataclass
 import functools
 from typing import (
     Any,
@@ -11,6 +13,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Protocol,
     Tuple,
     TypeVar,
     Union,
@@ -29,7 +32,7 @@ SliceSelection = Tuple[slice, ...]
 Selection = Union[slice, SliceSelection]
 
 """ 
-def ():
+def make_cattr():
     from zarr.v3.metadata import (
         ChunkKeyEncodingMetadata,
         CodecMetadata,
@@ -133,3 +136,20 @@ async def to_thread(func, /, *args, **kwargs):
     ctx = contextvars.copy_context()
     func_call = functools.partial(ctx.run, func, *args, **kwargs)
     return await loop.run_in_executor(None, func_call)
+
+
+class NamedConfig(Protocol):
+    @property
+    def name(self) -> str:
+        pass
+
+    @property
+    def configuration(self) -> Dict[str, Any]:
+        pass
+
+
+@dataclass(frozen=True)
+class RuntimeConfiguration:
+    order: Literal["C", "F"] = "C"
+    concurrency: Optional[int] = None
+    asyncio_loop: Optional[AbstractEventLoop] = None

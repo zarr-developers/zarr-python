@@ -8,7 +8,7 @@ from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.array_v2 import ArrayV2
 from zarr.v3.common import ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
-from zarr.v3.metadata import RuntimeConfiguration
+from zarr.v3.common import RuntimeConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 

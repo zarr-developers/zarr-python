@@ -3,31 +3,54 @@ from dataclasses import dataclass, field
 
 from typing import (
     TYPE_CHECKING,
-    Literal,
-    Optional,
-    Type,
 )
 
 import numpy as np
 
 from zarr.v3.abc.codec import ArrayBytesCodec
+from zarr.v3.abc.metadata import Metadata
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import BytesLike
-from zarr.v3.metadata import CodecMetadata
+from zarr.v3.common import BytesLike, RuntimeConfiguration
+from zarr.v3.common import NamedConfig
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import CoreArrayMetadata
+    from typing_extensions import Self
+    from typing import Any, Dict, Literal, Optional, Type
+
+
+def parse_endian(data: Any) -> Literal["big", "little"]:
+    if data in ("big", "little"):
+        return data
+    msg = f"Expected on of ('big', 'little'), got {data} instead."
+    raise ValueError(msg)
+
+
+def parse_name(data: Any) -> Literal["bytes"]:
+    if data == "bytes":
+        return data
+    msg = f"Expected 'bytes', got {data} instead."
+    raise ValueError(msg)
 
 
 @dataclass(frozen=True)
-class BytesCodecConfigurationMetadata:
+class BytesCodecConfigurationMetadata(Metadata):
     endian: Optional[Literal["big", "little"]] = "little"
 
+    def __init__(self, endian: Literal["big", "little"]):
+        endian_parsed = parse_endian(endian)
+        object.__setattr__(self, "endian", endian_parsed)
+
 
 @dataclass(frozen=True)
-class BytesCodecMetadata:
+class BytesCodecMetadata(Metadata):
     configuration: BytesCodecConfigurationMetadata
     name: Literal["bytes"] = field(default="bytes", init=False)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Self:
+        _ = parse_name(data.pop("name"))
+        return cls(**data)
 
 
 @dataclass(frozen=True)
@@ -38,7 +61,7 @@ class BytesCodec(ArrayBytesCodec):
 
     @classmethod
     def from_metadata(
-        cls, codec_metadata: CodecMetadata, array_metadata: CoreArrayMetadata
+        cls, codec_metadata: NamedConfig, array_metadata: CoreArrayMetadata
     ) -> BytesCodec:
         assert isinstance(codec_metadata, BytesCodecMetadata)
         assert (
@@ -64,17 +87,16 @@ class BytesCodec(ArrayBytesCodec):
             return sys.byteorder
 
     async def decode(
-        self,
-        chunk_bytes: BytesLike,
+        self, chunk_bytes: BytesLike, runtime_configuration: RuntimeConfiguration
     ) -> np.ndarray:
         if self.array_metadata.dtype.itemsize > 0:
             if self.configuration.endian == "little":
                 prefix = "<"
             else:
                 prefix = ">"
-            dtype = np.dtype(f"{prefix}{self.array_metadata.data_type.to_numpy_shortname()}")
+            dtype = np.dtype(f"{prefix}{self.array_metadata.dtype.str[1:]}")
         else:
-            dtype = np.dtype(f"|{self.array_metadata.data_type.to_numpy_shortname()}")
+            dtype = np.dtype(f"|{self.array_metadata.dtype.str[1:]}")
         chunk_array = np.frombuffer(chunk_bytes, dtype)
 
         # ensure correct chunk shape
@@ -85,8 +107,7 @@ class BytesCodec(ArrayBytesCodec):
         return chunk_array
 
     async def encode(
-        self,
-        chunk_array: np.ndarray,
+        self, chunk_array: np.ndarray, runtime_configuration: RuntimeConfiguration
     ) -> Optional[BytesLike]:
         if chunk_array.dtype.itemsize > 1:
             byteorder = self._get_byteorder(chunk_array)
