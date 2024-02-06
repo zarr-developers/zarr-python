@@ -87,6 +87,7 @@ extra-dependencies = [
     "lmdb",
     "zstandard",
     "crc32c",
+    "pytest-asyncio"
 ]
 
 [tool.hatch.envs.test.scripts]
