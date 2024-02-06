@@ -87,7 +87,6 @@ extra-dependencies = [
     "lmdb",
     "zstandard",
     "crc32c",
-    "bsddb3"
 ]
 
 [tool.hatch.envs.test.scripts]
