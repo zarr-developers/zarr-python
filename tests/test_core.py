@@ -35,7 +35,7 @@ from zarr._storage.store import (
     BaseStore,
     v3_api_available,
 )
-from .._storage.v3_storage_transformers import (
+from zarr._storage.v3_storage_transformers import (
     DummyStorageTransfomer,
     ShardingStorageTransformer,
     v3_sharding_available,
