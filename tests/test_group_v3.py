@@ -54,3 +54,14 @@ def test_group(store_path) -> None:
     # and the attrs were modified in the store
     bar3 = foo["bar"]
     assert dict(bar3.attrs) == {"baz": "qux", "name": "bar"}
+
+
+def test_group_sync_constructor(store_path) -> None:
+
+    group = Group.create(
+        store=store_path,
+        attributes={"title": "test 123"},
+        runtime_configuration=RuntimeConfiguration(),
+    )
+
+    assert group._async_group.metadata.attributes["title"] == "test 123"

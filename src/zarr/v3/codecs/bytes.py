@@ -27,7 +27,7 @@ class BytesCodecConfigurationMetadata:
 @frozen
 class BytesCodecMetadata:
     configuration: BytesCodecConfigurationMetadata
-    name: Literal["bytes"] = field(default="bytes", init=False)
+    name: Literal["bytes"] = field(default="bytes", init=True)
 
 
 @frozen
