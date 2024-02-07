@@ -1,13 +1,3 @@
-# Notes:
-# 1. These are missing methods described in the spec. I expected to see these method definitions:
-# def compute_encoded_representation_type(self, decoded_representation_type):
-# def encode(self, decoded_value):
-# def decode(self, encoded_value, decoded_representation_type):
-# def partial_decode(self, input_handle, decoded_representation_type, decoded_regions):
-# def compute_encoded_size(self, input_size):
-# 2. Understand why array metadata is included on all codecs
-
-
 from __future__ import annotations
 
 from abc import abstractmethod, ABC
@@ -20,30 +10,39 @@ from zarr.v3.store import StorePath
 
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CoreArrayMetadata, CodecMetadata
+    from zarr.v3.metadata import (
+        ArraySpec,
+        ArrayMetadata,
+        DataType,
+        CodecMetadata,
+        RuntimeConfiguration,
+    )
 
 
 class Codec(ABC):
     is_fixed_size: bool
-    array_metadata: CoreArrayMetadata
-
-    @abstractmethod
-    def compute_encoded_size(self, input_byte_length: int) -> int:
-        pass
-
-    def resolve_metadata(self) -> CoreArrayMetadata:
-        return self.array_metadata
 
     @classmethod
     @abstractmethod
-    def from_metadata(
-        cls, codec_metadata: "CodecMetadata", array_metadata: CoreArrayMetadata
-    ) -> Codec:
+    def get_metadata_class(cls) -> Type[CodecMetadata]:
         pass
 
     @classmethod
     @abstractmethod
-    def get_metadata_class(cls) -> "Type[CodecMetadata]":
+    def from_metadata(cls, codec_metadata: CodecMetadata) -> Codec:
+        pass
+
+    @abstractmethod
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        pass
+
+    def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
+        return chunk_spec
+
+    def evolve(self, *, ndim: int, data_type: DataType) -> Codec:
+        return self
+
+    def validate(self, array_metadata: ArrayMetadata) -> None:
         pass
 
 
@@ -52,6 +51,8 @@ class ArrayArrayCodec(Codec):
     async def decode(
         self,
         chunk_array: np.ndarray,
+        chunk_spec: ArraySpec,
+        runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         pass
 
@@ -59,6 +60,8 @@ class ArrayArrayCodec(Codec):
     async def encode(
         self,
         chunk_array: np.ndarray,
+        chunk_spec: ArraySpec,
+        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         pass
 
@@ -68,6 +71,8 @@ class ArrayBytesCodec(Codec):
     async def decode(
         self,
         chunk_array: BytesLike,
+        chunk_spec: ArraySpec,
+        runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         pass
 
@@ -75,6 +80,8 @@ class ArrayBytesCodec(Codec):
     async def encode(
         self,
         chunk_array: np.ndarray,
+        chunk_spec: ArraySpec,
+        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         pass
 
@@ -85,6 +92,8 @@ class ArrayBytesCodecPartialDecodeMixin:
         self,
         store_path: StorePath,
         selection: SliceSelection,
+        chunk_spec: ArraySpec,
+        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         pass
 
@@ -96,6 +105,8 @@ class ArrayBytesCodecPartialEncodeMixin:
         store_path: StorePath,
         chunk_array: np.ndarray,
         selection: SliceSelection,
+        chunk_spec: ArraySpec,
+        runtime_configuration: RuntimeConfiguration,
     ) -> None:
         pass
 
@@ -105,6 +116,8 @@ class BytesBytesCodec(Codec):
     async def decode(
         self,
         chunk_array: BytesLike,
+        chunk_spec: ArraySpec,
+        runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         pass
 
@@ -112,5 +125,7 @@ class BytesBytesCodec(Codec):
     async def encode(
         self,
         chunk_array: BytesLike,
+        chunk_spec: ArraySpec,
+        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         pass

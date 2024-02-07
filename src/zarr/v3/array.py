@@ -16,11 +16,10 @@ from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
 import numpy as np
 from attr import evolve, frozen
 
-from zarr.v3.abc.codec import ArrayBytesCodecPartialDecodeMixin
-
 
 # from zarr.v3.array_v2 import ArrayV2
 from zarr.v3.codecs import CodecMetadata, CodecPipeline, bytes_codec
+from zarr.v3.codecs.registry import get_codec_from_metadata
 from zarr.v3.common import (
     ZARR_JSON,
     ChunkCoords,
@@ -31,6 +30,7 @@ from zarr.v3.common import (
 from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.metadata import (
     ArrayMetadata,
+    ArraySpec,
     DataType,
     DefaultChunkKeyEncodingConfigurationMetadata,
     DefaultChunkKeyEncodingMetadata,
@@ -41,7 +41,6 @@ from zarr.v3.metadata import (
     V2ChunkKeyEncodingMetadata,
     dtype_to_data_type,
 )
-from zarr.v3.codecs.sharding import ShardingCodec
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -118,8 +117,11 @@ class AsyncArray:
             metadata=metadata,
             store_path=store_path,
             runtime_configuration=runtime_configuration,
-            codec_pipeline=CodecPipeline.from_metadata(
-                metadata.codecs, metadata.get_core_metadata(runtime_configuration)
+            codec_pipeline=CodecPipeline.create(
+                [
+                    get_codec_from_metadata(codec).evolve(ndim=len(shape), data_type=data_type)
+                    for codec in codecs
+                ]
             ),
         )
 
@@ -134,13 +136,17 @@ class AsyncArray:
         runtime_configuration: RuntimeConfiguration,
     ) -> AsyncArray:
         metadata = ArrayMetadata.from_json(zarr_json)
+        codecs = [
+            get_codec_from_metadata(codec).evolve(
+                ndim=len(metadata.shape), data_type=metadata.data_type
+            )
+            for codec in metadata.codecs
+        ]
         async_array = cls(
             metadata=metadata,
             store_path=store_path,
             runtime_configuration=runtime_configuration,
-            codec_pipeline=CodecPipeline.from_metadata(
-                metadata.codecs, metadata.get_core_metadata(runtime_configuration)
-            ),
+            codec_pipeline=CodecPipeline.create(codecs),
         )
         async_array._validate_metadata()
         return async_array
@@ -240,6 +246,7 @@ class AsyncArray:
             self.metadata.dimension_names
         ), "`dimension_names` and `shape` need to have the same number of dimensions."
         assert self.metadata.fill_value is not None, "`fill_value` is required."
+        self.codec_pipeline.validate(self.metadata)
 
     async def _read_chunk(
         self,
@@ -248,15 +255,14 @@ class AsyncArray:
         out_selection: SliceSelection,
         out: np.ndarray,
     ):
+        chunk_spec = self.metadata.get_chunk_spec(chunk_coords)
         chunk_key_encoding = self.metadata.chunk_key_encoding
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
         store_path = self.store_path / chunk_key
 
-        if len(self.codec_pipeline.codecs) == 1 and isinstance(
-            self.codec_pipeline.codecs[0], ArrayBytesCodecPartialDecodeMixin
-        ):
-            chunk_array = await self.codec_pipeline.codecs[0].decode_partial(
-                store_path, chunk_selection
+        if self.codec_pipeline.supports_partial_decode:
+            chunk_array = await self.codec_pipeline.decode_partial(
+                store_path, chunk_selection, chunk_spec, self.runtime_configuration
             )
             if chunk_array is not None:
                 out[out_selection] = chunk_array
@@ -265,7 +271,9 @@ class AsyncArray:
         else:
             chunk_bytes = await store_path.get()
             if chunk_bytes is not None:
-                chunk_array = await self.codec_pipeline.decode(chunk_bytes)
+                chunk_array = await self.codec_pipeline.decode(
+                    chunk_bytes, chunk_spec, self.runtime_configuration
+                )
                 tmp = chunk_array[chunk_selection]
                 out[out_selection] = tmp
             else:
@@ -316,6 +324,7 @@ class AsyncArray:
         chunk_selection: SliceSelection,
         out_selection: SliceSelection,
     ):
+        chunk_spec = self.metadata.get_chunk_spec(chunk_coords)
         chunk_key_encoding = self.metadata.chunk_key_encoding
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
         store_path = self.store_path / chunk_key
@@ -330,17 +339,16 @@ class AsyncArray:
                 chunk_array.fill(value)
             else:
                 chunk_array = value[out_selection]
-            await self._write_chunk_to_store(store_path, chunk_array)
+            await self._write_chunk_to_store(store_path, chunk_array, chunk_spec)
 
-        elif len(self.codec_pipeline.codecs) == 1 and isinstance(
-            self.codec_pipeline.codecs[0], ShardingCodec
-        ):
-            sharding_codec = self.codec_pipeline.codecs[0]
+        elif self.codec_pipeline.supports_partial_encode:
             # print("encode_partial", chunk_coords, chunk_selection, repr(self))
-            await sharding_codec.encode_partial(
+            await self.codec_pipeline.encode_partial(
                 store_path,
                 value[out_selection],
                 chunk_selection,
+                chunk_spec,
+                self.runtime_configuration,
             )
         else:
             # writing partial chunks
@@ -356,18 +364,24 @@ class AsyncArray:
                 chunk_array.fill(self.metadata.fill_value)
             else:
                 chunk_array = (
-                    await self.codec_pipeline.decode(chunk_bytes)
+                    await self.codec_pipeline.decode(
+                        chunk_bytes, chunk_spec, self.runtime_configuration
+                    )
                 ).copy()  # make a writable copy
             chunk_array[chunk_selection] = value[out_selection]
 
-            await self._write_chunk_to_store(store_path, chunk_array)
+            await self._write_chunk_to_store(store_path, chunk_array, chunk_spec)
 
-    async def _write_chunk_to_store(self, store_path: StorePath, chunk_array: np.ndarray):
+    async def _write_chunk_to_store(
+        self, store_path: StorePath, chunk_array: np.ndarray, chunk_spec: ArraySpec
+    ):
         if np.all(chunk_array == self.metadata.fill_value):
             # chunks that only contain fill_value will be removed
             await store_path.delete()
         else:
-            chunk_bytes = await self.codec_pipeline.encode(chunk_array)
+            chunk_bytes = await self.codec_pipeline.encode(
+                chunk_array, chunk_spec, self.runtime_configuration
+            )
             if chunk_bytes is None:
                 await store_path.delete()
             else:
