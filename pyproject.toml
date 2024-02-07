@@ -44,6 +44,7 @@ jupyter = [
 ]
 docs = [
     'sphinx',
+    'sphinx-autobuild>=2021.3.14',
     'sphinx-automodapi',
     'sphinx_design',
     'sphinx-issues',
@@ -94,6 +95,14 @@ extra-dependencies = [
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
+
+[tool.hatch.envs.docs]
+features = ['docs']
+
+[tool.hatch.envs.docs.scripts]
+build = "sphinx-build docs/ docs/_build/"
+rtd = "sphinx-build docs/ _readthedocs/html/"
+serve = "sphinx-autobuild docs docs/_build --ignore 'docs/_autoapi/**/*' --host 0.0.0.0"
 
 [tool.ruff]
 line-length = 100
