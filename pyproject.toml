@@ -99,26 +99,13 @@ features = ["extra"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.11"]
-numpy = ["1.24"]
-version = ["minimal-legacy"]
+numpy = ["1.24", "1.26"]
+version = ["minimal"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.11"]
-numpy = ["1.26"]
+numpy = ["1.24", "1.26"]
 features = ["optional"]
-version = ["minimal-latest"]
-
-[[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11"]
-numpy = ["1.24"]
-features = ["optional"]
-version = ["legacy"]
-
-[[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11"]
-numpy = ["1.26"]
-features = ["optional"]
-version = ["latest"]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
