@@ -1,7 +1,7 @@
 from typing import Optional
+
 import numpy as np
 import pytest
-
 from numcodecs.abc import Codec
 from numcodecs.compat import ensure_contiguous_ndarray_like
 from numcodecs.registry import get_codec, register_codec
@@ -9,7 +9,7 @@ from numcodecs.registry import get_codec, register_codec
 import zarr.codecs
 from zarr.core import Array
 from zarr.creation import array, empty, full, ones, open_array, zeros
-from zarr.hierarchy import open_group, group
+from zarr.hierarchy import group, open_group
 from zarr.storage import DirectoryStore, MemoryStore, Store, ZipStore
 
 
@@ -136,7 +136,7 @@ def test_array(tmp_path, module, compressor, store_type):
     store = init_store(tmp_path / "from_list", store_type)
     a = list(range(100))
     z = array(a, chunks=10, compressor=compressor, store=store, meta_array=xp.empty(()))
-    assert (100,) == z.shape
+    assert z.shape == (100,)
     assert np.asarray(a).dtype == z.dtype
     xp.testing.assert_array_equal(a, z[:])
 
@@ -175,8 +175,8 @@ def test_empty(module, compressor):
         compressor=compressor,
         meta_array=xp.empty(()),
     )
-    assert (100,) == z.shape
-    assert (10,) == z.chunks
+    assert z.shape == (100,)
+    assert z.chunks == (10,)
 
 
 @pytest.mark.parametrize("module, compressor", param_module_and_compressor)
@@ -188,8 +188,8 @@ def test_zeros(module, compressor):
         compressor=compressor,
         meta_array=xp.empty(()),
     )
-    assert (100,) == z.shape
-    assert (10,) == z.chunks
+    assert z.shape == (100,)
+    assert z.chunks == (10,)
     xp.testing.assert_array_equal(np.zeros(100), z[:])
 
 
@@ -202,8 +202,8 @@ def test_ones(module, compressor):
         compressor=compressor,
         meta_array=xp.empty(()),
     )
-    assert (100,) == z.shape
-    assert (10,) == z.chunks
+    assert z.shape == (100,)
+    assert z.chunks == (10,)
     xp.testing.assert_array_equal(np.ones(100), z[:])
 
 
@@ -218,8 +218,8 @@ def test_full(module, compressor):
         compressor=compressor,
         meta_array=xp.empty(()),
     )
-    assert (100,) == z.shape
-    assert (10,) == z.chunks
+    assert z.shape == (100,)
+    assert z.chunks == (10,)
     xp.testing.assert_array_equal(np.full(100, fill_value=42, dtype="i4"), z[:])
 
     # nan

@@ -4,10 +4,9 @@ from typing import (
     TYPE_CHECKING,
     Literal,
     Optional,
-    Type,
 )
 
-from attr import frozen, field
+from attr import field, frozen
 from numcodecs.gzip import GZip
 
 from zarr.v3.abc.codec import BytesBytesCodec
@@ -41,7 +40,7 @@ class GzipCodec(BytesBytesCodec):
         return cls(configuration=codec_metadata.configuration)
 
     @classmethod
-    def get_metadata_class(cls) -> Type[GzipCodecMetadata]:
+    def get_metadata_class(cls) -> type[GzipCodecMetadata]:
         return GzipCodecMetadata
 
     async def decode(

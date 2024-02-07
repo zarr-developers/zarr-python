@@ -1,28 +1,21 @@
 from __future__ import annotations
-from functools import cached_property, lru_cache
 
+from collections.abc import Awaitable, Callable, Iterator, Mapping
+from functools import cached_property, lru_cache
 from typing import (
-    Awaitable,
-    Callable,
-    Iterator,
-    List,
     Literal,
-    Mapping,
     NamedTuple,
     Optional,
-    Set,
-    Tuple,
-    Type,
 )
-from attr import field, frozen
 
 import numpy as np
+from attr import field, frozen
+
 from zarr.v3.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
 )
-
 from zarr.v3.codecs import CodecPipeline
 from zarr.v3.codecs.registry import get_codec_from_metadata, register_codec
 from zarr.v3.common import (
@@ -41,11 +34,13 @@ from zarr.v3.indexing import (
 from zarr.v3.metadata import (
     ArrayMetadata,
     ArraySpec,
-    DataType,
     CodecMetadata,
+    DataType,
     RegularChunkGridMetadata,
-    ShardingCodecIndexLocation,
     RuntimeConfiguration,
+    ShardingCodecIndexLocation,
+)
+from zarr.v3.metadata import (
     runtime_configuration as make_runtime_configuration,
 )
 from zarr.v3.store import StorePath
@@ -56,8 +51,8 @@ MAX_UINT_64 = 2**64 - 1
 @frozen
 class ShardingCodecConfigurationMetadata:
     chunk_shape: ChunkCoords
-    codecs: Tuple[CodecMetadata, ...]
-    index_codecs: Tuple[CodecMetadata, ...]
+    codecs: tuple[CodecMetadata, ...]
+    index_codecs: tuple[CodecMetadata, ...]
     index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end
 
 
@@ -84,7 +79,7 @@ class _ShardIndex(NamedTuple):
     def is_all_empty(self) -> bool:
         return bool(np.array_equiv(self.offsets_and_lengths, MAX_UINT_64))
 
-    def get_chunk_slice(self, chunk_coords: ChunkCoords) -> Optional[Tuple[int, int]]:
+    def get_chunk_slice(self, chunk_coords: ChunkCoords) -> Optional[tuple[int, int]]:
         localized_chunk = self._localize_chunk(chunk_coords)
         chunk_start, chunk_len = self.offsets_and_lengths[localized_chunk]
         if (chunk_start, chunk_len) == (MAX_UINT_64, MAX_UINT_64):
@@ -178,7 +173,7 @@ class _ShardBuilder(_ShardProxy):
     def merge_with_morton_order(
         cls,
         chunks_per_shard: ChunkCoords,
-        tombstones: Set[ChunkCoords],
+        tombstones: set[ChunkCoords],
         *shard_dicts: Mapping[ChunkCoords, BytesLike],
     ) -> _ShardBuilder:
         obj = cls.create_empty(chunks_per_shard)
@@ -237,7 +232,7 @@ class ShardingCodec(
         return cls(configuration=codec_metadata.configuration)
 
     @classmethod
-    def get_metadata_class(cls) -> Type[ShardingCodecMetadata]:
+    def get_metadata_class(cls) -> type[ShardingCodecMetadata]:
         return ShardingCodecMetadata
 
     def validate(self, array_metadata: ArrayMetadata) -> None:
@@ -420,7 +415,7 @@ class ShardingCodec(
             chunk_coords: ChunkCoords,
             chunk_selection: SliceSelection,
             out_selection: SliceSelection,
-        ) -> Tuple[ChunkCoords, Optional[BytesLike]]:
+        ) -> tuple[ChunkCoords, Optional[BytesLike]]:
             if is_total_slice(chunk_selection, chunk_shape):
                 chunk_array = shard_array[out_selection]
             else:
@@ -442,7 +437,7 @@ class ShardingCodec(
             return (chunk_coords, None)
 
         # assembling and encoding chunks within the shard
-        encoded_chunks: List[Tuple[ChunkCoords, Optional[BytesLike]]] = await concurrent_map(
+        encoded_chunks: list[tuple[ChunkCoords, Optional[BytesLike]]] = await concurrent_map(
             [
                 (shard_array, chunk_coords, chunk_selection, out_selection)
                 for chunk_coords, chunk_selection, out_selection in indexer
@@ -480,7 +475,7 @@ class ShardingCodec(
             await self._load_full_shard_maybe(store_path, chunks_per_shard)
         ) or _ShardProxy.create_empty(chunks_per_shard)
         new_shard_builder = _ShardBuilder.create_empty(chunks_per_shard)
-        tombstones: Set[ChunkCoords] = set()
+        tombstones: set[ChunkCoords] = set()
 
         indexer = list(
             BasicIndexer(
@@ -494,7 +489,7 @@ class ShardingCodec(
             chunk_coords: ChunkCoords,
             chunk_selection: SliceSelection,
             out_selection: SliceSelection,
-        ) -> Tuple[ChunkCoords, Optional[BytesLike]]:
+        ) -> tuple[ChunkCoords, Optional[BytesLike]]:
             chunk_array = None
             if is_total_slice(chunk_selection, self.configuration.chunk_shape):
                 chunk_array = shard_array[out_selection]
@@ -528,7 +523,7 @@ class ShardingCodec(
             else:
                 return (chunk_coords, None)
 
-        encoded_chunks: List[Tuple[ChunkCoords, Optional[BytesLike]]] = await concurrent_map(
+        encoded_chunks: list[tuple[ChunkCoords, Optional[BytesLike]]] = await concurrent_map(
             [
                 (
                     chunk_coords,
@@ -565,7 +560,7 @@ class ShardingCodec(
             )
 
     def _is_total_shard(
-        self, all_chunk_coords: Set[ChunkCoords], chunks_per_shard: ChunkCoords
+        self, all_chunk_coords: set[ChunkCoords], chunks_per_shard: ChunkCoords
     ) -> bool:
         return len(all_chunk_coords) == product(chunks_per_shard) and all(
             chunk_coords in all_chunk_coords for chunk_coords in c_order_iter(chunks_per_shard)

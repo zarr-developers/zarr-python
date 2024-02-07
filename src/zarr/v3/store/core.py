@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union
+from typing import Optional, Union
 
-from zarr.v3.common import BytesLike
 from zarr.v3.abc.store import Store
+from zarr.v3.common import BytesLike
 
 
 def _dereference_path(root: str, path: str) -> str:
@@ -29,11 +29,11 @@ class StorePath:
         return cls(Store.from_path(pth))
 
     async def get(
-        self, byte_range: Optional[Tuple[int, Optional[int]]] = None
+        self, byte_range: Optional[tuple[int, Optional[int]]] = None
     ) -> Optional[BytesLike]:
         return await self.store.get(self.path, byte_range)
 
-    async def set(self, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None) -> None:
+    async def set(self, value: BytesLike, byte_range: Optional[tuple[int, int]] = None) -> None:
         if byte_range is not None:
             raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)
@@ -51,9 +51,9 @@ class StorePath:
         return _dereference_path(str(self.store), self.path)
 
     def __repr__(self) -> str:
-        return f"StorePath({self.store.__class__.__name__}, {repr(str(self))})"
+        return f"StorePath({self.store.__class__.__name__}, {str(self)!r})"
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         try:
             if self.store == other.store and self.path == other.path:
                 return True

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from asyncio import AbstractEventLoop
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Union
+from typing import Any, Literal, Optional, Protocol, Union
 
 import numpy as np
 from attr import asdict, field, frozen
@@ -181,12 +181,12 @@ class ArraySpec:
 class ArrayMetadata:
     shape: ChunkCoords
     data_type: DataType
-    chunk_grid: RegularChunkGridMetadata
-    chunk_key_encoding: ChunkKeyEncodingMetadata
+    chunk_grid: Union[RegularChunkGridMetadata|xx]
+    chunk_key_encoding: Optional[ChunkKeyEncodingMetadata]
     fill_value: Any
-    codecs: List[CodecMetadata]
-    attributes: Dict[str, Any] = field(factory=dict)
-    dimension_names: Optional[Tuple[str, ...]] = None
+    codecs: list[CodecMetadata]
+    attributes: dict[str, Any] = field(factory=dict)
+    dimension_names: Optional[tuple[str, ...]] = None
     zarr_format: Literal[3] = 3
     node_type: Literal["array"] = "array"
 
@@ -234,9 +234,9 @@ class ArrayV2Metadata:
     dtype: np.dtype
     fill_value: Union[None, int, float] = 0
     order: Literal["C", "F"] = "C"
-    filters: Optional[List[Dict[str, Any]]] = None
+    filters: Optional[list[dict[str, Any]]] = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: Optional[Dict[str, Any]] = None
+    compressor: Optional[dict[str, Any]] = None
     zarr_format: Literal[2] = 2
 
     @property

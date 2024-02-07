@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Union
 
 import numcodecs
 import numpy as np
@@ -51,7 +51,7 @@ class _AsyncArraySelectionProxy:
 @frozen
 class ArrayV2:
     metadata: ArrayV2Metadata
-    attributes: Optional[Dict[str, Any]]
+    attributes: Optional[dict[str, Any]]
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
 
@@ -66,9 +66,9 @@ class ArrayV2:
         dimension_separator: Literal[".", "/"] = ".",
         fill_value: Optional[Union[None, int, float]] = None,
         order: Literal["C", "F"] = "C",
-        filters: Optional[List[Dict[str, Any]]] = None,
-        compressor: Optional[Dict[str, Any]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        filters: Optional[list[dict[str, Any]]] = None,
+        compressor: Optional[dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> ArrayV2:
@@ -112,9 +112,9 @@ class ArrayV2:
         dimension_separator: Literal[".", "/"] = ".",
         fill_value: Optional[Union[None, int, float]] = None,
         order: Literal["C", "F"] = "C",
-        filters: Optional[List[Dict[str, Any]]] = None,
-        compressor: Optional[Dict[str, Any]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        filters: Optional[list[dict[str, Any]]] = None,
+        compressor: Optional[dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> ArrayV2:
@@ -440,16 +440,6 @@ class ArrayV2:
         from sys import byteorder as sys_byteorder
 
         from zarr.v3.array import Array
-        from zarr.v3.common import ZARR_JSON
-        from zarr.v3.metadata import (
-            ArrayMetadata,
-            DataType,
-            RegularChunkGridConfigurationMetadata,
-            RegularChunkGridMetadata,
-            V2ChunkKeyEncodingConfigurationMetadata,
-            V2ChunkKeyEncodingMetadata,
-            dtype_to_data_type,
-        )
         from zarr.v3.codecs.blosc import (
             BloscCodecConfigurationMetadata,
             BloscCodecMetadata,
@@ -467,6 +457,16 @@ class ArrayV2:
             TransposeCodecConfigurationMetadata,
             TransposeCodecMetadata,
         )
+        from zarr.v3.common import ZARR_JSON
+        from zarr.v3.metadata import (
+            ArrayMetadata,
+            DataType,
+            RegularChunkGridConfigurationMetadata,
+            RegularChunkGridMetadata,
+            V2ChunkKeyEncodingConfigurationMetadata,
+            V2ChunkKeyEncodingMetadata,
+            dtype_to_data_type,
+        )
 
         data_type = DataType[dtype_to_data_type[self.metadata.dtype.str]]
         endian: Literal["little", "big"]
@@ -481,7 +481,7 @@ class ArrayV2:
             self.metadata.filters is None or len(self.metadata.filters) == 0
         ), "Filters are not supported by v3."
 
-        codecs: List[CodecMetadata] = []
+        codecs: list[CodecMetadata] = []
 
         if self.metadata.order == "F":
             codecs.append(
@@ -548,11 +548,11 @@ class ArrayV2:
             runtime_configuration=self.runtime_configuration,
         )
 
-    async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> ArrayV2:
+    async def update_attributes_async(self, new_attributes: dict[str, Any]) -> ArrayV2:
         await (self.store_path / ZATTRS_JSON).set_async(json.dumps(new_attributes).encode())
         return evolve(self, attributes=new_attributes)
 
-    def update_attributes(self, new_attributes: Dict[str, Any]) -> ArrayV2:
+    def update_attributes(self, new_attributes: dict[str, Any]) -> ArrayV2:
         return sync(
             self.update_attributes_async(new_attributes),
             self.runtime_configuration.asyncio_loop,

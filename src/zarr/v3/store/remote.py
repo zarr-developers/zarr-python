@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from zarr.v3.abc.store import Store
-from zarr.v3.store.core import _dereference_path
 from zarr.v3.common import BytesLike
-
+from zarr.v3.store.core import _dereference_path
 
 if TYPE_CHECKING:
-    from upath import UPath
     from fsspec.asyn import AsyncFileSystem
+    from upath import UPath
 
 
 class RemoteStore(Store):
@@ -19,9 +18,9 @@ class RemoteStore(Store):
 
     root: UPath
 
-    def __init__(self, url: Union[UPath, str], **storage_options: Dict[str, Any]):
-        from upath import UPath
+    def __init__(self, url: Union[UPath, str], **storage_options: dict[str, Any]):
         import fsspec
+        from upath import UPath
 
         if isinstance(url, str):
             self.root = UPath(url, **storage_options)
@@ -39,9 +38,9 @@ class RemoteStore(Store):
         return str(self.root)
 
     def __repr__(self) -> str:
-        return f"RemoteStore({repr(str(self))})"
+        return f"RemoteStore({str(self)!r})"
 
-    def _make_fs(self) -> Tuple[AsyncFileSystem, str]:
+    def _make_fs(self) -> tuple[AsyncFileSystem, str]:
         import fsspec
 
         storage_options = self.root._kwargs.copy()
@@ -51,7 +50,7 @@ class RemoteStore(Store):
         return fs, root
 
     async def get(
-        self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
+        self, key: str, byte_range: Optional[tuple[int, Optional[int]]] = None
     ) -> Optional[BytesLike]:
         assert isinstance(key, str)
         fs, root = self._make_fs()
@@ -69,7 +68,7 @@ class RemoteStore(Store):
         return value
 
     async def set(
-        self, key: str, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None
+        self, key: str, value: BytesLike, byte_range: Optional[tuple[int, int]] = None
     ) -> None:
         assert isinstance(key, str)
         fs, root = self._make_fs()

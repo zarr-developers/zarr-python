@@ -3,11 +3,12 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Literal, Optional, Union, AsyncIterator, Iterator, List
+from collections.abc import AsyncIterator, Iterator
+from typing import Any, Literal, Optional, Union
 
 from attr import asdict, field, frozen  # , validators
 
-from zarr.v3.array import AsyncArray, Array
+from zarr.v3.array import Array, AsyncArray
 from zarr.v3.attributes import Attributes
 from zarr.v3.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, make_cattr
 from zarr.v3.config import RuntimeConfiguration, SyncConfiguration
@@ -19,11 +20,11 @@ logger = logging.getLogger("zarr.group")
 
 @frozen
 class GroupMetadata:
-    attributes: Dict[str, Any] = field(factory=dict)
+    attributes: dict[str, Any] = field(factory=dict)
     zarr_format: Literal[2, 3] = 3
     node_type: Literal["group"] = field(default="group", init=True)
 
-    def to_bytes(self) -> Dict[str, bytes]:
+    def to_bytes(self) -> dict[str, bytes]:
         if self.zarr_format == 3:
             return {ZARR_JSON: json.dumps(asdict(self)).encode()}
         elif self.zarr_format == 2:
@@ -50,7 +51,7 @@ class AsyncGroup:
         cls,
         store: StoreLike,
         *,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         exists_ok: bool = False,
         zarr_format: Literal[2, 3] = 3,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
@@ -218,7 +219,7 @@ class AsyncGroup:
             **kwargs,
         )
 
-    async def update_attributes(self, new_attributes: Dict[str, Any]):
+    async def update_attributes(self, new_attributes: dict[str, Any]):
         # metadata.attributes is "frozen" so we simply clear and update the dict
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -301,7 +302,7 @@ class Group(SyncMixin):
         cls,
         store: StoreLike,
         *,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Group:
@@ -360,7 +361,7 @@ class Group(SyncMixin):
     def info(self):
         return self._async_group.info
 
-    def update_attributes(self, new_attributes: Dict[str, Any]):
+    def update_attributes(self, new_attributes: dict[str, Any]):
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
@@ -369,7 +370,7 @@ class Group(SyncMixin):
         return self._sync(self._async_group.nchildren)
 
     @property
-    def children(self) -> List[Array, Group]:
+    def children(self) -> list[Array, Group]:
         _children = self._sync_iter(self._async_group.children)
         return [Array(obj) if isinstance(obj, AsyncArray) else Group(obj) for obj in _children]
 
@@ -379,14 +380,14 @@ class Group(SyncMixin):
     def group_keys(self) -> Iterator[str]:
         return self._sync_iter(self._async_group.group_keys)
 
-    def groups(self) -> List[Group]:
+    def groups(self) -> list[Group]:
         # TODO: in v2 this was a generator that return key: Group
         return [Group(obj) for obj in self._sync_iter(self._async_group.groups)]
 
-    def array_keys(self) -> List[str]:
+    def array_keys(self) -> list[str]:
         return self._sync_iter(self._async_group.array_keys)
 
-    def arrays(self) -> List[Array]:
+    def arrays(self) -> list[Array]:
         return [Array(obj) for obj in self._sync_iter(self._async_group.arrays)]
 
     def tree(self, expand=False, level=None) -> Any:

@@ -1,9 +1,9 @@
-import pytest
 import numpy as np
+import pytest
 
+from zarr.v3.config import RuntimeConfiguration
 from zarr.v3.group import AsyncGroup, Group, GroupMetadata
 from zarr.v3.store import LocalStore, StorePath
-from zarr.v3.config import RuntimeConfiguration
 
 
 @pytest.fixture

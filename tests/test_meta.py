@@ -9,18 +9,18 @@ from zarr.codecs import Blosc, Delta, Pickle, Zlib
 from zarr.errors import MetadataError
 from zarr.meta import (
     ZARR_FORMAT,
+    Metadata3,
+    _default_entry_point_metadata_v3,
+    _v3_complex_types,
+    _v3_datetime_types,
     decode_array_metadata,
     decode_dtype,
+    decode_fill_value,
     decode_group_metadata,
     encode_array_metadata,
     encode_dtype,
     encode_fill_value,
-    decode_fill_value,
     get_extended_dtype_info,
-    _v3_complex_types,
-    _v3_datetime_types,
-    _default_entry_point_metadata_v3,
-    Metadata3,
 )
 from zarr.util import normalize_dtype, normalize_fill_value
 
@@ -65,7 +65,7 @@ def test_encode_decode_array_1():
 
     # test decoding
     meta_dec = decode_array_metadata(meta_enc)
-    assert ZARR_FORMAT == meta_dec["zarr_format"]
+    assert meta_dec["zarr_format"] == ZARR_FORMAT
     assert meta["shape"] == meta_dec["shape"]
     assert meta["chunks"] == meta_dec["chunks"]
     assert meta["dtype"] == meta_dec["dtype"]
@@ -120,7 +120,7 @@ def test_encode_decode_array_2():
 
     # test decoding
     meta_dec = decode_array_metadata(meta_enc)
-    assert ZARR_FORMAT == meta_dec["zarr_format"]
+    assert meta_dec["zarr_format"] == ZARR_FORMAT
     assert meta["shape"] == meta_dec["shape"]
     assert meta["chunks"] == meta_dec["chunks"]
     assert meta["dtype"] == meta_dec["dtype"]
@@ -174,7 +174,7 @@ def test_encode_decode_array_complex():
 
         # test decoding
         meta_dec = decode_array_metadata(meta_enc)
-        assert ZARR_FORMAT == meta_dec["zarr_format"]
+        assert meta_dec["zarr_format"] == ZARR_FORMAT
         assert meta["shape"] == meta_dec["shape"]
         assert meta["chunks"] == meta_dec["chunks"]
         assert meta["dtype"] == meta_dec["dtype"]
@@ -232,7 +232,7 @@ def test_encode_decode_array_datetime_timedelta():
 
         # test decoding
         meta_dec = decode_array_metadata(meta_enc)
-        assert ZARR_FORMAT == meta_dec["zarr_format"]
+        assert meta_dec["zarr_format"] == ZARR_FORMAT
         assert meta["shape"] == meta_dec["shape"]
         assert meta["chunks"] == meta_dec["chunks"]
         assert meta["dtype"] == meta_dec["dtype"]
@@ -278,7 +278,7 @@ def test_encode_decode_array_dtype_shape():
 
     # test decoding
     meta_dec = decode_array_metadata(meta_enc)
-    assert ZARR_FORMAT == meta_dec["zarr_format"]
+    assert meta_dec["zarr_format"] == ZARR_FORMAT
     # to maintain consistency with numpy unstructured arrays, unpack dimensions into shape
     assert meta["shape"] + meta["dtype"].shape == meta_dec["shape"]
     assert meta["chunks"] == meta_dec["chunks"]
@@ -394,7 +394,7 @@ def test_encode_decode_array_structured():
 
     # test decoding
     meta_dec = decode_array_metadata(meta_enc)
-    assert ZARR_FORMAT == meta_dec["zarr_format"]
+    assert meta_dec["zarr_format"] == ZARR_FORMAT
     # to maintain consistency with numpy unstructured arrays, unpack dimensions into shape
     assert meta["shape"] + meta["dtype"].shape == meta_dec["shape"]
     assert meta["chunks"] == meta_dec["chunks"]
@@ -547,7 +547,7 @@ def test_decode_group():
         % ZARR_FORMAT
     )
     meta = decode_group_metadata(b)
-    assert ZARR_FORMAT == meta["zarr_format"]
+    assert meta["zarr_format"] == ZARR_FORMAT
 
     # unsupported format
     b = """{

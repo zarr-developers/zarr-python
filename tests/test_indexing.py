@@ -5,12 +5,12 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from zarr.indexing import (
+    PartialChunkIterator,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
     oindex_set,
     replace_ellipsis,
-    PartialChunkIterator,
 )
 
 from .util import CountingDict
@@ -18,8 +18,8 @@ from .util import CountingDict
 
 def test_normalize_integer_selection():
 
-    assert 1 == normalize_integer_selection(1, 100)
-    assert 99 == normalize_integer_selection(-1, 100)
+    assert normalize_integer_selection(1, 100) == 1
+    assert normalize_integer_selection(-1, 100) == 99
     with pytest.raises(IndexError):
         normalize_integer_selection(100, 100)
     with pytest.raises(IndexError):
@@ -31,7 +31,7 @@ def test_normalize_integer_selection():
 def test_replace_ellipsis():
 
     # 1D, single item
-    assert (0,) == replace_ellipsis(0, (100,))
+    assert replace_ellipsis(0, (100,)) == (0,)
 
     # 1D
     assert (slice(None),) == replace_ellipsis(Ellipsis, (100,))
@@ -42,8 +42,8 @@ def test_replace_ellipsis():
     assert (slice(None),) == replace_ellipsis((Ellipsis, slice(None)), (100,))
 
     # 2D, single item
-    assert (0, 0) == replace_ellipsis((0, 0), (100, 100))
-    assert (-1, 1) == replace_ellipsis((-1, 1), (100, 100))
+    assert replace_ellipsis((0, 0), (100, 100)) == (0, 0)
+    assert replace_ellipsis((-1, 1), (100, 100)) == (-1, 1)
 
     # 2D, single col/row
     assert (0, slice(None)) == replace_ellipsis((0, slice(None)), (100, 100))
@@ -76,8 +76,8 @@ def test_get_basic_selection_0d():
 
     assert_array_equal(a, z.get_basic_selection(Ellipsis))
     assert_array_equal(a, z[...])
-    assert 42 == z.get_basic_selection(())
-    assert 42 == z[()]
+    assert z.get_basic_selection(()) == 42
+    assert z[()] == 42
 
     # test out param
     b = np.zeros_like(a)
@@ -93,8 +93,8 @@ def test_get_basic_selection_0d():
     assert_array_equal(a, z[...])
     assert a[()] == z.get_basic_selection(())
     assert a[()] == z[()]
-    assert b"aaa" == z.get_basic_selection((), fields="foo")
-    assert b"aaa" == z["foo"]
+    assert z.get_basic_selection((), fields="foo") == b"aaa"
+    assert z["foo"] == b"aaa"
     assert a[["foo", "bar"]] == z.get_basic_selection((), fields=["foo", "bar"])
     assert a[["foo", "bar"]] == z["foo", "bar"]
     # test out param
@@ -1666,7 +1666,7 @@ def test_set_selections_with_fields():
         ),
         (
             (slice(0, 10, 1),),
-            np.arange(0, 10).reshape((10)),
+            np.arange(0, 10).reshape(10),
             [(0, 10, (slice(0, 10, 1),))],
         ),
         ((0,), np.arange(0, 100).reshape((10, 10)), [(0, 10, (slice(0, 1, 1),))]),
@@ -1678,7 +1678,7 @@ def test_set_selections_with_fields():
             np.arange(0, 100).reshape((10, 10)),
             [(0, 1, (slice(0, 1, 1), slice(0, 1, 1)))],
         ),
-        ((0,), np.arange(0, 10).reshape((10)), [(0, 1, (slice(0, 1, 1),))]),
+        ((0,), np.arange(0, 10).reshape(10), [(0, 1, (slice(0, 1, 1),))]),
         pytest.param(
             (slice(5, 8, 1), slice(2, 4, 1), slice(0, 5, 1)),
             np.arange(2, 100002).reshape((10, 1, 10000)),

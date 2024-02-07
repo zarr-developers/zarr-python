@@ -3,13 +3,13 @@ from __future__ import annotations
 import io
 import shutil
 from pathlib import Path
-from typing import Union, Optional, List, Tuple
+from typing import Optional, Union
 
 from zarr.v3.abc.store import Store
 from zarr.v3.common import BytesLike, concurrent_map, to_thread
 
 
-def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> bytes:
+def _get(path: Path, byte_range: Optional[tuple[int, Optional[int]]] = None) -> bytes:
     if byte_range is not None:
         start = byte_range[0]
         end = (start + byte_range[1]) if byte_range[1] is not None else None
@@ -66,10 +66,10 @@ class LocalStore(Store):
         return f"file://{self.root}"
 
     def __repr__(self) -> str:
-        return f"LocalStore({repr(str(self))})"
+        return f"LocalStore({str(self)!r})"
 
     async def get(
-        self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
+        self, key: str, byte_range: Optional[tuple[int, Optional[int]]] = None
     ) -> Optional[bytes]:
         assert isinstance(key, str)
         path = self.root / key
@@ -80,8 +80,8 @@ class LocalStore(Store):
             return None
 
     async def get_partial_values(
-        self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[bytes]:
+        self, key_ranges: list[tuple[str, tuple[int, int]]]
+    ) -> list[bytes]:
         args = []
         for key, byte_range in key_ranges:
             assert isinstance(key, str)
@@ -97,7 +97,7 @@ class LocalStore(Store):
         path = self.root / key
         await to_thread(_put, path, value)
 
-    async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
         args = []
         for key, start, value in key_start_values:
             assert isinstance(key, str)
@@ -119,7 +119,7 @@ class LocalStore(Store):
         path = self.root / key
         return await to_thread(path.is_file)
 
-    async def list(self) -> List[str]:
+    async def list(self) -> list[str]:
         """Retrieve all keys in the store.
 
         Returns
@@ -127,13 +127,13 @@ class LocalStore(Store):
         list[str]
         """
         # Q: do we want to return strings or Paths?
-        def _list(root: Path) -> List[str]:
+        def _list(root: Path) -> list[str]:
             files = [str(p) for p in root.rglob("") if p.is_file()]
             return files
 
         return await to_thread(_list, self.root)
 
-    async def list_prefix(self, prefix: str) -> List[str]:
+    async def list_prefix(self, prefix: str) -> list[str]:
         """Retrieve all keys in the store with a given prefix.
 
         Parameters
@@ -145,13 +145,13 @@ class LocalStore(Store):
         list[str]
         """
 
-        def _list_prefix(root: Path, prefix: str) -> List[str]:
+        def _list_prefix(root: Path, prefix: str) -> list[str]:
             files = [p for p in (root / prefix).rglob("*") if p.is_file()]
             return files
 
         return await to_thread(_list_prefix, self.root, prefix)
 
-    async def list_dir(self, prefix: str) -> List[str]:
+    async def list_dir(self, prefix: str) -> list[str]:
         """
         Retrieve all keys and prefixes with a given prefix and which do not contain the character
         “/” after the given prefix.
@@ -165,7 +165,7 @@ class LocalStore(Store):
         list[str]
         """
 
-        def _list_dir(root: Path, prefix: str) -> List[str]:
+        def _list_dir(root: Path, prefix: str) -> list[str]:
 
             base = root / prefix
             to_strip = str(base) + "/"

@@ -3,38 +3,36 @@ import shutil
 from collections import OrderedDict
 from collections.abc import MutableMapping
 from threading import Lock
-from typing import Union, Dict, Any
-
-from zarr.errors import (
-    MetadataError,
-    ReadOnlyError,
-)
-from zarr.util import buffer_size, json_loads, normalize_storage_path
+from typing import Any, Union
 
 from zarr._storage.absstore import ABSStoreV3  # noqa: F401
 from zarr._storage.store import (  # noqa: F401
+    BaseStore,
+    Store,
+    StoreV3,
     _get_hierarchy_metadata,
     _get_metadata_suffix,
     _listdir_from_keys,
+    _path_to_prefix,
+    _prefix_to_array_key,
+    _prefix_to_group_key,
     _rename_from_keys,
     _rename_metadata_v3,
     _rmdir_from_keys,
     _rmdir_from_keys_v3,
-    _path_to_prefix,
-    _prefix_to_array_key,
-    _prefix_to_group_key,
     array_meta_key,
     attrs_key,
     data_root,
     group_meta_key,
     meta_root,
-    BaseStore,
-    Store,
-    StoreV3,
+)
+from zarr.errors import (
+    MetadataError,
+    ReadOnlyError,
 )
 from zarr.storage import (
-    DBMStore,
     ConsolidatedMetadataStore,
+    DBMStore,
     DirectoryStore,
     FSStore,
     KVStore,
@@ -47,6 +45,7 @@ from zarr.storage import (
     ZipStore,
     _getsize,
 )
+from zarr.util import buffer_size, json_loads, normalize_storage_path
 
 __doctest_requires__ = {
     ("RedisStore", "RedisStore.*"): ["redis"],
@@ -510,8 +509,8 @@ class LRUStoreCacheV3(RmdirV3, LRUStoreCache, StoreV3):
         self._current_size = 0
         self._keys_cache = None
         self._contains_cache = {}
-        self._listdir_cache: Dict[Path, Any] = dict()
-        self._values_cache: Dict[Path, Any] = OrderedDict()
+        self._listdir_cache: dict[Path, Any] = dict()
+        self._values_cache: dict[Path, Any] = OrderedDict()
         self._mutex = Lock()
         self.hits = self.misses = 0
 

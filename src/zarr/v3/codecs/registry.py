@@ -1,19 +1,20 @@
 from __future__ import annotations
 
-from typing import Dict, NamedTuple, Type
-from importlib.metadata import EntryPoint, entry_points as get_entry_points
+from importlib.metadata import EntryPoint
+from importlib.metadata import entry_points as get_entry_points
+from typing import NamedTuple
 
 from zarr.v3.abc.codec import Codec
 from zarr.v3.metadata import CodecMetadata
 
 
 class CodecRegistryItem(NamedTuple):
-    codec_cls: Type[Codec]
-    codec_metadata_cls: Type[CodecMetadata]
+    codec_cls: type[Codec]
+    codec_metadata_cls: type[CodecMetadata]
 
 
-__codec_registry: Dict[str, CodecRegistryItem] = {}
-__lazy_load_codecs: Dict[str, EntryPoint] = {}
+__codec_registry: dict[str, CodecRegistryItem] = {}
+__lazy_load_codecs: dict[str, EntryPoint] = {}
 
 
 def _collect_entrypoints() -> None:
@@ -28,7 +29,7 @@ def _collect_entrypoints() -> None:
             __lazy_load_codecs[e.name] = e
 
 
-def register_codec(key: str, codec_cls: Type[Codec]) -> None:
+def register_codec(key: str, codec_cls: type[Codec]) -> None:
     __codec_registry[key] = CodecRegistryItem(codec_cls, codec_cls.get_metadata_class())
 
 
@@ -50,11 +51,11 @@ def get_codec_from_metadata(val: CodecMetadata) -> Codec:
     return _get_codec_item(key).codec_cls.from_metadata(val)
 
 
-def get_codec_metadata_class(key: str) -> Type[CodecMetadata]:
+def get_codec_metadata_class(key: str) -> type[CodecMetadata]:
     return _get_codec_item(key).codec_metadata_cls
 
 
-def get_codec_class(key: str) -> Type[Codec]:
+def get_codec_class(key: str) -> type[Codec]:
     return _get_codec_item(key).codec_cls
 
 

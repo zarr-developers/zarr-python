@@ -4,11 +4,10 @@ from typing import (
     TYPE_CHECKING,
     Literal,
     Optional,
-    Type,
 )
 
 import numpy as np
-from attr import frozen, field
+from attr import field, frozen
 from crc32c import crc32c
 
 from zarr.v3.abc.codec import BytesBytesCodec
@@ -34,7 +33,7 @@ class Crc32cCodec(BytesBytesCodec):
         return cls()
 
     @classmethod
-    def get_metadata_class(cls) -> Type[Crc32cCodecMetadata]:
+    def get_metadata_class(cls) -> type[Crc32cCodecMetadata]:
         return Crc32cCodecMetadata
 
     async def decode(

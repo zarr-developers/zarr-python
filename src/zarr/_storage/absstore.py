@@ -1,9 +1,11 @@
 """This module contains storage classes related to Azure Blob Storage (ABS)"""
 
 import warnings
+
 from numcodecs.compat import ensure_bytes
+
+from zarr._storage.store import Store, StoreV3, _get_metadata_suffix, data_root, meta_root
 from zarr.util import normalize_storage_path
-from zarr._storage.store import _get_metadata_suffix, data_root, meta_root, Store, StoreV3
 
 __doctest_requires__ = {
     ("ABSStore", "ABSStore.*"): ["azure.storage.blob"],
@@ -84,7 +86,7 @@ class ABSStore(Store):
 
             blob_service_kwargs = blob_service_kwargs or {}
             client = ContainerClient(
-                "https://{}.blob.core.windows.net/".format(account_name),
+                f"https://{account_name}.blob.core.windows.net/",
                 container,
                 credential=account_key,
                 **blob_service_kwargs

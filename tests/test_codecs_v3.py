@@ -1,19 +1,20 @@
 from __future__ import annotations
 
 import json
-from typing import Iterator, List, Literal, Optional
-from attr import frozen
+from collections.abc import Iterator
+from typing import Literal, Optional
 
 import numpy as np
 import pytest
+from attr import frozen
+
 import zarr
 from zarr.v3 import codecs
+from zarr.v3.abc.store import Store
 from zarr.v3.array import Array, AsyncArray
 from zarr.v3.common import Selection
 from zarr.v3.indexing import morton_order_iter
 from zarr.v3.metadata import CodecMetadata, ShardingCodecIndexLocation, runtime_configuration
-
-from zarr.v3.abc.store import Store
 from zarr.v3.store import MemoryStore, StorePath
 
 
@@ -39,7 +40,7 @@ class _AsyncArraySelectionProxy:
 
 @pytest.fixture
 def store() -> Iterator[Store]:
-    yield StorePath(MemoryStore())
+    return StorePath(MemoryStore())
 
 
 @pytest.fixture
@@ -233,7 +234,7 @@ async def test_order(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((32, 8), order=input_order)
 
-    codecs_: List[CodecMetadata] = (
+    codecs_: list[CodecMetadata] = (
         [
             codecs.sharding_codec(
                 (16, 8),
@@ -300,7 +301,7 @@ def test_order_implicit(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16), order=input_order)
 
-    codecs_: Optional[List[CodecMetadata]] = (
+    codecs_: Optional[list[CodecMetadata]] = (
         [codecs.sharding_codec((8, 8))] if with_sharding else None
     )
 
@@ -345,7 +346,7 @@ async def test_transpose(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((1, 32, 8), order=input_order)
 
-    codecs_: List[CodecMetadata] = (
+    codecs_: list[CodecMetadata] = (
         [
             codecs.sharding_codec(
                 (1, 16, 8),

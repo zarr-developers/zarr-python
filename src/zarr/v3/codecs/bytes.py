@@ -4,18 +4,17 @@ from typing import (
     TYPE_CHECKING,
     Literal,
     Optional,
-    Type,
 )
 
 import numpy as np
-from attr import frozen, field
+from attr import field, frozen
 
 from zarr.v3.abc.codec import ArrayBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CodecMetadata, ArraySpec, ArrayMetadata, RuntimeConfiguration
+    from zarr.v3.metadata import ArrayMetadata, ArraySpec, CodecMetadata, RuntimeConfiguration
 
 
 Endian = Literal["big", "little"]
@@ -43,7 +42,7 @@ class BytesCodec(ArrayBytesCodec):
         return cls(configuration=codec_metadata.configuration)
 
     @classmethod
-    def get_metadata_class(cls) -> Type[BytesCodecMetadata]:
+    def get_metadata_class(cls) -> type[BytesCodecMetadata]:
         return BytesCodecMetadata
 
     def validate(self, array_metadata: ArrayMetadata) -> None:

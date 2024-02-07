@@ -23,24 +23,24 @@ from zarr.util import (
     normalize_shape,
     retry_call,
     tree_array_icon,
-    tree_group_icon,
     tree_get_icon,
+    tree_group_icon,
     tree_widget,
 )
 
 
 def test_normalize_dimension_separator():
     assert None is normalize_dimension_separator(None)
-    assert "/" == normalize_dimension_separator("/")
-    assert "." == normalize_dimension_separator(".")
+    assert normalize_dimension_separator("/") == "/"
+    assert normalize_dimension_separator(".") == "."
     with pytest.raises(ValueError):
         normalize_dimension_separator("X")
 
 
 def test_normalize_shape():
-    assert (100,) == normalize_shape((100,))
-    assert (100,) == normalize_shape([100])
-    assert (100,) == normalize_shape(100)
+    assert normalize_shape((100,)) == (100,)
+    assert normalize_shape([100]) == (100,)
+    assert normalize_shape(100) == (100,)
     with pytest.raises(TypeError):
         normalize_shape(None)
     with pytest.raises(ValueError):
@@ -48,27 +48,27 @@ def test_normalize_shape():
 
 
 def test_normalize_chunks():
-    assert (10,) == normalize_chunks((10,), (100,), 1)
-    assert (10,) == normalize_chunks([10], (100,), 1)
-    assert (10,) == normalize_chunks(10, (100,), 1)
-    assert (10, 10) == normalize_chunks((10, 10), (100, 10), 1)
-    assert (10, 10) == normalize_chunks(10, (100, 10), 1)
-    assert (10, 10) == normalize_chunks((10, None), (100, 10), 1)
-    assert (30, 30, 30) == normalize_chunks(30, (100, 20, 10), 1)
-    assert (30, 20, 10) == normalize_chunks((30,), (100, 20, 10), 1)
-    assert (30, 20, 10) == normalize_chunks((30, None), (100, 20, 10), 1)
-    assert (30, 20, 10) == normalize_chunks((30, None, None), (100, 20, 10), 1)
-    assert (30, 20, 10) == normalize_chunks((30, 20, None), (100, 20, 10), 1)
-    assert (30, 20, 10) == normalize_chunks((30, 20, 10), (100, 20, 10), 1)
+    assert normalize_chunks((10,), (100,), 1) == (10,)
+    assert normalize_chunks([10], (100,), 1) == (10,)
+    assert normalize_chunks(10, (100,), 1) == (10,)
+    assert normalize_chunks((10, 10), (100, 10), 1) == (10, 10)
+    assert normalize_chunks(10, (100, 10), 1) == (10, 10)
+    assert normalize_chunks((10, None), (100, 10), 1) == (10, 10)
+    assert normalize_chunks(30, (100, 20, 10), 1) == (30, 30, 30)
+    assert normalize_chunks((30,), (100, 20, 10), 1) == (30, 20, 10)
+    assert normalize_chunks((30, None), (100, 20, 10), 1) == (30, 20, 10)
+    assert normalize_chunks((30, None, None), (100, 20, 10), 1) == (30, 20, 10)
+    assert normalize_chunks((30, 20, None), (100, 20, 10), 1) == (30, 20, 10)
+    assert normalize_chunks((30, 20, 10), (100, 20, 10), 1) == (30, 20, 10)
     with pytest.raises(ValueError):
         normalize_chunks("foo", (100,), 1)
     with pytest.raises(ValueError):
         normalize_chunks((100, 10), (100,), 1)
 
     # test auto-chunking
-    assert (100,) == normalize_chunks(None, (100,), 1)
-    assert (100,) == normalize_chunks(-1, (100,), 1)
-    assert (30, 20, 10) == normalize_chunks((30, -1, None), (100, 20, 10), 1)
+    assert normalize_chunks(None, (100,), 1) == (100,)
+    assert normalize_chunks(-1, (100,), 1) == (100,)
+    assert normalize_chunks((30, -1, None), (100, 20, 10), 1) == (30, 20, 10)
 
 
 def test_is_total_slice():
@@ -97,44 +97,44 @@ def test_is_total_slice():
 def test_normalize_resize_args():
 
     # 1D
-    assert (200,) == normalize_resize_args((100,), 200)
-    assert (200,) == normalize_resize_args((100,), (200,))
+    assert normalize_resize_args((100,), 200) == (200,)
+    assert normalize_resize_args((100,), (200,)) == (200,)
 
     # 2D
-    assert (200, 100) == normalize_resize_args((100, 100), (200, 100))
-    assert (200, 100) == normalize_resize_args((100, 100), (200, None))
-    assert (200, 100) == normalize_resize_args((100, 100), 200, 100)
-    assert (200, 100) == normalize_resize_args((100, 100), 200, None)
+    assert normalize_resize_args((100, 100), (200, 100)) == (200, 100)
+    assert normalize_resize_args((100, 100), (200, None)) == (200, 100)
+    assert normalize_resize_args((100, 100), 200, 100) == (200, 100)
+    assert normalize_resize_args((100, 100), 200, None) == (200, 100)
 
     with pytest.raises(ValueError):
         normalize_resize_args((100,), (200, 100))
 
 
 def test_human_readable_size():
-    assert "100" == human_readable_size(100)
-    assert "1.0K" == human_readable_size(2**10)
-    assert "1.0M" == human_readable_size(2**20)
-    assert "1.0G" == human_readable_size(2**30)
-    assert "1.0T" == human_readable_size(2**40)
-    assert "1.0P" == human_readable_size(2**50)
+    assert human_readable_size(100) == "100"
+    assert human_readable_size(2**10) == "1.0K"
+    assert human_readable_size(2**20) == "1.0M"
+    assert human_readable_size(2**30) == "1.0G"
+    assert human_readable_size(2**40) == "1.0T"
+    assert human_readable_size(2**50) == "1.0P"
 
 
 def test_normalize_order():
-    assert "F" == normalize_order("F")
-    assert "C" == normalize_order("C")
-    assert "F" == normalize_order("f")
-    assert "C" == normalize_order("c")
+    assert normalize_order("F") == "F"
+    assert normalize_order("C") == "C"
+    assert normalize_order("f") == "F"
+    assert normalize_order("c") == "C"
     with pytest.raises(ValueError):
         normalize_order("foo")
 
 
 def test_normalize_fill_value():
-    assert b"" == normalize_fill_value(0, dtype=np.dtype("S1"))
+    assert normalize_fill_value(0, dtype=np.dtype("S1")) == b""
     structured_dtype = np.dtype([("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
     expect = np.array((b"", 0, 0.0), dtype=structured_dtype)[()]
     assert expect == normalize_fill_value(0, dtype=structured_dtype)
     assert expect == normalize_fill_value(expect, dtype=structured_dtype)
-    assert "" == normalize_fill_value(0, dtype=np.dtype("U1"))
+    assert normalize_fill_value(0, dtype=np.dtype("U1")) == ""
 
 
 def test_guess_chunks():
@@ -168,7 +168,7 @@ def test_guess_chunks():
     # ludicrous itemsize
     chunks = guess_chunks((1000000,), 40000000000)
     assert isinstance(chunks, tuple)
-    assert (1,) == chunks
+    assert chunks == (1,)
 
 
 def test_info_text_report():
@@ -180,8 +180,8 @@ def test_info_text_report():
 def test_info_html_report():
     items = [("foo", "bar"), ("baz", "qux")]
     actual = info_html_report(items)
-    assert "<table" == actual[:6]
-    assert "</table>" == actual[-8:]
+    assert actual[:6] == "<table"
+    assert actual[-8:] == "</table>"
 
 
 def test_tree_get_icon():
@@ -212,7 +212,7 @@ def test_retry_call():
         def __call__(self):
             self.c += 1
             if self.c != self.pass_on:
-                raise PermissionError()
+                raise PermissionError
 
     for x in range(1, 11):
         # Any number of failures less than 10 will be accepted.

@@ -1,6 +1,8 @@
 import base64
 import itertools
 from collections.abc import Mapping
+from collections.abc import Mapping as MappingType
+from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
 import numcodecs
 import numpy as np
@@ -8,8 +10,6 @@ from numcodecs.abc import Codec
 
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
-
-from typing import cast, Union, Any, List, Mapping as MappingType, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
     from zarr._storage.store import StorageTransformer
@@ -46,37 +46,37 @@ _v3_datetime_types = set(
 def get_extended_dtype_info(dtype) -> dict:
     if dtype.str in _v3_complex_types:
         return dict(
-            extension="https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/extensions/complex-dtypes/v1.0.html",  # noqa
+            extension="https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/extensions/complex-dtypes/v1.0.html",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str == "|O":
         return dict(
-            extension="TODO: object array protocol URL",  # noqa
+            extension="TODO: object array protocol URL",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str.startswith("|S"):
         return dict(
-            extension="TODO: bytestring array protocol URL",  # noqa
+            extension="TODO: bytestring array protocol URL",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str.startswith("<U") or dtype.str.startswith(">U"):
         return dict(
-            extension="TODO: unicode array protocol URL",  # noqa
+            extension="TODO: unicode array protocol URL",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str.startswith("|V"):
         return dict(
-            extension="TODO: structured array protocol URL",  # noqa
+            extension="TODO: structured array protocol URL",
             type=dtype.descr,
             fallback=None,
         )
     elif dtype.str in _v3_datetime_types:
         return dict(
-            extension="https://zarr-specs.readthedocs.io/en/latest/extensions/data-types/datetime/v1.0.html",  # noqa
+            extension="https://zarr-specs.readthedocs.io/en/latest/extensions/data-types/datetime/v1.0.html",
             type=dtype.str,
             fallback=None,
         )
@@ -181,7 +181,7 @@ class Metadata2:
             return d.descr
 
     @classmethod
-    def _decode_dtype_descr(cls, d) -> List[Any]:
+    def _decode_dtype_descr(cls, d) -> list[Any]:
         # need to convert list of lists to list of tuples
         if isinstance(d, list):
             # recurse to handle nested structures
@@ -460,8 +460,8 @@ class Metadata3(Metadata2):
     @classmethod
     def _decode_storage_transformer_metadata(cls, meta: Mapping) -> "StorageTransformer":
         from zarr._storage.v3_storage_transformers import (
-            ShardingStorageTransformer,
             DummyStorageTransfomer,
+            ShardingStorageTransformer,
         )
 
         # This might be changed to a proper registry in the future

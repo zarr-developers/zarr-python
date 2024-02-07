@@ -1,17 +1,15 @@
 from __future__ import annotations
-from functools import lru_cache
 
+from functools import lru_cache
 from typing import (
     TYPE_CHECKING,
-    Dict,
     Literal,
     Optional,
-    Type,
 )
 
 import numcodecs
 import numpy as np
-from attr import evolve, frozen, field
+from attr import evolve, field, frozen
 from numcodecs.blosc import Blosc
 
 from zarr.v3.abc.codec import BytesBytesCodec
@@ -37,7 +35,7 @@ class BloscCodecConfigurationMetadata:
     blocksize: int = 0
 
 
-blosc_shuffle_int_to_str: Dict[int, BloscShuffle] = {
+blosc_shuffle_int_to_str: dict[int, BloscShuffle] = {
     0: "noshuffle",
     1: "shuffle",
     2: "bitshuffle",
@@ -61,7 +59,7 @@ class BloscCodec(BytesBytesCodec):
         return cls(configuration=codec_metadata.configuration)
 
     @classmethod
-    def get_metadata_class(cls) -> Type[BloscCodecMetadata]:
+    def get_metadata_class(cls) -> type[BloscCodecMetadata]:
         return BloscCodecMetadata
 
     def evolve(self, *, data_type: DataType, **_kwargs) -> BloscCodec:

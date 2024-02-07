@@ -11,11 +11,11 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
+from collections.abc import Iterable
+from typing import Any, Literal, Optional, Union
 
 import numpy as np
 from attr import evolve, frozen
-
 
 # from zarr.v3.array_v2 import ArrayV2
 from zarr.v3.codecs import CodecMetadata, CodecPipeline, bytes_codec
@@ -62,12 +62,12 @@ class AsyncArray:
         chunk_shape: ChunkCoords,
         fill_value: Optional[Any] = None,
         chunk_key_encoding: Union[
-            Tuple[Literal["default"], Literal[".", "/"]],
-            Tuple[Literal["v2"], Literal[".", "/"]],
+            tuple[Literal["default"], Literal[".", "/"]],
+            tuple[Literal["v2"], Literal[".", "/"]],
         ] = ("default", "/"),
         codecs: Optional[Iterable[CodecMetadata]] = None,
         dimension_names: Optional[Iterable[str]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         exists_ok: bool = False,
     ) -> AsyncArray:
@@ -413,7 +413,7 @@ class AsyncArray:
         await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
         return evolve(self, metadata=new_metadata)
 
-    async def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
+    async def update_attributes(self, new_attributes: dict[str, Any]) -> Array:
         new_metadata = evolve(self.metadata, attributes=new_attributes)
 
         # Write new metadata
@@ -441,12 +441,12 @@ class Array:
         chunk_shape: ChunkCoords,
         fill_value: Optional[Any] = None,
         chunk_key_encoding: Union[
-            Tuple[Literal["default"], Literal[".", "/"]],
-            Tuple[Literal["v2"], Literal[".", "/"]],
+            tuple[Literal["default"], Literal[".", "/"]],
+            tuple[Literal["v2"], Literal[".", "/"]],
         ] = ("default", "/"),
         codecs: Optional[Iterable[CodecMetadata]] = None,
         dimension_names: Optional[Iterable[str]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: Optional[dict[str, Any]] = None,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         exists_ok: bool = False,
     ) -> Array:
@@ -551,7 +551,7 @@ class Array:
             self._async_array.runtime_configuration.asyncio_loop,
         )
 
-    def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
+    def update_attributes(self, new_attributes: dict[str, Any]) -> Array:
         return sync(
             self._async_array.update_attributes(new_attributes),
             self._async_array.runtime_configuration.asyncio_loop,

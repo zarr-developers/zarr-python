@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import itertools
 import math
-from typing import Iterator, List, NamedTuple, Optional, Tuple
+from collections.abc import Iterator
+from typing import NamedTuple, Optional
 
 from zarr.v3.common import ChunkCoords, Selection, SliceSelection, product
 
@@ -15,7 +16,7 @@ def _ensure_tuple(v: Selection) -> SliceSelection:
 
 def _err_too_many_indices(selection: SliceSelection, shape: ChunkCoords):
     raise IndexError(
-        "too many indices for array; expected {}, got {}".format(len(shape), len(selection))
+        f"too many indices for array; expected {len(shape)}, got {len(selection)}"
     )
 
 
@@ -124,14 +125,14 @@ class _ChunkProjection(NamedTuple):
 
 
 class BasicIndexer:
-    dim_indexers: List[_SliceDimIndexer]
+    dim_indexers: list[_SliceDimIndexer]
     shape: ChunkCoords
 
     def __init__(
         self,
         selection: Selection,
-        shape: Tuple[int, ...],
-        chunk_shape: Tuple[int, ...],
+        shape: tuple[int, ...],
+        chunk_shape: tuple[int, ...],
     ):
         # setup per-dimension indexers
         self.dim_indexers = [
@@ -205,4 +206,4 @@ def is_total_slice(item: Selection, shape: ChunkCoords):
 
 
 def all_chunk_coords(shape: ChunkCoords, chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
-    return itertools.product(*(range(0, _ceildiv(s, c)) for s, c in zip(shape, chunk_shape)))
+    return itertools.product(*(range(_ceildiv(s, c)) for s, c in zip(shape, chunk_shape)))

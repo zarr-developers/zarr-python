@@ -3,28 +3,26 @@ import itertools
 import os
 import re
 from collections.abc import Mapping, MutableMapping
+from typing import Union
 
-from zarr._storage.store import data_root, meta_root, assert_zarr_v3_api_available
+from zarr._storage.store import assert_zarr_v3_api_available, data_root, meta_root
+from zarr._storage.v3 import ConsolidatedMetadataStoreV3
 from zarr.core import Array
 from zarr.creation import array as _create_array
 from zarr.creation import open_array
 from zarr.errors import CopyError, PathNotFoundError
-from zarr.hierarchy import Group
+from zarr.hierarchy import Group, open_group
 from zarr.hierarchy import group as _create_group
-from zarr.hierarchy import open_group
 from zarr.meta import json_dumps, json_loads
 from zarr.storage import (
+    BaseStore,
+    ConsolidatedMetadataStore,
     _get_metadata_suffix,
     contains_array,
     contains_group,
     normalize_store_arg,
-    BaseStore,
-    ConsolidatedMetadataStore,
 )
-from zarr._storage.v3 import ConsolidatedMetadataStoreV3
 from zarr.util import TreeViewer, buffer_size, normalize_storage_path
-
-from typing import Union
 
 StoreLike = Union[BaseStore, MutableMapping, str, None]
 
@@ -258,7 +256,7 @@ def save_group(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
     try:
         grp = _create_group(_store, path=path, overwrite=True, zarr_version=zarr_version)
         for i, arr in enumerate(args):
-            k = "arr_{}".format(i)
+            k = f"arr_{i}"
             grp.create_dataset(k, data=arr, overwrite=True, zarr_version=zarr_version)
         for k, arr in kwargs.items():
             grp.create_dataset(k, data=arr, overwrite=True, zarr_version=zarr_version)
@@ -525,9 +523,9 @@ def _log_copy_summary(log, dry_run, n_copied, n_skipped, n_bytes_copied):
         message = "dry run: "
     else:
         message = "all done: "
-    message += "{:,} copied, {:,} skipped".format(n_copied, n_skipped)
+    message += f"{n_copied:,} copied, {n_skipped:,} skipped"
     if not dry_run:
-        message += ", {:,} bytes copied".format(n_bytes_copied)
+        message += f", {n_bytes_copied:,} bytes copied"
     log(message)
 
 
@@ -657,7 +655,7 @@ def copy_store(
     valid_if_exists = ["raise", "replace", "skip"]
     if if_exists not in valid_if_exists:
         raise ValueError(
-            "if_exists must be one of {!r}; found {!r}".format(valid_if_exists, if_exists)
+            f"if_exists must be one of {valid_if_exists!r}; found {if_exists!r}"
         )
 
     # setup counting variables
@@ -721,20 +719,20 @@ def copy_store(
             if if_exists != "replace":
                 if dest_key in dest:
                     if if_exists == "raise":
-                        raise CopyError("key {!r} exists in destination".format(dest_key))
+                        raise CopyError(f"key {dest_key!r} exists in destination")
                     elif if_exists == "skip":
                         do_copy = False
 
             # take action
             if do_copy:
-                log("copy {}".format(descr))
+                log(f"copy {descr}")
                 if not dry_run:
                     data = source[source_key]
                     n_bytes_copied += buffer_size(data)
                     dest[dest_key] = data
                 n_copied += 1
             else:
-                log("skip {}".format(descr))
+                log(f"skip {descr}")
                 n_skipped += 1
 
         # log a final message with a summary of what happened
@@ -745,7 +743,7 @@ def copy_store(
 
 def _check_dest_is_group(dest):
     if not hasattr(dest, "create_dataset"):
-        raise ValueError("dest must be a group, got {!r}".format(dest))
+        raise ValueError(f"dest must be a group, got {dest!r}")
 
 
 def copy(
@@ -913,10 +911,10 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
     valid_if_exists = ["raise", "replace", "skip", "skip_initialized"]
     if if_exists not in valid_if_exists:
         raise ValueError(
-            "if_exists must be one of {!r}; found {!r}".format(valid_if_exists, if_exists)
+            f"if_exists must be one of {valid_if_exists!r}; found {if_exists!r}"
         )
     if dest_h5py and if_exists == "skip_initialized":
-        raise ValueError("{!r} can only be used when copying to zarr".format(if_exists))
+        raise ValueError(f"{if_exists!r} can only be used when copying to zarr")
 
     # determine name to copy to
     if name is None:
@@ -937,7 +935,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
         if exists:
             if if_exists == "raise":
                 raise CopyError(
-                    "an object {!r} already exists in destination " "{!r}".format(name, dest.name)
+                    f"an object {name!r} already exists in destination " f"{dest.name!r}"
                 )
             elif if_exists == "skip":
                 do_copy = False
@@ -950,7 +948,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
         if do_copy:
 
             # log a message about what we're going to do
-            log("copy {} {} {}".format(source.name, source.shape, source.dtype))
+            log(f"copy {source.name} {source.shape} {source.dtype}")
 
             if not dry_run:
 
@@ -1019,7 +1017,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
             n_copied += 1
 
         else:
-            log("skip {} {} {}".format(source.name, source.shape, source.dtype))
+            log(f"skip {source.name} {source.shape} {source.dtype}")
             n_skipped += 1
 
     elif root or not shallow:
@@ -1031,7 +1029,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
         if exists_array:
             if if_exists == "raise":
                 raise CopyError(
-                    "an array {!r} already exists in destination " "{!r}".format(name, dest.name)
+                    f"an array {name!r} already exists in destination " f"{dest.name!r}"
                 )
             elif if_exists == "skip":
                 do_copy = False
@@ -1040,7 +1038,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
         if do_copy:
 
             # log action
-            log("copy {}".format(source.name))
+            log(f"copy {source.name}")
 
             if not dry_run:
 
@@ -1085,7 +1083,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
             n_copied += 1
 
         else:
-            log("skip {}".format(source.name))
+            log(f"skip {source.name}")
             n_skipped += 1
 
     return n_copied, n_skipped, n_bytes_copied
@@ -1336,7 +1334,7 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
         store, storage_options=kwargs.get("storage_options"), mode=mode, zarr_version=zarr_version
     )
     if mode not in {"r", "r+"}:
-        raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}".format(mode))
+        raise ValueError(f"invalid mode, expected either 'r' or 'r+'; found {mode!r}")
 
     path = kwargs.pop("path", None)
     if store._store_version == 2:

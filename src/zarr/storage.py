@@ -24,33 +24,55 @@ import re
 import shutil
 import sys
 import tempfile
+import time
+import uuid
 import warnings
 import zipfile
 from collections import OrderedDict
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping, Sequence
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
-from typing import Sequence, Mapping, Optional, Union, List, Tuple, Dict, Any
-import uuid
-import time
+from typing import Any, Optional, Union
 
 from numcodecs.abc import Codec
-from numcodecs.compat import ensure_bytes, ensure_text, ensure_contiguous_ndarray_like
+from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray_like, ensure_text
 from numcodecs.registry import codec_registry
-from zarr.context import Context
 
+from zarr._storage.absstore import ABSStore  # noqa: F401
+from zarr._storage.store import (  # noqa: F401
+    DEFAULT_ZARR_VERSION,
+    BaseStore,
+    Store,
+    _get_hierarchy_metadata,
+    _get_metadata_suffix,
+    _listdir_from_keys,
+    _path_to_prefix,
+    _prefix_to_array_key,
+    _prefix_to_group_key,
+    _rename_from_keys,
+    _rename_metadata_v3,
+    _rmdir_from_keys,
+    _rmdir_from_keys_v3,
+    array_meta_key,
+    attrs_key,
+    data_root,
+    group_meta_key,
+    meta_root,
+)
+from zarr.context import Context
 from zarr.errors import (
-    MetadataError,
     BadCompressorError,
     ContainsArrayError,
     ContainsGroupError,
     FSPathExistNotDir,
+    MetadataError,
     ReadOnlyError,
 )
 from zarr.meta import encode_array_metadata, encode_group_metadata
 from zarr.util import (
     buffer_size,
+    ensure_contiguous_ndarray_or_bytes,
     json_loads,
     nolock,
     normalize_chunks,
@@ -61,29 +83,6 @@ from zarr.util import (
     normalize_shape,
     normalize_storage_path,
     retry_call,
-    ensure_contiguous_ndarray_or_bytes,
-)
-
-from zarr._storage.absstore import ABSStore  # noqa: F401
-from zarr._storage.store import (  # noqa: F401
-    _get_hierarchy_metadata,
-    _get_metadata_suffix,
-    _listdir_from_keys,
-    _rename_from_keys,
-    _rename_metadata_v3,
-    _rmdir_from_keys,
-    _rmdir_from_keys_v3,
-    _path_to_prefix,
-    _prefix_to_array_key,
-    _prefix_to_group_key,
-    array_meta_key,
-    attrs_key,
-    data_root,
-    group_meta_key,
-    meta_root,
-    DEFAULT_ZARR_VERSION,
-    BaseStore,
-    Store,
 )
 
 __doctest_requires__ = {
@@ -314,8 +313,8 @@ def _require_parent_group(
 
 def init_array(
     store: StoreLike,
-    shape: Union[int, Tuple[int, ...]],
-    chunks: Union[bool, int, Tuple[int, ...]] = True,
+    shape: Union[int, tuple[int, ...]],
+    chunks: Union[bool, int, tuple[int, ...]] = True,
     dtype=None,
     compressor="default",
     fill_value=None,
@@ -739,7 +738,7 @@ def _init_group_metadata(
         store[key] = encode_group_metadata(meta)
 
 
-def _dict_store_keys(d: Dict, prefix="", cls=dict):
+def _dict_store_keys(d: dict, prefix="", cls=dict):
     for k in d.keys():
         v = d[k]
         if isinstance(v, cls):
@@ -785,7 +784,7 @@ class KVStore(Store):
         return len(self._mutable_mapping)
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}: \n{repr(self._mutable_mapping)}\n at {hex(id(self))}>"
+        return f"<{self.__class__.__name__}: \n{self._mutable_mapping!r}\n at {hex(id(self))}>"
 
     def __eq__(self, other):
         if isinstance(other, KVStore):
@@ -910,7 +909,7 @@ class MemoryStore(Store):
     def __len__(self) -> int:
         return sum(1 for _ in self.keys())
 
-    def listdir(self, path: Path = None) -> List[str]:
+    def listdir(self, path: Path = None) -> list[str]:
         path = normalize_storage_path(path)
         if path:
             try:
@@ -2393,9 +2392,9 @@ class LRUStoreCache(Store):
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None
-        self._contains_cache: Dict[Any, Any] = {}
-        self._listdir_cache: Dict[Path, Any] = dict()
-        self._values_cache: Dict[Path, Any] = OrderedDict()
+        self._contains_cache: dict[Any, Any] = {}
+        self._listdir_cache: dict[Path, Any] = dict()
+        self._values_cache: dict[Path, Any] = OrderedDict()
         self._mutex = Lock()
         self.hits = self.misses = 0
 
@@ -2702,14 +2701,12 @@ class SQLiteStore(Store):
         path = normalize_storage_path(path)
         sep = "_" if path == "" else "/"
         keys = self.cursor.execute(
-            """
+            f"""
             SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
                 SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
                 FROM zarr WHERE k LIKE (? || "{sep}%")
             ) ORDER BY l ASC
-            """.format(
-                sep=sep
-            ),
+            """,
             (path, path),
         )
         keys = list(map(operator.itemgetter(0), keys))
@@ -2865,7 +2862,7 @@ class RedisStore(Store):
         self.client = redis.Redis(**kwargs)
 
     def _key(self, key):
-        return "{prefix}:{key}".format(prefix=self._prefix, key=key)
+        return f"{self._prefix}:{key}"
 
     def __getitem__(self, key):
         return self.client[self._key(key)]

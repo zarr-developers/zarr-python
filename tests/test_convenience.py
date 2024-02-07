@@ -9,17 +9,26 @@ from numcodecs import Adler32, Zlib
 from numpy.testing import assert_array_equal
 
 import zarr
+from zarr._storage.store import v3_api_available
+from zarr._storage.v3 import (
+    ConsolidatedMetadataStoreV3,
+    DirectoryStoreV3,
+    FSStoreV3,
+    KVStoreV3,
+    MemoryStoreV3,
+    SQLiteStoreV3,
+)
 from zarr.convenience import (
     consolidate_metadata,
     copy,
+    copy_all,
     copy_store,
     load,
     open,
     open_consolidated,
     save,
-    save_group,
     save_array,
-    copy_all,
+    save_group,
 )
 from zarr.core import Array
 from zarr.errors import CopyError
@@ -31,18 +40,10 @@ from zarr.storage import (
     MemoryStore,
     atexit_rmtree,
     data_root,
-    meta_root,
     getsize,
+    meta_root,
 )
-from zarr._storage.store import v3_api_available
-from zarr._storage.v3 import (
-    ConsolidatedMetadataStoreV3,
-    DirectoryStoreV3,
-    FSStoreV3,
-    KVStoreV3,
-    MemoryStoreV3,
-    SQLiteStoreV3,
-)
+
 from .util import have_fsspec
 
 _VERSIONS = (2, 3) if v3_api_available else (2,)
@@ -239,11 +240,11 @@ def test_consolidate_metadata(
     g2 = z.create_group("g2")
     g2.attrs["hello"] = "world"
     arr = g2.create_dataset("arr", shape=(20, 20), chunks=(5, 5), dtype="f8")
-    assert 16 == arr.nchunks
-    assert 0 == arr.nchunks_initialized
+    assert arr.nchunks == 16
+    assert arr.nchunks_initialized == 0
     arr.attrs["data"] = 1
     arr[:] = 1.0
-    assert 16 == arr.nchunks_initialized
+    assert arr.nchunks_initialized == 16
 
     if stores_from_path:
         # get the actual store class for use with consolidate_metadata
@@ -310,12 +311,12 @@ def test_consolidate_metadata(
     # open consolidated
     z2 = open_consolidated(store_to_open, chunk_store=chunk_store, path=path, **version_kwarg)
     assert ["g1", "g2"] == list(z2)
-    assert "world" == z2.g2.attrs["hello"]
-    assert 1 == z2.g2.arr.attrs["data"]
+    assert z2.g2.attrs["hello"] == "world"
+    assert z2.g2.arr.attrs["data"] == 1
     assert (z2.g2.arr[:] == 1.0).all()
-    assert 16 == z2.g2.arr.nchunks
+    assert z2.g2.arr.nchunks == 16
     if listable:
-        assert 16 == z2.g2.arr.nchunks_initialized
+        assert z2.g2.arr.nchunks_initialized == 16
     else:
         with pytest.raises(NotImplementedError):
             _ = z2.g2.arr.nchunks_initialized
@@ -426,7 +427,7 @@ class TestCopyStore(unittest.TestCase):
         for source_path in "bar", "bar/", "/bar", "/bar/":
             dest = self._get_dest_store()
             copy_store(source, dest, source_path=source_path)
-            assert 2 == len(dest)
+            assert len(dest) == 2
             for key in source:
                 if key.startswith("bar/"):
                     dest_key = key.split("bar/")[1]
@@ -455,7 +456,7 @@ class TestCopyStore(unittest.TestCase):
             for dest_path in "new", "new/", "/new", "/new/":
                 dest = self._get_dest_store()
                 copy_store(source, dest, source_path=source_path, dest_path=dest_path)
-                assert 2 == len(dest)
+                assert len(dest) == 2
                 for key in source:
                     if key.startswith("bar/"):
                         dest_key = "new/" + key.split("bar/")[1]
@@ -499,7 +500,7 @@ class TestCopyStore(unittest.TestCase):
         source = self.source
         dest = self._get_dest_store()
         copy_store(source, dest, dry_run=True)
-        assert 0 == len(dest)
+        assert len(dest) == 0
 
     def test_if_exists(self):
         source = self.source
@@ -517,14 +518,14 @@ class TestCopyStore(unittest.TestCase):
 
         # skip
         copy_store(source, dest, if_exists="skip")
-        assert 3 == len(dest)
+        assert len(dest) == 3
         assert dest[root + "foo"] == b"xxx"
         assert dest[root + "bar/baz"] == b"mmm"
         assert dest[root + "bar/qux"] == b"zzz"
 
         # replace
         copy_store(source, dest, if_exists="replace")
-        assert 3 == len(dest)
+        assert len(dest) == 3
         assert dest[root + "foo"] == b"xxx"
         assert dest[root + "bar/baz"] == b"yyy"
         assert dest[root + "bar/qux"] == b"zzz"
@@ -790,14 +791,14 @@ class TestCopy:
         with pytest.raises(CopyError):
             # should raise by default
             copy(source["foo/bar/baz"], dest)
-        assert (10,) == dest["baz"].shape
+        assert dest["baz"].shape == (10,)
         with pytest.raises(CopyError):
             copy(source["foo/bar/baz"], dest, if_exists="raise")
-        assert (10,) == dest["baz"].shape
+        assert dest["baz"].shape == (10,)
 
         # skip
         copy(source["foo/bar/baz"], dest, if_exists="skip")
-        assert (10,) == dest["baz"].shape
+        assert dest["baz"].shape == (10,)
 
         # replace
         copy(source["foo/bar/baz"], dest, if_exists="replace")
@@ -904,40 +905,40 @@ class TestCopy:
         n_copied, n_skipped, n_bytes_copied = copy(
             source["foo"], dest, dry_run=True, return_stats=True
         )
-        assert 0 == len(dest)
-        assert 3 == n_copied
-        assert 0 == n_skipped
-        assert 0 == n_bytes_copied
+        assert len(dest) == 0
+        assert n_copied == 3
+        assert n_skipped == 0
+        assert n_bytes_copied == 0
 
         # dry run, array exists in destination
         baz = np.arange(100, 200)
         dest.create_dataset("foo/bar/baz", data=baz)
         assert not np.all(source["foo/bar/baz"][:] == dest["foo/bar/baz"][:])
-        assert 1 == len(dest)
+        assert len(dest) == 1
 
         # raise
         with pytest.raises(CopyError):
             copy(source["foo"], dest, dry_run=True)
-        assert 1 == len(dest)
+        assert len(dest) == 1
 
         # skip
         n_copied, n_skipped, n_bytes_copied = copy(
             source["foo"], dest, dry_run=True, if_exists="skip", return_stats=True
         )
-        assert 1 == len(dest)
-        assert 2 == n_copied
-        assert 1 == n_skipped
-        assert 0 == n_bytes_copied
+        assert len(dest) == 1
+        assert n_copied == 2
+        assert n_skipped == 1
+        assert n_bytes_copied == 0
         assert_array_equal(baz, dest["foo/bar/baz"])
 
         # replace
         n_copied, n_skipped, n_bytes_copied = copy(
             source["foo"], dest, dry_run=True, if_exists="replace", return_stats=True
         )
-        assert 1 == len(dest)
-        assert 3 == n_copied
-        assert 0 == n_skipped
-        assert 0 == n_bytes_copied
+        assert len(dest) == 1
+        assert n_copied == 3
+        assert n_skipped == 0
+        assert n_bytes_copied == 0
         assert_array_equal(baz, dest["foo/bar/baz"])
 
     def test_logging(self, source, dest, tmpdir):

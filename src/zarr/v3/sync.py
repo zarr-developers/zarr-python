@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from typing import Any, Coroutine, List, Optional
+from collections.abc import Coroutine
+from typing import Any, Optional
 
 from zarr.v3.config import SyncConfiguration
 
-
 # From https://github.com/fsspec/filesystem_spec/blob/master/fsspec/asyn.py
 
-iothread: List[Optional[threading.Thread]] = [None]  # dedicated IO thread
-loop: List[Optional[asyncio.AbstractEventLoop]] = [
+iothread: list[Optional[threading.Thread]] = [None]  # dedicated IO thread
+loop: list[Optional[asyncio.AbstractEventLoop]] = [
     None
 ]  # global event loop for any non-async instance
 _lock: Optional[threading.Lock] = None  # global lock placeholder
@@ -28,7 +28,7 @@ def _get_lock() -> threading.Lock:
     return _lock
 
 
-async def _runner(event: threading.Event, coro: Coroutine, result_box: List[Optional[Any]]):
+async def _runner(event: threading.Event, coro: Coroutine, result_box: list[Optional[Any]]):
     try:
         result_box[0] = await coro
     except Exception as ex:
@@ -57,7 +57,7 @@ def sync(coro: Coroutine, loop: Optional[asyncio.AbstractEventLoop] = None):
             raise NotImplementedError("Calling sync() from within a running loop")
     except RuntimeError:
         pass
-    result_box: List[Optional[Any]] = [None]
+    result_box: list[Optional[Any]] = [None]
     event = threading.Event()
     asyncio.run_coroutine_threadsafe(_runner(event, coro, result_box), loop)
     while True:
@@ -99,8 +99,8 @@ class SyncMixin:
         # this should allow us to better type the sync wrapper
         return sync(coroutine, loop=self._sync_configuration.asyncio_loop)
 
-    def _sync_iter(self, func: Coroutine, *args, **kwargs) -> List[Any]:  # TODO: type this
-        async def iter_to_list() -> List[Any]:
+    def _sync_iter(self, func: Coroutine, *args, **kwargs) -> list[Any]:  # TODO: type this
+        async def iter_to_list() -> list[Any]:
             # TODO: replace with generators so we don't materialize the entire iterator at once
             return [item async for item in func(*args, **kwargs)]
 

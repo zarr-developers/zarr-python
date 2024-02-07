@@ -1,10 +1,11 @@
 from __future__ import annotations
+
 from collections.abc import MutableMapping
 from typing import TYPE_CHECKING, Any, Union
 
 if TYPE_CHECKING:
-    from zarr.v3.group import Group
     from zarr.v3.array import Array
+    from zarr.v3.group import Group
 
 
 class Attributes(MutableMapping[str, Any]):

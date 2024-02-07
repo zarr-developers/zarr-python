@@ -1,36 +1,31 @@
 import inspect
 import json
 import math
-import numbers
-from textwrap import TextWrapper
 import mmap
+import numbers
 import time
+from collections.abc import Callable, Iterable, Iterator, Mapping
+from textwrap import TextWrapper
 from typing import (
     Any,
-    Callable,
-    Dict,
-    Iterator,
-    Mapping,
     Optional,
-    Tuple,
     TypeVar,
     Union,
-    Iterable,
     cast,
 )
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
+from numcodecs.blosc import cbuffer_metainfo, cbuffer_sizes
 from numcodecs.compat import (
-    ensure_text,
-    ensure_ndarray_like,
     ensure_bytes,
     ensure_contiguous_ndarray_like,
+    ensure_ndarray_like,
+    ensure_text,
 )
 from numcodecs.ndarray_like import NDArrayLike
 from numcodecs.registry import codec_registry
-from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 KeyType = TypeVar("KeyType")
 ValueType = TypeVar("ValueType")
@@ -70,12 +65,12 @@ def json_dumps(o: Any) -> bytes:
     ).encode("ascii")
 
 
-def json_loads(s: Union[bytes, str]) -> Dict[str, Any]:
+def json_loads(s: Union[bytes, str]) -> dict[str, Any]:
     """Read JSON in a consistent way."""
     return json.loads(ensure_text(s, "utf-8"))
 
 
-def normalize_shape(shape: Union[int, Tuple[int, ...], None]) -> Tuple[int, ...]:
+def normalize_shape(shape: Union[int, tuple[int, ...], None]) -> tuple[int, ...]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:
@@ -86,7 +81,7 @@ def normalize_shape(shape: Union[int, Tuple[int, ...], None]) -> Tuple[int, ...]
         shape = (int(shape),)
 
     # normalize
-    shape = cast(Tuple[int, ...], shape)
+    shape = cast(tuple[int, ...], shape)
     shape = tuple(int(s) for s in shape)
     return shape
 
@@ -98,7 +93,7 @@ CHUNK_MIN = 128 * 1024  # Soft lower limit (128k)
 CHUNK_MAX = 64 * 1024 * 1024  # Hard upper limit
 
 
-def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
+def guess_chunks(shape: tuple[int, ...], typesize: int) -> tuple[int, ...]:
     """
     Guess an appropriate chunk layout for an array, given its shape and
     the size of each element in bytes.  Will allocate chunks only as large
@@ -144,7 +139,7 @@ def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
     return tuple(int(x) for x in chunks)
 
 
-def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
+def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tuple[int, ...]:
     """Convenience function to normalize the `chunks` argument for an array
     with the given `shape`."""
 
@@ -179,7 +174,7 @@ def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tupl
     return chunks
 
 
-def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
+def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> tuple[np.dtype, Any]:
 
     # convenience API for object arrays
     if inspect.isclass(dtype):
@@ -219,7 +214,7 @@ def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype
 
 
 # noinspection PyTypeChecker
-def is_total_slice(item, shape: Tuple[int]) -> bool:
+def is_total_slice(item, shape: tuple[int]) -> bool:
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""
@@ -309,8 +304,8 @@ def normalize_fill_value(fill_value, dtype: np.dtype):
 
         if not isinstance(fill_value, str):
             raise ValueError(
-                "fill_value {!r} is not valid for dtype {}; must be a "
-                "unicode string".format(fill_value, dtype)
+                f"fill_value {fill_value!r} is not valid for dtype {dtype}; must be a "
+                "unicode string"
             )
 
     else:
@@ -324,8 +319,8 @@ def normalize_fill_value(fill_value, dtype: np.dtype):
         except Exception as e:
             # re-raise with our own error message to be helpful
             raise ValueError(
-                "fill_value {!r} is not valid for dtype {}; nested "
-                "exception: {}".format(fill_value, dtype, e)
+                f"fill_value {fill_value!r} is not valid for dtype {dtype}; nested "
+                f"exception: {e}"
             )
 
     return fill_value
@@ -380,7 +375,7 @@ def buffer_size(v) -> int:
     return ensure_ndarray_like(v).nbytes
 
 
-def info_text_report(items: Dict[Any, Any]) -> str:
+def info_text_report(items: dict[Any, Any]) -> str:
     keys = [k for k, v in items]
     max_key_len = max(len(k) for k in keys)
     report = ""
@@ -439,7 +434,7 @@ class TreeNode:
     def get_text(self):
         name = self.obj.name.split("/")[-1] or "/"
         if hasattr(self.obj, "shape"):
-            name += " {} {}".format(self.obj.shape, self.obj.dtype)
+            name += f" {self.obj.shape} {self.obj.dtype}"
         return name
 
     def get_type(self):
@@ -491,10 +486,10 @@ def tree_widget(group, expand, level):
         import ipytree
     except ImportError as error:
         raise ImportError(
-            "{}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
+            f"{error}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
             "to get the required ipytree dependency for displaying the tree "
             "widget. If using jupyterlab<3, you also need to run "
-            "`jupyter labextension install ipytree`".format(error)
+            "`jupyter labextension install ipytree`"
         )
 
     result = ipytree.Tree()
@@ -555,13 +550,11 @@ class TreeViewer:
 def check_array_shape(param, array, shape):
     if not hasattr(array, "shape"):
         raise TypeError(
-            "parameter {!r}: expected an array-like object, got {!r}".format(param, type(array))
+            f"parameter {param!r}: expected an array-like object, got {type(array)!r}"
         )
     if array.shape != shape:
         raise ValueError(
-            "parameter {!r}: expected array with shape {!r}, got {!r}".format(
-                param, shape, array.shape
-            )
+            f"parameter {param!r}: expected array with shape {shape!r}, got {array.shape!r}"
         )
 
 
@@ -675,7 +668,7 @@ def retry_call(
     callabl: Callable,
     args=None,
     kwargs=None,
-    exceptions: Tuple[Any, ...] = (),
+    exceptions: tuple[Any, ...] = (),
     retries: int = 10,
     wait: float = 0.1,
 ) -> Any:

@@ -1,8 +1,8 @@
 import atexit
 import os
-import sys
 import pickle
 import shutil
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -19,6 +19,18 @@ from numcodecs import Zlib
 from numpy.testing import assert_array_equal
 
 from zarr._storage.store import _get_metadata_suffix, v3_api_available
+from zarr._storage.v3 import (
+    ABSStoreV3,
+    DBMStoreV3,
+    DirectoryStoreV3,
+    FSStoreV3,
+    KVStoreV3,
+    LMDBStoreV3,
+    LRUStoreCacheV3,
+    MemoryStoreV3,
+    SQLiteStoreV3,
+    ZipStoreV3,
+)
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import open_array
@@ -26,9 +38,9 @@ from zarr.hierarchy import Group, group, open_group
 from zarr.storage import (
     ABSStore,
     DBMStore,
-    KVStore,
     DirectoryStore,
     FSStore,
+    KVStore,
     LMDBStore,
     LRUStoreCache,
     MemoryStore,
@@ -44,21 +56,9 @@ from zarr.storage import (
     init_group,
     meta_root,
 )
-from zarr._storage.v3 import (
-    ABSStoreV3,
-    KVStoreV3,
-    DirectoryStoreV3,
-    MemoryStoreV3,
-    FSStoreV3,
-    ZipStoreV3,
-    DBMStoreV3,
-    LMDBStoreV3,
-    SQLiteStoreV3,
-    LRUStoreCacheV3,
-)
 from zarr.util import InfoReporter, buffer_size
-from .util import skip_test_env_var, have_fsspec, abs_container, mktemp
 
+from .util import abs_container, have_fsspec, mktemp, skip_test_env_var
 
 _VERSIONS = (2, 3) if v3_api_available else (2,)
 
@@ -96,9 +96,9 @@ class TestGroup(unittest.TestCase):
         else:
             assert chunk_store is g.chunk_store
         assert not g.read_only
-        assert "" == g.path
-        assert "/" == g.name
-        assert "" == g.basename
+        assert g.path == ""
+        assert g.name == "/"
+        assert g.basename == ""
         assert isinstance(g.attrs, Attributes)
         g.attrs["foo"] = "bar"
         assert g.attrs["foo"] == "bar"
@@ -112,9 +112,9 @@ class TestGroup(unittest.TestCase):
         g = self.create_group(store, chunk_store=chunk_store, path="/foo/bar/", read_only=True)
         assert store is g.store
         assert g.read_only
-        assert "foo/bar" == g.path
-        assert "/foo/bar" == g.name
-        assert "bar" == g.basename
+        assert g.path == "foo/bar"
+        assert g.name == "/foo/bar"
+        assert g.basename == "bar"
         assert isinstance(g.attrs, Attributes)
         store.close()
 
@@ -181,8 +181,8 @@ class TestGroup(unittest.TestCase):
         # create level 3 group via root
         g5 = g4.create_group("/a/b/c/")
         assert isinstance(g5, Group)
-        assert "a/b/c" == g5.path
-        assert "/a/b/c" == g5.name
+        assert g5.path == "a/b/c"
+        assert g5.name == "/a/b/c"
 
         # test non-str keys
         class Foo:
@@ -243,7 +243,7 @@ class TestGroup(unittest.TestCase):
         assert path == g4.path
         g5 = g4.require_group("/a/b/c/")
         assert isinstance(g5, Group)
-        assert "a/b/c" == g5.path
+        assert g5.path == "a/b/c"
 
         # test when already created
         g2a = g1.require_group("foo")
@@ -326,8 +326,8 @@ class TestGroup(unittest.TestCase):
         d1 = g.create_dataset(dpath, shape=1000, chunks=100)
         path, name = self._dataset_path(g, dpath)
         assert isinstance(d1, Array)
-        assert (1000,) == d1.shape
-        assert (100,) == d1.chunks
+        assert d1.shape == (1000,)
+        assert d1.chunks == (100,)
         assert path == d1.path
         assert name == d1.name
         assert g.store is d1.store
@@ -346,13 +346,13 @@ class TestGroup(unittest.TestCase):
         )
         path, name = self._dataset_path(g, dpath)
         assert isinstance(d2, Array)
-        assert (2000,) == d2.shape
-        assert (200,) == d2.chunks
+        assert d2.shape == (2000,)
+        assert d2.chunks == (200,)
         assert np.dtype("i1") == d2.dtype
-        assert "zlib" == d2.compressor.codec_id
-        assert 9 == d2.compressor.level
-        assert 42 == d2.fill_value
-        assert "F" == d2.order
+        assert d2.compressor.codec_id == "zlib"
+        assert d2.compressor.level == 9
+        assert d2.fill_value == 42
+        assert d2.order == "F"
         assert path == d2.path
         assert name == d2.name
         assert g.store is d2.store
@@ -363,8 +363,8 @@ class TestGroup(unittest.TestCase):
         d3 = g.create_dataset(dpath, data=data, chunks=300)
         path, name = self._dataset_path(g, dpath)
         assert isinstance(d3, Array)
-        assert (3000,) == d3.shape
-        assert (300,) == d3.chunks
+        assert d3.shape == (3000,)
+        assert d3.chunks == (300,)
         assert np.dtype("u2") == d3.dtype
         assert_array_equal(data, d3[:])
         assert path == d3.path
@@ -382,23 +382,23 @@ class TestGroup(unittest.TestCase):
             compression_opts=dict(cname="zstd", clevel=1, shuffle=2),
         )
         assert d.compressor.codec_id == "blosc"
-        assert "zstd" == d.compressor.cname
-        assert 1 == d.compressor.clevel
-        assert 2 == d.compressor.shuffle
+        assert d.compressor.cname == "zstd"
+        assert d.compressor.clevel == 1
+        assert d.compressor.shuffle == 2
 
         # compression_opts as sequence
         d = g.create_dataset(
             "bbb", shape=1000, dtype="u1", compression="blosc", compression_opts=("zstd", 1, 2)
         )
         assert d.compressor.codec_id == "blosc"
-        assert "zstd" == d.compressor.cname
-        assert 1 == d.compressor.clevel
-        assert 2 == d.compressor.shuffle
+        assert d.compressor.cname == "zstd"
+        assert d.compressor.clevel == 1
+        assert d.compressor.shuffle == 2
 
         # None compression_opts
         d = g.create_dataset("ccc", shape=1000, dtype="u1", compression="zlib")
         assert d.compressor.codec_id == "zlib"
-        assert 1 == d.compressor.level
+        assert d.compressor.level == 1
 
         # None compression
         d = g.create_dataset("ddd", shape=1000, dtype="u1", compression=None)
@@ -407,7 +407,7 @@ class TestGroup(unittest.TestCase):
         # compressor as compression
         d = g.create_dataset("eee", shape=1000, dtype="u1", compression=Zlib(1))
         assert d.compressor.codec_id == "zlib"
-        assert 1 == d.compressor.level
+        assert d.compressor.level == 1
 
         g.store.close()
 
@@ -420,8 +420,8 @@ class TestGroup(unittest.TestCase):
         d1[:] = np.arange(1000)
         path, name = self._dataset_path(g, dpath)
         assert isinstance(d1, Array)
-        assert (1000,) == d1.shape
-        assert (100,) == d1.chunks
+        assert d1.shape == (1000,)
+        assert d1.chunks == (100,)
         assert np.dtype("f4") == d1.dtype
         assert path == d1.path
         assert name == d1.name
@@ -431,8 +431,8 @@ class TestGroup(unittest.TestCase):
         # require
         d2 = g.require_dataset(dpath, shape=1000, chunks=100, dtype="f4")
         assert isinstance(d2, Array)
-        assert (1000,) == d2.shape
-        assert (100,) == d2.chunks
+        assert d2.shape == (1000,)
+        assert d2.chunks == (100,)
         assert np.dtype("f4") == d2.dtype
         assert path == d2.path
         assert name == d2.name
@@ -494,7 +494,7 @@ class TestGroup(unittest.TestCase):
 
         # h5py compatibility, accept 'fillvalue'
         d = g.create_dataset("x", shape=100, chunks=10, fillvalue=42)
-        assert 42 == d.fill_value
+        assert d.fill_value == 42
 
         # h5py compatibility, ignore 'shuffle'
         with pytest.warns(UserWarning, match="ignoring keyword argument 'shuffle'"):
@@ -521,16 +521,16 @@ class TestGroup(unittest.TestCase):
 
                 # overwrite array with array
                 d = getattr(g, method_name)("foo", shape=200, chunks=20, overwrite=True)
-                assert (200,) == d.shape
+                assert d.shape == (200,)
                 # overwrite array with group
                 g2 = g.create_group("foo", overwrite=True)
-                assert 0 == len(g2)
+                assert len(g2) == 0
                 # overwrite group with array
                 d = getattr(g, method_name)("foo", shape=300, chunks=30, overwrite=True)
-                assert (300,) == d.shape
+                assert d.shape == (300,)
                 # overwrite array with group
                 d = getattr(g, method_name)("foo/bar", shape=400, chunks=40, overwrite=True)
-                assert (400,) == d.shape
+                assert d.shape == (400,)
                 assert isinstance(g["foo"], Group)
 
                 g.store.close()
@@ -596,11 +596,11 @@ class TestGroup(unittest.TestCase):
             g1["x/y/z"]
 
         # test __len__
-        assert 2 == len(g1)
-        assert 2 == len(g1["foo"])
-        assert 0 == len(g1["foo/bar"])
-        assert 1 == len(g1["a"])
-        assert 1 == len(g1["a/b"])
+        assert len(g1) == 2
+        assert len(g1["foo"]) == 2
+        assert len(g1["foo/bar"]) == 0
+        assert len(g1["a"]) == 1
+        assert len(g1["a/b"]) == 1
 
         # test __iter__, keys()
 
@@ -627,10 +627,10 @@ class TestGroup(unittest.TestCase):
         if g1._version == 3:
             # v3 are not automatically sorted by key
             items, values = zip(*sorted(zip(items, values), key=lambda x: x[0]))
-        assert "a" == items[0][0]
+        assert items[0][0] == "a"
         assert g1["a"] == items[0][1]
         assert g1["a"] == values[0]
-        assert "foo" == items[1][0]
+        assert items[1][0] == "foo"
         assert g1["foo"] == items[1][1]
         assert g1["foo"] == values[1]
 
@@ -639,10 +639,10 @@ class TestGroup(unittest.TestCase):
         if g1._version == 3:
             # v3 are not automatically sorted by key
             items, values = zip(*sorted(zip(items, values), key=lambda x: x[0]))
-        assert "bar" == items[0][0]
+        assert items[0][0] == "bar"
         assert g1["foo"]["bar"] == items[0][1]
         assert g1["foo"]["bar"] == values[0]
-        assert "baz" == items[1][0]
+        assert items[1][0] == "baz"
         assert g1["foo"]["baz"] == items[1][1]
         assert g1["foo"]["baz"] == values[1]
 
@@ -657,9 +657,9 @@ class TestGroup(unittest.TestCase):
             assert ["a", "foo"] == sorted(list(g1.group_keys()))
             groups = sorted(groups)
             arrays = sorted(arrays)
-        assert "a" == groups[0][0]
+        assert groups[0][0] == "a"
         assert g1["a"] == groups[0][1]
-        assert "foo" == groups[1][0]
+        assert groups[1][0] == "foo"
         assert g1["foo"] == groups[1][1]
         assert [] == list(g1.array_keys())
         assert [] == arrays
@@ -671,9 +671,9 @@ class TestGroup(unittest.TestCase):
         if g1._version == 3:
             groups = sorted(groups)
             arrays = sorted(arrays)
-        assert "bar" == groups[0][0]
+        assert groups[0][0] == "bar"
         assert g1["foo"]["bar"] == groups[0][1]
-        assert "baz" == arrays[0][0]
+        assert arrays[0][0] == "baz"
         assert g1["foo"]["baz"] == arrays[0][1]
 
         # visitor collection tests
@@ -823,7 +823,7 @@ class TestGroup(unittest.TestCase):
         # test
         assert [] == list(g)
         assert [] == list(g.keys())
-        assert 0 == len(g)
+        assert len(g) == 0
         assert "foo" not in g
 
         g.store.close()
@@ -849,7 +849,7 @@ class TestGroup(unittest.TestCase):
         arrays = list(g1["foo"].arrays(recurse=False))
         arrays_recurse = list(g1["foo"].arrays(recurse=True))
         assert len(arrays_recurse) > len(arrays)
-        assert "zab" == arrays_recurse[0][0]
+        assert arrays_recurse[0][0] == "zab"
         assert g1["foo"]["bar"]["zab"] == arrays_recurse[0][1]
 
         g1.store.close()
@@ -879,8 +879,8 @@ class TestGroup(unittest.TestCase):
             assert_array_equal(data, g["foo"])
             # 0d array
             g["foo"] = 42
-            assert () == g["foo"].shape
-            assert 42 == g["foo"][()]
+            assert g["foo"].shape == ()
+            assert g["foo"][()] == 42
         except NotImplementedError:
             pass
         g.store.close()
@@ -978,26 +978,26 @@ class TestGroup(unittest.TestCase):
         assert b.fill_value is None
         c = grp.zeros("c", shape=100, chunks=10)
         assert isinstance(c, Array)
-        assert 0 == c.fill_value
+        assert c.fill_value == 0
         d = grp.ones("d", shape=100, chunks=10)
         assert isinstance(d, Array)
-        assert 1 == d.fill_value
+        assert d.fill_value == 1
         e = grp.full("e", shape=100, chunks=10, fill_value=42)
         assert isinstance(e, Array)
-        assert 42 == e.fill_value
+        assert e.fill_value == 42
 
         f = grp.empty_like("f", a)
         assert isinstance(f, Array)
         assert f.fill_value is None
         g = grp.zeros_like("g", a)
         assert isinstance(g, Array)
-        assert 0 == g.fill_value
+        assert g.fill_value == 0
         h = grp.ones_like("h", a)
         assert isinstance(h, Array)
-        assert 1 == h.fill_value
+        assert h.fill_value == 1
         i = grp.full_like("i", e)
         assert isinstance(i, Array)
-        assert 42 == i.fill_value
+        assert i.fill_value == 42
 
         j = grp.array("j", data=np.arange(100), chunks=10)
         assert isinstance(j, Array)
@@ -1169,9 +1169,9 @@ class TestGroupV3(TestGroup, unittest.TestCase):
             assert chunk_store is g.chunk_store
         assert not g.read_only
         # different path/name in v3 case
-        assert "group" == g.path
-        assert "/group" == g.name
-        assert "group" == g.basename
+        assert g.path == "group"
+        assert g.name == "/group"
+        assert g.basename == "group"
 
         assert isinstance(g.attrs, Attributes)
         g.attrs["foo"] = "bar"
@@ -1569,12 +1569,12 @@ def test_group(zarr_version):
     # basic usage
     if zarr_version == 2:
         g = group()
-        assert "" == g.path
-        assert "/" == g.name
+        assert g.path == ""
+        assert g.name == "/"
     else:
         g = group(path="group1", zarr_version=zarr_version)
-        assert "group1" == g.path
-        assert "/group1" == g.name
+        assert g.path == "group1"
+        assert g.name == "/group1"
     assert isinstance(g, Group)
 
     # usage with custom store
@@ -1627,9 +1627,9 @@ def test_open_group(zarr_version):
     g = open_group(store, path=path, mode="w", zarr_version=zarr_version)
     assert isinstance(g, Group)
     assert isinstance(g.store, expected_store_type)
-    assert 0 == len(g)
+    assert len(g) == 0
     g.create_groups("foo", "bar")
-    assert 2 == len(g)
+    assert len(g) == 2
 
     # mode in 'r', 'r+'
     open_array("data/array.zarr", shape=100, chunks=10, mode="w")
@@ -1640,23 +1640,23 @@ def test_open_group(zarr_version):
             open_group("data/array.zarr", mode=mode)
     g = open_group(store, mode="r")
     assert isinstance(g, Group)
-    assert 2 == len(g)
+    assert len(g) == 2
     with pytest.raises(PermissionError):
         g.create_group("baz")
     g = open_group(store, mode="r+")
     assert isinstance(g, Group)
-    assert 2 == len(g)
+    assert len(g) == 2
     g.create_groups("baz", "quux")
-    assert 4 == len(g)
+    assert len(g) == 4
 
     # mode == 'a'
     shutil.rmtree(store)
     g = open_group(store, path=path, mode="a", zarr_version=zarr_version)
     assert isinstance(g, Group)
     assert isinstance(g.store, expected_store_type)
-    assert 0 == len(g)
+    assert len(g) == 0
     g.create_groups("foo", "bar")
-    assert 2 == len(g)
+    assert len(g) == 2
     if zarr_version == 2:
         with pytest.raises(ValueError):
             open_group("data/array.zarr", mode="a", zarr_version=zarr_version)
@@ -1670,9 +1670,9 @@ def test_open_group(zarr_version):
         g = open_group(store, path=path, mode=mode, zarr_version=zarr_version)
         assert isinstance(g, Group)
         assert isinstance(g.store, expected_store_type)
-        assert 0 == len(g)
+        assert len(g) == 0
         g.create_groups("foo", "bar")
-        assert 2 == len(g)
+        assert len(g) == 2
         with pytest.raises(ValueError):
             open_group(store, path=path, mode=mode, zarr_version=zarr_version)
         if zarr_version == 2:
@@ -1682,7 +1682,7 @@ def test_open_group(zarr_version):
     # open with path
     g = open_group(store, path="foo/bar", zarr_version=zarr_version)
     assert isinstance(g, Group)
-    assert "foo/bar" == g.path
+    assert g.path == "foo/bar"
 
 
 @pytest.mark.parametrize("zarr_version", _VERSIONS)

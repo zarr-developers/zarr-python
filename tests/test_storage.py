@@ -13,14 +13,11 @@ import tempfile
 # from contextlib import contextmanager
 # from pickle import PicklingError
 # from zipfile import ZipFile
-
 # import numpy as np
 import pytest
 
 # from numpy.testing import assert_array_almost_equal, assert_array_equal
-
 # from numcodecs.compat import ensure_bytes
-
 # import zarr
 # from zarr._storage.store import _get_hierarchy_metadata
 # from zarr.codecs import BZ2, AsType, Blosc, Zlib
@@ -29,7 +26,6 @@ import pytest
 # from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 # from zarr.hierarchy import group
 # from zarr.meta import ZARR_FORMAT, decode_array_metadata
-
 # from zarr.n5 import N5Store, N5FSStore, N5_FORMAT, n5_attrs_key
 from zarr.storage import (
     #     ABSStore,
@@ -51,26 +47,25 @@ from zarr.storage import (
     #     array_meta_key,
     #     atexit_rmglob,
     atexit_rmtree,
-    #     attrs_key,
-    #     data_root,
-    #     default_compressor,
-    #     getsize,
-    #     group_meta_key,
-    #     init_array,
-    #     init_group,
-    #     migrate_1to2,
-    #     meta_root,
-    #     normalize_store_arg,
 )
 
+#     attrs_key,
+#     data_root,
+#     default_compressor,
+#     getsize,
+#     group_meta_key,
+#     init_array,
+#     init_group,
+#     migrate_1to2,
+#     meta_root,
+#     normalize_store_arg,
 # from zarr.storage import FSStore, rename, listdir
 # from zarr._storage.v3 import KVStoreV3
 # from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
 # from zarr.util import ConstantMap, json_dumps
-
 from zarr.v3.abc.store import Store
-from zarr.v3.store import MemoryStore as KVStore, LocalStore
-
+from zarr.v3.store import LocalStore
+from zarr.v3.store import MemoryStore as KVStore
 
 # @contextmanager
 # def does_not_raise():
@@ -171,7 +166,7 @@ class StoreTests:
         assert await store.get(key) is None
         await store.set(key, b"bar")
         assert await store.exists(key)
-        assert b"bar" == await store.get(key)
+        assert await store.get(key) == b"bar"
 
         # test delete (optional)
         try:

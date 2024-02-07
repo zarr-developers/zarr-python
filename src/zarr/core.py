@@ -14,17 +14,17 @@ from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_availab
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
 from zarr.context import Context
-from zarr.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
+from zarr.errors import ArrayIndexError, ArrayNotFoundError, ReadOnlyError
 from zarr.indexing import (
     BasicIndexer,
+    BlockIndex,
+    BlockIndexer,
     CoordinateIndexer,
     MaskIndexer,
     OIndex,
     OrthogonalIndexer,
-    VIndex,
-    BlockIndex,
-    BlockIndexer,
     PartialChunkIterator,
+    VIndex,
     check_fields,
     check_no_multi_fields,
     ensure_tuple,
@@ -36,18 +36,21 @@ from zarr.indexing import (
     pop_fields,
 )
 from zarr.storage import (
+    KVStore,
     _get_hierarchy_metadata,
     _prefix_to_array_key,
-    KVStore,
     getsize,
     listdir,
     normalize_store_arg,
 )
 from zarr.util import (
     ConstantMap,
-    all_equal,
     InfoReporter,
+    PartialReadBuffer,
+    UncompressedPartialReadBufferV3,
+    all_equal,
     check_array_shape,
+    ensure_ndarray_like,
     human_readable_size,
     is_total_slice,
     nolock,
@@ -55,9 +58,6 @@ from zarr.util import (
     normalize_resize_args,
     normalize_shape,
     normalize_storage_path,
-    PartialReadBuffer,
-    UncompressedPartialReadBufferV3,
-    ensure_ndarray_like,
 )
 
 __all__ = ["Array"]
@@ -2394,7 +2394,7 @@ class Array:
 
     def __repr__(self):
         t = type(self)
-        r = "<{}.{}".format(t.__module__, t.__name__)
+        r = f"<{t.__module__}.{t.__name__}"
         if self.name:
             r += " %r" % self.name
         r += " %s" % str(self.shape)
@@ -2434,11 +2434,11 @@ class Array:
 
     def _info_items_nosync(self):
         def typestr(o):
-            return "{}.{}".format(type(o).__module__, type(o).__name__)
+            return f"{type(o).__module__}.{type(o).__name__}"
 
         def bytestr(n):
             if n > 2**10:
-                return "{} ({})".format(n, human_readable_size(n))
+                return f"{n} ({human_readable_size(n)})"
             else:
                 return str(n)
 
@@ -2478,7 +2478,7 @@ class Array:
                 ("No. bytes stored", bytestr(self.nbytes_stored)),
                 ("Storage ratio", "%.1f" % (self.nbytes / self.nbytes_stored)),
             ]
-        items += [("Chunks initialized", "{}/{}".format(self.nchunks_initialized, self.nchunks))]
+        items += [("Chunks initialized", f"{self.nchunks_initialized}/{self.nchunks}")]
 
         return items
 

@@ -4,10 +4,9 @@ from typing import (
     TYPE_CHECKING,
     Literal,
     Optional,
-    Type,
 )
 
-from attr import frozen, field
+from attr import field, frozen
 from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.v3.abc.codec import BytesBytesCodec
@@ -41,7 +40,7 @@ class ZstdCodec(BytesBytesCodec):
         return cls(configuration=codec_metadata.configuration)
 
     @classmethod
-    def get_metadata_class(cls) -> Type[ZstdCodecMetadata]:
+    def get_metadata_class(cls) -> type[ZstdCodecMetadata]:
         return ZstdCodecMetadata
 
     def _compress(self, data: bytes) -> bytes:

@@ -3,15 +3,11 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import functools
+from collections.abc import Awaitable, Callable
 from typing import (
     Any,
-    Awaitable,
-    Callable,
-    Dict,
-    List,
     Literal,
     Optional,
-    Tuple,
     TypeVar,
     Union,
 )
@@ -25,23 +21,23 @@ ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
 
 BytesLike = Union[bytes, bytearray, memoryview]
-ChunkCoords = Tuple[int, ...]
-SliceSelection = Tuple[slice, ...]
+ChunkCoords = tuple[int, ...]
+SliceSelection = tuple[slice, ...]
 Selection = Union[slice, SliceSelection]
 
 
 def make_cattr():
+    from zarr.v3.codecs.registry import get_codec_metadata_class
     from zarr.v3.metadata import (
         ChunkKeyEncodingMetadata,
         CodecMetadata,
         DefaultChunkKeyEncodingMetadata,
         V2ChunkKeyEncodingMetadata,
     )
-    from zarr.v3.codecs.registry import get_codec_metadata_class
 
     converter = Converter()
 
-    def _structure_chunk_key_encoding_metadata(d: Dict[str, Any], _t) -> ChunkKeyEncodingMetadata:
+    def _structure_chunk_key_encoding_metadata(d: dict[str, Any], _t) -> ChunkKeyEncodingMetadata:
         if d["name"] == "default":
             return converter.structure(d, DefaultChunkKeyEncodingMetadata)
         if d["name"] == "v2":
@@ -52,7 +48,7 @@ def make_cattr():
         ChunkKeyEncodingMetadata, _structure_chunk_key_encoding_metadata
     )
 
-    def _structure_codec_metadata(d: Dict[str, Any], _t=None) -> CodecMetadata:
+    def _structure_codec_metadata(d: dict[str, Any], _t=None) -> CodecMetadata:
         codec_metadata_cls = get_codec_metadata_class(d["name"])
         return converter.structure(d, codec_metadata_cls)
 
@@ -63,7 +59,7 @@ def make_cattr():
         lambda t: _structure_codec_metadata,
     )
 
-    def _structure_order(d: Any, _t=None) -> Union[Literal["C", "F"], Tuple[int, ...]]:
+    def _structure_order(d: Any, _t=None) -> Union[Literal["C", "F"], tuple[int, ...]]:
         if d == "C":
             return "C"
         if d == "F":
@@ -109,13 +105,13 @@ def product(tup: ChunkCoords) -> int:
     return functools.reduce(lambda x, y: x * y, tup, 1)
 
 
-T = TypeVar("T", bound=Tuple)
+T = TypeVar("T", bound=tuple)
 V = TypeVar("V")
 
 
 async def concurrent_map(
-    items: List[T], func: Callable[..., Awaitable[V]], limit: Optional[int] = None
-) -> List[V]:
+    items: list[T], func: Callable[..., Awaitable[V]], limit: Optional[int] = None
+) -> list[V]:
     if limit is None:
         return await asyncio.gather(*[func(*item) for item in items])
 

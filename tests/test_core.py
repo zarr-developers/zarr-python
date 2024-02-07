@@ -1,12 +1,13 @@
 import atexit
 import os
-import sys
 import pickle
 import shutil
-from typing import Any, Literal, Optional, Tuple, Union
+import sys
 import unittest
 from itertools import zip_longest
 from tempfile import mkdtemp
+from typing import Any, Literal, Optional, Union
+
 import numpy as np
 import packaging.version
 import pytest
@@ -35,6 +36,18 @@ from zarr._storage.store import (
     BaseStore,
     v3_api_available,
 )
+from zarr._storage.v3 import (
+    ABSStoreV3,
+    DBMStoreV3,
+    DirectoryStoreV3,
+    FSStoreV3,
+    KVStoreV3,
+    LMDBStoreV3,
+    LRUStoreCacheV3,
+    RmdirV3,
+    SQLiteStoreV3,
+    StoreV3,
+)
 from zarr._storage.v3_storage_transformers import (
     DummyStorageTransfomer,
     ShardingStorageTransformer,
@@ -43,7 +56,7 @@ from zarr._storage.v3_storage_transformers import (
 from zarr.core import Array
 from zarr.errors import ArrayNotFoundError, ContainsGroupError
 from zarr.meta import json_loads
-from zarr.n5 import N5Store, N5FSStore, n5_keywords
+from zarr.n5 import N5FSStore, N5Store, n5_keywords
 from zarr.storage import (
     ABSStore,
     DBMStore,
@@ -62,21 +75,9 @@ from zarr.storage import (
     meta_root,
     normalize_store_arg,
 )
-from zarr._storage.v3 import (
-    ABSStoreV3,
-    DBMStoreV3,
-    DirectoryStoreV3,
-    FSStoreV3,
-    KVStoreV3,
-    LMDBStoreV3,
-    LRUStoreCacheV3,
-    RmdirV3,
-    SQLiteStoreV3,
-    StoreV3,
-)
-
 from zarr.util import buffer_size
-from .util import abs_container, skip_test_env_var, have_fsspec, mktemp
+
+from .util import abs_container, have_fsspec, mktemp, skip_test_env_var
 
 # noinspection PyMethodMayBeStatic
 
@@ -93,7 +94,7 @@ class TestArray:
     partial_decompress: bool = False
     write_empty_chunks = True
     read_only = False
-    storage_transformers: Tuple[Any, ...] = ()
+    storage_transformers: tuple[Any, ...] = ()
 
     def create_store(self) -> BaseStore:
         return KVStore(dict())
@@ -102,13 +103,13 @@ class TestArray:
     def create_chunk_store(self) -> Optional[BaseStore]:
         return None
 
-    def create_storage_transformers(self, shape: Union[int, Tuple[int, ...]]) -> Tuple[Any, ...]:
+    def create_storage_transformers(self, shape: Union[int, tuple[int, ...]]) -> tuple[Any, ...]:
         return ()
 
-    def create_filters(self, dtype: Optional[str]) -> Tuple[Any, ...]:
+    def create_filters(self, dtype: Optional[str]) -> tuple[Any, ...]:
         return ()
 
-    def create_array(self, shape: Union[int, Tuple[int, ...]], **kwargs):
+    def create_array(self, shape: Union[int, tuple[int, ...]], **kwargs):
         store = self.create_store()
         chunk_store = self.create_chunk_store()
         # keyword arguments for array initialization
@@ -141,9 +142,9 @@ class TestArray:
         init_array(store, shape=100, chunks=10, dtype="<f8")
         a = Array(store, zarr_version=self.version)
         assert isinstance(a, Array)
-        assert (100,) == a.shape
-        assert (10,) == a.chunks
-        assert "" == a.path
+        assert a.shape == (100,)
+        assert a.chunks == (10,)
+        assert a.path == ""
         assert a.name is None
         assert a.basename is None
         assert a.store == normalize_store_arg(store)
@@ -154,11 +155,11 @@ class TestArray:
         init_array(store, shape=100, chunks=10, path="foo/bar", dtype="<f8")
         a = Array(store, path="foo/bar", zarr_version=self.version)
         assert isinstance(a, Array)
-        assert (100,) == a.shape
-        assert (10,) == a.chunks
-        assert "foo/bar" == a.path
-        assert "/foo/bar" == a.name
-        assert "bar" == a.basename
+        assert a.shape == (100,)
+        assert a.chunks == (10,)
+        assert a.path == "foo/bar"
+        assert a.name == "/foo/bar"
+        assert a.basename == "bar"
         assert a.store == normalize_store_arg(store)
 
         # store not initialized
@@ -240,7 +241,7 @@ class TestArray:
                 z.store[z._key_prefix + "foo"] = list(range(10))
             else:
                 z.store[f"meta/root{z.name}/foo"] = list(range(10))
-            assert -1 == z.nbytes_stored
+            assert z.nbytes_stored == -1
         except TypeError:
             pass
 
@@ -256,11 +257,11 @@ class TestArray:
         assert a.ndim == z.ndim
         assert a.shape == z.shape
         assert a.dtype == z.dtype
-        assert (100,) == z.chunks
+        assert z.chunks == (100,)
         assert a.nbytes == z.nbytes
-        assert 11 == z.nchunks
-        assert 0 == z.nchunks_initialized
-        assert (11,) == z.cdata_shape
+        assert z.nchunks == 11
+        assert z.nchunks_initialized == 0
+        assert z.cdata_shape == (11,)
 
         # check empty
         b = z[:]
@@ -270,15 +271,15 @@ class TestArray:
 
         # check attributes
         z.attrs["foo"] = "bar"
-        assert "bar" == z.attrs["foo"]
+        assert z.attrs["foo"] == "bar"
 
         # set data
         z[:] = a
 
         # check properties
         assert a.nbytes == z.nbytes
-        assert 11 == z.nchunks
-        assert 11 == z.nchunks_initialized
+        assert z.nchunks == 11
+        assert z.nchunks_initialized == 11
 
         # check slicing
         assert_array_equal(a, np.array(z))
@@ -421,16 +422,16 @@ class TestArray:
         assert a.ndim == z.ndim
         assert a.shape == z.shape
         assert a.dtype == z.dtype
-        assert (100, 2) == z.chunks
-        assert 0 == z.nchunks_initialized
-        assert (10, 5) == z.cdata_shape
+        assert z.chunks == (100, 2)
+        assert z.nchunks_initialized == 0
+        assert z.cdata_shape == (10, 5)
 
         # set data
         z[:] = a
 
         # check properties
         assert a.nbytes == z.nbytes
-        assert 50 == z.nchunks_initialized
+        assert z.nchunks_initialized == 50
 
         # check array-like
         assert_array_equal(a, np.array(z))
@@ -570,9 +571,9 @@ class TestArray:
         z[0, 0] = -1
         z[2, 2] = -1
         z[-1, -1] = -1
-        assert -1 == z[0, 0]
-        assert -1 == z[2, 2]
-        assert -1 == z[-1, -1]
+        assert z[0, 0] == -1
+        assert z[2, 2] == -1
+        assert z[-1, -1] == -1
 
         z.store.close()
 
@@ -671,34 +672,34 @@ class TestArray:
         z = self.create_array(shape=105, chunks=10, dtype="i4", fill_value=0)
         a = np.arange(105, dtype="i4")
         z[:] = a
-        assert (105,) == z.shape
-        assert (105,) == z[:].shape
+        assert z.shape == (105,)
+        assert z[:].shape == (105,)
         assert np.dtype("i4") == z.dtype
         assert np.dtype("i4") == z[:].dtype
-        assert (10,) == z.chunks
+        assert z.chunks == (10,)
         assert_array_equal(a, z[:])
 
         z.resize(205)
-        assert (205,) == z.shape
-        assert (205,) == z[:].shape
+        assert z.shape == (205,)
+        assert z[:].shape == (205,)
         assert np.dtype("i4") == z.dtype
         assert np.dtype("i4") == z[:].dtype
-        assert (10,) == z.chunks
+        assert z.chunks == (10,)
         assert_array_equal(a, z[:105])
         assert_array_equal(np.zeros(100, dtype="i4"), z[105:])
 
         z.resize(55)
-        assert (55,) == z.shape
-        assert (55,) == z[:].shape
+        assert z.shape == (55,)
+        assert z[:].shape == (55,)
         assert np.dtype("i4") == z.dtype
         assert np.dtype("i4") == z[:].dtype
-        assert (10,) == z.chunks
+        assert z.chunks == (10,)
         assert_array_equal(a[:55], z[:])
 
         # via shape setter
         z.shape = (105,)
-        assert (105,) == z.shape
-        assert (105,) == z[:].shape
+        assert z.shape == (105,)
+        assert z[:].shape == (105,)
 
         z.store.close()
 
@@ -706,52 +707,52 @@ class TestArray:
         z = self.create_array(shape=(105, 105), chunks=(10, 10), dtype="i4", fill_value=0)
         a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
         z[:] = a
-        assert (105, 105) == z.shape
-        assert (105, 105) == z[:].shape
+        assert z.shape == (105, 105)
+        assert z[:].shape == (105, 105)
         assert np.dtype("i4") == z.dtype
         assert np.dtype("i4") == z[:].dtype
-        assert (10, 10) == z.chunks
+        assert z.chunks == (10, 10)
         assert_array_equal(a, z[:])
 
         z.resize((205, 205))
-        assert (205, 205) == z.shape
-        assert (205, 205) == z[:].shape
+        assert z.shape == (205, 205)
+        assert z[:].shape == (205, 205)
         assert np.dtype("i4") == z.dtype
         assert np.dtype("i4") == z[:].dtype
-        assert (10, 10) == z.chunks
+        assert z.chunks == (10, 10)
         assert_array_equal(a, z[:105, :105])
         assert_array_equal(np.zeros((100, 205), dtype="i4"), z[105:, :])
         assert_array_equal(np.zeros((205, 100), dtype="i4"), z[:, 105:])
 
         z.resize((55, 55))
-        assert (55, 55) == z.shape
-        assert (55, 55) == z[:].shape
+        assert z.shape == (55, 55)
+        assert z[:].shape == (55, 55)
         assert np.dtype("i4") == z.dtype
         assert np.dtype("i4") == z[:].dtype
-        assert (10, 10) == z.chunks
+        assert z.chunks == (10, 10)
         assert_array_equal(a[:55, :55], z[:])
 
         z.resize((55, 1))
-        assert (55, 1) == z.shape
-        assert (55, 1) == z[:].shape
+        assert z.shape == (55, 1)
+        assert z[:].shape == (55, 1)
         assert np.dtype("i4") == z.dtype
         assert np.dtype("i4") == z[:].dtype
-        assert (10, 10) == z.chunks
+        assert z.chunks == (10, 10)
         assert_array_equal(a[:55, :1], z[:])
 
         z.resize((1, 55))
-        assert (1, 55) == z.shape
-        assert (1, 55) == z[:].shape
+        assert z.shape == (1, 55)
+        assert z[:].shape == (1, 55)
         assert np.dtype("i4") == z.dtype
         assert np.dtype("i4") == z[:].dtype
-        assert (10, 10) == z.chunks
+        assert z.chunks == (10, 10)
         assert_array_equal(a[:1, :10], z[:, :10])
         assert_array_equal(np.zeros((1, 55 - 10), dtype="i4"), z[:, 10:55])
 
         # via shape setter
         z.shape = (105, 105)
-        assert (105, 105) == z.shape
-        assert (105, 105) == z[:].shape
+        assert z.shape == (105, 105)
+        assert z[:].shape == (105, 105)
 
         z.store.close()
 
@@ -768,7 +769,7 @@ class TestArray:
         z[:] = a
         assert a.shape == z.shape
         assert a.dtype == z.dtype
-        assert (10,) == z.chunks
+        assert z.chunks == (10,)
         assert_array_equal(a, z[:])
 
         b = np.arange(105, 205)
@@ -776,7 +777,7 @@ class TestArray:
         z.append(b)
         assert e.shape == z.shape
         assert e.dtype == z.dtype
-        assert (10,) == z.chunks
+        assert z.chunks == (10,)
         assert_array_equal(e, z[:])
 
         # check append handles array-like
@@ -785,7 +786,7 @@ class TestArray:
         z.append(c)
         assert f.shape == z.shape
         assert f.dtype == z.dtype
-        assert (10,) == z.chunks
+        assert z.chunks == (10,)
         assert_array_equal(f, z[:])
 
         z.store.close()
@@ -796,7 +797,7 @@ class TestArray:
         z[:] = a
         assert a.shape == z.shape
         assert a.dtype == z.dtype
-        assert (10, 10) == z.chunks
+        assert z.chunks == (10, 10)
         actual = z[:]
         assert_array_equal(a, actual)
 
@@ -805,7 +806,7 @@ class TestArray:
         z.append(b)
         assert e.shape == z.shape
         assert e.dtype == z.dtype
-        assert (10, 10) == z.chunks
+        assert z.chunks == (10, 10)
         actual = z[:]
         assert_array_equal(e, actual)
 
@@ -817,7 +818,7 @@ class TestArray:
         z[:] = a
         assert a.shape == z.shape
         assert a.dtype == z.dtype
-        assert (10, 10) == z.chunks
+        assert z.chunks == (10, 10)
         assert_array_equal(a, z[:])
 
         b = np.arange(105 * 105, 2 * 105 * 105, dtype="i4").reshape((105, 105))
@@ -825,7 +826,7 @@ class TestArray:
         z.append(b, axis=1)
         assert e.shape == z.shape
         assert e.dtype == z.dtype
-        assert (10, 10) == z.chunks
+        assert z.chunks == (10, 10)
         assert_array_equal(e, z[:])
 
         z.store.close()
@@ -945,11 +946,11 @@ class TestArray:
         assert a.shape == z.shape
         assert a.dtype == z.dtype
         assert a.size == z.size
-        assert 0 == z.nchunks
+        assert z.nchunks == 0
 
         # cannot make a good decision when auto-chunking if a dimension has zero length,
         # fall back to 1 for now
-        assert (1,) == z.chunks
+        assert z.chunks == (1,)
 
         # check __getitem__
         assert isinstance(z[:], np.ndarray)
@@ -980,11 +981,11 @@ class TestArray:
         assert a.shape == z.shape
         assert a.dtype == z.dtype
         assert a.size == z.size
-        assert 0 == z.nchunks
+        assert z.nchunks == 0
 
         # cannot make a good decision when auto-chunking if a dimension has zero length,
         # fall back to 1 for now
-        assert (10, 1) == z.chunks
+        assert z.chunks == (10, 1)
 
         # check __getitem__
         assert isinstance(z[:], np.ndarray)
@@ -1025,9 +1026,9 @@ class TestArray:
         assert a.nbytes == z.nbytes
         with pytest.raises(TypeError):
             len(z)
-        assert () == z.chunks
-        assert 1 == z.nchunks
-        assert (1,) == z.cdata_shape
+        assert z.chunks == ()
+        assert z.nchunks == 1
+        assert z.cdata_shape == (1,)
         # compressor always None - no point in compressing a single value
         assert z.compressor is None
 
@@ -1046,9 +1047,9 @@ class TestArray:
 
         # check __setitem__
         z[...] = 42
-        assert 42 == z[()]
+        assert z[()] == 42
         z[()] = 43
-        assert 43 == z[()]
+        assert z[()] == 43
         z[()] = z.fill_value
         assert z.fill_value == z[()]
         with pytest.raises(IndexError):
@@ -1070,15 +1071,15 @@ class TestArray:
                 shape=100, chunks=10, fill_value=fill_value, dtype=dtype, write_empty_chunks=True
             )
 
-            assert 0 == z.nchunks_initialized
+            assert z.nchunks_initialized == 0
             # manually put something into the store to confuse matters
             z.store[self.root + "foo"] = b"bar"
-            assert 0 == z.nchunks_initialized
+            assert z.nchunks_initialized == 0
             z[:] = 42
-            assert 10 == z.nchunks_initialized
+            assert z.nchunks_initialized == 10
             # manually remove the first chunk from the store
             del z.chunk_store[z._chunk_key((0,))]
-            assert 9 == z.nchunks_initialized
+            assert z.nchunks_initialized == 9
 
             z.store.close()
 
@@ -1206,7 +1207,7 @@ class TestArray:
         # datetime, timedelta
         for base_type in "Mm":
             for resolution in "D", "us", "ns":
-                dtype = "{}8[{}]".format(base_type, resolution)
+                dtype = f"{base_type}8[{resolution}]"
                 z = self.create_array(shape=100, dtype=dtype, fill_value=0)
                 assert z.dtype == np.dtype(dtype)
                 a = np.random.randint(
@@ -1396,7 +1397,7 @@ class TestArray:
 
         # convenience API
         for item_type in "int", "<u4":
-            z = self.create_array(shape=data.shape, dtype="array:{}".format(item_type))
+            z = self.create_array(shape=data.shape, dtype=f"array:{item_type}")
             assert z.dtype == object
             assert isinstance(z.filters[0], VLenArray)
             assert z.filters[0].dtype == np.dtype(item_type)
@@ -1466,7 +1467,7 @@ class TestArray:
         assert za[0] == a[0]
 
         za[0] = (b"ccc", 3)
-        za[1:2] = np.array([(b"ddd", 4)], dtype=structured_dtype)  # ToDo: not work with list
+        za[1:2] = np.array([(b"ddd", 4)], dtype=structured_dtype)  # TODO: not work with list
         assert_array_equal(za[:], np.array([(b"ccc", 3), (b"ddd", 4)], dtype=structured_dtype))
 
         za["c_obj"] = [b"eee", b"fff"]
@@ -1637,7 +1638,7 @@ class TestArrayWithPath(TestArray):
 
         # mess with store
         z.store[z._key_prefix + "foo"] = list(range(10))
-        assert -1 == z.nbytes_stored
+        assert z.nbytes_stored == -1
 
 
 class TestArrayWithChunkStore(TestArray):
@@ -1667,7 +1668,7 @@ class TestArrayWithChunkStore(TestArray):
 
         # mess with store
         z.chunk_store[z._key_prefix + "foo"] = list(range(10))
-        assert -1 == z.nbytes_stored
+        assert z.nbytes_stored == -1
 
 
 class TestArrayWithDirectoryStore(TestArray):
@@ -1754,9 +1755,9 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         assert a.nbytes == z.nbytes
         with pytest.raises(TypeError):
             len(z)
-        assert () == z.chunks
-        assert 1 == z.nchunks
-        assert (1,) == z.cdata_shape
+        assert z.chunks == ()
+        assert z.nchunks == 1
+        assert z.cdata_shape == (1,)
         # compressor always None - no point in compressing a single value
         assert z.compressor.compressor_config is None
 
@@ -1775,9 +1776,9 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
         # check __setitem__
         z[...] = 42
-        assert 42 == z[()]
+        assert z[()] == 42
         z[()] = 43
-        assert 43 == z[()]
+        assert z[()] == 43
         with pytest.raises(IndexError):
             z[0] = 42
         with pytest.raises(IndexError):
@@ -1809,15 +1810,15 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             shape=100, chunks=10, fill_value=fill_value, dtype=dtype, write_empty_chunks=True
         )
 
-        assert 0 == z.nchunks_initialized
+        assert z.nchunks_initialized == 0
         # manually put something into the store to confuse matters
         z.store["foo"] = b"bar"
-        assert 0 == z.nchunks_initialized
+        assert z.nchunks_initialized == 0
         z[:] = 42
-        assert 10 == z.nchunks_initialized
+        assert z.nchunks_initialized == 10
         # manually remove a chunk from the store
         del z.chunk_store[z._chunk_key((0,))]
-        assert 9 == z.nchunks_initialized
+        assert z.nchunks_initialized == 9
 
         # second round of similar tests with write_empty_chunks set to
         # False
@@ -1825,12 +1826,12 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             shape=100, chunks=10, fill_value=fill_value, dtype=dtype, write_empty_chunks=False
         )
         z[:] = 42
-        assert 10 == z.nchunks_initialized
+        assert z.nchunks_initialized == 10
         # manually remove a chunk from the store
         del z.chunk_store[z._chunk_key((0,))]
-        assert 9 == z.nchunks_initialized
+        assert z.nchunks_initialized == 9
         z[:] = z.fill_value
-        assert 0 == z.nchunks_initialized
+        assert z.nchunks_initialized == 0
 
     def test_array_order(self):
         # N5 only supports 'C' at the moment
@@ -1966,7 +1967,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         # convenience API
         for item_type in "int", "<u4":
             with pytest.raises(ValueError):
-                self.create_array(shape=data.shape, dtype="array:{}".format(item_type))
+                self.create_array(shape=data.shape, dtype=f"array:{item_type}")
 
     def test_object_arrays_danger(self):
         # Cannot hacking out object codec as N5 doesn't allow object codecs
@@ -2154,7 +2155,7 @@ class TestArrayWithLZMACompressor(TestArray):
 class TestArrayWithFilters(TestArray):
     compressor = Zlib(1)
 
-    def create_filters(self, dtype: Optional[str]) -> Tuple[Any, ...]:
+    def create_filters(self, dtype: Optional[str]) -> tuple[Any, ...]:
         return (
             Delta(dtype=dtype),
             FixedScaleOffset(dtype=dtype, scale=1, offset=0),
@@ -2290,9 +2291,9 @@ class TestArrayWithCustomMapping(TestArray):
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
-        assert 245 == z.nbytes_stored
+        assert z.nbytes_stored == 245
         z[:] = 42
-        assert 515 == z.nbytes_stored
+        assert z.nbytes_stored == 515
 
 
 class TestArrayNoCache(TestArray):
@@ -2307,20 +2308,20 @@ class TestArrayNoCache(TestArray):
 
         # a1 is not caching so *will* see updates made via other objects
         a2.resize(200)
-        assert (200,) == a2.shape
-        assert 200 == a2.size
-        assert 200 == a2.nbytes
-        assert 20 == a2.nchunks
+        assert a2.shape == (200,)
+        assert a2.size == 200
+        assert a2.nbytes == 200
+        assert a2.nchunks == 20
         assert a1.shape == a2.shape
         assert a1.size == a2.size
         assert a1.nbytes == a2.nbytes
         assert a1.nchunks == a2.nchunks
 
         a2.append(np.zeros(100))
-        assert (300,) == a2.shape
-        assert 300 == a2.size
-        assert 300 == a2.nbytes
-        assert 30 == a2.nchunks
+        assert a2.shape == (300,)
+        assert a2.size == 300
+        assert a2.nbytes == 300
+        assert a2.nchunks == 30
         assert a1.shape == a2.shape
         assert a1.size == a2.size
         assert a1.nbytes == a2.nbytes
@@ -2328,14 +2329,14 @@ class TestArrayNoCache(TestArray):
 
         # a2 is caching so *will not* see updates made via other objects
         a1.resize(400)
-        assert (400,) == a1.shape
-        assert 400 == a1.size
-        assert 400 == a1.nbytes
-        assert 40 == a1.nchunks
-        assert (300,) == a2.shape
-        assert 300 == a2.size
-        assert 300 == a2.nbytes
-        assert 30 == a2.nchunks
+        assert a1.shape == (400,)
+        assert a1.size == 400
+        assert a1.nbytes == 400
+        assert a1.nchunks == 40
+        assert a2.shape == (300,)
+        assert a2.size == 300
+        assert a2.nbytes == 300
+        assert a2.nchunks == 30
 
     def test_cache_attrs(self):
         a1 = self.create_array(shape=100, chunks=10, dtype="i1", cache_attrs=False)
@@ -2350,8 +2351,8 @@ class TestArrayNoCache(TestArray):
 
         # a2 is caching so *will not* see updates made via other objects
         a1.attrs["foo"] = "yyy"
-        assert "yyy" == a1.attrs["foo"]
-        assert "xxx" == a2.attrs["foo"]
+        assert a1.attrs["foo"] == "yyy"
+        assert a2.attrs["foo"] == "xxx"
 
     def test_object_arrays_danger(self):
         # skip this one as it only works if metadata are cached
@@ -2569,13 +2570,13 @@ class TestArrayWithPathV3(TestArrayV3):
         b = Array(store)
         assert not b.is_view
         assert isinstance(b, Array)
-        assert (100,) == b.shape
-        assert (10,) == b.chunks
-        assert "" == b.path
+        assert b.shape == (100,)
+        assert b.chunks == (10,)
+        assert b.path == ""
         assert b.name is None
         assert b.basename is None
         assert store is b.store
-        assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == b.hexdigest()
+        assert b.hexdigest() == "968dccbbfc0139f703ead2fd1d503ad6e44db307"
 
         # initialize at path
         store = self.create_store()
@@ -2584,13 +2585,13 @@ class TestArrayWithPathV3(TestArrayV3):
         a = Array(store, path=path)
         assert not a.is_view
         assert isinstance(a, Array)
-        assert (100,) == a.shape
-        assert (10,) == a.chunks
+        assert a.shape == (100,)
+        assert a.chunks == (10,)
         assert path == a.path
         assert "/" + path == a.name
-        assert "bar" == a.basename
+        assert a.basename == "bar"
         assert store is a.store
-        assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == a.hexdigest()
+        assert a.hexdigest() == "968dccbbfc0139f703ead2fd1d503ad6e44db307"
 
         # store not initialized
         store = self.create_store()
@@ -2637,7 +2638,7 @@ class TestArrayWithPathV3(TestArrayV3):
         # mess with store
         if not isinstance(z.store, (LRUStoreCacheV3, FSStoreV3)):
             z.store[data_root + z._key_prefix + "foo"] = list(range(10))
-            assert -1 == z.nbytes_stored
+            assert z.nbytes_stored == -1
 
         z.store.close()
 
@@ -2671,12 +2672,12 @@ class TestArrayWithPathV3(TestArrayV3):
         # not used
 
         z = self.create_array(shape=100, chunks=10)
-        assert 0 == z.nchunks_initialized
+        assert z.nchunks_initialized == 0
         # manually put something into the store to confuse matters
         z.store["meta/root/foo"] = b"bar"
-        assert 0 == z.nchunks_initialized
+        assert z.nchunks_initialized == 0
         z[:] = 42
-        assert 10 == z.nchunks_initialized
+        assert z.nchunks_initialized == 10
 
         z.store.close()
 
@@ -2714,7 +2715,7 @@ class TestArrayWithChunkStoreV3(TestArrayV3):
 
         # mess with store
         z.chunk_store[data_root + z._key_prefix + "foo"] = list(range(10))
-        assert -1 == z.nbytes_stored
+        assert z.nbytes_stored == -1
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
@@ -2985,7 +2986,7 @@ class TestArrayWithFSStoreV3PartialReadUncompressedSharded(TestArrayWithFSStoreV
     partial_decompress = True
     compressor = None
 
-    def create_storage_transformers(self, shape) -> Tuple[Any]:
+    def create_storage_transformers(self, shape) -> tuple[Any]:
         num_dims = 1 if isinstance(shape, int) else len(shape)
         sharding_transformer = ShardingStorageTransformer(
             "indexed", chunks_per_shard=(2,) * num_dims
@@ -3047,7 +3048,7 @@ class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithFSStoreV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
-    def create_storage_transformers(self, shape) -> Tuple[Any]:
+    def create_storage_transformers(self, shape) -> tuple[Any]:
         return (
             DummyStorageTransfomer("dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT),
         )
@@ -3067,7 +3068,7 @@ class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
 class TestArrayWithShardingStorageTransformerV3(TestArrayV3):
     compressor = None
 
-    def create_storage_transformers(self, shape) -> Tuple[Any]:
+    def create_storage_transformers(self, shape) -> tuple[Any]:
         num_dims = 1 if isinstance(shape, int) else len(shape)
         return (ShardingStorageTransformer("indexed", chunks_per_shard=(2,) * num_dims),)
 
@@ -3081,7 +3082,7 @@ class TestArrayWithShardingStorageTransformerV3(TestArrayV3):
 
         # mess with store
         z.store[data_root + z._key_prefix + "foo"] = list(range(10))
-        assert -1 == z.nbytes_stored
+        assert z.nbytes_stored == -1
 
     def test_keys_inner_store(self):
         z = self.create_array(shape=1000, chunks=100)

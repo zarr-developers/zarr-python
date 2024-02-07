@@ -16,7 +16,7 @@ from zarr.storage import DirectoryStore, KVStore, atexit_rmtree, init_array, ini
 from zarr.sync import ProcessSynchronizer, ThreadSynchronizer
 
 # zarr_version fixture must be imported although not used directly here
-from .test_attrs import TestAttributes, zarr_version  # noqa
+from .test_attrs import TestAttributes, zarr_version
 from .test_core import TestArray
 from .test_hierarchy import TestGroup
 
@@ -120,11 +120,11 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
-        assert "f710da18d45d38d4aaf2afd7fb822fdd73d02957" == z.hexdigest()
+        assert z.hexdigest() == "f710da18d45d38d4aaf2afd7fb822fdd73d02957"
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype="<f4")
-        assert "1437428e69754b1e1a38bd7fc9e43669577620db" == z.hexdigest()
+        assert z.hexdigest() == "1437428e69754b1e1a38bd7fc9e43669577620db"
 
         # Check basic 2-D array
         z = self.create_array(
@@ -135,17 +135,17 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
             chunks=10,
             dtype="<i4",
         )
-        assert "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe" == z.hexdigest()
+        assert z.hexdigest() == "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe"
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         z[200:400] = np.arange(200, 400, dtype="i4")
-        assert "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e" == z.hexdigest()
+        assert z.hexdigest() == "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e"
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         z.attrs["foo"] = "bar"
-        assert "05b0663ffe1785f38d3a459dec17e57a18f254af" == z.hexdigest()
+        assert z.hexdigest() == "05b0663ffe1785f38d3a459dec17e57a18f254af"
 
 
 class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
@@ -177,11 +177,11 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
     def test_hexdigest(self):
         # Check basic 1-D array
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
-        assert "f710da18d45d38d4aaf2afd7fb822fdd73d02957" == z.hexdigest()
+        assert z.hexdigest() == "f710da18d45d38d4aaf2afd7fb822fdd73d02957"
 
         # Check basic 1-D array with different type
         z = self.create_array(shape=(1050,), chunks=100, dtype="<f4")
-        assert "1437428e69754b1e1a38bd7fc9e43669577620db" == z.hexdigest()
+        assert z.hexdigest() == "1437428e69754b1e1a38bd7fc9e43669577620db"
 
         # Check basic 2-D array
         z = self.create_array(
@@ -192,17 +192,17 @@ class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
             chunks=10,
             dtype="<i4",
         )
-        assert "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe" == z.hexdigest()
+        assert z.hexdigest() == "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe"
 
         # Check basic 1-D array with some data
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         z[200:400] = np.arange(200, 400, dtype="i4")
-        assert "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e" == z.hexdigest()
+        assert z.hexdigest() == "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e"
 
         # Check basic 1-D array with attributes
         z = self.create_array(shape=(1050,), chunks=100, dtype="<i4")
         z.attrs["foo"] = "bar"
-        assert "05b0663ffe1785f38d3a459dec17e57a18f254af" == z.hexdigest()
+        assert z.hexdigest() == "05b0663ffe1785f38d3a459dec17e57a18f254af"
 
     def test_object_arrays_danger(self):
         # skip this one, metadata get reloaded in each process

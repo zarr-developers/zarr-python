@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import Optional, MutableMapping, List, Tuple
+from collections.abc import MutableMapping
+from typing import Optional
 
-from zarr.v3.common import BytesLike
 from zarr.v3.abc.store import Store
+from zarr.v3.common import BytesLike
 
 
 # TODO: this store could easily be extended to wrap any MutuableMapping store from v2
@@ -22,10 +23,10 @@ class MemoryStore(Store):
         return f"memory://{id(self._store_dict)}"
 
     def __repr__(self) -> str:
-        return f"MemoryStore({repr(str(self))})"
+        return f"MemoryStore({str(self)!r})"
 
     async def get(
-        self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
+        self, key: str, byte_range: Optional[tuple[int, Optional[int]]] = None
     ) -> Optional[BytesLike]:
         assert isinstance(key, str)
         try:
@@ -37,15 +38,15 @@ class MemoryStore(Store):
             return None
 
     async def get_partial_values(
-        self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[bytes]:
+        self, key_ranges: list[tuple[str, tuple[int, int]]]
+    ) -> list[bytes]:
         raise NotImplementedError
 
     async def exists(self, key: str) -> bool:
         return key in self._store_dict
 
     async def set(
-        self, key: str, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None
+        self, key: str, value: BytesLike, byte_range: Optional[tuple[int, int]] = None
     ) -> None:
         assert isinstance(key, str)
         if not isinstance(value, (bytes, bytearray, memoryview)):
@@ -64,16 +65,16 @@ class MemoryStore(Store):
         except KeyError:
             pass  # Q(JH): why not raise?
 
-    async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
         raise NotImplementedError
 
-    async def list(self) -> List[str]:
+    async def list(self) -> list[str]:
         return list(self._store_dict.keys())
 
-    async def list_prefix(self, prefix: str) -> List[str]:
+    async def list_prefix(self, prefix: str) -> list[str]:
         return [key for key in self._store_dict if key.startswith(prefix)]
 
-    async def list_dir(self, prefix: str) -> List[str]:
+    async def list_dir(self, prefix: str) -> list[str]:
         if prefix == "":
             return list({key.split("/", maxsplit=1)[0] for key in self._store_dict})
         else:

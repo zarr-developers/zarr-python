@@ -4,12 +4,10 @@ from typing import (
     TYPE_CHECKING,
     Literal,
     Optional,
-    Tuple,
-    Type,
 )
 
 import numpy as np
-from attr import evolve, frozen, field
+from attr import evolve, field, frozen
 
 from zarr.v3.abc.codec import ArrayArrayCodec
 from zarr.v3.codecs.registry import register_codec
@@ -20,7 +18,7 @@ if TYPE_CHECKING:
 
 @frozen
 class TransposeCodecConfigurationMetadata:
-    order: Tuple[int, ...]
+    order: tuple[int, ...]
 
 
 @frozen
@@ -31,7 +29,7 @@ class TransposeCodecMetadata:
 
 @frozen
 class TransposeCodec(ArrayArrayCodec):
-    order: Tuple[int, ...]
+    order: tuple[int, ...]
     is_fixed_size = True
 
     @classmethod
@@ -66,7 +64,7 @@ class TransposeCodec(ArrayArrayCodec):
         return self
 
     @classmethod
-    def get_metadata_class(cls) -> Type[TransposeCodecMetadata]:
+    def get_metadata_class(cls) -> type[TransposeCodecMetadata]:
         return TransposeCodecMetadata
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:

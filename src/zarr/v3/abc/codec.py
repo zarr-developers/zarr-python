@@ -1,20 +1,19 @@
 from __future__ import annotations
 
-from abc import abstractmethod, ABC
-from typing import TYPE_CHECKING, Optional, Type
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
 from zarr.v3.common import BytesLike, SliceSelection
 from zarr.v3.store import StorePath
 
-
 if TYPE_CHECKING:
     from zarr.v3.metadata import (
-        ArraySpec,
         ArrayMetadata,
-        DataType,
+        ArraySpec,
         CodecMetadata,
+        DataType,
         RuntimeConfiguration,
     )
 
@@ -24,7 +23,7 @@ class Codec(ABC):
 
     @classmethod
     @abstractmethod
-    def get_metadata_class(cls) -> Type[CodecMetadata]:
+    def get_metadata_class(cls) -> type[CodecMetadata]:
         pass
 
     @classmethod
