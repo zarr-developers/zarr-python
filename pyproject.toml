@@ -93,6 +93,7 @@ extra-dependencies = [
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
+run-verbose = "run-coverage --verbose"
 
 [tool.ruff]
 line-length = 100
