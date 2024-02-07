@@ -44,6 +44,6 @@ hatch run test:run
 or
 
 ```
-hatch -e test
+hatch -e test shell
 pytest -v
 ```
