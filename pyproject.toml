@@ -98,7 +98,8 @@ extra-dependencies = [
 ]
 
 [tool.hatch.envs.docs.scripts]
-build = "make -C docs clean; make -C docs html"
+clean = "make -C docs clean"
+build = ["clean", "make -C docs html"]
 serve = ["build", "open docs/_build/html/index.html"]
 
 [tool.ruff]
