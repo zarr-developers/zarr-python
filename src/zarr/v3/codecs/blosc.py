@@ -1,4 +1,5 @@
 from __future__ import annotations
+from functools import lru_cache
 
 from typing import (
     TYPE_CHECKING,
@@ -10,16 +11,15 @@ from typing import (
 
 import numcodecs
 import numpy as np
-from attr import asdict, evolve, frozen, field
+from attr import evolve, frozen, field
 from numcodecs.blosc import Blosc
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike, to_thread
-from zarr.v3.metadata import CodecMetadata
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CoreArrayMetadata
+    from zarr.v3.metadata import ArraySpec, CodecMetadata, DataType, RuntimeConfiguration
 
 
 BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
@@ -52,47 +52,55 @@ class BloscCodecMetadata:
 
 @frozen
 class BloscCodec(BytesBytesCodec):
-    array_metadata: CoreArrayMetadata
     configuration: BloscCodecConfigurationMetadata
-    blosc_codec: Blosc
     is_fixed_size = False
 
     @classmethod
-    def from_metadata(
-        cls, codec_metadata: CodecMetadata, array_metadata: CoreArrayMetadata
-    ) -> BloscCodec:
+    def from_metadata(cls, codec_metadata: CodecMetadata) -> BloscCodec:
         assert isinstance(codec_metadata, BloscCodecMetadata)
-        configuration = codec_metadata.configuration
-        if configuration.typesize == 0:
-            configuration = evolve(configuration, typesize=array_metadata.data_type.byte_count)
-        config_dict = asdict(codec_metadata.configuration)
-        config_dict.pop("typesize", None)
-        map_shuffle_str_to_int = {"noshuffle": 0, "shuffle": 1, "bitshuffle": 2}
-        config_dict["shuffle"] = map_shuffle_str_to_int[config_dict["shuffle"]]
-        return cls(
-            array_metadata=array_metadata,
-            configuration=configuration,
-            blosc_codec=Blosc.from_config(config_dict),
-        )
+        return cls(configuration=codec_metadata.configuration)
 
     @classmethod
     def get_metadata_class(cls) -> Type[BloscCodecMetadata]:
         return BloscCodecMetadata
 
+    def evolve(self, *, data_type: DataType, **_kwargs) -> BloscCodec:
+        new_codec = self
+        if new_codec.configuration.typesize == 0:
+            new_configuration = evolve(new_codec.configuration, typesize=data_type.byte_count)
+            new_codec = evolve(new_codec, configuration=new_configuration)
+
+        return new_codec
+
+    @lru_cache
+    def get_blosc_codec(self) -> Blosc:
+        map_shuffle_str_to_int = {"noshuffle": 0, "shuffle": 1, "bitshuffle": 2}
+        config_dict = {
+            "cname": self.configuration.cname,
+            "clevel": self.configuration.clevel,
+            "shuffle": map_shuffle_str_to_int[self.configuration.shuffle],
+            "blocksize": self.configuration.blocksize,
+        }
+        return Blosc.from_config(config_dict)
+
     async def decode(
         self,
         chunk_bytes: bytes,
+        _chunk_spec: ArraySpec,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
-        return await to_thread(self.blosc_codec.decode, chunk_bytes)
+        return await to_thread(self.get_blosc_codec().decode, chunk_bytes)
 
     async def encode(
         self,
         chunk_bytes: bytes,
+        chunk_spec: ArraySpec,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
-        chunk_array = np.frombuffer(chunk_bytes, dtype=self.array_metadata.dtype)
-        return await to_thread(self.blosc_codec.encode, chunk_array)
+        chunk_array = np.frombuffer(chunk_bytes, dtype=chunk_spec.dtype)
+        return await to_thread(self.get_blosc_codec().encode, chunk_array)
 
-    def compute_encoded_size(self, _input_byte_length: int) -> int:
+    def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
 
 
