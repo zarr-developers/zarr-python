@@ -53,6 +53,16 @@ docs = [
     'numpydoc',
     'numcodecs[msgpack]',
 ]
+extra = [
+    'attrs',
+    'cattrs',
+    'msgpack',
+    'crc32c',
+    'zstandard'
+]
+optional = [
+    'lmdb',
+]
 
 [project.urls]
 "Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
@@ -79,17 +89,35 @@ build.hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
 extra-dependencies = [
-    "attrs",
-    "cattrs",
     "coverage",
     "pytest",
     "pytest-cov",
-    "msgpack",
-    "lmdb",
-    "zstandard",
-    "crc32c",
     "pytest-asyncio"
 ]
+features = ["extra"]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.10", "3.11"]
+numpy = ["1.24"]
+version = ["minimal-legacy"]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.10", "3.11"]
+numpy = ["1.26"]
+features = ["optional"]
+version = ["minimal-latest"]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.10", "3.11"]
+numpy = ["1.24"]
+features = ["optional"]
+version = ["legacy"]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.10", "3.11"]
+numpy = ["1.26"]
+features = ["optional"]
+version = ["latest"]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
