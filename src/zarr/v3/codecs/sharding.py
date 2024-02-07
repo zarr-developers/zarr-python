@@ -354,7 +354,7 @@ class ShardingCodec(
             for chunk_coords in all_chunk_coords:
                 chunk_byte_slice = shard_index.get_chunk_slice(chunk_coords)
                 if chunk_byte_slice:
-                    chunk_bytes = await store_path.get_async(chunk_byte_slice)
+                    chunk_bytes = await store_path.get(chunk_byte_slice)
                     if chunk_bytes:
                         shard_dict[chunk_coords] = chunk_bytes
 
@@ -533,9 +533,9 @@ class ShardingCodec(
         )
 
         if shard_builder.index.is_all_empty():
-            await store_path.delete_async()
+            await store_path.delete()
         else:
-            await store_path.set_async(
+            await store_path.set(
                 await shard_builder.finalize(
                     self.configuration.index_location,
                     self._encode_shard_index,
@@ -561,9 +561,9 @@ class ShardingCodec(
     async def _load_shard_index_maybe(self, store_path: StorePath) -> Optional[_ShardIndex]:
         shard_index_size = self._shard_index_size()
         if self.configuration.index_location == ShardingCodecIndexLocation.start:
-            index_bytes = await store_path.get_async((0, shard_index_size))
+            index_bytes = await store_path.get((0, shard_index_size))
         else:
-            index_bytes = await store_path.get_async((-shard_index_size, None))
+            index_bytes = await store_path.get((-shard_index_size, None))
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes)
         return None
@@ -574,7 +574,7 @@ class ShardingCodec(
         )
 
     async def _load_full_shard_maybe(self, store_path: StorePath) -> Optional[_ShardProxy]:
-        shard_bytes = await store_path.get_async()
+        shard_bytes = await store_path.get()
 
         return await _ShardProxy.from_bytes(shard_bytes, self) if shard_bytes else None
 

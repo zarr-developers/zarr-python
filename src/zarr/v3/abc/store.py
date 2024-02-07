@@ -1,20 +1,19 @@
 from abc import abstractmethod, ABC
 
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 
 class Store(ABC):
-    pass
-
-
-class ReadStore(Store):
     @abstractmethod
-    async def get(self, key: str) -> bytes:
+    async def get(
+        self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
+    ) -> Optional[bytes]:
         """Retrieve the value associated with a given key.
 
         Parameters
         ----------
         key : str
+        byte_range : tuple[int, Optional[int]], optional
 
         Returns
         -------
@@ -23,12 +22,14 @@ class ReadStore(Store):
         ...
 
     @abstractmethod
-    async def get_partial_values(self, key_ranges: List[Tuple[str, int]]) -> bytes:
+    async def get_partial_values(
+        self, key_ranges: List[Tuple[str, Tuple[int, int]]]
+    ) -> List[bytes]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
         ----------
-        key_ranges : list[tuple[str, int]]
+        key_ranges : list[tuple[str, tuple[int, int]]]
             Ordered set of key, range pairs, a key may occur multiple times with different ranges
 
         Returns
@@ -38,8 +39,26 @@ class ReadStore(Store):
         """
         ...
 
+    @abstractmethod
+    async def exists(self, key: str) -> bool:
+        """Check if a key exists in the store.
 
-class WriteStore(ReadStore):
+        Parameters
+        ----------
+        key : str
+
+        Returns
+        -------
+        bool
+        """
+        ...
+
+    @property
+    @abstractmethod
+    def supports_writes(self) -> bool:
+        """Does the store support writes?"""
+        ...
+
     @abstractmethod
     async def set(self, key: str, value: bytes) -> None:
         """Store a (key, value) pair.
@@ -49,6 +68,22 @@ class WriteStore(ReadStore):
         key : str
         value : bytes
         """
+        ...
+
+    @abstractmethod
+    async def delete(self, key: str) -> None:
+        """Remove a key from the store
+
+        Parameters
+        ----------
+        key : str
+        """
+        ...
+
+    @property
+    @abstractmethod
+    def supports_partial_writes(self) -> bool:
+        """Does the store support partial writes?"""
         ...
 
     @abstractmethod
@@ -64,8 +99,12 @@ class WriteStore(ReadStore):
         """
         ...
 
+    @property
+    @abstractmethod
+    def supports_listing(self) -> bool:
+        """Does the store support listing?"""
+        ...
 
-class ListMixin:
     @abstractmethod
     async def list(self) -> List[str]:
         """Retrieve all keys in the store.
@@ -78,7 +117,7 @@ class ListMixin:
 
     @abstractmethod
     async def list_prefix(self, prefix: str) -> List[str]:
-        """Retrieve all keys in the store.
+        """Retrieve all keys in the store with a given prefix.
 
         Parameters
         ----------
@@ -105,11 +144,3 @@ class ListMixin:
         list[str]
         """
         ...
-
-
-class ReadListStore(ReadStore, ListMixin):
-    pass
-
-
-class WriteListStore(WriteStore, ListMixin):
-    pass
