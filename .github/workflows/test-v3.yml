@@ -30,3 +30,6 @@ jobs:
     - name: Run Tests
       run: |
         hatch run test:run
+    - name: Run mypy
+      run: |
+        hatch run test:run-mypy

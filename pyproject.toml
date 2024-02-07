@@ -92,7 +92,8 @@ extra-dependencies = [
     "coverage",
     "pytest",
     "pytest-cov",
-    "pytest-asyncio"
+    "pytest-asyncio",
+    "mypy",
 ]
 features = ["extra"]
 
@@ -123,6 +124,7 @@ version = ["latest"]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
+run-mypy = "mypy src"
 
 [tool.hatch.envs.docs]
 features = ['docs']
