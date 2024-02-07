@@ -42,16 +42,6 @@ jupyter = [
     'ipytree>=0.2.2',
     'ipywidgets>=8.0.0',
 ]
-docs = [
-    'sphinx',
-    'sphinx-automodapi',
-    'sphinx_design',
-    'sphinx-issues',
-    'sphinx-copybutton',
-    'pydata-sphinx-theme',
-    'numpydoc',
-    'numcodecs[msgpack]',
-]
 
 [project.urls]
 "Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
@@ -94,6 +84,22 @@ extra-dependencies = [
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
+
+[tool.hatch.envs.docs]
+extra-dependencies = [
+    'sphinx',
+    'sphinx-automodapi',
+    'sphinx_design',
+    'sphinx-issues',
+    'sphinx-copybutton',
+    'pydata-sphinx-theme',
+    'numpydoc',
+    'numcodecs[msgpack]',
+]
+
+[tool.hatch.envs.docs.scripts]
+build = "make -C docs clean; make -C docs html"
+serve = ["build", "open docs/_build/html/index.html"]
 
 [tool.ruff]
 line-length = 100
