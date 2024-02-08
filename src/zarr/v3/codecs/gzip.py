@@ -7,10 +7,10 @@ from zarr.v3.abc.metadata import Metadata
 from numcodecs.gzip import GZip
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import to_thread
+from zarr.v3.common import ArraySpec, to_thread
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ArraySpec, RuntimeConfiguration
+    from zarr.v3.metadata import RuntimeConfiguration
     from zarr.v3.common import BytesLike, NamedConfig
     from typing_extensions import Self
     from typing import Any, Optional, Dict, Literal, Type

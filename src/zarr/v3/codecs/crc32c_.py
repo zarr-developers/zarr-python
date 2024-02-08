@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     Any,
-    Dict,
     Literal,
     Optional,
     Type,
@@ -17,11 +16,10 @@ from crc32c import crc32c
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.abc.metadata import Metadata
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import BytesLike, RuntimeConfiguration
 from zarr.v3.common import NamedConfig
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ArraySpec, CodecMetadata, RuntimeConfiguration
+    from zarr.v3.common import BytesLike, RuntimeConfiguration, ArraySpec
 
 
 def parse_name(data: Any) -> Literal["crc32c"]:
@@ -46,7 +44,7 @@ class Crc32cCodec(BytesBytesCodec):
     is_fixed_size = True
 
     @classmethod
-    def from_metadata(cls, codec_metadata: CodecMetadata) -> Crc32cCodec:
+    def from_metadata(cls, codec_metadata: NamedConfig) -> Crc32cCodec:
         assert isinstance(codec_metadata, Crc32cCodecMetadata)
         return cls()
 

@@ -8,11 +8,9 @@ import numpy as np
 from zarr.v3.abc.codec import ArrayBytesCodec
 from zarr.v3.abc.metadata import Metadata
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import BytesLike, RuntimeConfiguration
-from zarr.v3.common import NamedConfig
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ArraySpec
+    from zarr.v3.common import ArraySpec, NamedConfig, BytesLike, RuntimeConfiguration
     from typing_extensions import Self
     from typing import Any, Dict, Optional, Type
 
@@ -29,11 +27,6 @@ def parse_name(data: Any) -> Literal["bytes"]:
         return data
     msg = f"Expected 'bytes', got {data} instead."
     raise ValueError(msg)
-
-
-@dataclass(frozen=True)
-class BytesCodecConfigurationMetadata(Metadata):
-    endian: Optional[Literal["big", "little"]] = "little"
 
 
 Endian = Literal["big", "little"]

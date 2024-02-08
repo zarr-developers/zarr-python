@@ -2,7 +2,7 @@ from __future__ import annotations
 from zarr.v3.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.v3.codecs.registry import get_codec_class
 from zarr.v3.common import BytesLike, NamedConfig, RuntimeConfiguration
-from zarr.v3.metadata import ArraySpec
+from zarr.v3.common import ArraySpec
 
 
 import numpy as np
@@ -140,8 +140,8 @@ class CodecPipeline:
 async def decode(
     codecs: List[Codec], chunk_bytes: BytesLike, runtime_configuration: RuntimeConfiguration
 ) -> np.ndarray:
-    # todo: increase the arity of the function signature with positions for array_array, array_bytes, and bytes_bytes
-    # codices (codexes?)
+    # todo: increase the arity of the function signature with 
+    # positions for array_array, array_bytes, and bytes_bytes
     _array_array_codecs = [codec for codec in codecs if isinstance(codec, ArrayArrayCodec)]
     _array_bytes_codec = next(codec for codec in codecs if isinstance(codec, ArrayBytesCodec))
     _bytes_bytes_codecs = [codec for codec in codecs if isinstance(codec, BytesBytesCodec)]
@@ -166,8 +166,8 @@ async def decode(
 async def encode(
     codecs: List[Codec], chunk_array: np.ndarray, runtime_configuration: RuntimeConfiguration
 ) -> Optional[BytesLike]:
-    # todo: increase the arity of the function signature with positions for array_array, array_bytes, and bytes_bytes
-    # codices (codexes?)
+    # todo: increase the arity of the function signature 
+    # with positions for array_array, array_bytes, and bytes_bytes
     _array_array_codecs = [codec for codec in codecs if isinstance(codec, ArrayArrayCodec)]
     _array_bytes_codec = next(codec for codec in codecs if isinstance(codec, ArrayBytesCodec))
     _bytes_bytes_codecs = [codec for codec in codecs if isinstance(codec, BytesBytesCodec)]

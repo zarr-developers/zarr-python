@@ -8,12 +8,13 @@ from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import BytesLike, to_thread
+from zarr.v3.common import to_thread, ArraySpec
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ArraySpec, CodecMetadata, RuntimeConfiguration
+    from zarr.v3.metadata import RuntimeConfiguration
     from typing import Any, Literal, Dict, Type, Optional
     from typing_extensions import Self
+    from zarr.v3.common import BytesLike, NamedConfig
 
 
 def parse_zstd_level(data: Any) -> int:
@@ -69,7 +70,7 @@ class ZstdCodec(BytesBytesCodec):
     is_fixed_size = True
 
     @classmethod
-    def from_metadata(cls, codec_metadata: CodecMetadata) -> ZstdCodec:
+    def from_metadata(cls, codec_metadata: NamedConfig) -> ZstdCodec:
         assert isinstance(codec_metadata, ZstdCodecMetadata)
         return cls(configuration=codec_metadata.configuration)
 

@@ -23,12 +23,12 @@ from zarr.v3.abc.codec import (
     ArrayBytesCodec,
     BytesBytesCodec,
 )
-from zarr.v3.common import BytesLike, NamedConfig, SliceSelection
+from zarr.v3.common import ArraySpec, BytesLike, NamedConfig, SliceSelection
 from zarr.v3.metadata import RuntimeConfiguration
 from zarr.v3.store import StorePath
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ArrayMetadata, ArraySpec
+    from zarr.v3.metadata import ArrayMetadata
     from zarr.v3.codecs.sharding import ShardingCodecMetadata
     from zarr.v3.codecs.blosc import BloscCodecMetadata
     from zarr.v3.codecs.bytes import BytesCodecMetadata

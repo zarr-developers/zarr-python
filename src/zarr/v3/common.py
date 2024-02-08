@@ -31,81 +31,6 @@ ChunkCoords = Tuple[int, ...]
 SliceSelection = Tuple[slice, ...]
 Selection = Union[slice, SliceSelection]
 
-""" 
-def make_cattr():
-    from zarr.v3.metadata import (
-        ChunkKeyEncodingMetadata,
-        CodecMetadata,
-        DefaultChunkKeyEncodingMetadata,
-        V2ChunkKeyEncodingMetadata,
-    )
-    from zarr.v3.codecs.registry import get_codec_metadata_class
-
-    converter = Converter()
-
-    def _structure_chunk_key_encoding_metadata(d: Dict[str, Any], _t) -> ChunkKeyEncodingMetadata:
-        if d["name"] == "default":
-            return converter.structure(d, DefaultChunkKeyEncodingMetadata)
-        if d["name"] == "v2":
-            return converter.structure(d, V2ChunkKeyEncodingMetadata)
-        raise KeyError
-
-    converter.register_structure_hook(
-        ChunkKeyEncodingMetadata, _structure_chunk_key_encoding_metadata
-    )
-
-    def _structure_codec_metadata(d: Dict[str, Any], _t=None) -> CodecMetadata:
-        codec_metadata_cls = get_codec_metadata_class(d["name"])
-        return converter.structure(d, codec_metadata_cls)
-
-    converter.register_structure_hook(CodecMetadata, _structure_codec_metadata)
-
-    converter.register_structure_hook_factory(
-        lambda t: str(t) == "ForwardRef('CodecMetadata')",
-        lambda t: _structure_codec_metadata,
-    )
-
-    def _structure_order(d: Any, _t=None) -> Union[Literal["C", "F"], Tuple[int, ...]]:
-        if d == "C":
-            return "C"
-        if d == "F":
-            return "F"
-        if isinstance(d, list):
-            return tuple(d)
-        raise KeyError
-
-    converter.register_structure_hook_factory(
-        lambda t: str(t) == "typing.Union[typing.Literal['C', 'F'], typing.Tuple[int, ...]]",
-        lambda t: _structure_order,
-    )
-
-    # Needed for v2 fill_value
-    def _structure_fill_value(d: Any, _t=None) -> Union[None, int, float]:
-        if d is None:
-            return None
-        try:
-            return int(d)
-        except ValueError:
-            pass
-        try:
-            return float(d)
-        except ValueError:
-            pass
-        raise ValueError
-
-    converter.register_structure_hook_factory(
-        lambda t: str(t) == "typing.Union[NoneType, int, float]",
-        lambda t: _structure_fill_value,
-    )
-
-    # Needed for v2 dtype
-    converter.register_structure_hook(
-        np.dtype,
-        lambda d, _: np.dtype(d),
-    )
-
-    return converter """
-
 
 def product(tup: ChunkCoords) -> int:
     return functools.reduce(lambda x, y: x * y, tup, 1)
@@ -153,3 +78,41 @@ class RuntimeConfiguration:
     order: Literal["C", "F"] = "C"
     concurrency: Optional[int] = None
     asyncio_loop: Optional[AbstractEventLoop] = None
+
+
+@dataclass(frozen=True)
+class ArraySpec:
+    shape: ChunkCoords
+    chunk_shape: ChunkCoords
+    dtype: np.dtype
+    fill_value: Any
+
+    def __init__(self, shape, chunk_shape, dtype, fill_value):
+        shape_parsed = parse_shapelike(shape)
+        dtype_parsed = parse_dtype(dtype)
+        chunk_shape_parsed = parse_shapelike(chunk_shape)
+        fill_value_parsed = parse_fill_value(fill_value)
+
+        object.__setattr__(self, "shape", shape_parsed)
+        object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
+        object.__setattr__(self, "dtype", dtype_parsed)
+        object.__setattr__(self, "fill_value", fill_value_parsed)
+
+    @property
+    def ndim(self) -> int:
+        return len(self.shape)
+
+
+def parse_shapelike(data: Any) -> Tuple[int, ...]:
+    # todo: handle empty tuple
+    return tuple(int(x) for x in data)
+
+
+def parse_dtype(data: Any) -> np.dtype:
+    # todo: real validation
+    return np.dtype(data)
+
+
+def parse_fill_value(data: Any) -> Any:
+    # todo: real validation
+    return data

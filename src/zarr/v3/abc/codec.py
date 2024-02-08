@@ -5,17 +5,14 @@ from typing import TYPE_CHECKING, Optional, Type
 
 import numpy as np
 
-from zarr.v3.common import BytesLike, NamedConfig, SliceSelection
-from zarr.v3.common import RuntimeConfiguration
+from zarr.v3.common import ArraySpec
 from zarr.v3.store import StorePath
 
 
 if TYPE_CHECKING:
+    from zarr.v3.common import BytesLike, SliceSelection, NamedConfig
     from zarr.v3.metadata import (
-        ArraySpec,
         ArrayMetadata,
-        DataType,
-        CodecMetadata,
         RuntimeConfiguration,
     )
 
@@ -30,7 +27,7 @@ class Codec(ABC):
         pass
 
     @classmethod
-    def get_metadata_class(cls) -> Type[CodecMetadata]:
+    def get_metadata_class(cls) -> Type[NamedConfig]:
         pass
 
     @abstractmethod
@@ -40,7 +37,7 @@ class Codec(ABC):
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         return chunk_spec
 
-    def evolve(self, *, ndim: int, data_type: DataType) -> Codec:
+    def evolve(self, *, ndim: int, data_type: np.dtype) -> Codec:
         return self
 
     def validate(self, array_metadata: ArrayMetadata) -> None:

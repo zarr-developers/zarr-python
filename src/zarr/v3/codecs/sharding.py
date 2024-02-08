@@ -29,6 +29,7 @@ from zarr.v3.abc.metadata import Metadata
 from zarr.v3.codecs.common import CodecPipeline
 from zarr.v3.codecs.registry import get_codec_from_metadata, register_codec
 from zarr.v3.common import (
+    ArraySpec,
     ChunkCoords,
     concurrent_map,
     product,
@@ -43,16 +44,13 @@ from zarr.v3.indexing import (
 
 from zarr.v3.metadata import (
     ArrayMetadata,
-    ArraySpec,
     RegularChunkGridMetadata,
     ShardingCodecIndexLocation,
-    RuntimeConfiguration,
     runtime_configuration as make_runtime_configuration,
 )
+
 from zarr.v3.store import StorePath
 from zarr.v3.codecs.common import encode, decode
-
-ShardingCodecIndexLocation = Literal["start", "end"]
 
 MAX_UINT_64 = 2**64 - 1
 
@@ -244,7 +242,7 @@ class ShardingCodec(
     @classmethod
     def from_metadata(
         cls,
-        codec_metadata: CodecMetadata,
+        codec_metadata: NamedConfig,
     ) -> ShardingCodec:
         assert isinstance(codec_metadata, ShardingCodecMetadata)
         return cls(configuration=codec_metadata.configuration)
@@ -618,7 +616,7 @@ class ShardingCodec(
     def _get_index_chunk_spec(self, chunks_per_shard: ChunkCoords) -> ArraySpec:
         return ArraySpec(
             shape=chunks_per_shard + (2,),
-            data_type=DataType.uint64,
+            data=np.uint64,
             fill_value=MAX_UINT_64,
         )
 
@@ -626,7 +624,7 @@ class ShardingCodec(
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:
         return ArraySpec(
             shape=self.configuration.chunk_shape,
-            data_type=shard_spec.data_type,
+            dtype=shard_spec.dtype,
             fill_value=shard_spec.fill_value,
         )
 

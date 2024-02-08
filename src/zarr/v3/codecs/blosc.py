@@ -1,5 +1,5 @@
 from __future__ import annotations
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 from typing import (
@@ -22,7 +22,7 @@ from zarr.v3.common import to_thread
 from zarr.v3.common import NamedConfig
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ArraySpec
+    from zarr.v3.common import ArraySpec
     from typing_extensions import Self
     from zarr.v3.common import BytesLike, RuntimeConfiguration
 
@@ -47,7 +47,11 @@ def parse_typesize(data: Any) -> int:
 def parse_cname(data: Any) -> BloscCname:
     if data in ["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"]:
         return data
-    msg = f'Value must be one of ["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"], got {data} instead.'
+    msg = (
+        "Value must be one of ",
+        '["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"], ',
+        f"got {data} instead.",
+    )
     raise ValueError(msg)
 
 

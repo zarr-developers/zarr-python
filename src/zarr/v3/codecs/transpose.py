@@ -3,12 +3,12 @@ from typing import TYPE_CHECKING
 
 from dataclasses import dataclass, field
 
+from zarr.v3.common import ArraySpec
+
 if TYPE_CHECKING:
     from zarr.v3.common import NamedConfig, RuntimeConfiguration
     from typing import (
         TYPE_CHECKING,
-        Any,
-        Dict,
         Literal,
         Optional,
         Tuple,
@@ -19,9 +19,6 @@ import numpy as np
 
 from zarr.v3.abc.codec import ArrayArrayCodec
 from zarr.v3.codecs.registry import register_codec
-
-if TYPE_CHECKING:
-    from zarr.v3.metadata import ArraySpec, CodecMetadata, RuntimeConfiguration
 
 
 @dataclass(frozen=True)
@@ -76,11 +73,11 @@ class TransposeCodec(ArrayArrayCodec):
         return TransposeCodecMetadata
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
-        from zarr.v3.metadata import ArraySpec
+        from zarr.v3.common import ArraySpec
 
         return ArraySpec(
             shape=tuple(chunk_spec.shape[self.order[i]] for i in range(chunk_spec.ndim)),
-            data_type=chunk_spec.data_type,
+            dtype=chunk_spec.dtype,
             fill_value=chunk_spec.fill_value,
         )
 

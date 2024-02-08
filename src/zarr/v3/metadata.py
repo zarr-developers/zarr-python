@@ -3,20 +3,30 @@ from typing import TYPE_CHECKING, Literal, Union
 from dataclasses import asdict, dataclass, field
 
 import json
+
 if TYPE_CHECKING:
     from typing import Any, Dict, Iterable, List, Optional, Tuple
     from typing_extensions import Self
-    
+
 from warnings import warn
 
 import numpy as np
 from zarr.v3.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.v3.abc.metadata import Metadata
-from zarr.v3.codecs.registry import get_codec_class, get_codec_metadata_class
+from zarr.v3.codecs.registry import get_codec_class
 
-from zarr.v3.common import ChunkCoords, NamedConfig, RuntimeConfiguration
+from zarr.v3.common import (
+    ArraySpec,
+    ChunkCoords,
+    NamedConfig,
+    RuntimeConfiguration,
+    parse_dtype,
+    parse_fill_value,
+    parse_shapelike,
+)
 
 ShardingCodecIndexLocation = Literal["start", "end"]
+
 
 def runtime_configuration(
     order: Literal["C", "F"], concurrency: Optional[int] = None
@@ -168,29 +178,6 @@ class V2ChunkKeyEncodingMetadata(Metadata):
 
 
 ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEncodingMetadata]
-
-
-@dataclass(frozen=True)
-class ArraySpec:
-    shape: ChunkCoords
-    chunk_shape: ChunkCoords
-    dtype: np.dtype
-    fill_value: Any
-
-    def __init__(self, shape, chunk_shape, dtype, fill_value):
-        shape_parsed = parse_shapelike(shape)
-        dtype_parsed = parse_dtype(dtype)
-        chunk_shape_parsed = parse_shapelike(chunk_shape)
-        fill_value_parsed = parse_fill_value(fill_value)
-
-        object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
-        object.__setattr__(self, "dtype", dtype_parsed)
-        object.__setattr__(self, "fill_value", fill_value_parsed)
-
-    @property
-    def ndim(self) -> int:
-        return len(self.shape)
 
 
 @dataclass(frozen=True)
@@ -375,15 +362,6 @@ class ArrayV2Metadata(Metadata):
         return out_dict
 
 
-def parse_dtype(data: Any) -> np.dtype:
-    return np.dtype(data)
-
-
-def parse_shapelike(data: Any) -> Tuple[int, ...]:
-    # todo: handle empty tuple
-    return tuple(int(x) for x in data)
-
-
 def parse_chunk_grid(data: Any) -> RegularChunkGridMetadata:
     if isinstance(data, dict):
         return RegularChunkGridMetadata.from_dict(data)
@@ -404,13 +382,11 @@ def parse_chunk_key_encoding(data: Any) -> ChunkKeyEncodingMetadata:
         raise ValueError(msg)
     if isinstance(data, (V2ChunkKeyEncodingMetadata, DefaultChunkKeyEncodingMetadata)):
         return data
-    msg = f"Expected a dict or an instance of V2ChunkKeyEncodingMetadata or an instance of DefaultChunkKeyEncodingMetadata, got input with type={type(data)}"
+    msg = (
+        f"Expected a dict or an instance of V2ChunkKeyEncodingMetadata "
+        f"or an instance of DefaultChunkKeyEncodingMetadata, got input with type={type(data)}"
+    )
     raise TypeError(msg)
-
-
-# todo: real validation
-def parse_fill_value(data: Any) -> Any:
-    return data
 
 
 def parse_dimension_names(data: Any) -> Tuple[str, ...] | None:
@@ -459,17 +435,28 @@ def parse_compressor(data: Any) -> Codec:
 
 def parse_v3_metadata(data: ArrayMetadata) -> ArrayMetadata:
     if (l_chunks := len(data.chunk_grid.configuration.chunk_shape)) != (l_shape := len(data.shape)):
-        msg = f"The `shape` and `chunk_grid.configuration.chunk_shape` attributes must have the same length. `chunk_grid.configuration.chunk_shape` has length {l_chunks}, but `shape` has length {l_shape}"
+        msg = (
+            f"The `shape` and `chunk_grid.configuration.chunk_shape` attributes "
+            "must have the same length. "
+            f"`chunk_grid.configuration.chunk_shape` has length {l_chunks}, "
+            f"but `shape` has length {l_shape}"
+        )
         raise ValueError(msg)
     if data.dimension_names is not None and (l_dimnames := len(data.dimension_names) != l_shape):
-        msg = f"The `shape` and `dimension_names` attribute must have the same length. `dimension_names` has length {l_dimnames}"
-
+        msg = (
+            f"The `shape` and `dimension_names` attribute must have the same length. "
+            f"`dimension_names` has length {l_dimnames}"
+        )
+        raise ValueError(msg)
     return data
 
 
 def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     if (l_chunks := len(data.chunks)) != (l_shape := len(data.shape)):
-        msg = f"The `shape` and `chunks` attributes must have the same length. `chunks` has length {l_chunks}, but `shape` has length {l_shape}"
+        msg = (
+            f"The `shape` and `chunks` attributes must have the same length. "
+            f"`chunks` has length {l_chunks}, but `shape` has length {l_shape}."
+        )
         raise ValueError(msg)
     return data
 

@@ -20,14 +20,13 @@ import numpy as np
 from zarr.v3.abc.codec import Codec
 
 # from zarr.v3.array_v2 import ArrayV2
-from zarr.v3.codecs import bytes_codec
 from zarr.v3.codecs.common import decode, encode
 
 # from zarr.v3.array_v2 import ArrayV2
 from zarr.v3.codecs import bytes_codec
-from zarr.v3.codecs.registry import get_codec_from_metadata
 from zarr.v3.common import (
     ZARR_JSON,
+    ArraySpec,
     ChunkCoords,
     NamedConfig,
     RuntimeConfiguration,
@@ -38,7 +37,6 @@ from zarr.v3.common import (
 from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.metadata import (
     ArrayMetadata,
-    ArraySpec,
     DefaultChunkKeyEncodingConfigurationMetadata,
     DefaultChunkKeyEncodingMetadata,
     RegularChunkGridConfigurationMetadata,
