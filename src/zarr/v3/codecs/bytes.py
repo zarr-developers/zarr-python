@@ -1,9 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 
-from typing import (
-    TYPE_CHECKING,
-)
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 
@@ -14,9 +12,9 @@ from zarr.v3.common import BytesLike, RuntimeConfiguration
 from zarr.v3.common import NamedConfig
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CoreArrayMetadata
+    from zarr.v3.metadata import ArraySpec
     from typing_extensions import Self
-    from typing import Any, Dict, Literal, Optional, Type
+    from typing import Any, Dict, Optional, Type
 
 
 def parse_endian(data: Any) -> Literal["big", "little"]:
@@ -37,6 +35,14 @@ def parse_name(data: Any) -> Literal["bytes"]:
 class BytesCodecConfigurationMetadata(Metadata):
     endian: Optional[Literal["big", "little"]] = "little"
 
+
+Endian = Literal["big", "little"]
+
+
+@dataclass(frozen=True)
+class BytesCodecConfigurationMetadata:
+    endian: Optional[Endian] = "little"
+
     def __init__(self, endian: Literal["big", "little"]):
         endian_parsed = parse_endian(endian)
         object.__setattr__(self, "endian", endian_parsed)
@@ -55,28 +61,24 @@ class BytesCodecMetadata(Metadata):
 
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
-    array_metadata: CoreArrayMetadata
     configuration: BytesCodecConfigurationMetadata
     is_fixed_size = True
 
     @classmethod
-    def from_metadata(
-        cls, codec_metadata: NamedConfig, array_metadata: CoreArrayMetadata
-    ) -> BytesCodec:
+    def from_metadata(cls, codec_metadata: NamedConfig) -> BytesCodec:
         assert isinstance(codec_metadata, BytesCodecMetadata)
-        assert (
-            array_metadata.dtype.itemsize == 1 or codec_metadata.configuration.endian is not None
-        ), "The `endian` configuration needs to be specified for multi-byte data types."
-        return cls(
-            array_metadata=array_metadata,
-            configuration=codec_metadata.configuration,
-        )
+        return cls(configuration=codec_metadata.configuration)
 
     @classmethod
     def get_metadata_class(cls) -> Type[BytesCodecMetadata]:
         return BytesCodecMetadata
 
-    def _get_byteorder(self, array: np.ndarray) -> Literal["big", "little"]:
+    def validate(self, array_metadata: ArraySpec) -> None:
+        assert (
+            not array_metadata.data_type.has_endianness or self.configuration.endian is not None
+        ), "The `endian` configuration needs to be specified for multi-byte data types."
+
+    def _get_byteorder(self, array: np.ndarray) -> Endian:
         if array.dtype.byteorder == "<":
             return "little"
         elif array.dtype.byteorder == ">":
@@ -87,9 +89,12 @@ class BytesCodec(ArrayBytesCodec):
             return sys.byteorder
 
     async def decode(
-        self, chunk_bytes: BytesLike, runtime_configuration: RuntimeConfiguration
+        self,
+        chunk_bytes: BytesLike,
+        chunk_spec: ArraySpec,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
-        if self.array_metadata.dtype.itemsize > 0:
+        if chunk_spec.dtype.itemsize > 0:
             if self.configuration.endian == "little":
                 prefix = "<"
             else:
@@ -100,14 +105,17 @@ class BytesCodec(ArrayBytesCodec):
         chunk_array = np.frombuffer(chunk_bytes, dtype)
 
         # ensure correct chunk shape
-        if chunk_array.shape != self.array_metadata.chunk_shape:
+        if chunk_array.shape != chunk_spec.shape:
             chunk_array = chunk_array.reshape(
-                self.array_metadata.chunk_shape,
+                chunk_spec.shape,
             )
         return chunk_array
 
     async def encode(
-        self, chunk_array: np.ndarray, runtime_configuration: RuntimeConfiguration
+        self,
+        chunk_array: np.ndarray,
+        _chunk_spec: ArraySpec,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         if chunk_array.dtype.itemsize > 1:
             byteorder = self._get_byteorder(chunk_array)
@@ -116,7 +124,7 @@ class BytesCodec(ArrayBytesCodec):
                 chunk_array = chunk_array.astype(new_dtype)
         return chunk_array.tobytes()
 
-    def compute_encoded_size(self, input_byte_length: int) -> int:
+    def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
 
 

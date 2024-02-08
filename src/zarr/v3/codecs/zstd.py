@@ -1,20 +1,19 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from dataclasses import dataclass, field
 
-from typing import TYPE_CHECKING
 from zarr.v3.abc.metadata import Metadata
 
 from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import BytesLike, RuntimeConfiguration, to_thread
-from zarr.v3.common import NamedConfig
+from zarr.v3.common import BytesLike, to_thread
 
 if TYPE_CHECKING:
+    from zarr.v3.metadata import ArraySpec, CodecMetadata, RuntimeConfiguration
+    from typing import Any, Literal, Dict, Type, Optional
     from typing_extensions import Self
-    from zarr.v3.metadata import CoreArrayMetadata
-    from typing import Any, Literal, Optional, Type, Dict
 
 
 def parse_zstd_level(data: Any) -> int:
@@ -35,7 +34,7 @@ def parse_checksum(data: Any) -> bool:
 
 
 def parse_name(data: Any) -> Literal["zstd"]:
-    if data is "zstd":
+    if data == "zstd":
         return data
     msg = f"Expected 'zstd', got {data}"
     raise ValueError(msg)
@@ -66,19 +65,13 @@ class ZstdCodecMetadata(Metadata):
 
 @dataclass(frozen=True)
 class ZstdCodec(BytesBytesCodec):
-    array_metadata: CoreArrayMetadata
-    metadata: ZstdCodecConfigurationMetadata
+    configuration: ZstdCodecConfigurationMetadata
     is_fixed_size = True
 
     @classmethod
-    def from_metadata(
-        cls, codec_metadata: NamedConfig, array_metadata: CoreArrayMetadata
-    ) -> ZstdCodec:
+    def from_metadata(cls, codec_metadata: CodecMetadata) -> ZstdCodec:
         assert isinstance(codec_metadata, ZstdCodecMetadata)
-        return cls(
-            array_metadata=array_metadata,
-            configuration=codec_metadata.configuration,
-        )
+        return cls(configuration=codec_metadata.configuration)
 
     @classmethod
     def get_metadata_class(cls) -> Type[ZstdCodecMetadata]:
@@ -93,16 +86,22 @@ class ZstdCodec(BytesBytesCodec):
         return ctx.decompress(data)
 
     async def decode(
-        self, chunk_bytes: bytes, runtime_configuration: RuntimeConfiguration
+        self,
+        chunk_bytes: bytes,
+        _chunk_spec: ArraySpec,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         return await to_thread(self._decompress, chunk_bytes)
 
     async def encode(
-        self, chunk_bytes: bytes, runtime_configuration: RuntimeConfiguration
+        self,
+        chunk_bytes: bytes,
+        _chunk_spec: ArraySpec,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         return await to_thread(self._compress, chunk_bytes)
 
-    def compute_encoded_size(self, _input_byte_length: int) -> int:
+    def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
 
 

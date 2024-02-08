@@ -14,7 +14,8 @@ from zarr.v3.common import NamedConfig, Selection
 from zarr.v3.indexing import morton_order_iter
 from zarr.v3.metadata import ShardingCodecIndexLocation, runtime_configuration
 
-from zarr.v3.store import MemoryStore, Store
+from zarr.v3.abc.store import Store
+from zarr.v3.store import MemoryStore, StorePath
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ class _AsyncArraySelectionProxy:
 
 @pytest.fixture
 def store() -> Iterator[Store]:
-    yield MemoryStore()
+    yield StorePath(MemoryStore())
 
 
 @pytest.fixture
@@ -276,7 +277,7 @@ async def test_order(
             fill_value=1,
         )
         z[:, :] = data
-        assert await store.get_async("order/0.0") == z._store["0.0"]
+        assert await (store / "order/0.0").get() == z._store["0.0"]
 
 
 @pytest.mark.parametrize("input_order", ["F", "C"])
@@ -388,7 +389,7 @@ async def test_transpose(
             fill_value=1,
         )
         z[:, :] = data
-        assert await store.get_async("transpose/0.0") == await store.get_async("transpose_zarr/0.0")
+        assert await (store / "transpose/0.0").get() == await (store / "transpose_zarr/0.0").get()
 
 
 def test_transpose_invalid(
@@ -599,7 +600,7 @@ async def test_delete_empty_chunks(store: Store):
     await _AsyncArrayProxy(a)[:16, :16].set(np.zeros((16, 16)))
     await _AsyncArrayProxy(a)[:16, :16].set(data)
     assert np.array_equal(await _AsyncArrayProxy(a)[:16, :16].get(), data)
-    assert await store.get_async("delete_empty_chunks/c0/0") is None
+    assert await (store / "delete_empty_chunks/c0/0").get() is None
 
 
 @pytest.mark.asyncio
@@ -623,8 +624,8 @@ async def test_delete_empty_sharded_chunks(store: Store):
     data = np.ones((16, 16), dtype="uint16")
     data[:8, :8] = 0
     assert np.array_equal(data, await _AsyncArrayProxy(a)[:, :].get())
-    assert await store.get_async("delete_empty_sharded_chunks/c/1/0") is None
-    chunk_bytes = await store.get_async("delete_empty_sharded_chunks/c/0/0")
+    assert await (store / "delete_empty_sharded_chunks/c/1/0").get() is None
+    chunk_bytes = await (store / "delete_empty_sharded_chunks/c/0/0").get()
     assert chunk_bytes is not None and len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
 
 
@@ -654,10 +655,10 @@ async def test_zarr_compat(store: Store):
     assert np.array_equal(data, await _AsyncArrayProxy(a)[:16, :18].get())
     assert np.array_equal(data, z2[:16, :18])
 
-    assert z2._store["0.0"] == await store.get_async("zarr_compat3/0.0")
-    assert z2._store["0.1"] == await store.get_async("zarr_compat3/0.1")
-    assert z2._store["1.0"] == await store.get_async("zarr_compat3/1.0")
-    assert z2._store["1.1"] == await store.get_async("zarr_compat3/1.1")
+    assert z2._store["0.0"] == await (store / "zarr_compat3/0.0").get()
+    assert z2._store["0.1"] == await (store / "zarr_compat3/0.1").get()
+    assert z2._store["1.0"] == await (store / "zarr_compat3/1.0").get()
+    assert z2._store["1.1"] == await (store / "zarr_compat3/1.1").get()
 
 
 @pytest.mark.asyncio
@@ -688,10 +689,10 @@ async def test_zarr_compat_F(store: Store):
     assert np.array_equal(data, await _AsyncArrayProxy(a)[:16, :18].get())
     assert np.array_equal(data, z2[:16, :18])
 
-    assert z2._store["0.0"] == await store.get_async("zarr_compatF3/0.0")
-    assert z2._store["0.1"] == await store.get_async("zarr_compatF3/0.1")
-    assert z2._store["1.0"] == await store.get_async("zarr_compatF3/1.0")
-    assert z2._store["1.1"] == await store.get_async("zarr_compatF3/1.1")
+    assert z2._store["0.0"] == await (store / "zarr_compatF3/0.0").get()
+    assert z2._store["0.1"] == await (store / "zarr_compatF3/0.1").get()
+    assert z2._store["1.0"] == await (store / "zarr_compatF3/1.0").get()
+    assert z2._store["1.1"] == await (store / "zarr_compatF3/1.1").get()
 
 
 @pytest.mark.asyncio
@@ -721,7 +722,7 @@ async def test_dimension_names(store: Store):
     )
 
     assert (await AsyncArray.open(store / "dimension_names2")).metadata.dimension_names is None
-    zarr_json_bytes = await (store / "dimension_names2" / "zarr.json").get_async()
+    zarr_json_bytes = await (store / "dimension_names2" / "zarr.json").get()
     assert zarr_json_bytes is not None
     assert "dimension_names" not in json.loads(zarr_json_bytes)
 
@@ -787,7 +788,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]):
         fill_value=1,
     )
     z[:, :] = data
-    assert await store.get_async("endian/0.0") == z._store["0.0"]
+    assert await (store / "endian/0.0").get() == z._store["0.0"]
 
 
 @pytest.mark.parametrize("dtype_input_endian", [">u2", "<u2"])
@@ -823,7 +824,7 @@ async def test_endian_write(
         fill_value=1,
     )
     z[:, :] = data
-    assert await store.get_async("endian/0.0") == z._store["0.0"]
+    assert await (store / "endian/0.0").get() == z._store["0.0"]
 
 
 def test_invalid_metadata(store: Store):
@@ -925,17 +926,17 @@ async def test_resize(store: Store):
     )
 
     await _AsyncArrayProxy(a)[:16, :18].set(data)
-    assert await store.get_async("resize/0.0") is not None
-    assert await store.get_async("resize/0.1") is not None
-    assert await store.get_async("resize/1.0") is not None
-    assert await store.get_async("resize/1.1") is not None
+    assert await (store / "resize/0.0").get() is not None
+    assert await (store / "resize/0.1").get() is not None
+    assert await (store / "resize/1.0").get() is not None
+    assert await (store / "resize/1.1").get() is not None
 
     a = await a.resize((10, 12))
     assert a.metadata.shape == (10, 12)
-    assert await store.get_async("resize/0.0") is not None
-    assert await store.get_async("resize/0.1") is not None
-    assert await store.get_async("resize/1.0") is None
-    assert await store.get_async("resize/1.1") is None
+    assert await (store / "resize/0.0").get() is not None
+    assert await (store / "resize/0.1").get() is not None
+    assert await (store / "resize/1.0").get() is None
+    assert await (store / "resize/1.1").get() is None
 
 
 def test_exists_ok(store: Store):

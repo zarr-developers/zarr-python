@@ -1,10 +1,12 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING, NamedTuple
 
-from typing import Dict, NamedTuple, Type
+if TYPE_CHECKING:
+    from typing import Dict, Type
+    from zarr.v3.abc.codec import Codec
+    from zarr.v3.common import NamedConfig
+
 from importlib.metadata import EntryPoint, entry_points as get_entry_points
-
-from zarr.v3.abc.codec import Codec
-from zarr.v3.common import NamedConfig
 
 
 class CodecRegistryItem(NamedTuple):
@@ -43,6 +45,11 @@ def _get_codec_item(key: str) -> CodecRegistryItem:
     if item:
         return item
     raise KeyError(key)
+
+
+def get_codec_from_metadata(val: NamedConfig) -> Codec:
+    key = val.name
+    return _get_codec_item(key).codec_cls.from_metadata(val)
 
 
 def get_codec_metadata_class(key: str) -> Type[NamedConfig]:

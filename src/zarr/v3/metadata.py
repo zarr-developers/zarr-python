@@ -1,10 +1,12 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING, Literal, Union
 from dataclasses import asdict, dataclass, field
 
 import json
-from enum import Enum
-from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple, Union
-from typing_extensions import Self
+if TYPE_CHECKING:
+    from typing import Any, Dict, Iterable, List, Optional, Tuple
+    from typing_extensions import Self
+    
 from warnings import warn
 
 import numpy as np
@@ -16,14 +18,16 @@ from zarr.v3.common import ChunkCoords, NamedConfig, RuntimeConfiguration
 
 ShardingCodecIndexLocation = Literal["start", "end"]
 
-
 def runtime_configuration(
     order: Literal["C", "F"], concurrency: Optional[int] = None
 ) -> RuntimeConfiguration:
     return RuntimeConfiguration(order=order, concurrency=concurrency)
 
 
-""" 
+# For type checking
+_bool = bool
+
+"""
 class DataType(Enum):
     bool = "bool"
     int8 = "int8"
@@ -53,6 +57,11 @@ class DataType(Enum):
             DataType.float64: 8,
         }
         return data_type_byte_counts[self]
+
+    @property
+    def has_endianness(self) -> _bool:
+        # This might change in the future, e.g. for a complex with 2 8-bit floats
+        return self.byte_count != 1
 
     def to_numpy_shortname(self) -> str:
         data_type_to_numpy = {
@@ -162,7 +171,7 @@ ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEnco
 
 
 @dataclass(frozen=True)
-class CoreArrayMetadata:
+class ArraySpec:
     shape: ChunkCoords
     chunk_shape: ChunkCoords
     dtype: np.dtype
@@ -221,7 +230,7 @@ class ArrayMetadata(Metadata):
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed = parse_codecs(
             codecs,
-            array_metadata=CoreArrayMetadata(
+            array_metadata=ArraySpec(
                 shape=shape_parsed,
                 chunk_shape=chunk_grid_parsed.configuration.chunk_shape,
                 dtype=data_type_parsed,
@@ -246,11 +255,13 @@ class ArrayMetadata(Metadata):
     def ndim(self) -> int:
         return len(self.shape)
 
-    def get_core_metadata(self) -> CoreArrayMetadata:
-        return CoreArrayMetadata(
-            shape=self.shape,
-            chunk_shape=self.chunk_grid.configuration.chunk_shape,
-            dtype=self.data_type,
+    def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
+        assert isinstance(
+            self.chunk_grid, RegularChunkGridMetadata
+        ), "Currently, only regular chunk grid is supported"
+        return ArraySpec(
+            shape=self.chunk_grid.configuration.chunk_shape,
+            dtype=self.dtype,
             fill_value=self.fill_value,
         )
 
@@ -259,7 +270,7 @@ class ArrayMetadata(Metadata):
             if isinstance(o, np.dtype):
                 return str(o)
             # this serializes numcodecs compressors
-            # todo: wrap implement to_dict for codecs
+            # todo: implement to_dict for codecs
             elif hasattr(o, "get_config"):
                 return o.get_config()
             raise TypeError
@@ -465,20 +476,20 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
 
 def parse_codecs(
     data: Iterable[NamedConfig],
-    array_metadata: CoreArrayMetadata,
+    array_metadata: ArraySpec,
 ) -> List[Codec]:
     out: List[Codec] = []
 
     for codec_metadata in data or []:
         codec_cls = get_codec_class(codec_metadata.name)
-        codec = codec_cls.from_metadata(codec_metadata, array_metadata)
+        codec = codec_cls.from_metadata(codec_metadata)
         out.append(codec)
-        array_metadata = codec.resolve_metadata()
+        array_metadata = codec.resolve_metadata(array_metadata)
     out = _validate_codecs(out, array_metadata)
     return out
 
 
-def _validate_codecs(codecs: List[Codec], array_metadata: CoreArrayMetadata) -> None:
+def _validate_codecs(codecs: List[Codec], array_metadata: ArraySpec) -> None:
     from zarr.v3.codecs.sharding import ShardingCodec
 
     assert any(

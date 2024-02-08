@@ -2,7 +2,7 @@ from __future__ import annotations
 from zarr.v3.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.v3.codecs.registry import get_codec_class
 from zarr.v3.common import BytesLike, NamedConfig, RuntimeConfiguration
-from zarr.v3.metadata import CoreArrayMetadata
+from zarr.v3.metadata import ArraySpec
 
 
 import numpy as np
@@ -22,7 +22,7 @@ class CodecPipeline:
     def from_metadata(
         cls,
         codecs_metadata: Iterable[NamedConfig],
-        array_metadata: CoreArrayMetadata,
+        array_metadata: ArraySpec,
     ) -> CodecPipeline:
         out: List[Codec] = []
         for codec_metadata in codecs_metadata or []:
@@ -34,7 +34,7 @@ class CodecPipeline:
         return cls(out)
 
     @staticmethod
-    def _validate_codecs(codecs: List[Codec], array_metadata: CoreArrayMetadata) -> None:
+    def _validate_codecs(codecs: List[Codec], array_metadata: ArraySpec) -> None:
         from zarr.v3.codecs.sharding import ShardingCodec
 
         assert any(

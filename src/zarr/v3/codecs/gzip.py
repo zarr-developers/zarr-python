@@ -1,26 +1,19 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing_extensions import Self
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Dict,
-    Literal,
-    Optional,
-    Type,
-)
+
+from typing import TYPE_CHECKING
 
 from zarr.v3.abc.metadata import Metadata
-
 from numcodecs.gzip import GZip
-
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import BytesLike, RuntimeConfiguration, to_thread
-from zarr.v3.common import NamedConfig
+from zarr.v3.common import to_thread
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CoreArrayMetadata
+    from zarr.v3.metadata import ArraySpec, RuntimeConfiguration
+    from zarr.v3.common import BytesLike, NamedConfig
+    from typing_extensions import Self
+    from typing import Any, Optional, Dict, Literal, Type
 
 
 def parse_gzip_level(data: Any) -> int:
@@ -51,36 +44,40 @@ class GzipCodecMetadata(Metadata):
 
 @dataclass(frozen=True)
 class GzipCodec(BytesBytesCodec):
-    array_metadata: CoreArrayMetadata
     configuration: GzipCodecConfigurationMetadata
     is_fixed_size: Literal[True] = field(default=True, init=False)
 
     @classmethod
-    def from_metadata(
-        cls, codec_metadata: NamedConfig, array_metadata: CoreArrayMetadata
-    ) -> GzipCodec:
+    def from_metadata(cls, codec_metadata: NamedConfig) -> GzipCodec:
         assert isinstance(codec_metadata, GzipCodecMetadata)
 
-        return cls(
-            array_metadata=array_metadata,
-            configuration=codec_metadata.configuration,
-        )
+        return cls(configuration=codec_metadata.configuration)
 
     @classmethod
     def get_metadata_class(cls) -> Type[GzipCodecMetadata]:
         return GzipCodecMetadata
 
     async def decode(
-        self, chunk_bytes: bytes, runtime_configuration: RuntimeConfiguration
+        self,
+        chunk_bytes: bytes,
+        _chunk_spec: ArraySpec,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         return await to_thread(GZip(self.configuration.level).decode, chunk_bytes)
 
     async def encode(
-        self, chunk_bytes: bytes, runtime_configuration: RuntimeConfiguration
+        self,
+        chunk_bytes: bytes,
+        _chunk_spec: ArraySpec,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         return await to_thread(GZip(self.configuration.level).encode, chunk_bytes)
 
-    def compute_encoded_size(self, _input_byte_length: int) -> int:
+    def compute_encoded_size(
+        self,
+        _input_byte_length: int,
+        _chunk_spec: ArraySpec,
+    ) -> int:
         raise NotImplementedError
 
 
