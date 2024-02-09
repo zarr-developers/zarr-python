@@ -7,7 +7,7 @@ from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import to_thread, ArraySpec
+from zarr.v3.common import parse_name, to_thread, ArraySpec
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import RuntimeConfiguration
@@ -33,13 +33,6 @@ def parse_checksum(data: JSON) -> bool:
     raise TypeError(msg)
 
 
-def parse_name(data: JSON) -> Literal["zstd"]:
-    if data == "zstd":
-        return data
-    msg = f"Expected 'zstd', got {data}"
-    raise ValueError(msg)
-
-
 @dataclass(frozen=True)
 class ZstdCodec(BytesBytesCodec):
     is_fixed_size = True
@@ -56,7 +49,7 @@ class ZstdCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"])
+        parse_name(data["name"], "zstd")
         return cls(**data["configuration"])
 
     def to_dict(self) -> Dict[str, JSON]:

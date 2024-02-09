@@ -7,19 +7,13 @@ from zarr.v3.abc.metadata import Metadata
 from numcodecs.gzip import GZip
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import JSON, ArraySpec, to_thread
+from zarr.v3.common import JSON, ArraySpec, parse_name, to_thread
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import RuntimeConfiguration
     from zarr.v3.common import BytesLike
     from typing_extensions import Self
     from typing import Optional, Dict, Literal
-
-
-def parse_name(data: JSON) -> Literal["gzip"]:
-    if data == "gzip":
-        return data
-    raise ValueError(f"Expected 'gzip', got {data} instead.")
 
 
 def parse_gzip_level(data: JSON) -> int:
@@ -43,7 +37,7 @@ class GzipCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"])
+        parse_name(data["name"], "gzip")
         return cls(**data["configuration"])
 
     def to_dict(self) -> Dict[str, JSON]:

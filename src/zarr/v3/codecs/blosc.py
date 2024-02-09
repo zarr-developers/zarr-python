@@ -16,7 +16,7 @@ from numcodecs.blosc import Blosc
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import JSON, parse_enum, to_thread
+from zarr.v3.common import JSON, parse_enum, parse_name, to_thread
 
 if TYPE_CHECKING:
     from zarr.v3.common import ArraySpec
@@ -88,13 +88,6 @@ def parse_blocksize(data: JSON) -> int:
     raise TypeError(msg)
 
 
-def parse_name(data: JSON) -> Literal["blosc"]:
-    if data == "blosc":
-        return data
-    msg = f"Expected 'blosc', got {data} instead."
-    raise ValueError(msg)
-
-
 @dataclass(frozen=True)
 class BloscCodec(BytesBytesCodec):
     is_fixed_size = False
@@ -128,7 +121,7 @@ class BloscCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"])
+        parse_name(data["name"], "blosc")
         return cls(**data["configuration"])
 
     def to_dict(self) -> Dict[str, JSON]:

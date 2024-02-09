@@ -14,17 +14,11 @@ from crc32c import crc32c
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import JSON
+from zarr.v3.common import JSON, parse_name
 
 if TYPE_CHECKING:
     from zarr.v3.common import BytesLike, RuntimeConfiguration, ArraySpec
     from typing_extensions import Self
-
-
-def parse_name(data: JSON) -> Literal["crc32c"]:
-    if data == "crc32c":
-        return data
-    raise ValueError(f"Expected 'crc32c', got {data} instead.")
 
 
 @dataclass(frozen=True)
@@ -33,7 +27,7 @@ class Crc32cCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"])
+        parse_name(data["name"], "crc32c")
         return cls()
 
     def to_dict(self) -> Dict[str, JSON]:

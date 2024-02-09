@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Dict, Iterable
 
 from dataclasses import dataclass, replace
 
-from zarr.v3.common import JSON, ArraySpec
+from zarr.v3.common import JSON, ArraySpec, parse_name
 
 if TYPE_CHECKING:
     from zarr.v3.common import RuntimeConfiguration
@@ -19,12 +19,6 @@ import numpy as np
 
 from zarr.v3.abc.codec import ArrayArrayCodec
 from zarr.v3.codecs.registry import register_codec
-
-
-def parse_name(data: JSON) -> Literal["transpose"]:
-    if data == "transpose":
-        return data
-    raise ValueError(f"Expected 'transpose', got {data} instead.")
 
 
 def parse_transpose_order(data: JSON) -> Tuple[int]:
@@ -48,7 +42,7 @@ class TransposeCodec(ArrayArrayCodec):
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"])
+        parse_name(data["name"], "transpose")
         return cls(**data["configuration"])
 
     def to_dict(self) -> Dict[str, JSON]:

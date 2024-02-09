@@ -11,6 +11,7 @@ from typing import (
     Awaitable,
     Callable,
     Dict,
+    Iterable,
     Iterator,
     List,
     Literal,
@@ -128,8 +129,11 @@ def parse_name(data: JSON, expected: str) -> str:
 
 
 def parse_shapelike(data: Any) -> Tuple[int, ...]:
-    # todo: handle empty tuple
-    return tuple(int(x) for x in data)
+    if not isinstance(data, Iterable):
+        raise TypeError(f"Expected an iterable. Got {data} instead.")
+    if not all(isinstance(a, int) for a in data):
+        raise TypeError(f"Expected an iterable of integers. Got {data} instead.")
+    return tuple(data)
 
 
 def parse_dtype(data: Any) -> np.dtype:

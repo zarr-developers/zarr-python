@@ -35,6 +35,8 @@ from zarr.v3.common import (
     ChunkCoords,
     concurrent_map,
     parse_enum,
+    parse_name,
+    parse_shapelike,
     product,
 )
 from zarr.v3.indexing import (
@@ -48,7 +50,7 @@ from zarr.v3.metadata import (
     runtime_configuration as make_runtime_configuration,
     parse_codecs,
 )
-from zarr.v3.chunk_grids import RegularChunkGrid, parse_chunk_shape
+from zarr.v3.chunk_grids import RegularChunkGrid
 
 from zarr.v3.store import StorePath
 
@@ -58,12 +60,6 @@ MAX_UINT_64 = 2**64 - 1
 class ShardingCodecIndexLocation(Enum):
     start = "start"
     end = "end"
-
-
-def parse_name(data: JSON) -> Literal["sharding_indexed"]:
-    if data == "sharding_indexed":
-        return data
-    raise ValueError(f"Expected 'sharding_indexed', got {data} instead.")
 
 
 def parse_index_location(data: JSON) -> ShardingCodecIndexLocation:
@@ -242,7 +238,7 @@ class ShardingCodec(
         index_codecs=None,
         index_location=None,
     ) -> None:
-        chunk_shape_parsed = parse_chunk_shape(chunk_shape)
+        chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = (
             parse_codecs(codecs) if codecs is not None else CodecPipeline.from_list([BytesCodec()])
         )
@@ -264,7 +260,7 @@ class ShardingCodec(
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"])
+        parse_name(data["name"], "sharding_indexed")
         return cls(**data["configuration"])
 
     def to_dict(self) -> Dict[str, JSON]:

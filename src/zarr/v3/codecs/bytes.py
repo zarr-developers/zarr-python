@@ -8,7 +8,7 @@ import numpy as np
 
 from zarr.v3.abc.codec import ArrayBytesCodec, Codec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import JSON, ArraySpec, parse_enum
+from zarr.v3.common import JSON, ArraySpec, parse_enum, parse_name
 
 if TYPE_CHECKING:
     from zarr.v3.common import ArraySpec, BytesLike, RuntimeConfiguration
@@ -26,13 +26,6 @@ def parse_endian(data: JSON) -> Literal["big", "little"]:
     return parse_enum(data, Endian)
 
 
-def parse_name(data: JSON) -> Literal["bytes"]:
-    if data == "bytes":
-        return data
-    msg = f"Expected 'bytes', got {data} instead."
-    raise ValueError(msg)
-
-
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
     is_fixed_size = True
@@ -46,7 +39,7 @@ class BytesCodec(ArrayBytesCodec):
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"])
+        parse_name(data["name"], "bytes")
         return cls(**data.get("configuration", {}))
 
     def to_dict(self) -> Dict[str, JSON]:
