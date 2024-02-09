@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, Literal, Union
+from typing import TYPE_CHECKING
 from dataclasses import asdict, dataclass, field
 
 import json
@@ -10,7 +10,7 @@ from zarr.v3.chunk_key_encodings import ChunkKeyEncoding
 
 
 if TYPE_CHECKING:
-    from typing import Any, Dict, Iterable, List, Optional, Tuple
+    from typing import Any, Dict, Literal, Union, Iterable, List, Optional, Tuple
     from typing_extensions import Self
     from zarr.v3.codecs.pipeline import CodecPipeline
 

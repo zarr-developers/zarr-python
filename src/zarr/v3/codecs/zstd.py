@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 from dataclasses import dataclass
 
 
@@ -7,13 +7,13 @@ from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import parse_name, to_thread, ArraySpec
+from zarr.v3.common import parse_name, to_thread
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import RuntimeConfiguration
     from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.v3.common import BytesLike, JSON
+    from zarr.v3.metadata import RuntimeConfiguration
+    from zarr.v3.common import BytesLike, JSON, ArraySpec
 
 
 def parse_zstd_level(data: JSON) -> int:

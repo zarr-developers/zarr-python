@@ -1,18 +1,18 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 from numcodecs.gzip import GZip
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import JSON, ArraySpec, parse_name, to_thread
+from zarr.v3.common import parse_name, to_thread
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import RuntimeConfiguration
-    from zarr.v3.common import BytesLike
-    from typing_extensions import Self
     from typing import Optional, Dict
+    from typing_extensions import Self
+    from zarr.v3.metadata import RuntimeConfiguration
+    from zarr.v3.common import JSON, ArraySpec, BytesLike
 
 
 def parse_gzip_level(data: JSON) -> int:

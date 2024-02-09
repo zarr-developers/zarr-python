@@ -3,11 +3,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from functools import lru_cache
 
-from typing import (
-    TYPE_CHECKING,
-    Dict,
-    Optional,
-)
+from typing import TYPE_CHECKING
 
 import numcodecs
 import numpy as np
@@ -15,12 +11,12 @@ from numcodecs.blosc import Blosc
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import JSON, parse_enum, parse_name, to_thread
+from zarr.v3.common import parse_enum, parse_name, to_thread
 
 if TYPE_CHECKING:
-    from zarr.v3.common import ArraySpec
+    from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.v3.common import BytesLike, RuntimeConfiguration
+    from zarr.v3.common import JSON, ArraySpec, BytesLike, RuntimeConfiguration
 
 
 class BloscShuffle(Enum):

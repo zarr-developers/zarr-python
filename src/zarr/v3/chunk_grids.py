@@ -11,7 +11,6 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class ChunkGrid(Metadata):
-
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
         if isinstance(data, ChunkGrid):

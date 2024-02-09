@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 import numpy as np
 from dataclasses import dataclass
-from typing import Dict, Iterator, List, Optional, Tuple
 from warnings import warn
-
-if TYPE_CHECKING:
-    from typing_extensions import Self
 
 from zarr.v3.abc.codec import (
     ArrayArrayCodec,
@@ -19,9 +15,13 @@ from zarr.v3.abc.codec import (
 )
 from zarr.v3.abc.metadata import Metadata
 from zarr.v3.codecs.registry import get_codec_class
-from zarr.v3.common import JSON, ArraySpec, BytesLike, SliceSelection
-from zarr.v3.metadata import ArrayMetadata, RuntimeConfiguration
-from zarr.v3.store import StorePath
+
+if TYPE_CHECKING:
+    from typing import Dict, Iterator, List, Optional, Tuple, Union
+    from typing_extensions import Self
+    from zarr.v3.store import StorePath
+    from zarr.v3.metadata import ArrayMetadata, RuntimeConfiguration
+    from zarr.v3.common import JSON, ArraySpec, BytesLike, SliceSelection
 
 
 @dataclass(frozen=True)
@@ -125,7 +125,9 @@ class CodecPipeline(Metadata):
         for codec in self:
             codec.validate(array_metadata)
 
-    def _codecs_with_resolved_metadata(self, array_spec: ArraySpec) -> Tuple[
+    def _codecs_with_resolved_metadata(
+        self, array_spec: ArraySpec
+    ) -> Tuple[
         List[Tuple[ArrayArrayCodec, ArraySpec]],
         Tuple[ArrayBytesCodec, ArraySpec],
         List[Tuple[BytesBytesCodec, ArraySpec]],

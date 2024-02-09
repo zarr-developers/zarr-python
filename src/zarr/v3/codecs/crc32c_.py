@@ -1,11 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
-from typing import (
-    TYPE_CHECKING,
-    Dict,
-    Optional,
-)
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -13,11 +9,12 @@ from crc32c import crc32c
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import JSON, parse_name
+from zarr.v3.common import parse_name
 
 if TYPE_CHECKING:
-    from zarr.v3.common import BytesLike, RuntimeConfiguration, ArraySpec
+    from typing import Dict, Optional
     from typing_extensions import Self
+    from zarr.v3.common import JSON, BytesLike, RuntimeConfiguration, ArraySpec
 
 
 @dataclass(frozen=True)

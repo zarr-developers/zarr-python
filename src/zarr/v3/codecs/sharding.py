@@ -1,11 +1,40 @@
 from __future__ import annotations
 from enum import Enum
-from typing import TYPE_CHECKING, NamedTuple, Mapping
+from typing import TYPE_CHECKING, Mapping, NamedTuple
 from dataclasses import dataclass
 from functools import lru_cache
 
+
+import numpy as np
+from zarr.v3.abc.codec import (
+    ArrayBytesCodec,
+    ArrayBytesCodecPartialDecodeMixin,
+    ArrayBytesCodecPartialEncodeMixin,
+)
 from zarr.v3.codecs.bytes import BytesCodec
 from zarr.v3.codecs.crc32c_ import Crc32cCodec
+from zarr.v3.codecs.pipeline import CodecPipeline
+from zarr.v3.codecs.registry import register_codec
+from zarr.v3.common import (
+    ArraySpec,
+    concurrent_map,
+    parse_enum,
+    parse_name,
+    parse_shapelike,
+    product,
+)
+from zarr.v3.chunk_grids import RegularChunkGrid
+from zarr.v3.indexing import (
+    BasicIndexer,
+    c_order_iter,
+    is_total_slice,
+    morton_order_iter,
+)
+from zarr.v3.metadata import (
+    ArrayMetadata,
+    runtime_configuration as make_runtime_configuration,
+    parse_codecs,
+)
 
 if TYPE_CHECKING:
     from typing import (
@@ -19,40 +48,15 @@ if TYPE_CHECKING:
         Tuple,
     )
     from typing_extensions import Self
-    from zarr.v3.common import BytesLike, RuntimeConfiguration, SliceSelection
 
-import numpy as np
-from zarr.v3.abc.codec import (
-    ArrayBytesCodec,
-    ArrayBytesCodecPartialDecodeMixin,
-    ArrayBytesCodecPartialEncodeMixin,
-)
-from zarr.v3.codecs.pipeline import CodecPipeline
-from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import (
-    JSON,
-    ArraySpec,
-    ChunkCoords,
-    concurrent_map,
-    parse_enum,
-    parse_name,
-    parse_shapelike,
-    product,
-)
-from zarr.v3.indexing import (
-    BasicIndexer,
-    c_order_iter,
-    is_total_slice,
-    morton_order_iter,
-)
-from zarr.v3.metadata import (
-    ArrayMetadata,
-    runtime_configuration as make_runtime_configuration,
-    parse_codecs,
-)
-from zarr.v3.chunk_grids import RegularChunkGrid
-
-from zarr.v3.store import StorePath
+    from zarr.v3.store import StorePath
+    from zarr.v3.common import (
+        JSON,
+        ChunkCoords,
+        BytesLike,
+        RuntimeConfiguration,
+        SliceSelection,
+    )
 
 MAX_UINT_64 = 2**64 - 1
 
