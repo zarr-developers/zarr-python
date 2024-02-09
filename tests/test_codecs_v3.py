@@ -79,7 +79,7 @@ def test_sharding(
                 codecs=[
                     TransposeCodec(order=order_from_dim("F", sample_data.ndim)),
                     BytesCodec(),
-                    BloscCodec(typesize=sample_data.dtype.itemsize, cname="lz4"),
+                    BloscCodec(cname="lz4"),
                 ],
                 index_location=index_location,
             )
@@ -109,7 +109,7 @@ def test_sharding_partial(
                 codecs=[
                     TransposeCodec(order=order_from_dim("F", sample_data.ndim)),
                     BytesCodec(),
-                    BloscCodec(typesize=sample_data.dtype.itemsize, cname="lz4"),
+                    BloscCodec(cname="lz4"),
                 ],
                 index_location=index_location,
             )
@@ -142,7 +142,7 @@ def test_sharding_partial_read(
                 codecs=[
                     TransposeCodec(order=order_from_dim("F", sample_data.ndim)),
                     BytesCodec(),
-                    BloscCodec(typesize=sample_data.dtype.itemsize, cname="lz4"),
+                    BloscCodec(cname="lz4"),
                 ],
                 index_location=index_location,
             )
@@ -171,7 +171,7 @@ def test_sharding_partial_overwrite(
                 codecs=[
                     TransposeCodec(order=order_from_dim("F", data.ndim)),
                     BytesCodec(),
-                    BloscCodec(typesize=data.dtype.itemsize, cname="lz4"),
+                    BloscCodec(cname="lz4"),
                 ],
                 index_location=index_location,
             )
@@ -452,7 +452,7 @@ def test_open_sharding(store: Store):
                 codecs=[
                     TransposeCodec(order=order_from_dim("F", 2)),
                     BytesCodec(),
-                    BloscCodec(typesize=4),
+                    BloscCodec(),
                 ],
             )
         ],
@@ -594,7 +594,7 @@ def test_write_partial_sharded_chunks(store: Store):
                 chunk_shape=(10, 10),
                 codecs=[
                     BytesCodec(),
-                    BloscCodec(typesize=data.dtype.itemsize),
+                    BloscCodec(),
                 ],
             )
         ],
@@ -943,17 +943,62 @@ async def test_resize(store: Store):
     )
 
     await _AsyncArrayProxy(a)[:16, :18].set(data)
-    assert await (store / "resize/0.0").get() is not None
-    assert await (store / "resize/0.1").get() is not None
-    assert await (store / "resize/1.0").get() is not None
-    assert await (store / "resize/1.1").get() is not None
+    assert await (store / "resize" / "0.0").get() is not None
+    assert await (store / "resize" / "0.1").get() is not None
+    assert await (store / "resize" / "1.0").get() is not None
+    assert await (store / "resize" / "1.1").get() is not None
 
     a = await a.resize((10, 12))
     assert a.metadata.shape == (10, 12)
-    assert await (store / "resize/0.0").get() is not None
-    assert await (store / "resize/0.1").get() is not None
-    assert await (store / "resize/1.0").get() is None
-    assert await (store / "resize/1.1").get() is None
+    assert await (store / "resize" / "0.0").get() is not None
+    assert await (store / "resize" / "0.1").get() is not None
+    assert await (store / "resize" / "1.0").get() is None
+    assert await (store / "resize" / "1.1").get() is None
+
+
+@pytest.mark.asyncio
+async def test_blosc_evolve(store: Store):
+    await AsyncArray.create(
+        store / "blosc_evolve_u1",
+        shape=(16, 16),
+        chunk_shape=(16, 16),
+        dtype="uint8",
+        fill_value=0,
+        codecs=[BytesCodec(), BloscCodec()],
+    )
+
+    zarr_json = json.loads(await (store / "blosc_evolve_u1" / "zarr.json").get())
+    blosc_configuration_json = zarr_json["codecs"][1]["configuration"]
+    assert blosc_configuration_json["typesize"] == 1
+    assert blosc_configuration_json["shuffle"] == "bitshuffle"
+
+    await AsyncArray.create(
+        store / "blosc_evolve_u2",
+        shape=(16, 16),
+        chunk_shape=(16, 16),
+        dtype="uint16",
+        fill_value=0,
+        codecs=[BytesCodec(), BloscCodec()],
+    )
+
+    zarr_json = json.loads(await (store / "blosc_evolve_u2" / "zarr.json").get())
+    blosc_configuration_json = zarr_json["codecs"][1]["configuration"]
+    assert blosc_configuration_json["typesize"] == 2
+    assert blosc_configuration_json["shuffle"] == "shuffle"
+
+    await AsyncArray.create(
+        store / "sharding_blosc_evolve",
+        shape=(16, 16),
+        chunk_shape=(16, 16),
+        dtype="uint16",
+        fill_value=0,
+        codecs=[ShardingCodec(chunk_shape=(16, 16), codecs=[BytesCodec(), BloscCodec()])],
+    )
+
+    zarr_json = json.loads(await (store / "sharding_blosc_evolve" / "zarr.json").get())
+    blosc_configuration_json = zarr_json["codecs"][0]["configuration"]["codecs"][1]["configuration"]
+    assert blosc_configuration_json["typesize"] == 2
+    assert blosc_configuration_json["shuffle"] == "shuffle"
 
 
 def test_exists_ok(store: Store):

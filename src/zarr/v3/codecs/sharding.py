@@ -1,7 +1,7 @@
 from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, Mapping, NamedTuple
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 
 
@@ -277,6 +277,13 @@ class ShardingCodec(
                 "index_location": self.index_location,
             },
         }
+
+    def evolve(self, array_spec: ArraySpec) -> Self:
+        shard_spec = self._get_chunk_spec(array_spec)
+        evolved_codecs = self.codecs.evolve(shard_spec)
+        if evolved_codecs != self.codecs:
+            return replace(self, codecs=evolved_codecs)
+        return self
 
     def validate(self, array_metadata: ArrayMetadata) -> None:
         if len(self.chunk_shape) != array_metadata.ndim:

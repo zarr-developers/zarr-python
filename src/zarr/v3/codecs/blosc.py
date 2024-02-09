@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
-from functools import lru_cache
+from functools import cached_property
 
 from typing import TYPE_CHECKING
 
@@ -89,13 +89,13 @@ class BloscCodec(BytesBytesCodec):
         typesize=None,
         cname=BloscCname.zstd,
         clevel=5,
-        shuffle=BloscShuffle.noshuffle,
+        shuffle=None,
         blocksize=0,
     ) -> None:
         typesize_parsed = parse_typesize(typesize) if typesize is not None else None
         cname_parsed = parse_enum(cname, BloscCname)
         clevel_parsed = parse_clevel(clevel)
-        shuffle_parsed = parse_enum(shuffle, BloscShuffle)
+        shuffle_parsed = parse_enum(shuffle, BloscShuffle) if shuffle is not None else None
         blocksize_parsed = parse_blocksize(blocksize)
 
         object.__setattr__(self, "typesize", typesize_parsed)
@@ -112,6 +112,8 @@ class BloscCodec(BytesBytesCodec):
     def to_dict(self) -> Dict[str, JSON]:
         if self.typesize is None:
             raise ValueError("`typesize` needs to be set for serialization.")
+        if self.shuffle is None:
+            raise ValueError("`shuffle` needs to be set for serialization.")
         return {
             "name": "blosc",
             "configuration": {
@@ -127,11 +129,22 @@ class BloscCodec(BytesBytesCodec):
         new_codec = self
         if new_codec.typesize is None:
             new_codec = replace(new_codec, typesize=array_spec.dtype.itemsize)
+        if new_codec.shuffle is None:
+            new_codec = replace(
+                new_codec,
+                shuffle=(
+                    BloscShuffle.bitshuffle
+                    if array_spec.dtype.itemsize == 1
+                    else BloscShuffle.shuffle
+                ),
+            )
 
         return new_codec
 
-    @lru_cache
-    def get_blosc_codec(self) -> Blosc:
+    @cached_property
+    def _blosc_codec(self) -> Blosc:
+        if self.shuffle is None:
+            raise ValueError("`shuffle` needs to be set for decoding and encoding.")
         map_shuffle_str_to_int = {
             BloscShuffle.noshuffle: 0,
             BloscShuffle.shuffle: 1,
@@ -151,7 +164,7 @@ class BloscCodec(BytesBytesCodec):
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
-        return await to_thread(self.get_blosc_codec().decode, chunk_bytes)
+        return await to_thread(self._blosc_codec.decode, chunk_bytes)
 
     async def encode(
         self,
@@ -160,7 +173,7 @@ class BloscCodec(BytesBytesCodec):
         _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         chunk_array = np.frombuffer(chunk_bytes, dtype=chunk_spec.dtype)
-        return await to_thread(self.get_blosc_codec().encode, chunk_array)
+        return await to_thread(self._blosc_codec.encode, chunk_array)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
