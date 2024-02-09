@@ -183,6 +183,8 @@ class ArrayMetadata(Metadata):
         def _json_convert(o):
             if isinstance(o, np.dtype):
                 return str(o)
+            if isinstance(o, Enum):
+                return o.name
             # this serializes numcodecs compressors
             # todo: implement to_dict for codecs
             elif hasattr(o, "get_config"):

@@ -270,7 +270,7 @@ class ShardingCodec(
                 "chunk_shape": list(self.chunk_shape),
                 "codecs": self.codecs.to_dict(),
                 "index_codecs": self.index_codecs.to_dict(),
-                "index_location": self.index_location.name,
+                "index_location": self.index_location,
             },
         }
 

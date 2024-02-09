@@ -46,7 +46,7 @@ class BytesCodec(ArrayBytesCodec):
         if self.endian is None:
             return {"name": "bytes"}
         else:
-            return {"name": "bytes", "configuration": {"endian": self.endian.name}}
+            return {"name": "bytes", "configuration": {"endian": self.endian}}
 
     def evolve(self, array_spec: ArraySpec) -> Self:
         if array_spec.dtype.itemsize == 0:

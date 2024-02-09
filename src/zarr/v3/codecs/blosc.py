@@ -129,9 +129,9 @@ class BloscCodec(BytesBytesCodec):
             "name": "blosc",
             "configuration": {
                 "typesize": self.typesize,
-                "cname": self.cname.name,
+                "cname": self.cname,
                 "clevel": self.clevel,
-                "shuffle": self.shuffle.name,
+                "shuffle": self.shuffle,
                 "blocksize": self.blocksize,
             },
         }

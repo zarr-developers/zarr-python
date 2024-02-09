@@ -50,6 +50,7 @@ def parse_array_metadata(data: Any):
         raise TypeError
 
 
+@dataclass(frozen=True)
 class AsyncArray:
     metadata: ArrayMetadata
     store_path: StorePath
@@ -59,19 +60,17 @@ class AsyncArray:
     def codecs(self):
         return self.metadata.codecs
 
-    @property
-    def store_path(self):
-        return self._store_path
-
     def __init__(
         self,
         metadata: ArrayMetadata,
         store_path: StorePath,
         runtime_configuration: RuntimeConfiguration,
     ):
-        self.metadata = parse_array_metadata(metadata)
-        self._store_path = store_path
-        self.runtime_configuration = runtime_configuration
+        metadata_parsed = parse_array_metadata(metadata)
+
+        object.__setattr__(self, "metadata", metadata_parsed)
+        object.__setattr__(self, "store_path", store_path)
+        object.__setattr__(self, "runtime_configuration", runtime_configuration)
 
     async def encode_chunk(self, data: np.ndarray):
         """
