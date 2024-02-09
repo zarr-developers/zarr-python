@@ -1,14 +1,13 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
+from enum import Enum
 from functools import lru_cache
 
 from typing import (
     TYPE_CHECKING,
-    Any,
     Dict,
     Literal,
     Optional,
-    Type,
 )
 
 import numcodecs
@@ -16,24 +15,46 @@ import numpy as np
 from numcodecs.blosc import Blosc
 
 from zarr.v3.abc.codec import BytesBytesCodec
-from zarr.v3.abc.metadata import Metadata
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import to_thread
-from zarr.v3.common import NamedConfig
+from zarr.v3.common import JSON, parse_enum, to_thread
 
 if TYPE_CHECKING:
     from zarr.v3.common import ArraySpec
     from typing_extensions import Self
     from zarr.v3.common import BytesLike, RuntimeConfiguration
 
-BloscShuffle = Literal["noshuffle", "shuffle", "bitshuffle"]
-BloscCname = Literal["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"]
+
+class BloscShuffle(Enum):
+    noshuffle = "noshuffle"
+    shuffle = "shuffle"
+    bitshuffle = "bitshuffle"
+
+    @classmethod
+    def from_int(cls, num: int) -> Self:
+        blosc_shuffle_int_to_str = {
+            0: "noshuffle",
+            1: "shuffle",
+            2: "bitshuffle",
+        }
+        if num not in blosc_shuffle_int_to_str:
+            raise ValueError(f"Value must be between 0 and 2. Got {num}.")
+        return BloscShuffle[blosc_shuffle_int_to_str[num]]
+
+
+class BloscCname(Enum):
+    lz4 = "lz4"
+    lz4hc = "lz4hc"
+    blosclz = "blosclz"
+    zstd = "zstd"
+    snappy = "snappy"
+    zlib = "zlib"
+
 
 # See https://zarr.readthedocs.io/en/stable/tutorial.html#configuring-blosc
 numcodecs.blosc.use_threads = False
 
 
-def parse_typesize(data: Any) -> int:
+def parse_typesize(data: JSON) -> int:
     if isinstance(data, int):
         if data >= 0:
             return data
@@ -44,40 +65,30 @@ def parse_typesize(data: Any) -> int:
     raise TypeError(msg)
 
 
-def parse_cname(data: Any) -> BloscCname:
-    if data in ["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"]:
-        return data
-    msg = (
-        "Value must be one of ",
-        '["lz4", "lz4hc", "blosclz", "zstd", "snappy", "zlib"], ',
-        f"got {data} instead.",
-    )
-    raise ValueError(msg)
+def parse_cname(data: JSON) -> BloscCname:
+    return parse_enum(data, BloscCname)
 
 
 # todo: real validation
-def parse_clevel(data: Any) -> int:
+def parse_clevel(data: JSON) -> int:
     if isinstance(data, int):
         return data
     msg = f"Value should be an int, got {type(data)} instead"
     raise TypeError(msg)
 
 
-def parse_shuffle(data: Any) -> BloscShuffle:
-    if data in ["noshuffle", "shuffle", "bitshuffle"]:
-        return data
-    msg = f'Value must be one of ["noshuffle", "shuffle", "bitshuffle"], got {data} instead.'
-    raise ValueError(msg)
+def parse_shuffle(data: JSON) -> BloscShuffle:
+    return parse_enum(data, BloscShuffle)
 
 
-def parse_blocksize(data: Any) -> int:
+def parse_blocksize(data: JSON) -> int:
     if isinstance(data, int):
         return data
     msg = f"Value should be an int, got {type(data)} instead"
     raise TypeError(msg)
 
 
-def parse_name(data: Any) -> Literal["blosc"]:
+def parse_name(data: JSON) -> Literal["blosc"]:
     if data == "blosc":
         return data
     msg = f"Expected 'blosc', got {data} instead."
@@ -85,21 +96,24 @@ def parse_name(data: Any) -> Literal["blosc"]:
 
 
 @dataclass(frozen=True)
-class BloscCodecConfigurationMetadata(Metadata):
+class BloscCodec(BytesBytesCodec):
+    is_fixed_size = False
+
     typesize: int
-    cname: BloscCname = "zstd"
+    cname: BloscCname = BloscCname.zstd
     clevel: int = 5
-    shuffle: BloscShuffle = "noshuffle"
+    shuffle: BloscShuffle = BloscShuffle.noshuffle
     blocksize: int = 0
 
     def __init__(
         self,
-        typesize: int,
-        cname: BloscCname = "zstd",
-        clevel: int = 5,
-        shuffle: BloscShuffle = "noshuffle",
-        blocksize: int = 0,
-    ):
+        *,
+        typesize,
+        cname=BloscCname.zstd,
+        clevel=5,
+        shuffle=BloscShuffle.noshuffle,
+        blocksize=0,
+    ) -> None:
         typesize_parsed = parse_typesize(typesize)
         cname_parsed = parse_cname(cname)
         clevel_parsed = parse_clevel(clevel)
@@ -112,55 +126,42 @@ class BloscCodecConfigurationMetadata(Metadata):
         object.__setattr__(self, "shuffle", shuffle_parsed)
         object.__setattr__(self, "blocksize", blocksize_parsed)
 
-
-blosc_shuffle_int_to_str: Dict[int, BloscShuffle] = {
-    0: "noshuffle",
-    1: "shuffle",
-    2: "bitshuffle",
-}
-
-
-@dataclass(frozen=True)
-class BloscCodecMetadata(Metadata):
-    configuration: BloscCodecConfigurationMetadata
-    name: Literal["blosc"] = field(default="blosc", init=False)
-
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Self:
-        _ = parse_name(data.pop("name"))
-        return cls(**data)
+    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+        parse_name(data["name"])
+        return BloscCodec(**data["configuration"])
 
+    def to_dict(self) -> Dict[str, JSON]:
+        return {
+            "name": "blosc",
+            "configuration": {
+                "typesize": self.typesize,
+                "cname": self.cname.name,
+                "clevel": self.clevel,
+                "shuffle": self.shuffle.name,
+                "blocksize": self.blocksize,
+            },
+        }
 
-@dataclass(frozen=True)
-class BloscCodec(BytesBytesCodec):
-    configuration: BloscCodecConfigurationMetadata
-    is_fixed_size = False
-
-    @classmethod
-    def from_metadata(cls, codec_metadata: NamedConfig) -> BloscCodec:
-        assert isinstance(codec_metadata, BloscCodecMetadata)
-        return cls(configuration=codec_metadata.configuration)
-
-    @classmethod
-    def get_metadata_class(cls) -> Type[BloscCodecMetadata]:
-        return BloscCodecMetadata
-
-    def evolve(self, *, data_type: np.dtype, **_kwargs) -> BloscCodec:
+    def evolve(self, array_spec: ArraySpec) -> Self:
         new_codec = self
-        if new_codec.configuration.typesize == 0:
-            new_configuration = evolve(new_codec.configuration, typesize=data_type.byte_count)
-            new_codec = evolve(new_codec, configuration=new_configuration)
+        if new_codec.typesize == 0:
+            new_codec = replace(new_codec, typesize=array_spec.dtype.itemsize)
 
         return new_codec
 
     @lru_cache
     def get_blosc_codec(self) -> Blosc:
-        map_shuffle_str_to_int = {"noshuffle": 0, "shuffle": 1, "bitshuffle": 2}
+        map_shuffle_str_to_int = {
+            BloscShuffle.noshuffle: 0,
+            BloscShuffle.shuffle: 1,
+            BloscShuffle.bitshuffle: 2,
+        }
         config_dict = {
-            "cname": self.configuration.cname,
-            "clevel": self.configuration.clevel,
-            "shuffle": map_shuffle_str_to_int[self.configuration.shuffle],
-            "blocksize": self.configuration.blocksize,
+            "cname": self.cname.name,
+            "clevel": self.clevel,
+            "shuffle": map_shuffle_str_to_int[self.shuffle],
+            "blocksize": self.blocksize,
         }
         return Blosc.from_config(config_dict)
 

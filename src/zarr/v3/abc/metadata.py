@@ -1,11 +1,13 @@
 from abc import ABC
-from typing import TYPE_CHECKING, Dict, Any
+from typing import Dict
 from typing_extensions import Self
 from dataclasses import asdict
 
+from zarr.v3.common import JSON
+
 
 class Metadata(ABC):
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> Dict[str, JSON]:
         """
         Serialize this model to a dictionary
         """
@@ -13,7 +15,7 @@ class Metadata(ABC):
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Self:
+    def from_dict(cls, data: Dict[str, JSON]) -> Self:
         """
         Create an instance of the model from a dictionary
         """

@@ -2,17 +2,25 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import json
-from typing import Iterator, List, Literal, Optional
+from typing import Iterator, List, Literal, Optional, Tuple
 
 
 import numpy as np
 import pytest
 import zarr
-from zarr.v3 import codecs
 from zarr.v3.array import Array, AsyncArray
 from zarr.v3.common import NamedConfig, Selection
 from zarr.v3.indexing import morton_order_iter
-from zarr.v3.metadata import ShardingCodecIndexLocation, runtime_configuration
+from zarr.v3.codecs import (
+    ShardingCodec,
+    ShardingCodecIndexLocation,
+    BloscCodec,
+    BytesCodec,
+    GzipCodec,
+    TransposeCodec,
+    ZstdCodec,
+)
+from zarr.v3.metadata import runtime_configuration
 
 from zarr.v3.abc.store import Store
 from zarr.v3.store import MemoryStore, StorePath
@@ -48,6 +56,13 @@ def sample_data() -> np.ndarray:
     return np.arange(0, 128 * 128 * 128, dtype="uint16").reshape((128, 128, 128), order="F")
 
 
+def order_from_dim(order: Literal["F", "C"], ndim: int) -> Tuple[int, ...]:
+    if order == "F":
+        return tuple(ndim - x - 1 for x in range(ndim))
+    else:
+        return tuple(range(ndim))
+
+
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding(
     store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
@@ -59,12 +74,12 @@ def test_sharding(
         dtype=sample_data.dtype,
         fill_value=0,
         codecs=[
-            codecs.sharding_codec(
-                (32, 32, 32),
-                [
-                    codecs.transpose_codec("F", sample_data.ndim),
-                    codecs.bytes_codec(),
-                    codecs.blosc_codec(typesize=sample_data.dtype.itemsize, cname="lz4"),
+            ShardingCodec(
+                chunk_shape=(32, 32, 32),
+                codecs=[
+                    TransposeCodec(order=order_from_dim("F", sample_data.ndim)),
+                    BytesCodec(),
+                    BloscCodec(typesize=sample_data.dtype.itemsize, cname="lz4"),
                 ],
                 index_location=index_location,
             )
@@ -89,12 +104,12 @@ def test_sharding_partial(
         dtype=sample_data.dtype,
         fill_value=0,
         codecs=[
-            codecs.sharding_codec(
-                (32, 32, 32),
-                [
-                    codecs.transpose_codec("F", sample_data.ndim),
-                    codecs.bytes_codec(),
-                    codecs.blosc_codec(typesize=sample_data.dtype.itemsize, cname="lz4"),
+            ShardingCodec(
+                chunk_shape=(32, 32, 32),
+                codecs=[
+                    TransposeCodec(order=order_from_dim("F", sample_data.ndim)),
+                    BytesCodec(),
+                    BloscCodec(typesize=sample_data.dtype.itemsize, cname="lz4"),
                 ],
                 index_location=index_location,
             )
@@ -122,12 +137,12 @@ def test_sharding_partial_read(
         dtype=sample_data.dtype,
         fill_value=1,
         codecs=[
-            codecs.sharding_codec(
-                (32, 32, 32),
-                [
-                    codecs.transpose_codec("F", sample_data.ndim),
-                    codecs.bytes_codec(),
-                    codecs.blosc_codec(typesize=sample_data.dtype.itemsize, cname="lz4"),
+            ShardingCodec(
+                chunk_shape=(32, 32, 32),
+                codecs=[
+                    TransposeCodec(order=order_from_dim("F", sample_data.ndim)),
+                    BytesCodec(),
+                    BloscCodec(typesize=sample_data.dtype.itemsize, cname="lz4"),
                 ],
                 index_location=index_location,
             )
@@ -151,12 +166,12 @@ def test_sharding_partial_overwrite(
         dtype=data.dtype,
         fill_value=1,
         codecs=[
-            codecs.sharding_codec(
-                (32, 32, 32),
-                [
-                    codecs.transpose_codec("F", data.ndim),
-                    codecs.bytes_codec(),
-                    codecs.blosc_codec(typesize=data.dtype.itemsize, cname="lz4"),
+            ShardingCodec(
+                chunk_shape=(32, 32, 32),
+                codecs=[
+                    TransposeCodec(order=order_from_dim("F", data.ndim)),
+                    BytesCodec(),
+                    BloscCodec(typesize=data.dtype.itemsize, cname="lz4"),
                 ],
                 index_location=index_location,
             )
@@ -195,9 +210,11 @@ def test_nested_sharding(
         dtype=sample_data.dtype,
         fill_value=0,
         codecs=[
-            codecs.sharding_codec(
-                (32, 32, 32),
-                [codecs.sharding_codec((16, 16, 16), index_location=inner_index_location)],
+            ShardingCodec(
+                chunk_shape=(32, 32, 32),
+                codecs=[
+                    ShardingCodec(chunk_shape=(16, 16, 16), index_location=inner_index_location)
+                ],
                 index_location=outer_index_location,
             )
         ],
@@ -228,13 +245,13 @@ async def test_order(
 
     codecs_: List[NamedConfig] = (
         [
-            codecs.sharding_codec(
-                (16, 8),
-                codecs=[codecs.transpose_codec(store_order, data.ndim), codecs.bytes_codec()],
+            ShardingCodec(
+                chunk_shape=(16, 8),
+                codecs=[TransposeCodec(order=order_from_dim(store_order, data.ndim)), BytesCodec()],
             )
         ]
         if with_sharding
-        else [codecs.transpose_codec(store_order, data.ndim), codecs.bytes_codec()]
+        else [TransposeCodec(order=order_from_dim(store_order, data.ndim)), BytesCodec()]
     )
 
     a = await AsyncArray.create(
@@ -294,7 +311,7 @@ def test_order_implicit(
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16), order=input_order)
 
     codecs_: Optional[List[NamedConfig]] = (
-        [codecs.sharding_codec((8, 8))] if with_sharding else None
+        [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
     )
 
     a = Array.create(
@@ -340,13 +357,13 @@ async def test_transpose(
 
     codecs_: List[NamedConfig] = (
         [
-            codecs.sharding_codec(
-                (1, 16, 8),
-                codecs=[codecs.transpose_codec((2, 1, 0)), codecs.bytes_codec()],
+            ShardingCodec(
+                chunk_shape=(1, 16, 8),
+                codecs=[TransposeCodec(order=(2, 1, 0)), BytesCodec()],
             )
         ]
         if with_sharding
-        else [codecs.transpose_codec((2, 1, 0)), codecs.bytes_codec()]
+        else [TransposeCodec(order=(2, 1, 0)), BytesCodec()]
     )
 
     a = await AsyncArray.create(
@@ -398,7 +415,7 @@ def test_transpose_invalid(
     data = np.arange(0, 256, dtype="uint16").reshape((1, 32, 8))
 
     for order in [(1, 0), (3, 2, 1), (3, 3, 1)]:
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             Array.create(
                 store / "transpose_invalid",
                 shape=data.shape,
@@ -406,7 +423,7 @@ def test_transpose_invalid(
                 dtype=data.dtype,
                 fill_value=0,
                 chunk_key_encoding=("v2", "."),
-                codecs=[codecs.transpose_codec(order), codecs.bytes_codec()],
+                codecs=[TransposeCodec(order=order), BytesCodec()],
             )
 
 
@@ -430,12 +447,12 @@ def test_open_sharding(store: Store):
         dtype="int32",
         fill_value=0,
         codecs=[
-            codecs.sharding_codec(
-                (8, 8),
-                [
-                    codecs.transpose_codec("F", 2),
-                    codecs.bytes_codec(),
-                    codecs.blosc_codec(typesize=4),
+            ShardingCodec(
+                chunk_shape=(8, 8),
+                codecs=[
+                    TransposeCodec(order=order_from_dim("F", 2)),
+                    BytesCodec(),
+                    BloscCodec(typesize=4),
                 ],
             )
         ],
@@ -573,11 +590,11 @@ def test_write_partial_sharded_chunks(store: Store):
         dtype=data.dtype,
         fill_value=1,
         codecs=[
-            codecs.sharding_codec(
+            ShardingCodec(
                 chunk_shape=(10, 10),
                 codecs=[
-                    codecs.bytes_codec(),
-                    codecs.blosc_codec(typesize=data.dtype.itemsize),
+                    BytesCodec(),
+                    BloscCodec(typesize=data.dtype.itemsize),
                 ],
             )
         ],
@@ -611,7 +628,7 @@ async def test_delete_empty_sharded_chunks(store: Store):
         chunk_shape=(8, 16),
         dtype="uint16",
         fill_value=1,
-        codecs=[codecs.sharding_codec(chunk_shape=(8, 8))],
+        codecs=[ShardingCodec(chunk_shape=(8, 8))],
     )
     await _AsyncArrayProxy(a)[:, :].set(np.zeros((16, 16)))
     await _AsyncArrayProxy(a)[8:, :].set(np.ones((8, 16)))
@@ -672,7 +689,7 @@ async def test_zarr_compat_F(store: Store):
         dtype=data.dtype,
         chunk_key_encoding=("v2", "."),
         fill_value=1,
-        codecs=[codecs.transpose_codec("F", data.ndim), codecs.bytes_codec()],
+        codecs=[TransposeCodec(order=order_from_dim("F", data.ndim)), BytesCodec()],
     )
 
     z2 = zarr.create(
@@ -736,7 +753,7 @@ def test_gzip(store: Store):
         chunk_shape=(16, 16),
         dtype=data.dtype,
         fill_value=0,
-        codecs=[codecs.bytes_codec(), codecs.gzip_codec()],
+        codecs=[BytesCodec(), GzipCodec()],
     )
 
     a[:, :] = data
@@ -753,7 +770,7 @@ def test_zstd(store: Store, checksum: bool):
         chunk_shape=(16, 16),
         dtype=data.dtype,
         fill_value=0,
-        codecs=[codecs.bytes_codec(), codecs.zstd_codec(level=0, checksum=checksum)],
+        codecs=[BytesCodec(), ZstdCodec(level=0, checksum=checksum)],
     )
 
     a[:, :] = data
@@ -772,7 +789,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]):
         dtype=data.dtype,
         fill_value=0,
         chunk_key_encoding=("v2", "."),
-        codecs=[codecs.bytes_codec(endian)],
+        codecs=[BytesCodec(endian=endian)],
     )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
@@ -808,7 +825,7 @@ async def test_endian_write(
         dtype="uint16",
         fill_value=0,
         chunk_key_encoding=("v2", "."),
-        codecs=[codecs.bytes_codec(dtype_store_endian)],
+        codecs=[BytesCodec(endian=dtype_store_endian)],
     )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
@@ -845,12 +862,12 @@ def test_invalid_metadata(store: Store):
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
-                codecs.bytes_codec("big"),
-                codecs.transpose_codec("F", 2),
+                BytesCodec(endian="big"),
+                TransposeCodec(order=order_from_dim("F", 2)),
             ],
         )
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(TypeError):
         Array.create(
             store / "invalid_order",
             shape=(16, 16),
@@ -858,8 +875,8 @@ def test_invalid_metadata(store: Store):
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
-                codecs.bytes_codec(),
-                codecs.transpose_codec("F"),
+                BytesCodec(),
+                TransposeCodec(order="F"),
             ],
         )
 
@@ -871,7 +888,7 @@ def test_invalid_metadata(store: Store):
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
-                codecs.transpose_codec("F", 2),
+                TransposeCodec(order=order_from_dim("F", 2)),
             ],
         )
 
@@ -883,7 +900,7 @@ def test_invalid_metadata(store: Store):
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
-                codecs.sharding_codec(chunk_shape=(8,)),
+                ShardingCodec(chunk_shape=(8,)),
             ],
         )
     with pytest.raises(AssertionError):
@@ -894,7 +911,7 @@ def test_invalid_metadata(store: Store):
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
-                codecs.sharding_codec(chunk_shape=(8, 7)),
+                ShardingCodec(chunk_shape=(8, 7)),
             ],
         )
 
@@ -906,8 +923,8 @@ def test_invalid_metadata(store: Store):
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
-                codecs.sharding_codec(chunk_shape=(8, 8)),
-                codecs.gzip_codec(),
+                ShardingCodec(chunk_shape=(8, 8)),
+                GzipCodec(),
             ],
         )
 

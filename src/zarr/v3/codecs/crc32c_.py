@@ -1,12 +1,11 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from typing import (
     TYPE_CHECKING,
-    Any,
+    Dict,
     Literal,
     Optional,
-    Type,
 )
 
 import numpy as np
@@ -14,29 +13,18 @@ import numpy as np
 from crc32c import crc32c
 
 from zarr.v3.abc.codec import BytesBytesCodec
-from zarr.v3.abc.metadata import Metadata
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import NamedConfig
+from zarr.v3.common import JSON
 
 if TYPE_CHECKING:
     from zarr.v3.common import BytesLike, RuntimeConfiguration, ArraySpec
+    from typing_extensions import Self
 
 
-def parse_name(data: Any) -> Literal["crc32c"]:
+def parse_name(data: JSON) -> Literal["crc32c"]:
     if data == "crc32c":
         return data
-    msg = f"Expected 'crc32c', got {data} instead."
-    raise ValueError(msg)
-
-
-@dataclass(frozen=True)
-class Crc32cCodecMetadata(Metadata):
-    name: Literal["crc32c"] = field(default="crc32c", init=False)
-
-    @classmethod
-    def from_dict(cls, data: Any):
-        _ = parse_name(data.pop("name"))
-        return cls(**data)
+    raise ValueError(f"Expected 'crc32c', got {data} instead.")
 
 
 @dataclass(frozen=True)
@@ -44,13 +32,12 @@ class Crc32cCodec(BytesBytesCodec):
     is_fixed_size = True
 
     @classmethod
-    def from_metadata(cls, codec_metadata: NamedConfig) -> Crc32cCodec:
-        assert isinstance(codec_metadata, Crc32cCodecMetadata)
-        return cls()
+    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+        parse_name(data["name"])
+        return Crc32cCodec()
 
-    @classmethod
-    def get_metadata_class(cls) -> Type[Crc32cCodecMetadata]:
-        return Crc32cCodecMetadata
+    def to_dict(self) -> Dict[str, JSON]:
+        return {"name": "crc32c"}
 
     async def decode(
         self,

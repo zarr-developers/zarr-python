@@ -4,17 +4,20 @@ import asyncio
 from asyncio import AbstractEventLoop
 import contextvars
 from dataclasses import dataclass
+from enum import Enum
 import functools
 from typing import (
     Any,
     Awaitable,
     Callable,
     Dict,
+    Iterator,
     List,
     Literal,
     Optional,
     Protocol,
     Tuple,
+    Type,
     TypeVar,
     Union,
 )
@@ -30,6 +33,7 @@ BytesLike = Union[bytes, bytearray, memoryview]
 ChunkCoords = Tuple[int, ...]
 SliceSelection = Tuple[slice, ...]
 Selection = Union[slice, SliceSelection]
+JSON = Union[str, None, int, float, Dict[str, "JSON"], List["JSON"]]
 
 
 def product(tup: ChunkCoords) -> int:
@@ -63,6 +67,23 @@ async def to_thread(func, /, *args, **kwargs):
     return await loop.run_in_executor(None, func_call)
 
 
+def enum_names(enum: Enum) -> Iterator[str]:
+    for item in enum:
+        yield item.name
+
+
+E = TypeVar("E", bound=Enum)
+
+
+def parse_enum(data: JSON, cls: Type[E]) -> E:
+    if isinstance(data, cls):
+        return data
+    if data in enum_names(cls):
+        return cls(data)
+    msg = f"Value must be one of {repr(list(enum_names(cls)))}, got {data} instead."
+    raise ValueError(msg)
+
+
 class NamedConfig(Protocol):
     @property
     def name(self) -> str:
@@ -83,18 +104,15 @@ class RuntimeConfiguration:
 @dataclass(frozen=True)
 class ArraySpec:
     shape: ChunkCoords
-    chunk_shape: ChunkCoords
     dtype: np.dtype
     fill_value: Any
 
-    def __init__(self, shape, chunk_shape, dtype, fill_value):
+    def __init__(self, shape, dtype, fill_value):
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
-        chunk_shape_parsed = parse_shapelike(chunk_shape)
         fill_value_parsed = parse_fill_value(fill_value)
 
         object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
         object.__setattr__(self, "dtype", dtype_parsed)
         object.__setattr__(self, "fill_value", fill_value_parsed)
 

@@ -13,17 +13,16 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 
 import json
-from typing import Any, Dict, Iterable, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
 
 import numpy as np
 
-from zarr.v3.abc.codec import Codec
 
 # from zarr.v3.array_v2 import ArrayV2
 from zarr.v3.codecs.common import decode, encode
 
 # from zarr.v3.array_v2 import ArrayV2
-from zarr.v3.codecs import bytes_codec
+from zarr.v3.codecs import BytesCodec
 from zarr.v3.common import (
     ZARR_JSON,
     ArraySpec,
@@ -61,7 +60,6 @@ class AsyncArray:
     metadata: ArrayMetadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
-    codecs: List[Codec]
 
     @property
     def codecs(self):
@@ -113,10 +111,10 @@ class AsyncArray:
         if not exists_ok:
             assert not await (store_path / ZARR_JSON).exists()
 
-        codecs = list(codecs) if codecs is not None else [bytes_codec()]
+        codecs = list(codecs) if codecs is not None else [BytesCodec()]
 
         if fill_value is None:
-            if dtype == np.bool:
+            if dtype == np.dtype("bool"):
                 fill_value = False
             else:
                 fill_value = 0
@@ -279,8 +277,8 @@ class AsyncArray:
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
         store_path = self.store_path / chunk_key
 
-        if self.codec_pipeline.supports_partial_decode:
-            chunk_array = await self.codec_pipeline.decode_partial(
+        if self.codecs.supports_partial_decode:
+            chunk_array = await self.codecs.decode_partial(
                 store_path, chunk_selection, chunk_spec, self.runtime_configuration
             )
             if chunk_array is not None:
@@ -290,7 +288,7 @@ class AsyncArray:
         else:
             chunk_bytes = await store_path.get()
             if chunk_bytes is not None:
-                chunk_array = await self.codec_pipeline.decode(
+                chunk_array = await self.codecs.decode(
                     chunk_bytes, chunk_spec, self.runtime_configuration
                 )
                 tmp = chunk_array[chunk_selection]
@@ -360,9 +358,9 @@ class AsyncArray:
                 chunk_array = value[out_selection]
             await self._write_chunk_to_store(store_path, chunk_array, chunk_spec)
 
-        elif self.codec_pipeline.supports_partial_encode:
+        elif self.codecs.supports_partial_encode:
             # print("encode_partial", chunk_coords, chunk_selection, repr(self))
-            await self.codec_pipeline.encode_partial(
+            await self.codecs.encode_partial(
                 store_path,
                 value[out_selection],
                 chunk_selection,
@@ -383,9 +381,7 @@ class AsyncArray:
                 chunk_array.fill(self.metadata.fill_value)
             else:
                 chunk_array = (
-                    await self.codec_pipeline.decode(
-                        chunk_bytes, chunk_spec, self.runtime_configuration
-                    )
+                    await self.codecs.decode(chunk_bytes, chunk_spec, self.runtime_configuration)
                 ).copy()  # make a writable copy
             chunk_array[chunk_selection] = value[out_selection]
 
@@ -398,7 +394,7 @@ class AsyncArray:
             # chunks that only contain fill_value will be removed
             await store_path.delete()
         else:
-            chunk_bytes = await self.codec_pipeline.encode(
+            chunk_bytes = await self.codecs.encode(
                 chunk_array, chunk_spec, self.runtime_configuration
             )
             if chunk_bytes is None:
@@ -430,14 +426,14 @@ class AsyncArray:
 
         # Write new metadata
         await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
-        return evolve(self, metadata=new_metadata)
+        return replace(self, metadata=new_metadata)
 
     async def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
         await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
-        return evolve(self, metadata=new_metadata)
+        return replace(self, metadata=new_metadata)
 
     def __repr__(self):
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"

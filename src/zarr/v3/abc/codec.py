@@ -1,34 +1,26 @@
 from __future__ import annotations
 
-from abc import abstractmethod, ABC
-from typing import TYPE_CHECKING, Optional, Type
+from abc import abstractmethod
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
+from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.common import ArraySpec
 from zarr.v3.store import StorePath
 
 
 if TYPE_CHECKING:
-    from zarr.v3.common import BytesLike, SliceSelection, NamedConfig
+    from typing_extensions import Self
+    from zarr.v3.common import BytesLike, SliceSelection
     from zarr.v3.metadata import (
         ArrayMetadata,
         RuntimeConfiguration,
     )
 
 
-class Codec(ABC):
-    metadata: NamedConfig
+class Codec(Metadata):
     is_fixed_size: bool
-
-    @classmethod
-    @abstractmethod
-    def from_metadata(cls, codec_metadata: "NamedConfig") -> Codec:
-        pass
-
-    @classmethod
-    def get_metadata_class(cls) -> Type[NamedConfig]:
-        pass
 
     @abstractmethod
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
@@ -37,7 +29,7 @@ class Codec(ABC):
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         return chunk_spec
 
-    def evolve(self, *, ndim: int, data_type: np.dtype) -> Codec:
+    def evolve(self, array_spec: ArraySpec) -> Self:
         return self
 
     def validate(self, array_metadata: ArrayMetadata) -> None:

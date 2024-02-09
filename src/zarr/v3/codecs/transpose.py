@@ -1,19 +1,19 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Iterable
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 
-from zarr.v3.common import ArraySpec
+from zarr.v3.common import JSON, ArraySpec
 
 if TYPE_CHECKING:
-    from zarr.v3.common import NamedConfig, RuntimeConfiguration
+    from zarr.v3.common import RuntimeConfiguration
     from typing import (
         TYPE_CHECKING,
         Literal,
         Optional,
         Tuple,
-        Type,
     )
+    from typing_extensions import Self
 
 import numpy as np
 
@@ -21,56 +21,59 @@ from zarr.v3.abc.codec import ArrayArrayCodec
 from zarr.v3.codecs.registry import register_codec
 
 
-@dataclass(frozen=True)
-class TransposeCodecConfigurationMetadata:
-    order: Tuple[int, ...]
+def parse_name(data: JSON) -> Literal["transpose"]:
+    if data == "transpose":
+        return data
+    raise ValueError(f"Expected 'transpose', got {data} instead.")
 
 
-@dataclass(frozen=True)
-class TransposeCodecMetadata:
-    configuration: TransposeCodecConfigurationMetadata
-    name: Literal["transpose"] = field(default="transpose", init=False)
+def parse_transpose_order(data: JSON) -> Tuple[int]:
+    if not isinstance(data, Iterable):
+        raise TypeError(f"Expected an iterable. Got {data} instead.")
+    if not all(isinstance(a, int) for a in data):
+        raise TypeError(f"Expected an iterable of integers. Got {data} instead.")
+    return tuple(data)
 
 
 @dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
-    order: Tuple[int, ...]
     is_fixed_size = True
 
+    order: Tuple[int, ...]
+
+    def __init__(self, *, order) -> None:
+        order_parsed = parse_transpose_order(order)
+
+        object.__setattr__(self, "order", order_parsed)
+
     @classmethod
-    def from_metadata(cls, codec_metadata: NamedConfig) -> TransposeCodec:
-        assert isinstance(codec_metadata, TransposeCodecMetadata)
-        return cls(order=codec_metadata.configuration.order)
+    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+        parse_name(data["name"])
+        return TransposeCodec(**data["configuration"])
 
-    def evolve(self, *, ndim: int, **_kwargs) -> TransposeCodec:
-        # Compatibility with older version of ZEP1
-        if self.order == "F":  # type: ignore
-            order = tuple(ndim - x - 1 for x in range(ndim))
+    def to_dict(self) -> Dict[str, JSON]:
+        return {"name": "transpose", "configuration": {"order": list(self.order)}}
 
-        elif self.order == "C":  # type: ignore
-            order = tuple(range(ndim))
-
-        else:
-            assert len(self.order) == ndim, (
+    def evolve(self, array_spec: ArraySpec) -> Self:
+        if len(self.order) != array_spec.ndim:
+            raise ValueError(
                 "The `order` tuple needs have as many entries as "
                 + f"there are dimensions in the array. Got: {self.order}"
             )
-            assert len(self.order) == len(set(self.order)), (
+        if len(self.order) != len(set(self.order)):
+            raise ValueError(
                 "There must not be duplicates in the `order` tuple. " + f"Got: {self.order}"
             )
-            assert all(0 <= x < ndim for x in self.order), (
+        if not all(0 <= x < array_spec.ndim for x in self.order):
+            raise ValueError(
                 "All entries in the `order` tuple must be between 0 and "
                 + f"the number of dimensions in the array. Got: {self.order}"
             )
-            order = tuple(self.order)
+        order = tuple(self.order)
 
         if order != self.order:
-            return evolve(self, order=order)
+            return replace(self, order=order)
         return self
-
-    @classmethod
-    def get_metadata_class(cls) -> Type[TransposeCodecMetadata]:
-        return TransposeCodecMetadata
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
         from zarr.v3.common import ArraySpec

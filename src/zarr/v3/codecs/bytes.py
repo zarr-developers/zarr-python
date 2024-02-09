@@ -1,81 +1,75 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
+from enum import Enum
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Dict, Literal, Union
 
 import numpy as np
 
-from zarr.v3.abc.codec import ArrayBytesCodec
-from zarr.v3.abc.metadata import Metadata
+from zarr.v3.abc.codec import ArrayBytesCodec, Codec
 from zarr.v3.codecs.registry import register_codec
+from zarr.v3.common import JSON, ArraySpec, parse_enum
 
 if TYPE_CHECKING:
-    from zarr.v3.common import ArraySpec, NamedConfig, BytesLike, RuntimeConfiguration
+    from zarr.v3.common import ArraySpec, BytesLike, RuntimeConfiguration
+    from zarr.v3.metadata import ArrayMetadata
     from typing_extensions import Self
-    from typing import Any, Dict, Optional, Type
+    from typing import Dict, Optional
 
 
-def parse_endian(data: Any) -> Literal["big", "little"]:
-    if data in ("big", "little"):
-        return data
-    msg = f"Expected on of ('big', 'little'), got {data} instead."
-    raise ValueError(msg)
+class Endian(Enum):
+    big = "big"
+    little = "little"
 
 
-def parse_name(data: Any) -> Literal["bytes"]:
+def parse_endian(data: JSON) -> Literal["big", "little"]:
+    return parse_enum(data, Endian)
+
+
+def parse_name(data: JSON) -> Literal["bytes"]:
     if data == "bytes":
         return data
     msg = f"Expected 'bytes', got {data} instead."
     raise ValueError(msg)
 
 
-Endian = Literal["big", "little"]
-
-
-@dataclass(frozen=True)
-class BytesCodecConfigurationMetadata:
-    endian: Optional[Endian] = "little"
-
-    def __init__(self, endian: Literal["big", "little"]):
-        endian_parsed = parse_endian(endian)
-        object.__setattr__(self, "endian", endian_parsed)
-
-
-@dataclass(frozen=True)
-class BytesCodecMetadata(Metadata):
-    configuration: BytesCodecConfigurationMetadata
-    name: Literal["bytes"] = field(default="bytes", init=False)
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Self:
-        _ = parse_name(data.pop("name"))
-        return cls(**data)
-
-
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
-    configuration: BytesCodecConfigurationMetadata
     is_fixed_size = True
 
-    @classmethod
-    def from_metadata(cls, codec_metadata: NamedConfig) -> BytesCodec:
-        assert isinstance(codec_metadata, BytesCodecMetadata)
-        return cls(configuration=codec_metadata.configuration)
+    endian: Optional[Endian]
+
+    def __init__(self, *, endian=Endian.little) -> None:
+        endian_parsed = None if endian is None else parse_endian(endian)
+
+        object.__setattr__(self, "endian", endian_parsed)
 
     @classmethod
-    def get_metadata_class(cls) -> Type[BytesCodecMetadata]:
-        return BytesCodecMetadata
+    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+        parse_name(data["name"])
+        return BytesCodec(**data.get("configuration", {}))
 
-    def validate(self, array_metadata: ArraySpec) -> None:
-        assert (
-            not array_metadata.data_type.has_endianness or self.configuration.endian is not None
-        ), "The `endian` configuration needs to be specified for multi-byte data types."
+    def to_dict(self) -> Dict[str, JSON]:
+        if self.endian is None:
+            return {"name": "bytes"}
+        else:
+            return {"name": "bytes", "configuration": {"endian": self.endian.name}}
+
+    def evolve(self, array_spec: ArraySpec) -> Self:
+        if array_spec.dtype.itemsize == 0:
+            if self.endian is not None:
+                return replace(self, endian=None)
+        elif self.endian is None:
+            raise ValueError(
+                "The `endian` configuration needs to be specified for multi-byte data types."
+            )
+        return self
 
     def _get_byteorder(self, array: np.ndarray) -> Endian:
         if array.dtype.byteorder == "<":
-            return "little"
+            return Endian.little
         elif array.dtype.byteorder == ">":
-            return "big"
+            return Endian.big
         else:
             import sys
 
@@ -88,13 +82,13 @@ class BytesCodec(ArrayBytesCodec):
         _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         if chunk_spec.dtype.itemsize > 0:
-            if self.configuration.endian == "little":
+            if self.endian == "little":
                 prefix = "<"
             else:
                 prefix = ">"
-            dtype = np.dtype(f"{prefix}{self.array_metadata.dtype.str[1:]}")
+            dtype = np.dtype(f"{prefix}{chunk_spec.dtype.str[1:]}")
         else:
-            dtype = np.dtype(f"|{self.array_metadata.dtype.str[1:]}")
+            dtype = np.dtype(f"|{chunk_spec.dtype.str[1:]}")
         chunk_array = np.frombuffer(chunk_bytes, dtype)
 
         # ensure correct chunk shape
@@ -112,8 +106,8 @@ class BytesCodec(ArrayBytesCodec):
     ) -> Optional[BytesLike]:
         if chunk_array.dtype.itemsize > 1:
             byteorder = self._get_byteorder(chunk_array)
-            if self.configuration.endian != byteorder:
-                new_dtype = chunk_array.dtype.newbyteorder(self.configuration.endian)
+            if self.endian != byteorder:
+                new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)
                 chunk_array = chunk_array.astype(new_dtype)
         return chunk_array.tobytes()
 

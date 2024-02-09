@@ -451,27 +451,17 @@ class ArrayV2:
             RegularChunkGridMetadata,
             V2ChunkKeyEncodingConfigurationMetadata,
             V2ChunkKeyEncodingMetadata,
-            dtype_to_data_type,
-        )
-        from zarr.v3.codecs.blosc import (
-            BloscCodecConfigurationMetadata,
-            BloscCodecMetadata,
-            blosc_shuffle_int_to_str,
-        )
-        from zarr.v3.codecs.bytes import (
-            BytesCodecConfigurationMetadata,
-            BytesCodecMetadata,
-        )
-        from zarr.v3.codecs.gzip import (
-            GzipCodecConfigurationMetadata,
-            GzipCodecMetadata,
-        )
-        from zarr.v3.codecs.transpose import (
-            TransposeCodecConfigurationMetadata,
-            TransposeCodecMetadata,
         )
 
-        data_type = DataType[dtype_to_data_type[self.metadata.dtype.str]]
+        from zarr.v3.codecs import (
+            BloscCodec,
+            BloscShuffle,
+            BytesCodec,
+            GzipCodec,
+            TransposeCodec,
+        )
+
+        data_type = DataType.from_dtype(self.metadata.dtype)
         endian: Literal["little", "big"]
         if self.metadata.dtype.byteorder == "=":
             endian = sys_byteorder
@@ -487,16 +477,8 @@ class ArrayV2:
         codecs: List[NamedConfig] = []
 
         if self.metadata.order == "F":
-            codecs.append(
-                TransposeCodecMetadata(
-                    configuration=TransposeCodecConfigurationMetadata(
-                        order=tuple(reversed(range(self.metadata.ndim)))
-                    )
-                )
-            )
-        codecs.append(
-            BytesCodecMetadata(configuration=BytesCodecConfigurationMetadata(endian=endian))
-        )
+            codecs.append(TransposeCodec(order=tuple(reversed(range(self.metadata.ndim)))))
+        codecs.append(BytesCodec(endian=endian))
 
         if self.metadata.compressor is not None:
             v2_codec = numcodecs.get_codec(self.metadata.compressor).get_config()
@@ -505,24 +487,17 @@ class ArrayV2:
                 "gzip",
             ), "Only blosc and gzip are supported by v3."
             if v2_codec["id"] == "blosc":
-                shuffle = blosc_shuffle_int_to_str[v2_codec.get("shuffle", 0)]
                 codecs.append(
-                    BloscCodecMetadata(
-                        configuration=BloscCodecConfigurationMetadata(
-                            typesize=data_type.byte_count,
-                            cname=v2_codec["cname"],
-                            clevel=v2_codec["clevel"],
-                            shuffle=shuffle,
-                            blocksize=v2_codec.get("blocksize", 0),
-                        )
+                    BloscCodec(
+                        typesize=data_type.byte_count,
+                        cname=v2_codec["cname"],
+                        clevel=v2_codec["clevel"],
+                        shuffle=BloscShuffle.from_int(v2_codec.get("shuffle", 0)),
+                        blocksize=v2_codec.get("blocksize", 0),
                     )
                 )
             elif v2_codec["id"] == "gzip":
-                codecs.append(
-                    GzipCodecMetadata(
-                        configuration=GzipCodecConfigurationMetadata(level=v2_codec.get("level", 5))
-                    )
-                )
+                codecs.append(GzipCodec(v2_codec.get("level", 5)))
 
         new_metadata = ArrayMetadata(
             shape=self.metadata.shape,

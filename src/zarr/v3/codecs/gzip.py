@@ -1,61 +1,53 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict
 
 from zarr.v3.abc.metadata import Metadata
 from numcodecs.gzip import GZip
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import ArraySpec, to_thread
+from zarr.v3.common import JSON, ArraySpec, to_thread
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import RuntimeConfiguration
-    from zarr.v3.common import BytesLike, NamedConfig
+    from zarr.v3.common import BytesLike
     from typing_extensions import Self
-    from typing import Any, Optional, Dict, Literal, Type
+    from typing import Optional, Dict, Literal
 
 
-def parse_gzip_level(data: Any) -> int:
+def parse_name(data: JSON) -> Literal["gzip"]:
+    if data == "gzip":
+        return data
+    raise ValueError(f"Expected 'gzip', got {data} instead.")
+
+
+def parse_gzip_level(data: JSON) -> int:
     if data not in range(0, 10):
-        msg = f"Expected an integer from the inclusive range (0, 9). Got {data} instead."
-        raise ValueError(msg)
+        raise ValueError(
+            f"Expected an integer from the inclusive range (0, 9). Got {data} instead."
+        )
     return data
 
 
 @dataclass(frozen=True)
-class GzipCodecConfigurationMetadata(Metadata):
+class GzipCodec(BytesBytesCodec):
+    is_fixed_size = False
+
     level: int = 5
 
-    def __init__(self, level: int):
+    def __init__(self, *, level=5) -> None:
         level_parsed = parse_gzip_level(level)
+
         object.__setattr__(self, "level", level_parsed)
 
-
-@dataclass(frozen=True)
-class GzipCodecMetadata(Metadata):
-    configuration: GzipCodecConfigurationMetadata
-    name: Literal["gzip"] = field(default="gzip", init=False)
-
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Self:
-        return cls(configuration=GzipCodecConfigurationMetadata.from_dict(data["configuration"]))
+    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+        parse_name(data["name"])
+        return GzipCodec(**data["configuration"])
 
-
-@dataclass(frozen=True)
-class GzipCodec(BytesBytesCodec):
-    configuration: GzipCodecConfigurationMetadata
-    is_fixed_size: Literal[True] = field(default=True, init=False)
-
-    @classmethod
-    def from_metadata(cls, codec_metadata: NamedConfig) -> GzipCodec:
-        assert isinstance(codec_metadata, GzipCodecMetadata)
-
-        return cls(configuration=codec_metadata.configuration)
-
-    @classmethod
-    def get_metadata_class(cls) -> Type[GzipCodecMetadata]:
-        return GzipCodecMetadata
+    def to_dict(self) -> Dict[str, JSON]:
+        return {"name": "gzip", "configuration": {"level": self.level}}
 
     async def decode(
         self,
@@ -63,7 +55,7 @@ class GzipCodec(BytesBytesCodec):
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
-        return await to_thread(GZip(self.configuration.level).decode, chunk_bytes)
+        return await to_thread(GZip(self.level).decode, chunk_bytes)
 
     async def encode(
         self,
@@ -71,7 +63,7 @@ class GzipCodec(BytesBytesCodec):
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
-        return await to_thread(GZip(self.configuration.level).encode, chunk_bytes)
+        return await to_thread(GZip(self.level).encode, chunk_bytes)
 
     def compute_encoded_size(
         self,
