@@ -12,7 +12,7 @@ from zarr.v3.attributes import Attributes
 from zarr.v3.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
 from zarr.v3.config import RuntimeConfiguration, SyncConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
-from zarr.v3.sync import SyncMixin
+from zarr.v3.sync import SyncMixin, sync
 
 logger = logging.getLogger("zarr.group")
 
@@ -51,7 +51,6 @@ class GroupMetadata(Metadata):
             }
 
     def __init__(self, attributes: Dict[str, Any] = None, zarr_format: Literal[2, 3] = 3):
-
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
 
@@ -60,6 +59,7 @@ class GroupMetadata(Metadata):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> GroupMetadata:
+        assert data.pop("node_type", None) in ("group", None)
         return cls(**data)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -79,7 +79,7 @@ class AsyncGroup:
         *,
         attributes: Optional[Dict[str, Any]] = None,
         exists_ok: bool = False,
-        zarr_format: Literal[2, 3] = 3,  # field(default=3, validator=validators.in_([2, 3])),
+        zarr_format: Literal[2, 3] = 3,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> AsyncGroup:
         store_path = make_store_path(store)
@@ -131,7 +131,7 @@ class AsyncGroup:
             zarr_json = {**zgroup, "attributes": zattrs}
         else:
             raise ValueError(f"unexpected zarr_format: {zarr_format}")
-        return cls.from_json(store_path, zarr_json, runtime_configuration)
+        return cls.from_dict(store_path, zarr_json, runtime_configuration)
 
     @classmethod
     def from_dict(
@@ -167,9 +167,9 @@ class AsyncGroup:
             else:
                 zarr_json = json.loads(zarr_json_bytes)
             if zarr_json["node_type"] == "group":
-                return type(self).from_json(store_path, zarr_json, self.runtime_configuration)
+                return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
             if zarr_json["node_type"] == "array":
-                return AsyncArray.from_json(
+                return AsyncArray.from_dict(
                     store_path, zarr_json, runtime_configuration=self.runtime_configuration
                 )
         elif self.metadata.zarr_format == 2:
@@ -189,7 +189,7 @@ class AsyncGroup:
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
                 zarr_json = {**zarray, "attributes": zattrs}
-                return AsyncArray.from_json(
+                return AsyncArray.from_dict(
                     store_path, zarray, runtime_configuration=self.runtime_configuration
                 )
             else:
@@ -202,7 +202,7 @@ class AsyncGroup:
                     else {"zarr_format": self.metadata.zarr_format}
                 )
                 zarr_json = {**zgroup, "attributes": zattrs}
-                return type(self).from_json(store_path, zarr_json, self.runtime_configuration)
+                return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
@@ -334,13 +334,14 @@ class Group(SyncMixin):
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Group:
-        obj = cls._sync(
+        obj = sync(
             AsyncGroup.create(
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
                 runtime_configuration=runtime_configuration,
-            )
+            ),
+            loop=runtime_configuration.asyncio_loop,
         )
 
         return cls(obj)
@@ -350,27 +351,11 @@ class Group(SyncMixin):
         cls,
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> Union[Array, Group]:
-        store_path = make_store_path(store)
-        zarr_json_bytes = cls._sync((store_path / ZARR_JSON).get_async())
-        if zarr_json_bytes is None:
-            raise KeyError
-        zarr_json = json.loads(zarr_json_bytes)
-        if zarr_json["node_type"] == "group":
-            return cls.from_dict(store_path, zarr_json, runtime_configuration)
-        if zarr_json["node_type"] == "array":
-            return Array.from_dict(
-                store_path, zarr_json, runtime_configuration=runtime_configuration
-            )
-        raise KeyError
-
-    async def _save_metadata(self) -> None:
-        await (self.store_path / ZARR_JSON).set_async(self.metadata.to_bytes())
-
-    async def get_async(self, path: str) -> Union[Array, Group]:
-        return await self.__class__.open_or_array(
-            self.store_path / path, self.runtime_configuration
+    ) -> Group:
+        obj = sync(
+            AsyncGroup.open(store, runtime_configuration), loop=runtime_configuration.asyncio_loop
         )
+        return cls(obj)
 
     def __getitem__(self, path: str) -> Union[Array, Group]:
         obj = self._sync(self._async_group.getitem(path))
