@@ -300,7 +300,7 @@ class ShardingCodec(
         assert all(
             s % c == 0
             for s, c in zip(
-                array_metadata.chunk_grid.chunk_shape,
+                array_metadata.chunk_grid.configuration.chunk_shape,
                 self.chunk_shape,
             )
         ), (

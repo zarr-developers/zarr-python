@@ -82,13 +82,14 @@ class BytesCodec(ArrayBytesCodec):
         _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         if chunk_spec.dtype.itemsize > 0:
-            if self.endian == "little":
+            if self.endian == Endian.little:
                 prefix = "<"
             else:
                 prefix = ">"
             dtype = np.dtype(f"{prefix}{chunk_spec.dtype.str[1:]}")
         else:
             dtype = np.dtype(f"|{chunk_spec.dtype.str[1:]}")
+        print(dtype)
         chunk_array = np.frombuffer(chunk_bytes, dtype)
 
         # ensure correct chunk shape

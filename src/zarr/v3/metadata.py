@@ -275,11 +275,13 @@ class ArrayMetadata(Metadata):
         return cls(**data, dimension_names=dimension_names)
 
     def to_dict(self) -> Dict[str, Any]:
-        out_dict = {}
+        out_dict = {"zarr_format": self.zarr_format, "node_type": self.node_type}
         for key, value in self.__dict__.items():
             if not key.startswith("_"):
                 if isinstance(value, Metadata):
                     out_dict[key] = value.to_dict()
+                elif isinstance(value, np.dtype):
+                    out_dict[key] = DataType.from_dtype(value).name
                 else:
                     out_dict[key] = value
 

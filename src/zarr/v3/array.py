@@ -263,7 +263,7 @@ class AsyncArray:
             self.metadata.dimension_names
         ), "`dimension_names` and `shape` need to have the same number of dimensions."
         assert self.metadata.fill_value is not None, "`fill_value` is required."
-        # self.codecs.validate(self.metadata)
+        self.codecs.validate(self.metadata)
 
     async def _read_chunk(
         self,
