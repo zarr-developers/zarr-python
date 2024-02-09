@@ -2,17 +2,16 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 
-from typing import TYPE_CHECKING, Dict, Literal, Union
+from typing import TYPE_CHECKING, Dict, Literal
 
 import numpy as np
 
-from zarr.v3.abc.codec import ArrayBytesCodec, Codec
+from zarr.v3.abc.codec import ArrayBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import JSON, ArraySpec, parse_enum, parse_name
 
 if TYPE_CHECKING:
     from zarr.v3.common import ArraySpec, BytesLike, RuntimeConfiguration
-    from zarr.v3.metadata import ArrayMetadata
     from typing_extensions import Self
     from typing import Dict, Optional
 

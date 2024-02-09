@@ -20,7 +20,6 @@ from zarr.v3.abc.codec import Codec
 from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.common import (
-    JSON,
     ArraySpec,
     ChunkCoords,
     NamedConfig,

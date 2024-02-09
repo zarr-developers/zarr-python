@@ -1,10 +1,9 @@
 from __future__ import annotations
-from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Iterable, Literal, Union
-from dataclasses import asdict, dataclass, field
+from typing import TYPE_CHECKING, Dict, Literal
+from dataclasses import dataclass
 from zarr.v3.abc.metadata import Metadata
 
-from zarr.v3.common import JSON, ChunkCoords, parse_name
+from zarr.v3.common import JSON, ChunkCoords
 
 if TYPE_CHECKING:
     from typing_extensions import Self

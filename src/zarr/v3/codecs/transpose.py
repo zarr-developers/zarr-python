@@ -9,7 +9,6 @@ if TYPE_CHECKING:
     from zarr.v3.common import RuntimeConfiguration
     from typing import (
         TYPE_CHECKING,
-        Literal,
         Optional,
         Tuple,
     )

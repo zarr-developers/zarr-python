@@ -11,7 +11,7 @@ from zarr.v3.common import parse_name, to_thread, ArraySpec
 
 if TYPE_CHECKING:
     from zarr.v3.metadata import RuntimeConfiguration
-    from typing import Literal, Dict, Optional
+    from typing import Dict, Optional
     from typing_extensions import Self
     from zarr.v3.common import BytesLike, JSON
 
