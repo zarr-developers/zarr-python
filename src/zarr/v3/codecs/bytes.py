@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 
-from typing import TYPE_CHECKING, Dict, Literal, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 import numpy as np
 
@@ -20,10 +20,6 @@ class Endian(Enum):
     little = "little"
 
 
-def parse_endian(data: JSON) -> Literal["big", "little"]:
-    return parse_enum(data, Endian)
-
-
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
     is_fixed_size = True
@@ -31,7 +27,7 @@ class BytesCodec(ArrayBytesCodec):
     endian: Optional[Endian]
 
     def __init__(self, *, endian=Endian.little) -> None:
-        endian_parsed = None if endian is None else parse_endian(endian)
+        endian_parsed = None if endian is None else parse_enum(endian, Endian)
 
         object.__setattr__(self, "endian", endian_parsed)
 

@@ -1,9 +1,9 @@
 from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING
-from dataclasses import asdict, dataclass, field
-
+from dataclasses import dataclass, field
 import json
+import numpy as np
 
 from zarr.v3.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.v3.chunk_key_encodings import ChunkKeyEncoding
@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from zarr.v3.codecs.pipeline import CodecPipeline
 
 
-import numpy as np
 from zarr.v3.abc.codec import Codec
 from zarr.v3.abc.metadata import Metadata
 
@@ -207,15 +206,7 @@ class ArrayMetadata(Metadata):
         return cls(**data, dimension_names=dimension_names)
 
     def to_dict(self) -> Dict[str, Any]:
-        out_dict = {"zarr_format": self.zarr_format, "node_type": self.node_type}
-        for key, value in self.__dict__.items():
-            if not key.startswith("_"):
-                if isinstance(value, Metadata):
-                    out_dict[key] = value.to_dict()
-                elif isinstance(value, np.dtype):
-                    out_dict[key] = DataType.from_dtype(value).name
-                else:
-                    out_dict[key] = value
+        out_dict = super().to_dict()
 
         # if `dimension_names` is `None`, we do not include it in
         # the metadata document
@@ -273,23 +264,13 @@ class ArrayV2Metadata(Metadata):
                     return o.descr
             raise TypeError
 
-        return json.dumps(asdict(self), default=_json_convert).encode()
+        return json.dumps(self.to_dict(), default=_json_convert).encode()
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ArrayV2Metadata:
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format_v2(data.pop("zarr_format"))
         return cls(**data)
-
-    def to_dict(self) -> Dict[str, Any]:
-        out_dict = {}
-        for key, value in self.__dict__:
-            if not key.startswith("_"):
-                if isinstance(value, Metadata):
-                    out_dict[key] = value.to_dict()
-                else:
-                    out_dict[key] = value
-        return out_dict
 
 
 def parse_dimension_names(data: Any) -> Tuple[str, ...] | None:

@@ -60,20 +60,12 @@ def parse_typesize(data: JSON) -> int:
     raise TypeError(msg)
 
 
-def parse_cname(data: JSON) -> BloscCname:
-    return parse_enum(data, BloscCname)
-
-
 # todo: real validation
 def parse_clevel(data: JSON) -> int:
     if isinstance(data, int):
         return data
     msg = f"Value should be an int, got {type(data)} instead"
     raise TypeError(msg)
-
-
-def parse_shuffle(data: JSON) -> BloscShuffle:
-    return parse_enum(data, BloscShuffle)
 
 
 def parse_blocksize(data: JSON) -> int:
@@ -103,9 +95,9 @@ class BloscCodec(BytesBytesCodec):
         blocksize=0,
     ) -> None:
         typesize_parsed = parse_typesize(typesize)
-        cname_parsed = parse_cname(cname)
+        cname_parsed = parse_enum(cname, BloscCname)
         clevel_parsed = parse_clevel(clevel)
-        shuffle_parsed = parse_shuffle(shuffle)
+        shuffle_parsed = parse_enum(shuffle, BloscShuffle)
         blocksize_parsed = parse_blocksize(blocksize)
 
         object.__setattr__(self, "typesize", typesize_parsed)

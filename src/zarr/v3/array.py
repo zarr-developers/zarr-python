@@ -19,9 +19,6 @@ import numpy as np
 
 
 # from zarr.v3.array_v2 import ArrayV2
-from zarr.v3.codecs.common import decode, encode
-
-# from zarr.v3.array_v2 import ArrayV2
 from zarr.v3.codecs import BytesCodec
 from zarr.v3.common import (
     ZARR_JSON,
@@ -71,15 +68,6 @@ class AsyncArray:
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
         object.__setattr__(self, "runtime_configuration", runtime_configuration)
-
-    async def encode_chunk(self, data: np.ndarray):
-        """
-        Encode a numpy array using the codec pipeline
-        """
-        return await encode(self.codecs, data, self.runtime_configuration)
-
-    async def decode_chunk(self, data: bytes):
-        return await decode(self.codecs, data, self.runtime_configuration)
 
     @classmethod
     async def create(
@@ -148,6 +136,7 @@ class AsyncArray:
         async_array = cls(
             metadata=metadata, store_path=store_path, runtime_configuration=runtime_configuration
         )
+        # todo: remove this, pushing the logic down to the array metadata creation
         async_array._validate_metadata()
         return async_array
 
