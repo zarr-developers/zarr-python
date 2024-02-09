@@ -116,7 +116,7 @@ class AsyncArray:
         codecs = list(codecs) if codecs is not None else [bytes_codec()]
 
         if fill_value is None:
-            if dtype == np.bool:
+            if dtype == np.dtype("bool"):
                 fill_value = False
             else:
                 fill_value = 0
@@ -167,6 +167,7 @@ class AsyncArray:
         async_array = cls(
             metadata=metadata, store_path=store_path, runtime_configuration=runtime_configuration
         )
+        # todo: remove this, pushing the logic down to the array metadata creation
         async_array._validate_metadata()
         return async_array
 
@@ -398,9 +399,7 @@ class AsyncArray:
             # chunks that only contain fill_value will be removed
             await store_path.delete()
         else:
-            chunk_bytes = await self.codec_pipeline.encode(
-                chunk_array, chunk_spec, self.runtime_configuration
-            )
+            chunk_bytes = await encode(self.codecs, chunk_array, self.runtime_configuration)
             if chunk_bytes is None:
                 await store_path.delete()
             else:

@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Literal, NamedTuple, Mapping
+from typing import TYPE_CHECKING, NamedTuple, Mapping
 from dataclasses import dataclass, field
 from functools import cached_property, lru_cache
 
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
         Set,
         Tuple,
         Type,
+        Literal,
     )
     from zarr.v3.common import BytesLike, NamedConfig, RuntimeConfiguration, SliceSelection
 
@@ -23,6 +24,7 @@ from zarr.v3.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
+    Codec,
 )
 from zarr.v3.abc.metadata import Metadata
 
@@ -50,7 +52,6 @@ from zarr.v3.metadata import (
 )
 
 from zarr.v3.store import StorePath
-from zarr.v3.codecs.common import encode, decode
 
 MAX_UINT_64 = 2**64 - 1
 
@@ -58,7 +59,7 @@ MAX_UINT_64 = 2**64 - 1
 @dataclass(frozen=True)
 class ShardingCodecConfigurationMetadata(Metadata):
     chunk_shape: ChunkCoords
-    codecs: List["NamedConfig"]
+    codecs: List[Codec]
     index_codecs: List["NamedConfig"]
     index_location: ShardingCodecIndexLocation = "end"
 
@@ -235,7 +236,7 @@ class _ShardBuilder(_ShardProxy):
 
 @dataclass(frozen=True)
 class ShardingCodec(
-    ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
+    ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin, Metadata
 ):
     configuration: ShardingCodecConfigurationMetadata
 
@@ -681,6 +682,13 @@ class ShardingCodec(
     def compute_encoded_size(self, input_byte_length: int, shard_spec: ArraySpec) -> int:
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         return input_byte_length + self._shard_index_size(chunks_per_shard)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return ShardingCodecMetadata(configuration=self.configuration).to_dict()
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        return cls(configuration=data["configuration"])
 
 
 register_codec("sharding_indexed", ShardingCodec)

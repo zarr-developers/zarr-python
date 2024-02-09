@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Literal, Union
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 
 import json
 
@@ -250,6 +250,7 @@ class ArrayMetadata(Metadata):
             shape=self.chunk_grid.configuration.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
+            chunk_shape=self.chunk_grid.configuration.chunk_shape,
         )
 
     def to_bytes(self) -> bytes:
@@ -279,13 +280,7 @@ class ArrayMetadata(Metadata):
         return cls(**data, dimension_names=dimension_names)
 
     def to_dict(self) -> Dict[str, Any]:
-        out_dict = {}
-        for key, value in self.__dict__.items():
-            if not key.startswith("_"):
-                if isinstance(value, Metadata):
-                    out_dict[key] = value.to_dict()
-                else:
-                    out_dict[key] = value
+        out_dict = super().to_dict()
 
         # if `dimension_names` is `None`, we do not include it in
         # the metadata document
@@ -343,23 +338,13 @@ class ArrayV2Metadata(Metadata):
                     return o.descr
             raise TypeError
 
-        return json.dumps(asdict(self), default=_json_convert).encode()
+        return json.dumps(self.to_dict(), default=_json_convert).encode()
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ArrayV2Metadata:
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format_v2(data.pop("zarr_format"))
         return cls(**data)
-
-    def to_dict(self) -> Dict[str, Any]:
-        out_dict = {}
-        for key, value in self.__dict__:
-            if not key.startswith("_"):
-                if isinstance(value, Metadata):
-                    out_dict[key] = value.to_dict()
-                else:
-                    out_dict[key] = value
-        return out_dict
 
 
 def parse_chunk_grid(data: Any) -> RegularChunkGridMetadata:

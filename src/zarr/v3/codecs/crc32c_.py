@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     Any,
+    Dict,
     Literal,
     Optional,
     Type,
@@ -74,6 +75,13 @@ class Crc32cCodec(BytesBytesCodec):
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length + 4
+
+    def to_dict(self) -> Dict[str, Any]:
+        return Crc32cCodecMetadata()
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        return cls(configuration=data["configuration"])
 
 
 register_codec("crc32c", Crc32cCodec)

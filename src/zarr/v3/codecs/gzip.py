@@ -80,5 +80,12 @@ class GzipCodec(BytesBytesCodec):
     ) -> int:
         raise NotImplementedError
 
+    def to_dict(self) -> Dict[str, Any]:
+        return GzipCodecMetadata(configuration=self.configuration)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        return cls(configuration=data["configuration"])
+
 
 register_codec("gzip", GzipCodec)

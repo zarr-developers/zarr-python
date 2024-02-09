@@ -33,7 +33,7 @@ Endian = Literal["big", "little"]
 
 
 @dataclass(frozen=True)
-class BytesCodecConfigurationMetadata:
+class BytesCodecConfigurationMetadata(Metadata):
     endian: Optional[Endian] = "little"
 
     def __init__(self, endian: Literal["big", "little"]):
@@ -119,6 +119,13 @@ class BytesCodec(ArrayBytesCodec):
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
+
+    def to_dict(self) -> Dict[str, Any]:
+        return BytesCodecMetadata(configuration=self.configuration)
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        return cls(configuration=data["configuration"])
 
 
 register_codec("bytes", BytesCodec)

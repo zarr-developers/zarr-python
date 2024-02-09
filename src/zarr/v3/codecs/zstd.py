@@ -65,7 +65,7 @@ class ZstdCodecMetadata(Metadata):
 
 
 @dataclass(frozen=True)
-class ZstdCodec(BytesBytesCodec):
+class ZstdCodec(BytesBytesCodec, Metadata):
     configuration: ZstdCodecConfigurationMetadata
     is_fixed_size = True
 
@@ -104,6 +104,13 @@ class ZstdCodec(BytesBytesCodec):
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
+
+    def to_dict(self) -> Dict[str, Any]:
+        return ZstdCodecMetadata(configuration=self.configuration).to_dict()
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        return cls(configuration=data["configuration"])
 
 
 register_codec("zstd", ZstdCodec)

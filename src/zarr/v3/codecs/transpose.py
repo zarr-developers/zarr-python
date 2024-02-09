@@ -2,18 +2,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from dataclasses import dataclass, field
+from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.common import ArraySpec
 
 if TYPE_CHECKING:
     from zarr.v3.common import NamedConfig, RuntimeConfiguration
-    from typing import (
-        TYPE_CHECKING,
-        Literal,
-        Optional,
-        Tuple,
-        Type,
-    )
+    from typing import TYPE_CHECKING, Literal, Optional, Tuple, Type, Dict, Any
 
 import numpy as np
 
@@ -22,18 +17,18 @@ from zarr.v3.codecs.registry import register_codec
 
 
 @dataclass(frozen=True)
-class TransposeCodecConfigurationMetadata:
+class TransposeCodecConfigurationMetadata(Metadata):
     order: Tuple[int, ...]
 
 
 @dataclass(frozen=True)
-class TransposeCodecMetadata:
+class TransposeCodecMetadata(Metadata):
     configuration: TransposeCodecConfigurationMetadata
     name: Literal["transpose"] = field(default="transpose", init=False)
 
 
 @dataclass(frozen=True)
-class TransposeCodec(ArrayArrayCodec):
+class TransposeCodec(ArrayArrayCodec, Metadata):
     order: Tuple[int, ...]
     is_fixed_size = True
 
@@ -104,6 +99,13 @@ class TransposeCodec(ArrayArrayCodec):
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
+
+    def to_dict(self) -> Dict[str, Any]:
+        return TransposeCodecMetadata(configuration=self.configuration).to_dict()
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]):
+        return cls(configuration=data["configuration"])
 
 
 register_codec("transpose", TransposeCodec)
