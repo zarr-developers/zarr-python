@@ -121,6 +121,12 @@ class ArraySpec:
         return len(self.shape)
 
 
+def parse_name(data: JSON, expected: str) -> str:
+    if data == expected:
+        return data
+    raise ValueError(f"Expected '{expected}' chunk, got {data} instead.")
+
+
 def parse_shapelike(data: Any) -> Tuple[int, ...]:
     # todo: handle empty tuple
     return tuple(int(x) for x in data)

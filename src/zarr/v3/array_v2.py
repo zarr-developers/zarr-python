@@ -448,8 +448,7 @@ class ArrayV2:
         from zarr.v3.metadata import (
             ArrayMetadata,
             DataType,
-            V2ChunkKeyEncodingConfigurationMetadata,
-            V2ChunkKeyEncodingMetadata,
+            V2ChunkKeyEncoding,
         )
 
         from zarr.v3.codecs import (
@@ -503,11 +502,7 @@ class ArrayV2:
             chunk_grid=RegularChunkGrid(chunk_shape=self.metadata.chunks),
             data_type=data_type,
             fill_value=0 if self.metadata.fill_value is None else self.metadata.fill_value,
-            chunk_key_encoding=V2ChunkKeyEncodingMetadata(
-                configuration=V2ChunkKeyEncodingConfigurationMetadata(
-                    separator=self.metadata.dimension_separator
-                )
-            ),
+            chunk_key_encoding=V2ChunkKeyEncoding(separator=self.metadata.dimension_separator),
             codecs=codecs,
             attributes=self.attributes or {},
         )

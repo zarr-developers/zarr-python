@@ -35,13 +35,8 @@ from zarr.v3.common import (
 )
 from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.chunk_grids import RegularChunkGrid
-from zarr.v3.metadata import (
-    ArrayMetadata,
-    DefaultChunkKeyEncodingConfigurationMetadata,
-    DefaultChunkKeyEncodingMetadata,
-    V2ChunkKeyEncodingConfigurationMetadata,
-    V2ChunkKeyEncodingMetadata,
-)
+from zarr.v3.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.v3.metadata import ArrayMetadata
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -123,17 +118,9 @@ class AsyncArray:
             data_type=dtype,
             chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             chunk_key_encoding=(
-                V2ChunkKeyEncodingMetadata(
-                    configuration=V2ChunkKeyEncodingConfigurationMetadata(
-                        separator=chunk_key_encoding[1]
-                    )
-                )
+                V2ChunkKeyEncoding(separator=chunk_key_encoding[1])
                 if chunk_key_encoding[0] == "v2"
-                else DefaultChunkKeyEncodingMetadata(
-                    configuration=DefaultChunkKeyEncodingConfigurationMetadata(
-                        separator=chunk_key_encoding[1]
-                    )
-                )
+                else DefaultChunkKeyEncoding(separator=chunk_key_encoding[1])
             ),
             fill_value=fill_value,
             codecs=codecs,

@@ -4,16 +4,10 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, Literal, Union
 from dataclasses import asdict, dataclass, field
 from zarr.v3.abc.metadata import Metadata
 
-from zarr.v3.common import JSON, ChunkCoords
+from zarr.v3.common import JSON, ChunkCoords, parse_name
 
 if TYPE_CHECKING:
     from typing_extensions import Self
-
-
-def parse_name_regular(data: JSON) -> str:
-    if data == "regular":
-        return data
-    raise ValueError(f"Expected 'regular', got {data} instead.")
 
 
 def parse_chunk_shape(data: JSON) -> ChunkCoords:
@@ -47,7 +41,7 @@ class RegularChunkGrid(ChunkGrid):
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Self:
-        parse_name_regular(data["name"])
+        parse_name(data["name"], "regular")
         return cls(**data["configuration"])
 
     def to_dict(self) -> Dict[str, JSON]:

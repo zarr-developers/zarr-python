@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 import json
 
 from zarr.v3.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.v3.chunk_key_encodings import ChunkKeyEncoding
 
 
 if TYPE_CHECKING:
@@ -111,67 +112,11 @@ class DataType(Enum):
 
 
 @dataclass(frozen=True)
-class DefaultChunkKeyEncodingConfigurationMetadata(Metadata):
-    separator: Literal[".", "/"] = "/"
-
-
-@dataclass(frozen=True)
-class DefaultChunkKeyEncodingMetadata(Metadata):
-    configuration: DefaultChunkKeyEncodingConfigurationMetadata = (
-        DefaultChunkKeyEncodingConfigurationMetadata()
-    )
-    name: Literal["default"] = field(default="default", init=False)
-
-    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
-        if chunk_key == "c":
-            return ()
-        return tuple(map(int, chunk_key[1:].split(self.configuration.separator)))
-
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        return self.configuration.separator.join(map(str, ("c",) + chunk_coords))
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]):
-        return cls(
-            configuration=DefaultChunkKeyEncodingConfigurationMetadata.from_dict(
-                data["configuration"]
-            )
-        )
-
-
-@dataclass(frozen=True)
-class V2ChunkKeyEncodingConfigurationMetadata(Metadata):
-    separator: Literal[".", "/"] = "."
-
-
-@dataclass(frozen=True)
-class V2ChunkKeyEncodingMetadata(Metadata):
-    configuration: V2ChunkKeyEncodingConfigurationMetadata = (
-        V2ChunkKeyEncodingConfigurationMetadata()
-    )
-    name: Literal["v2"] = field(init=False, default="v2")
-
-    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
-        return tuple(map(int, chunk_key.split(self.configuration.separator)))
-
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        chunk_identifier = self.configuration.separator.join(map(str, chunk_coords))
-        return "0" if chunk_identifier == "" else chunk_identifier
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]):
-        return cls(configuration=data["configuration"])
-
-
-ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEncodingMetadata]
-
-
-@dataclass(frozen=True)
 class ArrayMetadata(Metadata):
     shape: ChunkCoords
     data_type: np.dtype
     chunk_grid: ChunkGrid
-    chunk_key_encoding: ChunkKeyEncodingMetadata
+    chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
     codecs: CodecPipeline
     attributes: Dict[str, Any] = field(default_factory=dict)
@@ -197,7 +142,7 @@ class ArrayMetadata(Metadata):
         shape_parsed = parse_shapelike(shape)
         data_type_parsed = parse_dtype(data_type)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
-        chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
+        chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
         fill_value_parsed = parse_fill_value(fill_value)
         attributes_parsed = parse_attributes(attributes)
@@ -344,24 +289,6 @@ class ArrayV2Metadata(Metadata):
                 else:
                     out_dict[key] = value
         return out_dict
-
-
-def parse_chunk_key_encoding(data: Any) -> ChunkKeyEncodingMetadata:
-    if isinstance(data, dict):
-        # todo: consider handling keyerrors gracefully here
-        if data["name"] == "v2":
-            return V2ChunkKeyEncodingMetadata.from_dict(data)
-        elif data["name"] == "default":
-            return DefaultChunkKeyEncodingMetadata.from_dict(data)
-        msg = f'Invalid `name` attribute. Got {data["name"]}, expected one of ("v2", "default")'
-        raise ValueError(msg)
-    if isinstance(data, (V2ChunkKeyEncodingMetadata, DefaultChunkKeyEncodingMetadata)):
-        return data
-    msg = (
-        f"Expected a dict or an instance of V2ChunkKeyEncodingMetadata "
-        f"or an instance of DefaultChunkKeyEncodingMetadata, got input with type={type(data)}"
-    )
-    raise TypeError(msg)
 
 
 def parse_dimension_names(data: Any) -> Tuple[str, ...] | None:
