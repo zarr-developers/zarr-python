@@ -47,7 +47,7 @@ class BytesCodec(ArrayBytesCodec):
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
         parse_name(data["name"])
-        return BytesCodec(**data.get("configuration", {}))
+        return cls(**data.get("configuration", {}))
 
     def to_dict(self) -> Dict[str, JSON]:
         if self.endian is None:

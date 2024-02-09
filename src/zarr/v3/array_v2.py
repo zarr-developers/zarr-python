@@ -444,11 +444,10 @@ class ArrayV2:
 
         from zarr.v3.array import Array
         from zarr.v3.common import ZARR_JSON
+        from zarr.v3.chunk_grids import RegularChunkGrid
         from zarr.v3.metadata import (
             ArrayMetadata,
             DataType,
-            RegularChunkGridConfigurationMetadata,
-            RegularChunkGridMetadata,
             V2ChunkKeyEncodingConfigurationMetadata,
             V2ChunkKeyEncodingMetadata,
         )
@@ -501,11 +500,7 @@ class ArrayV2:
 
         new_metadata = ArrayMetadata(
             shape=self.metadata.shape,
-            chunk_grid=RegularChunkGridMetadata(
-                configuration=RegularChunkGridConfigurationMetadata(
-                    chunk_shape=self.metadata.chunks
-                )
-            ),
+            chunk_grid=RegularChunkGrid(chunk_shape=self.metadata.chunks),
             data_type=data_type,
             fill_value=0 if self.metadata.fill_value is None else self.metadata.fill_value,
             chunk_key_encoding=V2ChunkKeyEncodingMetadata(

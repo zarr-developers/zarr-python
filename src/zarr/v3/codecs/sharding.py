@@ -27,7 +27,6 @@ from zarr.v3.abc.codec import (
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
 )
-
 from zarr.v3.codecs.pipeline import CodecPipeline
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import (
@@ -38,20 +37,18 @@ from zarr.v3.common import (
     parse_enum,
     product,
 )
-
 from zarr.v3.indexing import (
     BasicIndexer,
     c_order_iter,
     is_total_slice,
     morton_order_iter,
 )
-
 from zarr.v3.metadata import (
     ArrayMetadata,
-    RegularChunkGridMetadata,
     runtime_configuration as make_runtime_configuration,
     parse_codecs,
 )
+from zarr.v3.chunk_grids import RegularChunkGrid, parse_chunk_shape
 
 from zarr.v3.store import StorePath
 
@@ -67,14 +64,6 @@ def parse_name(data: JSON) -> Literal["sharding_indexed"]:
     if data == "sharding_indexed":
         return data
     raise ValueError(f"Expected 'sharding_indexed', got {data} instead.")
-
-
-def parse_chunk_shape(data: JSON) -> ChunkCoords:
-    if not isinstance(data, Iterable):
-        raise TypeError(f"Expected an iterable. Got {data} instead.")
-    if not all(isinstance(a, int) for a in data):
-        raise TypeError(f"Expected an iterable of integers. Got {data} instead.")
-    return tuple(data)
 
 
 def parse_index_location(data: JSON) -> ShardingCodecIndexLocation:
@@ -276,7 +265,7 @@ class ShardingCodec(
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
         parse_name(data["name"])
-        return ShardingCodec(**data["configuration"])
+        return cls(**data["configuration"])
 
     def to_dict(self) -> Dict[str, JSON]:
         return {
@@ -295,12 +284,12 @@ class ShardingCodec(
             + "same number of dimensions."
         )
         assert isinstance(
-            array_metadata.chunk_grid, RegularChunkGridMetadata
+            array_metadata.chunk_grid, RegularChunkGrid
         ), "Sharding is only compatible with regular chunk grids."
         assert all(
             s % c == 0
             for s, c in zip(
-                array_metadata.chunk_grid.configuration.chunk_shape,
+                array_metadata.chunk_grid.chunk_shape,
                 self.chunk_shape,
             )
         ), (

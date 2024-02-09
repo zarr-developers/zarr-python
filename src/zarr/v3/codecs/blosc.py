@@ -129,7 +129,7 @@ class BloscCodec(BytesBytesCodec):
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
         parse_name(data["name"])
-        return BloscCodec(**data["configuration"])
+        return cls(**data["configuration"])
 
     def to_dict(self) -> Dict[str, JSON]:
         return {

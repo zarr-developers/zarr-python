@@ -34,12 +34,11 @@ from zarr.v3.common import (
     concurrent_map,
 )
 from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
+from zarr.v3.chunk_grids import RegularChunkGrid
 from zarr.v3.metadata import (
     ArrayMetadata,
     DefaultChunkKeyEncodingConfigurationMetadata,
     DefaultChunkKeyEncodingMetadata,
-    RegularChunkGridConfigurationMetadata,
-    RegularChunkGridMetadata,
     V2ChunkKeyEncodingConfigurationMetadata,
     V2ChunkKeyEncodingMetadata,
 )
@@ -122,9 +121,7 @@ class AsyncArray:
         metadata = ArrayMetadata(
             shape=shape,
             data_type=dtype,
-            chunk_grid=RegularChunkGridMetadata(
-                configuration=RegularChunkGridConfigurationMetadata(chunk_shape=chunk_shape)
-            ),
+            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             chunk_key_encoding=(
                 V2ChunkKeyEncodingMetadata(
                     configuration=V2ChunkKeyEncodingConfigurationMetadata(
@@ -225,7 +222,7 @@ class AsyncArray:
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
-            chunk_shape=self.metadata.chunk_grid.configuration.chunk_shape,
+            chunk_shape=self.metadata.chunk_grid.chunk_shape,
         )
 
         # setup output array
@@ -257,7 +254,7 @@ class AsyncArray:
 
     def _validate_metadata(self) -> None:
         assert len(self.metadata.shape) == len(
-            self.metadata.chunk_grid.configuration.chunk_shape
+            self.metadata.chunk_grid.chunk_shape
         ), "`chunk_shape` and `shape` need to have the same number of dimensions."
         assert self.metadata.dimension_names is None or len(self.metadata.shape) == len(
             self.metadata.dimension_names
@@ -297,7 +294,7 @@ class AsyncArray:
                 out[out_selection] = self.metadata.fill_value
 
     async def setitem(self, selection: Selection, value: np.ndarray) -> None:
-        chunk_shape = self.metadata.chunk_grid.configuration.chunk_shape
+        chunk_shape = self.metadata.chunk_grid.chunk_shape
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
@@ -407,7 +404,7 @@ class AsyncArray:
         new_metadata = replace(self.metadata, shape=new_shape)
 
         # Remove all chunks outside of the new shape
-        chunk_shape = self.metadata.chunk_grid.configuration.chunk_shape
+        chunk_shape = self.metadata.chunk_grid.chunk_shape
         chunk_key_encoding = self.metadata.chunk_key_encoding
         old_chunk_coords = set(all_chunk_coords(self.metadata.shape, chunk_shape))
         new_chunk_coords = set(all_chunk_coords(new_shape, chunk_shape))

@@ -49,7 +49,7 @@ class TransposeCodec(ArrayArrayCodec):
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
         parse_name(data["name"])
-        return TransposeCodec(**data["configuration"])
+        return cls(**data["configuration"])
 
     def to_dict(self) -> Dict[str, JSON]:
         return {"name": "transpose", "configuration": {"order": list(self.order)}}

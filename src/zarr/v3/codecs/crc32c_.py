@@ -34,7 +34,7 @@ class Crc32cCodec(BytesBytesCodec):
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
         parse_name(data["name"])
-        return Crc32cCodec()
+        return cls()
 
     def to_dict(self) -> Dict[str, JSON]:
         return {"name": "crc32c"}

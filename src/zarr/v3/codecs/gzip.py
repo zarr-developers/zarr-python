@@ -44,7 +44,7 @@ class GzipCodec(BytesBytesCodec):
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
         parse_name(data["name"])
-        return GzipCodec(**data["configuration"])
+        return cls(**data["configuration"])
 
     def to_dict(self) -> Dict[str, JSON]:
         return {"name": "gzip", "configuration": {"level": self.level}}

@@ -1,9 +1,11 @@
 from __future__ import annotations
 from enum import Enum
-from typing import TYPE_CHECKING, Literal, Union
+from typing import TYPE_CHECKING, Dict, Literal, Union
 from dataclasses import asdict, dataclass, field
 
 import json
+
+from zarr.v3.chunk_grids import ChunkGrid, RegularChunkGrid
 
 
 if TYPE_CHECKING:
@@ -17,6 +19,7 @@ from zarr.v3.abc.codec import Codec
 from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.common import (
+    JSON,
     ArraySpec,
     ChunkCoords,
     NamedConfig,
@@ -108,23 +111,6 @@ class DataType(Enum):
 
 
 @dataclass(frozen=True)
-class RegularChunkGridConfigurationMetadata(Metadata):
-    chunk_shape: ChunkCoords
-
-
-@dataclass(frozen=True)
-class RegularChunkGridMetadata(Metadata):
-    configuration: RegularChunkGridConfigurationMetadata
-    name: Literal["regular"] = field(default="regular", init=False)
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Self:
-        return cls(
-            configuration=RegularChunkGridConfigurationMetadata.from_dict(data["configuration"])
-        )
-
-
-@dataclass(frozen=True)
 class DefaultChunkKeyEncodingConfigurationMetadata(Metadata):
     separator: Literal[".", "/"] = "/"
 
@@ -184,7 +170,7 @@ ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEnco
 class ArrayMetadata(Metadata):
     shape: ChunkCoords
     data_type: np.dtype
-    chunk_grid: RegularChunkGridMetadata
+    chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncodingMetadata
     fill_value: Any
     codecs: CodecPipeline
@@ -210,7 +196,7 @@ class ArrayMetadata(Metadata):
         """
         shape_parsed = parse_shapelike(shape)
         data_type_parsed = parse_dtype(data_type)
-        chunk_grid_parsed = parse_chunk_grid(chunk_grid)
+        chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
         fill_value_parsed = parse_fill_value(fill_value)
@@ -240,10 +226,10 @@ class ArrayMetadata(Metadata):
 
     def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
         assert isinstance(
-            self.chunk_grid, RegularChunkGridMetadata
+            self.chunk_grid, RegularChunkGrid
         ), "Currently, only regular chunk grid is supported"
         return ArraySpec(
-            shape=self.chunk_grid.configuration.chunk_shape,
+            shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
         )
@@ -360,15 +346,6 @@ class ArrayV2Metadata(Metadata):
         return out_dict
 
 
-def parse_chunk_grid(data: Any) -> RegularChunkGridMetadata:
-    if isinstance(data, dict):
-        return RegularChunkGridMetadata.from_dict(data)
-    if isinstance(data, RegularChunkGridMetadata):
-        return data
-    msg = f"Expected dict or instance of RegularChunkGridMetadata, got {type(data)}"
-    raise TypeError(msg)
-
-
 def parse_chunk_key_encoding(data: Any) -> ChunkKeyEncodingMetadata:
     if isinstance(data, dict):
         # todo: consider handling keyerrors gracefully here
@@ -432,11 +409,11 @@ def parse_compressor(data: Any) -> Codec:
 
 
 def parse_v3_metadata(data: ArrayMetadata) -> ArrayMetadata:
-    if (l_chunks := len(data.chunk_grid.configuration.chunk_shape)) != (l_shape := len(data.shape)):
+    if (l_chunks := len(data.chunk_grid.chunk_shape)) != (l_shape := len(data.shape)):
         msg = (
-            f"The `shape` and `chunk_grid.configuration.chunk_shape` attributes "
+            f"The `shape` and `chunk_grid.chunk_shape` attributes "
             "must have the same length. "
-            f"`chunk_grid.configuration.chunk_shape` has length {l_chunks}, "
+            f"`chunk_grid.chunk_shape` has length {l_chunks}, "
             f"but `shape` has length {l_shape}"
         )
         raise ValueError(msg)
