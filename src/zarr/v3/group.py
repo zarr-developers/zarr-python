@@ -20,7 +20,7 @@ logger = logging.getLogger("zarr.group")
 def parse_zarr_format(data: Any) -> Literal[2, 3]:
     if data in (2, 3):
         return data
-    msg = msg = f"Invalid zarr_format: got {data}, expected one of (2,3)"
+    msg = msg = f"Invalid zarr_format. Expected one 2 or 3. Got {data}."
     raise ValueError(msg)
 
 
@@ -30,7 +30,7 @@ def parse_attributes(data: Any) -> Dict[str, Any]:
         return {}
     elif isinstance(data, dict) and all(map(lambda v: isinstance(v, str), data.keys())):
         return data
-    msg = f"Expected dict with string keys, got {type(data)} instead."
+    msg = f"Expected dict with string keys. Got {type(data)} instead."
     raise TypeError(msg)
 
 

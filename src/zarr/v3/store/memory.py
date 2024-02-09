@@ -49,7 +49,7 @@ class MemoryStore(Store):
     ) -> None:
         assert isinstance(key, str)
         if not isinstance(value, (bytes, bytearray, memoryview)):
-            raise TypeError(f"expected BytesLike, got {type(value)}")
+            raise TypeError(f"Expected BytesLike. Got {type(value)}.")
 
         if byte_range is not None:
             buf = bytearray(self._store_dict[key])

@@ -136,8 +136,6 @@ class AsyncArray:
         async_array = cls(
             metadata=metadata, store_path=store_path, runtime_configuration=runtime_configuration
         )
-        # todo: remove this, pushing the logic down to the array metadata creation
-        async_array._validate_metadata()
         return async_array
 
     @classmethod
@@ -223,19 +221,7 @@ class AsyncArray:
             return out[()]
 
     async def _save_metadata(self) -> None:
-        self._validate_metadata()
-
         await (self.store_path / ZARR_JSON).set(self.metadata.to_bytes())
-
-    def _validate_metadata(self) -> None:
-        assert len(self.metadata.shape) == len(
-            self.metadata.chunk_grid.chunk_shape
-        ), "`chunk_shape` and `shape` need to have the same number of dimensions."
-        assert self.metadata.dimension_names is None or len(self.metadata.shape) == len(
-            self.metadata.dimension_names
-        ), "`dimension_names` and `shape` need to have the same number of dimensions."
-        assert self.metadata.fill_value is not None, "`fill_value` is required."
-        self.codecs.validate(self.metadata)
 
     async def _read_chunk(
         self,
@@ -477,7 +463,6 @@ class Array:
             AsyncArray.open(store, runtime_configuration=runtime_configuration),
             runtime_configuration.asyncio_loop,
         )
-        async_array._validate_metadata()
         return cls(async_array)
 
     @classmethod

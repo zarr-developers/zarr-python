@@ -51,16 +51,16 @@ class TransposeCodec(ArrayArrayCodec):
         if len(self.order) != array_spec.ndim:
             raise ValueError(
                 "The `order` tuple needs have as many entries as "
-                + f"there are dimensions in the array. Got: {self.order}"
+                + f"there are dimensions in the array. Got {self.order}."
             )
         if len(self.order) != len(set(self.order)):
             raise ValueError(
-                "There must not be duplicates in the `order` tuple. " + f"Got: {self.order}"
+                f"There must not be duplicates in the `order` tuple. Got {self.order}."
             )
         if not all(0 <= x < array_spec.ndim for x in self.order):
             raise ValueError(
                 "All entries in the `order` tuple must be between 0 and "
-                + f"the number of dimensions in the array. Got: {self.order}"
+                + f"the number of dimensions in the array. Got {self.order}."
             )
         order = tuple(self.order)
 

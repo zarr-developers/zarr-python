@@ -50,38 +50,33 @@ class CodecPipeline(Metadata):
     def from_list(cls, codecs: List[Codec]) -> CodecPipeline:
         from zarr.v3.codecs.sharding import ShardingCodec
 
-        assert any(
-            isinstance(codec, ArrayBytesCodec) for codec in codecs
-        ), "Exactly one array-to-bytes codec is required."
+        if not any(isinstance(codec, ArrayBytesCodec) for codec in codecs):
+            raise ValueError("Exactly one array-to-bytes codec is required.")
 
         prev_codec: Optional[Codec] = None
         for codec in codecs:
             if prev_codec is not None:
-                assert not isinstance(codec, ArrayBytesCodec) or not isinstance(
-                    prev_codec, ArrayBytesCodec
-                ), (
-                    f"ArrayBytesCodec '{type(codec)}' cannot follow after "
-                    + f"ArrayBytesCodec '{type(prev_codec)}' because exactly "
-                    + "1 ArrayBytesCodec is allowed."
-                )
-                assert not isinstance(codec, ArrayBytesCodec) or not isinstance(
-                    prev_codec, BytesBytesCodec
-                ), (
-                    f"ArrayBytesCodec '{type(codec)}' cannot follow after "
-                    + f"BytesBytesCodec '{type(prev_codec)}'."
-                )
-                assert not isinstance(codec, ArrayArrayCodec) or not isinstance(
-                    prev_codec, ArrayBytesCodec
-                ), (
-                    f"ArrayArrayCodec '{type(codec)}' cannot follow after "
-                    + f"ArrayBytesCodec '{type(prev_codec)}'."
-                )
-                assert not isinstance(codec, ArrayArrayCodec) or not isinstance(
-                    prev_codec, BytesBytesCodec
-                ), (
-                    f"ArrayArrayCodec '{type(codec)}' cannot follow after "
-                    + f"BytesBytesCodec '{type(prev_codec)}'."
-                )
+                if isinstance(codec, ArrayBytesCodec) and isinstance(prev_codec, ArrayBytesCodec):
+                    raise ValueError(
+                        f"ArrayBytesCodec '{type(codec)}' cannot follow after "
+                        + f"ArrayBytesCodec '{type(prev_codec)}' because exactly "
+                        + "1 ArrayBytesCodec is allowed."
+                    )
+                if isinstance(codec, ArrayBytesCodec) and isinstance(prev_codec, BytesBytesCodec):
+                    raise ValueError(
+                        f"ArrayBytesCodec '{type(codec)}' cannot follow after "
+                        + f"BytesBytesCodec '{type(prev_codec)}'."
+                    )
+                if isinstance(codec, ArrayArrayCodec) and isinstance(prev_codec, ArrayBytesCodec):
+                    raise ValueError(
+                        f"ArrayArrayCodec '{type(codec)}' cannot follow after "
+                        + f"ArrayBytesCodec '{type(prev_codec)}'."
+                    )
+                if isinstance(codec, ArrayArrayCodec) and isinstance(prev_codec, BytesBytesCodec):
+                    raise ValueError(
+                        f"ArrayArrayCodec '{type(codec)}' cannot follow after "
+                        + f"BytesBytesCodec '{type(prev_codec)}'."
+                    )
             prev_codec = codec
 
         if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:

@@ -279,23 +279,24 @@ class ShardingCodec(
         }
 
     def validate(self, array_metadata: ArrayMetadata) -> None:
-        assert len(self.chunk_shape) == array_metadata.ndim, (
-            "The shard's `chunk_shape` and array's `shape` need to have the "
-            + "same number of dimensions."
-        )
-        assert isinstance(
-            array_metadata.chunk_grid, RegularChunkGrid
-        ), "Sharding is only compatible with regular chunk grids."
-        assert all(
+        if len(self.chunk_shape) != array_metadata.ndim:
+            raise ValueError(
+                "The shard's `chunk_shape` and array's `shape` need to have the "
+                + "same number of dimensions."
+            )
+        if not isinstance(array_metadata.chunk_grid, RegularChunkGrid):
+            raise ValueError("Sharding is only compatible with regular chunk grids.")
+        if not all(
             s % c == 0
             for s, c in zip(
                 array_metadata.chunk_grid.chunk_shape,
                 self.chunk_shape,
             )
-        ), (
-            "The array's `chunk_shape` needs to be divisible by the "
-            + "shard's inner `chunk_shape`."
-        )
+        ):
+            raise ValueError(
+                "The array's `chunk_shape` needs to be divisible by the "
+                + "shard's inner `chunk_shape`."
+            )
 
     async def decode(
         self,

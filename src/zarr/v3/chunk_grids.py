@@ -17,7 +17,7 @@ class ChunkGrid(Metadata):
             return data
         if data["name"] == "regular":
             return RegularChunkGrid.from_dict(data)
-        raise ValueError(f"Unknown chunk grid, got {data['name']}")
+        raise ValueError(f"Unknown chunk grid. Got {data['name']}.")
 
 
 @dataclass(frozen=True)

@@ -845,7 +845,7 @@ async def test_endian_write(
 
 
 def test_invalid_metadata(store: Store):
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         Array.create(
             store / "invalid_chunk_shape",
             shape=(16, 16, 16),
@@ -854,7 +854,7 @@ def test_invalid_metadata(store: Store):
             fill_value=0,
         )
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         Array.create(
             store / "invalid_endian",
             shape=(16, 16),
@@ -880,7 +880,7 @@ def test_invalid_metadata(store: Store):
             ],
         )
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         Array.create(
             store / "invalid_missing_bytes_codec",
             shape=(16, 16),
@@ -892,7 +892,7 @@ def test_invalid_metadata(store: Store):
             ],
         )
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         Array.create(
             store / "invalid_inner_chunk_shape",
             shape=(16, 16),
@@ -903,7 +903,7 @@ def test_invalid_metadata(store: Store):
                 ShardingCodec(chunk_shape=(8,)),
             ],
         )
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         Array.create(
             store / "invalid_inner_chunk_shape",
             shape=(16, 16),

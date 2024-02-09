@@ -159,6 +159,21 @@ class ArrayMetadata(Metadata):
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "attributes", attributes_parsed)
 
+        self._validate_metadata()
+
+    def _validate_metadata(self) -> None:
+        if len(self.shape) != len(self.chunk_grid.chunk_shape):
+            raise ValueError(
+                "`chunk_shape` and `shape` need to have the same number of dimensions."
+            )
+        if self.dimension_names is not None and len(self.shape) != len(self.dimension_names):
+            raise ValueError(
+                "`dimension_names` and `shape` need to have the same number of dimensions."
+            )
+        if self.fill_value is None:
+            raise ValueError("`fill_value` is required.")
+        self.codecs.validate(self)
+
     @property
     def dtype(self) -> np.dtype:
         return self.data_type
@@ -288,23 +303,20 @@ def parse_attributes(data: Any) -> Any:
 def parse_zarr_format_v3(data: Any) -> Literal[3]:
     if data == 3:
         return data
-    msg = f"Invalid value for `zarr_format`, got {data}, expected 3"
-    raise ValueError(msg)
+    raise ValueError(f"Invalid value for `zarr_format`. Expected 3. Got {data}.")
 
 
 # todo: move to its own module and drop _v2 suffix
 def parse_zarr_format_v2(data: Any) -> Literal[2]:
     if data == 2:
         return data
-    msg = f"Invalid value for `zarr_format`, got {data}, expected 2"
-    raise ValueError(msg)
+    raise ValueError(f"Invalid value for `zarr_format`. Expected 3. Got {data}.")
 
 
 def parse_node_type_array(data: Any) -> Literal["array"]:
     if data == "array":
         return data
-    msg = f"Invalid value for `node_type`, got {data}, expected 'array'"
-    raise ValueError(msg)
+    raise ValueError(f"Invalid value for `node_type`. Expected 'array'. Got {data}.")
 
 
 # todo: real validation
@@ -314,24 +326,6 @@ def parse_filters(data: Any) -> List[Codec]:
 
 # todo: real validation
 def parse_compressor(data: Any) -> Codec:
-    return data
-
-
-def parse_v3_metadata(data: ArrayMetadata) -> ArrayMetadata:
-    if (l_chunks := len(data.chunk_grid.chunk_shape)) != (l_shape := len(data.shape)):
-        msg = (
-            f"The `shape` and `chunk_grid.chunk_shape` attributes "
-            "must have the same length. "
-            f"`chunk_grid.chunk_shape` has length {l_chunks}, "
-            f"but `shape` has length {l_shape}"
-        )
-        raise ValueError(msg)
-    if data.dimension_names is not None and (l_dimnames := len(data.dimension_names) != l_shape):
-        msg = (
-            f"The `shape` and `dimension_names` attribute must have the same length. "
-            f"`dimension_names` has length {l_dimnames}"
-        )
-        raise ValueError(msg)
     return data
 
 

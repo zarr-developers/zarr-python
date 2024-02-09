@@ -51,28 +51,26 @@ numcodecs.blosc.use_threads = False
 
 def parse_typesize(data: JSON) -> int:
     if isinstance(data, int):
-        if data >= 0:
+        if data > 0:
             return data
         else:
-            msg = f"Value must be greater than or equal to 0. Got {data}, which is less than 0."
-            raise ValueError(msg)
-    msg = f"Value must be an int. Got {type(data)} instead."
-    raise TypeError(msg)
+            raise ValueError(
+                f"Value must be greater than 0. Got {data}, which is less or equal to 0."
+            )
+    raise TypeError(f"Value must be an int. Got {type(data)} instead.")
 
 
 # todo: real validation
 def parse_clevel(data: JSON) -> int:
     if isinstance(data, int):
         return data
-    msg = f"Value should be an int, got {type(data)} instead"
-    raise TypeError(msg)
+    raise TypeError(f"Value should be an int. Got {type(data)} instead.")
 
 
 def parse_blocksize(data: JSON) -> int:
     if isinstance(data, int):
         return data
-    msg = f"Value should be an int, got {type(data)} instead"
-    raise TypeError(msg)
+    raise TypeError(f"Value should be an int. Got {type(data)} instead.")
 
 
 @dataclass(frozen=True)
@@ -88,13 +86,13 @@ class BloscCodec(BytesBytesCodec):
     def __init__(
         self,
         *,
-        typesize,
+        typesize=None,
         cname=BloscCname.zstd,
         clevel=5,
         shuffle=BloscShuffle.noshuffle,
         blocksize=0,
     ) -> None:
-        typesize_parsed = parse_typesize(typesize)
+        typesize_parsed = parse_typesize(typesize) if typesize is not None else None
         cname_parsed = parse_enum(cname, BloscCname)
         clevel_parsed = parse_clevel(clevel)
         shuffle_parsed = parse_enum(shuffle, BloscShuffle)
@@ -112,6 +110,8 @@ class BloscCodec(BytesBytesCodec):
         return cls(**data["configuration"])
 
     def to_dict(self) -> Dict[str, JSON]:
+        if self.typesize is None:
+            raise ValueError("`typesize` needs to be set for serialization.")
         return {
             "name": "blosc",
             "configuration": {
@@ -125,7 +125,7 @@ class BloscCodec(BytesBytesCodec):
 
     def evolve(self, array_spec: ArraySpec) -> Self:
         new_codec = self
-        if new_codec.typesize == 0:
+        if new_codec.typesize is None:
             new_codec = replace(new_codec, typesize=array_spec.dtype.itemsize)
 
         return new_codec

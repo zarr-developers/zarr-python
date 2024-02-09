@@ -81,8 +81,7 @@ def parse_enum(data: JSON, cls: Type[E]) -> E:
         return data
     if data in enum_names(cls):
         return cls(data)
-    msg = f"Value must be one of {repr(list(enum_names(cls)))}, got {data} instead."
-    raise ValueError(msg)
+    raise ValueError(f"Value must be one of {repr(list(enum_names(cls)))}. Got {data} instead.")
 
 
 class NamedConfig(Protocol):
@@ -125,7 +124,7 @@ class ArraySpec:
 def parse_name(data: JSON, expected: str) -> str:
     if data == expected:
         return data
-    raise ValueError(f"Expected '{expected}' chunk, got {data} instead.")
+    raise ValueError(f"Expected '{expected}' chunk. Got {data} instead.")
 
 
 def parse_shapelike(data: Any) -> Tuple[int, ...]:

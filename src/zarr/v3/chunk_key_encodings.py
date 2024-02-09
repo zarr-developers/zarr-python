@@ -35,7 +35,7 @@ class ChunkKeyEncoding(Metadata):
             return DefaultChunkKeyEncoding(**data["configuration"])
         if data["name"] == "v2":
             return V2ChunkKeyEncoding(**data["configuration"])
-        raise ValueError(f"Unknown chunk key encoding, got {data['name']}")
+        raise ValueError(f"Unknown chunk key encoding. Got {data['name']}.")
 
     def to_dict(self) -> Dict[str, JSON]:
         return {"name": self.name, "configuration": {"separator": self.separator}}

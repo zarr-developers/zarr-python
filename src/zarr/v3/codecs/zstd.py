@@ -19,18 +19,15 @@ if TYPE_CHECKING:
 def parse_zstd_level(data: JSON) -> int:
     if isinstance(data, int):
         if data >= 23:
-            msg = f"Value must be less than or equal to 22. Got {data} instead."
-            raise ValueError(msg)
+            raise ValueError(f"Value must be less than or equal to 22. Got {data} instead.")
         return data
-    msg = f"Got value with type {type(data)}, but expected an int"
-    raise TypeError(msg)
+    raise TypeError(f"Got value with type {type(data)}, but expected an int.")
 
 
 def parse_checksum(data: JSON) -> bool:
     if isinstance(data, bool):
         return data
-    msg = f"Expected bool, got {type(data)}"
-    raise TypeError(msg)
+    raise TypeError(f"Expected bool. Got {type(data)}.")
 
 
 @dataclass(frozen=True)
