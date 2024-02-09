@@ -7,7 +7,7 @@ from zarr.v3.array import Array  # noqa: F401
 from zarr.v3.array_v2 import ArrayV2
 from zarr.v3.common import RuntimeConfiguration  # noqa: F401
 from zarr.v3.group import Group  # noqa: F401
-from zarr.v3.metadata import RuntimeConfiguration, runtime_configuration  # noqa: F401
+from zarr.v3.metadata import runtime_configuration  # noqa: F401
 from zarr.v3.store import (  # noqa: F401
     StoreLike,
     make_store_path,

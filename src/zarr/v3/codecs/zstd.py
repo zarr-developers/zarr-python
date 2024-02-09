@@ -1,23 +1,22 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from zarr.v3.abc.metadata import Metadata
 
 from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import to_thread, ArraySpec
+from zarr.v3.common import parse_name, to_thread
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import RuntimeConfiguration
-    from typing import Any, Literal, Dict, Type, Optional
+    from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.v3.common import BytesLike, NamedConfig
+    from zarr.v3.metadata import RuntimeConfiguration
+    from zarr.v3.common import BytesLike, JSON, ArraySpec
 
 
-def parse_zstd_level(data: Any) -> int:
+def parse_zstd_level(data: JSON) -> int:
     if isinstance(data, int):
         if data >= 23:
             msg = f"Value must be less than or equal to 22. Got {data} instead."
@@ -27,59 +26,37 @@ def parse_zstd_level(data: Any) -> int:
     raise TypeError(msg)
 
 
-def parse_checksum(data: Any) -> bool:
+def parse_checksum(data: JSON) -> bool:
     if isinstance(data, bool):
         return data
     msg = f"Expected bool, got {type(data)}"
     raise TypeError(msg)
 
 
-def parse_name(data: Any) -> Literal["zstd"]:
-    if data == "zstd":
-        return data
-    msg = f"Expected 'zstd', got {data}"
-    raise ValueError(msg)
-
-
 @dataclass(frozen=True)
-class ZstdCodecConfigurationMetadata(Metadata):
+class ZstdCodec(BytesBytesCodec):
+    is_fixed_size = True
+
     level: int = 0
     checksum: bool = False
 
-    def __init__(self, level: int, checksum: bool):
+    def __init__(self, *, level, checksum) -> None:
         level_parsed = parse_zstd_level(level)
         checksum_parsed = parse_checksum(checksum)
+
         object.__setattr__(self, "level", level_parsed)
         object.__setattr__(self, "checksum", checksum_parsed)
 
-
-@dataclass(frozen=True)
-class ZstdCodecMetadata(Metadata):
-    configuration: ZstdCodecConfigurationMetadata
-    name: Literal["zstd"] = field(default="zstd", init=False)
-
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Self:
-        _ = parse_name(data.pop("name"))
-        return cls(**data)
+    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+        parse_name(data["name"], "zstd")
+        return cls(**data["configuration"])
 
-
-@dataclass(frozen=True)
-class ZstdCodec(BytesBytesCodec, Metadata):
-    configuration: ZstdCodecConfigurationMetadata
-    is_fixed_size = True
-
-    @classmethod
-    def from_metadata(cls, codec_metadata: NamedConfig) -> ZstdCodec:
-        assert isinstance(codec_metadata, ZstdCodecMetadata)
-        return cls(configuration=codec_metadata.configuration)
-
-    @classmethod
-    def get_metadata_class(cls) -> Type[ZstdCodecMetadata]:
-        return ZstdCodecMetadata
+    def to_dict(self) -> Dict[str, JSON]:
+        return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
 
     def _compress(self, data: bytes) -> bytes:
-        ctx = ZstdCompressor(level=self.metadata.level, write_checksum=self.metadata.checksum)
+        ctx = ZstdCompressor(level=self.level, write_checksum=self.checksum)
         return ctx.compress(data)
 
     def _decompress(self, data: bytes) -> bytes:
@@ -104,13 +81,6 @@ class ZstdCodec(BytesBytesCodec, Metadata):
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
-
-    def to_dict(self) -> Dict[str, Any]:
-        return ZstdCodecMetadata(configuration=self.configuration).to_dict()
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]):
-        return cls(configuration=data["configuration"])
 
 
 register_codec("zstd", ZstdCodec)

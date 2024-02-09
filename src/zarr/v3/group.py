@@ -50,10 +50,7 @@ class GroupMetadata(Metadata):
                 ZATTRS_JSON: json.dumps(self.attributes).encode(),
             }
 
-    def __init__(
-            self, 
-            attributes: Dict[str, Any] = None, 
-            zarr_format: Literal[2, 3] = 3):
+    def __init__(self, attributes: Dict[str, Any] = None, zarr_format: Literal[2, 3] = 3):
 
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)

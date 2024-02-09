@@ -1,19 +1,22 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Literal, Union
+from enum import Enum
+from typing import TYPE_CHECKING
 from dataclasses import dataclass, field
-
 import json
+import numpy as np
+
+from zarr.v3.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.v3.chunk_key_encodings import ChunkKeyEncoding
+
 
 if TYPE_CHECKING:
-    from typing import Any, Dict, Iterable, List, Optional, Tuple
+    from typing import Any, Dict, Literal, Union, Iterable, List, Optional, Tuple
     from typing_extensions import Self
+    from zarr.v3.codecs.pipeline import CodecPipeline
 
-from warnings import warn
 
-import numpy as np
-from zarr.v3.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
+from zarr.v3.abc.codec import Codec
 from zarr.v3.abc.metadata import Metadata
-from zarr.v3.codecs.registry import get_codec_class
 
 from zarr.v3.common import (
     ArraySpec,
@@ -25,8 +28,6 @@ from zarr.v3.common import (
     parse_shapelike,
 )
 
-ShardingCodecIndexLocation = Literal["start", "end"]
-
 
 def runtime_configuration(
     order: Literal["C", "F"], concurrency: Optional[int] = None
@@ -37,7 +38,7 @@ def runtime_configuration(
 # For type checking
 _bool = bool
 
-"""
+
 class DataType(Enum):
     bool = "bool"
     int8 = "int8"
@@ -89,105 +90,33 @@ class DataType(Enum):
         }
         return data_type_to_numpy[self]
 
-
-dtype_to_data_type = {
-    "|b1": "bool",
-    "bool": "bool",
-    "|i1": "int8",
-    "<i2": "int16",
-    "<i4": "int32",
-    "<i8": "int64",
-    "|u1": "uint8",
-    "<u2": "uint16",
-    "<u4": "uint32",
-    "<u8": "uint64",
-    "<f4": "float32",
-    "<f8": "float64",
-}
- """
-
-
-@dataclass(frozen=True)
-class RegularChunkGridConfigurationMetadata(Metadata):
-    chunk_shape: ChunkCoords
-
-
-@dataclass(frozen=True)
-class RegularChunkGridMetadata(Metadata):
-    configuration: RegularChunkGridConfigurationMetadata
-    name: Literal["regular"] = field(default="regular", init=False)
-
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Self:
-        return cls(
-            configuration=RegularChunkGridConfigurationMetadata.from_dict(data["configuration"])
-        )
-
-
-@dataclass(frozen=True)
-class DefaultChunkKeyEncodingConfigurationMetadata(Metadata):
-    separator: Literal[".", "/"] = "/"
-
-
-@dataclass(frozen=True)
-class DefaultChunkKeyEncodingMetadata(Metadata):
-    configuration: DefaultChunkKeyEncodingConfigurationMetadata = (
-        DefaultChunkKeyEncodingConfigurationMetadata()
-    )
-    name: Literal["default"] = field(default="default", init=False)
-
-    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
-        if chunk_key == "c":
-            return ()
-        return tuple(map(int, chunk_key[1:].split(self.configuration.separator)))
-
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        return self.configuration.separator.join(map(str, ("c",) + chunk_coords))
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]):
-        return cls(
-            configuration=DefaultChunkKeyEncodingConfigurationMetadata.from_dict(
-                data["configuration"]
-            )
-        )
-
-
-@dataclass(frozen=True)
-class V2ChunkKeyEncodingConfigurationMetadata(Metadata):
-    separator: Literal[".", "/"] = "."
-
-
-@dataclass(frozen=True)
-class V2ChunkKeyEncodingMetadata(Metadata):
-    configuration: V2ChunkKeyEncodingConfigurationMetadata = (
-        V2ChunkKeyEncodingConfigurationMetadata()
-    )
-    name: Literal["v2"] = field(init=False, default="v2")
-
-    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
-        return tuple(map(int, chunk_key.split(self.configuration.separator)))
-
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        chunk_identifier = self.configuration.separator.join(map(str, chunk_coords))
-        return "0" if chunk_identifier == "" else chunk_identifier
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]):
-        return cls(configuration=data["configuration"])
-
-
-ChunkKeyEncodingMetadata = Union[DefaultChunkKeyEncodingMetadata, V2ChunkKeyEncodingMetadata]
+    def from_dtype(cls, dtype: np.dtype) -> Self:
+        dtype_to_data_type = {
+            "|b1": "bool",
+            "bool": "bool",
+            "|i1": "int8",
+            "<i2": "int16",
+            "<i4": "int32",
+            "<i8": "int64",
+            "|u1": "uint8",
+            "<u2": "uint16",
+            "<u4": "uint32",
+            "<u8": "uint64",
+            "<f4": "float32",
+            "<f8": "float64",
+        }
+        return DataType[dtype_to_data_type[dtype.str]]
 
 
 @dataclass(frozen=True)
 class ArrayMetadata(Metadata):
     shape: ChunkCoords
     data_type: np.dtype
-    chunk_grid: RegularChunkGridMetadata
-    chunk_key_encoding: ChunkKeyEncodingMetadata
+    chunk_grid: ChunkGrid
+    chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
-    codecs: List[Codec]
+    codecs: CodecPipeline
     attributes: Dict[str, Any] = field(default_factory=dict)
     dimension_names: Optional[Tuple[str, ...]] = None
     zarr_format: Literal[3] = field(default=3, init=False)
@@ -210,20 +139,16 @@ class ArrayMetadata(Metadata):
         """
         shape_parsed = parse_shapelike(shape)
         data_type_parsed = parse_dtype(data_type)
-        chunk_grid_parsed = parse_chunk_grid(chunk_grid)
-        chunk_key_encoding_parsed = parse_chunk_key_encoding(chunk_key_encoding)
+        chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
+        chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
         fill_value_parsed = parse_fill_value(fill_value)
         attributes_parsed = parse_attributes(attributes)
-        codecs_parsed = parse_codecs(
-            codecs,
-            array_metadata=ArraySpec(
-                shape=shape_parsed,
-                chunk_shape=chunk_grid_parsed.configuration.chunk_shape,
-                dtype=data_type_parsed,
-                fill_value=fill_value_parsed,
-            ),
+
+        array_spec = ArraySpec(
+            shape=shape_parsed, dtype=data_type_parsed, fill_value=fill_value_parsed
         )
+        codecs_parsed = parse_codecs(codecs).evolve(array_spec)
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type_parsed)
@@ -244,19 +169,20 @@ class ArrayMetadata(Metadata):
 
     def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
         assert isinstance(
-            self.chunk_grid, RegularChunkGridMetadata
+            self.chunk_grid, RegularChunkGrid
         ), "Currently, only regular chunk grid is supported"
         return ArraySpec(
-            shape=self.chunk_grid.configuration.chunk_shape,
+            shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
-            chunk_shape=self.chunk_grid.configuration.chunk_shape,
         )
 
     def to_bytes(self) -> bytes:
         def _json_convert(o):
             if isinstance(o, np.dtype):
                 return str(o)
+            if isinstance(o, Enum):
+                return o.name
             # this serializes numcodecs compressors
             # todo: implement to_dict for codecs
             elif hasattr(o, "get_config"):
@@ -347,33 +273,6 @@ class ArrayV2Metadata(Metadata):
         return cls(**data)
 
 
-def parse_chunk_grid(data: Any) -> RegularChunkGridMetadata:
-    if isinstance(data, dict):
-        return RegularChunkGridMetadata.from_dict(data)
-    if isinstance(data, RegularChunkGridMetadata):
-        return data
-    msg = f"Expected dict or instance of RegularChunkGridMetadata, got {type(data)}"
-    raise TypeError(msg)
-
-
-def parse_chunk_key_encoding(data: Any) -> ChunkKeyEncodingMetadata:
-    if isinstance(data, dict):
-        # todo: consider handling keyerrors gracefully here
-        if data["name"] == "v2":
-            return V2ChunkKeyEncodingMetadata.from_dict(data)
-        elif data["name"] == "default":
-            return DefaultChunkKeyEncodingMetadata.from_dict(data)
-        msg = f'Invalid `name` attribute. Got {data["name"]}, expected one of ("v2", "default")'
-        raise ValueError(msg)
-    if isinstance(data, (V2ChunkKeyEncodingMetadata, DefaultChunkKeyEncodingMetadata)):
-        return data
-    msg = (
-        f"Expected a dict or an instance of V2ChunkKeyEncodingMetadata "
-        f"or an instance of DefaultChunkKeyEncodingMetadata, got input with type={type(data)}"
-    )
-    raise TypeError(msg)
-
-
 def parse_dimension_names(data: Any) -> Tuple[str, ...] | None:
     if data is None:
         return data
@@ -419,11 +318,11 @@ def parse_compressor(data: Any) -> Codec:
 
 
 def parse_v3_metadata(data: ArrayMetadata) -> ArrayMetadata:
-    if (l_chunks := len(data.chunk_grid.configuration.chunk_shape)) != (l_shape := len(data.shape)):
+    if (l_chunks := len(data.chunk_grid.chunk_shape)) != (l_shape := len(data.shape)):
         msg = (
-            f"The `shape` and `chunk_grid.configuration.chunk_shape` attributes "
+            f"The `shape` and `chunk_grid.chunk_shape` attributes "
             "must have the same length. "
-            f"`chunk_grid.configuration.chunk_shape` has length {l_chunks}, "
+            f"`chunk_grid.chunk_shape` has length {l_chunks}, "
             f"but `shape` has length {l_shape}"
         )
         raise ValueError(msg)
@@ -446,77 +345,7 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def parse_codecs(
-    data: Iterable[NamedConfig],
-    array_metadata: ArraySpec,
-) -> List[Codec]:
-    out: List[Codec] = []
+def parse_codecs(data: Iterable[NamedConfig]) -> CodecPipeline:
+    from zarr.v3.codecs.pipeline import CodecPipeline
 
-    for codec_metadata in data or []:
-        codec_cls = get_codec_class(codec_metadata.name)
-        codec = codec_cls.from_metadata(codec_metadata)
-        out.append(codec)
-        array_metadata = codec.resolve_metadata(array_metadata)
-    out = _validate_codecs(out, array_metadata)
-    return out
-
-
-def _validate_codecs(codecs: List[Codec], array_metadata: ArraySpec) -> None:
-    from zarr.v3.codecs.sharding import ShardingCodec
-
-    assert any(
-        isinstance(codec, ArrayBytesCodec) for codec in codecs
-    ), "Exactly one array-to-bytes codec is required."
-
-    prev_codec: Optional[Codec] = None
-    for codec in codecs:
-        if prev_codec is not None:
-            assert not isinstance(codec, ArrayBytesCodec) or not isinstance(
-                prev_codec, ArrayBytesCodec
-            ), (
-                f"ArrayBytesCodec '{type(codec)}' cannot follow after "
-                + f"ArrayBytesCodec '{type(prev_codec)}' because exactly "
-                + "1 ArrayBytesCodec is allowed."
-            )
-            assert not isinstance(codec, ArrayBytesCodec) or not isinstance(
-                prev_codec, BytesBytesCodec
-            ), (
-                f"ArrayBytesCodec '{type(codec)}' cannot follow after "
-                + f"BytesBytesCodec '{type(prev_codec)}'."
-            )
-            assert not isinstance(codec, ArrayArrayCodec) or not isinstance(
-                prev_codec, ArrayBytesCodec
-            ), (
-                f"ArrayArrayCodec '{type(codec)}' cannot follow after "
-                + f"ArrayBytesCodec '{type(prev_codec)}'."
-            )
-            assert not isinstance(codec, ArrayArrayCodec) or not isinstance(
-                prev_codec, BytesBytesCodec
-            ), (
-                f"ArrayArrayCodec '{type(codec)}' cannot follow after "
-                + f"BytesBytesCodec '{type(prev_codec)}'."
-            )
-
-        if isinstance(codec, ShardingCodec):
-            assert len(codec.configuration.chunk_shape) == len(array_metadata.shape), (
-                "The shard's `chunk_shape` and array's `shape` need to have the "
-                + "same number of dimensions."
-            )
-            assert all(
-                s % c == 0
-                for s, c in zip(
-                    array_metadata.chunk_shape,
-                    codec.configuration.chunk_shape,
-                )
-            ), (
-                "The array's `chunk_shape` needs to be divisible by the "
-                + "shard's inner `chunk_shape`."
-            )
-        prev_codec = codec
-
-    if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
-        warn(
-            "Combining a `sharding_indexed` codec disables partial reads and "
-            + "writes, which may lead to inefficient performance."
-        )
-    return codecs
+    return CodecPipeline.from_dict(data)
