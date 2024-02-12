@@ -1,8 +1,9 @@
 from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
+import sys
 
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import numpy as np
 
@@ -20,13 +21,16 @@ class Endian(Enum):
     little = "little"
 
 
+default_system_endian = Endian(sys.byteorder)
+
+
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
     is_fixed_size = True
 
     endian: Optional[Endian]
 
-    def __init__(self, *, endian=Endian.little) -> None:
+    def __init__(self, *, endian: Union[Endian, str, None] = default_system_endian) -> None:
         endian_parsed = None if endian is None else parse_enum(endian, Endian)
 
         object.__setattr__(self, "endian", endian_parsed)
@@ -58,9 +62,7 @@ class BytesCodec(ArrayBytesCodec):
         elif array.dtype.byteorder == ">":
             return Endian.big
         else:
-            import sys
-
-            return sys.byteorder
+            return default_system_endian
 
     async def decode(
         self,

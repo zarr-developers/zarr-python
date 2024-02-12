@@ -37,7 +37,7 @@ class ZstdCodec(BytesBytesCodec):
     level: int = 0
     checksum: bool = False
 
-    def __init__(self, *, level, checksum) -> None:
+    def __init__(self, *, level: int = 0, checksum: bool = False) -> None:
         level_parsed = parse_zstd_level(level)
         checksum_parsed = parse_checksum(checksum)
 

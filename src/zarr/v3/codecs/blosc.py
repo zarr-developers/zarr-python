@@ -3,7 +3,7 @@ from dataclasses import dataclass, replace
 from enum import Enum
 from functools import cached_property
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Union
 
 import numcodecs
 import numpy as np
@@ -86,11 +86,11 @@ class BloscCodec(BytesBytesCodec):
     def __init__(
         self,
         *,
-        typesize=None,
-        cname=BloscCname.zstd,
-        clevel=5,
-        shuffle=None,
-        blocksize=0,
+        typesize: Optional[int] = None,
+        cname: Union[BloscCname, str] = BloscCname.zstd,
+        clevel: int = 5,
+        shuffle: Union[BloscShuffle, str, None] = None,
+        blocksize: int = 0,
     ) -> None:
         typesize_parsed = parse_typesize(typesize) if typesize is not None else None
         cname_parsed = parse_enum(cname, BloscCname)

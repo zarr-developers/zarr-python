@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Dict, Iterable
 
 from dataclasses import dataclass, replace
 
-from zarr.v3.common import JSON, ArraySpec, parse_name
+from zarr.v3.common import JSON, ArraySpec, ChunkCoordsLike, parse_name
 
 if TYPE_CHECKING:
     from zarr.v3.common import RuntimeConfiguration
@@ -34,7 +34,7 @@ class TransposeCodec(ArrayArrayCodec):
 
     order: Tuple[int, ...]
 
-    def __init__(self, *, order) -> None:
+    def __init__(self, *, order: ChunkCoordsLike) -> None:
         order_parsed = parse_transpose_order(order)
 
         object.__setattr__(self, "order", order_parsed)

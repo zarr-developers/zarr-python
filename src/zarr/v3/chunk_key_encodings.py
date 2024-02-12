@@ -22,7 +22,7 @@ class ChunkKeyEncoding(Metadata):
     name: str
     separator: SeparatorLiteral = "."
 
-    def __init__(self, *, separator) -> None:
+    def __init__(self, *, separator: SeparatorLiteral) -> None:
         separator_parsed = parse_separator(separator)
 
         object.__setattr__(self, "separator", separator_parsed)

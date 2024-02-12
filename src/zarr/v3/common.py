@@ -32,6 +32,7 @@ ZATTRS_JSON = ".zattrs"
 
 BytesLike = Union[bytes, bytearray, memoryview]
 ChunkCoords = Tuple[int, ...]
+ChunkCoordsLike = Iterable[int]
 SliceSelection = Tuple[slice, ...]
 Selection = Union[slice, SliceSelection]
 JSON = Union[str, None, int, float, Dict[str, "JSON"], List["JSON"]]

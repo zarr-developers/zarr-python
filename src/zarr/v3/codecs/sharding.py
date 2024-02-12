@@ -1,12 +1,13 @@
 from __future__ import annotations
 from enum import Enum
-from typing import TYPE_CHECKING, Mapping, NamedTuple
+from typing import TYPE_CHECKING, Iterable, Mapping, NamedTuple, Union
 from dataclasses import dataclass, replace
 from functools import lru_cache
 
 
 import numpy as np
 from zarr.v3.abc.codec import (
+    Codec,
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
@@ -17,6 +18,7 @@ from zarr.v3.codecs.pipeline import CodecPipeline
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import (
     ArraySpec,
+    ChunkCoordsLike,
     concurrent_map,
     parse_enum,
     parse_name,
@@ -237,10 +239,10 @@ class ShardingCodec(
     def __init__(
         self,
         *,
-        chunk_shape,
-        codecs=None,
-        index_codecs=None,
-        index_location=None,
+        chunk_shape: ChunkCoordsLike,
+        codecs: Optional[Iterable[Union[Codec, JSON]]] = None,
+        index_codecs: Optional[Iterable[Union[Codec, JSON]]] = None,
+        index_location: Optional[ShardingCodecIndexLocation] = ShardingCodecIndexLocation.end,
     ) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = (

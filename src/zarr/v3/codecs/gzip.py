@@ -29,7 +29,7 @@ class GzipCodec(BytesBytesCodec):
 
     level: int = 5
 
-    def __init__(self, *, level=5) -> None:
+    def __init__(self, *, level: int = 5) -> None:
         level_parsed = parse_gzip_level(level)
 
         object.__setattr__(self, "level", level_parsed)
