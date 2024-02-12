@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from dataclasses import dataclass, field
 import json
 import numpy as np
@@ -19,12 +19,14 @@ from zarr.v3.abc.codec import Codec
 from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.common import (
+    JSON,
     ArraySpec,
     ChunkCoords,
     NamedConfig,
     RuntimeConfiguration,
     parse_dtype,
     parse_fill_value,
+    parse_indexing_order,
     parse_shapelike,
 )
 
@@ -240,17 +242,29 @@ class ArrayV2Metadata(Metadata):
     filters: Optional[List[Dict[str, Any]]] = None
     dimension_separator: Literal[".", "/"] = "."
     compressor: Optional[Dict[str, Any]] = None
-    attributes: Dict[str, Any] = field(default_factory=dict)
+    attributes: Optional[Dict[str, Any]] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
-    def __init__(self, *, shape, dtype, chunks, fill_value, compressor, filters, attributes):
+    def __init__(
+        self,
+        *,
+        shape: ChunkCoords,
+        dtype: np.dtype,
+        chunks: ChunkCoords,
+        fill_value: Any,
+        order: Literal["C", "F"],
+        compressor: Optional[Dict[str, Any]] = None,
+        filters: Optional[Dict[str, Any]] = None,
+        attributes: Optional[Dict[str, JSON]] = None,
+    ):
         """
-        Because the class is a frozen dataclass, we set attributes using object.__setattr__
+        Metadata for a Zarr version 2 array.
         """
         shape_parsed = parse_shapelike(shape)
         data_type_parsed = parse_dtype(dtype)
         chunks_parsed = parse_shapelike(chunks)
         compressor_parsed = parse_compressor(compressor)
+        order_parsed = parse_indexing_order(order)
         filters_parsed = parse_filters(filters)
         fill_value_parsed = parse_fill_value(fill_value)
         attributes_parsed = parse_attributes(attributes)
@@ -259,6 +273,7 @@ class ArrayV2Metadata(Metadata):
         object.__setattr__(self, "data_type", data_type_parsed)
         object.__setattr__(self, "chunks", chunks_parsed)
         object.__setattr__(self, "compressor", compressor_parsed)
+        object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "filters", filters_parsed)
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "attributes", attributes_parsed)
@@ -291,12 +306,19 @@ class ArrayV2Metadata(Metadata):
 def parse_dimension_names(data: Any) -> Tuple[str, ...] | None:
     if data is None:
         return data
-    return tuple(map(str, data))
+    if all([isinstance(x, str) for x in data]):
+        return data
+    msg = f"Expected either None or a sequence of str, got {type(data)}"
+    raise TypeError(msg)
 
 
 # todo: real validation
-def parse_attributes(data: Any) -> Any:
-    return data
+def parse_attributes(data: Any) -> Dict[str, JSON]:
+    if data is None:
+        return {}
+
+    data_json = cast(Dict[str, JSON], data)
+    return data_json
 
 
 # todo: move to its own module and drop _v3 suffix
