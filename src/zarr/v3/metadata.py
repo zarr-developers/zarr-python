@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import Enum
-from typing import TYPE_CHECKING, cast, Dict
+from typing import TYPE_CHECKING, cast, Dict, Iterable
 from dataclasses import dataclass, field
 import json
 import numpy as np
@@ -10,7 +10,7 @@ from zarr.v3.chunk_key_encodings import ChunkKeyEncoding
 
 
 if TYPE_CHECKING:
-    from typing import Any, Literal, Union, Iterable, List, Optional, Tuple
+    from typing import Any, Literal, Union, List, Optional, Tuple
     from typing_extensions import Self
     from zarr.v3.codecs.pipeline import CodecPipeline
 
@@ -306,9 +306,9 @@ class ArrayV2Metadata(Metadata):
 def parse_dimension_names(data: Any) -> Tuple[str, ...] | None:
     if data is None:
         return data
-    if all([isinstance(x, str) for x in data]):
-        return data
-    msg = f"Expected either None or a sequence of str, got {type(data)}"
+    if isinstance(data, Iterable) and all([isinstance(x, str) for x in data]):
+        return tuple(data)
+    msg = f"Expected either None or a iterable of str, got {type(data)}"
     raise TypeError(msg)
 
 
