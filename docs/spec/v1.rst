@@ -1,6 +1,6 @@
 .. _spec_v1:
 
-Zarr storage specification version 1
+Zarr Storage Specification Version 1
 ====================================
 
 This document provides a technical specification of the protocol and

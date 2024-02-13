@@ -183,7 +183,6 @@ def test_validate_key():
 
 
 class StoreV3Tests(_StoreTests):
-
     version = 3
     root = meta_root
 
@@ -219,7 +218,6 @@ class StoreV3Tests(_StoreTests):
         store.close()
 
     def test_init_array(self, dimension_separator_fixture_v3):
-
         pass_dim_sep, want_dim_sep = dimension_separator_fixture_v3
 
         store = self.create_store()
@@ -253,7 +251,6 @@ class StoreV3Tests(_StoreTests):
         store.close()
 
     def test_list_prefix(self):
-
         store = self.create_store()
         path = "arr1"
         init_array(store, path=path, shape=1000, chunks=100)
@@ -372,7 +369,6 @@ class TestDirectoryStoreV3(_TestDirectoryStore, StoreV3Tests):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStoreV3(_TestFSStore, StoreV3Tests):
     def create_store(self, normalize_keys=False, dimension_separator=".", path=None, **kwargs):
-
         if path is None:
             path = tempfile.mkdtemp()
             atexit.register(atexit_rmtree, path)
@@ -400,7 +396,6 @@ class TestFSStoreV3(_TestFSStore, StoreV3Tests):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStoreV3WithKeySeparator(StoreV3Tests):
     def create_store(self, normalize_keys=False, key_separator=".", **kwargs):
-
         # Since the user is passing key_separator, that will take priority.
         skip_if_nested_chunks(**kwargs)
 
@@ -415,7 +410,6 @@ class TestFSStoreV3WithKeySeparator(StoreV3Tests):
 
 
 class TestZipStoreV3(_TestZipStore, StoreV3Tests):
-
     ZipStoreClass = ZipStoreV3
 
     def create_store(self, **kwargs):
@@ -567,19 +561,16 @@ class TestStorageTransformerV3(TestMappingStoreV3):
 
 
 class TestLRUStoreCacheV3(_TestLRUStoreCache, StoreV3Tests):
-
     CountingClass = CountingDictV3
     LRUStoreClass = LRUStoreCacheV3
 
 
 @skip_test_env_var("ZARR_TEST_ABS")
 class TestABSStoreV3(_TestABSStore, StoreV3Tests):
-
     ABSStoreClass = ABSStoreV3
 
 
 def test_normalize_store_arg_v3(tmpdir):
-
     fn = tmpdir.join("store.zip")
     store = normalize_store_arg(str(fn), zarr_version=3, mode="w")
     assert isinstance(store, ZipStoreV3)
@@ -622,7 +613,6 @@ def test_normalize_store_arg_v3(tmpdir):
 
 
 class TestConsolidatedMetadataStoreV3(_TestConsolidatedMetadataStore):
-
     version = 3
     ConsolidatedMetadataClass = ConsolidatedMetadataStoreV3
 
