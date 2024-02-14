@@ -2060,9 +2060,11 @@ class Array:
                 index_selection = PartialChunkIterator(chunk_selection, self.chunks)
                 for start, nitems, partial_out_selection in index_selection:
                     expected_shape = [
-                        len(range(*partial_out_selection[i].indices(self.chunks[0] + 1)))
-                        if i < len(partial_out_selection)
-                        else dim
+                        (
+                            len(range(*partial_out_selection[i].indices(self.chunks[0] + 1)))
+                            if i < len(partial_out_selection)
+                            else dim
+                        )
                         for i, dim in enumerate(self.chunks)
                     ]
                     if isinstance(cdata, UncompressedPartialReadBufferV3):
@@ -2536,7 +2538,7 @@ class Array:
         checksum = binascii.hexlify(self.digest(hashname=hashname))
 
         # This is a bytes object on Python 3 and we want a str.
-        if type(checksum) is not str:
+        if not isinstance(checksum, str):
             checksum = checksum.decode("utf8")
 
         return checksum

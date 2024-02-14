@@ -545,11 +545,11 @@ def ix_(selection, shape):
 
     # replace slice and int as these are not supported by numpy.ix_
     selection = [
-        slice_to_range(dim_sel, dim_len)
-        if isinstance(dim_sel, slice)
-        else [dim_sel]
-        if is_integer(dim_sel)
-        else dim_sel
+        (
+            slice_to_range(dim_sel, dim_len)
+            if isinstance(dim_sel, slice)
+            else [dim_sel] if is_integer(dim_sel) else dim_sel
+        )
         for dim_sel, dim_len in zip(selection, shape)
     ]
 
