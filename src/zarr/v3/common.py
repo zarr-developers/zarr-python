@@ -151,9 +151,12 @@ class ArraySpec:
 
 
 def parse_name(data: JSON, expected: str) -> str:
-    if data == expected:
-        return data
-    raise ValueError(f"Expected '{expected}' chunk. Got {data} instead.")
+    if isinstance(data, str):
+        if data == expected:
+            return data
+        raise ValueError(f"Expected '{expected}'. Got {data} instead.")
+    else:
+        raise TypeError(f"Expected a string, got an instance of {type(data)}.")
 
 
 def parse_shapelike(data: Any) -> Tuple[int, ...]:

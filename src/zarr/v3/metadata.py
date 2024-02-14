@@ -322,23 +322,25 @@ def parse_attributes(data: Any) -> Dict[str, JSON]:
 
 
 # todo: move to its own module and drop _v3 suffix
+# todo: consider folding all the literal parsing into a single function
+# that takes 2 arguments
 def parse_zarr_format_v3(data: Any) -> Literal[3]:
     if data == 3:
         return data
-    raise ValueError(f"Invalid value for `zarr_format`. Expected 3. Got {data}.")
+    raise ValueError(f"Invalid value. Expected 3. Got {data}.")
 
 
 # todo: move to its own module and drop _v2 suffix
 def parse_zarr_format_v2(data: Any) -> Literal[2]:
     if data == 2:
         return data
-    raise ValueError(f"Invalid value for `zarr_format`. Expected 3. Got {data}.")
+    raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
 def parse_node_type_array(data: Any) -> Literal["array"]:
     if data == "array":
         return data
-    raise ValueError(f"Invalid value for `node_type`. Expected 'array'. Got {data}.")
+    raise ValueError(f"Invalid value. Expected 'array'. Got {data}.")
 
 
 # todo: real validation
