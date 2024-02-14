@@ -18,11 +18,19 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.17.0:
+
+2.17.0
+------
+
 Enhancements
 ~~~~~~~~~~~~
 
 * Added type hints to ``zarr.creation.create()``.
   By :user:`David Stansby <dstansby>` :issue:`1536`.
+
+* Pyodide support: Don't require fasteners on Emscripten.
+  By :user:`Hood Chatham <hoodmane>` :issue:`1663`.
 
 Docs
 ~~~~
@@ -45,9 +53,26 @@ Docs
 * Minor tweak to advanced indexing tutorial examples.
   By :user:`Ross Barnowski <rossbar>` :issue:`1550`.
 
+* Automatically document array members using sphinx-automodapi.
+  By :user:`David Stansby <dstansby>` :issue:`1547`.
+
+* Add a markdown file documenting the current and former core-developer team.
+  By :user:`Joe Hamman <jhamman>` :issue:`1628`.
+
+* Add Norman Rzepka to core-dev team.
+  By :user:`Joe Hamman <jhamman>` :issue:`1630`.
+
+* Added section about accessing zip files that are on s3.
+  By :user:`Jeff Peck <jeffpeck10x>` :issue:`1613`.
+
+* Add V3 roadmap and design document.
+  By :user:`Joe Hamman <jhamman>` :issue:`1583`.
 
 Maintenance
 ~~~~~~~~~~~
+
+* Drop Python 3.8 and NumPy 1.20
+  By :user:`Josh Moore <joshmoore>`; :issue:`1557`.
 
 * Cache result of ``FSStore._fsspec_installed()``.
   By :user:`Janick Martinez Esturo <ph03>` :issue:`1581`.
@@ -70,6 +95,26 @@ Maintenance
 * Remove ``sphinx-rtd-theme`` dependency from ``pyproject.toml``.
   By :user:`Sanket Verma <MSanKeys963>` :issue:`1563`.
 
+* Remove ``CODE_OF_CONDUCT.md`` file from the Zarr-Python repository.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1572`.
+
+* Bump version of black in pre-commit.
+  By :user:`David Stansby <dtstansby>` :issue:`1559`.
+
+* Use list comprehension where applicable.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1555`.
+
+* Use format specification mini-language to format string.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1558`.
+
+* Single startswith() call instead of multiple ones.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1556`.
+
+* Move codespell options around.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1196`.
+
+* Remove unused mypy ignore comments.
+  By :user:`David Stansby <dtstansby>` :issue:`1602`.
 
 .. _release_2.16.1:
 

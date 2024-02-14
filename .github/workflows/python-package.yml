@@ -15,13 +15,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
-        numpy_version: ['>=1.22.0', '==1.20.*']
+        python-version: ['3.9', '3.10', '3.11']
+        numpy_version: ['>=1.22.0', '==1.21.*']
         exclude:
           - python-version: '3.10'
-            numpy_version: '==1.20.*'
+            numpy_version: '==1.21.*'
           - python-version: '3.11'
-            numpy_version: '==1.20.*'
+            numpy_version: '==1.21.*'
     services:
       redis:
         image: redis
