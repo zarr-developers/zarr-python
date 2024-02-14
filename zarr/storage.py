@@ -14,6 +14,7 @@ classes may also optionally implement a `rename` method (rename all members unde
 path) and a `getsize` method (return the size in bytes of a given value).
 
 """
+
 import atexit
 import errno
 import glob
@@ -1410,8 +1411,8 @@ class FSStore(Store):
                 self._attrs_key,
                 ".zmetadata",  # see: #1121
             ):
-                end = end.replace('.', self.key_separator)
-                key = '/'.join(bits + [end])
+                end = end.replace(".", self.key_separator)
+                key = "/".join(bits + [end])
 
         return key.lower() if self.normalize_keys else key
 
