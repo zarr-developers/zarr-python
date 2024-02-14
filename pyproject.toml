@@ -14,7 +14,7 @@ requires-python = ">=3.9"
 dependencies = [
     'asciitree',
     'numpy>=1.21.1',
-    'fasteners',
+    'fasteners; sys_platform != "emscripten"',
     'numcodecs>=0.10.0',
 ]
 dynamic = [
