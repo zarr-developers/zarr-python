@@ -2026,7 +2026,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         ]
 
 
-@pytest.mark.skipif(have_bsddb3 is False, reason="needs bsddb3")
+@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithN5FSStore(TestArrayWithN5Store):
     def create_store(self):
         path = mkdtemp()
