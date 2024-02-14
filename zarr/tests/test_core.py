@@ -76,6 +76,7 @@ from zarr.util import buffer_size
 from zarr.tests.util import (
     abs_container,
     have_bsddb3,
+    have_fsspec,
     have_lmdb,
     have_sqlite3,
     mktemp,
@@ -2048,6 +2049,7 @@ class TestArrayWithDBMStore(TestArray):
 @pytest.mark.skipif(have_bsddb3 is False, reason="needs bsddb3")
 class TestArrayWithDBMStoreBerkeleyDB(TestArray):
     def create_store(self):
+        import bsddb3
         path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
         store = DBMStore(path, flag="n", open=bsddb3.btopen)
@@ -2768,6 +2770,7 @@ class TestArrayWithDBMStoreV3(TestArrayV3):
 @pytest.mark.skipif(have_bsddb3 is False, reason="needs bsddb3")
 class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
     def create_store(self) -> DBMStoreV3:
+        import bsddb3
         path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
         store = DBMStoreV3(path, flag="n", open=bsddb3.btopen)
