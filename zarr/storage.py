@@ -14,6 +14,7 @@ classes may also optionally implement a `rename` method (rename all members unde
 path) and a `getsize` method (return the size in bytes of a given value).
 
 """
+
 import atexit
 import errno
 import glob
