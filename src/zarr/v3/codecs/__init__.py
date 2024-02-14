@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 
 
 def _find_array_bytes_codec(
-    codecs: Iterable[Tuple[Codec, ArraySpec]]
+    codecs: Iterable[Tuple[Codec, ArraySpec]],
 ) -> Tuple[ArrayBytesCodec, ArraySpec]:
     for codec, array_spec in codecs:
         if isinstance(codec, ArrayBytesCodec):

@@ -118,7 +118,6 @@ def _get_files_and_dirs_from_path(store, path):
 
 
 class FSStoreV3(FSStore, StoreV3):
-
     # FSStoreV3 doesn't use this (FSStore uses it within _normalize_key)
     _META_KEYS = ()
 

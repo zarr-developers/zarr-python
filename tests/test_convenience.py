@@ -57,7 +57,6 @@ def _init_creation_kwargs(zarr_version):
 
 @pytest.mark.parametrize("zarr_version", _VERSIONS)
 def test_open_array(path_type, zarr_version):
-
     store = tempfile.mkdtemp()
     atexit.register(atexit_rmtree, store)
     store = path_type(store)
@@ -86,7 +85,6 @@ def test_open_array(path_type, zarr_version):
 
 @pytest.mark.parametrize("zarr_version", _VERSIONS)
 def test_open_group(path_type, zarr_version):
-
     store = tempfile.mkdtemp()
     atexit.register(atexit_rmtree, store)
     store = path_type(store)
@@ -210,7 +208,6 @@ def test_tree(zarr_version):
 def test_consolidate_metadata(
     with_chunk_store, zarr_version, listable, monkeypatch, stores_from_path
 ):
-
     # setup initial data
     if stores_from_path:
         store = tempfile.mkdtemp()
@@ -399,7 +396,6 @@ def test_save_array_separator(tmpdir, options):
 
 
 class TestCopyStore(unittest.TestCase):
-
     _version = 2
 
     def setUp(self):
@@ -536,7 +532,6 @@ class TestCopyStore(unittest.TestCase):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestCopyStoreV3(TestCopyStore):
-
     _version = 3
 
     def setUp(self):
@@ -557,7 +552,6 @@ class TestCopyStoreV3(TestCopyStore):
 
 
 def check_copied_array(original, copied, without_attrs=False, expect_props=None):
-
     # setup
     source_h5py = original.__module__.startswith("h5py.")
     dest_h5py = copied.__module__.startswith("h5py.")
@@ -621,7 +615,6 @@ def check_copied_array(original, copied, without_attrs=False, expect_props=None)
 
 
 def check_copied_group(original, copied, without_attrs=False, expect_props=None, shallow=False):
-
     # setup
     if expect_props is None:
         expect_props = dict()

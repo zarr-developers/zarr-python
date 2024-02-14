@@ -91,7 +91,6 @@ def _get_loop():
 
 
 class SyncMixin:
-
     _sync_configuration: SyncConfiguration
 
     def _sync(self, coroutine: Coroutine):  # TODO: type this

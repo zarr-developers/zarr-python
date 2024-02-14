@@ -122,7 +122,6 @@ class AsyncGroup:
         self,
         key: str,
     ) -> Union[AsyncArray, AsyncGroup]:
-
         store_path = self.store_path / key
 
         if self.metadata.zarr_format == 3:

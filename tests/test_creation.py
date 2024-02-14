@@ -74,7 +74,6 @@ def _init_creation_kwargs(zarr_version, at_root=True):
 @pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
 def test_array(zarr_version, at_root):
-
     expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
     kwargs = _init_creation_kwargs(zarr_version, at_root)
 
@@ -213,7 +212,6 @@ def test_full_additional_dtypes(zarr_version):
 @pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
 def test_open_array(zarr_version, at_root, dimension_separator):
-
     store = "data/array.zarr"
     kwargs = _init_creation_kwargs(zarr_version, at_root)
 
@@ -329,7 +327,6 @@ def test_open_array(zarr_version, at_root, dimension_separator):
 
 
 def test_open_array_none():
-
     # open with both store and zarr_version = None
     z = open_array(mode="w", shape=100, chunks=10)
     assert isinstance(z, Array)
@@ -339,7 +336,6 @@ def test_open_array_none():
 @pytest.mark.parametrize("dimension_separator", [".", "/", None])
 @pytest.mark.parametrize("zarr_version", _VERSIONS2)
 def test_open_array_infer_separator_from_store(zarr_version, dimension_separator):
-
     if zarr_version == 3:
         StoreClass = DirectoryStoreV3
         path = "data"
@@ -370,7 +366,6 @@ def test_open_array_infer_separator_from_store(zarr_version, dimension_separator
 # TODO: N5 support for v3
 @pytest.mark.parametrize("zarr_version", [None, 2])
 def test_open_array_n5(zarr_version):
-
     store = "data/array.zarr"
     kwargs = _init_creation_kwargs(zarr_version)
 
@@ -409,7 +404,6 @@ def test_open_array_n5(zarr_version):
 @pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
 def test_open_array_dict_store(zarr_version, at_root):
-
     # dict will become a KVStore
     store = dict()
     kwargs = _init_creation_kwargs(zarr_version, at_root)
@@ -503,7 +497,6 @@ def test_empty_like(zarr_version, at_root):
 @pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
 def test_zeros_like(zarr_version, at_root):
-
     kwargs = _init_creation_kwargs(zarr_version, at_root)
     expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
 
@@ -529,7 +522,6 @@ def test_zeros_like(zarr_version, at_root):
 @pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
 def test_ones_like(zarr_version, at_root):
-
     kwargs = _init_creation_kwargs(zarr_version, at_root)
     expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
 
@@ -556,7 +548,6 @@ def test_ones_like(zarr_version, at_root):
 @pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
 def test_full_like(zarr_version, at_root):
-
     kwargs = _init_creation_kwargs(zarr_version, at_root)
     expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
 

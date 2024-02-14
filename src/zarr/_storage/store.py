@@ -629,7 +629,6 @@ def _rmdir_from_keys(store: StoreLike, path: Optional[str] = None) -> None:
 
 
 def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
-
     meta_dir = meta_root + path
     meta_dir = meta_dir.rstrip("/")
     _rmdir_from_keys(store, meta_dir)
