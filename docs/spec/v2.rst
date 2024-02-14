@@ -1,6 +1,6 @@
 .. _spec_v2:
 
-Zarr storage specification version 2
+Zarr Storage Specification Version 2
 ====================================
 
 This document provides a technical specification of the protocol and format
@@ -81,7 +81,7 @@ filters
 The following keys MAY be present within the object:
 
 dimension_separator
-    If present, either the string ``"."`` or ``"/""`` defining the separator placed
+    If present, either the string ``"."`` or ``"/"`` defining the separator placed
     between the dimensions of a chunk. If the value is not set, then the
     default MUST be assumed to be ``"."``, leading to chunk keys of the form "0.0".
     Arrays defined with ``"/"`` as the dimension separator can be considered to have

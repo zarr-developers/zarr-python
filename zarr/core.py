@@ -60,6 +60,8 @@ from zarr.util import (
     ensure_ndarray_like,
 )
 
+__all__ = ["Array"]
+
 
 # noinspection PyUnresolvedReferences
 class Array:
@@ -110,62 +112,6 @@ class Array:
         to users. Use `numpy.empty(())` by default.
 
         .. versionadded:: 2.13
-
-
-    Attributes
-    ----------
-    store
-    path
-    name
-    read_only
-    chunk_store
-    shape
-    chunks
-    dtype
-    compression
-    compression_opts
-    dimension_separator
-    fill_value
-    order
-    synchronizer
-    filters
-    attrs
-    size
-    itemsize
-    nbytes
-    nbytes_stored
-    cdata_shape
-    nchunks
-    nchunks_initialized
-    is_view
-    info
-    vindex
-    oindex
-    blocks
-    write_empty_chunks
-    meta_array
-
-    Methods
-    -------
-    __getitem__
-    __setitem__
-    get_basic_selection
-    set_basic_selection
-    get_orthogonal_selection
-    set_orthogonal_selection
-    get_mask_selection
-    set_mask_selection
-    get_coordinate_selection
-    set_coordinate_selection
-    get_block_selection
-    set_block_selection
-    digest
-    hexdigest
-    resize
-    append
-    view
-    astype
-
     """
 
     def __init__(
@@ -193,17 +139,16 @@ class Array:
             assert_zarr_v3_api_available()
 
         if chunk_store is not None:
-            chunk_store = normalize_store_arg(chunk_store,
-                                              zarr_version=zarr_version)
+            chunk_store = normalize_store_arg(chunk_store, zarr_version=zarr_version)
 
         self._store = store
         self._chunk_store = chunk_store
         self._transformed_chunk_store = None
         self._path = normalize_storage_path(path)
         if self._path:
-            self._key_prefix = self._path + '/'
+            self._key_prefix = self._path + "/"
         else:
-            self._key_prefix = ''
+            self._key_prefix = ""
         self._read_only = bool(read_only)
         self._synchronizer = synchronizer
         self._cache_metadata = cache_metadata
@@ -216,18 +161,19 @@ class Array:
             self._meta_array = np.empty(())
         self._version = zarr_version
         if self._version == 3:
-            self._data_key_prefix = 'data/root/' + self._key_prefix
-            self._data_path = 'data/root/' + self._path
+            self._data_key_prefix = "data/root/" + self._key_prefix
+            self._data_path = "data/root/" + self._path
             self._hierarchy_metadata = _get_hierarchy_metadata(store=self._store)
-            self._metadata_key_suffix = self._hierarchy_metadata['metadata_key_suffix']
+            self._metadata_key_suffix = self._hierarchy_metadata["metadata_key_suffix"]
 
         # initialize metadata
         self._load_metadata()
 
         # initialize attributes
         akey = _prefix_to_attrs_key(self._store, self._key_prefix)
-        self._attrs = Attributes(store, key=akey, read_only=read_only,
-                                 synchronizer=synchronizer, cache=cache_attrs)
+        self._attrs = Attributes(
+            store, key=akey, read_only=read_only, synchronizer=synchronizer, cache=cache_attrs
+        )
 
         # initialize info reporter
         self._info_reporter = InfoReporter(self)
@@ -253,17 +199,16 @@ class Array:
         except KeyError:
             raise ArrayNotFoundError(self._path)
         else:
-
             # decode and store metadata as instance members
             meta = self._store._metadata_class.decode_array_metadata(meta_bytes)
             self._meta = meta
-            self._shape = meta['shape']
-            self._fill_value = meta['fill_value']
-            dimension_separator = meta.get('dimension_separator', None)
+            self._shape = meta["shape"]
+            self._fill_value = meta["fill_value"]
+            dimension_separator = meta.get("dimension_separator", None)
             if self._version == 2:
-                self._chunks = meta['chunks']
-                self._dtype = meta['dtype']
-                self._order = meta['order']
+                self._chunks = meta["chunks"]
+                self._dtype = meta["dtype"]
+                self._order = meta["order"]
                 if dimension_separator is None:
                     try:
                         dimension_separator = self._store._dimension_separator
@@ -274,17 +219,17 @@ class Array:
                     if dimension_separator is None:
                         dimension_separator = "."
             else:
-                self._chunks = meta['chunk_grid']['chunk_shape']
-                self._dtype = meta['data_type']
-                self._order = meta['chunk_memory_layout']
-                chunk_separator = meta['chunk_grid']['separator']
+                self._chunks = meta["chunk_grid"]["chunk_shape"]
+                self._dtype = meta["data_type"]
+                self._order = meta["chunk_memory_layout"]
+                chunk_separator = meta["chunk_grid"]["separator"]
                 if dimension_separator is None:
-                    dimension_separator = meta.get('dimension_separator', chunk_separator)
+                    dimension_separator = meta.get("dimension_separator", chunk_separator)
 
             self._dimension_separator = dimension_separator
 
             # setup compressor
-            compressor = meta.get('compressor', None)
+            compressor = meta.get("compressor", None)
             if compressor is None:
                 self._compressor = None
             elif self._version == 2:
@@ -294,17 +239,17 @@ class Array:
 
             # setup filters
             if self._version == 2:
-                filters = meta.get('filters', [])
+                filters = meta.get("filters", [])
             else:
                 # TODO: storing filters under attributes for now since the v3
                 #       array metadata does not have a 'filters' attribute.
-                filters = meta['attributes'].get('filters', [])
+                filters = meta["attributes"].get("filters", [])
             if filters:
                 filters = [get_codec(config) for config in filters]
             self._filters = filters
 
             if self._version == 3:
-                storage_transformers = meta.get('storage_transformers', [])
+                storage_transformers = meta.get("storage_transformers", [])
                 if storage_transformers:
                     transformed_store = self._chunk_store or self._store
                     for storage_transformer in storage_transformers[::-1]:
@@ -323,7 +268,7 @@ class Array:
 
     def _flush_metadata_nosync(self):
         if self._is_view:
-            raise PermissionError('operation not permitted for views')
+            raise PermissionError("operation not permitted for views")
 
         if self._compressor:
             compressor_config = self._compressor.get_config()
@@ -334,20 +279,33 @@ class Array:
         else:
             filters_config = None
         _compressor = compressor_config if self._version == 2 else self._compressor
-        meta = dict(shape=self._shape, compressor=_compressor,
-                    fill_value=self._fill_value, filters=filters_config)
-        if getattr(self._store, '_store_version', 2) == 2:
+        meta = dict(
+            shape=self._shape,
+            compressor=_compressor,
+            fill_value=self._fill_value,
+            filters=filters_config,
+        )
+        if getattr(self._store, "_store_version", 2) == 2:
             meta.update(
-                dict(chunks=self._chunks, dtype=self._dtype, order=self._order)
+                dict(
+                    chunks=self._chunks,
+                    dtype=self._dtype,
+                    order=self._order,
+                    dimension_separator=self._dimension_separator,
+                )
             )
         else:
             meta.update(
-                dict(chunk_grid=dict(type='regular',
-                                     chunk_shape=self._chunks,
-                                     separator=self._dimension_separator),
-                     data_type=self._dtype,
-                     chunk_memory_layout=self._order,
-                     attributes=self.attrs.asdict())
+                dict(
+                    chunk_grid=dict(
+                        type="regular",
+                        chunk_shape=self._chunks,
+                        separator=self._dimension_separator,
+                    ),
+                    data_type=self._dtype,
+                    chunk_memory_layout=self._order,
+                    attributes=self.attrs.asdict(),
+                )
             )
         mkey = _prefix_to_array_key(self._store, self._key_prefix)
         self._store[mkey] = self._store._metadata_class.encode_array_metadata(meta)
@@ -368,8 +326,8 @@ class Array:
         if self.path:
             # follow h5py convention: add leading slash
             name = self.path
-            if name[0] != '/':
-                name = '/' + name
+            if name[0] != "/":
+                name = "/" + name
             return name
         return None
 
@@ -377,7 +335,7 @@ class Array:
     def basename(self):
         """Final component of name."""
         if self.name is not None:
-            return self.name.split('/')[-1]
+            return self.name.split("/")[-1]
         return None
 
     @property
@@ -513,10 +471,9 @@ class Array:
     @property
     def _cdata_shape(self):
         if self._shape == ():
-            return 1,
+            return (1,)
         else:
-            return tuple(math.ceil(s / c)
-                         for s, c in zip(self._shape, self._chunks))
+            return tuple(math.ceil(s / c) for s, c in zip(self._shape, self._chunks))
 
     @property
     def cdata_shape(self):
@@ -550,14 +507,14 @@ class Array:
             # return sum(1 for k in members if prog.match(k))
 
             # key pattern for chunk keys
-            prog = re.compile(self._data_key_prefix + r'c\d+')  # TODO: ndim == 0 case?
+            prog = re.compile(self._data_key_prefix + r"c\d+")  # TODO: ndim == 0 case?
             # get chunk keys, excluding the prefix
             members = self.chunk_store.list_prefix(self._data_path)
             # count the chunk keys
             return sum(1 for k in members if prog.match(k))
         else:
             # key pattern for chunk keys
-            prog = re.compile(r'\.'.join([r'\d+'] * min(1, self.ndim)))
+            prog = re.compile(r"\.".join([r"\d+"] * min(1, self.ndim)))
 
             # count chunk keys
             return sum(1 for k in listdir(self.chunk_store, self._path) if prog.match(k))
@@ -605,11 +562,11 @@ class Array:
 
     def __eq__(self, other):
         return (
-            isinstance(other, Array) and
-            self.store == other.store and
-            self.read_only == other.read_only and
-            self.path == other.path and
-            not self._is_view
+            isinstance(other, Array)
+            and self.store == other.store
+            and self.read_only == other.read_only
+            and self.path == other.path
+            and not self._is_view
             # N.B., no need to compare other properties, should be covered by
             # store comparison
         )
@@ -664,10 +621,10 @@ class Array:
             end = self.shape[0]
 
         if not isinstance(start, int) or start < 0:
-            raise ValueError('start must be a nonnegative integer')
+            raise ValueError("start must be a nonnegative integer")
 
         if not isinstance(end, int) or end < 0:
-            raise ValueError('end must be a nonnegative integer')
+            raise ValueError("end must be a nonnegative integer")
 
         # Avoid repeatedly decompressing chunks by iterating over the chunks
         # in the first dimension.
@@ -675,7 +632,7 @@ class Array:
         chunk = None
         for j in range(start, end):
             if j % chunk_size == 0:
-                chunk = self[j: j + chunk_size]
+                chunk = self[j : j + chunk_size]
             # init chunk if we start offset of chunk borders
             elif chunk is None:
                 chunk_start = j - j % chunk_size
@@ -691,7 +648,7 @@ class Array:
             return self.shape[0]
         else:
             # 0-dimensional array, same error message as numpy
-            raise TypeError('len() of unsized object')
+            raise TypeError("len() of unsized object")
 
     def __getitem__(self, selection):
         """Retrieve data for an item or region of the array.
@@ -960,11 +917,9 @@ class Array:
 
         # handle zero-dimensional arrays
         if self._shape == ():
-            return self._get_basic_selection_zd(selection=selection, out=out,
-                                                fields=fields)
+            return self._get_basic_selection_zd(selection=selection, out=out, fields=fields)
         else:
-            return self._get_basic_selection_nd(selection=selection, out=out,
-                                                fields=fields)
+            return self._get_basic_selection_nd(selection=selection, out=out, fields=fields)
 
     def _get_basic_selection_zd(self, selection, out=None, fields=None):
         # special case basic selection for zero-dimensional array
@@ -1355,7 +1310,6 @@ class Array:
         return self._get_selection(indexer=indexer, out=out, fields=fields)
 
     def _get_selection(self, indexer, out=None, fields=None):
-
         # We iterate over all chunks which overlap the selection and thus contain data
         # that needs to be extracted. Each chunk is processed in turn, extracting the
         # necessary data and storing into the correct location in the output array.
@@ -1371,10 +1325,11 @@ class Array:
 
         # setup output array
         if out is None:
-            out = np.empty_like(self._meta_array, shape=out_shape,
-                                dtype=out_dtype, order=self._order)
+            out = np.empty_like(
+                self._meta_array, shape=out_shape, dtype=out_dtype, order=self._order
+            )
         else:
-            check_array_shape('out', out, out_shape)
+            check_array_shape("out", out, out_shape)
 
         # iterate over chunks
 
@@ -1382,8 +1337,12 @@ class Array:
             # allow storage to get multiple items at once
             lchunk_coords, lchunk_selection, lout_selection = zip(*indexer)
             self._chunk_getitems(
-                lchunk_coords, lchunk_selection, out, lout_selection,
-                drop_axes=indexer.drop_axes, fields=fields
+                lchunk_coords,
+                lchunk_selection,
+                out,
+                lout_selection,
+                drop_axes=indexer.drop_axes,
+                fields=fields,
             )
         if out.shape:
             return out
@@ -1753,7 +1712,7 @@ class Array:
             except TypeError:
                 # Handle types like `list` or `tuple`
                 value = np.array(value, like=self._meta_array)
-        if hasattr(value, 'shape') and len(value.shape) > 1:
+        if hasattr(value, "shape") and len(value.shape) > 1:
             value = value.reshape(-1)
 
         self._set_selection(indexer, value, fields=fields)
@@ -1975,7 +1934,6 @@ class Array:
         self._set_selection(indexer, value, fields=fields)
 
     def _set_selection(self, indexer, value, fields=None):
-
         # We iterate over all chunks which overlap the selection and thus contain data
         # that needs to be replaced. Each chunk is processed in turn, extracting the
         # necessary data from the value array and storing into the chunk array.
@@ -1998,16 +1956,18 @@ class Array:
             # setting a scalar value
             pass
         else:
-            if not hasattr(value, 'shape'):
+            if not hasattr(value, "shape"):
                 value = np.asanyarray(value, like=self._meta_array)
-            check_array_shape('value', value, sel_shape)
+            check_array_shape("value", value, sel_shape)
 
         # iterate over chunks in range
-        if not hasattr(self.chunk_store, "setitems") or self._synchronizer is not None \
-           or any(map(lambda x: x == 0, self.shape)):
+        if (
+            not hasattr(self.chunk_store, "setitems")
+            or self._synchronizer is not None
+            or any(map(lambda x: x == 0, self.shape))
+        ):
             # iterative approach
             for chunk_coords, chunk_selection, out_selection in indexer:
-
                 # extract data to store
                 if sel_shape == ():
                     chunk_value = value
@@ -2044,8 +2004,7 @@ class Array:
                         cv = chunk_value[item]
                     chunk_values.append(cv)
 
-            self._chunk_setitems(lchunk_coords, lchunk_selection, chunk_values,
-                                 fields=fields)
+            self._chunk_setitems(lchunk_coords, lchunk_selection, chunk_values, fields=fields)
 
     def _process_chunk(
         self,
@@ -2059,27 +2018,24 @@ class Array:
         partial_read_decode=False,
     ):
         """Take binary data from storage and fill output array"""
-        if (out_is_ndarray and
-                not fields and
-                is_contiguous_selection(out_selection) and
-                is_total_slice(chunk_selection, self._chunks) and
-                not self._filters and
-                self._dtype != object):
-
+        if (
+            out_is_ndarray
+            and not fields
+            and is_contiguous_selection(out_selection)
+            and is_total_slice(chunk_selection, self._chunks)
+            and not self._filters
+            and self._dtype != object
+        ):
             dest = out[out_selection]
             # Assume that array-like objects that doesn't have a
             # `writeable` flag is writable.
             dest_is_writable = getattr(dest, "writeable", True)
-            write_direct = (
-                dest_is_writable and
-                (
-                    (self._order == 'C' and dest.flags.c_contiguous) or
-                    (self._order == 'F' and dest.flags.f_contiguous)
-                )
+            write_direct = dest_is_writable and (
+                (self._order == "C" and dest.flags.c_contiguous)
+                or (self._order == "F" and dest.flags.f_contiguous)
             )
 
             if write_direct:
-
                 # optimization: we want the whole chunk, and the destination is
                 # contiguous, so we can decompress directly from the chunk
                 # into the destination array
@@ -2104,9 +2060,7 @@ class Array:
                 index_selection = PartialChunkIterator(chunk_selection, self.chunks)
                 for start, nitems, partial_out_selection in index_selection:
                     expected_shape = [
-                        len(
-                            range(*partial_out_selection[i].indices(self.chunks[0] + 1))
-                        )
+                        len(range(*partial_out_selection[i].indices(self.chunks[0] + 1)))
                         if i < len(partial_out_selection)
                         else dim
                         for i, dim in enumerate(self.chunks)
@@ -2143,8 +2097,9 @@ class Array:
         # store selected data in output
         out[out_selection] = tmp
 
-    def _chunk_getitems(self, lchunk_coords, lchunk_selection, out, lout_selection,
-                        drop_axes=None, fields=None):
+    def _chunk_getitems(
+        self, lchunk_coords, lchunk_selection, out, lout_selection, drop_axes=None, fields=None
+    ):
         """Obtain part or whole of chunks.
 
         Parameters
@@ -2238,8 +2193,10 @@ class Array:
 
     def _chunk_setitems(self, lchunk_coords, lchunk_selection, values, fields=None):
         ckeys = map(self._chunk_key, lchunk_coords)
-        cdatas = {key: self._process_for_setitem(key, sel, val, fields=fields)
-                  for key, sel, val in zip(ckeys, lchunk_selection, values)}
+        cdatas = {
+            key: self._process_for_setitem(key, sel, val, fields=fields)
+            for key, sel, val in zip(ckeys, lchunk_selection, values)
+        }
         to_store = {}
         if not self.write_empty_chunks:
             empty_chunks = {k: v for k, v in cdatas.items() if all_equal(self.fill_value, v)}
@@ -2291,8 +2248,7 @@ class Array:
             lock = self._synchronizer[ckey]
 
         with lock:
-            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value,
-                                       fields=fields)
+            self._chunk_setitem_nosync(chunk_coords, chunk_selection, value, fields=fields)
 
     def _chunk_setitem_nosync(self, chunk_coords, chunk_selection, value, fields=None):
         ckey = self._chunk_key(chunk_coords)
@@ -2312,7 +2268,6 @@ class Array:
             # to access the existing chunk data
 
             if is_scalar(value, self._dtype):
-
                 # setup array filled with value
                 chunk = np.empty_like(
                     self._meta_array, shape=self._chunks, dtype=self._dtype, order=self._order
@@ -2320,7 +2275,6 @@ class Array:
                 chunk.fill(value)
 
             else:
-
                 # ensure array is contiguous
                 chunk = value.astype(self._dtype, order=self._order, copy=False)
 
@@ -2328,12 +2282,10 @@ class Array:
             # partially replace the contents of this chunk
 
             try:
-
                 # obtain compressed data for chunk
                 cdata = self.chunk_store[ckey]
 
             except KeyError:
-
                 # chunk not initialized
                 if self._fill_value is not None:
                     chunk = np.empty_like(
@@ -2350,11 +2302,10 @@ class Array:
                     )
 
             else:
-
                 # decode chunk
                 chunk = self._decode_chunk(cdata)
                 if not chunk.flags.writeable:
-                    chunk = chunk.copy(order='K')
+                    chunk = chunk.copy(order="K")
 
             # modify
             if fields:
@@ -2372,8 +2323,12 @@ class Array:
             # where P = self._key_prefix,  i, j, ... = chunk_coords
             # e.g. c0/2/3 for 3d array with chunk index (0, 2, 3)
             # https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/core/v3.0.html#regular-grids
-            return ("data/root/" + self._key_prefix +
-                    "c" + self._dimension_separator.join(map(str, chunk_coords)))
+            return (
+                "data/root/"
+                + self._key_prefix
+                + "c"
+                + self._dimension_separator.join(map(str, chunk_coords))
+            )
         else:
             return self._key_prefix + self._dimension_separator.join(map(str, chunk_coords))
 
@@ -2382,8 +2337,7 @@ class Array:
         if self._compressor:
             # only decode requested items
             if (
-                all(x is not None for x in [start, nitems])
-                and self._compressor.codec_id == "blosc"
+                all(x is not None for x in [start, nitems]) and self._compressor.codec_id == "blosc"
             ) and hasattr(self._compressor, "decode_partial"):
                 chunk = self._compressor.decode_partial(cdata, start, nitems)
             else:
@@ -2408,16 +2362,15 @@ class Array:
             # codec in the filter chain, i.e., a filter that converts from object
             # array to something else during encoding, and converts back to object
             # array during decoding.
-            raise RuntimeError('cannot read object array without object codec')
+            raise RuntimeError("cannot read object array without object codec")
 
         # ensure correct chunk shape
-        chunk = chunk.reshape(-1, order='A')
+        chunk = chunk.reshape(-1, order="A")
         chunk = chunk.reshape(expected_shape or self._chunks, order=self._order)
 
         return chunk
 
     def _encode_chunk(self, chunk):
-
         # apply filters
         if self._filters:
             for f in self._filters:
@@ -2425,7 +2378,7 @@ class Array:
 
         # check object encoding
         if ensure_ndarray_like(chunk).dtype == object:
-            raise RuntimeError('cannot write object array without object codec')
+            raise RuntimeError("cannot write object array without object codec")
 
         # compress
         if self._compressor:
@@ -2434,24 +2387,21 @@ class Array:
             cdata = chunk
 
         # ensure in-memory data is immutable and easy to compare
-        if (
-            isinstance(self.chunk_store, KVStore)
-            or isinstance(self._chunk_store, KVStore)
-        ):
+        if isinstance(self.chunk_store, KVStore) or isinstance(self._chunk_store, KVStore):
             cdata = ensure_bytes(cdata)
 
         return cdata
 
     def __repr__(self):
         t = type(self)
-        r = '<{}.{}'.format(t.__module__, t.__name__)
+        r = "<{}.{}".format(t.__module__, t.__name__)
         if self.name:
-            r += ' %r' % self.name
-        r += ' %s' % str(self.shape)
-        r += ' %s' % self.dtype
+            r += " %r" % self.name
+        r += " %s" % str(self.shape)
+        r += " %s" % self.dtype
         if self._read_only:
-            r += ' read-only'
-        r += '>'
+            r += " read-only"
+        r += ">"
         return r
 
     @property
@@ -2483,13 +2433,12 @@ class Array:
         return self._synchronized_op(self._info_items_nosync)
 
     def _info_items_nosync(self):
-
         def typestr(o):
-            return '{}.{}'.format(type(o).__module__, type(o).__name__)
+            return "{}.{}".format(type(o).__module__, type(o).__name__)
 
         def bytestr(n):
             if n > 2**10:
-                return '{} ({})'.format(n, human_readable_size(n))
+                return "{} ({})".format(n, human_readable_size(n))
             else:
                 return str(n)
 
@@ -2497,41 +2446,39 @@ class Array:
 
         # basic info
         if self.name is not None:
-            items += [('Name', self.name)]
+            items += [("Name", self.name)]
         items += [
-            ('Type', typestr(self)),
-            ('Data type', '%s' % self.dtype),
-            ('Shape', str(self.shape)),
-            ('Chunk shape', str(self.chunks)),
-            ('Order', self.order),
-            ('Read-only', str(self.read_only)),
+            ("Type", typestr(self)),
+            ("Data type", "%s" % self.dtype),
+            ("Shape", str(self.shape)),
+            ("Chunk shape", str(self.chunks)),
+            ("Order", self.order),
+            ("Read-only", str(self.read_only)),
         ]
 
         # filters
         if self.filters:
             for i, f in enumerate(self.filters):
-                items += [('Filter [%s]' % i, repr(f))]
+                items += [("Filter [%s]" % i, repr(f))]
 
         # compressor
-        items += [('Compressor', repr(self.compressor))]
+        items += [("Compressor", repr(self.compressor))]
 
         # synchronizer
         if self._synchronizer is not None:
-            items += [('Synchronizer type', typestr(self._synchronizer))]
+            items += [("Synchronizer type", typestr(self._synchronizer))]
 
         # storage info
-        items += [('Store type', typestr(self._store))]
+        items += [("Store type", typestr(self._store))]
         if self._chunk_store is not None:
-            items += [('Chunk store type', typestr(self._chunk_store))]
-        items += [('No. bytes', bytestr(self.nbytes))]
+            items += [("Chunk store type", typestr(self._chunk_store))]
+        items += [("No. bytes", bytestr(self.nbytes))]
         if self.nbytes_stored > 0:
             items += [
-                ('No. bytes stored', bytestr(self.nbytes_stored)),
-                ('Storage ratio', '%.1f' % (self.nbytes / self.nbytes_stored)),
+                ("No. bytes stored", bytestr(self.nbytes_stored)),
+                ("Storage ratio", "%.1f" % (self.nbytes / self.nbytes_stored)),
             ]
-        items += [
-            ('Chunks initialized', '{}/{}'.format(self.nchunks_initialized, self.nchunks))
-        ]
+        items += [("Chunks initialized", "{}/{}".format(self.nchunks_initialized, self.nchunks))]
 
         return items
 
@@ -2589,8 +2536,8 @@ class Array:
         checksum = binascii.hexlify(self.digest(hashname=hashname))
 
         # This is a bytes object on Python 3 and we want a str.
-        if type(checksum) is not str:
-            checksum = checksum.decode('utf8')
+        if not isinstance(checksum, str):
+            checksum = checksum.decode("utf8")
 
         return checksum
 
@@ -2613,7 +2560,6 @@ class Array:
         self.__init__(**state)
 
     def _synchronized_op(self, f, *args, **kwargs):
-
         if self._synchronizer is None:
             # no synchronization
             lock = nolock
@@ -2630,7 +2576,6 @@ class Array:
         return result
 
     def _write_op(self, f, *args, **kwargs):
-
         # guard condition
         if self._read_only:
             raise ReadOnlyError()
@@ -2670,7 +2615,6 @@ class Array:
         return self._write_op(self._resize_nosync, *args)
 
     def _resize_nosync(self, *args):
-
         # normalize new shape argument
         old_shape = self._shape
         new_shape = normalize_resize_args(old_shape, *args)
@@ -2682,8 +2626,7 @@ class Array:
 
         # determine the new number and arrangement of chunks
         chunks = self._chunks
-        new_cdata_shape = tuple(math.ceil(s / c)
-                                for s, c in zip(new_shape, chunks))
+        new_cdata_shape = tuple(math.ceil(s / c) for s, c in zip(new_shape, chunks))
 
         # remove any chunks not within range
         #   The idea is that, along each dimension,
@@ -2750,20 +2693,19 @@ class Array:
         return self._write_op(self._append_nosync, data, axis=axis)
 
     def _append_nosync(self, data, axis=0):
-
         # ensure data is array-like
-        if not hasattr(data, 'shape'):
+        if not hasattr(data, "shape"):
             data = np.asanyarray(data, like=self._meta_array)
 
         # ensure shapes are compatible for non-append dimensions
-        self_shape_preserved = tuple(s for i, s in enumerate(self._shape)
-                                     if i != axis)
-        data_shape_preserved = tuple(s for i, s in enumerate(data.shape)
-                                     if i != axis)
+        self_shape_preserved = tuple(s for i, s in enumerate(self._shape) if i != axis)
+        data_shape_preserved = tuple(s for i, s in enumerate(data.shape) if i != axis)
         if self_shape_preserved != data_shape_preserved:
-            raise ValueError('shape of data to append is not compatible with the array; '
-                             'all dimensions must match except for the dimension being '
-                             'appended')
+            raise ValueError(
+                "shape of data to append is not compatible with the array; "
+                "all dimensions must match except for the dimension being "
+                "appended"
+            )
 
         # remember old shape
         old_shape = self._shape
@@ -2787,9 +2729,16 @@ class Array:
 
         return new_shape
 
-    def view(self, shape=None, chunks=None, dtype=None,
-             fill_value=None, filters=None, read_only=None,
-             synchronizer=None):
+    def view(
+        self,
+        shape=None,
+        chunks=None,
+        dtype=None,
+        fill_value=None,
+        filters=None,
+        read_only=None,
+        synchronizer=None,
+    ):
         """Return an array sharing the same data.
 
         Parameters
@@ -2904,8 +2853,15 @@ class Array:
             read_only = self._read_only
         if synchronizer is None:
             synchronizer = self._synchronizer
-        a = Array(store=store, path=path, chunk_store=chunk_store, read_only=read_only,
-                  synchronizer=synchronizer, cache_metadata=True, zarr_version=self._version)
+        a = Array(
+            store=store,
+            path=path,
+            chunk_store=chunk_store,
+            read_only=read_only,
+            synchronizer=synchronizer,
+            cache_metadata=True,
+            zarr_version=self._version,
+        )
         a._is_view = True
 
         # allow override of some properties

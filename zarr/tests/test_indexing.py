@@ -17,7 +17,6 @@ from zarr.tests.util import CountingDict
 
 
 def test_normalize_integer_selection():
-
     assert 1 == normalize_integer_selection(1, 100)
     assert 99 == normalize_integer_selection(-1, 100)
     with pytest.raises(IndexError):
@@ -29,7 +28,6 @@ def test_normalize_integer_selection():
 
 
 def test_replace_ellipsis():
-
     # 1D, single item
     assert (0,) == replace_ellipsis(0, (100,))
 
@@ -51,26 +49,23 @@ def test_replace_ellipsis():
     assert (slice(None), 0) == replace_ellipsis((slice(None), 0), (100, 100))
 
     # 2D slice
-    assert ((slice(None), slice(None)) ==
-            replace_ellipsis(Ellipsis, (100, 100)))
-    assert ((slice(None), slice(None)) ==
-            replace_ellipsis(slice(None), (100, 100)))
-    assert ((slice(None), slice(None)) ==
-            replace_ellipsis((slice(None), slice(None)), (100, 100)))
-    assert ((slice(None), slice(None)) ==
-            replace_ellipsis((Ellipsis, slice(None)), (100, 100)))
-    assert ((slice(None), slice(None)) ==
-            replace_ellipsis((slice(None), Ellipsis), (100, 100)))
-    assert ((slice(None), slice(None)) ==
-            replace_ellipsis((slice(None), Ellipsis, slice(None)), (100, 100)))
-    assert ((slice(None), slice(None)) ==
-            replace_ellipsis((Ellipsis, slice(None), slice(None)), (100, 100)))
-    assert ((slice(None), slice(None)) ==
-            replace_ellipsis((slice(None), slice(None), Ellipsis), (100, 100)))
+    assert (slice(None), slice(None)) == replace_ellipsis(Ellipsis, (100, 100))
+    assert (slice(None), slice(None)) == replace_ellipsis(slice(None), (100, 100))
+    assert (slice(None), slice(None)) == replace_ellipsis((slice(None), slice(None)), (100, 100))
+    assert (slice(None), slice(None)) == replace_ellipsis((Ellipsis, slice(None)), (100, 100))
+    assert (slice(None), slice(None)) == replace_ellipsis((slice(None), Ellipsis), (100, 100))
+    assert (slice(None), slice(None)) == replace_ellipsis(
+        (slice(None), Ellipsis, slice(None)), (100, 100)
+    )
+    assert (slice(None), slice(None)) == replace_ellipsis(
+        (Ellipsis, slice(None), slice(None)), (100, 100)
+    )
+    assert (slice(None), slice(None)) == replace_ellipsis(
+        (slice(None), slice(None), Ellipsis), (100, 100)
+    )
 
 
 def test_get_basic_selection_0d():
-
     # setup
     a = np.array(42)
     z = zarr.create(shape=a.shape, dtype=a.dtype, fill_value=None)
@@ -87,25 +82,25 @@ def test_get_basic_selection_0d():
     assert_array_equal(a, b)
 
     # test structured array
-    value = (b'aaa', 1,  4.2)
-    a = np.array(value, dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+    value = (b"aaa", 1, 4.2)
+    a = np.array(value, dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
     z = zarr.create(shape=a.shape, dtype=a.dtype, fill_value=None)
     z[()] = value
     assert_array_equal(a, z.get_basic_selection(Ellipsis))
     assert_array_equal(a, z[...])
     assert a[()] == z.get_basic_selection(())
     assert a[()] == z[()]
-    assert b'aaa' == z.get_basic_selection((), fields='foo')
-    assert b'aaa' == z['foo']
-    assert a[['foo', 'bar']] == z.get_basic_selection((), fields=['foo', 'bar'])
-    assert a[['foo', 'bar']] == z['foo', 'bar']
+    assert b"aaa" == z.get_basic_selection((), fields="foo")
+    assert b"aaa" == z["foo"]
+    assert a[["foo", "bar"]] == z.get_basic_selection((), fields=["foo", "bar"])
+    assert a[["foo", "bar"]] == z["foo", "bar"]
     # test out param
     b = np.zeros_like(a)
     z.get_basic_selection(Ellipsis, out=b)
     assert_array_equal(a, b)
-    c = np.zeros_like(a[['foo', 'bar']])
-    z.get_basic_selection(Ellipsis, out=c, fields=['foo', 'bar'])
-    assert_array_equal(a[['foo', 'bar']], c)
+    c = np.zeros_like(a[["foo", "bar"]])
+    z.get_basic_selection(Ellipsis, out=c, fields=["foo", "bar"])
+    assert_array_equal(a[["foo", "bar"]], c)
 
 
 basic_selections_1d = [
@@ -175,8 +170,8 @@ basic_selections_1d_bad = [
     slice(-1, 0, -1),
     # bad stuff
     2.3,
-    'foo',
-    b'xxx',
+    "foo",
+    b"xxx",
     None,
     (0, 0),
     (slice(None), slice(None)),
@@ -193,7 +188,6 @@ def _test_get_basic_selection(a, z, selection):
 
 # noinspection PyStatementEffect
 def test_get_basic_selection_1d():
-
     # setup
     a = np.arange(1050, dtype=int)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -252,8 +246,8 @@ basic_selections_2d = [
 basic_selections_2d_bad = [
     # bad stuff
     2.3,
-    'foo',
-    b'xxx',
+    "foo",
+    b"xxx",
     None,
     (2.3, slice(None)),
     # only positive step supported
@@ -266,7 +260,6 @@ basic_selections_2d_bad = [
 
 # noinspection PyStatementEffect
 def test_get_basic_selection_2d():
-
     # setup
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
@@ -300,71 +293,34 @@ def test_fancy_indexing_fallback_on_get_setitem():
             [0, 0, 0, 1],
         ],
     )
-    np.testing.assert_array_equal(
-        z[[1, 2, 3], [1, 2, 3]], 1
-    )
+    np.testing.assert_array_equal(z[[1, 2, 3], [1, 2, 3]], 1)
     # test broadcasting
-    np.testing.assert_array_equal(
-        z[1, [1, 2, 3]], [1, 0, 0]
-    )
+    np.testing.assert_array_equal(z[1, [1, 2, 3]], [1, 0, 0])
     # test 1D fancy indexing
     z2 = zarr.zeros(5)
     z2[[1, 2, 3]] = 1
-    np.testing.assert_array_equal(
-        z2, [0, 1, 1, 1, 0]
-    )
+    np.testing.assert_array_equal(z2, [0, 1, 1, 1, 0])
 
 
-@pytest.mark.parametrize("index,expected_result",
-                         [
-                             # Single iterable of integers
-                             (
-                                [0, 1],
-                                [[0, 1, 2],
-                                 [3, 4, 5]]
-                             ),
-                             # List first, then slice
-                             (
-                                     ([0, 1], slice(None)),
-                                     [[0, 1, 2],
-                                      [3, 4, 5]]
-                             ),
-                             # List first, then slice
-                             (
-                                     ([0, 1], slice(1, None)),
-                                     [[1, 2],
-                                      [4, 5]]
-                             ),
-                             # Slice first, then list
-                             (
-                                     (slice(0, 2), [0, 2]),
-                                     [[0, 2],
-                                      [3, 5]]
-                             ),
-                             # Slices only
-                             (
-                                     (slice(0, 2), slice(0, 2)),
-                                     [[0, 1],
-                                      [3, 4]]
-                             ),
-                             # List with repeated index
-                             (
-                                     ([1, 0, 1], slice(1, None)),
-                                     [[4, 5],
-                                      [1, 2],
-                                      [4, 5]]
-                             ),
-                             # 1D indexing
-                             (
-                                     ([1, 0, 1]),
-                                     [
-                                         [3, 4, 5],
-                                         [0, 1, 2],
-                                         [3, 4, 5]
-                                     ]
-                             )
-
-                         ])
+@pytest.mark.parametrize(
+    "index,expected_result",
+    [
+        # Single iterable of integers
+        ([0, 1], [[0, 1, 2], [3, 4, 5]]),
+        # List first, then slice
+        (([0, 1], slice(None)), [[0, 1, 2], [3, 4, 5]]),
+        # List first, then slice
+        (([0, 1], slice(1, None)), [[1, 2], [4, 5]]),
+        # Slice first, then list
+        ((slice(0, 2), [0, 2]), [[0, 2], [3, 5]]),
+        # Slices only
+        ((slice(0, 2), slice(0, 2)), [[0, 1], [3, 4]]),
+        # List with repeated index
+        (([1, 0, 1], slice(1, None)), [[4, 5], [1, 2], [4, 5]]),
+        # 1D indexing
+        (([1, 0, 1]), [[3, 4, 5], [0, 1, 2], [3, 4, 5]]),
+    ],
+)
 def test_orthogonal_indexing_fallback_on_getitem_2d(index, expected_result):
     """
     Tests the orthogonal indexing fallback on __getitem__ for a 2D matrix.
@@ -382,34 +338,19 @@ def test_orthogonal_indexing_fallback_on_getitem_2d(index, expected_result):
     np.testing.assert_array_equal(z[index], expected_result)
 
 
-@pytest.mark.parametrize("index,expected_result",
-                         [
-                             # Single iterable of integers
-                             (
-                                [0, 1],
-                                [[[0,  1,  2],
-                                  [3,  4,  5],
-                                  [6,  7,  8]],
-                                 [[9, 10, 11],
-                                  [12, 13, 14],
-                                  [15, 16, 17]]]
-                             ),
-                             # One slice, two integers
-                             (
-                                     (slice(0, 2), 1, 1),
-                                     [4, 13]
-                             ),
-                             # One integer, two slices
-                             (
-                                     (slice(0, 2), 1, slice(0, 2)),
-                                     [[3, 4], [12, 13]]
-                             ),
-                             # Two slices and a list
-                             (
-                                     (slice(0, 2), [1, 2], slice(0, 2)),
-                                     [[[3, 4], [6, 7]], [[12, 13], [15, 16]]]
-                             ),
-                         ])
+@pytest.mark.parametrize(
+    "index,expected_result",
+    [
+        # Single iterable of integers
+        ([0, 1], [[[0, 1, 2], [3, 4, 5], [6, 7, 8]], [[9, 10, 11], [12, 13, 14], [15, 16, 17]]]),
+        # One slice, two integers
+        ((slice(0, 2), 1, 1), [4, 13]),
+        # One integer, two slices
+        ((slice(0, 2), 1, slice(0, 2)), [[3, 4], [12, 13]]),
+        # Two slices and a list
+        ((slice(0, 2), [1, 2], slice(0, 2)), [[[3, 4], [6, 7]], [[12, 13], [15, 16]]]),
+    ],
+)
 def test_orthogonal_indexing_fallback_on_getitem_3d(index, expected_result):
     """
     Tests the orthogonal indexing fallback on __getitem__ for a 3D matrix.
@@ -439,36 +380,14 @@ def test_orthogonal_indexing_fallback_on_getitem_3d(index, expected_result):
     "index,expected_result",
     [
         # Single iterable of integers
-        (
-            [0, 1],
-            [
-                [1, 1, 1],
-                [1, 1, 1],
-                [0, 0, 0]
-            ]
-        ),
+        ([0, 1], [[1, 1, 1], [1, 1, 1], [0, 0, 0]]),
         # List and slice combined
-        (
-                ([0, 1], slice(1, 3)),
-                [[0, 1, 1],
-                 [0, 1, 1],
-                 [0, 0, 0]]
-        ),
+        (([0, 1], slice(1, 3)), [[0, 1, 1], [0, 1, 1], [0, 0, 0]]),
         # Index repetition is ignored on setitem
-        (
-                ([0, 1, 1, 1, 1, 1, 1], slice(1, 3)),
-                [[0, 1, 1],
-                 [0, 1, 1],
-                 [0, 0, 0]]
-        ),
+        (([0, 1, 1, 1, 1, 1, 1], slice(1, 3)), [[0, 1, 1], [0, 1, 1], [0, 0, 0]]),
         # Slice with step
-        (
-                ([0, 2], slice(None, None, 2)),
-                [[1, 0, 1],
-                 [0, 0, 0],
-                 [1, 0, 1]]
-        )
-    ]
+        (([0, 2], slice(None, None, 2)), [[1, 0, 1], [0, 0, 0], [1, 0, 1]]),
+    ],
 )
 def test_orthogonal_indexing_fallback_on_setitem_2d(index, expected_result):
     """
@@ -482,12 +401,8 @@ def test_orthogonal_indexing_fallback_on_setitem_2d(index, expected_result):
     z = zarr.array(a)
     z[index] = 1
     a[index] = 1
-    np.testing.assert_array_equal(
-        z, expected_result
-    )
-    np.testing.assert_array_equal(
-        z, a, err_msg="Indexing disagrees with numpy"
-    )
+    np.testing.assert_array_equal(z, expected_result)
+    np.testing.assert_array_equal(z, a, err_msg="Indexing disagrees with numpy")
 
 
 def test_fancy_indexing_doesnt_mix_with_implicit_slicing():
@@ -495,19 +410,14 @@ def test_fancy_indexing_doesnt_mix_with_implicit_slicing():
     with pytest.raises(IndexError):
         z2[[1, 2, 3], [1, 2, 3]] = 2
     with pytest.raises(IndexError):
-        np.testing.assert_array_equal(
-            z2[[1, 2, 3], [1, 2, 3]], 0
-        )
+        np.testing.assert_array_equal(z2[[1, 2, 3], [1, 2, 3]], 0)
     with pytest.raises(IndexError):
         z2[..., [1, 2, 3]] = 2
     with pytest.raises(IndexError):
-        np.testing.assert_array_equal(
-            z2[..., [1, 2, 3]], 0
-        )
+        np.testing.assert_array_equal(z2[..., [1, 2, 3]], 0)
 
 
 def test_set_basic_selection_0d():
-
     # setup
     v = np.array(42)
     a = np.zeros_like(v)
@@ -523,8 +433,8 @@ def test_set_basic_selection_0d():
     assert_array_equal(v, z)
 
     # test structured array
-    value = (b'aaa', 1,  4.2)
-    v = np.array(value, dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+    value = (b"aaa", 1, 4.2)
+    v = np.array(value, dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
     a = np.zeros_like(v)
     z = zarr.create(shape=a.shape, dtype=a.dtype, fill_value=None)
 
@@ -538,19 +448,19 @@ def test_set_basic_selection_0d():
     z[...] = a
     assert_array_equal(a, z)
     # with fields
-    z.set_basic_selection(Ellipsis, v['foo'], fields='foo')
-    assert v['foo'] == z['foo']
-    assert a['bar'] == z['bar']
-    assert a['baz'] == z['baz']
-    z['bar'] = v['bar']
-    assert v['foo'] == z['foo']
-    assert v['bar'] == z['bar']
-    assert a['baz'] == z['baz']
+    z.set_basic_selection(Ellipsis, v["foo"], fields="foo")
+    assert v["foo"] == z["foo"]
+    assert a["bar"] == z["bar"]
+    assert a["baz"] == z["baz"]
+    z["bar"] = v["bar"]
+    assert v["foo"] == z["foo"]
+    assert v["bar"] == z["bar"]
+    assert a["baz"] == z["baz"]
     # multiple field assignment not supported
     with pytest.raises(IndexError):
-        z.set_basic_selection(Ellipsis, v[['foo', 'bar']], fields=['foo', 'bar'])
+        z.set_basic_selection(Ellipsis, v[["foo", "bar"]], fields=["foo", "bar"])
     with pytest.raises(IndexError):
-        z[..., 'foo', 'bar'] = v[['foo', 'bar']]
+        z[..., "foo", "bar"] = v[["foo", "bar"]]
 
 
 def _test_get_orthogonal_selection(a, z, selection):
@@ -563,7 +473,6 @@ def _test_get_orthogonal_selection(a, z, selection):
 
 # noinspection PyStatementEffect
 def test_get_orthogonal_selection_1d_bool():
-
     # setup
     a = np.arange(1050, dtype=int)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -586,7 +495,6 @@ def test_get_orthogonal_selection_1d_bool():
 
 # noinspection PyStatementEffect
 def test_get_orthogonal_selection_1d_int():
-
     # setup
     a = np.arange(1050, dtype=int)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -610,7 +518,6 @@ def test_get_orthogonal_selection_1d_int():
         [0, 3, 10, -23, -12, -1],
         # explicit test not sorted
         [3, 105, 23, 127],
-
     ]
     for selection in selections:
         _test_get_orthogonal_selection(a, z, selection)
@@ -646,7 +553,6 @@ def _test_get_orthogonal_selection_2d(a, z, ix0, ix1):
 
 # noinspection PyStatementEffect
 def test_get_orthogonal_selection_2d():
-
     # setup
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
@@ -655,7 +561,6 @@ def test_get_orthogonal_selection_2d():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
-
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
@@ -671,7 +576,7 @@ def test_get_orthogonal_selection_2d():
 
         # integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
+        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
         _test_get_orthogonal_selection_2d(a, z, ix0, ix1)
         ix0.sort()
         ix1.sort()
@@ -726,7 +631,6 @@ def _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2):
 
 
 def test_get_orthogonal_selection_3d():
-
     # setup
     a = np.arange(100000, dtype=int).reshape(200, 50, 10)
     z = zarr.create(shape=a.shape, chunks=(60, 20, 3), dtype=a.dtype)
@@ -735,17 +639,16 @@ def test_get_orthogonal_selection_3d():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
-
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
-        ix2 = np.random.binomial(1, .5, size=a.shape[2]).astype(bool)
+        ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
+        ix2 = np.random.binomial(1, 0.5, size=a.shape[2]).astype(bool)
         _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
 
         # integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
-        ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
+        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
+        ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * 0.5), replace=True)
         _test_get_orthogonal_selection_3d(a, z, ix0, ix1, ix2)
         ix0.sort()
         ix1.sort()
@@ -758,7 +661,6 @@ def test_get_orthogonal_selection_3d():
 
 
 def test_orthogonal_indexing_edge_cases():
-
     a = np.arange(6).reshape(1, 2, 3)
     z = zarr.create(shape=a.shape, chunks=(1, 2, 3), dtype=a.dtype)
     z[:] = a
@@ -791,7 +693,6 @@ def _test_set_orthogonal_selection(v, a, z, selection):
 
 
 def test_set_orthogonal_selection_1d():
-
     # setup
     v = np.arange(1050, dtype=int)
     a = np.empty(v.shape, dtype=int)
@@ -800,7 +701,6 @@ def test_set_orthogonal_selection_1d():
     # test with different degrees of sparseness
     np.random.seed(42)
     for p in 0.5, 0.1, 0.01:
-
         # boolean arrays
         ix = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
         _test_set_orthogonal_selection(v, a, z, ix)
@@ -819,7 +719,6 @@ def test_set_orthogonal_selection_1d():
 
 
 def _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1):
-
     selections = [
         # index both axes with array
         (ix0, ix1),
@@ -834,7 +733,6 @@ def _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1):
 
 
 def test_set_orthogonal_selection_2d():
-
     # setup
     v = np.arange(10000, dtype=int).reshape(1000, 10)
     a = np.empty_like(v)
@@ -843,15 +741,14 @@ def test_set_orthogonal_selection_2d():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
-
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
+        ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
         _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
 
         # integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
+        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
         _test_set_orthogonal_selection_2d(v, a, z, ix0, ix1)
         ix0.sort()
         ix1.sort()
@@ -865,7 +762,6 @@ def test_set_orthogonal_selection_2d():
 
 
 def _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2):
-
     selections = (
         # single value
         (84, 42, 4),
@@ -892,7 +788,6 @@ def _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2):
 
 
 def test_set_orthogonal_selection_3d():
-
     # setup
     v = np.arange(100000, dtype=int).reshape(200, 50, 10)
     a = np.empty_like(v)
@@ -901,17 +796,16 @@ def test_set_orthogonal_selection_3d():
     np.random.seed(42)
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
-
         # boolean arrays
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
-        ix2 = np.random.binomial(1, .5, size=a.shape[2]).astype(bool)
+        ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
+        ix2 = np.random.binomial(1, 0.5, size=a.shape[2]).astype(bool)
         _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
 
         # integer arrays
         ix0 = np.random.choice(a.shape[0], size=int(a.shape[0] * p), replace=True)
-        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * .5), replace=True)
-        ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * .5), replace=True)
+        ix1 = np.random.choice(a.shape[1], size=int(a.shape[1] * 0.5), replace=True)
+        ix2 = np.random.choice(a.shape[2], size=int(a.shape[2] * 0.5), replace=True)
         _test_set_orthogonal_selection_3d(v, a, z, ix0, ix1, ix2)
 
         # sorted increasing
@@ -939,19 +833,13 @@ def test_orthogonal_indexing_fallback_on_get_setitem():
             [0, 0, 0, 1],
         ],
     )
-    np.testing.assert_array_equal(
-        z[[1, 2, 3], [1, 2, 3]], 1
-    )
+    np.testing.assert_array_equal(z[[1, 2, 3], [1, 2, 3]], 1)
     # test broadcasting
-    np.testing.assert_array_equal(
-        z[1, [1, 2, 3]], [1, 0, 0]
-    )
+    np.testing.assert_array_equal(z[1, [1, 2, 3]], [1, 0, 0])
     # test 1D fancy indexing
     z2 = zarr.zeros(5)
     z2[[1, 2, 3]] = 1
-    np.testing.assert_array_equal(
-        z2, [0, 1, 1, 1, 0]
-    )
+    np.testing.assert_array_equal(z2, [0, 1, 1, 1, 0])
 
 
 def _test_get_coordinate_selection(a, z, selection):
@@ -969,8 +857,8 @@ coordinate_selections_1d_bad = [
     Ellipsis,
     # bad stuff
     2.3,
-    'foo',
-    b'xxx',
+    "foo",
+    b"xxx",
     None,
     (0, 0),
     (slice(None), slice(None)),
@@ -979,7 +867,6 @@ coordinate_selections_1d_bad = [
 
 # noinspection PyStatementEffect
 def test_get_coordinate_selection_1d():
-
     # setup
     a = np.arange(1050, dtype=int)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -1023,7 +910,6 @@ def test_get_coordinate_selection_1d():
 
 
 def test_get_coordinate_selection_2d():
-
     # setup
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
@@ -1060,10 +946,8 @@ def test_get_coordinate_selection_2d():
     _test_get_coordinate_selection(a, z, (ix0, ix1))
 
     # multi-dimensional selection
-    ix0 = np.array([[1, 1, 2],
-                    [2, 2, 5]])
-    ix1 = np.array([[1, 3, 2],
-                    [1, 0, 0]])
+    ix0 = np.array([[1, 1, 2], [2, 2, 5]])
+    ix1 = np.array([[1, 3, 2], [1, 0, 0]])
     _test_get_coordinate_selection(a, z, (ix0, ix1))
 
     with pytest.raises(IndexError):
@@ -1120,7 +1004,6 @@ def test_set_coordinate_selection_1d():
 
 
 def test_set_coordinate_selection_2d():
-
     # setup
     v = np.arange(10000, dtype=int).reshape(1000, 10)
     a = np.empty_like(v)
@@ -1146,10 +1029,8 @@ def test_set_coordinate_selection_2d():
             _test_set_coordinate_selection(v, a, z, selection)
 
     # multi-dimensional selection
-    ix0 = np.array([[1, 2, 3],
-                    [4, 5, 6]])
-    ix1 = np.array([[1, 3, 2],
-                    [2, 0, 5]])
+    ix0 = np.array([[1, 2, 3], [4, 5, 6]])
+    ix1 = np.array([[1, 3, 2], [2, 0, 5]])
     _test_set_coordinate_selection(v, a, z, (ix0, ix1))
 
 
@@ -1196,12 +1077,12 @@ block_selections_1d_bad = [
     slice(3, 8, 2),
     # bad stuff
     2.3,
-    'foo',
-    b'xxx',
+    "foo",
+    b"xxx",
     None,
     (0, 0),
     (slice(None), slice(None)),
-    [0, 5, 3]
+    [0, 5, 3],
 ]
 
 
@@ -1211,8 +1092,7 @@ def test_get_block_selection_1d():
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
     z[:] = a
 
-    for selection, expected_idx in \
-            zip(block_selections_1d, block_selections_1d_array_projection):
+    for selection, expected_idx in zip(block_selections_1d, block_selections_1d_array_projection):
         _test_get_block_selection(a, z, selection, expected_idx)
 
     bad_selections = block_selections_1d_bad + [
@@ -1264,8 +1144,7 @@ def test_get_block_selection_2d():
     z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
     z[:] = a
 
-    for selection, expected_idx in \
-            zip(block_selections_2d, block_selections_2d_array_projection):
+    for selection, expected_idx in zip(block_selections_2d, block_selections_2d_array_projection):
         _test_get_block_selection(a, z, selection, expected_idx)
 
     with pytest.raises(IndexError):
@@ -1300,8 +1179,7 @@ def test_set_block_selection_1d():
     a = np.empty(v.shape, dtype=v.dtype)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
 
-    for selection, expected_idx in \
-            zip(block_selections_1d, block_selections_1d_array_projection):
+    for selection, expected_idx in zip(block_selections_1d, block_selections_1d_array_projection):
         _test_set_block_selection(v, a, z, selection, expected_idx)
 
     for selection in block_selections_1d_bad:
@@ -1317,8 +1195,7 @@ def test_set_block_selection_2d():
     a = np.empty(v.shape, dtype=v.dtype)
     z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
 
-    for selection, expected_idx in \
-            zip(block_selections_2d, block_selections_2d_array_projection):
+    for selection, expected_idx in zip(block_selections_2d, block_selections_2d_array_projection):
         _test_set_block_selection(v, a, z, selection, expected_idx)
 
     with pytest.raises(IndexError):
@@ -1347,8 +1224,8 @@ mask_selections_1d_bad = [
     Ellipsis,
     # bad stuff
     2.3,
-    'foo',
-    b'xxx',
+    "foo",
+    b"xxx",
     None,
     (0, 0),
     (slice(None), slice(None)),
@@ -1357,7 +1234,6 @@ mask_selections_1d_bad = [
 
 # noinspection PyStatementEffect
 def test_get_mask_selection_1d():
-
     # setup
     a = np.arange(1050, dtype=int)
     z = zarr.create(shape=a.shape, chunks=100, dtype=a.dtype)
@@ -1384,7 +1260,6 @@ def test_get_mask_selection_1d():
 
 # noinspection PyStatementEffect
 def test_get_mask_selection_2d():
-
     # setup
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
@@ -1417,7 +1292,6 @@ def _test_set_mask_selection(v, a, z, selection):
 
 
 def test_set_mask_selection_1d():
-
     # setup
     v = np.arange(1050, dtype=int)
     a = np.empty_like(v)
@@ -1437,7 +1311,6 @@ def test_set_mask_selection_1d():
 
 
 def test_set_mask_selection_2d():
-
     # setup
     v = np.arange(10000, dtype=int).reshape(1000, 10)
     a = np.empty_like(v)
@@ -1451,7 +1324,6 @@ def test_set_mask_selection_2d():
 
 
 def test_get_selection_out():
-
     # basic selections
     a = np.arange(1050)
     z = zarr.create(shape=1050, chunks=100, dtype=a.dtype)
@@ -1478,7 +1350,7 @@ def test_get_selection_out():
     # test with different degrees of sparseness
     for p in 0.5, 0.1, 0.01:
         ix0 = np.random.binomial(1, p, size=a.shape[0]).astype(bool)
-        ix1 = np.random.binomial(1, .5, size=a.shape[1]).astype(bool)
+        ix1 = np.random.binomial(1, 0.5, size=a.shape[1]).astype(bool)
         selections = [
             # index both axes with array
             (ix0, ix1),
@@ -1525,27 +1397,23 @@ def test_get_selection_out():
 
 
 def test_get_selections_with_fields():
-
-    a = [('aaa', 1, 4.2),
-         ('bbb', 2, 8.4),
-         ('ccc', 3, 12.6)]
-    a = np.array(a, dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+    a = [("aaa", 1, 4.2), ("bbb", 2, 8.4), ("ccc", 3, 12.6)]
+    a = np.array(a, dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
     z = zarr.create(shape=a.shape, chunks=2, dtype=a.dtype, fill_value=None)
     z[:] = a
 
     fields_fixture = [
-        'foo',
-        ['foo'],
-        ['foo', 'bar'],
-        ['foo', 'baz'],
-        ['bar', 'baz'],
-        ['foo', 'bar', 'baz'],
-        ['bar', 'foo'],
-        ['baz', 'bar', 'foo'],
+        "foo",
+        ["foo"],
+        ["foo", "bar"],
+        ["foo", "baz"],
+        ["bar", "baz"],
+        ["foo", "bar", "baz"],
+        ["bar", "foo"],
+        ["baz", "bar", "foo"],
     ]
 
     for fields in fields_fixture:
-
         # total selection
         expect = a[fields]
         actual = z.get_basic_selection(Ellipsis, fields=fields)
@@ -1629,34 +1497,30 @@ def test_get_selections_with_fields():
 
     # missing/bad fields
     with pytest.raises(IndexError):
-        z.get_basic_selection(Ellipsis, fields=['notafield'])
+        z.get_basic_selection(Ellipsis, fields=["notafield"])
     with pytest.raises(IndexError):
         z.get_basic_selection(Ellipsis, fields=slice(None))
 
 
 def test_set_selections_with_fields():
-
-    v = [('aaa', 1, 4.2),
-         ('bbb', 2, 8.4),
-         ('ccc', 3, 12.6)]
-    v = np.array(v, dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+    v = [("aaa", 1, 4.2), ("bbb", 2, 8.4), ("ccc", 3, 12.6)]
+    v = np.array(v, dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
     a = np.empty_like(v)
     z = zarr.empty_like(v, chunks=2)
 
     fields_fixture = [
-        'foo',
+        "foo",
         [],
-        ['foo'],
-        ['foo', 'bar'],
-        ['foo', 'baz'],
-        ['bar', 'baz'],
-        ['foo', 'bar', 'baz'],
-        ['bar', 'foo'],
-        ['baz', 'bar', 'foo'],
+        ["foo"],
+        ["foo", "bar"],
+        ["foo", "baz"],
+        ["bar", "baz"],
+        ["foo", "bar", "baz"],
+        ["bar", "foo"],
+        ["baz", "bar", "foo"],
     ]
 
     for fields in fields_fixture:
-
         # currently multi-field assignment is not supported in numpy, so we won't support
         # it either
         if isinstance(fields, list) and len(fields) > 1:
@@ -1670,7 +1534,6 @@ def test_set_selections_with_fields():
                 z.set_mask_selection([True, False, True], v, fields=fields)
 
         else:
-
             if isinstance(fields, list) and len(fields) == 1:
                 # work around numpy does not support multi-field assignment even if there
                 # is only one field
@@ -1682,8 +1545,8 @@ def test_set_selections_with_fields():
                 key = fields
 
             # setup expectation
-            a[:] = ('', 0, 0)
-            z[:] = ('', 0, 0)
+            a[:] = ("", 0, 0)
+            z[:] = ("", 0, 0)
             assert_array_equal(a, z[:])
             a[key] = v[key]
             # total selection
@@ -1691,31 +1554,31 @@ def test_set_selections_with_fields():
             assert_array_equal(a, z[:])
 
             # basic selection with slice
-            a[:] = ('', 0, 0)
-            z[:] = ('', 0, 0)
+            a[:] = ("", 0, 0)
+            z[:] = ("", 0, 0)
             a[key][0:2] = v[key][0:2]
             z.set_basic_selection(slice(0, 2), v[key][0:2], fields=fields)
             assert_array_equal(a, z[:])
 
             # orthogonal selection
-            a[:] = ('', 0, 0)
-            z[:] = ('', 0, 0)
+            a[:] = ("", 0, 0)
+            z[:] = ("", 0, 0)
             ix = [0, 2]
             a[key][ix] = v[key][ix]
             z.set_orthogonal_selection(ix, v[key][ix], fields=fields)
             assert_array_equal(a, z[:])
 
             # coordinate selection
-            a[:] = ('', 0, 0)
-            z[:] = ('', 0, 0)
+            a[:] = ("", 0, 0)
+            z[:] = ("", 0, 0)
             ix = [0, 2]
             a[key][ix] = v[key][ix]
             z.set_coordinate_selection(ix, v[key][ix], fields=fields)
             assert_array_equal(a, z[:])
 
             # mask selection
-            a[:] = ('', 0, 0)
-            z[:] = ('', 0, 0)
+            a[:] = ("", 0, 0)
+            z[:] = ("", 0, 0)
             ix = [True, False, True]
             a[key][ix] = v[key][ix]
             z.set_mask_selection(ix, v[key][ix], fields=fields)
@@ -1823,17 +1686,24 @@ def test_numpy_int_indexing():
         # 1D test cases
         ((1070,), (50,), [("__getitem__", (slice(200, 400),))]),
         ((1070,), (50,), [("__getitem__", (slice(200, 400, 100),))]),
-        ((1070,), (50,), [
-            ("__getitem__", (slice(200, 400),)),
-            ("__setitem__", (slice(200, 400, 100),)),
-        ]),
-
+        (
+            (1070,),
+            (50,),
+            [
+                ("__getitem__", (slice(200, 400),)),
+                ("__setitem__", (slice(200, 400, 100),)),
+            ],
+        ),
         # 2D test cases
-        ((40, 50), (5, 8), [
-            ("__getitem__", (slice(6, 37, 13), (slice(4, 10)))),
-            ("__setitem__", (slice(None), (slice(None)))),
-        ]),
-    ]
+        (
+            (40, 50),
+            (5, 8),
+            [
+                ("__getitem__", (slice(6, 37, 13), (slice(4, 10)))),
+                ("__setitem__", (slice(None), (slice(None)))),
+            ],
+        ),
+    ],
 )
 def test_accessed_chunks(shape, chunks, ops):
     # Test that only the required chunks are accessed during basic selection operations
@@ -1848,19 +1718,16 @@ def test_accessed_chunks(shape, chunks, ops):
     z = zarr.create(shape=shape, chunks=chunks, store=store)
 
     for ii, (optype, slices) in enumerate(ops):
-
         # Resolve the slices into the accessed chunks for each dimension
-        chunks_per_dim = []
-        for N, C, sl in zip(shape, chunks, slices):
-            chunk_ind = np.arange(N, dtype=int)[sl] // C
-            chunks_per_dim.append(np.unique(chunk_ind))
+        chunks_per_dim = [
+            np.unique(np.arange(N, dtype=int)[sl] // C) for N, C, sl in zip(shape, chunks, slices)
+        ]
 
         # Combine and generate the cartesian product to determine the chunks keys that
         # will be accessed
-        chunks_accessed = []
-        for comb in itertools.product(*chunks_per_dim):
-            chunks_accessed.append(".".join([str(ci) for ci in comb]))
-
+        chunks_accessed = (
+            ".".join([str(ci) for ci in comb]) for comb in itertools.product(*chunks_per_dim)
+        )
         counts_before = store.counter.copy()
 
         # Perform the operation
@@ -1881,9 +1748,8 @@ def test_accessed_chunks(shape, chunks, ops):
             # don't determine if the chunk was actually partial here, just that the
             # counts are consistent that this might have happened
             if optype == "__setitem__":
-                assert (
-                    ("__getitem__", ci) not in delta_counts or
-                    delta_counts.pop(("__getitem__", ci)) == 1
-                )
+                assert ("__getitem__", ci) not in delta_counts or delta_counts.pop(
+                    ("__getitem__", ci)
+                ) == 1
         # Check that no other chunks were accessed
         assert len(delta_counts) == 0
