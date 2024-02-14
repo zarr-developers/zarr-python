@@ -1,27 +1,22 @@
 from __future__ import annotations
-
+from typing import TYPE_CHECKING, Union, Tuple, Iterable, Dict, List, TypeVar, Protocol
 import asyncio
 from asyncio import AbstractEventLoop
 import contextvars
 from dataclasses import dataclass
 from enum import Enum
 import functools
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
-    Literal,
-    Optional,
-    Protocol,
-    Tuple,
-    Type,
-    TypeVar,
-    Union,
-)
+
+if TYPE_CHECKING:
+    from typing import (
+        Any,
+        Awaitable,
+        Callable,
+        Iterator,
+        Literal,
+        Optional,
+        Type,
+    )
 
 import numpy as np
 
@@ -162,10 +157,15 @@ def parse_name(data: JSON, expected: str) -> str:
 def parse_shapelike(data: Any) -> Tuple[int, ...]:
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected an iterable. Got {data} instead.")
-    if not all(lambda v: (isinstance(a, int) and a > 0) for a in data):
-        msg = f"Expected an iterable of integers each greater than 0. Got {data} instead."
+    data_tuple = tuple(data)
+    if len(data_tuple) == 0:
+        raise ValueError("Expected at least one element. Got 0.")
+    if not all(isinstance(v, int) for v in data_tuple):
+        msg = f"Expected an iterable of integers. Got {type(data)} instead."
         raise TypeError(msg)
-    return tuple(data)
+    if not all(lambda v: v > 0 for v in data_tuple):
+        raise ValueError(f"All values must be greater than 0. Got {data}.")
+    return data_tuple
 
 
 def parse_dtype(data: Any) -> np.dtype:

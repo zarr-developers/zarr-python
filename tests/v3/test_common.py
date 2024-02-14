@@ -1,8 +1,8 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
-    from typing import Literal, Any, Iterable, Tuple
+    from typing import Literal, Any, Tuple
 
 import numpy as np
 from src.zarr.v3.common import parse_indexing_order, parse_shapelike
@@ -65,13 +65,17 @@ def parse_indexing_order_valid(data: Literal["C", "F"]):
     assert parse_indexing_order(data) == data
 
 
-@pytest.mark.parametrize("data", [10, ("0", 1, 2, 3), {0: "0"}, []])
+@pytest.mark.parametrize("data", [10, ("0", 1, 2, 3), {"0": "0"}, []])
 def test_parse_shapelike_invalid(data: Any):
-    if not isinstance(data, Iterable):
-        with pytest.raises(TypeError, match="Expected an iterable."):
-            parse_shapelike(data)
+    if isinstance(data, Iterable):
+        if len(data) == 0:
+            with pytest.raises(ValueError, match="Expected at least one element."):
+                parse_shapelike(data)
+        else:
+            with pytest.raises(TypeError, match="Expected an iterable of integers"):
+                parse_shapelike(data)
     else:
-        with pytest.raises(TypeError, match="Expected an iterable of integers"):
+        with pytest.raises(TypeError, match="Expected an iterable."):
             parse_shapelike(data)
 
 
