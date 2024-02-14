@@ -29,6 +29,9 @@ Enhancements
 * Added type hints to ``zarr.creation.create()``.
   By :user:`David Stansby <dstansby>` :issue:`1536`.
 
+* Pyodide support: Don't require fasteners on Emscripten.
+  By :user:`Hood Chatham <hoodmane>` :issue:`1663`.
+
 Docs
 ~~~~
 
