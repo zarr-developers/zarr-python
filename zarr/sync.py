@@ -3,13 +3,12 @@ from collections import defaultdict
 from threading import Lock
 from typing import Protocol
 
-import fasteners
-
 
 class Synchronizer(Protocol):
     """Base class for synchronizers."""
 
     def __getitem__(self, item):
+        # see subclasses
         ...
 
 
@@ -49,6 +48,8 @@ class ProcessSynchronizer(Synchronizer):
         self.path = path
 
     def __getitem__(self, item):
+        import fasteners
+
         path = os.path.join(self.path, item)
         lock = fasteners.InterProcessLock(path)
         return lock
