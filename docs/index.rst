@@ -19,7 +19,7 @@ Zarr-Python
 
 **Version**: |version|
 
-**Download documentation**: `Zipped HTML <https://zarr.readthedocs.io/_/downloads/en/stable/htmlzip/>`_
+**Download documentation**: `PDF/Zipped HTML/EPUB <https://readthedocs.org/projects/zarr/downloads/>`_
 
 **Useful links**:
 `Installation <installation.html>`_ |
@@ -60,6 +60,7 @@ Zarr is a file storage format for chunked, compressed, N-dimensional arrays base
         +++
 
         .. button-ref:: tutorial
+            :ref-type: ref
             :expand:
             :color: dark
             :click-parent:

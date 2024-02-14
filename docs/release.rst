@@ -18,11 +18,103 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.17.0:
+
+2.17.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Added type hints to ``zarr.creation.create()``.
+  By :user:`David Stansby <dstansby>` :issue:`1536`.
+
+* Pyodide support: Don't require fasteners on Emscripten.
+  By :user:`Hood Chatham <hoodmane>` :issue:`1663`.
+
+Docs
+~~~~
+
+* Minor correction and changes in documentation.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1509`.
+
+* Fix typo in documentation.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1554`
+
+* The documentation build now fails if there are any warnings.
+  By :user:`David Stansby <dstansby>` :issue:`1548`.
+
+* Add links to ``numcodecs`` docs in the tutorial.
+  By :user:`David Stansby <dstansby>` :issue:`1535`.
+
+* Enable offline formats for documentation builds.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1551`.
+
+* Minor tweak to advanced indexing tutorial examples.
+  By :user:`Ross Barnowski <rossbar>` :issue:`1550`.
+
+* Automatically document array members using sphinx-automodapi.
+  By :user:`David Stansby <dstansby>` :issue:`1547`.
+
+* Add a markdown file documenting the current and former core-developer team.
+  By :user:`Joe Hamman <jhamman>` :issue:`1628`.
+
+* Add Norman Rzepka to core-dev team.
+  By :user:`Joe Hamman <jhamman>` :issue:`1630`.
+
+* Added section about accessing zip files that are on s3.
+  By :user:`Jeff Peck <jeffpeck10x>` :issue:`1613`.
+
+* Add V3 roadmap and design document.
+  By :user:`Joe Hamman <jhamman>` :issue:`1583`.
+
 Maintenance
 ~~~~~~~~~~~
 
+* Drop Python 3.8 and NumPy 1.20
+  By :user:`Josh Moore <joshmoore>`; :issue:`1557`.
+
+* Cache result of ``FSStore._fsspec_installed()``.
+  By :user:`Janick Martinez Esturo <ph03>` :issue:`1581`.
+
+* Extend copyright notice to 2023.
+  By :user:`Jack Kelly <JackKelly>` :issue:`1528`.
+
+* Change occurrence of ``io.open()`` into ``open()``.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1421`.
+
+* Preserve ``dimension_separator`` when resizing arrays.
+  By :user:`Ziwen Liu <ziw-liu>` :issue:`1533`.
+
+* Initialise some sets in tests with set literals instead of list literals.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1534`.
+
 * Allow ``black`` code formatter to be run with any Python version.
-  By :user:`David Stansby <dstansby>` :issue:`1549`
+  By :user:`David Stansby <dstansby>` :issue:`1549`.
+
+* Remove ``sphinx-rtd-theme`` dependency from ``pyproject.toml``.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1563`.
+
+* Remove ``CODE_OF_CONDUCT.md`` file from the Zarr-Python repository.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1572`.
+
+* Bump version of black in pre-commit.
+  By :user:`David Stansby <dtstansby>` :issue:`1559`.
+
+* Use list comprehension where applicable.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1555`.
+
+* Use format specification mini-language to format string.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1558`.
+
+* Single startswith() call instead of multiple ones.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1556`.
+
+* Move codespell options around.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1196`.
+
+* Remove unused mypy ignore comments.
+  By :user:`David Stansby <dtstansby>` :issue:`1602`.
 
 .. _release_2.16.1:
 
@@ -152,10 +244,12 @@ Major changes
 
 * Improve Zarr V3 support, adding partial store read/write and storage transformers.
   Add new features from the `v3 spec <https://zarr-specs.readthedocs.io/en/latest/core/v3.0.html>`_:
+
     * storage transformers
     * `get_partial_values` and `set_partial_values`
     * efficient `get_partial_values` implementation for `FSStoreV3`
     * sharding storage transformer
+
   By :user:`Jonathan Striebel <jstriebel>`; :issue:`1096`, :issue:`1111`.
 
 * N5 nows supports Blosc.
