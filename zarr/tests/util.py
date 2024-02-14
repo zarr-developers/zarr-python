@@ -69,6 +69,30 @@ except ImportError:  # pragma: no cover
     have_fsspec = False
 
 
+try:
+    import bsddb3  # noqa: F401
+
+    have_bsddb3 = True
+except ImportError:  # pragma: no cover
+    have_bsddb3 = False
+
+
+try:
+    import lmdb  # noqa: F401
+
+    have_lmdb = True
+except ImportError:  # pragma: no cover
+    have_lmdb = False
+
+
+try:
+    import sqlite3  # noqa: F401
+
+    have_sqlite3 = True
+except ImportError:  # pragma: no cover
+    have_sqlite3 = False
+
+
 def abs_container():
     from azure.core.exceptions import ResourceExistsError
     import azure.storage.blob as asb

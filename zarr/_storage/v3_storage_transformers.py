@@ -351,7 +351,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
 
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)  # type: ignore
+        _rmdir_from_keys_v3(self, path)
 
     def __contains__(self, key):
         if self._is_data_key(key):

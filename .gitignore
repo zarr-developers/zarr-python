@@ -51,6 +51,7 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
+docs/_autoapi/
 
 # PyBuilder
 target/
@@ -77,3 +78,5 @@ zarr/version.py
 #doesnotexist
 #test_sync*
 data/*
+
+.DS_Store

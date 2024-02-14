@@ -1,5 +1,5 @@
 """Convenience functions for storing and loading data."""
-import io
+
 import itertools
 import os
 import re
@@ -28,6 +28,8 @@ from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 from typing import Union
 
 StoreLike = Union[BaseStore, MutableMapping, str, None]
+
+_builtin_open = open  # builtin open is later shadowed by a local open function
 
 
 def _check_and_update_path(store: BaseStore, path):
@@ -491,7 +493,7 @@ class _LogWriter:
         elif callable(log):
             self.log_func = log
         elif isinstance(log, str):
-            self.log_file = io.open(log, mode="w")
+            self.log_file = _builtin_open(log, mode="w")
             self.needs_closing = True
         elif hasattr(log, "write"):
             self.log_file = log
@@ -674,10 +676,8 @@ def copy_store(
 
     # setup logging
     with _LogWriter(log) as log:
-
         # iterate over source keys
         for source_key in sorted(source.keys()):
-
             # filter to keys under source path
             if source_store_version == 2:
                 if not source_key.startswith(source_path):
@@ -756,7 +756,7 @@ def copy(
     log=None,
     if_exists="raise",
     dry_run=False,
-    **create_kws
+    **create_kws,
 ):
     """Copy the `source` array or group into the `dest` group.
 
@@ -877,7 +877,6 @@ def copy(
 
     # setup logging
     with _LogWriter(log) as log:
-
         # do the copying
         n_copied, n_skipped, n_bytes_copied = _copy(
             log,
@@ -889,7 +888,7 @@ def copy(
             without_attrs=without_attrs,
             if_exists=if_exists,
             dry_run=dry_run,
-            **create_kws
+            **create_kws,
         )
 
         # log a final message with a summary of what happened
@@ -947,12 +946,10 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
 
         # take action
         if do_copy:
-
             # log a message about what we're going to do
             log("copy {} {} {}".format(source.name, source.shape, source.dtype))
 
             if not dry_run:
-
                 # clear the way
                 if exists:
                     del dest[name]
@@ -1037,12 +1034,10 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
 
         # take action
         if do_copy:
-
             # log action
             log("copy {}".format(source.name))
 
             if not dry_run:
-
                 # clear the way
                 if exists_array:
                     del dest[name]
@@ -1055,7 +1050,6 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
                     grp.attrs.update(source.attrs)
 
             else:
-
                 # setup for dry run without creating any groups in the
                 # destination
                 if dest is not None:
@@ -1075,7 +1069,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
                     without_attrs=without_attrs,
                     if_exists=if_exists,
                     dry_run=dry_run,
-                    **create_kws
+                    **create_kws,
                 )
                 n_copied += c
                 n_skipped += s
@@ -1098,7 +1092,7 @@ def copy_all(
     log=None,
     if_exists="raise",
     dry_run=False,
-    **create_kws
+    **create_kws,
 ):
     """Copy all children of the `source` group into the `dest` group.
 
@@ -1188,7 +1182,6 @@ def copy_all(
 
     # setup logging
     with _LogWriter(log) as log:
-
         for k in source.keys():
             c, s, b = _copy(
                 log,
@@ -1200,7 +1193,7 @@ def copy_all(
                 without_attrs=without_attrs,
                 if_exists=if_exists,
                 dry_run=dry_run,
-                **create_kws
+                **create_kws,
             )
             n_copied += c
             n_skipped += s
@@ -1261,7 +1254,6 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=""
             return key.endswith(".zarray") or key.endswith(".zgroup") or key.endswith(".zattrs")
 
     else:
-
         assert_zarr_v3_api_available()
 
         sfx = _get_metadata_suffix(store)  # type: ignore

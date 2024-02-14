@@ -14,6 +14,7 @@ classes may also optionally implement a `rename` method (rename all members unde
 path) and a `getsize` method (return the size in bytes of a given value).
 
 """
+
 import atexit
 import errno
 import glob
@@ -28,6 +29,7 @@ import warnings
 import zipfile
 from collections import OrderedDict
 from collections.abc import MutableMapping
+from functools import lru_cache
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
@@ -39,6 +41,7 @@ from numcodecs.abc import Codec
 from numcodecs.compat import ensure_bytes, ensure_text, ensure_contiguous_ndarray_like
 from numcodecs.registry import codec_registry
 from zarr.context import Context
+from zarr.types import PathLike as Path
 
 from zarr.errors import (
     MetadataError,
@@ -104,7 +107,6 @@ except ImportError:  # pragma: no cover
     default_compressor = Zlib()
 
 
-Path = Union[str, bytes, None]
 # allow MutableMapping for backwards compatibility
 StoreLike = Union[BaseStore, MutableMapping]
 
@@ -205,7 +207,7 @@ def rmdir(store: StoreLike, path: Path = None):
     store_version = getattr(store, "_store_version", 2)
     if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
         # pass through
-        store.rmdir(path)  # type: ignore
+        store.rmdir(path)
     else:
         # slow version, delete one key at a time
         if store_version == 2:
@@ -235,7 +237,7 @@ def listdir(store: BaseStore, path: Path = None):
     path = normalize_storage_path(path)
     if hasattr(store, "listdir"):
         # pass through
-        return store.listdir(path)  # type: ignore
+        return store.listdir(path)
     else:
         # slow version, iterate through all keys
         warnings.warn(
@@ -288,7 +290,7 @@ def getsize(store: BaseStore, path: Path = None) -> int:
     if hasattr(store, "getsize"):
         # pass through
         path = normalize_storage_path(path)
-        return store.getsize(path)  # type: ignore
+        return store.getsize(path)
     elif isinstance(store, MutableMapping):
         return _getsize(store, path)
     else:
@@ -482,7 +484,6 @@ def _init_array_metadata(
     dimension_separator=None,
     storage_transformers=(),
 ):
-
     store_version = getattr(store, "_store_version", 2)
 
     path = normalize_storage_path(path)
@@ -627,7 +628,7 @@ def _init_array_metadata(
 
     key = _prefix_to_array_key(store, _path_to_prefix(path))
     if hasattr(store, "_metadata_class"):
-        store[key] = store._metadata_class.encode_array_metadata(meta)  # type: ignore
+        store[key] = store._metadata_class.encode_array_metadata(meta)
     else:
         store[key] = encode_array_metadata(meta)
 
@@ -687,7 +688,6 @@ def _init_group_metadata(
     path: Optional[str] = None,
     chunk_store: Optional[StoreLike] = None,
 ):
-
     store_version = getattr(store, "_store_version", 2)
     path = normalize_storage_path(path)
 
@@ -731,10 +731,10 @@ def _init_group_metadata(
     if store_version == 3:
         meta = {"attributes": {}}  # type: ignore
     else:
-        meta = {}  # type: ignore
+        meta = {}
     key = _prefix_to_group_key(store, _path_to_prefix(path))
     if hasattr(store, "_metadata_class"):
-        store[key] = store._metadata_class.encode_group_metadata(meta)  # type: ignore
+        store[key] = store._metadata_class.encode_group_metadata(meta)
     else:
         store[key] = encode_group_metadata(meta)
 
@@ -785,7 +785,7 @@ class KVStore(Store):
         return len(self._mutable_mapping)
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}: \n{repr(self._mutable_mapping)}\n at {hex(id(self))}>"
+        return f"<{self.__class__.__name__}: \n{self._mutable_mapping!r}\n at {id(self):#x}>"
 
     def __eq__(self, other):
         if isinstance(other, KVStore):
@@ -1055,7 +1055,6 @@ class DirectoryStore(Store):
     """
 
     def __init__(self, path, normalize_keys=False, dimension_separator=None):
-
         # guard conditions
         path = os.path.abspath(path)
         if os.path.exists(path) and not os.path.isdir(path):
@@ -1415,7 +1414,6 @@ class FSStore(Store):
     def getitems(
         self, keys: Sequence[str], *, contexts: Mapping[str, Context]
     ) -> Mapping[str, Any]:
-
         keys_transformed = [self._normalize_key(key) for key in keys]
         results = self.map.getitems(keys_transformed, on_error="omit")
         # The function calling this method may not recognize the transformed keys
@@ -1540,6 +1538,7 @@ class FSStore(Store):
         self.map.clear()
 
     @classmethod
+    @lru_cache(maxsize=None)
     def _fsspec_installed(cls):
         """Returns true if fsspec is installed"""
         import importlib.util
@@ -1768,7 +1767,6 @@ class ZipStore(Store):
         mode="a",
         dimension_separator=None,
     ):
-
         # store properties
         path = os.path.abspath(path)
         self.path = path
