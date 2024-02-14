@@ -2050,6 +2050,7 @@ class TestArrayWithDBMStore(TestArray):
 class TestArrayWithDBMStoreBerkeleyDB(TestArray):
     def create_store(self):
         import bsddb3
+
         path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
         store = DBMStore(path, flag="n", open=bsddb3.btopen)
@@ -2771,6 +2772,7 @@ class TestArrayWithDBMStoreV3(TestArrayV3):
 class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
     def create_store(self) -> DBMStoreV3:
         import bsddb3
+
         path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
         store = DBMStoreV3(path, flag="n", open=bsddb3.btopen)
