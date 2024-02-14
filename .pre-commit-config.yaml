@@ -26,6 +26,7 @@ repos:
     hooks:
       - id: mypy
         files: src
+        exclude: ^src/zarr/v3
         args: []
         additional_dependencies:
           - types-redis

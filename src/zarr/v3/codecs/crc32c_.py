@@ -14,10 +14,9 @@ from crc32c import crc32c
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import BytesLike
-from zarr.v3.metadata import CodecMetadata
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import CoreArrayMetadata
+    from zarr.v3.metadata import ArraySpec, CodecMetadata, RuntimeConfiguration
 
 
 @frozen
@@ -27,15 +26,12 @@ class Crc32cCodecMetadata:
 
 @frozen
 class Crc32cCodec(BytesBytesCodec):
-    array_metadata: CoreArrayMetadata
     is_fixed_size = True
 
     @classmethod
-    def from_metadata(
-        cls, codec_metadata: CodecMetadata, array_metadata: CoreArrayMetadata
-    ) -> Crc32cCodec:
+    def from_metadata(cls, codec_metadata: CodecMetadata) -> Crc32cCodec:
         assert isinstance(codec_metadata, Crc32cCodecMetadata)
-        return cls(array_metadata=array_metadata)
+        return cls()
 
     @classmethod
     def get_metadata_class(cls) -> Type[Crc32cCodecMetadata]:
@@ -44,6 +40,8 @@ class Crc32cCodec(BytesBytesCodec):
     async def decode(
         self,
         chunk_bytes: bytes,
+        _chunk_spec: ArraySpec,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         crc32_bytes = chunk_bytes[-4:]
         inner_bytes = chunk_bytes[:-4]
@@ -54,10 +52,12 @@ class Crc32cCodec(BytesBytesCodec):
     async def encode(
         self,
         chunk_bytes: bytes,
+        _chunk_spec: ArraySpec,
+        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         return chunk_bytes + np.uint32(crc32c(chunk_bytes)).tobytes()
 
-    def compute_encoded_size(self, input_byte_length: int) -> int:
+    def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length + 4
 
 

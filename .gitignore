@@ -78,5 +78,6 @@ src/zarr/_version.py
 #doesnotexist
 #test_sync*
 data/*
+src/fixture/
 
 .DS_Store
