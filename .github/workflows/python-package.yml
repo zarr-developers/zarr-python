@@ -75,9 +75,7 @@ jobs:
       run: |
         # Skip ABS on 3.9, see https://github.com/zarr-developers/zarr-python/pull/1542/#issuecomment-1945557365 etc.
         if [[ "${{ matrix.python-version }}" == '3.9' ]]; then
-            echo "ZARR_TEST_ABS=0" >> "$GITHUB_ENV"
-        else
-            echo "ZARR_TEST_ABS=1" >> "$GITHUB_ENV"
+            export PYTEST_ADDOPTS="-k 'not test_s3'"
         fi
         conda activate zarr-env
         mkdir ~/blob_emulator
