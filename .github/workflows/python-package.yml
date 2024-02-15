@@ -68,12 +68,17 @@ jobs:
       shell: "bash -l {0}"
       env:
         COVERAGE_FILE: .coverage.${{matrix.python-version}}.${{matrix.numpy_version}}
-        ZARR_TEST_ABS: 1
         ZARR_TEST_MONGO: 1
         ZARR_TEST_REDIS: 1
         ZARR_V3_EXPERIMENTAL_API: 1
         ZARR_V3_SHARDING: 1
       run: |
+        # Skip ABS on 3.9, see https://github.com/zarr-developers/zarr-python/pull/1542/#issuecomment-1945557365 etc.
+        if [[ "${{ matrix.python-version }}" == '3.9' ]]; then
+            echo "ZARR_TEST_ABS=0" >> "$GITHUB_ENV"
+        else
+            echo "ZARR_TEST_ABS=1" >> "$GITHUB_ENV"
+        fi
         conda activate zarr-env
         mkdir ~/blob_emulator
         azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &

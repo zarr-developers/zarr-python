@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: True
       matrix:
-        python-version: ['3.10', '3.11']
+        python-version: ['3.9', '3.10', '3.11']
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,12 +45,17 @@ jobs:
       - name: Run Tests
         shell: bash -l {0}
         run: |
+          # Skip ABS on 3.9, see https://github.com/zarr-developers/zarr-python/pull/1542/#issuecomment-1945557365 etc.
+          if [[ "${{ matrix.python-version }}" == '3.9' ]]; then
+              echo "ZARR_TEST_ABS=0" >> "$GITHUB_ENV"
+          else
+              echo "ZARR_TEST_ABS=1" >> "$GITHUB_ENV"
+          fi
           conda activate zarr-env
           mkdir ~/blob_emulator
           azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
           pytest -sv --timeout=300
         env:
-          ZARR_TEST_ABS: 1
           ZARR_V3_EXPERIMENTAL_API: 1
           ZARR_V3_SHARDING: 1
       - name: Conda info
