@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 import numpy as np
 from dataclasses import dataclass
 from warnings import warn
@@ -15,12 +15,13 @@ from zarr.v3.abc.codec import (
 )
 from zarr.v3.abc.metadata import Metadata
 from zarr.v3.codecs.registry import get_codec_class
+from zarr.v3.common import parse_named_configuration
 
 if TYPE_CHECKING:
-    from typing import Dict, Iterator, List, Optional, Tuple, Union
-    from typing_extensions import Self
+    from typing import Iterator, List, Optional, Tuple, Union
     from zarr.v3.store import StorePath
-    from zarr.v3.metadata import ArrayMetadata, RuntimeConfiguration
+    from zarr.v3.metadata import ArrayMetadata
+    from zarr.v3.config import RuntimeConfiguration
     from zarr.v3.common import JSON, ArraySpec, BytesLike, SliceSelection
 
 
@@ -31,19 +32,23 @@ class CodecPipeline(Metadata):
     bytes_bytes_codecs: Tuple[BytesBytesCodec, ...]
 
     @classmethod
-    def from_dict(cls, data: Union[JSON, List[Codec]]) -> Self:
+    def from_dict(cls, data: Iterable[Union[JSON, Codec]]) -> CodecPipeline:
         out: List[Codec] = []
+        if not isinstance(data, Iterable):
+            raise TypeError(f"Expected iterable, got {type(data)}")
+
         for c in data:
             if isinstance(c, Codec):
                 out.append(c)
             else:
-                out.append(get_codec_class(c["name"]).from_dict(c))
+                name_parsed, _ = parse_named_configuration(c, require_configuration=False)
+                out.append(get_codec_class(name_parsed).from_dict(c))  # type: ignore[arg-type]
         return CodecPipeline.from_list(out)
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> JSON:
         return [c.to_dict() for c in self]
 
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve(self, array_spec: ArraySpec) -> CodecPipeline:
         return CodecPipeline.from_list([c.evolve(array_spec) for c in self])
 
     @classmethod

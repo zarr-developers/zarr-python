@@ -13,10 +13,8 @@ from zarr.v3.store import StorePath
 if TYPE_CHECKING:
     from typing_extensions import Self
     from zarr.v3.common import BytesLike, SliceSelection
-    from zarr.v3.metadata import (
-        ArrayMetadata,
-        RuntimeConfiguration,
-    )
+    from zarr.v3.metadata import ArrayMetadata
+    from zarr.v3.config import RuntimeConfiguration
 
 
 class Codec(Metadata):

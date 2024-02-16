@@ -1,22 +1,13 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Union, Tuple, Iterable, Dict, List, TypeVar, Protocol
+from typing import TYPE_CHECKING, Union, Tuple, Iterable, Dict, List, TypeVar, overload
 import asyncio
-from asyncio import AbstractEventLoop
 import contextvars
 from dataclasses import dataclass
 from enum import Enum
 import functools
 
 if TYPE_CHECKING:
-    from typing import (
-        Any,
-        Awaitable,
-        Callable,
-        Iterator,
-        Literal,
-        Optional,
-        Type,
-    )
+    from typing import Any, Awaitable, Callable, Iterator, Optional, Type
 
 import numpy as np
 
@@ -30,7 +21,7 @@ ChunkCoords = Tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 SliceSelection = Tuple[slice, ...]
 Selection = Union[slice, SliceSelection]
-JSON = Union[str, None, int, float, Dict[str, "JSON"], List["JSON"]]
+JSON = Union[str, None, int, float, Enum, Dict[str, "JSON"], List["JSON"], Tuple["JSON", ...]]
 
 
 def product(tup: ChunkCoords) -> int:
@@ -82,51 +73,6 @@ def parse_enum(data: JSON, cls: Type[E]) -> E:
     raise ValueError(f"Value must be one of {repr(list(enum_names(cls)))}. Got {data} instead.")
 
 
-class NamedConfig(Protocol):
-    @property
-    def name(self) -> str:
-        pass
-
-    @property
-    def configuration(self) -> Dict[str, Any]:
-        pass
-
-
-# todo: handle negative values?
-def parse_concurrency(data: Any) -> int | None:
-    if data is None or isinstance(data, int):
-        return data
-    raise TypeError(f"Expected int or None, got {type(data)}")
-
-
-def parse_asyncio_loop(data: Any) -> AbstractEventLoop | None:
-    if data is None or isinstance(data, AbstractEventLoop):
-        return data
-    raise TypeError(f"Expected AbstractEventLoop or None, got {type(data)}")
-
-
-@dataclass(frozen=True)
-class RuntimeConfiguration:
-    order: Literal["C", "F"] = "C"
-    concurrency: Optional[int] = None
-    asyncio_loop: Optional[AbstractEventLoop] = None
-
-    def __init__(
-        self,
-        order: Literal["C", "F"] = "C",
-        concurrency: Optional[int] = None,
-        asyncio_loop: Optional[AbstractEventLoop] = None,
-    ):
-
-        order_parsed = parse_indexing_order(order)
-        concurrency_parsed = parse_concurrency(concurrency)
-        asyncio_loop_parsed = parse_asyncio_loop(asyncio_loop)
-
-        object.__setattr__(self, "order", order_parsed)
-        object.__setattr__(self, "concurrency", concurrency_parsed)
-        object.__setattr__(self, "asyncio_loop_parsed", asyncio_loop_parsed)
-
-
 @dataclass(frozen=True)
 class ArraySpec:
     shape: ChunkCoords
@@ -147,13 +93,50 @@ class ArraySpec:
         return len(self.shape)
 
 
-def parse_name(data: JSON, expected: str) -> str:
+def parse_name(data: JSON, expected: Optional[str] = None) -> str:
     if isinstance(data, str):
-        if data == expected:
+        if expected is None or data == expected:
             return data
         raise ValueError(f"Expected '{expected}'. Got {data} instead.")
     else:
         raise TypeError(f"Expected a string, got an instance of {type(data)}.")
+
+
+def parse_configuration(data: JSON) -> dict:
+    if not isinstance(data, dict):
+        raise TypeError(f"Expected dict, got {type(data)}")
+    return data
+
+
+@overload
+def parse_named_configuration(
+    data: JSON, expected_name: Optional[str] = None
+) -> Tuple[str, Dict[str, JSON]]:
+    ...
+
+
+@overload
+def parse_named_configuration(
+    data: JSON, expected_name: Optional[str] = None, *, require_configuration: bool = True
+) -> Tuple[str, Optional[Dict[str, JSON]]]:
+    ...
+
+
+def parse_named_configuration(
+    data: JSON, expected_name: Optional[str] = None, *, require_configuration: bool = True
+) -> Tuple[str, Optional[JSON]]:
+    if not isinstance(data, dict):
+        raise TypeError(f"Expected dict, got {type(data)}")
+    if "name" not in data:
+        raise ValueError(f"Named configuration does not have a 'name' key. Got {data}.")
+    name_parsed = parse_name(data["name"], expected_name)
+    if "configuration" in data:
+        configuration_parsed = parse_configuration(data["configuration"])
+    elif require_configuration:
+        raise ValueError(f"Named configuration does not have a 'configuration' key. Got {data}.")
+    else:
+        configuration_parsed = None
+    return name_parsed, configuration_parsed
 
 
 def parse_shapelike(data: Any) -> Tuple[int, ...]:
@@ -178,10 +161,3 @@ def parse_dtype(data: Any) -> np.dtype:
 def parse_fill_value(data: Any) -> Any:
     # todo: real validation
     return data
-
-
-def parse_indexing_order(data: Any) -> Literal["C", "F"]:
-    if data in ("C", "F"):
-        return data
-    msg = f"Expected one of ('C', 'F'), got {data} instead."
-    raise ValueError(msg)

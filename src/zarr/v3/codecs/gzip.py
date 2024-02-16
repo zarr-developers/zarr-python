@@ -6,16 +6,18 @@ from typing import TYPE_CHECKING
 from numcodecs.gzip import GZip
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import parse_name, to_thread
+from zarr.v3.common import parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
     from typing import Optional, Dict
     from typing_extensions import Self
-    from zarr.v3.metadata import RuntimeConfiguration
     from zarr.v3.common import JSON, ArraySpec, BytesLike
+    from zarr.v3.config import RuntimeConfiguration
 
 
 def parse_gzip_level(data: JSON) -> int:
+    if not isinstance(data, (int)):
+        raise TypeError(f"Expected int, got {type(data)}")
     if data not in range(0, 10):
         raise ValueError(
             f"Expected an integer from the inclusive range (0, 9). Got {data} instead."
@@ -36,8 +38,8 @@ class GzipCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"], "gzip")
-        return cls(**data["configuration"])
+        _, configuration_parsed = parse_named_configuration(data, "gzip")
+        return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> Dict[str, JSON]:
         return {"name": "gzip", "configuration": {"level": self.level}}

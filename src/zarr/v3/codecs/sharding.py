@@ -21,7 +21,7 @@ from zarr.v3.common import (
     ChunkCoordsLike,
     concurrent_map,
     parse_enum,
-    parse_name,
+    parse_named_configuration,
     parse_shapelike,
     product,
 )
@@ -39,16 +39,7 @@ from zarr.v3.metadata import (
 )
 
 if TYPE_CHECKING:
-    from typing import (
-        Awaitable,
-        Callable,
-        Dict,
-        Iterator,
-        List,
-        Optional,
-        Set,
-        Tuple,
-    )
+    from typing import Awaitable, Callable, Dict, Iterator, List, Optional, Set, Tuple
     from typing_extensions import Self
 
     from zarr.v3.store import StorePath
@@ -56,9 +47,9 @@ if TYPE_CHECKING:
         JSON,
         ChunkCoords,
         BytesLike,
-        RuntimeConfiguration,
         SliceSelection,
     )
+    from zarr.v3.config import RuntimeConfiguration
 
 MAX_UINT_64 = 2**64 - 1
 
@@ -234,7 +225,7 @@ class ShardingCodec(
     chunk_shape: ChunkCoords
     codecs: CodecPipeline
     index_codecs: CodecPipeline
-    index_location: ShardingCodecIndexLocation = "end"
+    index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end
 
     def __init__(
         self,
@@ -266,8 +257,8 @@ class ShardingCodec(
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"], "sharding_indexed")
-        return cls(**data["configuration"])
+        _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
+        return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> Dict[str, JSON]:
         return {

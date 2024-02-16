@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
-    from typing import Dict, Any
+    from typing import Dict
     from typing_extensions import Self
 
 from dataclasses import fields
@@ -11,7 +11,7 @@ from zarr.v3.common import JSON
 
 
 class Metadata:
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> JSON:
         """
         Recursively serialize this model to a dictionary.
         This method inspects the fields of self and calls `x.to_dict()` for any fields that

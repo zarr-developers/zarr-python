@@ -3,15 +3,11 @@ from typing import TYPE_CHECKING, Dict, Iterable
 
 from dataclasses import dataclass, replace
 
-from zarr.v3.common import JSON, ArraySpec, ChunkCoordsLike, parse_name
+from zarr.v3.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
 
 if TYPE_CHECKING:
-    from zarr.v3.common import RuntimeConfiguration
-    from typing import (
-        TYPE_CHECKING,
-        Optional,
-        Tuple,
-    )
+    from zarr.v3.config import RuntimeConfiguration
+    from typing import TYPE_CHECKING, Optional, Tuple
     from typing_extensions import Self
 
 import numpy as np
@@ -25,7 +21,7 @@ def parse_transpose_order(data: JSON) -> Tuple[int]:
         raise TypeError(f"Expected an iterable. Got {data} instead.")
     if not all(isinstance(a, int) for a in data):
         raise TypeError(f"Expected an iterable of integers. Got {data} instead.")
-    return tuple(data)
+    return tuple(data)  # type: ignore[return-value]
 
 
 @dataclass(frozen=True)
@@ -35,14 +31,14 @@ class TransposeCodec(ArrayArrayCodec):
     order: Tuple[int, ...]
 
     def __init__(self, *, order: ChunkCoordsLike) -> None:
-        order_parsed = parse_transpose_order(order)
+        order_parsed = parse_transpose_order(order)  # type: ignore[arg-type]
 
         object.__setattr__(self, "order", order_parsed)
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"], "transpose")
-        return cls(**data["configuration"])
+        _, configuration_parsed = parse_named_configuration(data, "transpose")
+        return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> Dict[str, JSON]:
         return {"name": "transpose", "configuration": {"order": list(self.order)}}

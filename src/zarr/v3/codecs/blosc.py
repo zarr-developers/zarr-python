@@ -11,12 +11,13 @@ from numcodecs.blosc import Blosc
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import parse_enum, parse_name, to_thread
+from zarr.v3.common import parse_enum, parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.v3.common import JSON, ArraySpec, BytesLike, RuntimeConfiguration
+    from zarr.v3.common import JSON, ArraySpec, BytesLike
+    from zarr.v3.config import RuntimeConfiguration
 
 
 class BloscShuffle(Enum):
@@ -25,7 +26,7 @@ class BloscShuffle(Enum):
     bitshuffle = "bitshuffle"
 
     @classmethod
-    def from_int(cls, num: int) -> Self:
+    def from_int(cls, num: int) -> BloscShuffle:
         blosc_shuffle_int_to_str = {
             0: "noshuffle",
             1: "shuffle",
@@ -106,8 +107,8 @@ class BloscCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"], "blosc")
-        return cls(**data["configuration"])
+        _, configuration_parsed = parse_named_configuration(data, "blosc")
+        return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> Dict[str, JSON]:
         if self.typesize is None:

@@ -9,10 +9,11 @@ import numpy as np
 
 from zarr.v3.abc.codec import ArrayBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import parse_enum, parse_name
+from zarr.v3.common import parse_enum, parse_named_configuration
 
 if TYPE_CHECKING:
-    from zarr.v3.common import JSON, ArraySpec, BytesLike, RuntimeConfiguration
+    from zarr.v3.common import JSON, ArraySpec, BytesLike
+    from zarr.v3.config import RuntimeConfiguration
     from typing_extensions import Self
 
 
@@ -37,8 +38,11 @@ class BytesCodec(ArrayBytesCodec):
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"], "bytes")
-        return cls(**data.get("configuration", {}))
+        _, configuration_parsed = parse_named_configuration(
+            data, "bytes", require_configuration=False
+        )
+        configuration_parsed = configuration_parsed or {}
+        return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> Dict[str, JSON]:
         if self.endian is None:
@@ -96,7 +100,7 @@ class BytesCodec(ArrayBytesCodec):
     ) -> Optional[BytesLike]:
         if chunk_array.dtype.itemsize > 1:
             byteorder = self._get_byteorder(chunk_array)
-            if self.endian != byteorder:
+            if self.endian is not None and self.endian != byteorder:
                 new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)
                 chunk_array = chunk_array.astype(new_dtype)
         return chunk_array.tobytes()

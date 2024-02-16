@@ -6,12 +6,11 @@ import json
 import numpy as np
 
 from zarr.v3.chunk_grids import ChunkGrid, RegularChunkGrid
-from zarr.v3.chunk_key_encodings import ChunkKeyEncoding
+from zarr.v3.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 
 
 if TYPE_CHECKING:
     from typing import Any, Literal, Union, List, Optional, Tuple
-    from typing_extensions import Self
     from zarr.v3.codecs.pipeline import CodecPipeline
 
 
@@ -22,13 +21,11 @@ from zarr.v3.common import (
     JSON,
     ArraySpec,
     ChunkCoords,
-    NamedConfig,
-    RuntimeConfiguration,
     parse_dtype,
     parse_fill_value,
-    parse_indexing_order,
     parse_shapelike,
 )
+from zarr.v3.config import RuntimeConfiguration, parse_indexing_order
 
 
 def runtime_configuration(
@@ -93,7 +90,7 @@ class DataType(Enum):
         return data_type_to_numpy[self]
 
     @classmethod
-    def from_dtype(cls, dtype: np.dtype) -> Self:
+    def from_dtype(cls, dtype: np.dtype) -> DataType:
         dtype_to_data_type = {
             "|b1": "bool",
             "bool": "bool",
@@ -164,7 +161,9 @@ class ArrayMetadata(Metadata):
         self._validate_metadata()
 
     def _validate_metadata(self) -> None:
-        if len(self.shape) != len(self.chunk_grid.chunk_shape):
+        if isinstance(self.chunk_grid, RegularChunkGrid) and len(self.shape) != len(
+            self.chunk_grid.chunk_shape
+        ):
             raise ValueError(
                 "`chunk_shape` and `shape` need to have the same number of dimensions."
             )
@@ -225,6 +224,9 @@ class ArrayMetadata(Metadata):
     def to_dict(self) -> Dict[str, Any]:
         out_dict = super().to_dict()
 
+        if not isinstance(out_dict, dict):
+            raise TypeError(f"Expected dict. Got {type(out_dict)}.")
+
         # if `dimension_names` is `None`, we do not include it in
         # the metadata document
         if out_dict["dimension_names"] is None:
@@ -253,8 +255,9 @@ class ArrayV2Metadata(Metadata):
         chunks: ChunkCoords,
         fill_value: Any,
         order: Literal["C", "F"],
+        dimension_separator: Literal[".", "/"] = ".",
         compressor: Optional[Dict[str, Any]] = None,
-        filters: Optional[Dict[str, Any]] = None,
+        filters: Optional[List[Dict[str, Any]]] = None,
         attributes: Optional[Dict[str, JSON]] = None,
     ):
         """
@@ -265,6 +268,7 @@ class ArrayV2Metadata(Metadata):
         chunks_parsed = parse_shapelike(chunks)
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
+        dimension_separator_parsed = parse_separator(order)
         filters_parsed = parse_filters(filters)
         fill_value_parsed = parse_fill_value(fill_value)
         attributes_parsed = parse_attributes(attributes)
@@ -274,6 +278,7 @@ class ArrayV2Metadata(Metadata):
         object.__setattr__(self, "chunks", chunks_parsed)
         object.__setattr__(self, "compressor", compressor_parsed)
         object.__setattr__(self, "order", order_parsed)
+        object.__setattr__(self, "dimension_separator", dimension_separator_parsed)
         object.__setattr__(self, "filters", filters_parsed)
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "attributes", attributes_parsed)
@@ -363,7 +368,9 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def parse_codecs(data: Iterable[NamedConfig]) -> CodecPipeline:
+def parse_codecs(data: Iterable[Union[Codec, JSON]]) -> CodecPipeline:
     from zarr.v3.codecs.pipeline import CodecPipeline
 
+    if not isinstance(data, Iterable):
+        raise TypeError(f"Expected iterable, got {type(data)}")
     return CodecPipeline.from_dict(data)

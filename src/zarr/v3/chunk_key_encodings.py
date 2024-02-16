@@ -1,20 +1,25 @@
 from __future__ import annotations
+from abc import abstractmethod
 from typing import TYPE_CHECKING, Dict, Literal
 from dataclasses import dataclass
 from zarr.v3.abc.metadata import Metadata
 
-from zarr.v3.common import JSON, ChunkCoords
+from zarr.v3.common import (
+    JSON,
+    ChunkCoords,
+    parse_named_configuration,
+)
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    pass
 
 SeparatorLiteral = Literal[".", "/"]
 
 
-def parse_separator(data: JSON) -> ChunkCoords:
+def parse_separator(data: JSON) -> SeparatorLiteral:
     if data not in (".", "/"):
         raise ValueError(f"Expected an '.' or '/' separator. Got {data} instead.")
-    return data
+    return data  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -28,17 +33,27 @@ class ChunkKeyEncoding(Metadata):
         object.__setattr__(self, "separator", separator_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: Dict[str, JSON]) -> ChunkKeyEncoding:
         if isinstance(data, ChunkKeyEncoding):
-            return data
-        if data["name"] == "default":
-            return DefaultChunkKeyEncoding(**data["configuration"])
-        if data["name"] == "v2":
-            return V2ChunkKeyEncoding(**data["configuration"])
-        raise ValueError(f"Unknown chunk key encoding. Got {data['name']}.")
+            return data  # type: ignore
+
+        name_parsed, configuration_parsed = parse_named_configuration(data)
+        if name_parsed == "default":
+            return DefaultChunkKeyEncoding(**configuration_parsed)  # type: ignore[arg-type]
+        if name_parsed == "v2":
+            return V2ChunkKeyEncoding(**configuration_parsed)  # type: ignore[arg-type]
+        raise ValueError(f"Unknown chunk key encoding. Got {name_parsed}.")
 
     def to_dict(self) -> Dict[str, JSON]:
         return {"name": self.name, "configuration": {"separator": self.separator}}
+
+    @abstractmethod
+    def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
+        pass
+
+    @abstractmethod
+    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+        pass
 
 
 @dataclass(frozen=True)

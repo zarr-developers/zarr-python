@@ -8,8 +8,9 @@ from typing import Iterator, List, Literal, Optional, Tuple
 import numpy as np
 import pytest
 import zarr
+from zarr.v3.abc.codec import Codec
 from zarr.v3.array import Array, AsyncArray
-from zarr.v3.common import NamedConfig, Selection
+from zarr.v3.common import Selection
 from zarr.v3.indexing import morton_order_iter
 from zarr.v3.codecs import (
     ShardingCodec,
@@ -243,7 +244,7 @@ async def test_order(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((32, 8), order=input_order)
 
-    codecs_: List[NamedConfig] = (
+    codecs_: List[Codec] = (
         [
             ShardingCodec(
                 chunk_shape=(16, 8),
@@ -310,9 +311,7 @@ def test_order_implicit(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16), order=input_order)
 
-    codecs_: Optional[List[NamedConfig]] = (
-        [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
-    )
+    codecs_: Optional[List[Codec]] = [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
 
     a = Array.create(
         store / "order_implicit",
@@ -355,7 +354,7 @@ async def test_transpose(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((1, 32, 8), order=input_order)
 
-    codecs_: List[NamedConfig] = (
+    codecs_: List[Codec] = (
         [
             ShardingCodec(
                 chunk_shape=(1, 16, 8),

@@ -7,12 +7,12 @@ from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import parse_name, to_thread
+from zarr.v3.common import parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.v3.metadata import RuntimeConfiguration
+    from zarr.v3.config import RuntimeConfiguration
     from zarr.v3.common import BytesLike, JSON, ArraySpec
 
 
@@ -46,8 +46,8 @@ class ZstdCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"], "zstd")
-        return cls(**data["configuration"])
+        _, configuration_parsed = parse_named_configuration(data, "zstd")
+        return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> Dict[str, JSON]:
         return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}

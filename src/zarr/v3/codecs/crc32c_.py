@@ -9,12 +9,13 @@ from crc32c import crc32c
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import parse_name
+from zarr.v3.common import parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.v3.common import JSON, BytesLike, RuntimeConfiguration, ArraySpec
+    from zarr.v3.common import JSON, BytesLike, ArraySpec
+    from zarr.v3.config import RuntimeConfiguration
 
 
 @dataclass(frozen=True)
@@ -23,7 +24,7 @@ class Crc32cCodec(BytesBytesCodec):
 
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
-        parse_name(data["name"], "crc32c")
+        parse_named_configuration(data, "crc32c", require_configuration=False)
         return cls()
 
     def to_dict(self) -> Dict[str, JSON]:
@@ -43,7 +44,7 @@ class Crc32cCodec(BytesBytesCodec):
         if computed_checksum != stored_checksum:
             raise ValueError(
                 "Stored and computed checksum do not match. "
-                + f"Stored: {stored_checksum}. Computed: {computed_checksum}."
+                + f"Stored: {stored_checksum!r}. Computed: {computed_checksum!r}."
             )
         return inner_bytes
 

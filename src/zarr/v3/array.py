@@ -16,6 +16,7 @@ import json
 from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
 
 import numpy as np
+from zarr.v3.abc.codec import Codec
 
 
 # from zarr.v3.array_v2 import ArrayV2
@@ -24,12 +25,12 @@ from zarr.v3.common import (
     ZARR_JSON,
     ArraySpec,
     ChunkCoords,
-    NamedConfig,
-    RuntimeConfiguration,
     Selection,
     SliceSelection,
     concurrent_map,
 )
+from zarr.v3.config import RuntimeConfiguration
+
 from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.chunk_grids import RegularChunkGrid
 from zarr.v3.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
@@ -82,7 +83,7 @@ class AsyncArray:
             Tuple[Literal["default"], Literal[".", "/"]],
             Tuple[Literal["v2"], Literal[".", "/"]],
         ] = ("default", "/"),
-        codecs: Optional[Iterable[NamedConfig]] = None,
+        codecs: Optional[Iterable[Union[Codec, Dict[str, Any]]]] = None,
         dimension_names: Optional[Iterable[str]] = None,
         attributes: Optional[Dict[str, Any]] = None,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
@@ -192,6 +193,7 @@ class AsyncArray:
         return self.metadata.attributes
 
     async def getitem(self, selection: Selection):
+        assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
@@ -255,6 +257,7 @@ class AsyncArray:
                 out[out_selection] = self.metadata.fill_value
 
     async def setitem(self, selection: Selection, value: np.ndarray) -> None:
+        assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
         chunk_shape = self.metadata.chunk_grid.chunk_shape
         indexer = BasicIndexer(
             selection,
@@ -361,10 +364,16 @@ class AsyncArray:
                 await store_path.set(chunk_bytes)
 
     async def resize(self, new_shape: ChunkCoords) -> AsyncArray:
-        assert len(new_shape) == len(self.metadata.shape)
+        if len(new_shape) != len(self.metadata.shape):
+            raise ValueError(
+                "The new shape must have the same number of dimensions "
+                + f"(={len(self.metadata.shape)})."
+            )
+
         new_metadata = replace(self.metadata, shape=new_shape)
 
         # Remove all chunks outside of the new shape
+        assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
         chunk_shape = self.metadata.chunk_grid.chunk_shape
         chunk_key_encoding = self.metadata.chunk_key_encoding
         old_chunk_coords = set(all_chunk_coords(self.metadata.shape, chunk_shape))
@@ -386,7 +395,7 @@ class AsyncArray:
         await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
         return replace(self, metadata=new_metadata)
 
-    async def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
+    async def update_attributes(self, new_attributes: Dict[str, Any]) -> AsyncArray:
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
@@ -417,7 +426,7 @@ class Array:
             Tuple[Literal["default"], Literal[".", "/"]],
             Tuple[Literal["v2"], Literal[".", "/"]],
         ] = ("default", "/"),
-        codecs: Optional[Iterable[NamedConfig]] = None,
+        codecs: Optional[Iterable[Union[Codec, Dict[str, Any]]]] = None,
         dimension_names: Optional[Iterable[str]] = None,
         attributes: Optional[Dict[str, Any]] = None,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
@@ -502,7 +511,7 @@ class Array:
         return self._async_array.metadata
 
     @property
-    def store_path(self) -> str:
+    def store_path(self) -> StorePath:
         return self._async_array.store_path
 
     def __getitem__(self, selection: Selection):
