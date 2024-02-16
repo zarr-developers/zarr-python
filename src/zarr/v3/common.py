@@ -64,17 +64,19 @@ async def to_thread(func, /, *args, **kwargs):
     return await loop.run_in_executor(None, func_call)
 
 
-def enum_names(enum: Enum) -> Iterator[str]:
+E = TypeVar("E", bound=Enum)
+
+
+def enum_names(enum: Type[E]) -> Iterator[str]:
     for item in enum:
         yield item.name
-
-
-E = TypeVar("E", bound=Enum)
 
 
 def parse_enum(data: JSON, cls: Type[E]) -> E:
     if isinstance(data, cls):
         return data
+    if not isinstance(data, str):
+        raise TypeError(f"Expected str, got {type(data)}")
     if data in enum_names(cls):
         return cls(data)
     raise ValueError(f"Value must be one of {repr(list(enum_names(cls)))}. Got {data} instead.")
