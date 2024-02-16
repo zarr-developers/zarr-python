@@ -18,6 +18,9 @@ Release notes
 Unreleased
 ----------
 
+* Change occurrences of % and format() to f-strings.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1423`.
+
 .. _release_2.17.0:
 
 2.17.0
