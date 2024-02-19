@@ -2,7 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from typing import Any, Coroutine, List, Optional
+from typing import (
+    Any,
+    AsyncIterator,
+    Callable,
+    Coroutine,
+    List,
+    Optional,
+    TypeVar,
+)
+from typing_extensions import ParamSpec
 
 from zarr.v3.config import SyncConfiguration
 
@@ -90,18 +99,24 @@ def _get_loop():
     return loop[0]
 
 
+P = ParamSpec("P")
+T = TypeVar("T")
+
+
 class SyncMixin:
 
     _sync_configuration: SyncConfiguration
 
-    def _sync(self, coroutine: Coroutine):  # TODO: type this
+    def _sync(self, coroutine: Coroutine[Any, Any, T]) -> T:
         # TODO: refactor this to to take *args and **kwargs and pass those to the method
         # this should allow us to better type the sync wrapper
         return sync(coroutine, loop=self._sync_configuration.asyncio_loop)
 
-    def _sync_iter(self, func: Coroutine, *args, **kwargs) -> List[Any]:  # TODO: type this
-        async def iter_to_list() -> List[Any]:
+    def _sync_iter(
+        self, func: Callable[P, AsyncIterator[T]], *args: P.args, **kwargs: P.kwargs
+    ) -> List[T]:
+        async def iter_to_list() -> List[T]:
             # TODO: replace with generators so we don't materialize the entire iterator at once
             return [item async for item in func(*args, **kwargs)]
 
-        return self._sync(iter_to_list)
+        return self._sync(iter_to_list())
