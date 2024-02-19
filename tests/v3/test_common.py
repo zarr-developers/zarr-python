@@ -17,19 +17,23 @@ def test_product(data: Tuple[int, ...]):
 
 
 # todo: test
-def test_concurrent_map(): ...
+def test_concurrent_map():
+    ...
 
 
 # todo: test
-def test_to_thread(): ...
+def test_to_thread():
+    ...
 
 
 # todo: test
-def test_enum_names(): ...
+def test_enum_names():
+    ...
 
 
 # todo: test
-def test_parse_enum(): ...
+def test_parse_enum():
+    ...
 
 
 @pytest.mark.parametrize("data", [("foo", "bar"), (10, 11)])
@@ -89,4 +93,5 @@ def parse_dtype(data: Tuple[str, np.dtype]):
 
 
 # todo: figure out what it means to test this
-def test_parse_fill_value(): ...
+def test_parse_fill_value():
+    ...
