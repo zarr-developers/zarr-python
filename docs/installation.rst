@@ -19,13 +19,4 @@ latest GitHub main::
 
     $ pip install git+https://github.com/zarr-developers/zarr-python.git
 
-To work with Zarr source code in development, install from GitHub::
-
-    $ git clone --recursive https://github.com/zarr-developers/zarr-python.git
-    $ cd zarr-python
-    $ python -m pip install -e .
-
-To verify that Zarr has been fully installed, run the test suite::
-
-    $ pip install pytest
-    $ python -m pytest -v --pyargs zarr
+To work with Zarr source code in development, see `Contributing <contributing.html>`_.
