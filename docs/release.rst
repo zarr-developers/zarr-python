@@ -18,8 +18,25 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.17.1:
+
+2.17.1
+------
+
+Enhancements
+~~~~~~~~~~~~
+
 * Change occurrences of % and format() to f-strings.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1423`.
+
+* Proper argument for numpy.reshape.
+  By :user:`Dimitri Papadopoulos Orfanos <DmitriPapadopoulos>` :issue:`1425`.
+
+Docs
+~~~~
+
+* ZIP related tweaks.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1641`.
 
 .. _release_2.17.0:
 
