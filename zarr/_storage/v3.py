@@ -118,7 +118,6 @@ def _get_files_and_dirs_from_path(store, path):
 
 
 class FSStoreV3(FSStore, StoreV3):
-
     # FSStoreV3 doesn't use this (FSStore uses it within _normalize_key)
     _META_KEYS = ()
 
@@ -570,7 +569,7 @@ class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
         consolidated_format = meta.get("zarr_consolidated_format", None)
         if consolidated_format != 1:
             raise MetadataError(
-                "unsupported zarr consolidated metadata format: %s" % consolidated_format
+                f"unsupported zarr consolidated metadata format: {consolidated_format}"
             )
 
         # decode metadata
