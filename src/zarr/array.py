@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 # Notes on what I've changed here:
 # 1. Split Array into AsyncArray and Array
 # 3. Added .size and .attrs methods
@@ -8,7 +10,6 @@
 # 1. Was splitting the array into two classes really necessary?
 # 2. Do we really need runtime_configuration? Specifically, the asyncio_loop seems problematic
 
-from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
@@ -23,15 +24,13 @@ from zarr.abc.codec import Codec
 from zarr.codecs import BytesCodec
 from zarr.common import (
     ZARR_JSON,
-    ArraySpec,
     ChunkCoords,
     Selection,
-    SliceSelection,
     concurrent_map,
 )
 from zarr.config import RuntimeConfiguration
 
-from zarr.indexing import BasicIndexer, all_chunk_coords, is_total_slice
+from zarr.indexing import BasicIndexer, all_chunk_coords
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.metadata import ArrayMetadata
@@ -208,13 +207,19 @@ class AsyncArray:
         )
 
         # reading chunks and decoding them
-        await concurrent_map(
+        await self.codecs.read_batched(
             [
-                (chunk_coords, chunk_selection, out_selection, out)
+                (
+                    self.store_path
+                    / self.metadata.chunk_key_encoding.encode_chunk_key(chunk_coords),
+                    self.metadata.get_chunk_spec(chunk_coords),
+                    chunk_selection,
+                    out_selection,
+                )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            self._read_chunk,
-            self.runtime_configuration.concurrency,
+            out,
+            self.runtime_configuration,
         )
 
         if out.shape:
@@ -224,37 +229,6 @@ class AsyncArray:
 
     async def _save_metadata(self) -> None:
         await (self.store_path / ZARR_JSON).set(self.metadata.to_bytes())
-
-    async def _read_chunk(
-        self,
-        chunk_coords: ChunkCoords,
-        chunk_selection: SliceSelection,
-        out_selection: SliceSelection,
-        out: np.ndarray,
-    ):
-        chunk_spec = self.metadata.get_chunk_spec(chunk_coords)
-        chunk_key_encoding = self.metadata.chunk_key_encoding
-        chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
-        store_path = self.store_path / chunk_key
-
-        if self.codecs.supports_partial_decode:
-            chunk_array = await self.codecs.decode_partial(
-                store_path, chunk_selection, chunk_spec, self.runtime_configuration
-            )
-            if chunk_array is not None:
-                out[out_selection] = chunk_array
-            else:
-                out[out_selection] = self.metadata.fill_value
-        else:
-            chunk_bytes = await store_path.get()
-            if chunk_bytes is not None:
-                chunk_array = await self.codecs.decode(
-                    chunk_bytes, chunk_spec, self.runtime_configuration
-                )
-                tmp = chunk_array[chunk_selection]
-                out[out_selection] = tmp
-            else:
-                out[out_selection] = self.metadata.fill_value
 
     async def setitem(self, selection: Selection, value: np.ndarray) -> None:
         assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
@@ -279,97 +253,25 @@ class AsyncArray:
                 value = value.astype(self.metadata.dtype, order="A")
 
         # merging with existing data and encoding chunks
-        await concurrent_map(
+        await self.codecs.write_batched(
             [
                 (
-                    value,
-                    chunk_shape,
-                    chunk_coords,
+                    self.store_path
+                    / self.metadata.chunk_key_encoding.encode_chunk_key(chunk_coords),
+                    self.metadata.get_chunk_spec(chunk_coords),
                     chunk_selection,
                     out_selection,
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            self._write_chunk,
-            self.runtime_configuration.concurrency,
+            value,
+            self.runtime_configuration,
         )
 
-    async def _write_chunk(
-        self,
-        value: np.ndarray,
-        chunk_shape: ChunkCoords,
-        chunk_coords: ChunkCoords,
-        chunk_selection: SliceSelection,
-        out_selection: SliceSelection,
-    ):
-        chunk_spec = self.metadata.get_chunk_spec(chunk_coords)
-        chunk_key_encoding = self.metadata.chunk_key_encoding
-        chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
-        store_path = self.store_path / chunk_key
-
-        if is_total_slice(chunk_selection, chunk_shape):
-            # write entire chunks
-            if np.isscalar(value):
-                chunk_array = np.empty(
-                    chunk_shape,
-                    dtype=self.metadata.dtype,
-                )
-                chunk_array.fill(value)
-            else:
-                chunk_array = value[out_selection]
-            await self._write_chunk_to_store(store_path, chunk_array, chunk_spec)
-
-        elif self.codecs.supports_partial_encode:
-            # print("encode_partial", chunk_coords, chunk_selection, repr(self))
-            await self.codecs.encode_partial(
-                store_path,
-                value[out_selection],
-                chunk_selection,
-                chunk_spec,
-                self.runtime_configuration,
-            )
-        else:
-            # writing partial chunks
-            # read chunk first
-            chunk_bytes = await store_path.get()
-
-            # merge new value
-            if chunk_bytes is None:
-                chunk_array = np.empty(
-                    chunk_shape,
-                    dtype=self.metadata.dtype,
-                )
-                chunk_array.fill(self.metadata.fill_value)
-            else:
-                chunk_array = (
-                    await self.codecs.decode(chunk_bytes, chunk_spec, self.runtime_configuration)
-                ).copy()  # make a writable copy
-            chunk_array[chunk_selection] = value[out_selection]
-
-            await self._write_chunk_to_store(store_path, chunk_array, chunk_spec)
-
-    async def _write_chunk_to_store(
-        self, store_path: StorePath, chunk_array: np.ndarray, chunk_spec: ArraySpec
-    ):
-        if np.all(chunk_array == self.metadata.fill_value):
-            # chunks that only contain fill_value will be removed
-            await store_path.delete()
-        else:
-            chunk_bytes = await self.codecs.encode(
-                chunk_array, chunk_spec, self.runtime_configuration
-            )
-            if chunk_bytes is None:
-                await store_path.delete()
-            else:
-                await store_path.set(chunk_bytes)
-
-    async def resize(self, new_shape: ChunkCoords) -> AsyncArray:
-        if len(new_shape) != len(self.metadata.shape):
-            raise ValueError(
-                "The new shape must have the same number of dimensions "
-                + f"(={len(self.metadata.shape)})."
-            )
-
+    async def resize(
+        self, new_shape: ChunkCoords, delete_outside_chunks: bool = True
+    ) -> AsyncArray:
+        assert len(new_shape) == len(self.metadata.shape)
         new_metadata = replace(self.metadata, shape=new_shape)
 
         # Remove all chunks outside of the new shape
@@ -379,17 +281,19 @@ class AsyncArray:
         old_chunk_coords = set(all_chunk_coords(self.metadata.shape, chunk_shape))
         new_chunk_coords = set(all_chunk_coords(new_shape, chunk_shape))
 
-        async def _delete_key(key: str) -> None:
-            await (self.store_path / key).delete()
+        if delete_outside_chunks:
 
-        await concurrent_map(
-            [
-                (chunk_key_encoding.encode_chunk_key(chunk_coords),)
-                for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
-            ],
-            _delete_key,
-            self.runtime_configuration.concurrency,
-        )
+            async def _delete_key(key: str) -> None:
+                await (self.store_path / key).delete()
+
+            await concurrent_map(
+                [
+                    (chunk_key_encoding.encode_chunk_key(chunk_coords),)
+                    for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
+                ],
+                _delete_key,
+                self.runtime_configuration.concurrency,
+            )
 
         # Write new metadata
         await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())

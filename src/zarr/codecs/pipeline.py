@@ -19,6 +19,7 @@ from zarr.common import parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import Iterator, List, Optional, Tuple, Union
+    from typing_extensions import Self
     from zarr.store import StorePath
     from zarr.metadata import ArrayMetadata
     from zarr.config import RuntimeConfiguration
@@ -43,16 +44,16 @@ class CodecPipeline(Metadata):
             else:
                 name_parsed, _ = parse_named_configuration(c, require_configuration=False)
                 out.append(get_codec_class(name_parsed).from_dict(c))  # type: ignore[arg-type]
-        return CodecPipeline.from_list(out)
+        return cls.from_list(out)
 
     def to_dict(self) -> JSON:
         return [c.to_dict() for c in self]
 
-    def evolve(self, array_spec: ArraySpec) -> CodecPipeline:
-        return CodecPipeline.from_list([c.evolve(array_spec) for c in self])
+    def evolve(self, array_spec: ArraySpec) -> Self:
+        return type(self).from_list([c.evolve(array_spec) for c in self])
 
     @classmethod
-    def from_list(cls, codecs: List[Codec]) -> CodecPipeline:
+    def from_list(cls, codecs: List[Codec]) -> Self:
         from zarr.codecs.sharding import ShardingCodec
 
         if not any(isinstance(codec, ArrayBytesCodec) for codec in codecs):
@@ -90,7 +91,7 @@ class CodecPipeline(Metadata):
                 + "writes, which may lead to inefficient performance."
             )
 
-        return CodecPipeline(
+        return cls(
             array_array_codecs=tuple(
                 codec for codec in codecs if isinstance(codec, ArrayArrayCodec)
             ),
@@ -126,7 +127,7 @@ class CodecPipeline(Metadata):
             codec.validate(array_metadata)
 
     def _codecs_with_resolved_metadata(
-        self, array_spec: ArraySpec
+        self, chunk_spec: ArraySpec
     ) -> Tuple[
         List[Tuple[ArrayArrayCodec, ArraySpec]],
         Tuple[ArrayBytesCodec, ArraySpec],
@@ -134,39 +135,39 @@ class CodecPipeline(Metadata):
     ]:
         aa_codecs_with_spec: List[Tuple[ArrayArrayCodec, ArraySpec]] = []
         for aa_codec in self.array_array_codecs:
-            aa_codecs_with_spec.append((aa_codec, array_spec))
-            array_spec = aa_codec.resolve_metadata(array_spec)
+            aa_codecs_with_spec.append((aa_codec, chunk_spec))
+            chunk_spec = aa_codec.resolve_metadata(chunk_spec)
 
-        ab_codec_with_spec = (self.array_bytes_codec, array_spec)
-        array_spec = self.array_bytes_codec.resolve_metadata(array_spec)
+        ab_codec_with_spec = (self.array_bytes_codec, chunk_spec)
+        chunk_spec = self.array_bytes_codec.resolve_metadata(chunk_spec)
 
         bb_codecs_with_spec: List[Tuple[BytesBytesCodec, ArraySpec]] = []
         for bb_codec in self.bytes_bytes_codecs:
-            bb_codecs_with_spec.append((bb_codec, array_spec))
-            array_spec = bb_codec.resolve_metadata(array_spec)
+            bb_codecs_with_spec.append((bb_codec, chunk_spec))
+            chunk_spec = bb_codec.resolve_metadata(chunk_spec)
 
         return (aa_codecs_with_spec, ab_codec_with_spec, bb_codecs_with_spec)
 
     async def decode(
         self,
         chunk_bytes: BytesLike,
-        array_spec: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         (
             aa_codecs_with_spec,
             ab_codec_with_spec,
             bb_codecs_with_spec,
-        ) = self._codecs_with_resolved_metadata(array_spec)
+        ) = self._codecs_with_resolved_metadata(chunk_spec)
 
-        for bb_codec, array_spec in bb_codecs_with_spec[::-1]:
-            chunk_bytes = await bb_codec.decode(chunk_bytes, array_spec, runtime_configuration)
+        for bb_codec, chunk_spec in bb_codecs_with_spec[::-1]:
+            chunk_bytes = await bb_codec.decode(chunk_bytes, chunk_spec, runtime_configuration)
 
-        ab_codec, array_spec = ab_codec_with_spec
-        chunk_array = await ab_codec.decode(chunk_bytes, array_spec, runtime_configuration)
+        ab_codec, chunk_spec = ab_codec_with_spec
+        chunk_array = await ab_codec.decode(chunk_bytes, chunk_spec, runtime_configuration)
 
-        for aa_codec, array_spec in aa_codecs_with_spec[::-1]:
-            chunk_array = await aa_codec.decode(chunk_array, array_spec, runtime_configuration)
+        for aa_codec, chunk_spec in aa_codecs_with_spec[::-1]:
+            chunk_array = await aa_codec.decode(chunk_array, chunk_spec, runtime_configuration)
 
         return chunk_array
 
@@ -186,18 +187,18 @@ class CodecPipeline(Metadata):
     async def encode(
         self,
         chunk_array: np.ndarray,
-        array_spec: ArraySpec,
+        chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         (
             aa_codecs_with_spec,
             ab_codec_with_spec,
             bb_codecs_with_spec,
-        ) = self._codecs_with_resolved_metadata(array_spec)
+        ) = self._codecs_with_resolved_metadata(chunk_spec)
 
-        for aa_codec, array_spec in aa_codecs_with_spec:
+        for aa_codec, chunk_spec in aa_codecs_with_spec:
             chunk_array_maybe = await aa_codec.encode(
-                chunk_array, array_spec, runtime_configuration
+                chunk_array, chunk_spec, runtime_configuration
             )
             if chunk_array_maybe is None:
                 return None
