@@ -8,6 +8,7 @@ class Synchronizer(Protocol):
     """Base class for synchronizers."""
 
     def __getitem__(self, item):
+        # see subclasses
         ...
 
 
