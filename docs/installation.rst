@@ -6,8 +6,10 @@ Zarr depends on NumPy. It is generally best to `install NumPy
 appropriate for your operating system and Python distribution. Other dependencies should be
 installed automatically if using one of the installation methods below.
 
-Note: Zarr endorses `SPEC 0 <https://scientific-python.org/specs/spec-0000/>`_ and follows the version support window as outlined. 
-Please see https://github.com/zarr-developers/zarr-python/issues/1616 for more details.
+Note: Zarr endorses `SPEC 0 <https://scientific-python.org/specs/spec-0000/>`_ and follows the version support window as outlined below: 
+
+- Python: 36 months after initial release
+- Core package dependencies (e.g. NumPy): 24 months after initial release
 
 Install Zarr from PyPI::
 
