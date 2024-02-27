@@ -16,7 +16,7 @@ class ObjectStore(Store):
 
     store: _ObjectStore
 
-    def init(self, store: _ObjectStore):
+    def __init__(self, store: _ObjectStore):
         self.store = store
 
     def __str__(self) -> str:
