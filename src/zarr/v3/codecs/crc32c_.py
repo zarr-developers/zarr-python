@@ -1,41 +1,34 @@
 from __future__ import annotations
+from dataclasses import dataclass
 
-from typing import (
-    TYPE_CHECKING,
-    Literal,
-    Optional,
-    Type,
-)
+from typing import TYPE_CHECKING
 
 import numpy as np
-from attr import frozen, field
+
 from crc32c import crc32c
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import BytesLike
+from zarr.v3.common import parse_named_configuration
 
 if TYPE_CHECKING:
-    from zarr.v3.metadata import ArraySpec, CodecMetadata, RuntimeConfiguration
+    from typing import Dict, Optional
+    from typing_extensions import Self
+    from zarr.v3.common import JSON, BytesLike, ArraySpec
+    from zarr.v3.config import RuntimeConfiguration
 
 
-@frozen
-class Crc32cCodecMetadata:
-    name: Literal["crc32c"] = field(default="crc32c", init=False)
-
-
-@frozen
+@dataclass(frozen=True)
 class Crc32cCodec(BytesBytesCodec):
     is_fixed_size = True
 
     @classmethod
-    def from_metadata(cls, codec_metadata: CodecMetadata) -> Crc32cCodec:
-        assert isinstance(codec_metadata, Crc32cCodecMetadata)
+    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+        parse_named_configuration(data, "crc32c", require_configuration=False)
         return cls()
 
-    @classmethod
-    def get_metadata_class(cls) -> Type[Crc32cCodecMetadata]:
-        return Crc32cCodecMetadata
+    def to_dict(self) -> Dict[str, JSON]:
+        return {"name": "crc32c"}
 
     async def decode(
         self,
@@ -46,7 +39,13 @@ class Crc32cCodec(BytesBytesCodec):
         crc32_bytes = chunk_bytes[-4:]
         inner_bytes = chunk_bytes[:-4]
 
-        assert np.uint32(crc32c(inner_bytes)).tobytes() == bytes(crc32_bytes)
+        computed_checksum = np.uint32(crc32c(inner_bytes)).tobytes()
+        stored_checksum = bytes(crc32_bytes)
+        if computed_checksum != stored_checksum:
+            raise ValueError(
+                "Stored and computed checksum do not match. "
+                + f"Stored: {stored_checksum!r}. Computed: {computed_checksum!r}."
+            )
         return inner_bytes
 
     async def encode(

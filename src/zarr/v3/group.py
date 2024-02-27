@@ -1,15 +1,15 @@
 from __future__ import annotations
+from dataclasses import asdict, dataclass, field, replace
 
 import asyncio
 import json
 import logging
 from typing import Any, Dict, Literal, Optional, Union, AsyncIterator, Iterator, List
-
-from attr import asdict, field, frozen  # , validators
+from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.array import AsyncArray, Array
 from zarr.v3.attributes import Attributes
-from zarr.v3.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, make_cattr
+from zarr.v3.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
 from zarr.v3.config import RuntimeConfiguration, SyncConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import SyncMixin, sync
@@ -17,29 +17,56 @@ from zarr.v3.sync import SyncMixin, sync
 logger = logging.getLogger("zarr.group")
 
 
-@frozen
-class GroupMetadata:
-    attributes: Dict[str, Any] = field(factory=dict)
-    zarr_format: Literal[2, 3] = 3
-    node_type: Literal["group"] = field(default="group", init=True)
+def parse_zarr_format(data: Any) -> Literal[2, 3]:
+    if data in (2, 3):
+        return data
+    msg = msg = f"Invalid zarr_format. Expected one 2 or 3. Got {data}."
+    raise ValueError(msg)
 
+
+# todo: convert None to empty dict
+def parse_attributes(data: Any) -> Dict[str, Any]:
+    if data is None:
+        return {}
+    elif isinstance(data, dict) and all(map(lambda v: isinstance(v, str), data.keys())):
+        return data
+    msg = f"Expected dict with string keys. Got {type(data)} instead."
+    raise TypeError(msg)
+
+
+@dataclass(frozen=True)
+class GroupMetadata(Metadata):
+    attributes: Dict[str, Any] = field(default_factory=dict)
+    zarr_format: Literal[2, 3] = 3
+    node_type: Literal["group"] = field(default="group", init=False)
+
+    # todo: rename this, since it doesn't return bytes
     def to_bytes(self) -> Dict[str, bytes]:
         if self.zarr_format == 3:
-            return {ZARR_JSON: json.dumps(asdict(self)).encode()}
-        elif self.zarr_format == 2:
+            return {ZARR_JSON: json.dumps(self.to_dict()).encode()}
+        else:
             return {
                 ZGROUP_JSON: self.zarr_format,
                 ZATTRS_JSON: json.dumps(self.attributes).encode(),
             }
-        else:
-            raise ValueError(f"unexpected zarr_format: {self.zarr_format}")
+
+    def __init__(self, attributes: Dict[str, Any] = None, zarr_format: Literal[2, 3] = 3):
+        attributes_parsed = parse_attributes(attributes)
+        zarr_format_parsed = parse_zarr_format(zarr_format)
+
+        object.__setattr__(self, "attributes", attributes_parsed)
+        object.__setattr__(self, "zarr_format", zarr_format_parsed)
 
     @classmethod
-    def from_json(cls, zarr_json: Any) -> GroupMetadata:
-        return make_cattr().structure(zarr_json, GroupMetadata)
+    def from_dict(cls, data: Dict[str, Any]) -> GroupMetadata:
+        assert data.pop("node_type", None) in ("group", None)
+        return cls(**data)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
 
 
-@frozen
+@dataclass(frozen=True)
 class AsyncGroup:
     metadata: GroupMetadata
     store_path: StorePath
@@ -77,6 +104,8 @@ class AsyncGroup:
         zarr_format: Literal[2, 3] = 3,
     ) -> AsyncGroup:
         store_path = make_store_path(store)
+        zarr_json_bytes = await (store_path / ZARR_JSON).get_async()
+        assert zarr_json_bytes is not None
 
         # TODO: consider trying to autodiscover the zarr-format here
         if zarr_format == 3:
@@ -102,17 +131,17 @@ class AsyncGroup:
             zarr_json = {**zgroup, "attributes": zattrs}
         else:
             raise ValueError(f"unexpected zarr_format: {zarr_format}")
-        return cls.from_json(store_path, zarr_json, runtime_configuration)
+        return cls.from_dict(store_path, zarr_json, runtime_configuration)
 
     @classmethod
-    def from_json(
+    def from_dict(
         cls,
         store_path: StorePath,
-        zarr_json: Any,
+        data: Dict[str, Any],
         runtime_configuration: RuntimeConfiguration,
     ) -> Group:
         group = cls(
-            metadata=GroupMetadata.from_json(zarr_json),
+            metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
             runtime_configuration=runtime_configuration,
         )
@@ -138,9 +167,9 @@ class AsyncGroup:
             else:
                 zarr_json = json.loads(zarr_json_bytes)
             if zarr_json["node_type"] == "group":
-                return type(self).from_json(store_path, zarr_json, self.runtime_configuration)
+                return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
             if zarr_json["node_type"] == "array":
-                return AsyncArray.from_json(
+                return AsyncArray.from_dict(
                     store_path, zarr_json, runtime_configuration=self.runtime_configuration
                 )
         elif self.metadata.zarr_format == 2:
@@ -160,7 +189,7 @@ class AsyncGroup:
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
                 zarr_json = {**zarray, "attributes": zattrs}
-                return AsyncArray.from_json(
+                return AsyncArray.from_dict(
                     store_path, zarray, runtime_configuration=self.runtime_configuration
                 )
             else:
@@ -173,7 +202,7 @@ class AsyncGroup:
                     else {"zarr_format": self.metadata.zarr_format}
                 )
                 zarr_json = {**zgroup, "attributes": zattrs}
-                return type(self).from_json(store_path, zarr_json, self.runtime_configuration)
+                return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
@@ -291,7 +320,7 @@ class AsyncGroup:
         raise NotImplementedError
 
 
-@frozen
+@dataclass(frozen=True)
 class Group(SyncMixin):
     _async_group: AsyncGroup
     _sync_configuration: SyncConfiguration = field(init=True, default=SyncConfiguration())
@@ -347,6 +376,13 @@ class Group(SyncMixin):
     def __setitem__(self, key, value):
         """__setitem__ is not supported in v3"""
         raise NotImplementedError
+
+    async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> Group:
+        new_metadata = replace(self.metadata, attributes=new_attributes)
+
+        # Write new metadata
+        await (self.store_path / ZARR_JSON).set_async(new_metadata.to_bytes())
+        return replace(self, metadata=new_metadata)
 
     @property
     def metadata(self) -> GroupMetadata:
