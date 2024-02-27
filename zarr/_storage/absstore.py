@@ -87,7 +87,7 @@ class ABSStore(Store):
 
             blob_service_kwargs = blob_service_kwargs or {}
             client = ContainerClient(
-                "https://{}.blob.core.windows.net/".format(account_name),
+                f"https://{account_name}.blob.core.windows.net/",
                 container,
                 credential=account_key,
                 **blob_service_kwargs,
@@ -144,7 +144,7 @@ class ABSStore(Store):
         try:
             return self.client.download_blob(blob_name).readall()
         except ResourceNotFoundError:
-            raise KeyError("Blob %s not found" % blob_name)
+            raise KeyError(f"Blob {blob_name} not found")
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
@@ -157,7 +157,7 @@ class ABSStore(Store):
         try:
             self.client.delete_blob(self._append_path_to_prefix(key))
         except ResourceNotFoundError:
-            raise KeyError("Blob %s not found" % key)
+            raise KeyError(f"Blob {key} not found")
 
     def __eq__(self, other):
         return (

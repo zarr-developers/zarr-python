@@ -1,5 +1,6 @@
 """This module contains a storage class and codec to support the N5 format.
 """
+
 import os
 import struct
 import sys
@@ -825,9 +826,9 @@ class N5ChunkWrapper(Codec):
 
         if out is not None:
             # out should only be used if we read a complete chunk
-            assert chunk_shape == self.chunk_shape, "Expected chunk of shape {}, found {}".format(
-                self.chunk_shape, chunk_shape
-            )
+            assert (
+                chunk_shape == self.chunk_shape
+            ), f"Expected chunk of shape {self.chunk_shape}, found {chunk_shape}"
 
             if self._compressor:
                 self._compressor.decode(chunk, out)
