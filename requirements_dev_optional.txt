@@ -3,7 +3,7 @@
 lmdb==1.4.1; sys_platform != 'win32'
 # optional library requirements for Jupyter
 ipytree==0.2.2
-ipywidgets==8.1.0
+ipywidgets==8.1.2
 # optional library requirements for services
 # don't let pyup change pinning for azure-storage-blob, need to pin to older
 # version to get compatibility with azure storage emulator on appveyor (FIXME)
@@ -11,7 +11,7 @@ azure-storage-blob==12.16.0 # pyup: ignore
 redis==5.0.1
 types-redis
 types-setuptools
-pymongo==4.6.1
+pymongo==4.6.2
 # optional test requirements
 coverage
 pytest-cov==4.1.0
@@ -20,4 +20,4 @@ pytest-timeout==2.2.0
 h5py==3.10.0
 fsspec==2023.12.2
 s3fs==2023.12.2
-moto[server]>=4.0.8
+moto[server]>=5.0.1
