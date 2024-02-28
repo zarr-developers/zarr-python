@@ -25,7 +25,7 @@ Zarr-Python
 `Installation <installation.html>`_ |
 `Source Repository <https://github.com/zarr-developers/zarr-python>`_ |
 `Issue Tracker <https://github.com/zarr-developers/zarr-python/issues>`_ |
-`Gitter <https://gitter.im/zarr-developers/community>`_
+`Zulip Chat <https://ossci.zulipchat.com/>`_
 
 Zarr is a file storage format for chunked, compressed, N-dimensional arrays based on an open-source specification.
 
