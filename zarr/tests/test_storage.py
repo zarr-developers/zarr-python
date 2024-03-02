@@ -1415,9 +1415,9 @@ def s3(request):
     pytest.importorskip("moto")
 
     port = 5555
-    endpoint_uri = "http://127.0.0.1:%d/" % port
+    endpoint_uri = f"http://127.0.0.1:{port}/"
     proc = subprocess.Popen(
-        shlex.split("moto_server -p %d" % port),
+        shlex.split(f"moto_server -p {port}"),
         stderr=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
     )
@@ -2393,7 +2393,7 @@ def test_format_compatibility():
             order = "C"
 
         for j, compressor in enumerate(compressors):
-            path = "{}/{}".format(i, j)
+            path = f"{i}/{j}"
 
             if path not in fixture:  # pragma: no cover
                 # store the data - should be one-time operation

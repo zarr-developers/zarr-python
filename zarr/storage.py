@@ -41,7 +41,8 @@ from numcodecs.abc import Codec
 from numcodecs.compat import ensure_bytes, ensure_text, ensure_contiguous_ndarray_like
 from numcodecs.registry import codec_registry
 from zarr.context import Context
-from zarr.types import PathLike as Path
+from zarr.types import PathLike as Path, DIMENSION_SEPARATOR
+from zarr.util import NoLock
 
 from zarr.errors import (
     MetadataError,
@@ -327,7 +328,7 @@ def init_array(
     chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
-    dimension_separator=None,
+    dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
     storage_transformers=(),
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
@@ -481,7 +482,7 @@ def _init_array_metadata(
     chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
-    dimension_separator=None,
+    dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
     storage_transformers=(),
 ):
     store_version = getattr(store, "_store_version", 2)
@@ -1054,7 +1055,9 @@ class DirectoryStore(Store):
 
     """
 
-    def __init__(self, path, normalize_keys=False, dimension_separator=None):
+    def __init__(
+        self, path, normalize_keys=False, dimension_separator: Optional[DIMENSION_SEPARATOR] = None
+    ):
         # guard conditions
         path = os.path.abspath(path)
         if os.path.exists(path) and not os.path.isdir(path):
@@ -1349,7 +1352,7 @@ class FSStore(Store):
         key_separator=None,
         mode="w",
         exceptions=(KeyError, PermissionError, IOError),
-        dimension_separator=None,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
         fs=None,
         check=False,
         create=False,
@@ -1580,7 +1583,12 @@ class TempStore(DirectoryStore):
 
     # noinspection PyShadowingBuiltins
     def __init__(
-        self, suffix="", prefix="zarr", dir=None, normalize_keys=False, dimension_separator=None
+        self,
+        suffix="",
+        prefix="zarr",
+        dir=None,
+        normalize_keys=False,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
     ):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
         atexit.register(atexit_rmtree, path)
@@ -1664,7 +1672,9 @@ class NestedDirectoryStore(DirectoryStore):
 
     """
 
-    def __init__(self, path, normalize_keys=False, dimension_separator="/"):
+    def __init__(
+        self, path, normalize_keys=False, dimension_separator: Optional[DIMENSION_SEPARATOR] = "/"
+    ):
         super().__init__(path, normalize_keys=normalize_keys)
         if dimension_separator is None:
             dimension_separator = "/"
@@ -1777,7 +1787,7 @@ class ZipStore(Store):
         compression=zipfile.ZIP_STORED,
         allowZip64=True,
         mode="a",
-        dimension_separator=None,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
     ):
         # store properties
         path = os.path.abspath(path)
@@ -2070,7 +2080,7 @@ class DBMStore(Store):
         mode=0o666,
         open=None,
         write_lock=True,
-        dimension_separator=None,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
         **open_kwargs,
     ):
         if open is None:
@@ -2085,6 +2095,7 @@ class DBMStore(Store):
         self.mode = mode
         self.open = open
         self.write_lock = write_lock
+        self.write_mutex: Union[Lock, NoLock]
         if write_lock:
             # This may not be required as some dbm implementations manage their own
             # locks, but err on the side of caution.
@@ -2241,7 +2252,13 @@ class LMDBStore(Store):
 
     """
 
-    def __init__(self, path, buffers=True, dimension_separator=None, **kwargs):
+    def __init__(
+        self,
+        path,
+        buffers=True,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
+        **kwargs,
+    ):
         import lmdb
 
         # set default memory map size to something larger than the lmdb default, which is
@@ -2592,7 +2609,7 @@ class SQLiteStore(Store):
         >>> store.close()  # don't forget to call this when you're done
     """
 
-    def __init__(self, path, dimension_separator=None, **kwargs):
+    def __init__(self, path, dimension_separator: Optional[DIMENSION_SEPARATOR] = None, **kwargs):
         import sqlite3
 
         self._dimension_separator = dimension_separator
@@ -2712,14 +2729,12 @@ class SQLiteStore(Store):
         path = normalize_storage_path(path)
         sep = "_" if path == "" else "/"
         keys = self.cursor.execute(
-            """
+            f"""
             SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
                 SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
                 FROM zarr WHERE k LIKE (? || "{sep}%")
             ) ORDER BY l ASC
-            """.format(
-                sep=sep
-            ),
+            """,
             (path, path),
         )
         keys = list(map(operator.itemgetter(0), keys))
@@ -2790,7 +2805,7 @@ class MongoDBStore(Store):
         self,
         database="mongodb_zarr",
         collection="zarr_collection",
-        dimension_separator=None,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
         **kwargs,
     ):
         import pymongo
@@ -2865,7 +2880,9 @@ class RedisStore(Store):
 
     """
 
-    def __init__(self, prefix="zarr", dimension_separator=None, **kwargs):
+    def __init__(
+        self, prefix="zarr", dimension_separator: Optional[DIMENSION_SEPARATOR] = None, **kwargs
+    ):
         import redis
 
         self._prefix = prefix
@@ -2875,7 +2892,7 @@ class RedisStore(Store):
         self.client = redis.Redis(**kwargs)
 
     def _key(self, key):
-        return "{prefix}:{key}".format(prefix=self._prefix, key=key)
+        return f"{self._prefix}:{key}"
 
     def __getitem__(self, key):
         return self.client[self._key(key)]
@@ -2960,7 +2977,7 @@ class ConsolidatedMetadataStore(Store):
         consolidated_format = meta.get("zarr_consolidated_format", None)
         if consolidated_format != 1:
             raise MetadataError(
-                "unsupported zarr consolidated metadata format: %s" % consolidated_format
+                f"unsupported zarr consolidated metadata format: {consolidated_format}"
             )
 
         # decode metadata

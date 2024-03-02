@@ -287,7 +287,7 @@ def _kwargs_compat(compressor, fill_value, kwargs):
             compressor = compression
 
         else:
-            raise ValueError("bad value for compression: %r" % compression)
+            raise ValueError(f"bad value for compression: {compression!r}")
 
     # handle 'fillvalue'
     if "fillvalue" in kwargs:
@@ -297,7 +297,7 @@ def _kwargs_compat(compressor, fill_value, kwargs):
 
     # ignore other keyword arguments
     for k in kwargs:
-        warn("ignoring keyword argument %r" % k)
+        warn(f"ignoring keyword argument {k!r}")
 
     return compressor, fill_value
 
@@ -470,7 +470,7 @@ def open_array(
     write_empty_chunks=True,
     *,
     zarr_version=None,
-    dimension_separator=None,
+    dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
     meta_array=None,
     **kwargs,
 ):
