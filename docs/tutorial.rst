@@ -868,7 +868,7 @@ implementations of the ``MutableMapping`` interface for Amazon S3 (`S3Map
 Distributed File System (`HDFSMap
 <https://hdfs3.readthedocs.io/en/latest/api.html#hdfs3.mapping.HDFSMap>`_) and
 Google Cloud Storage (`GCSMap
-<http://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.mapping.GCSMap>`_), which
+<https://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.core.GCSFileSystem.get_mapper>`_), which
 can be used with Zarr.
 
 Here is an example using S3Map to read an array created previously::
