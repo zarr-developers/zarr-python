@@ -1100,9 +1100,9 @@ class TestDirectoryStore(StoreTests):
 class TestFSStore(StoreTests):
     @pytest.fixture
     def memory_store(self):
-        store = FSStore("memory://test/out.zarr")
+        store = FSStore("memory://")
         yield store
-        store.map.fs.store.clear()
+        store.fs.store.clear()
 
     def create_store(self, normalize_keys=False, dimension_separator=".", path=None, **kwargs):
         if path is None:
@@ -1344,19 +1344,23 @@ class TestFSStore(StoreTests):
         assert (a[:] == -np.ones((8, 8, 8))).all()
 
     def test_exceptions(self, memory_store):
-        path = memory_store.path
-        m = memory_store.fs
-        g = zarr.open_group(memory_store, mode="w")
-        arr = g.create_dataset("data", data=[1, 2, 3, 4], dtype="i4", compression=None, chunks=[2])
-        m.store[path + "/data/0"] = None
-        del m.store[path + "/data/1"]
-        assert g.store.getitems(["data/1"], contexts={}) == {}  # not found
+        fs = memory_store.fs
+        group = zarr.open(memory_store, mode="w")
+        x = group.create_dataset("x", data=[1, 2, 3])
+        y = group.create_dataset("y", data=1)
+        fs.store["/x/0"] = None
+        fs.store["/y/0"] = None
+        # no exception from FSStore.getitems getting KeyError
+        assert group.store.getitems(["foo"], contexts={}) == {}
+        # exception from FSStore.getitems getting AttributeError
         with pytest.raises(Exception):
-            # None is bad data, as opposed to missing
-            g.store.getitems(["data/0", "data/1"], contexts={})
+            group.store.getitems(["x/0"], contexts={})
+        # exception from FSStore.getitems getting AttributeError
         with pytest.raises(Exception):
-            # None is bad data, as opposed to missing
-            arr[:]
+            x[...]
+        # exception from FSStore.__getitem__ getting AttributeError
+        with pytest.raises(Exception):
+            y[...]
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
