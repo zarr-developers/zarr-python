@@ -244,7 +244,7 @@ class ArrayV2Metadata(Metadata):
     filters: Optional[List[Dict[str, Any]]] = None
     dimension_separator: Literal[".", "/"] = "."
     compressor: Optional[Dict[str, Any]] = None
-    attributes: Optional[Dict[str, Any]] = field(default_factory=dict)
+    attributes: Optional[Dict[str, Any]] = cast(Dict[str, Any], field(default_factory=dict))
     zarr_format: Literal[2] = field(init=False, default=2)
 
     def __init__(

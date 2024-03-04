@@ -182,7 +182,7 @@ class AsyncArray:
 
     @property
     def size(self) -> int:
-        return np.prod(self.metadata.shape)
+        return np.prod(self.metadata.shape).item()
 
     @property
     def dtype(self) -> np.dtype:

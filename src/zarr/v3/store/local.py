@@ -146,7 +146,7 @@ class LocalStore(Store):
         """
 
         def _list_prefix(root: Path, prefix: str) -> List[str]:
-            files = [p for p in (root / prefix).rglob("*") if p.is_file()]
+            files = [str(p) for p in (root / prefix).rglob("*") if p.is_file()]
             return files
 
         return await to_thread(_list_prefix, self.root, prefix)
