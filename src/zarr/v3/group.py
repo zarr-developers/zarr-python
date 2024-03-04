@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field, replace
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Iterable, Literal, Optional, Union, AsyncIterator, List
+from typing import Any, Dict, Literal, Optional, Union, AsyncIterator, List
 from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.array import AsyncArray, Array
@@ -412,28 +412,28 @@ class Group(SyncMixin):
 
     @property
     def nchildren(self) -> int:
-        return self._sync(self._async_group.nchildren)
+        return self._sync(self._async_group.nchildren())
 
     @property
     def children(self) -> List[Union[Array, Group]]:
-        _children = self._sync_iter(self._async_group.children)
+        _children = self._sync_iter(self._async_group.children())
         return [Array(obj) if isinstance(obj, AsyncArray) else Group(obj) for obj in _children]
 
     def __contains__(self, child) -> bool:
         return self._sync(self._async_group.contains(child))
 
-    def group_keys(self) -> Iterable[str]:
-        return self._sync_iter(self._async_group.group_keys)
+    def group_keys(self) -> List[str]:
+        return self._sync_iter(self._async_group.group_keys())
 
     def groups(self) -> List[Group]:
         # TODO: in v2 this was a generator that return key: Group
-        return [Group(obj) for obj in self._sync_iter(self._async_group.groups)]
+        return [Group(obj) for obj in self._sync_iter(self._async_group.groups())]
 
     def array_keys(self) -> List[str]:
-        return self._sync_iter(self._async_group.array_keys)
+        return self._sync_iter(self._async_group.array_keys())
 
     def arrays(self) -> List[Array]:
-        return [Array(obj) for obj in self._sync_iter(self._async_group.arrays)]
+        return [Array(obj) for obj in self._sync_iter(self._async_group.arrays())]
 
     def tree(self, expand=False, level=None) -> Any:
         return self._sync(self._async_group.tree(expand=expand, level=level))
