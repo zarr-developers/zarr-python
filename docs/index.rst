@@ -19,7 +19,7 @@ Zarr-Python
 
 **Version**: |version|
 
-**Download documentation**: `PDF/Zipped HTML/EPUB <https://readthedocs.org/projects/zarr/downloads/>`_
+**Download documentation**: `PDF/Zipped HTML <https://readthedocs.org/projects/zarr/downloads/>`_
 
 **Useful links**:
 `Installation <installation.html>`_ |
