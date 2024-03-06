@@ -470,7 +470,7 @@ def open_array(
     write_empty_chunks=True,
     *,
     zarr_version=None,
-    dimension_separator=None,
+    dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
     meta_array=None,
     **kwargs,
 ):
