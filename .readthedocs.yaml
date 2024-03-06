@@ -16,4 +16,6 @@ python:
       extra_requirements:
         - docs
 
-formats: all
+formats:
+  - htmlzip
+  - pdf
