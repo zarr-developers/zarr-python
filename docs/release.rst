@@ -18,11 +18,43 @@ Release notes
 Unreleased
 ----------
 
+.. _release_2.17.1:
+
+2.17.1
+------
+
+Enhancements
+~~~~~~~~~~~~
+
 * Change occurrences of % and format() to f-strings.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1423`.
 
 * Add more typing to zarr.util.
   By :user:`David Stansby <dstansby>` :issue:`1617`.
+  
+* Proper argument for numpy.reshape.
+  By :user:`Dimitri Papadopoulos Orfanos <DmitriPapadopoulos>` :issue:`1425`.
+
+* Add typing to dimension separator arguments.
+  By :user:`David Stansby <dstansby>` :issue:`1620`.
+
+Docs
+~~~~
+
+* ZIP related tweaks.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1641`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Update config.yml with Zulip.
+  By :user:`Josh Moore <joshmoore>`.
+
+* Replace Gitter with the new Zulip Chat link.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1685`.
+
+* Fix RTD build.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1694`.
 
 .. _release_2.17.0:
 
