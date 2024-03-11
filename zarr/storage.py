@@ -588,11 +588,15 @@ def _init_array_metadata(
                     "missing object_codec for object array; this will raise a "
                     "ValueError in version 3.0",
                     FutureWarning,
+                    stacklevel=2,
                 )
         else:
             filters_config.insert(0, object_codec.get_config())
     elif object_codec is not None:
-        warnings.warn("an object_codec is only needed for object arrays")
+        warnings.warn(
+            "an object_codec is only needed for object arrays",
+            stacklevel=2,
+        )
 
     # use null to indicate no filters
     if not filters_config:

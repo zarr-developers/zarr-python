@@ -125,7 +125,11 @@ class N5Store(NestedDirectoryStore):
 
             for k in n5_keywords:
                 if k in zarr_attrs:
-                    warnings.warn(f"Attribute {k} is a reserved N5 keyword", UserWarning)
+                    warnings.warn(
+                        f"Attribute {k} is a reserved N5 keyword",
+                        UserWarning,
+                        stacklevel=2,
+                    )
 
             # remove previous user attributes
             for k in list(n5_attrs.keys()):
@@ -327,7 +331,10 @@ class N5FSStore(FSStore):
     def __init__(self, *args, **kwargs):
         if "dimension_separator" in kwargs:
             kwargs.pop("dimension_separator")
-            warnings.warn("Keyword argument `dimension_separator` will be ignored")
+            warnings.warn(
+                "Keyword argument `dimension_separator` will be ignored",
+                stacklevel=2,
+            )
         dimension_separator = "."
         super().__init__(*args, dimension_separator=dimension_separator, **kwargs)
 
@@ -411,7 +418,11 @@ class N5FSStore(FSStore):
 
             for k in n5_keywords:
                 if k in zarr_attrs.keys():
-                    warnings.warn(f"Attribute {k} is a reserved N5 keyword", UserWarning)
+                    warnings.warn(
+                        f"Attribute {k} is a reserved N5 keyword",
+                        UserWarning,
+                        stacklevel=2,
+                    )
 
             # replace previous user attributes
             for k in list(n5_attrs.keys()):
@@ -711,6 +722,7 @@ def compressor_config_to_n5(compressor_config: Optional[Dict[str, Any]]) -> Dict
                 "Not all N5 implementations support lzma compression (yet). You "
                 "might not be able to open the dataset with another N5 library.",
                 RuntimeWarning,
+                stacklevel=2,
             )
             n5_config["format"] = _compressor_config["format"]
             n5_config["check"] = _compressor_config["check"]
