@@ -1,7 +1,8 @@
 import functools
 import itertools
 import os
-from typing import NamedTuple, Optional, Union, Iterator
+from typing import NamedTuple, Optional, Union
+from collections.abc import Iterator
 
 from numcodecs.compat import ensure_bytes
 import numpy as np

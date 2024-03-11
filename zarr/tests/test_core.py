@@ -3,7 +3,8 @@ import os
 import sys
 import pickle
 import shutil
-from typing import Any, Literal, Optional, Union, Sequence
+from typing import Any, Literal, Optional, Union
+from collections.abc import Sequence
 import unittest
 from itertools import zip_longest
 from tempfile import mkdtemp

@@ -5,7 +5,8 @@ from collections import defaultdict
 from collections.abc import MutableMapping
 from copy import copy
 from string import ascii_letters, digits
-from typing import Any, Mapping, Optional, Sequence, Union
+from typing import Any, Optional, Union
+from collections.abc import Mapping, Sequence
 
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path

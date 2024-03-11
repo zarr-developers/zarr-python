@@ -8,14 +8,12 @@ import time
 from typing import (
     Any,
     Callable,
-    Iterator,
-    Mapping,
     Optional,
     TypeVar,
     Union,
-    Iterable,
     cast,
 )
+from collections.abc import Iterator, Mapping, Iterable
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned

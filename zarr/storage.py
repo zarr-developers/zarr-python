@@ -33,7 +33,8 @@ from functools import cache
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
-from typing import Sequence, Mapping, Optional, Union, Any
+from typing import Optional, Union, Any
+from collections.abc import Sequence, Mapping
 import uuid
 import time
 
