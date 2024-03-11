@@ -1,15 +1,15 @@
 import json
-
 import pathlib
+
 import pytest
 
 import zarr
 from zarr._storage.store import meta_root
-from zarr.attrs import Attributes
-from zarr.storage import KVStore, DirectoryStore
 from zarr._storage.v3 import KVStoreV3
-from zarr.tests.util import CountingDict, CountingDictV3
+from zarr.attrs import Attributes
 from zarr.hierarchy import group
+from zarr.storage import DirectoryStore, KVStore
+from zarr.tests.util import CountingDict, CountingDictV3
 
 
 @pytest.fixture(params=[2, 3])

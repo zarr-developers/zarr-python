@@ -23,8 +23,8 @@ from zarr.util import (
     normalize_shape,
     retry_call,
     tree_array_icon,
-    tree_group_icon,
     tree_get_icon,
+    tree_group_icon,
     tree_widget,
 )
 

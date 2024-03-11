@@ -5,13 +5,12 @@ import numbers
 
 import numpy as np
 
-
 from zarr.errors import (
     ArrayIndexError,
-    NegativeStepError,
-    err_too_many_indices,
-    VindexInvalidSelectionError,
     BoundsCheckError,
+    NegativeStepError,
+    VindexInvalidSelectionError,
+    err_too_many_indices,
 )
 
 
