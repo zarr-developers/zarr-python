@@ -608,8 +608,8 @@ def array_metadata_to_n5(array_metadata: Dict[str, Any], top_level=False) -> Dic
         array_metadata["n5"] = N5_FORMAT
     try:
         dtype = np.dtype(array_metadata["dataType"])
-    except TypeError:
-        raise TypeError(f"Data type {array_metadata['dataType']} is not supported by N5")
+    except TypeError as e:
+        raise TypeError(f"Data type {array_metadata['dataType']} is not supported by N5") from e
 
     array_metadata["dataType"] = dtype.name
     array_metadata["dimensions"] = array_metadata["dimensions"][::-1]

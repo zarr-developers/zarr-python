@@ -198,11 +198,11 @@ def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype
                     args = []
                 try:
                     object_codec = codec_registry[codec_id](*args)
-                except KeyError:  # pragma: no cover
+                except KeyError as e:  # pragma: no cover
                     raise ValueError(
                         f"codec {codec_id!r} for object type {key!r} is not "
                         f"available; please provide an object_codec manually"
-                    )
+                    ) from e
             return dtype, object_codec
 
     dtype = np.dtype(dtype)
@@ -332,7 +332,7 @@ def normalize_fill_value(fill_value, dtype: np.dtype):
             raise ValueError(
                 f"fill_value {fill_value!r} is not valid for dtype {dtype}; "
                 f"nested exception: {e}"
-            )
+            ) from e
 
     return fill_value
 
@@ -492,13 +492,13 @@ def tree_widget_sublist(node, root=False, expand=False):
 def tree_widget(group, expand, level):
     try:
         import ipytree
-    except ImportError as error:
+    except ImportError as e:
         raise ImportError(
-            f"{error}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
+            f"{e}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
             f"to get the required ipytree dependency for displaying the tree "
             f"widget. If using jupyterlab<3, you also need to run "
             f"`jupyter labextension install ipytree`"
-        )
+        ) from e
 
     result = ipytree.Tree()
     root = TreeNode(group, level=level)

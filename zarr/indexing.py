@@ -932,7 +932,7 @@ def check_fields(fields, dtype):
                 # multiple field selection
                 out_dtype = np.dtype([(f, dtype[f]) for f in fields])
         except KeyError as e:
-            raise IndexError(f"invalid 'fields' argument, field not found: {e!r}")
+            raise IndexError(f"invalid 'fields' argument, field not found: {e!r}") from e
         else:
             return out_dtype
     else:

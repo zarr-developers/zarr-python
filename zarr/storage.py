@@ -872,8 +872,8 @@ class MemoryStore(Store):
         parent, key = self._get_parent(item)
         try:
             value = parent[key]
-        except KeyError:
-            raise KeyError(item)
+        except KeyError as e:
+            raise KeyError(item) from e
         else:
             if isinstance(value, self.cls):
                 raise KeyError(item)
@@ -891,8 +891,8 @@ class MemoryStore(Store):
             parent, key = self._get_parent(item)
             try:
                 del parent[key]
-            except KeyError:
-                raise KeyError(item)
+            except KeyError as e:
+                raise KeyError(item) from e
 
     def __contains__(self, item: str):  # type: ignore[override]
         try:
@@ -1140,7 +1140,7 @@ class DirectoryStore(Store):
                 os.makedirs(dir_path)
             except OSError as e:
                 if e.errno != errno.EEXIST:
-                    raise KeyError(key)
+                    raise KeyError(key) from e
 
         # write to temporary file
         # note we're not using tempfile.NamedTemporaryFile to avoid restrictive file permissions
