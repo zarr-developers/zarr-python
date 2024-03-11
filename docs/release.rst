@@ -26,6 +26,9 @@ Unreleased
 Enhancements
 ~~~~~~~~~~~~
 
+* Enable ruff/isort rules (I) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1704`.
+
 Docs
 ~~~~
 
