@@ -4,7 +4,8 @@ from collections import defaultdict
 from collections.abc import MutableMapping
 from copy import copy
 from string import ascii_letters, digits
-from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Optional, Union
+from collections.abc import Mapping, Sequence
 
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
@@ -183,6 +184,9 @@ class Store(BaseStore):
         _rmdir_from_keys(self, path)
 
 
+_shadowed_list = list
+
+
 class StoreV3(BaseStore):
     _store_version = 3
     _metadata_class = Metadata3
@@ -295,7 +299,7 @@ class StoreV3(BaseStore):
 
     def get_partial_values(
         self, key_ranges: Sequence[tuple[str, tuple[int, Optional[int]]]]
-    ) -> list[Union[bytes, memoryview, bytearray]]:
+    ) -> _shadowed_list[Union[bytes, memoryview, bytearray]]:
         """Get multiple partial values.
         key_ranges can be an iterable of key, range pairs,
         where a range specifies two integers range_start and range_length

@@ -1,5 +1,6 @@
 from collections.abc import MutableMapping
-from typing import Optional, Tuple, Union, Sequence
+from typing import Optional, Union
+from collections.abc import Sequence
 from warnings import warn
 
 import numpy as np

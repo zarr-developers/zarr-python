@@ -3,7 +3,7 @@ import shutil
 from collections import OrderedDict
 from collections.abc import MutableMapping
 from threading import Lock
-from typing import Union, Dict, Any, Optional
+from typing import Union, Any, Optional
 
 from zarr.errors import (
     MetadataError,

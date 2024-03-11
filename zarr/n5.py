@@ -4,7 +4,7 @@
 import os
 import struct
 import sys
-from typing import Any, Dict, Optional, cast
+from typing import Any, Optional, cast
 import warnings
 
 import numpy as np

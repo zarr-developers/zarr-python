@@ -5,7 +5,6 @@ from zarr.creation import create
 from zarr.storage import atexit_rmtree
 from numcodecs import GZip
 import numpy as np
-from typing import Tuple
 import json
 import atexit
 
