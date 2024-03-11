@@ -601,7 +601,7 @@ def test_metadata3_exceptions():
     required = ["zarr_format", "metadata_encoding", "metadata_key_suffix", "extensions"]
     for key in required:
         meta = copy.copy(_default_entry_point_metadata_v3)
-        meta.pop("zarr_format")
+        meta.pop(key)
         with pytest.raises(ValueError):
             # cannot encode metadata that is missing a required key
             Metadata3.encode_hierarchy_metadata(meta)
