@@ -35,6 +35,9 @@ Docs
 
 Maintenance
 ~~~~~~~~~~~
+* Enable ruff/bugbear rules (B) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1702`.
+
 
 Deprecations
 ~~~~~~~~~~~~
