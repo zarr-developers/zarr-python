@@ -1,6 +1,8 @@
 import base64
 import itertools
 from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, List, Optional, Union, cast
+from typing import Mapping as MappingType
 
 import numcodecs
 import numpy as np
@@ -8,8 +10,6 @@ from numcodecs.abc import Codec
 
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
-
-from typing import cast, Union, Any, List, Mapping as MappingType, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
     from zarr._storage.store import StorageTransformer
@@ -458,8 +458,8 @@ class Metadata3(Metadata2):
 
     @classmethod
     def _decode_storage_transformer_metadata(cls, meta: Mapping) -> "StorageTransformer":
-        from zarr.tests.test_storage_v3 import DummyStorageTransfomer
         from zarr._storage.v3_storage_transformers import ShardingStorageTransformer
+        from zarr.tests.test_storage_v3 import DummyStorageTransfomer
 
         # This might be changed to a proper registry in the future
         KNOWN_STORAGE_TRANSFORMERS = [DummyStorageTransfomer, ShardingStorageTransformer]

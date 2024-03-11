@@ -5,14 +5,13 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from zarr.indexing import (
+    PartialChunkIterator,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
     oindex_set,
     replace_ellipsis,
-    PartialChunkIterator,
 )
-
 from zarr.tests.util import CountingDict
 
 

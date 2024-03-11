@@ -3,39 +3,36 @@ import shutil
 from collections import OrderedDict
 from collections.abc import MutableMapping
 from threading import Lock
-from typing import Union, Dict, Any, Optional
-
-from zarr.errors import (
-    MetadataError,
-    ReadOnlyError,
-)
-from zarr.util import buffer_size, json_loads, normalize_storage_path
-from zarr.types import DIMENSION_SEPARATOR
+from typing import Any, Dict, Optional, Union
 
 from zarr._storage.absstore import ABSStoreV3  # noqa: F401
 from zarr._storage.store import (  # noqa: F401
+    BaseStore,
+    Store,
+    StoreV3,
     _get_hierarchy_metadata,
     _get_metadata_suffix,
     _listdir_from_keys,
+    _path_to_prefix,
+    _prefix_to_array_key,
+    _prefix_to_group_key,
     _rename_from_keys,
     _rename_metadata_v3,
     _rmdir_from_keys,
     _rmdir_from_keys_v3,
-    _path_to_prefix,
-    _prefix_to_array_key,
-    _prefix_to_group_key,
     array_meta_key,
     attrs_key,
     data_root,
     group_meta_key,
     meta_root,
-    BaseStore,
-    Store,
-    StoreV3,
+)
+from zarr.errors import (
+    MetadataError,
+    ReadOnlyError,
 )
 from zarr.storage import (
-    DBMStore,
     ConsolidatedMetadataStore,
+    DBMStore,
     DirectoryStore,
     FSStore,
     KVStore,
@@ -48,6 +45,8 @@ from zarr.storage import (
     ZipStore,
     _getsize,
 )
+from zarr.types import DIMENSION_SEPARATOR
+from zarr.util import buffer_size, json_loads, normalize_storage_path
 
 __doctest_requires__ = {
     ("RedisStore", "RedisStore.*"): ["redis"],

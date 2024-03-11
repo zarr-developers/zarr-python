@@ -4,12 +4,13 @@ from itertools import islice
 import numpy as np
 
 from zarr._storage.store import (
+    DEFAULT_ZARR_VERSION,
     _get_metadata_suffix,
+    assert_zarr_v3_api_available,
     data_root,
     meta_root,
-    DEFAULT_ZARR_VERSION,
-    assert_zarr_v3_api_available,
 )
+from zarr._storage.v3 import MemoryStoreV3
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import (
@@ -25,17 +26,17 @@ from zarr.creation import (
     zeros_like,
 )
 from zarr.errors import (
+    ArrayNotFoundError,
     ContainsArrayError,
     ContainsGroupError,
-    ArrayNotFoundError,
     GroupNotFoundError,
     ReadOnlyError,
 )
 from zarr.storage import (
-    _get_hierarchy_metadata,
-    _prefix_to_group_key,
     BaseStore,
     MemoryStore,
+    _get_hierarchy_metadata,
+    _prefix_to_group_key,
     attrs_key,
     contains_array,
     contains_group,
@@ -46,7 +47,6 @@ from zarr.storage import (
     rename,
     rmdir,
 )
-from zarr._storage.v3 import MemoryStoreV3
 from zarr.util import (
     InfoReporter,
     TreeViewer,

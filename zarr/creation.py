@@ -1,5 +1,5 @@
 from collections.abc import MutableMapping
-from typing import Optional, Tuple, Union, Sequence
+from typing import Optional, Sequence, Tuple, Union
 from warnings import warn
 
 import numpy as np
@@ -7,7 +7,7 @@ import numpy.typing as npt
 from numcodecs.abc import Codec
 from numcodecs.registry import codec_registry
 
-from zarr._storage.store import DEFAULT_ZARR_VERSION
+from zarr._storage.store import DEFAULT_ZARR_VERSION, StorageTransformer
 from zarr.core import Array
 from zarr.errors import (
     ArrayNotFoundError,
@@ -22,9 +22,8 @@ from zarr.storage import (
     normalize_storage_path,
     normalize_store_arg,
 )
-from zarr._storage.store import StorageTransformer
 from zarr.sync import Synchronizer
-from zarr.types import ZARR_VERSION, DIMENSION_SEPARATOR, MEMORY_ORDER, MetaArray, PathLike
+from zarr.types import DIMENSION_SEPARATOR, MEMORY_ORDER, ZARR_VERSION, MetaArray, PathLike
 from zarr.util import normalize_dimension_separator
 
 

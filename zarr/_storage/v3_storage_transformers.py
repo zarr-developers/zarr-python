@@ -1,15 +1,14 @@
 import functools
 import itertools
 import os
-from typing import NamedTuple, Tuple, Optional, Union, Iterator
+from typing import Iterator, NamedTuple, Optional, Tuple, Union
 
-from numcodecs.compat import ensure_bytes
 import numpy as np
+from numcodecs.compat import ensure_bytes
 
 from zarr._storage.store import StorageTransformer, StoreV3, _rmdir_from_keys_v3
-from zarr.util import normalize_storage_path
 from zarr.types import DIMENSION_SEPARATOR
-
+from zarr.util import normalize_storage_path
 
 MAX_UINT_64 = 2**64 - 1
 

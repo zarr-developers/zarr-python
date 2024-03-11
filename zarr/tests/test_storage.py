@@ -3,9 +3,9 @@ import atexit
 import json
 import os
 import pathlib
-import sys
 import pickle
 import shutil
+import sys
 import tempfile
 from contextlib import contextmanager
 from pickle import PicklingError
@@ -13,25 +13,26 @@ from zipfile import ZipFile
 
 import numpy as np
 import pytest
-from numpy.testing import assert_array_almost_equal, assert_array_equal
-
 from numcodecs.compat import ensure_bytes
+from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 import zarr
 from zarr._storage.store import _get_hierarchy_metadata
+from zarr._storage.v3 import KVStoreV3
 from zarr.codecs import BZ2, AsType, Blosc, Zlib
 from zarr.context import Context
 from zarr.convenience import consolidate_metadata
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.hierarchy import group
 from zarr.meta import ZARR_FORMAT, decode_array_metadata
-from zarr.n5 import N5Store, N5FSStore, N5_FORMAT, n5_attrs_key
+from zarr.n5 import N5_FORMAT, N5FSStore, N5Store, n5_attrs_key
 from zarr.storage import (
     ABSStore,
     ConsolidatedMetadataStore,
     DBMStore,
     DictStore,
     DirectoryStore,
+    FSStore,
     KVStore,
     LMDBStore,
     LRUStoreCache,
@@ -53,13 +54,13 @@ from zarr.storage import (
     group_meta_key,
     init_array,
     init_group,
-    migrate_1to2,
+    listdir,
     meta_root,
+    migrate_1to2,
     normalize_store_arg,
+    rename,
 )
-from zarr.storage import FSStore, rename, listdir
-from zarr._storage.v3 import KVStoreV3
-from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
+from zarr.tests.util import CountingDict, abs_container, have_fsspec, mktemp, skip_test_env_var
 from zarr.util import ConstantMap, json_dumps
 
 

@@ -7,10 +7,10 @@ from copy import copy
 from string import ascii_letters, digits
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
-from zarr.meta import Metadata2, Metadata3
-from zarr.util import normalize_storage_path
 from zarr.context import Context
+from zarr.meta import Metadata2, Metadata3
 from zarr.types import ZARR_VERSION
+from zarr.util import normalize_storage_path
 
 # v2 store keys
 array_meta_key = ".zarray"

@@ -25,6 +25,8 @@ import re
 import shutil
 import sys
 import tempfile
+import time
+import uuid
 import warnings
 import zipfile
 from collections import OrderedDict
@@ -33,28 +35,50 @@ from functools import lru_cache
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
-from typing import Sequence, Mapping, Optional, Union, List, Tuple, Dict, Any
-import uuid
-import time
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 from numcodecs.abc import Codec
-from numcodecs.compat import ensure_bytes, ensure_text, ensure_contiguous_ndarray_like
+from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray_like, ensure_text
 from numcodecs.registry import codec_registry
-from zarr.context import Context
-from zarr.types import PathLike as Path, DIMENSION_SEPARATOR
-from zarr.util import NoLock
 
+from zarr._storage.absstore import ABSStore  # noqa: F401
+from zarr._storage.store import (  # noqa: F401
+    DEFAULT_ZARR_VERSION,
+    V3_DEPRECATION_MESSAGE,
+    BaseStore,
+    Store,
+    _get_hierarchy_metadata,
+    _get_metadata_suffix,
+    _listdir_from_keys,
+    _path_to_prefix,
+    _prefix_to_array_key,
+    _prefix_to_group_key,
+    _rename_from_keys,
+    _rename_metadata_v3,
+    _rmdir_from_keys,
+    _rmdir_from_keys_v3,
+    array_meta_key,
+    attrs_key,
+    data_root,
+    group_meta_key,
+    meta_root,
+)
+from zarr.context import Context
 from zarr.errors import (
-    MetadataError,
     BadCompressorError,
     ContainsArrayError,
     ContainsGroupError,
     FSPathExistNotDir,
+    MetadataError,
     ReadOnlyError,
 )
 from zarr.meta import encode_array_metadata, encode_group_metadata
+from zarr.types import DIMENSION_SEPARATOR
+from zarr.types import PathLike as Path
 from zarr.util import (
+    NoLock,
     buffer_size,
+    ensure_contiguous_ndarray_or_bytes,
     json_loads,
     nolock,
     normalize_chunks,
@@ -65,30 +89,6 @@ from zarr.util import (
     normalize_shape,
     normalize_storage_path,
     retry_call,
-    ensure_contiguous_ndarray_or_bytes,
-)
-
-from zarr._storage.absstore import ABSStore  # noqa: F401
-from zarr._storage.store import (  # noqa: F401
-    _get_hierarchy_metadata,
-    _get_metadata_suffix,
-    _listdir_from_keys,
-    _rename_from_keys,
-    _rename_metadata_v3,
-    _rmdir_from_keys,
-    _rmdir_from_keys_v3,
-    _path_to_prefix,
-    _prefix_to_array_key,
-    _prefix_to_group_key,
-    array_meta_key,
-    attrs_key,
-    data_root,
-    group_meta_key,
-    meta_root,
-    DEFAULT_ZARR_VERSION,
-    BaseStore,
-    Store,
-    V3_DEPRECATION_MESSAGE,
 )
 
 __doctest_requires__ = {
