@@ -26,6 +26,9 @@ Unreleased
 Enhancements
 ~~~~~~~~~~~~
 
+* Enable ruff/pyupgrade rules (UP) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1703`.
+
 Docs
 ~~~~
 
