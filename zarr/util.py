@@ -8,11 +8,9 @@ import time
 from typing import (
     Any,
     Callable,
-    Dict,
     Iterator,
     Mapping,
     Optional,
-    Tuple,
     TypeVar,
     Union,
     Iterable,
@@ -71,12 +69,12 @@ def json_dumps(o: Any) -> bytes:
     ).encode("ascii")
 
 
-def json_loads(s: Union[bytes, str]) -> Dict[str, Any]:
+def json_loads(s: Union[bytes, str]) -> dict[str, Any]:
     """Read JSON in a consistent way."""
     return json.loads(ensure_text(s, "utf-8"))
 
 
-def normalize_shape(shape: Union[int, Tuple[int, ...], None]) -> Tuple[int, ...]:
+def normalize_shape(shape: Union[int, tuple[int, ...], None]) -> tuple[int, ...]:
     """Convenience function to normalize the `shape` argument."""
 
     if shape is None:
@@ -87,7 +85,7 @@ def normalize_shape(shape: Union[int, Tuple[int, ...], None]) -> Tuple[int, ...]
         shape = (int(shape),)
 
     # normalize
-    shape = cast(Tuple[int, ...], shape)
+    shape = cast(tuple[int, ...], shape)
     shape = tuple(int(s) for s in shape)
     return shape
 
@@ -99,7 +97,7 @@ CHUNK_MIN = 128 * 1024  # Soft lower limit (128k)
 CHUNK_MAX = 64 * 1024 * 1024  # Hard upper limit
 
 
-def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
+def guess_chunks(shape: tuple[int, ...], typesize: int) -> tuple[int, ...]:
     """
     Guess an appropriate chunk layout for an array, given its shape and
     the size of each element in bytes.  Will allocate chunks only as large
@@ -145,7 +143,7 @@ def guess_chunks(shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
     return tuple(int(x) for x in chunks)
 
 
-def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tuple[int, ...]:
+def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tuple[int, ...]:
     """Convenience function to normalize the `chunks` argument for an array
     with the given `shape`."""
 
@@ -180,7 +178,7 @@ def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tupl
     return chunks
 
 
-def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
+def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> tuple[np.dtype, Any]:
     # convenience API for object arrays
     if inspect.isclass(dtype):
         dtype = dtype.__name__
@@ -218,7 +216,7 @@ def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype
 
 
 # noinspection PyTypeChecker
-def is_total_slice(item, shape: Tuple[int]) -> bool:
+def is_total_slice(item, shape: tuple[int]) -> bool:
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""
@@ -384,7 +382,7 @@ def buffer_size(v) -> int:
     return ensure_ndarray_like(v).nbytes
 
 
-def info_text_report(items: Dict[Any, Any]) -> str:
+def info_text_report(items: dict[Any, Any]) -> str:
     keys = [k for k, v in items]
     max_key_len = max(len(k) for k in keys)
     report = ""
@@ -673,7 +671,7 @@ def retry_call(
     callabl: Callable,
     args=None,
     kwargs=None,
-    exceptions: Tuple[Any, ...] = (),
+    exceptions: tuple[Any, ...] = (),
     retries: int = 10,
     wait: float = 0.1,
 ) -> Any:

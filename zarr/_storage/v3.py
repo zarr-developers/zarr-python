@@ -3,7 +3,7 @@ import shutil
 from collections import OrderedDict
 from collections.abc import MutableMapping
 from threading import Lock
-from typing import Union, Dict, Any, Optional
+from typing import Union, Any, Optional
 
 from zarr.errors import (
     MetadataError,
@@ -512,8 +512,8 @@ class LRUStoreCacheV3(RmdirV3, LRUStoreCache, StoreV3):
         self._current_size = 0
         self._keys_cache = None
         self._contains_cache = {}
-        self._listdir_cache: Dict[Path, Any] = dict()
-        self._values_cache: Dict[Path, Any] = OrderedDict()
+        self._listdir_cache: dict[Path, Any] = dict()
+        self._values_cache: dict[Path, Any] = OrderedDict()
         self._mutex = Lock()
         self.hits = self.misses = 0
 

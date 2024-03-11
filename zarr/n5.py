@@ -4,7 +4,7 @@
 import os
 import struct
 import sys
-from typing import Any, Dict, Optional, cast
+from typing import Any, Optional, cast
 import warnings
 
 import numpy as np
@@ -236,7 +236,7 @@ class N5Store(NestedDirectoryStore):
         else:
             return children
 
-    def _load_n5_attrs(self, path: str) -> Dict[str, Any]:
+    def _load_n5_attrs(self, path: str) -> dict[str, Any]:
         try:
             s = super().__getitem__(path)
             return json_loads(s)
@@ -581,7 +581,7 @@ def invert_chunk_coords(key: str):
     return key
 
 
-def group_metadata_to_n5(group_metadata: Dict[str, Any]) -> Dict[str, Any]:
+def group_metadata_to_n5(group_metadata: dict[str, Any]) -> dict[str, Any]:
     """Convert group metadata from zarr to N5 format."""
     del group_metadata["zarr_format"]
     # TODO: This should only exist at the top-level
@@ -589,7 +589,7 @@ def group_metadata_to_n5(group_metadata: Dict[str, Any]) -> Dict[str, Any]:
     return group_metadata
 
 
-def group_metadata_to_zarr(group_metadata: Dict[str, Any]) -> Dict[str, Any]:
+def group_metadata_to_zarr(group_metadata: dict[str, Any]) -> dict[str, Any]:
     """Convert group metadata from N5 to zarr format."""
     # This only exists at the top level
     group_metadata.pop("n5", None)
@@ -597,7 +597,7 @@ def group_metadata_to_zarr(group_metadata: Dict[str, Any]) -> Dict[str, Any]:
     return group_metadata
 
 
-def array_metadata_to_n5(array_metadata: Dict[str, Any], top_level=False) -> Dict[str, Any]:
+def array_metadata_to_n5(array_metadata: dict[str, Any], top_level=False) -> dict[str, Any]:
     """Convert array metadata from zarr to N5 format. If the `top_level` keyword argument is True,
     then the `N5` : N5_FORMAT key : value pair will be inserted into the metadata."""
 
@@ -647,8 +647,8 @@ def array_metadata_to_n5(array_metadata: Dict[str, Any], top_level=False) -> Dic
 
 
 def array_metadata_to_zarr(
-    array_metadata: Dict[str, Any], top_level: bool = False
-) -> Dict[str, Any]:
+    array_metadata: dict[str, Any], top_level: bool = False
+) -> dict[str, Any]:
     """Convert array metadata from N5 to zarr format.
     If the `top_level` keyword argument is True, then the `N5` key will be removed from metadata"""
     for t, f in zarr_to_n5_keys:
@@ -677,7 +677,7 @@ def array_metadata_to_zarr(
     return array_metadata
 
 
-def attrs_to_zarr(attrs: Dict[str, Any]) -> Dict[str, Any]:
+def attrs_to_zarr(attrs: dict[str, Any]) -> dict[str, Any]:
     """Get all zarr attributes from an N5 attributes dictionary (i.e.,
     all non-keyword attributes)."""
 
@@ -689,7 +689,7 @@ def attrs_to_zarr(attrs: Dict[str, Any]) -> Dict[str, Any]:
     return attrs
 
 
-def compressor_config_to_n5(compressor_config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+def compressor_config_to_n5(compressor_config: Optional[dict[str, Any]]) -> dict[str, Any]:
     if compressor_config is None:
         return {"type": "raw"}
     else:
@@ -750,7 +750,7 @@ def compressor_config_to_n5(compressor_config: Optional[Dict[str, Any]]) -> Dict
     return n5_config
 
 
-def compressor_config_to_zarr(compressor_config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def compressor_config_to_zarr(compressor_config: dict[str, Any]) -> Optional[dict[str, Any]]:
     codec_id = compressor_config["type"]
     zarr_config = {"id": codec_id}
 

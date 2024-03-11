@@ -3,7 +3,7 @@ import os
 import sys
 import pickle
 import shutil
-from typing import Any, Literal, Optional, Tuple, Union, Sequence
+from typing import Any, Literal, Optional, Union, Sequence
 import unittest
 from itertools import zip_longest
 from tempfile import mkdtemp
@@ -99,7 +99,7 @@ class TestArray:
     partial_decompress: bool = False
     write_empty_chunks = True
     read_only = False
-    storage_transformers: Tuple[Any, ...] = ()
+    storage_transformers: tuple[Any, ...] = ()
 
     def create_store(self) -> BaseStore:
         return KVStore(dict())
@@ -108,13 +108,13 @@ class TestArray:
     def create_chunk_store(self) -> Optional[BaseStore]:
         return None
 
-    def create_storage_transformers(self, shape: Union[int, Tuple[int, ...]]) -> Tuple[Any, ...]:
+    def create_storage_transformers(self, shape: Union[int, tuple[int, ...]]) -> tuple[Any, ...]:
         return ()
 
-    def create_filters(self, dtype: Optional[str]) -> Tuple[Any, ...]:
+    def create_filters(self, dtype: Optional[str]) -> tuple[Any, ...]:
         return ()
 
-    def create_array(self, shape: Union[int, Tuple[int, ...]], **kwargs):
+    def create_array(self, shape: Union[int, tuple[int, ...]], **kwargs):
         store = self.create_store()
         chunk_store = self.create_chunk_store()
         # keyword arguments for array initialization
@@ -2161,7 +2161,7 @@ class TestArrayWithLZMACompressor(TestArray):
 class TestArrayWithFilters(TestArray):
     compressor = Zlib(1)
 
-    def create_filters(self, dtype: Optional[str]) -> Tuple[Any, ...]:
+    def create_filters(self, dtype: Optional[str]) -> tuple[Any, ...]:
         return (
             Delta(dtype=dtype),
             FixedScaleOffset(dtype=dtype, scale=1, offset=0),
@@ -2994,7 +2994,7 @@ class TestArrayWithFSStoreV3PartialReadUncompressedSharded(TestArrayWithFSStoreV
     partial_decompress = True
     compressor = None
 
-    def create_storage_transformers(self, shape) -> Tuple[Any]:
+    def create_storage_transformers(self, shape) -> tuple[Any]:
         num_dims = 1 if isinstance(shape, int) else len(shape)
         sharding_transformer = ShardingStorageTransformer(
             "indexed", chunks_per_shard=(2,) * num_dims
@@ -3056,7 +3056,7 @@ class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithFSStoreV3):
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
 class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
-    def create_storage_transformers(self, shape) -> Tuple[Any]:
+    def create_storage_transformers(self, shape) -> tuple[Any]:
         return (
             DummyStorageTransfomer("dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT),
         )
@@ -3076,7 +3076,7 @@ class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
 class TestArrayWithShardingStorageTransformerV3(TestArrayV3):
     compressor = None
 
-    def create_storage_transformers(self, shape) -> Tuple[Any]:
+    def create_storage_transformers(self, shape) -> tuple[Any]:
         num_dims = 1 if isinstance(shape, int) else len(shape)
         return (ShardingStorageTransformer("indexed", chunks_per_shard=(2,) * num_dims),)
 
