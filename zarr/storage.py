@@ -317,8 +317,8 @@ def _require_parent_group(
 
 def init_array(
     store: StoreLike,
-    shape: Union[int, Tuple[int, ...]],
-    chunks: Union[bool, int, Tuple[int, ...]] = True,
+    shape: Union[int, tuple[int, ...]],
+    chunks: Union[bool, int, tuple[int, ...]] = True,
     dtype=None,
     compressor="default",
     fill_value=None,
@@ -740,7 +740,7 @@ def _init_group_metadata(
         store[key] = encode_group_metadata(meta)
 
 
-def _dict_store_keys(d: Dict, prefix="", cls=dict):
+def _dict_store_keys(d: dict, prefix="", cls=dict):
     for k in d.keys():
         v = d[k]
         if isinstance(v, cls):
@@ -911,7 +911,7 @@ class MemoryStore(Store):
     def __len__(self) -> int:
         return sum(1 for _ in self.keys())
 
-    def listdir(self, path: Path = None) -> List[str]:
+    def listdir(self, path: Path = None) -> list[str]:
         path = normalize_storage_path(path)
         if path:
             try:
@@ -2408,9 +2408,9 @@ class LRUStoreCache(Store):
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None
-        self._contains_cache: Dict[Any, Any] = {}
-        self._listdir_cache: Dict[Path, Any] = dict()
-        self._values_cache: Dict[Path, Any] = OrderedDict()
+        self._contains_cache: dict[Any, Any] = {}
+        self._listdir_cache: dict[Path, Any] = dict()
+        self._values_cache: dict[Path, Any] = OrderedDict()
         self._mutex = Lock()
         self.hits = self.misses = 0
 

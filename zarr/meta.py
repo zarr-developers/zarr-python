@@ -180,7 +180,7 @@ class Metadata2:
             return d.descr
 
     @classmethod
-    def _decode_dtype_descr(cls, d) -> List[Any]:
+    def _decode_dtype_descr(cls, d) -> list[Any]:
         # need to convert list of lists to list of tuples
         if isinstance(d, list):
             # recurse to handle nested structures

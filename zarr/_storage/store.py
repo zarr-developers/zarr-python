@@ -170,7 +170,7 @@ class Store(BaseStore):
 
     """
 
-    def listdir(self, path: str = "") -> List[str]:
+    def listdir(self, path: str = "") -> list[str]:
         path = normalize_storage_path(path)
         return _listdir_from_keys(self, path)
 
@@ -294,8 +294,8 @@ class StoreV3(BaseStore):
         return False
 
     def get_partial_values(
-        self, key_ranges: Sequence[Tuple[str, Tuple[int, Optional[int]]]]
-    ) -> List[Union[bytes, memoryview, bytearray]]:
+        self, key_ranges: Sequence[tuple[str, tuple[int, Optional[int]]]]
+    ) -> list[Union[bytes, memoryview, bytearray]]:
         """Get multiple partial values.
         key_ranges can be an iterable of key, range pairs,
         where a range specifies two integers range_start and range_length
@@ -305,8 +305,8 @@ class StoreV3(BaseStore):
         from the end of the file.
         A key may occur multiple times with different ranges.
         Inserts None for missing keys into the returned list."""
-        results: List[Union[bytes, memoryview, bytearray]] = [None] * len(key_ranges)  # type: ignore[list-item] # noqa: E501
-        indexed_ranges_by_key: Dict[str, List[Tuple[int, Tuple[int, Optional[int]]]]] = defaultdict(
+        results: list[Union[bytes, memoryview, bytearray]] = [None] * len(key_ranges)  # type: ignore[list-item] # noqa: E501
+        indexed_ranges_by_key: dict[str, list[tuple[int, tuple[int, Optional[int]]]]] = defaultdict(
             list
         )
         for i, (key, range_) in enumerate(key_ranges):
@@ -648,7 +648,7 @@ def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
         store.erase(group_meta_file)
 
 
-def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str]:
+def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> list[str]:
     # assume path already normalized
     prefix = _path_to_prefix(path)
     children = set()
