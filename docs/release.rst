@@ -18,6 +18,12 @@ Release notes
 Unreleased
 ----------
 
+Enhancements
+~~~~~~~~~~~~
+
+* Enable ruff/pyupgrade rules (UP) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1703`.
+
 .. _release_2.17.1:
 
 2.17.1
