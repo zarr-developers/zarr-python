@@ -183,8 +183,8 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             shard_key, chunk_subkey = self._key_to_shard(key)
             try:
                 full_shard_value = self.inner_store[shard_key]
-            except KeyError:
-                raise KeyError(key)
+            except KeyError as e:
+                raise KeyError(key) from e
             index = self._get_index_from_buffer(full_shard_value)
             chunk_slice = index.get_chunk_slice(chunk_subkey)
             if chunk_slice is not None:
@@ -265,8 +265,8 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             shard_key, chunk_subkey = self._key_to_shard(key)
             try:
                 index = self._get_index_from_store(shard_key)
-            except KeyError:
-                raise KeyError(key)
+            except KeyError as e:
+                raise KeyError(key) from e
 
             index.set_chunk_slice(chunk_subkey, None)
 
