@@ -132,6 +132,7 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 minversion = "7"
 log_cli_level = "INFO"
+# xfail_strict = true  # FIXME?
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
     "ELLIPSIS",
