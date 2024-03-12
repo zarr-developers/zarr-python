@@ -1,5 +1,6 @@
 import functools
 import itertools
+import operator
 import os
 from typing import NamedTuple, Tuple, Optional, Union, Iterator
 
@@ -101,7 +102,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
             if chunks_per_shard == ():
                 chunks_per_shard = (1,)
         self.chunks_per_shard = chunks_per_shard
-        self._num_chunks_per_shard = functools.reduce(lambda x, y: x * y, chunks_per_shard, 1)
+        self._num_chunks_per_shard = functools.reduce(operator.mul, chunks_per_shard, 1)
         self._dimension_separator = None
         self._data_key_prefix = None
 
