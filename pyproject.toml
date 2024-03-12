@@ -140,6 +140,7 @@ doctest_optionflags = [
 ]
 addopts = [
     "--durations=10",
+    "-ra",
     "--strict-config",
     "--strict-markers",
 ]
