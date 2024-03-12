@@ -2556,7 +2556,7 @@ class LRUStoreCache(Store):
         value_size = buffer_size(value)
         # check size of the value against max size, as if the value itself exceeds max
         # size then we are never going to cache it
-        if self._max_size is None or value_size <= self._max_size:
+        if self._max_size is None or value_size <= self._max_size:  # type: ignore[redundant-expr]
             self._accommodate_value(value_size)
             self._values_cache[key] = value
             self._current_size += value_size

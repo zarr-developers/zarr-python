@@ -214,7 +214,7 @@ class StoreV3(BaseStore):
         0-9, or in the set /.-_ it will return True if that's the case, False
         otherwise.
         """
-        if not isinstance(key, str) or not key.isascii():
+        if not isinstance(key, str) or not key.isascii():  # type: ignore[redundant-expr]
             return False
         if set(key) - self._valid_key_characters:
             return False
