@@ -627,11 +627,11 @@ def _rename_from_keys(store: BaseStore, src_path: str, dst_path: str) -> None:
         for root_prefix in [meta_root, data_root]:
             _src_prefix = root_prefix + src_prefix
             _dst_prefix = root_prefix + dst_prefix
-            for key in store.list_prefix(_src_prefix):  # type: ignore
+            for key in store.list_prefix(_src_prefix):  # type: ignore[attr-defined]
                 new_key = _dst_prefix + key[len(_src_prefix) :]
                 store[new_key] = store.pop(key)
                 any_renamed = True
-        any_meta_renamed = _rename_metadata_v3(store, src_path, dst_path)  # type: ignore
+        any_meta_renamed = _rename_metadata_v3(store, src_path, dst_path)  # type: ignore[arg-type]
         any_renamed = any_meta_renamed or any_renamed
 
         if not any_renamed:
@@ -680,7 +680,7 @@ def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str
 
 def _prefix_to_array_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
-        sfx = _get_metadata_suffix(store)  # type: ignore
+        sfx = _get_metadata_suffix(store)  # type: ignore[arg-type]
         if prefix:
             key = meta_root + prefix.rstrip("/") + ".array" + sfx
         else:
@@ -692,7 +692,7 @@ def _prefix_to_array_key(store: StoreLike, prefix: str) -> str:
 
 def _prefix_to_group_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
-        sfx = _get_metadata_suffix(store)  # type: ignore
+        sfx = _get_metadata_suffix(store)  # type: ignore[arg-type]
         if prefix:
             key = meta_root + prefix.rstrip("/") + ".group" + sfx
         else:
@@ -705,7 +705,7 @@ def _prefix_to_group_key(store: StoreLike, prefix: str) -> str:
 def _prefix_to_attrs_key(store: StoreLike, prefix: str) -> str:
     if getattr(store, "_store_version", 2) == 3:
         # for v3, attributes are stored in the array metadata
-        sfx = _get_metadata_suffix(store)  # type: ignore
+        sfx = _get_metadata_suffix(store)  # type: ignore[arg-type]
         if prefix:
             key = meta_root + prefix.rstrip("/") + ".array" + sfx
         else:

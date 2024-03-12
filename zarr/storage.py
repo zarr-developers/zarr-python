@@ -134,11 +134,11 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
             return True
         # for v3, need to also handle implicit groups
 
-        sfx = _get_metadata_suffix(store)  # type: ignore
+        sfx = _get_metadata_suffix(store)  # type: ignore[arg-type]
         implicit_prefix = key.replace(".group" + sfx, "")
         if not implicit_prefix.endswith("/"):
             implicit_prefix += "/"
-        if store.list_prefix(implicit_prefix):  # type: ignore
+        if store.list_prefix(implicit_prefix):  # type: ignore[union-attr]
             return True
         return False
 
@@ -207,7 +207,7 @@ def rmdir(store: StoreLike, path: Path = None):
     `Store` interface."""
     path = normalize_storage_path(path)
     store_version = getattr(store, "_store_version", 2)
-    if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
+    if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore[attr-defined]
         # pass through
         store.rmdir(path)
     else:
@@ -215,7 +215,7 @@ def rmdir(store: StoreLike, path: Path = None):
         if store_version == 2:
             _rmdir_from_keys(store, path)
         else:
-            _rmdir_from_keys_v3(store, path)  # type: ignore
+            _rmdir_from_keys_v3(store, path)  # type: ignore[arg-type]
 
 
 def rename(store: Store, src_path: Path, dst_path: Path):
@@ -262,11 +262,11 @@ def _getsize(store: BaseStore, path: Path = None) -> int:
         if store_version == 3:
             if path == "":
                 # have to list the root folders without trailing / in this case
-                members = store.list_prefix(data_root.rstrip("/"))  # type: ignore
-                members += store.list_prefix(meta_root.rstrip("/"))  # type: ignore
+                members = store.list_prefix(data_root.rstrip("/"))  # type: ignore[attr-defined]
+                members += store.list_prefix(meta_root.rstrip("/"))  # type: ignore[attr-defined]
             else:
-                members = store.list_prefix(data_root + path)  # type: ignore
-                members += store.list_prefix(meta_root + path)  # type: ignore
+                members = store.list_prefix(data_root + path)  # type: ignore[attr-defined]
+                members += store.list_prefix(meta_root + path)  # type: ignore[attr-defined]
             # also include zarr.json?
             # members += ['zarr.json']
         else:
@@ -447,7 +447,11 @@ def init_array(
 
     if store_version == 3 and "zarr.json" not in store:
         # initialize with default zarr.json entry level metadata
-        store["zarr.json"] = store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore
+        # fmt: off
+        store["zarr.json"] = (
+            store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore[union-attr]
+        )
+        # fmt: on
 
     if not compressor:
         # compatibility with legacy tests using compressor=[]
@@ -504,20 +508,20 @@ def _init_array_metadata(
 
             # attempt to delete any pre-existing array in store
             if array_meta_key in store:
-                store.erase(array_meta_key)  # type: ignore
+                store.erase(array_meta_key)  # type: ignore[union-attr]
             if group_meta_key in store:
-                store.erase(group_meta_key)  # type: ignore
-            store.erase_prefix(data_prefix)  # type: ignore
+                store.erase(group_meta_key)  # type: ignore[union-attr]
+            store.erase_prefix(data_prefix)  # type: ignore[union-attr]
             if chunk_store is not None:
-                chunk_store.erase_prefix(data_prefix)  # type: ignore
+                chunk_store.erase_prefix(data_prefix)  # type: ignore[attr-defined]
 
             if "/" in path:
                 # path is a subfolder of an existing array, remove that array
                 parent_path = "/".join(path.split("/")[:-1])
-                sfx = _get_metadata_suffix(store)  # type: ignore
+                sfx = _get_metadata_suffix(store)  # type: ignore[arg-type]
                 array_key = meta_root + parent_path + ".array" + sfx
                 if array_key in store:
-                    store.erase(array_key)  # type: ignore
+                    store.erase(array_key)  # type: ignore[union-attr]
 
     if not overwrite:
         if contains_array(store, path):
@@ -601,7 +605,7 @@ def _init_array_metadata(
 
     # use null to indicate no filters
     if not filters_config:
-        filters_config = None  # type: ignore
+        filters_config = None  # type: ignore[assignment]
 
     # initialize metadata
     # TODO: don't store redundant dimension_separator for v3?
@@ -676,7 +680,11 @@ def init_group(
 
     if store_version == 3 and "zarr.json" not in store:
         # initialize with default zarr.json entry level metadata
-        store["zarr.json"] = store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore
+        # fmt: off
+        store["zarr.json"] = (
+            store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore[union-attr]
+        )
+        # fmt: on
 
     # initialise metadata
     _init_group_metadata(store=store, overwrite=overwrite, path=path, chunk_store=chunk_store)
@@ -712,13 +720,13 @@ def _init_group_metadata(
 
             # attempt to delete any pre-existing array in store
             if array_meta_key in store:
-                store.erase(array_meta_key)  # type: ignore
+                store.erase(array_meta_key)  # type: ignore[union-attr]
             if group_meta_key in store:
-                store.erase(group_meta_key)  # type: ignore
-            store.erase_prefix(data_prefix)  # type: ignore
-            store.erase_prefix(meta_prefix)  # type: ignore
+                store.erase(group_meta_key)  # type: ignore[union-attr]
+            store.erase_prefix(data_prefix)  # type: ignore[union-attr]
+            store.erase_prefix(meta_prefix)  # type: ignore[union-attr]
             if chunk_store is not None:
-                chunk_store.erase_prefix(data_prefix)  # type: ignore
+                chunk_store.erase_prefix(data_prefix)  # type: ignore[attr-defined]
 
     if not overwrite:
         if contains_array(store, path):
@@ -735,7 +743,7 @@ def _init_group_metadata(
     # N.B., currently no metadata properties are needed, however there may
     # be in future
     if store_version == 3:
-        meta = {"attributes": {}}  # type: ignore
+        meta = {"attributes": {}}  # type: ignore[var-annotated]
     else:
         meta = {}
     key = _prefix_to_group_key(store, _path_to_prefix(path))

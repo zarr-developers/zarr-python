@@ -77,7 +77,7 @@ class RmdirV3:
 
     def rmdir(self, path: str = "") -> None:
         path = normalize_storage_path(path)
-        _rmdir_from_keys_v3(self, path)  # type: ignore
+        _rmdir_from_keys_v3(self, path)  # type: ignore[arg-type]
 
 
 class KVStoreV3(RmdirV3, KVStore, StoreV3):

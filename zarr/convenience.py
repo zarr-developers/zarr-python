@@ -1273,7 +1273,7 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=""
     else:
         assert_zarr_v3_api_available()
 
-        sfx = _get_metadata_suffix(store)  # type: ignore
+        sfx = _get_metadata_suffix(store)  # type: ignore[arg-type]
 
         def is_zarr_key(key):
             return (
