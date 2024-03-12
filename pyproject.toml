@@ -141,6 +141,7 @@ doctest_optionflags = [
 addopts = [
     "--durations=10",
     "--strict-config",
+    "--strict-markers",
 ]
 filterwarnings = [
     "error:::zarr.*",
