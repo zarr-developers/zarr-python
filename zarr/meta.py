@@ -232,7 +232,7 @@ class Metadata2:
                 return -np.inf
             else:
                 return np.array(v, dtype=dtype)[()]
-        elif dtype.kind in "c":
+        elif dtype.kind == "c":
             v = (
                 cls.decode_fill_value(v[0], dtype.type().real.dtype),
                 cls.decode_fill_value(v[1], dtype.type().imag.dtype),
@@ -283,7 +283,7 @@ class Metadata2:
             return int(v)
         elif dtype.kind == "b":
             return bool(v)
-        elif dtype.kind in "c":
+        elif dtype.kind == "c":
             c = cast(np.complex128, np.dtype(complex).type())
             v = (
                 cls.encode_fill_value(v.real, c.real.dtype, object_codec),
