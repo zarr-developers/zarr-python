@@ -8,6 +8,7 @@ import numpy as np
 
 from zarr._storage.store import StorageTransformer, StoreV3, _rmdir_from_keys_v3
 from zarr.util import normalize_storage_path
+from zarr.types import DIMENSION_SEPARATOR
 
 
 MAX_UINT_64 = 2**64 - 1
@@ -118,7 +119,7 @@ class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
         return transformer_copy
 
     @property
-    def dimension_separator(self) -> str:
+    def dimension_separator(self) -> DIMENSION_SEPARATOR:
         assert (
             self._dimension_separator is not None
         ), "dimension_separator is not initialized, first get a copy via _copy_for_array."
