@@ -123,8 +123,16 @@ ignore_missing_imports = true
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
+enable_error_code = [
+    "ignore-without-code",
+    "redundant-expr",
+    "truthy-bool",
+]
 
 [tool.pytest.ini_options]
+minversion = "7"
+log_cli_level = "INFO"
+# xfail_strict = true  # FIXME?
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
     "ELLIPSIS",
@@ -132,6 +140,9 @@ doctest_optionflags = [
 ]
 addopts = [
     "--durations=10",
+    "-ra",
+    "--strict-config",
+    "--strict-markers",
 ]
 filterwarnings = [
     "error:::zarr.*",
