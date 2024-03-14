@@ -14,6 +14,7 @@ classes may also optionally implement a `rename` method (rename all members unde
 path) and a `getsize` method (return the size in bytes of a given value).
 
 """
+
 import atexit
 import errno
 import glob
@@ -28,20 +29,20 @@ import warnings
 import zipfile
 from collections import OrderedDict
 from collections.abc import MutableMapping
+from functools import lru_cache
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
-from typing import Optional, Union, List, Tuple, Dict, Any
+from typing import Sequence, Mapping, Optional, Union, List, Tuple, Dict, Any
 import uuid
 import time
 
 from numcodecs.abc import Codec
-from numcodecs.compat import (
-    ensure_bytes,
-    ensure_text,
-    ensure_contiguous_ndarray_like
-)
+from numcodecs.compat import ensure_bytes, ensure_text, ensure_contiguous_ndarray_like
 from numcodecs.registry import codec_registry
+from zarr.context import Context
+from zarr.types import PathLike as Path, DIMENSION_SEPARATOR
+from zarr.util import NoLock
 
 from zarr.errors import (
     MetadataError,
@@ -52,49 +53,61 @@ from zarr.errors import (
     ReadOnlyError,
 )
 from zarr.meta import encode_array_metadata, encode_group_metadata
-from zarr.util import (buffer_size, json_loads, nolock, normalize_chunks,
-                       normalize_dimension_separator,
-                       normalize_dtype, normalize_fill_value, normalize_order,
-                       normalize_shape, normalize_storage_path, retry_call
-                       )
+from zarr.util import (
+    buffer_size,
+    json_loads,
+    nolock,
+    normalize_chunks,
+    normalize_dimension_separator,
+    normalize_dtype,
+    normalize_fill_value,
+    normalize_order,
+    normalize_shape,
+    normalize_storage_path,
+    retry_call,
+    ensure_contiguous_ndarray_or_bytes,
+)
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
-from zarr._storage.store import (_get_hierarchy_metadata,  # noqa: F401
-                                 _get_metadata_suffix,
-                                 _listdir_from_keys,
-                                 _rename_from_keys,
-                                 _rename_metadata_v3,
-                                 _rmdir_from_keys,
-                                 _rmdir_from_keys_v3,
-                                 _path_to_prefix,
-                                 _prefix_to_array_key,
-                                 _prefix_to_group_key,
-                                 array_meta_key,
-                                 attrs_key,
-                                 data_root,
-                                 group_meta_key,
-                                 meta_root,
-                                 DEFAULT_ZARR_VERSION,
-                                 BaseStore,
-                                 Store)
+from zarr._storage.store import (  # noqa: F401
+    _get_hierarchy_metadata,
+    _get_metadata_suffix,
+    _listdir_from_keys,
+    _rename_from_keys,
+    _rename_metadata_v3,
+    _rmdir_from_keys,
+    _rmdir_from_keys_v3,
+    _path_to_prefix,
+    _prefix_to_array_key,
+    _prefix_to_group_key,
+    array_meta_key,
+    attrs_key,
+    data_root,
+    group_meta_key,
+    meta_root,
+    DEFAULT_ZARR_VERSION,
+    BaseStore,
+    Store,
+)
 
 __doctest_requires__ = {
-    ('RedisStore', 'RedisStore.*'): ['redis'],
-    ('MongoDBStore', 'MongoDBStore.*'): ['pymongo'],
-    ('LRUStoreCache', 'LRUStoreCache.*'): ['s3fs'],
+    ("RedisStore", "RedisStore.*"): ["redis"],
+    ("MongoDBStore", "MongoDBStore.*"): ["pymongo"],
+    ("LRUStoreCache", "LRUStoreCache.*"): ["s3fs"],
 }
 
 
 try:
     # noinspection PyUnresolvedReferences
     from zarr.codecs import Blosc
+
     default_compressor = Blosc()
 except ImportError:  # pragma: no cover
     from zarr.codecs import Zlib
+
     default_compressor = Zlib()
 
 
-Path = Union[str, bytes, None]
 # allow MutableMapping for backwards compatibility
 StoreLike = Union[BaseStore, MutableMapping]
 
@@ -112,7 +125,7 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
     key = _prefix_to_group_key(store, prefix)
-    store_version = getattr(store, '_store_version', 2)
+    store_version = getattr(store, "_store_version", 2)
     if store_version == 2 or explicit_only:
         return key in store
     else:
@@ -121,9 +134,9 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
         # for v3, need to also handle implicit groups
 
         sfx = _get_metadata_suffix(store)  # type: ignore
-        implicit_prefix = key.replace('.group' + sfx, '')
-        if not implicit_prefix.endswith('/'):
-            implicit_prefix += '/'
+        implicit_prefix = key.replace(".group" + sfx, "")
+        if not implicit_prefix.endswith("/"):
+            implicit_prefix += "/"
         if store.list_prefix(implicit_prefix):  # type: ignore
             return True
         return False
@@ -131,7 +144,7 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
 
 def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseStore:
     # default to v2 store for backward compatibility
-    zarr_version = getattr(store, '_store_version', 2)
+    zarr_version = getattr(store, "_store_version", 2)
     if zarr_version != 2:
         raise ValueError("store must be a version 2 store")
     if store is None:
@@ -139,15 +152,29 @@ def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseS
         return store
     if isinstance(store, os.PathLike):
         store = os.fspath(store)
+    if FSStore._fsspec_installed():
+        import fsspec
+
+        if isinstance(store, fsspec.FSMap):
+            return FSStore(
+                store.root,
+                fs=store.fs,
+                mode=mode,
+                check=store.check,
+                create=store.create,
+                missing_exceptions=store.missing_exceptions,
+                **(storage_options or {}),
+            )
     if isinstance(store, str):
         if "://" in store or "::" in store:
             return FSStore(store, mode=mode, **(storage_options or {}))
         elif storage_options:
             raise ValueError("storage_options passed with non-fsspec path")
-        if store.endswith('.zip'):
+        if store.endswith(".zip"):
             return ZipStore(store, mode=mode)
-        elif store.endswith('.n5'):
+        elif store.endswith(".n5"):
             from zarr.n5 import N5Store
+
             return N5Store(store)
         else:
             return DirectoryStore(store)
@@ -156,8 +183,9 @@ def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseS
     return store
 
 
-def normalize_store_arg(store: Any, storage_options=None, mode="r", *,
-                        zarr_version=None) -> BaseStore:
+def normalize_store_arg(
+    store: Any, storage_options=None, mode="r", *, zarr_version=None
+) -> BaseStore:
     if zarr_version is None:
         # default to v2 store for backward compatibility
         zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
@@ -165,6 +193,7 @@ def normalize_store_arg(store: Any, storage_options=None, mode="r", *,
         normalize_store = _normalize_store_arg_v2
     elif zarr_version == 3:
         from zarr._storage.v3 import _normalize_store_arg_v3
+
         normalize_store = _normalize_store_arg_v3
     else:
         raise ValueError("zarr_version must be either 2 or 3")
@@ -176,10 +205,10 @@ def rmdir(store: StoreLike, path: Path = None):
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
     path = normalize_storage_path(path)
-    store_version = getattr(store, '_store_version', 2)
+    store_version = getattr(store, "_store_version", 2)
     if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
         # pass through
-        store.rmdir(path)  # type: ignore
+        store.rmdir(path)
     else:
         # slow version, delete one key at a time
         if store_version == 2:
@@ -194,7 +223,7 @@ def rename(store: Store, src_path: Path, dst_path: Path):
     `Store` interface."""
     src_path = normalize_storage_path(src_path)
     dst_path = normalize_storage_path(dst_path)
-    if hasattr(store, 'rename'):
+    if hasattr(store, "rename"):
         # pass through
         store.rename(src_path, dst_path)
     else:
@@ -207,9 +236,9 @@ def listdir(store: BaseStore, path: Path = None):
     method, this will be called, otherwise will fall back to implementation via the
     `MutableMapping` interface."""
     path = normalize_storage_path(path)
-    if hasattr(store, 'listdir'):
+    if hasattr(store, "listdir"):
         # pass through
-        return store.listdir(path)  # type: ignore
+        return store.listdir(path)
     else:
         # slow version, iterate through all keys
         warnings.warn(
@@ -226,14 +255,14 @@ def _getsize(store: BaseStore, path: Path = None) -> int:
         v = store[path]
         size = buffer_size(v)
     else:
-        path = '' if path is None else normalize_storage_path(path)
+        path = "" if path is None else normalize_storage_path(path)
         size = 0
-        store_version = getattr(store, '_store_version', 2)
+        store_version = getattr(store, "_store_version", 2)
         if store_version == 3:
-            if path == '':
+            if path == "":
                 # have to list the root folders without trailing / in this case
-                members = store.list_prefix(data_root.rstrip('/'))   # type: ignore
-                members += store.list_prefix(meta_root.rstrip('/'))  # type: ignore
+                members = store.list_prefix(data_root.rstrip("/"))  # type: ignore
+                members += store.list_prefix(meta_root.rstrip("/"))  # type: ignore
             else:
                 members = store.list_prefix(data_root + path)  # type: ignore
                 members += store.list_prefix(meta_root + path)  # type: ignore
@@ -259,10 +288,10 @@ def _getsize(store: BaseStore, path: Path = None) -> int:
 def getsize(store: BaseStore, path: Path = None) -> int:
     """Compute size of stored items for a given path. If `store` provides a `getsize`
     method, this will be called, otherwise will return -1."""
-    if hasattr(store, 'getsize'):
+    if hasattr(store, "getsize"):
         # pass through
         path = normalize_storage_path(path)
-        return store.getsize(path)  # type: ignore
+        return store.getsize(path)
     elif isinstance(store, MutableMapping):
         return _getsize(store, path)
     else:
@@ -277,19 +306,18 @@ def _require_parent_group(
 ):
     # assume path is normalized
     if path:
-        segments = path.split('/')
+        segments = path.split("/")
         for i in range(len(segments)):
-            p = '/'.join(segments[:i])
+            p = "/".join(segments[:i])
             if contains_array(store, p):
-                _init_group_metadata(store, path=p, chunk_store=chunk_store,
-                                     overwrite=overwrite)
+                _init_group_metadata(store, path=p, chunk_store=chunk_store, overwrite=overwrite)
             elif not contains_group(store, p):
                 _init_group_metadata(store, path=p, chunk_store=chunk_store)
 
 
 def init_array(
     store: StoreLike,
-    shape: Tuple[int, ...],
+    shape: Union[int, Tuple[int, ...]],
     chunks: Union[bool, int, Tuple[int, ...]] = True,
     dtype=None,
     compressor="default",
@@ -300,7 +328,8 @@ def init_array(
     chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
-    dimension_separator=None,
+    dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
+    storage_transformers=(),
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
     function and there should be no need to call this directly from user code.
@@ -413,22 +442,31 @@ def init_array(
     # ensure parent group initialized
     store_version = getattr(store, "_store_version", 2)
     if store_version < 3:
-        _require_parent_group(path, store=store, chunk_store=chunk_store,
-                              overwrite=overwrite)
+        _require_parent_group(path, store=store, chunk_store=chunk_store, overwrite=overwrite)
 
-    if store_version == 3 and 'zarr.json' not in store:
+    if store_version == 3 and "zarr.json" not in store:
         # initialize with default zarr.json entry level metadata
-        store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore
+        store["zarr.json"] = store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore
 
     if not compressor:
         # compatibility with legacy tests using compressor=[]
         compressor = None
-    _init_array_metadata(store, shape=shape, chunks=chunks, dtype=dtype,
-                         compressor=compressor, fill_value=fill_value,
-                         order=order, overwrite=overwrite, path=path,
-                         chunk_store=chunk_store, filters=filters,
-                         object_codec=object_codec,
-                         dimension_separator=dimension_separator)
+    _init_array_metadata(
+        store,
+        shape=shape,
+        chunks=chunks,
+        dtype=dtype,
+        compressor=compressor,
+        fill_value=fill_value,
+        order=order,
+        overwrite=overwrite,
+        path=path,
+        chunk_store=chunk_store,
+        filters=filters,
+        object_codec=object_codec,
+        dimension_separator=dimension_separator,
+        storage_transformers=storage_transformers,
+    )
 
 
 def _init_array_metadata(
@@ -444,10 +482,10 @@ def _init_array_metadata(
     chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
-    dimension_separator=None,
+    dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
+    storage_transformers=(),
 ):
-
-    store_version = getattr(store, '_store_version', 2)
+    store_version = getattr(store, "_store_version", 2)
 
     path = normalize_storage_path(path)
 
@@ -472,11 +510,11 @@ def _init_array_metadata(
             if chunk_store is not None:
                 chunk_store.erase_prefix(data_prefix)  # type: ignore
 
-            if '/' in path:
+            if "/" in path:
                 # path is a subfolder of an existing array, remove that array
-                parent_path = '/'.join(path.split('/')[:-1])
+                parent_path = "/".join(path.split("/")[:-1])
                 sfx = _get_metadata_suffix(store)  # type: ignore
-                array_key = meta_root + parent_path + '.array' + sfx
+                array_key = meta_root + parent_path + ".array" + sfx
                 if array_key in store:
                     store.erase(array_key)  # type: ignore
 
@@ -486,9 +524,9 @@ def _init_array_metadata(
         elif contains_group(store, path, explicit_only=False):
             raise ContainsGroupError(path)
         elif store_version == 3:
-            if '/' in path:
+            if "/" in path:
                 # cannot create an array within an existing array path
-                parent_path = '/'.join(path.split('/')[:-1])
+                parent_path = "/".join(path.split("/")[:-1])
                 if contains_array(store, parent_path):
                     raise ContainsArrayError(path)
 
@@ -509,10 +547,10 @@ def _init_array_metadata(
     if shape == ():
         # no point in compressing a 0-dimensional array, only a single value
         compressor = None
-    elif compressor == 'none':
+    elif compressor == "none":
         # compatibility
         compressor = None
-    elif compressor == 'default':
+    elif compressor == "default":
         compressor = default_compressor
 
     # obtain compressor config
@@ -542,16 +580,19 @@ def _init_array_metadata(
         if object_codec is None:
             if not filters:
                 # there are no filters so we can be sure there is no object codec
-                raise ValueError('missing object_codec for object array')
+                raise ValueError("missing object_codec for object array")
             else:
                 # one of the filters may be an object codec, issue a warning rather
                 # than raise an error to maintain backwards-compatibility
-                warnings.warn('missing object_codec for object array; this will raise a '
-                              'ValueError in version 3.0', FutureWarning)
+                warnings.warn(
+                    "missing object_codec for object array; this will raise a "
+                    "ValueError in version 3.0",
+                    FutureWarning,
+                )
         else:
             filters_config.insert(0, object_codec.get_config())
     elif object_codec is not None:
-        warnings.warn('an object_codec is only needed for object arrays')
+        warnings.warn("an object_codec is only needed for object arrays")
 
     # use null to indicate no filters
     if not filters_config:
@@ -560,31 +601,35 @@ def _init_array_metadata(
     # initialize metadata
     # TODO: don't store redundant dimension_separator for v3?
     _compressor = compressor_config if store_version == 2 else compressor
-    meta = dict(shape=shape, compressor=_compressor,
-                fill_value=fill_value,
-                dimension_separator=dimension_separator)
+    meta = dict(
+        shape=shape,
+        compressor=_compressor,
+        fill_value=fill_value,
+        dimension_separator=dimension_separator,
+    )
     if store_version < 3:
-        meta.update(dict(chunks=chunks, dtype=dtype, order=order,
-                         filters=filters_config))
+        meta.update(dict(chunks=chunks, dtype=dtype, order=order, filters=filters_config))
+        assert not storage_transformers
     else:
         if dimension_separator is None:
             dimension_separator = "/"
         if filters_config:
-            attributes = {'filters': filters_config}
+            attributes = {"filters": filters_config}
         else:
             attributes = {}
         meta.update(
-            dict(chunk_grid=dict(type="regular",
-                                 chunk_shape=chunks,
-                                 separator=dimension_separator),
-                 chunk_memory_layout=order,
-                 data_type=dtype,
-                 attributes=attributes)
+            dict(
+                chunk_grid=dict(type="regular", chunk_shape=chunks, separator=dimension_separator),
+                chunk_memory_layout=order,
+                data_type=dtype,
+                attributes=attributes,
+                storage_transformers=storage_transformers,
+            )
         )
 
     key = _prefix_to_array_key(store, _path_to_prefix(path))
-    if hasattr(store, '_metadata_class'):
-        store[key] = store._metadata_class.encode_array_metadata(meta)  # type: ignore
+    if hasattr(store, "_metadata_class"):
+        store[key] = store._metadata_class.encode_array_metadata(meta)
     else:
         store[key] = encode_array_metadata(meta)
 
@@ -619,19 +664,17 @@ def init_group(
     # normalize path
     path = normalize_storage_path(path)
 
-    store_version = getattr(store, '_store_version', 2)
+    store_version = getattr(store, "_store_version", 2)
     if store_version < 3:
         # ensure parent group initialized
-        _require_parent_group(path, store=store, chunk_store=chunk_store,
-                              overwrite=overwrite)
+        _require_parent_group(path, store=store, chunk_store=chunk_store, overwrite=overwrite)
 
-    if store_version == 3 and 'zarr.json' not in store:
+    if store_version == 3 and "zarr.json" not in store:
         # initialize with default zarr.json entry level metadata
-        store['zarr.json'] = store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore
+        store["zarr.json"] = store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore
 
     # initialise metadata
-    _init_group_metadata(store=store, overwrite=overwrite, path=path,
-                         chunk_store=chunk_store)
+    _init_group_metadata(store=store, overwrite=overwrite, path=path, chunk_store=chunk_store)
 
     if store_version == 3:
         # TODO: Should initializing a v3 group also create a corresponding
@@ -646,8 +689,7 @@ def _init_group_metadata(
     path: Optional[str] = None,
     chunk_store: Optional[StoreLike] = None,
 ):
-
-    store_version = getattr(store, '_store_version', 2)
+    store_version = getattr(store, "_store_version", 2)
     path = normalize_storage_path(path)
 
     # guard conditions
@@ -678,9 +720,9 @@ def _init_group_metadata(
             raise ContainsArrayError(path)
         elif contains_group(store, path):
             raise ContainsGroupError(path)
-        elif store_version == 3 and '/' in path:
+        elif store_version == 3 and "/" in path:
             # cannot create a group overlapping with an existing array name
-            parent_path = '/'.join(path.split('/')[:-1])
+            parent_path = "/".join(path.split("/")[:-1])
             if contains_array(store, parent_path):
                 raise ContainsArrayError(path)
 
@@ -688,12 +730,12 @@ def _init_group_metadata(
     # N.B., currently no metadata properties are needed, however there may
     # be in future
     if store_version == 3:
-        meta = {'attributes': {}}  # type: ignore
+        meta = {"attributes": {}}  # type: ignore
     else:
-        meta = {}  # type: ignore
+        meta = {}
     key = _prefix_to_group_key(store, _path_to_prefix(path))
-    if hasattr(store, '_metadata_class'):
-        store[key] = store._metadata_class.encode_group_metadata(meta)  # type: ignore
+    if hasattr(store, "_metadata_class"):
+        store[key] = store._metadata_class.encode_group_metadata(meta)
     else:
         store[key] = encode_group_metadata(meta)
 
@@ -702,7 +744,7 @@ def _dict_store_keys(d: Dict, prefix="", cls=dict):
     for k in d.keys():
         v = d[k]
         if isinstance(v, cls):
-            yield from _dict_store_keys(v, prefix + k + '/', cls)
+            yield from _dict_store_keys(v, prefix + k + "/", cls)
         else:
             yield prefix + k
 
@@ -728,6 +770,9 @@ class KVStore(Store):
     def __delitem__(self, key):
         del self._mutable_mapping[key]
 
+    def __contains__(self, key):
+        return key in self._mutable_mapping
+
     def get(self, key, default=None):
         return self._mutable_mapping.get(key, default)
 
@@ -741,7 +786,7 @@ class KVStore(Store):
         return len(self._mutable_mapping)
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}: \n{repr(self._mutable_mapping)}\n at {hex(id(self))}>"
+        return f"<{self.__class__.__name__}: \n{self._mutable_mapping!r}\n at {id(self):#x}>"
 
     def __eq__(self, other):
         if isinstance(other, KVStore):
@@ -795,7 +840,7 @@ class MemoryStore(Store):
     def _get_parent(self, item: str):
         parent = self.root
         # split the item
-        segments = item.split('/')
+        segments = item.split("/")
         # find the parent container
         for k in segments[:-1]:
             parent = parent[k]
@@ -806,7 +851,7 @@ class MemoryStore(Store):
     def _require_parent(self, item):
         parent = self.root
         # split the item
-        segments = item.split('/')
+        segments = item.split("/")
         # require the parent container
         for k in segments[:-1]:
             try:
@@ -855,11 +900,7 @@ class MemoryStore(Store):
             return not isinstance(value, self.cls)
 
     def __eq__(self, other):
-        return (
-            isinstance(other, MemoryStore) and
-            self.root == other.root and
-            self.cls == other.cls
-        )
+        return isinstance(other, MemoryStore) and self.root == other.root and self.cls == other.cls
 
     def keys(self):
         yield from _dict_store_keys(self.root, cls=self.cls)
@@ -944,12 +985,13 @@ class MemoryStore(Store):
 
 
 class DictStore(MemoryStore):
-
     def __init__(self, *args, **kwargs):
-        warnings.warn("DictStore has been renamed to MemoryStore in 2.4.0 and "
-                      "will be removed in the future. Please use MemoryStore.",
-                      DeprecationWarning,
-                      stacklevel=2)
+        warnings.warn(
+            "DictStore has been renamed to MemoryStore in 2.4.0 and "
+            "will be removed in the future. Please use MemoryStore.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         super().__init__(*args, **kwargs)
 
 
@@ -1013,8 +1055,9 @@ class DirectoryStore(Store):
 
     """
 
-    def __init__(self, path, normalize_keys=False, dimension_separator=None):
-
+    def __init__(
+        self, path, normalize_keys=False, dimension_separator: Optional[DIMENSION_SEPARATOR] = None
+    ):
         # guard conditions
         path = os.path.abspath(path)
         if os.path.exists(path) and not os.path.isdir(path):
@@ -1029,7 +1072,7 @@ class DirectoryStore(Store):
 
     @staticmethod
     def _fromfile(fn):
-        """ Read data from a file
+        """Read data from a file
 
         Parameters
         ----------
@@ -1041,12 +1084,12 @@ class DirectoryStore(Store):
         Subclasses should overload this method to specify any custom
         file reading logic.
         """
-        with open(fn, 'rb') as f:
+        with open(fn, "rb") as f:
             return f.read()
 
     @staticmethod
     def _tofile(a, fn):
-        """ Write data to a file
+        """Write data to a file
 
         Parameters
         ----------
@@ -1060,7 +1103,7 @@ class DirectoryStore(Store):
         Subclasses should overload this method to specify any custom
         file writing logic.
         """
-        with open(fn, mode='wb') as f:
+        with open(fn, mode="wb") as f:
             f.write(a)
 
     def __getitem__(self, key):
@@ -1097,7 +1140,7 @@ class DirectoryStore(Store):
 
         # write to temporary file
         # note we're not using tempfile.NamedTemporaryFile to avoid restrictive file permissions
-        temp_name = file_name + '.' + uuid.uuid4().hex + '.partial'
+        temp_name = file_name + "." + uuid.uuid4().hex + ".partial"
         temp_path = os.path.join(dir_path, temp_name)
         try:
             self._tofile(value, temp_path)
@@ -1130,10 +1173,7 @@ class DirectoryStore(Store):
         return os.path.isfile(file_path)
 
     def __eq__(self, other):
-        return (
-            isinstance(other, DirectoryStore) and
-            self.path == other.path
-        )
+        return isinstance(other, DirectoryStore) and self.path == other.path
 
     def keys(self):
         if os.path.exists(self.path):
@@ -1165,8 +1205,11 @@ class DirectoryStore(Store):
         return dir_path
 
     def listdir(self, path=None):
-        return self._nested_listdir(path) if self._dimension_separator == "/" else \
-            self._flat_listdir(path)
+        return (
+            self._nested_listdir(path)
+            if self._dimension_separator == "/"
+            else self._flat_listdir(path)
+        )
 
     def _flat_listdir(self, path=None):
         dir_path = self.dir_path(path)
@@ -1189,7 +1232,9 @@ class DirectoryStore(Store):
                         for file_name in file_names:
                             file_path = os.path.join(dir_path, file_name)
                             rel_path = file_path.split(root_path + os.path.sep)[1]
-                            new_children.append(rel_path.replace(os.path.sep, '.'))
+                            new_children.append(
+                                rel_path.replace(os.path.sep, self._dimension_separator or ".")
+                            )
                 else:
                     new_children.append(entry)
             return sorted(new_children)
@@ -1235,21 +1280,21 @@ class DirectoryStore(Store):
         shutil.rmtree(self.path)
 
 
-def atexit_rmtree(path,
-                  isdir=os.path.isdir,
-                  rmtree=shutil.rmtree):  # pragma: no cover
+def atexit_rmtree(path, isdir=os.path.isdir, rmtree=shutil.rmtree):  # pragma: no cover
     """Ensure directory removal at interpreter exit."""
     if isdir(path):
         rmtree(path)
 
 
 # noinspection PyShadowingNames
-def atexit_rmglob(path,
-                  glob=glob.glob,
-                  isdir=os.path.isdir,
-                  isfile=os.path.isfile,
-                  remove=os.remove,
-                  rmtree=shutil.rmtree):  # pragma: no cover
+def atexit_rmglob(
+    path,
+    glob=glob.glob,
+    isdir=os.path.isdir,
+    isfile=os.path.isfile,
+    remove=os.remove,
+    rmtree=shutil.rmtree,
+):  # pragma: no cover
     """Ensure removal of multiple files at interpreter exit."""
     for p in glob(path):
         if isfile(p):
@@ -1295,19 +1340,27 @@ class FSStore(Store):
     storage_options : passed to the fsspec implementation. Cannot be used
         together with fs.
     """
+
     _array_meta_key = array_meta_key
     _group_meta_key = group_meta_key
     _attrs_key = attrs_key
 
-    def __init__(self, url, normalize_keys=False, key_separator=None,
-                 mode='w',
-                 exceptions=(KeyError, PermissionError, IOError),
-                 dimension_separator=None,
-                 fs=None,
-                 check=False,
-                 create=False,
-                 missing_exceptions=None,
-                 **storage_options):
+    def __init__(
+        self,
+        url,
+        normalize_keys=False,
+        key_separator=None,
+        mode="w",
+        exceptions=(KeyError, PermissionError, IOError),
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
+        fs=None,
+        check=False,
+        create=False,
+        missing_exceptions=None,
+        **storage_options,
+    ):
+        if not self._fsspec_installed():  # pragma: no cover
+            raise ImportError("`fsspec` is required to use zarr's FSStore")
         import fsspec
 
         mapper_options = {"check": check, "create": create}
@@ -1351,17 +1404,19 @@ class FSStore(Store):
             self.key_separator = "."
 
     def _normalize_key(self, key):
-        key = normalize_storage_path(key).lstrip('/')
+        key = normalize_storage_path(key).lstrip("/")
         if key:
-            *bits, end = key.split('/')
+            *bits, end = key.split("/")
 
             if end not in (self._array_meta_key, self._group_meta_key, self._attrs_key):
-                end = end.replace('.', self.key_separator)
-                key = '/'.join(bits + [end])
+                end = end.replace(".", self.key_separator)
+                key = "/".join(bits + [end])
 
         return key.lower() if self.normalize_keys else key
 
-    def getitems(self, keys, **kwargs):
+    def getitems(
+        self, keys: Sequence[str], *, contexts: Mapping[str, Context]
+    ) -> Mapping[str, Any]:
         keys_transformed = [self._normalize_key(key) for key in keys]
         results = self.map.getitems(keys_transformed, on_error="omit")
         # The function calling this method may not recognize the transformed keys
@@ -1376,15 +1431,21 @@ class FSStore(Store):
             raise KeyError(key) from e
 
     def setitems(self, values):
-        if self.mode == 'r':
+        if self.mode == "r":
             raise ReadOnlyError()
-        values = {self._normalize_key(key): val for key, val in values.items()}
+
+        # Normalize keys and make sure the values are bytes
+        values = {
+            self._normalize_key(key): ensure_contiguous_ndarray_or_bytes(val)
+            for key, val in values.items()
+        }
         self.map.setitems(values)
 
     def __setitem__(self, key, value):
-        if self.mode == 'r':
+        if self.mode == "r":
             raise ReadOnlyError()
         key = self._normalize_key(key)
+        value = ensure_contiguous_ndarray_or_bytes(value)
         path = self.dir_path(key)
         try:
             if self.fs.isdir(path):
@@ -1395,7 +1456,7 @@ class FSStore(Store):
             raise KeyError(key) from e
 
     def __delitem__(self, key):
-        if self.mode == 'r':
+        if self.mode == "r":
             raise ReadOnlyError()
         key = self._normalize_key(key)
         path = self.dir_path(key)
@@ -1405,7 +1466,7 @@ class FSStore(Store):
             del self.map[key]
 
     def delitems(self, keys):
-        if self.mode == 'r':
+        if self.mode == "r":
             raise ReadOnlyError()
         # only remove the keys that exist in the store
         nkeys = [self._normalize_key(key) for key in keys if key in self]
@@ -1418,8 +1479,7 @@ class FSStore(Store):
         return key in self.map
 
     def __eq__(self, other):
-        return (type(self) is type(other) and self.map == other.map
-                and self.mode == other.mode)
+        return type(self) is type(other) and self.map == other.map and self.mode == other.mode
 
     def keys(self):
         return iter(self.map)
@@ -1437,8 +1497,9 @@ class FSStore(Store):
     def listdir(self, path=None):
         dir_path = self.dir_path(path)
         try:
-            children = sorted(p.rstrip('/').rsplit('/', 1)[-1]
-                              for p in self.fs.ls(dir_path, detail=False))
+            children = sorted(
+                p.rstrip("/").rsplit("/", 1)[-1] for p in self.fs.ls(dir_path, detail=False)
+            )
             if self.key_separator != "/":
                 return children
             else:
@@ -1453,8 +1514,8 @@ class FSStore(Store):
                             for file_name in self.fs.find(entry_path):
                                 file_path = os.path.join(dir_path, file_name)
                                 rel_path = file_path.split(root_path)[1]
-                                rel_path = rel_path.lstrip('/')
-                                new_children.append(rel_path.replace('/', '.'))
+                                rel_path = rel_path.lstrip("/")
+                                new_children.append(rel_path.replace("/", "."))
                         else:
                             new_children.append(entry)
                     return sorted(new_children)
@@ -1464,7 +1525,7 @@ class FSStore(Store):
             return []
 
     def rmdir(self, path=None):
-        if self.mode == 'r':
+        if self.mode == "r":
             raise ReadOnlyError()
         store_path = self.dir_path(path)
         if self.fs.isdir(store_path):
@@ -1475,9 +1536,17 @@ class FSStore(Store):
         return self.fs.du(store_path, True, True)
 
     def clear(self):
-        if self.mode == 'r':
+        if self.mode == "r":
             raise ReadOnlyError()
         self.map.clear()
+
+    @classmethod
+    @lru_cache(maxsize=None)
+    def _fsspec_installed(cls):
+        """Returns true if fsspec is installed"""
+        import importlib.util
+
+        return importlib.util.find_spec("fsspec") is not None
 
 
 class TempStore(DirectoryStore):
@@ -1501,15 +1570,21 @@ class TempStore(DirectoryStore):
     """
 
     # noinspection PyShadowingBuiltins
-    def __init__(self, suffix='', prefix='zarr', dir=None, normalize_keys=False,
-                 dimension_separator=None):
+    def __init__(
+        self,
+        suffix="",
+        prefix="zarr",
+        dir=None,
+        normalize_keys=False,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
+    ):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
         atexit.register(atexit_rmtree, path)
         super().__init__(path, normalize_keys=normalize_keys)
 
 
-_prog_ckey = re.compile(r'^(\d+)(\.\d+)+$')
-_prog_number = re.compile(r'^\d+$')
+_prog_ckey = re.compile(r"^(\d+)(\.\d+)+$")
+_prog_number = re.compile(r"^\d+$")
 
 
 class NestedDirectoryStore(DirectoryStore):
@@ -1585,20 +1660,18 @@ class NestedDirectoryStore(DirectoryStore):
 
     """
 
-    def __init__(self, path, normalize_keys=False, dimension_separator="/"):
+    def __init__(
+        self, path, normalize_keys=False, dimension_separator: Optional[DIMENSION_SEPARATOR] = "/"
+    ):
         super().__init__(path, normalize_keys=normalize_keys)
         if dimension_separator is None:
             dimension_separator = "/"
         elif dimension_separator != "/":
-            raise ValueError(
-                "NestedDirectoryStore only supports '/' as dimension_separator")
+            raise ValueError("NestedDirectoryStore only supports '/' as dimension_separator")
         self._dimension_separator = dimension_separator
 
     def __eq__(self, other):
-        return (
-            isinstance(other, NestedDirectoryStore) and
-            self.path == other.path
-        )
+        return isinstance(other, NestedDirectoryStore) and self.path == other.path
 
 
 # noinspection PyPep8Naming
@@ -1696,9 +1769,14 @@ class ZipStore(Store):
 
     _erasable = False
 
-    def __init__(self, path, compression=zipfile.ZIP_STORED, allowZip64=True, mode='a',
-                 dimension_separator=None):
-
+    def __init__(
+        self,
+        path,
+        compression=zipfile.ZIP_STORED,
+        allowZip64=True,
+        mode="a",
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
+    ):
         # store properties
         path = os.path.abspath(path)
         self.path = path
@@ -1713,8 +1791,7 @@ class ZipStore(Store):
         self.mutex = RLock()
 
         # open zip file
-        self.zf = zipfile.ZipFile(path, mode=mode, compression=compression,
-                                  allowZip64=allowZip64)
+        self.zf = zipfile.ZipFile(path, mode=mode, compression=compression, allowZip64=allowZip64)
 
     def __getstate__(self):
         self.flush()
@@ -1724,10 +1801,9 @@ class ZipStore(Store):
         path, compression, allowZip64, mode = state
         # if initially opened with mode 'w' or 'x', re-open in mode 'a' so file doesn't
         # get clobbered
-        if mode in 'wx':
-            mode = 'a'
-        self.__init__(path=path, compression=compression, allowZip64=allowZip64,
-                      mode=mode)
+        if mode in "wx":
+            mode = "a"
+        self.__init__(path=path, compression=compression, allowZip64=allowZip64, mode=mode)
 
     def close(self):
         """Closes the underlying zip file, ensuring all records are written."""
@@ -1737,14 +1813,14 @@ class ZipStore(Store):
     def flush(self):
         """Closes the underlying zip file, ensuring all records are written,
         then re-opens the file for further modifications."""
-        if self.mode != 'r':
+        if self.mode != "r":
             with self.mutex:
                 self.zf.close()
                 # N.B., re-open with mode 'a' regardless of initial mode so we don't wipe
                 # what's been written
-                self.zf = zipfile.ZipFile(self.path, mode='a',
-                                          compression=self.compression,
-                                          allowZip64=self.allowZip64)
+                self.zf = zipfile.ZipFile(
+                    self.path, mode="a", compression=self.compression, allowZip64=self.allowZip64
+                )
 
     def __enter__(self):
         return self
@@ -1763,21 +1839,20 @@ class ZipStore(Store):
                     raise KeyError("Key not found")
 
     def __setitem__(self, key, value):
-        if self.mode == 'r':
+        if self.mode == "r":
             raise ReadOnlyError()
         value = ensure_contiguous_ndarray_like(value).view("u1")
         with self.mutex:
             # writestr(key, value) writes with default permissions from
             # zipfile (600) that are too restrictive, build ZipInfo for
             # the key to work around limitation
-            keyinfo = zipfile.ZipInfo(filename=key,
-                                      date_time=time.localtime(time.time())[:6])
+            keyinfo = zipfile.ZipInfo(filename=key, date_time=time.localtime(time.time())[:6])
             keyinfo.compress_type = self.compression
             if keyinfo.filename[-1] == os.sep:
-                keyinfo.external_attr = 0o40775 << 16   # drwxrwxr-x
-                keyinfo.external_attr |= 0x10           # MS-DOS directory flag
+                keyinfo.external_attr = 0o40775 << 16  # drwxrwxr-x
+                keyinfo.external_attr |= 0x10  # MS-DOS directory flag
             else:
-                keyinfo.external_attr = 0o644 << 16     # ?rw-r--r--
+                keyinfo.external_attr = 0o644 << 16  # ?rw-r--r--
 
             self.zf.writestr(keyinfo, value)
 
@@ -1802,10 +1877,10 @@ class ZipStore(Store):
 
     def __eq__(self, other):
         return (
-            isinstance(other, ZipStore) and
-            self.path == other.path and
-            self.compression == other.compression and
-            self.allowZip64 == other.allowZip64
+            isinstance(other, ZipStore)
+            and self.path == other.path
+            and self.compression == other.compression
+            and self.allowZip64 == other.allowZip64
         )
 
     def keylist(self):
@@ -1847,7 +1922,7 @@ class ZipStore(Store):
                 size = 0
                 for child in children:
                     if path:
-                        name = path + '/' + child
+                        name = path + "/" + child
                     else:
                         name = child
                     try:
@@ -1867,14 +1942,14 @@ class ZipStore(Store):
                 return 0
 
     def clear(self):
-        if self.mode == 'r':
+        if self.mode == "r":
             raise ReadOnlyError()
         with self.mutex:
             self.close()
             os.remove(self.path)
-            self.zf = zipfile.ZipFile(self.path, mode=self.mode,
-                                      compression=self.compression,
-                                      allowZip64=self.allowZip64)
+            self.zf = zipfile.ZipFile(
+                self.path, mode=self.mode, compression=self.compression, allowZip64=self.allowZip64
+            )
 
 
 def migrate_1to2(store):
@@ -1896,37 +1971,38 @@ def migrate_1to2(store):
 
     # migrate metadata
     from zarr import meta_v1
-    meta = meta_v1.decode_metadata(store['meta'])
-    del store['meta']
+
+    meta = meta_v1.decode_metadata(store["meta"])
+    del store["meta"]
 
     # add empty filters
-    meta['filters'] = None
+    meta["filters"] = None
 
     # migration compression metadata
-    compression = meta['compression']
-    if compression is None or compression == 'none':
+    compression = meta["compression"]
+    if compression is None or compression == "none":
         compressor_config = None
     else:
-        compression_opts = meta['compression_opts']
+        compression_opts = meta["compression_opts"]
         codec_cls = codec_registry[compression]
         if isinstance(compression_opts, dict):
             compressor = codec_cls(**compression_opts)
         else:
             compressor = codec_cls(compression_opts)
         compressor_config = compressor.get_config()
-    meta['compressor'] = compressor_config
-    del meta['compression']
-    del meta['compression_opts']
+    meta["compressor"] = compressor_config
+    del meta["compression"]
+    del meta["compression_opts"]
 
     # store migrated metadata
-    if hasattr(store, '_metadata_class'):
+    if hasattr(store, "_metadata_class"):
         store[array_meta_key] = store._metadata_class.encode_array_metadata(meta)
     else:
         store[array_meta_key] = encode_array_metadata(meta)
 
     # migrate user attributes
-    store[attrs_key] = store['attrs']
-    del store['attrs']
+    store[attrs_key] = store["attrs"]
+    del store["attrs"]
 
 
 # noinspection PyShadowingBuiltins
@@ -2011,11 +2087,19 @@ class DBMStore(Store):
 
     """
 
-    def __init__(self, path, flag='c', mode=0o666, open=None, write_lock=True,
-                 dimension_separator=None,
-                 **open_kwargs):
+    def __init__(
+        self,
+        path,
+        flag="c",
+        mode=0o666,
+        open=None,
+        write_lock=True,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
+        **open_kwargs,
+    ):
         if open is None:
             import dbm
+
             open = dbm.open
         path = os.path.abspath(path)
         # noinspection PyArgumentList
@@ -2025,6 +2109,7 @@ class DBMStore(Store):
         self.mode = mode
         self.open = open
         self.write_lock = write_lock
+        self.write_mutex: Union[Lock, NoLock]
         if write_lock:
             # This may not be required as some dbm implementations manage their own
             # locks, but err on the side of caution.
@@ -2040,27 +2125,25 @@ class DBMStore(Store):
         except Exception:
             # flush may fail if db has already been closed
             pass
-        return (self.path, self.flag, self.mode, self.open, self.write_lock,
-                self.open_kwargs)
+        return (self.path, self.flag, self.mode, self.open, self.write_lock, self.open_kwargs)
 
     def __setstate__(self, state):
         path, flag, mode, open, write_lock, open_kws = state
-        if flag[0] == 'n':
-            flag = 'c' + flag[1:]  # don't clobber an existing database
-        self.__init__(path=path, flag=flag, mode=mode, open=open,
-                      write_lock=write_lock, **open_kws)
+        if flag[0] == "n":
+            flag = "c" + flag[1:]  # don't clobber an existing database
+        self.__init__(path=path, flag=flag, mode=mode, open=open, write_lock=write_lock, **open_kws)
 
     def close(self):
         """Closes the underlying database file."""
-        if hasattr(self.db, 'close'):
+        if hasattr(self.db, "close"):
             with self.write_mutex:
                 self.db.close()
 
     def flush(self):
         """Synchronizes data to the underlying database file."""
-        if self.flag[0] != 'r':
+        if self.flag[0] != "r":
             with self.write_mutex:
-                if hasattr(self.db, 'sync'):
+                if hasattr(self.db, "sync"):
                     self.db.sync()
                 else:  # pragma: no cover
                     # we don't cover this branch anymore as ndbm (oracle) is not packaged
@@ -2068,8 +2151,8 @@ class DBMStore(Store):
                     # https://github.com/conda-forge/staged-recipes/issues/4476
                     # fall-back, close and re-open, needed for ndbm
                     flag = self.flag
-                    if flag[0] == 'n':
-                        flag = 'c' + flag[1:]  # don't clobber an existing database
+                    if flag[0] == "n":
+                        flag = "c" + flag[1:]  # don't clobber an existing database
                     self.db.close()
                     # noinspection PyArgumentList
                     self.db = self.open(self.path, flag, self.mode, **self.open_kwargs)
@@ -2100,11 +2183,12 @@ class DBMStore(Store):
 
     def __eq__(self, other):
         return (
-            isinstance(other, DBMStore) and
-            self.path == other.path and
+            isinstance(other, DBMStore)
+            and self.path == other.path
+            and
             # allow flag and mode to differ
-            self.open == other.open and
-            self.open_kwargs == other.open_kwargs
+            self.open == other.open
+            and self.open_kwargs == other.open_kwargs
         )
 
     def keys(self):
@@ -2182,33 +2266,39 @@ class LMDBStore(Store):
 
     """
 
-    def __init__(self, path, buffers=True, dimension_separator=None, **kwargs):
+    def __init__(
+        self,
+        path,
+        buffers=True,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
+        **kwargs,
+    ):
         import lmdb
 
         # set default memory map size to something larger than the lmdb default, which is
         # very likely to be too small for any moderate array (logic copied from zict)
-        map_size = (2**40 if sys.maxsize >= 2**32 else 2**28)
-        kwargs.setdefault('map_size', map_size)
+        map_size = 2**40 if sys.maxsize >= 2**32 else 2**28
+        kwargs.setdefault("map_size", map_size)
 
         # don't initialize buffers to zero by default, shouldn't be necessary
-        kwargs.setdefault('meminit', False)
+        kwargs.setdefault("meminit", False)
 
         # decide whether to use the writemap option based on the operating system's
         # support for sparse files - writemap requires sparse file support otherwise
         # the whole# `map_size` may be reserved up front on disk (logic copied from zict)
-        writemap = sys.platform.startswith('linux')
-        kwargs.setdefault('writemap', writemap)
+        writemap = sys.platform.startswith("linux")
+        kwargs.setdefault("writemap", writemap)
 
         # decide options for when data are flushed to disk - choose to delay syncing
         # data to filesystem, otherwise pay a large performance penalty (zict also does
         # this)
-        kwargs.setdefault('metasync', False)
-        kwargs.setdefault('sync', False)
-        kwargs.setdefault('map_async', False)
+        kwargs.setdefault("metasync", False)
+        kwargs.setdefault("sync", False)
+        kwargs.setdefault("map_async", False)
 
         # set default option for number of cached transactions
         max_spare_txns = multiprocessing.cpu_count()
-        kwargs.setdefault('max_spare_txns', max_spare_txns)
+        kwargs.setdefault("max_spare_txns", max_spare_txns)
 
         # normalize path
         path = os.path.abspath(path)
@@ -2299,7 +2389,7 @@ class LMDBStore(Store):
         return self.keys()
 
     def __len__(self):
-        return self.db.stat()['entries']
+        return self.db.stat()["entries"]
 
 
 class LRUStoreCache(Store):
@@ -2344,21 +2434,37 @@ class LRUStoreCache(Store):
         self._max_size = max_size
         self._current_size = 0
         self._keys_cache = None
-        self._contains_cache = None
+        self._contains_cache: Dict[Any, Any] = {}
         self._listdir_cache: Dict[Path, Any] = dict()
         self._values_cache: Dict[Path, Any] = OrderedDict()
         self._mutex = Lock()
         self.hits = self.misses = 0
 
     def __getstate__(self):
-        return (self._store, self._max_size, self._current_size, self._keys_cache,
-                self._contains_cache, self._listdir_cache, self._values_cache, self.hits,
-                self.misses)
+        return (
+            self._store,
+            self._max_size,
+            self._current_size,
+            self._keys_cache,
+            self._contains_cache,
+            self._listdir_cache,
+            self._values_cache,
+            self.hits,
+            self.misses,
+        )
 
     def __setstate__(self, state):
-        (self._store, self._max_size, self._current_size, self._keys_cache,
-         self._contains_cache, self._listdir_cache, self._values_cache, self.hits,
-         self.misses) = state
+        (
+            self._store,
+            self._max_size,
+            self._current_size,
+            self._keys_cache,
+            self._contains_cache,
+            self._listdir_cache,
+            self._values_cache,
+            self.hits,
+            self.misses,
+        ) = state
         self._mutex = Lock()
 
     def __len__(self):
@@ -2369,9 +2475,9 @@ class LRUStoreCache(Store):
 
     def __contains__(self, key):
         with self._mutex:
-            if self._contains_cache is None:
-                self._contains_cache = set(self._keys())
-            return key in self._contains_cache
+            if key not in self._contains_cache:
+                self._contains_cache[key] = key in self._store
+            return self._contains_cache[key]
 
     def clear(self):
         self._store.clear()
@@ -2441,7 +2547,7 @@ class LRUStoreCache(Store):
 
     def _invalidate_keys(self):
         self._keys_cache = None
-        self._contains_cache = None
+        self._contains_cache.clear()
         self._listdir_cache.clear()
 
     def _invalidate_value(self, key):
@@ -2517,13 +2623,13 @@ class SQLiteStore(Store):
         >>> store.close()  # don't forget to call this when you're done
     """
 
-    def __init__(self, path, dimension_separator=None, **kwargs):
+    def __init__(self, path, dimension_separator: Optional[DIMENSION_SEPARATOR] = None, **kwargs):
         import sqlite3
 
         self._dimension_separator = dimension_separator
 
         # normalize path
-        if path != ':memory:':
+        if path != ":memory:":
             path = os.path.abspath(path)
 
         # store properties
@@ -2547,7 +2653,7 @@ class SQLiteStore(Store):
             detect_types=0,
             isolation_level=None,
             check_same_thread=check_same_thread,
-            **self.kwargs
+            **self.kwargs,
         )
 
         # handle keys as `str`s
@@ -2558,13 +2664,11 @@ class SQLiteStore(Store):
 
         # initialize database with our table if missing
         with self.lock:
-            self.cursor.execute(
-                'CREATE TABLE IF NOT EXISTS zarr(k TEXT PRIMARY KEY, v BLOB)'
-            )
+            self.cursor.execute("CREATE TABLE IF NOT EXISTS zarr(k TEXT PRIMARY KEY, v BLOB)")
 
     def __getstate__(self):
-        if self.path == ':memory:':
-            raise PicklingError('Cannot pickle in-memory SQLite databases')
+        if self.path == ":memory:":
+            raise PicklingError("Cannot pickle in-memory SQLite databases")
         return self.path, self.kwargs
 
     def __setstate__(self, state):
@@ -2579,8 +2683,8 @@ class SQLiteStore(Store):
         self.db.close()
 
     def __getitem__(self, key):
-        value = self.cursor.execute('SELECT v FROM zarr WHERE (k = ?)', (key,))
-        for v, in value:
+        value = self.cursor.execute("SELECT v FROM zarr WHERE (k = ?)", (key,))
+        for (v,) in value:
             return v
         raise KeyError(key)
 
@@ -2589,38 +2693,36 @@ class SQLiteStore(Store):
 
     def __delitem__(self, key):
         with self.lock:
-            self.cursor.execute('DELETE FROM zarr WHERE (k = ?)', (key,))
+            self.cursor.execute("DELETE FROM zarr WHERE (k = ?)", (key,))
             if self.cursor.rowcount < 1:
                 raise KeyError(key)
 
     def __contains__(self, key):
-        cs = self.cursor.execute(
-            'SELECT COUNT(*) FROM zarr WHERE (k = ?)', (key,)
-        )
-        for has, in cs:
+        cs = self.cursor.execute("SELECT COUNT(*) FROM zarr WHERE (k = ?)", (key,))
+        for (has,) in cs:
             has = bool(has)
             return has
 
     def items(self):
-        kvs = self.cursor.execute('SELECT k, v FROM zarr')
+        kvs = self.cursor.execute("SELECT k, v FROM zarr")
         yield from kvs
 
     def keys(self):
-        ks = self.cursor.execute('SELECT k FROM zarr')
-        for k, in ks:
+        ks = self.cursor.execute("SELECT k FROM zarr")
+        for (k,) in ks:
             yield k
 
     def values(self):
-        vs = self.cursor.execute('SELECT v FROM zarr')
-        for v, in vs:
+        vs = self.cursor.execute("SELECT v FROM zarr")
+        for (v,) in vs:
             yield v
 
     def __iter__(self):
         return self.keys()
 
     def __len__(self):
-        cs = self.cursor.execute('SELECT COUNT(*) FROM zarr')
-        for c, in cs:
+        cs = self.cursor.execute("SELECT COUNT(*) FROM zarr")
+        for (c,) in cs:
             return c
 
     def update(self, *args, **kwargs):
@@ -2635,19 +2737,19 @@ class SQLiteStore(Store):
                 kv_list.append((k, v))
 
         with self.lock:
-            self.cursor.executemany('REPLACE INTO zarr VALUES (?, ?)', kv_list)
+            self.cursor.executemany("REPLACE INTO zarr VALUES (?, ?)", kv_list)
 
     def listdir(self, path=None):
         path = normalize_storage_path(path)
-        sep = '_' if path == '' else '/'
+        sep = "_" if path == "" else "/"
         keys = self.cursor.execute(
-            '''
+            f"""
             SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
                 SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
                 FROM zarr WHERE k LIKE (? || "{sep}%")
             ) ORDER BY l ASC
-            '''.format(sep=sep),
-            (path, path)
+            """,
+            (path, path),
         )
         keys = list(map(operator.itemgetter(0), keys))
         return keys
@@ -2655,35 +2757,33 @@ class SQLiteStore(Store):
     def getsize(self, path=None):
         path = normalize_storage_path(path)
         size = self.cursor.execute(
-            '''
+            """
             SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
             WHERE k LIKE (? || "%") AND
                   0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
-            ''',
-            (path, path)
+            """,
+            (path, path),
         )
-        for s, in size:
+        for (s,) in size:
             return s
 
     def rmdir(self, path=None):
         path = normalize_storage_path(path)
         if path:
             with self.lock:
-                self.cursor.execute(
-                    'DELETE FROM zarr WHERE k LIKE (? || "/%")', (path,)
-                )
+                self.cursor.execute('DELETE FROM zarr WHERE k LIKE (? || "/%")', (path,))
         else:
             self.clear()
 
     def clear(self):
         with self.lock:
             self.cursor.executescript(
-                '''
+                """
                 BEGIN TRANSACTION;
                     DROP TABLE zarr;
                     CREATE TABLE zarr(k TEXT PRIMARY KEY, v BLOB);
                 COMMIT TRANSACTION;
-                '''
+                """
             )
 
 
@@ -2712,11 +2812,16 @@ class MongoDBStore(Store):
 
     """
 
-    _key = 'key'
-    _value = 'value'
+    _key = "key"
+    _value = "value"
 
-    def __init__(self, database='mongodb_zarr', collection='zarr_collection',
-                 dimension_separator=None, **kwargs):
+    def __init__(
+        self,
+        database="mongodb_zarr",
+        collection="zarr_collection",
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
+        **kwargs,
+    ):
         import pymongo
 
         self._database = database
@@ -2738,9 +2843,9 @@ class MongoDBStore(Store):
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
-        self.collection.replace_one({self._key: key},
-                                    {self._key: key, self._value: value},
-                                    upsert=True)
+        self.collection.replace_one(
+            {self._key: key}, {self._key: key, self._value: value}, upsert=True
+        )
 
     def __delitem__(self, key):
         result = self.collection.delete_many({self._key: key})
@@ -2788,8 +2893,12 @@ class RedisStore(Store):
         Keyword arguments passed through to the `redis.Redis` function.
 
     """
-    def __init__(self, prefix='zarr', dimension_separator=None, **kwargs):
+
+    def __init__(
+        self, prefix="zarr", dimension_separator: Optional[DIMENSION_SEPARATOR] = None, **kwargs
+    ):
         import redis
+
         self._prefix = prefix
         self._kwargs = kwargs
         self._dimension_separator = dimension_separator
@@ -2797,7 +2906,7 @@ class RedisStore(Store):
         self.client = redis.Redis(**kwargs)
 
     def _key(self, key):
-        return '{prefix}:{key}'.format(prefix=self._prefix, key=key)
+        return f"{self._prefix}:{key}"
 
     def __getitem__(self, key):
         return self.client[self._key(key)]
@@ -2812,9 +2921,8 @@ class RedisStore(Store):
             raise KeyError(key)
 
     def keylist(self):
-        offset = len(self._key(''))  # length of prefix
-        return [key[offset:].decode('utf-8')
-                for key in self.client.keys(self._key('*'))]
+        offset = len(self._key(""))  # length of prefix
+        return [key[offset:].decode("utf-8") for key in self.client.keys(self._key("*"))]
 
     def keys(self):
         yield from self.keylist()
@@ -2880,10 +2988,11 @@ class ConsolidatedMetadataStore(Store):
         meta = json_loads(self.store[metadata_key])
 
         # check format of consolidated metadata
-        consolidated_format = meta.get('zarr_consolidated_format', None)
+        consolidated_format = meta.get("zarr_consolidated_format", None)
         if consolidated_format != 1:
-            raise MetadataError('unsupported zarr consolidated metadata format: %s' %
-                                consolidated_format)
+            raise MetadataError(
+                f"unsupported zarr consolidated metadata format: {consolidated_format}"
+            )
 
         # decode metadata
         self.meta_store: Store = KVStore(meta["metadata"])

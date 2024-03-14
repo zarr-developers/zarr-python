@@ -1,11 +1,18 @@
 import os
 from collections import defaultdict
 from threading import Lock
+from typing import Protocol
 
-import fasteners
+
+class Synchronizer(Protocol):
+    """Base class for synchronizers."""
+
+    def __getitem__(self, item):
+        # see subclasses
+        ...
 
 
-class ThreadSynchronizer:
+class ThreadSynchronizer(Synchronizer):
     """Provides synchronization using thread locks."""
 
     def __init__(self):
@@ -24,7 +31,7 @@ class ThreadSynchronizer:
         self.__init__()
 
 
-class ProcessSynchronizer:
+class ProcessSynchronizer(Synchronizer):
     """Provides synchronization using file locks via the
     `fasteners <https://fasteners.readthedocs.io/en/latest/api/inter_process/>`_
     package.
@@ -41,6 +48,8 @@ class ProcessSynchronizer:
         self.path = path
 
     def __getitem__(self, item):
+        import fasteners
+
         path = os.path.join(self.path, item)
         lock = fasteners.InterProcessLock(path)
         return lock

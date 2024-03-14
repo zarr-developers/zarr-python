@@ -1,9 +1,0 @@
-coverage
-fasteners
-flake8
-monotonic
-msgpack-python
-numcodecs
-numpy
-setuptools_scm
-twine

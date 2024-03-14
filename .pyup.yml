@@ -13,6 +13,3 @@ requirements:
   - requirements_dev_optional.txt:
       pin: True
       update: all
-  - requirements_rtfd.txt:
-      pin: False
-      update: False

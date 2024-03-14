@@ -480,17 +480,17 @@ Indexing with coordinate arrays
 Items from a Zarr array can be extracted by providing an integer array of
 coordinates. E.g.::
 
-    >>> z = zarr.array(np.arange(10))
+    >>> z = zarr.array(np.arange(10) ** 2)
     >>> z[:]
-    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-    >>> z.get_coordinate_selection([1, 4])
-    array([1, 4])
+    array([ 0,  1,  4,  9, 16, 25, 36, 49, 64, 81])
+    >>> z.get_coordinate_selection([2, 5])
+    array([ 4, 25])
 
 Coordinate arrays can also be used to update data, e.g.::
 
-    >>> z.set_coordinate_selection([1, 4], [-1, -2])
+    >>> z.set_coordinate_selection([2, 5], [-1, -2])
     >>> z[:]
-    array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
+    array([ 0,  1, -1,  9, 16, -2, 36, 49, 64, 81])
 
 For multidimensional arrays, coordinates must be provided for each dimension,
 e.g.::
@@ -525,26 +525,26 @@ When the indexing arrays have different shapes, they are broadcast together.
 That is, the following two calls are equivalent::
 
     >>> z[1, [1, 3]]
-    array([5, 7])
+    array([6, 8])
     >>> z[[1, 1], [1, 3]]
-    array([5, 7])
+    array([6, 8])
 
 Indexing with a mask array
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Items can also be extracted by providing a Boolean mask. E.g.::
 
-    >>> z = zarr.array(np.arange(10))
+    >>> z = zarr.array(np.arange(10) ** 2)
     >>> z[:]
-    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    array([ 0,  1,  4,  9, 16, 25, 36, 49, 64, 81])
     >>> sel = np.zeros_like(z, dtype=bool)
-    >>> sel[1] = True
-    >>> sel[4] = True
+    >>> sel[2] = True
+    >>> sel[5] = True
     >>> z.get_mask_selection(sel)
-    array([1, 4])
+    array([ 4, 25])
     >>> z.set_mask_selection(sel, [-1, -2])
     >>> z[:]
-    array([ 0, -1,  2,  3, -2,  5,  6,  7,  8,  9])
+    array([ 0,  1, -1,  9, 16, -2, 36, 49, 64, 81])
 
 Here's a multidimensional example::
 
@@ -634,6 +634,91 @@ For convenience, the orthogonal indexing functionality is also available via the
 Any combination of integer, slice, 1D integer array and/or 1D Boolean array can
 be used for orthogonal indexing.
 
+If the index contains at most one iterable, and otherwise contains only slices and integers,
+orthogonal indexing is also available directly on the array:
+
+    >>> z = zarr.array(np.arange(15).reshape(3, 5))
+    >>> all(z.oindex[[0, 2], :] == z[[0, 2], :])
+    True
+
+Block Indexing
+~~~~~~~~~~~~~~
+
+As of version 2.16.0, Zarr also support block indexing, which allows
+selections of whole chunks based on their logical indices along each dimension
+of an array. For example, this allows selecting a subset of chunk aligned rows and/or
+columns from a 2-dimensional array. E.g.::
+
+    >>> import zarr
+    >>> import numpy as np
+    >>> z = zarr.array(np.arange(100).reshape(10, 10), chunks=(3, 3))
+
+Retrieve items by specifying their block coordinates::
+
+    >>> z.get_block_selection(1)
+    array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+           [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+           [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+Equivalent slicing::
+
+    >>> z[3:6]
+    array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+           [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+           [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+
+For convenience, the block selection functionality is also available via the
+`blocks` property, e.g.::
+
+    >>> z.blocks[1]
+    array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+           [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+           [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+Block index arrays may be multidimensional to index multidimensional arrays.
+For example::
+
+    >>> z.blocks[0, 1:3]
+    array([[ 3,  4,  5,  6,  7,  8],
+           [13, 14, 15, 16, 17, 18],
+           [23, 24, 25, 26, 27, 28]])
+
+Data can also be modified. Let's start by a simple 2D array::
+
+    >>> import zarr
+    >>> import numpy as np
+    >>> z = zarr.zeros((6, 6), dtype=int, chunks=2)
+
+Set data for a selection of items::
+
+    >>> z.set_block_selection((1, 0), 1)
+    >>> z[...]
+    array([[0, 0, 0, 0, 0, 0],
+           [0, 0, 0, 0, 0, 0],
+           [1, 1, 0, 0, 0, 0],
+           [1, 1, 0, 0, 0, 0],
+           [0, 0, 0, 0, 0, 0],
+           [0, 0, 0, 0, 0, 0]])
+
+For convenience, this functionality is also available via the ``blocks`` property.
+E.g.::
+
+        >>> z.blocks[:, 2] = 7
+        >>> z[...]
+        array([[0, 0, 0, 0, 7, 7],
+               [0, 0, 0, 0, 7, 7],
+               [1, 1, 0, 0, 7, 7],
+               [1, 1, 0, 0, 7, 7],
+               [0, 0, 0, 0, 7, 7],
+               [0, 0, 0, 0, 7, 7]])
+
+Any combination of integer and slice can be used for block indexing::
+
+        >>> z.blocks[2, 1:3]
+        array([[0, 0, 7, 7],
+               [0, 0, 7, 7]])
+
 Indexing fields in structured arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -689,7 +774,7 @@ the following code::
 
 Any other compatible storage class could be used in place of
 :class:`zarr.storage.DirectoryStore` in the code examples above. For example,
-here is an array stored directly into a Zip file, via the
+here is an array stored directly into a ZIP archive, via the
 :class:`zarr.storage.ZipStore` class::
 
     >>> store = zarr.ZipStore('data/example.zip', mode='w')
@@ -713,12 +798,12 @@ Re-open and check that data have been written::
            [42, 42, 42, ..., 42, 42, 42]], dtype=int32)
     >>> store.close()
 
-Note that there are some limitations on how Zip files can be used, because items
-within a Zip file cannot be updated in place. This means that data in the array
+Note that there are some limitations on how ZIP archives can be used, because items
+within a ZIP archive cannot be updated in place. This means that data in the array
 should only be written once and write operations should be aligned with chunk
 boundaries. Note also that the ``close()`` method must be called after writing
 any data to the store, otherwise essential records will not be written to the
-underlying zip file.
+underlying ZIP archive.
 
 Another storage alternative is the :class:`zarr.storage.DBMStore` class, added
 in Zarr version 2.2. This class allows any DBM-style database to be used for
@@ -761,7 +846,7 @@ respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
 `pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed.
 
 For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
-an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
+an N5 backend (this is currently an experimental feature). Similar to the ZIP storage class, an
 :class:`zarr.n5.N5Store` can be instantiated directly::
 
     >>> store = zarr.N5Store('data/example.n5')
@@ -783,7 +868,7 @@ implementations of the ``MutableMapping`` interface for Amazon S3 (`S3Map
 Distributed File System (`HDFSMap
 <https://hdfs3.readthedocs.io/en/latest/api.html#hdfs3.mapping.HDFSMap>`_) and
 Google Cloud Storage (`GCSMap
-<http://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.mapping.GCSMap>`_), which
+<https://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.core.GCSFileSystem.get_mapper>`_), which
 can be used with Zarr.
 
 Here is an example using S3Map to read an array created previously::
@@ -901,7 +986,7 @@ It is also possible to initialize the filesystem outside of Zarr and then pass
 it through. This requires creating an :class:`zarr.storage.FSStore` object
 explicitly. For example::
 
-    >>> import s3fs  * doctest: +SKIP
+    >>> import s3fs  # doctest: +SKIP
     >>> fs = s3fs.S3FileSystem(anon=True)  # doctest: +SKIP
     >>> store = zarr.storage.FSStore('/zarr-demo/store', fs=fs)  # doctest: +SKIP
     >>> g = zarr.open_group(store)  # doctest: +SKIP
@@ -914,6 +999,32 @@ separately from Zarr.
 .. _supported by fsspec: https://filesystem-spec.readthedocs.io/en/latest/api.html#built-in-implementations
 
 .. _tutorial_copy:
+
+Accessing ZIP archives on S3
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The built-in :class:`zarr.storage.ZipStore` will only work with paths on the local file-system; however
+it is possible to access ZIP-archived Zarr data on the cloud via the `ZipFileSystem <https://filesystem-spec.readthedocs.io/en/latest/_modules/fsspec/implementations/zip.html>`_
+class from ``fsspec``. The following example demonstrates how to access
+a ZIP-archived Zarr group on s3 using `s3fs <https://s3fs.readthedocs.io/en/latest/>`_ and ``ZipFileSystem``:
+
+    >>> s3_path = "s3://path/to/my.zarr.zip"
+    >>> 
+    >>> s3 = s3fs.S3FileSystem()
+    >>> f = s3.open(s3_path)
+    >>> fs = ZipFileSystem(f, mode="r")
+    >>> store = FSMap("", fs, check=False)
+    >>> 
+    >>> # caching may improve performance when repeatedly reading the same data
+    >>> cache = zarr.storage.LRUStoreCache(store, max_size=2**28)
+    >>> z = zarr.group(store=cache)
+
+This store can also be generated with ``fsspec``'s handler chaining, like so:
+
+    >>> store = zarr.storage.FSStore(url=f"zip::{s3_path}",  mode="r")
+
+This can be especially useful if you have a very large ZIP-archived Zarr array or group on s3
+and only need to access a small portion of it.
 
 Consolidating metadata
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -1051,7 +1162,7 @@ re-compression, and so should be faster. E.g.::
      └── spam (100,) int64
     >>> new_root['foo/bar/baz'][:]
     array([ 0,  1,  2,  ..., 97, 98, 99])
-    >>> store2.close()  # zip stores need to be closed
+    >>> store2.close()  # ZIP stores need to be closed
 
 .. _tutorial_strings:
 
@@ -1090,8 +1201,9 @@ A fixed-length unicode dtype is also available, e.g.::
 For variable-length strings, the ``object`` dtype can be used, but a codec must be
 provided to encode the data (see also :ref:`tutorial_objects` below). At the time of
 writing there are four codecs available that can encode variable length string
-objects: :class:`numcodecs.VLenUTF8`, :class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`.
-and :class:`numcodecs.Pickle`. E.g. using ``VLenUTF8``::
+objects: :class:`numcodecs.vlen.VLenUTF8`, :class:`numcodecs.json.JSON`,
+:class:`numcodecs.msgpacks.MsgPack`. and :class:`numcodecs.pickles.Pickle`.
+E.g. using ``VLenUTF8``::
 
     >>> import numcodecs
     >>> z = zarr.array(text_data, dtype=object, object_codec=numcodecs.VLenUTF8())
@@ -1116,8 +1228,8 @@ is a short-hand for ``dtype=object, object_codec=numcodecs.VLenUTF8()``, e.g.::
            'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'], dtype=object)
 
 Variable-length byte strings are also supported via ``dtype=object``. Again an
-``object_codec`` is required, which can be one of :class:`numcodecs.VLenBytes` or
-:class:`numcodecs.Pickle`. For convenience, ``dtype=bytes`` (or ``dtype=str`` on Python
+``object_codec`` is required, which can be one of :class:`numcodecs.vlen.VLenBytes` or
+:class:`numcodecs.pickles.Pickle`. For convenience, ``dtype=bytes`` (or ``dtype=str`` on Python
 2.7) can be used as a short-hand for ``dtype=object, object_codec=numcodecs.VLenBytes()``,
 e.g.::
 
@@ -1133,7 +1245,7 @@ e.g.::
            b'\xe0\xb9\x80\xe0\xb8\xae\xe0\xb8\xa5\xe0\xb9\x82\xe0\xb8\xa5\xe0\xb9\x80\xe0\xb8\xa7\xe0\xb8\xb4\xe0\xb8\xa5\xe0\xb8\x94\xe0\xb9\x8c'], dtype=object)
 
 If you know ahead of time all the possible string values that can occur, you could
-also use the :class:`numcodecs.Categorize` codec to encode each unique string value as an
+also use the :class:`numcodecs.categorize.Categorize` codec to encode each unique string value as an
 integer. E.g.::
 
     >>> categorize = numcodecs.Categorize(greetings, dtype=object)
@@ -1160,7 +1272,7 @@ The best codec to use will depend on what type of objects are present in the arr
 
 At the time of writing there are three codecs available that can serve as a general
 purpose object codec and support encoding of a mixture of object types:
-:class:`numcodecs.JSON`, :class:`numcodecs.MsgPack`. and :class:`numcodecs.Pickle`.
+:class:`numcodecs.json.JSON`, :class:`numcodecs.msgpacks.MsgPack`. and :class:`numcodecs.pickles.Pickle`.
 
 For example, using the JSON codec::
 
@@ -1173,7 +1285,7 @@ For example, using the JSON codec::
     array([42, 'foo', list(['bar', 'baz', 'qux']), {'a': 1, 'b': 2.2}, None], dtype=object)
 
 Not all codecs support encoding of all object types. The
-:class:`numcodecs.Pickle` codec is the most flexible, supporting encoding any type
+:class:`numcodecs.pickles.Pickle` codec is the most flexible, supporting encoding any type
 of Python object. However, if you are sharing data with anyone other than yourself, then
 Pickle is not recommended as it is a potential security risk. This is because malicious
 code can be embedded within pickled data. The JSON and MsgPack codecs do not have any
@@ -1185,7 +1297,7 @@ Ragged arrays
 
 If you need to store an array of arrays, where each member array can be of any length
 and stores the same primitive type (a.k.a. a ragged array), the
-:class:`numcodecs.VLenArray` codec can be used, e.g.::
+:class:`numcodecs.vlen.VLenArray` codec can be used, e.g.::
 
     >>> z = zarr.empty(4, dtype=object, object_codec=numcodecs.VLenArray(int))
     >>> z
@@ -1230,7 +1342,7 @@ better performance, at least when using the Blosc compression library.
 
 The optimal chunk shape will depend on how you want to access the data. E.g.,
 for a 2-dimensional array, if you only ever take slices along the first
-dimension, then chunk across the second dimenson. If you know you want to chunk
+dimension, then chunk across the second dimension. If you know you want to chunk
 across an entire dimension you can use ``None`` or ``-1`` within the ``chunks``
 argument, e.g.::
 

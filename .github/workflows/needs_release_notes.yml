@@ -1,0 +1,14 @@
+name: "Pull Request Labeler"
+
+on:
+  - pull_request_target
+
+jobs:
+  triage:
+    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }} && ${{ github.event.pull_request.user.login != 'pre-commit-ci[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/labeler@main
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
+        sync-labels: true

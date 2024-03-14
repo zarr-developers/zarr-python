@@ -31,7 +31,7 @@
 <tr>
   <td>License</td>
   <td>
-    <a href="https://github.com/zarr-developers/zarr-python/blob/main/LICENSE">
+    <a href="https://github.com/zarr-developers/zarr-python/blob/main/LICENSE.txt">
     <img src="https://img.shields.io/pypi/l/zarr.svg" alt="license" />
     </a>
 </td>
@@ -70,10 +70,10 @@
   </td>
 </tr>
 <tr>
-	<td>Gitter</td>
+	<td>Zulip</td>
 	<td>
-		<a href="https://gitter.im/zarr-developers/community">
-		<img src="https://badges.gitter.im/zarr-developers/community.svg" />
+		<a href="https://ossci.zulipchat.com/">
+		<img src="https://img.shields.io/badge/zulip-join_chat-brightgreen.svg" />
 		</a>
 	</td>
 </tr>

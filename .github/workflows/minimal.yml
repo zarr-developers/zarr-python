@@ -13,9 +13,9 @@ jobs:
 
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Setup Miniconda
-      uses: conda-incubator/setup-miniconda@v2
+      uses: conda-incubator/setup-miniconda@v3.0.3
       with:
           channels: conda-forge
           environment-file: environment.yml
@@ -24,6 +24,7 @@ jobs:
       shell: "bash -l {0}"
       env:
         ZARR_V3_EXPERIMENTAL_API: 1
+        ZARR_V3_SHARDING: 1
       run: |
         conda activate minimal
         python -m pip install .
@@ -32,6 +33,7 @@ jobs:
       shell: "bash -l {0}"
       env:
         ZARR_V3_EXPERIMENTAL_API: 1
+        ZARR_V3_SHARDING: 1
       run: |
         conda activate minimal
         rm -rf fixture/

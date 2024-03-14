@@ -9,7 +9,11 @@ from numcodecs.abc import Codec
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
 
-from typing import cast, Union, Any, List, Mapping as MappingType, Optional
+from typing import cast, Union, Any, List, Mapping as MappingType, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:  # pragma: no cover
+    from zarr._storage.store import StorageTransformer
+
 
 ZARR_FORMAT = 2
 ZARR_FORMAT_v3 = 3
@@ -23,15 +27,11 @@ _default_entry_point_metadata_v3 = {
     "extensions": [],
 }
 
-_v3_core_types = set(
-    "".join(d) for d in itertools.product("<>", ("u", "i", "f"), ("2", "4", "8"))
-)
+_v3_core_types = set("".join(d) for d in itertools.product("<>", ("u", "i", "f"), ("2", "4", "8")))
 _v3_core_types = {"bool", "i1", "u1"} | _v3_core_types
 
 # The set of complex types allowed ({"<c8", "<c16", ">c8", ">c16"})
-_v3_complex_types = set(
-    f"{end}c{_bytes}" for end, _bytes in itertools.product("<>", ("8", "16"))
-)
+_v3_complex_types = set(f"{end}c{_bytes}" for end, _bytes in itertools.product("<>", ("8", "16")))
 
 # All dtype.str values corresponding to datetime64 and timedelta64
 # see: https://numpy.org/doc/stable/reference/arrays.datetime.html#datetime-units
@@ -39,7 +39,7 @@ _date_units = ["Y", "M", "W", "D"]
 _time_units = ["h", "m", "s", "ms", "us", "μs", "ns", "ps", "fs", "as"]
 _v3_datetime_types = set(
     f"{end}{kind}8[{unit}]"
-    for end, unit, kind in itertools.product("<>", _date_units + _time_units, ('m', 'M'))
+    for end, unit, kind in itertools.product("<>", _date_units + _time_units, ("m", "M"))
 )
 
 
@@ -88,8 +88,7 @@ class Metadata2:
     ZARR_FORMAT = ZARR_FORMAT
 
     @classmethod
-    def parse_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
-
+    def parse_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
         # Here we allow that a store may return an already-parsed metadata object,
         # or a string of JSON that we will parse here. We allow for an already-parsed
         # object to accommodate a consolidated metadata store, where all the metadata for
@@ -106,13 +105,13 @@ class Metadata2:
         return meta
 
     @classmethod
-    def decode_array_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_array_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # check metadata format
         zarr_format = meta.get("zarr_format", None)
         if zarr_format != cls.ZARR_FORMAT:
-            raise MetadataError("unsupported zarr format: %s" % zarr_format)
+            raise MetadataError(f"unsupported zarr format: {zarr_format}")
 
         # extract array metadata fields
         try:
@@ -194,13 +193,13 @@ class Metadata2:
         return np.dtype(d)
 
     @classmethod
-    def decode_group_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_group_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # check metadata format version
         zarr_format = meta.get("zarr_format", None)
         if zarr_format != cls.ZARR_FORMAT:
-            raise MetadataError("unsupported zarr format: %s" % zarr_format)
+            raise MetadataError(f"unsupported zarr format: {zarr_format}")
 
         meta = dict(zarr_format=zarr_format)
         return meta
@@ -213,9 +212,7 @@ class Metadata2:
         return json_dumps(meta)
 
     @classmethod
-    def decode_fill_value(
-        cls, v: Any, dtype: np.dtype, object_codec: Any = None
-    ) -> Any:
+    def decode_fill_value(cls, v: Any, dtype: np.dtype, object_codec: Any = None) -> Any:
         # early out
         if v is None:
             return v
@@ -237,8 +234,8 @@ class Metadata2:
                 return np.array(v, dtype=dtype)[()]
         elif dtype.kind in "c":
             v = (
-                cls.decode_fill_value(v[0], dtype.type().real.dtype),  # type: ignore
-                cls.decode_fill_value(v[1], dtype.type().imag.dtype),  # type: ignore
+                cls.decode_fill_value(v[0], dtype.type().real.dtype),
+                cls.decode_fill_value(v[1], dtype.type().imag.dtype),
             )
             v = v[0] + 1j * v[1]
             return np.array(v, dtype=dtype)[()]
@@ -263,9 +260,7 @@ class Metadata2:
             return np.array(v, dtype=dtype)[()]
 
     @classmethod
-    def encode_fill_value(
-        cls, v: Any, dtype: np.dtype, object_codec: Any = None
-    ) -> Any:
+    def encode_fill_value(cls, v: Any, dtype: np.dtype, object_codec: Any = None) -> Any:
         # early out
         if v is None:
             return v
@@ -314,11 +309,9 @@ class Metadata3(Metadata2):
         if isinstance(d, dict):
             # extract the type from the extension info
             try:
-                d = d['type']
+                d = d["type"]
             except KeyError:
-                raise KeyError(
-                    "Extended dtype info must provide a key named 'type'."
-                )
+                raise KeyError("Extended dtype info must provide a key named 'type'.")
         d = cls._decode_dtype_descr(d)
         dtype = np.dtype(d)
         if validate:
@@ -347,13 +340,13 @@ class Metadata3(Metadata2):
             return get_extended_dtype_info(np.dtype(d))
 
     @classmethod
-    def decode_group_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def decode_group_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
         # 1 / 0
         # # check metadata format version
         # zarr_format = meta.get("zarr_format", None)
         # if zarr_format != cls.ZARR_FORMAT:
-        #     raise MetadataError("unsupported zarr format: %s" % zarr_format)
+        #     raise MetadataError(f"unsupported zarr format: {zarr_format}")
 
         assert "attributes" in meta
         # meta = dict(attributes=meta['attributes'])
@@ -385,14 +378,12 @@ class Metadata3(Metadata2):
         return json_dumps(meta)
 
     @classmethod
-    def decode_hierarchy_metadata(
-        cls, s: Union[MappingType, str]
-    ) -> MappingType[str, Any]:
+    def decode_hierarchy_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
         # check metadata format
         # zarr_format = meta.get("zarr_format", None)
         # if zarr_format != "https://purl.org/zarr/spec/protocol/core/3.0":
-        #     raise MetadataError("unsupported zarr format: %s" % zarr_format)
+        #     raise MetadataError(f"unsupported zarr format: {zarr_format}")
         if set(meta.keys()) != {
             "zarr_format",
             "metadata_encoding",
@@ -410,7 +401,7 @@ class Metadata3(Metadata2):
         # only support gzip for now
         config = codec.get_config()
         del config["id"]
-        uri = 'https://purl.org/zarr/spec/codec/'
+        uri = "https://purl.org/zarr/spec/codec/"
         if isinstance(codec, numcodecs.GZip):
             uri = uri + "gzip/1.0"
         elif isinstance(codec, numcodecs.Zlib):
@@ -434,33 +425,59 @@ class Metadata3(Metadata2):
         if meta is None:
             return None
 
-        uri = 'https://purl.org/zarr/spec/codec/'
-        conf = meta['configuration']
-        if meta['codec'].startswith(uri + 'gzip/'):
-            codec = numcodecs.GZip(level=conf['level'])
-        elif meta['codec'].startswith(uri + 'zlib/'):
-            codec = numcodecs.Zlib(level=conf['level'])
-        elif meta['codec'].startswith(uri + 'blosc/'):
-            codec = numcodecs.Blosc(clevel=conf['clevel'],
-                                    shuffle=conf['shuffle'],
-                                    blocksize=conf['blocksize'],
-                                    cname=conf['cname'])
-        elif meta['codec'].startswith(uri + 'bz2/'):
-            codec = numcodecs.BZ2(level=conf['level'])
-        elif meta['codec'].startswith(uri + 'lz4/'):
-            codec = numcodecs.LZ4(acceleration=conf['acceleration'])
-        elif meta['codec'].startswith(uri + 'lzma/'):
-            codec = numcodecs.LZMA(format=conf['format'],
-                                   check=conf['check'],
-                                   preset=conf['preset'],
-                                   filters=conf['filters'])
+        uri = "https://purl.org/zarr/spec/codec/"
+        conf = meta["configuration"]
+        if meta["codec"].startswith(uri + "gzip/"):
+            conf["id"] = "gzip"
+        elif meta["codec"].startswith(uri + "zlib/"):
+            conf["id"] = "zlib"
+        elif meta["codec"].startswith(uri + "blosc/"):
+            conf["id"] = "blosc"
+        elif meta["codec"].startswith(uri + "bz2/"):
+            conf["id"] = "bz2"
+        elif meta["codec"].startswith(uri + "lz4/"):
+            conf["id"] = "lz4"
+        elif meta["codec"].startswith(uri + "lzma/"):
+            conf["id"] = "lzma"
         else:
             raise NotImplementedError
+
+        codec = numcodecs.get_codec(conf)
 
         return codec
 
     @classmethod
-    def decode_array_metadata(cls, s: Union[MappingType, str]) -> MappingType[str, Any]:
+    def _encode_storage_transformer_metadata(
+        cls, storage_transformer: "StorageTransformer"
+    ) -> Optional[Mapping]:
+        return {
+            "extension": storage_transformer.extension_uri,
+            "type": storage_transformer.type,
+            "configuration": storage_transformer.get_config(),
+        }
+
+    @classmethod
+    def _decode_storage_transformer_metadata(cls, meta: Mapping) -> "StorageTransformer":
+        from zarr.tests.test_storage_v3 import DummyStorageTransfomer
+        from zarr._storage.v3_storage_transformers import ShardingStorageTransformer
+
+        # This might be changed to a proper registry in the future
+        KNOWN_STORAGE_TRANSFORMERS = [DummyStorageTransfomer, ShardingStorageTransformer]
+
+        conf = meta.get("configuration", {})
+        extension_uri = meta["extension"]
+        transformer_type = meta["type"]
+
+        for StorageTransformerCls in KNOWN_STORAGE_TRANSFORMERS:
+            if StorageTransformerCls.extension_uri == extension_uri:
+                break
+        else:  # pragma: no cover
+            raise NotImplementedError
+
+        return StorageTransformerCls.from_config(transformer_type, conf)
+
+    @classmethod
+    def decode_array_metadata(cls, s: Union[MappingType, bytes, str]) -> MappingType[str, Any]:
         meta = cls.parse_metadata(s)
 
         # extract array metadata fields
@@ -476,6 +493,10 @@ class Metadata3(Metadata2):
             # TODO: remove dimension_separator?
 
             compressor = cls._decode_codec_metadata(meta.get("compressor", None))
+            storage_transformers = meta.get("storage_transformers", ())
+            storage_transformers = [
+                cls._decode_storage_transformer_metadata(i) for i in storage_transformers
+            ]
             extensions = meta.get("extensions", [])
             meta = dict(
                 shape=tuple(meta["shape"]),
@@ -492,10 +513,12 @@ class Metadata3(Metadata2):
             )
             # compressor field should be absent when there is no compression
             if compressor:
-                meta['compressor'] = compressor
+                meta["compressor"] = compressor
+            if storage_transformers:
+                meta["storage_transformers"] = storage_transformers
 
         except Exception as e:
-            raise MetadataError("error decoding metadata: %s" % e)
+            raise MetadataError(f"error decoding metadata: {e}")
         else:
             return meta
 
@@ -514,6 +537,10 @@ class Metadata3(Metadata2):
             object_codec = None
 
         compressor = cls._encode_codec_metadata(meta.get("compressor", None))
+        storage_transformers = meta.get("storage_transformers", ())
+        storage_transformers = [
+            cls._encode_storage_transformer_metadata(i) for i in storage_transformers
+        ]
         extensions = meta.get("extensions", [])
         meta = dict(
             shape=meta["shape"] + sdshape,
@@ -532,6 +559,8 @@ class Metadata3(Metadata2):
             meta["compressor"] = compressor
         if dimension_separator:
             meta["dimension_separator"] = dimension_separator
+        if storage_transformers:
+            meta["storage_transformers"] = storage_transformers
         return json_dumps(meta)
 
 
