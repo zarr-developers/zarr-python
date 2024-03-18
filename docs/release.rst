@@ -20,6 +20,10 @@ Unreleased
 
 .. _release_2.17.1:
 
+* Enabled checking of untyped definitions by mypy in all modules apart from
+  ``zarr.tests`` and ``zarr._storage``.
+  By :user:`David Stansby <dstansby>` :issue:`1612`.
+
 2.17.1
 ------
 
