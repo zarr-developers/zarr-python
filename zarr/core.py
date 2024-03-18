@@ -5,7 +5,8 @@ import math
 import operator
 import re
 from functools import reduce
-from typing import Any
+from typing import Any, Optional
+from collections.abc import MutableMapping
 
 import numpy as np
 from numcodecs.compat import ensure_bytes
@@ -59,6 +60,8 @@ from zarr.util import (
     UncompressedPartialReadBufferV3,
     ensure_ndarray_like,
 )
+import zarr.types
+from zarr.sync import Synchronizer
 
 __all__ = ["Array"]
 
@@ -117,17 +120,17 @@ class Array:
     def __init__(
         self,
         store: Any,  # BaseStore not strictly required due to normalize_store_arg
-        path=None,
-        read_only=False,
-        chunk_store=None,
-        synchronizer=None,
-        cache_metadata=True,
-        cache_attrs=True,
-        partial_decompress=False,
-        write_empty_chunks=True,
-        zarr_version=None,
-        meta_array=None,
-    ):
+        path: Optional[zarr.types.PathLike] = None,
+        read_only: bool = False,
+        chunk_store: Optional[MutableMapping] = None,
+        synchronizer: Optional[Synchronizer] = None,
+        cache_metadata: bool = True,
+        cache_attrs: bool = True,
+        partial_decompress: bool = False,
+        write_empty_chunks: bool = True,
+        zarr_version: Optional[zarr.types.ZARR_VERSION] = None,
+        meta_array: Optional[zarr.types.MetaArray] = None,
+    ) -> None:
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
 
