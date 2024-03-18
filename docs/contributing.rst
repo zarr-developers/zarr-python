@@ -1,3 +1,5 @@
+.. highlight:: bash
+
 Contributing to Zarr
 ====================
 
@@ -24,8 +26,9 @@ If you find a bug, please raise a `GitHub issue
 a bug report:
 
 1. A minimal, self-contained snippet of Python code reproducing the problem. You can
-   format the code nicely using markdown, e.g.::
+   format the code nicely using markdown, e.g.:
 
+.. code-block:: markdown
 
     ```python
     import zarr
@@ -43,11 +46,7 @@ a bug report:
    Information about other packages installed can be obtained by executing ``pip freeze``
    (if using pip to install packages) or ``conda env export`` (if using conda to install
    packages) from the operating system command prompt. The version of the Python
-   interpreter can be obtained by running a Python interactive session, e.g.::
-
-    $ python
-    Python 3.6.1 (default, Mar 22 2017, 06:17:05)
-    [GCC 6.3.0 20170321] on linux
+   interpreter can be obtained by running ``python --version``.
 
 Enhancement proposals
 ---------------------
@@ -75,9 +74,9 @@ The Zarr source code is hosted on GitHub at the following location:
 You will need your own fork to work on the code. Go to the link above and hit
 the "Fork" button. Then clone your fork to your local machine::
 
-    $ git clone git@github.com:your-user-name/zarr-python.git
-    $ cd zarr-python
-    $ git remote add upstream git@github.com:zarr-developers/zarr-python.git
+    git clone git@github.com:your-user-name/zarr-python.git
+    cd zarr-python
+    git remote add upstream git@github.com:zarr-developers/zarr-python.git
 
 Creating a development environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -89,15 +88,15 @@ the core developers and continuous integration services. Assuming you have a Pyt
 current working directory is the root of the repository, you can do something like
 the following::
 
-    $ mkdir -p ~/pyenv/zarr-dev
-    $ python -m venv ~/pyenv/zarr-dev
-    $ source ~/pyenv/zarr-dev/bin/activate
-    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
-    $ pip install -e .[docs]
+    mkdir -p ~/pyenv/zarr-dev
+    python -m venv ~/pyenv/zarr-dev
+    source ~/pyenv/zarr-dev/bin/activate
+    pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
+    pip install -e ".[docs]"
 
 To verify that your development environment is working, you can run the unit tests::
 
-    $ python -m pytest -v zarr
+    python -m pytest -v zarr
 
 Creating a branch
 ~~~~~~~~~~~~~~~~~
@@ -144,22 +143,22 @@ spec. The simplest way to run the unit tests is to activate your
 development environment (see `creating a development environment`_ above)
 and invoke::
 
-    $ python -m pytest -v zarr
+    python -m pytest -v zarr
 
 Some tests require optional dependencies to be installed, otherwise
 the tests will be skipped. To install all optional dependencies, run::
 
-    $ pip install -r requirements_dev_optional.txt
+    pip install -r requirements_dev_optional.txt
 
 To also run the doctests within docstrings (requires optional
 dependencies to be installed), run::
 
-    $ python -m pytest -v --doctest-plus zarr
+    python -m pytest -v --doctest-plus zarr
 
 To run the doctests within the tutorial and storage spec (requires
 optional dependencies to be installed), run::
 
-    $ python -m doctest -o NORMALIZE_WHITESPACE -o ELLIPSIS docs/tutorial.rst docs/spec/v2.rst
+    python -m doctest -o NORMALIZE_WHITESPACE -o ELLIPSIS docs/tutorial.rst docs/spec/v2.rst
 
 Note that some tests also require storage services to be running
 locally. To run the Azure Blob Service storage tests, run an Azure
@@ -189,18 +188,18 @@ characters are allowed, although please try to keep under 90 wherever possible.
 type-check, and prettify the codebase. ``pre-commit`` can be installed locally by
 running::
 
-    $ python -m pip install pre-commit
+    python -m pip install pre-commit
 
 The hooks can be installed locally by running::
 
-    $ pre-commit install
+    pre-commit install
 
 This would run the checks every time a commit is created locally. These checks will also run
 on every commit pushed to an open PR, resulting in some automatic styling fixes by the
 ``pre-commit`` bot. The checks will by default only run on the files modified by a commit,
 but the checks can be triggered for all the files by running::
 
-    $ pre-commit run --all-files
+    pre-commit run --all-files
 
 If you would like to skip the failing checks and push the code for further discussion, use
 the ``--no-verify`` option with ``git commit``.
@@ -214,7 +213,7 @@ Zarr maintains 100% test coverage under the latest Python stable release (curren
 Python 3.8). Both unit tests and docstring doctests are included when computing
 coverage. Running::
 
-    $ python -m pytest -v --cov=zarr --cov-config=pyproject.toml zarr
+    python -m pytest -v --cov=zarr --cov-config=pyproject.toml zarr
 
 will automatically run the test suite with coverage and produce a coverage report.
 This should be 100% before code can be accepted into the main code base.
@@ -234,7 +233,7 @@ should run and pass as doctests under Python 3.8. To run doctests,
 activate your development environment, install optional requirements,
 and run::
 
-    $ python -m pytest -v --doctest-plus zarr
+    python -m pytest -v --doctest-plus zarr
 
 Zarr uses Sphinx for documentation, hosted on readthedocs.org. Documentation is
 written in the RestructuredText markup language (.rst files) in the ``docs`` folder.
@@ -246,9 +245,9 @@ notes (``docs/release.rst``).
 
 The documentation can be built locally by running::
 
-    $ cd docs
-    $ make clean; make html
-    $ open _build/html/index.html
+    cd docs
+    make clean
+    make html
 
 The resulting built documentation will be available in the ``docs/_build/html`` folder.
 
