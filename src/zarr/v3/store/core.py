@@ -24,11 +24,6 @@ class StorePath:
         self.store = store
         self.path = path or ""
 
-    @classmethod
-    def from_path(cls, pth: Path) -> StorePath:
-        # NOT SOLVED: This is instantiating an ABC + there is no from_path method
-        return cls(Store.from_path(pth))  # type: ignore
-
     async def get(
         self, byte_range: Optional[Tuple[int, Optional[int]]] = None
     ) -> Optional[BytesLike]:
@@ -71,8 +66,6 @@ def make_store_path(store_like: StoreLike) -> StorePath:
         return store_like
     elif isinstance(store_like, Store):
         return StorePath(store_like)
-    # elif isinstance(store_like, Path):
-    #     return StorePath(Store.from_path(store_like))
     elif isinstance(store_like, str):
         try:
             from upath import UPath
