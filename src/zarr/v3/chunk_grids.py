@@ -20,7 +20,7 @@ class ChunkGrid(Metadata):
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> ChunkGrid:
         if isinstance(data, ChunkGrid):
-            return data  # type: ignore
+            return data
 
         name_parsed, _ = parse_named_configuration(data)
         if name_parsed == "regular":
