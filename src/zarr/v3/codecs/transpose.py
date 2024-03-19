@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Dict, Iterable
+from typing import TYPE_CHECKING, Dict, Iterable, Union, cast
 
 from dataclasses import dataclass, replace
 
@@ -16,12 +16,12 @@ from zarr.v3.abc.codec import ArrayArrayCodec
 from zarr.v3.codecs.registry import register_codec
 
 
-def parse_transpose_order(data: JSON) -> Tuple[int]:
+def parse_transpose_order(data: Union[JSON, Iterable[int]]) -> Tuple[int, ...]:
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected an iterable. Got {data} instead.")
     if not all(isinstance(a, int) for a in data):
         raise TypeError(f"Expected an iterable of integers. Got {data} instead.")
-    return tuple(data)  # type: ignore[return-value]
+    return tuple(cast(Iterable[int], data))
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ class TransposeCodec(ArrayArrayCodec):
     order: Tuple[int, ...]
 
     def __init__(self, *, order: ChunkCoordsLike) -> None:
-        order_parsed = parse_transpose_order(order)  # type: ignore[arg-type]
+        order_parsed = parse_transpose_order(order)
 
         object.__setattr__(self, "order", order_parsed)
 

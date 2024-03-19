@@ -1,6 +1,6 @@
 from __future__ import annotations
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Dict, Literal
+from typing import TYPE_CHECKING, Dict, Literal, cast
 from dataclasses import dataclass
 from zarr.v3.abc.metadata import Metadata
 
@@ -19,7 +19,7 @@ SeparatorLiteral = Literal[".", "/"]
 def parse_separator(data: JSON) -> SeparatorLiteral:
     if data not in (".", "/"):
         raise ValueError(f"Expected an '.' or '/' separator. Got {data} instead.")
-    return data  # type: ignore
+    return cast(SeparatorLiteral, data)
 
 
 @dataclass(frozen=True)
@@ -35,7 +35,7 @@ class ChunkKeyEncoding(Metadata):
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> ChunkKeyEncoding:
         if isinstance(data, ChunkKeyEncoding):
-            return data  # type: ignore
+            return data
 
         name_parsed, configuration_parsed = parse_named_configuration(data)
         if name_parsed == "default":
