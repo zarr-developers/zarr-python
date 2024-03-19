@@ -5,6 +5,7 @@ from typing import Any, Optional, Tuple, Union
 
 from zarr.v3.common import BytesLike
 from zarr.v3.abc.store import Store
+from zarr.v3.store.local import LocalStore
 
 
 def _dereference_path(root: str, path: str) -> str:
@@ -67,12 +68,5 @@ def make_store_path(store_like: StoreLike) -> StorePath:
     elif isinstance(store_like, Store):
         return StorePath(store_like)
     elif isinstance(store_like, str):
-        try:
-            from upath import UPath
-
-            # NOT SOLVED: Similar here, ABC instantiation + no from_path method
-            return StorePath(Store.from_path(UPath(store_like)))  # type: ignore
-        except ImportError as e:
-            raise e
-            # return StorePath(LocalStore(Path(store_like)))
+        return StorePath(LocalStore(Path(store_like)))
     raise TypeError
