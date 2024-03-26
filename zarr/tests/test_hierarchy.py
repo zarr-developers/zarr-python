@@ -1,4 +1,5 @@
 import atexit
+import operator
 import os
 import sys
 import pickle
@@ -86,6 +87,26 @@ class TestGroup(unittest.TestCase):
             synchronizer=synchronizer,
         )
         return g
+
+    def test_ipython_repr_methods(self):
+        g = self.create_group()
+        for method in [
+            "html",
+            "json",
+            "javascript",
+            "markdown",
+            "svg",
+            "png",
+            "jpeg",
+            "latex",
+            "pdf",
+            "mimebundle",
+        ]:
+            assert operator.methodcaller(f"_repr_{method}_")(g) is None
+        with pytest.raises(AttributeError):
+            g._ipython_display_()
+        with pytest.raises(AttributeError):
+            g._ipython_canary_method_should_not_exist_()
 
     def test_group_init_1(self):
         store, chunk_store = self.create_store()
