@@ -1,5 +1,6 @@
 from collections.abc import MutableMapping
-from typing import Optional, Tuple, Union, Sequence
+from typing import Optional, Union
+from collections.abc import Sequence
 from warnings import warn
 
 import numpy as np
@@ -29,8 +30,8 @@ from zarr.util import normalize_dimension_separator
 
 
 def create(
-    shape: Union[int, Tuple[int, ...]],
-    chunks: Union[int, Tuple[int, ...], bool] = True,
+    shape: Union[int, tuple[int, ...]],
+    chunks: Union[int, tuple[int, ...], bool] = True,
     dtype: Optional[npt.DTypeLike] = None,
     compressor="default",
     fill_value: Optional[int] = 0,

@@ -1,7 +1,8 @@
 import collections
 import os
 import tempfile
-from typing import Any, Mapping, Sequence
+from typing import Any
+from collections.abc import Mapping, Sequence
 from zarr.context import Context
 
 from zarr.storage import Store

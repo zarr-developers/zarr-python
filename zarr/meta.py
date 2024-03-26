@@ -9,7 +9,8 @@ from numcodecs.abc import Codec
 from zarr.errors import MetadataError
 from zarr.util import json_dumps, json_loads
 
-from typing import cast, Union, Any, List, Mapping as MappingType, Optional, TYPE_CHECKING
+from typing import cast, Union, Any, Optional, TYPE_CHECKING
+from collections.abc import Mapping as MappingType
 
 if TYPE_CHECKING:  # pragma: no cover
     from zarr._storage.store import StorageTransformer
@@ -180,7 +181,7 @@ class Metadata2:
             return d.descr
 
     @classmethod
-    def _decode_dtype_descr(cls, d) -> List[Any]:
+    def _decode_dtype_descr(cls, d) -> list[Any]:
         # need to convert list of lists to list of tuples
         if isinstance(d, list):
             # recurse to handle nested structures
