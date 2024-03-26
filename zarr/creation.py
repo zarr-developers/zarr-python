@@ -297,7 +297,7 @@ def _kwargs_compat(compressor, fill_value, kwargs):
 
     # ignore other keyword arguments
     for k in kwargs:
-        warn(f"ignoring keyword argument {k!r}")
+        warn(f"ignoring keyword argument {k!r}", stacklevel=2)
 
     return compressor, fill_value
 

@@ -18,6 +18,12 @@ Release notes
 Unreleased
 ----------
 
+Enhancements
+~~~~~~~~~~~~
+
+* Enable ruff/bugbear rules (B) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1702`.
+
 .. _release_2.17.1:
 
 2.17.1
