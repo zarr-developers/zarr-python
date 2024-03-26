@@ -9,17 +9,26 @@ from numcodecs import Adler32, Zlib
 from numpy.testing import assert_array_equal
 
 import zarr
+from zarr._storage.store import v3_api_available
+from zarr._storage.v3 import (
+    ConsolidatedMetadataStoreV3,
+    DirectoryStoreV3,
+    FSStoreV3,
+    KVStoreV3,
+    MemoryStoreV3,
+    SQLiteStoreV3,
+)
 from zarr.convenience import (
     consolidate_metadata,
     copy,
+    copy_all,
     copy_store,
     load,
     open,
     open_consolidated,
     save,
-    save_group,
     save_array,
-    copy_all,
+    save_group,
 )
 from zarr.core import Array
 from zarr.errors import CopyError
@@ -31,17 +40,8 @@ from zarr.storage import (
     MemoryStore,
     atexit_rmtree,
     data_root,
-    meta_root,
     getsize,
-)
-from zarr._storage.store import v3_api_available
-from zarr._storage.v3 import (
-    ConsolidatedMetadataStoreV3,
-    DirectoryStoreV3,
-    FSStoreV3,
-    KVStoreV3,
-    MemoryStoreV3,
-    SQLiteStoreV3,
+    meta_root,
 )
 from zarr.tests.util import have_fsspec
 
