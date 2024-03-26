@@ -21,12 +21,14 @@ def test_group(store_path) -> None:
         runtime_configuration=RuntimeConfiguration(),
     )
     group = Group(agroup)
-
     assert agroup.metadata is group.metadata
 
     # create two groups
     foo = group.create_group("foo")
     bar = foo.create_group("bar", attributes={"baz": "qux"})
+
+    # check that bar is in the children of foo
+    assert foo.children == [bar]
 
     # create an array from the "bar" group
     data = np.arange(0, 4 * 4, dtype="uint16").reshape((4, 4))

@@ -4,7 +4,17 @@ from dataclasses import asdict, dataclass, field, replace
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Literal, Optional, Union, AsyncIterator, Iterator, List
+from typing import (
+    Any,
+    AsyncGenerator,
+    Dict,
+    Literal,
+    Optional,
+    Union,
+    AsyncIterator,
+    Iterator,
+    List,
+)
 from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.array import AsyncArray, Array
@@ -271,8 +281,29 @@ class AsyncGroup:
     async def nchildren(self) -> int:
         raise NotImplementedError
 
-    async def children(self) -> AsyncIterator[AsyncArray, AsyncGroup]:
-        raise NotImplementedError
+    async def children(self) -> AsyncGenerator[AsyncArray, AsyncGroup]:
+        """
+        Returns an async iterator over the arrays and groups contained in this group.
+        """
+        if not self.store_path.store.supports_listing:
+            msg = (
+                f"The store associated with this group ({type(self.store_path.store)}) "
+                "does not support listing, "
+                "specifically the `list_dir` method. "
+                "This function requires a store that supports listing."
+            )
+
+            raise ValueError(msg)
+        subkeys = await self.store_path.store.list_dir(self.store_path.path)
+        # would be nice to make these special keys accessible programmatically,
+        # and scoped to specific zarr versions
+        subkeys_filtered = filter(lambda v: v not in ("zarr.json", ".zgroup", ".zattrs"), subkeys)
+        # might be smarter to wrap this in asyncio gather
+        for subkey in subkeys_filtered:
+            try:
+                yield await self.getitem(subkey)
+            except ValueError:
+                pass
 
     async def contains(self, child: str) -> bool:
         raise NotImplementedError
