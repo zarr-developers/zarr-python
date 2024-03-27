@@ -56,12 +56,15 @@ def test_group_children(store_type, request):
             store_path=StorePath(store=store, path=f"{path}/implicit_subgroup"),
         )
     )
-    # note: this assertion is order-specific, but it is not clear
+    # note: these assertions are order-independent, because it is not clear
     # if group.children guarantees a particular order for the children.
-    # If order is not guaranteed, then the better test is
+    # If order is not guaranteed, then the better version of this test is
     # to compare two sets, but presently neither the group nor array classes are hashable.
     observed = group.children
-    assert observed == [subarray, implicit_subgroup, subgroup]
+    assert len(observed) == 3
+    assert subarray in observed
+    assert implicit_subgroup in observed
+    assert subgroup in observed
 
 
 @pytest.mark.parametrize("store_type", (("local_store",)))
