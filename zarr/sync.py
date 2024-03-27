@@ -28,7 +28,7 @@ class ThreadSynchronizer(Synchronizer):
 
     def __setstate__(self, *args):
         # reinitialize from scratch
-        self.__init__()
+        self.__init__()  # type: ignore[misc]
 
 
 class ProcessSynchronizer(Synchronizer):

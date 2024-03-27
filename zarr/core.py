@@ -1977,11 +1977,11 @@ class Array:
                     chunk_value = value[out_selection]
                     # handle missing singleton dimensions
                     if indexer.drop_axes:
+                        item: list[slice | None]
                         item = [slice(None)] * self.ndim
                         for a in indexer.drop_axes:
                             item[a] = np.newaxis
-                        item = tuple(item)
-                        chunk_value = chunk_value[item]
+                        chunk_value = chunk_value[tuple(item)]
 
                 # put data
                 self._chunk_setitem(chunk_coords, chunk_selection, chunk_value, fields=fields)
@@ -2000,8 +2000,7 @@ class Array:
                         item = [slice(None)] * self.ndim
                         for a in indexer.drop_axes:
                             item[a] = np.newaxis
-                        item = tuple(item)
-                        cv = chunk_value[item]
+                        cv = chunk_value[tuple(item)]
                     chunk_values.append(cv)
 
             self._chunk_setitems(lchunk_coords, lchunk_selection, chunk_values, fields=fields)
@@ -2129,6 +2128,7 @@ class Array:
         # Keys to retrieve
         ckeys = [self._chunk_key(ch) for ch in lchunk_coords]
 
+        cdatas: dict[str, PartialReadBuffer | UncompressedPartialReadBufferV3]
         # Check if we can do a partial read
         if (
             self._partial_decompress
@@ -2167,6 +2167,7 @@ class Array:
             cdatas = {key: value for key, value in zip(ckeys, values) if value is not None}
         else:
             partial_read_decode = False
+            contexts: dict[str, Context] | ConstantMap
             contexts = {}
             if not isinstance(self._meta_array, np.ndarray):
                 contexts = ConstantMap(ckeys, constant=Context(meta_array=self._meta_array))
@@ -2319,7 +2320,7 @@ class Array:
 
         return chunk
 
-    def _chunk_key(self, chunk_coords):
+    def _chunk_key(self, chunk_coords) -> str:
         if self._version == 3:
             # _chunk_key() corresponds to data_key(P, i, j, ...) example in the spec
             # where P = self._key_prefix,  i, j, ... = chunk_coords
@@ -2536,12 +2537,7 @@ class Array:
         """
 
         checksum = binascii.hexlify(self.digest(hashname=hashname))
-
-        # This is a bytes object on Python 3 and we want a str.
-        if not isinstance(checksum, str):
-            checksum = checksum.decode("utf8")
-
-        return checksum
+        return checksum.decode("utf8")
 
     def __getstate__(self):
         return {
@@ -2559,7 +2555,7 @@ class Array:
         }
 
     def __setstate__(self, state):
-        self.__init__(**state)
+        self.__init__(**state)  # type: ignore[misc]
 
     def _synchronized_op(self, f, *args, **kwargs):
         if self._synchronizer is None:

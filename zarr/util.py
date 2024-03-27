@@ -584,8 +584,6 @@ class PartialReadBuffer:
         self.store_key = store_key
         self.buff = None
         self.nblocks = None
-        self.start_points = None
-        self.n_per_block = None
         self.start_points_max = None
         self.read_blocks = set()
 
