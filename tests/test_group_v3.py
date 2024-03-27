@@ -1,33 +1,25 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from zarr.v3.store.remote import MemoryStore, LocalStore
 import pytest
 import numpy as np
 
 from zarr.v3.group import AsyncGroup, Group, GroupMetadata
-from zarr.v3.store import LocalStore, StorePath
+from zarr.v3.store import StorePath
 from zarr.v3.config import RuntimeConfiguration
-from zarr.v3.store.remote import RemoteStore
 from zarr.v3.sync import sync
 
-
-@pytest.fixture
-def store_path(tmpdir):
-    store = LocalStore(str(tmpdir))
-    p = StorePath(store)
-    return p
-
-
-@pytest.fixture(scope="function")
-def local_store(tmpdir):
-    return LocalStore(str(tmpdir))
-
-
-@pytest.fixture(scope="function")
-def remote_store():
-    return RemoteStore()
-
-
-@pytest.mark.parametrize("store_type", ("local_store",))
+# todo: put RemoteStore in here
+@pytest.mark.parametrize("store_type", ("local_store", "memory_store"))
 def test_group_children(store_type, request):
-    store: LocalStore | RemoteStore = request.getfixturevalue(store_type)
+    """
+    Test that `Group.children` returns correct values, i.e. the arrays and groups
+    (explicit and implicit) contained in that group.
+    """
+
+    store: LocalStore | MemoryStore = request.getfixturevalue(store_type)
     path = "group"
     agroup = AsyncGroup(
         metadata=GroupMetadata(),
