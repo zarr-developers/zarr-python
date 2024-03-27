@@ -11,8 +11,9 @@ Zarr-Python
     getting_started
     tutorial
     api
-    spec
+    examples
     release
+    spec
     license
     acknowledgments
     contributing
