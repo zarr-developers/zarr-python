@@ -18,6 +18,12 @@ Release notes
 Unreleased
 ----------
 
+Enhancements
+~~~~~~~~~~~~
+
+* Override IPython ``_repr_*_`` methods to avoid expensive lookups against object stores.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1716`.
+
 Maintenance
 ~~~~~~~~~~~
 
