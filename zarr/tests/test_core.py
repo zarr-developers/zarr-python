@@ -1995,9 +1995,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
     def test_compressors(self):
         compressors = [None, BZ2(), Zlib(), GZip(), MsgPack()]
         if LZMA:
-            compressors.append(LZMA())
-            compressors.append(LZMA(preset=1))
-            compressors.append(LZMA(preset=6))
+            compressors.extend((LZMA(), LZMA(preset=1), LZMA(preset=6)))
         for compressor in compressors:
             a1 = self.create_array(shape=1000, chunks=100, compressor=compressor)
             a1[0:100] = 1
