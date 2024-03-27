@@ -80,7 +80,7 @@ class GroupMetadata(Metadata):
 class AsyncGroup:
     metadata: GroupMetadata
     store_path: StorePath
-    runtime_configuration: RuntimeConfiguration
+    runtime_configuration: RuntimeConfiguration = RuntimeConfiguration()
 
     @classmethod
     async def create(
@@ -164,11 +164,21 @@ class AsyncGroup:
 
         store_path = self.store_path / key
 
+        # Note:
+        # in zarr-python v2, we first check if `key` references an Array, else if `key` references
+        # a group,using standalone `contains_array` and `contains_group` functions. These functions
+        # are reusable, but for v3 they would perform redundant I/O operations.
+        # Not clear how much of that strategy we want to keep here.
+
+        # if `key` names an object in storage, it cannot be an array or group
+        if await store_path.exists():
+            raise KeyError(key)
+
         if self.metadata.zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
                 # implicit group?
-                logger.warning("group at {} is an implicit group", store_path)
+                logger.warning("group at %s is an implicit group", store_path)
                 zarr_json = {
                     "zarr_format": self.metadata.zarr_format,
                     "node_type": "group",
@@ -205,7 +215,7 @@ class AsyncGroup:
             else:
                 if zgroup_bytes is None:
                     # implicit group?
-                    logger.warning("group at {} is an implicit group", store_path)
+                    logger.warning("group at %s is an implicit group", store_path)
                 zgroup = (
                     json.loads(zgroup_bytes)
                     if zgroup_bytes is not None
@@ -283,13 +293,14 @@ class AsyncGroup:
 
     async def children(self) -> AsyncGenerator[AsyncArray, AsyncGroup]:
         """
-        Returns an async iterator over the arrays and groups contained in this group.
+        Returns an AsyncGenerator over the arrays and groups contained in this group.
+        This method requires that `store_path.store` supports directory listing.
         """
         if not self.store_path.store.supports_listing:
             msg = (
                 f"The store associated with this group ({type(self.store_path.store)}) "
                 "does not support listing, "
-                "specifically the `list_dir` method. "
+                "specifically via the `list_dir` method. "
                 "This function requires a store that supports listing."
             )
 
@@ -298,11 +309,13 @@ class AsyncGroup:
         # would be nice to make these special keys accessible programmatically,
         # and scoped to specific zarr versions
         subkeys_filtered = filter(lambda v: v not in ("zarr.json", ".zgroup", ".zattrs"), subkeys)
-        # might be smarter to wrap this in asyncio gather
+        # is there a better way to schedule this?
         for subkey in subkeys_filtered:
             try:
                 yield await self.getitem(subkey)
-            except ValueError:
+            except KeyError:
+                # keyerror is raised when `subkey``names an object in the store
+                # in which case `subkey` cannot be the name of a sub-array or sub-group.
                 pass
 
     async def contains(self, child: str) -> bool:
@@ -436,7 +449,7 @@ class Group(SyncMixin):
         return self._sync(self._async_group.nchildren)
 
     @property
-    def children(self) -> List[Array, Group]:
+    def children(self) -> List[Array | Group]:
         _children = self._sync_iter(self._async_group.children)
         return [Array(obj) if isinstance(obj, AsyncArray) else Group(obj) for obj in _children]
 
