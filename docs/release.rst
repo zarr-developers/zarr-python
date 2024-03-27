@@ -44,6 +44,9 @@ Enhancements
 * Change occurrences of % and format() to f-strings.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1423`.
 
+* Add more typing to zarr.util.
+  By :user:`David Stansby <dstansby>` :issue:`1617`.
+  
 * Proper argument for numpy.reshape.
   By :user:`Dimitri Papadopoulos Orfanos <DmitriPapadopoulos>` :issue:`1425`.
 

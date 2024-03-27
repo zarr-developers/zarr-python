@@ -17,6 +17,7 @@ from typing import (
     Union,
     Iterable,
     cast,
+    List,
 )
 
 import numpy as np
@@ -54,7 +55,7 @@ object_codecs = {
 
 
 class NumberEncoder(json.JSONEncoder):
-    def default(self, o):
+    def default(self, o: numbers.Number) -> float:
         # See json.JSONEncoder.default docstring for explanation
         # This is necessary to encode numpy dtype
         if isinstance(o, numbers.Integral):
@@ -262,7 +263,7 @@ def normalize_resize_args(old_shape, *args):
     return new_shape
 
 
-def human_readable_size(size) -> str:
+def human_readable_size(size: float) -> str:
     if size < 2**10:
         return f"{size}"
     elif size < 2**20:
@@ -390,7 +391,7 @@ def info_text_report(items: Dict[Any, Any]) -> str:
     return report
 
 
-def info_html_report(items) -> str:
+def info_html_report(items: dict) -> str:
     report = '<table class="zarr-info">'
     report += "<tbody>"
     for k, v in items:
@@ -419,25 +420,25 @@ class InfoReporter:
 
 
 class TreeNode:
-    def __init__(self, obj, depth=0, level=None):
+    def __init__(self, obj, depth: int = 0, level: Optional[int] = None):
         self.obj = obj
         self.depth = depth
         self.level = level
 
-    def get_children(self):
+    def get_children(self) -> List["TreeNode"]:
         if hasattr(self.obj, "values"):
             if self.level is None or self.depth < self.level:
                 depth = self.depth + 1
                 return [TreeNode(o, depth=depth, level=self.level) for o in self.obj.values()]
         return []
 
-    def get_text(self):
+    def get_text(self) -> str:
         name = self.obj.name.split("/")[-1] or "/"
         if hasattr(self.obj, "shape"):
             name += f" {self.obj.shape} {self.obj.dtype}"
         return name
 
-    def get_type(self):
+    def get_type(self) -> str:
         return type(self.obj).__name__
 
 
@@ -465,7 +466,7 @@ def tree_get_icon(stype: str) -> str:
         raise ValueError(f"Unknown type: {stype}")
 
 
-def tree_widget_sublist(node, root=False, expand=False):
+def tree_widget_sublist(node, root: bool = False, expand: Union[bool, int] = False):
     import ipytree
 
     result = ipytree.Node()
@@ -481,7 +482,7 @@ def tree_widget_sublist(node, root=False, expand=False):
     return result
 
 
-def tree_widget(group, expand, level):
+def tree_widget(group, expand: Union[bool, int], level: int):
     try:
         import ipytree
     except ImportError as error:
@@ -500,7 +501,7 @@ def tree_widget(group, expand, level):
 
 
 class TreeViewer:
-    def __init__(self, group, expand=False, level=None):
+    def __init__(self, group, expand: Union[bool, int] = False, level: Optional[int] = None):
         self.group = group
         self.expand = expand
         self.level = level
@@ -518,7 +519,7 @@ class TreeViewer:
             VERTICAL_AND_RIGHT="\u251C",
         )
 
-    def __bytes__(self):
+    def __bytes__(self) -> bytes:
         drawer = LeftAligned(
             traverse=TreeTraversal(), draw=BoxStyle(gfx=self.bytes_kwargs, **self.text_kwargs)
         )
@@ -531,14 +532,14 @@ class TreeViewer:
 
         return result
 
-    def __unicode__(self):
+    def __unicode__(self) -> str:
         drawer = LeftAligned(
             traverse=TreeTraversal(), draw=BoxStyle(gfx=self.unicode_kwargs, **self.text_kwargs)
         )
         root = TreeNode(self.group, level=self.level)
         return drawer(root)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.__unicode__()
 
     def _repr_mimebundle_(self, **kwargs):
@@ -546,7 +547,7 @@ class TreeViewer:
         return tree._repr_mimebundle_(**kwargs)
 
 
-def check_array_shape(param, array, shape):
+def check_array_shape(param, array, shape) -> None:
     if not hasattr(array, "shape"):
         raise TypeError(f"parameter {param!r}: expected an array-like object, got {type(array)!r}")
     if array.shape != shape:
@@ -555,7 +556,7 @@ def check_array_shape(param, array, shape):
         )
 
 
-def is_valid_python_name(name):
+def is_valid_python_name(name: str) -> bool:
     from keyword import iskeyword
 
     return name.isidentifier() and not iskeyword(name)
@@ -564,10 +565,10 @@ def is_valid_python_name(name):
 class NoLock:
     """A lock that doesn't lock."""
 
-    def __enter__(self):
+    def __enter__(self) -> None:
         pass
 
-    def __exit__(self, *args):
+    def __exit__(self, *args: Any) -> None:
         pass
 
 
@@ -595,7 +596,7 @@ class PartialReadBuffer:
         _key_path = "/".join(_key_path[:-1] + _chunk_path)
         self.key_path = _key_path
 
-    def prepare_chunk(self):
+    def prepare_chunk(self) -> None:
         assert self.buff is None
         header = self.fs.read_block(self.key_path, 0, 16)
         nbytes, self.cbytes, blocksize = cbuffer_sizes(header)
@@ -615,7 +616,7 @@ class PartialReadBuffer:
         self.buff[16 : (16 + (self.nblocks * 4))] = start_points_buffer
         self.n_per_block = blocksize / typesize
 
-    def read_part(self, start, nitems):
+    def read_part(self, start, nitems) -> None:
         assert self.buff is not None
         if self.nblocks == 1:
             return
@@ -649,7 +650,7 @@ class UncompressedPartialReadBufferV3:
         self.store_key = store_key
         self.itemsize = itemsize
 
-    def prepare_chunk(self):
+    def prepare_chunk(self) -> None:
         pass
 
     def read_part(self, start, nitems):
@@ -690,7 +691,7 @@ def retry_call(
                 raise
 
 
-def all_equal(value: Any, array: Any):
+def all_equal(value: Any, array: Any) -> bool:
     """
     Test if all the elements of an array are equivalent to a value.
     If `value` is None, then this function does not do any comparison and
@@ -715,11 +716,11 @@ def all_equal(value: Any, array: Any):
         # Numpy errors if you call np.isnan on custom dtypes, so ensure
         # we are working with floats before calling isnan
         if np.issubdtype(array.dtype, np.floating) and np.isnan(value):
-            return np.all(np.isnan(array))
+            return bool(np.all(np.isnan(array)))
         else:
             # using == raises warnings from numpy deprecated pattern, but
             # using np.equal() raises type errors for structured dtypes...
-            return np.all(value == array)
+            return bool(np.all(value == array))
 
 
 def ensure_contiguous_ndarray_or_bytes(buf) -> Union[NDArrayLike, bytes]:
