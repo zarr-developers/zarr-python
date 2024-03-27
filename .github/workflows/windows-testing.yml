@@ -26,6 +26,7 @@ jobs:
           auto-update-conda: true
           python-version: ${{ matrix.python-version }}
           channels: conda-forge
+          activate-environment: zarr-env
         env:
           ACTIONS_ALLOW_UNSECURE_COMMANDS: true
       - name: Create Conda environment with the rights deps
@@ -35,7 +36,6 @@ jobs:
       - name: Install dependencies
         shell: bash -l {0}
         run: |
-          conda activate zarr-env
           python -m pip install --upgrade pip
           python -m pip install -U pip setuptools wheel
           python -m pip install -r requirements_dev_numpy.txt -r requirements_dev_minimal.txt -r requirements_dev_optional.txt
@@ -45,7 +45,6 @@ jobs:
       - name: Run Tests
         shell: bash -l {0}
         run: |
-          conda activate zarr-env
           mkdir ~/blob_emulator
           azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
           pytest -sv --timeout=300

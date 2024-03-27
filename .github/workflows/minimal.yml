@@ -26,7 +26,6 @@ jobs:
         ZARR_V3_EXPERIMENTAL_API: 1
         ZARR_V3_SHARDING: 1
       run: |
-        conda activate minimal
         python -m pip install .
         pytest -svx --timeout=300
     - name: Fixture generation
@@ -35,7 +34,6 @@ jobs:
         ZARR_V3_EXPERIMENTAL_API: 1
         ZARR_V3_SHARDING: 1
       run: |
-        conda activate minimal
         rm -rf fixture/
         pytest -svx --timeout=300 zarr/tests/test_dim_separator.py zarr/tests/test_storage.py
         # This simulates fixture-less tests in conda and debian packaging
