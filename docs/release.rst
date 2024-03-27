@@ -18,6 +18,12 @@ Release notes
 Unreleased (v3)
 ---------------
 
+Enhancements
+~~~~~~~~~~~~
+
+* Implement listing of the sub-arrays and sub-groups for a V3 ``Group``.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1726`.
+
 Maintenance
 ~~~~~~~~~~~
 
