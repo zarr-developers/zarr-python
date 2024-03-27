@@ -5,11 +5,12 @@ import math
 import operator
 import re
 from functools import reduce
-from typing import Any
+from typing import Any, Optional, Tuple
 
 import numpy as np
 from numcodecs.compat import ensure_bytes
 
+import zarr.types
 from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_available
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
@@ -321,7 +322,7 @@ class Array:
         return self._path
 
     @property
-    def name(self):
+    def name(self) -> Optional[str]:
         """Array name following h5py convention."""
         if self.path:
             # follow h5py convention: add leading slash
@@ -332,19 +333,19 @@ class Array:
         return None
 
     @property
-    def basename(self):
+    def basename(self) -> Optional[str]:
         """Final component of name."""
         if self.name is not None:
             return self.name.split("/")[-1]
         return None
 
     @property
-    def read_only(self):
+    def read_only(self) -> bool:
         """A boolean, True if modification operations are not permitted."""
         return self._read_only
 
     @read_only.setter
-    def read_only(self, value):
+    def read_only(self, value: bool) -> None:
         self._read_only = bool(value)
 
     @property
@@ -358,7 +359,7 @@ class Array:
             return self._store
 
     @property
-    def shape(self):
+    def shape(self) -> Tuple[int, ...]:
         """A tuple of integers describing the length of each dimension of
         the array."""
         # N.B., shape may change if array is resized, hence need to refresh
@@ -367,17 +368,17 @@ class Array:
         return self._shape
 
     @shape.setter
-    def shape(self, value):
+    def shape(self, value: Tuple[int, ...]) -> None:
         self.resize(value)
 
     @property
-    def chunks(self):
+    def chunks(self) -> Tuple[int, ...]:
         """A tuple of integers describing the length of each dimension of a
         chunk of the array."""
         return self._chunks
 
     @property
-    def dtype(self):
+    def dtype(self) -> np.dtype:
         """The NumPy data type."""
         return self._dtype
 
@@ -397,7 +398,7 @@ class Array:
         self._flush_metadata_nosync()
 
     @property
-    def order(self):
+    def order(self) -> zarr.types.MEMORY_ORDER:
         """A string indicating the order in which bytes are arranged within
         chunks of the array."""
         return self._order
@@ -419,7 +420,7 @@ class Array:
         return self._attrs
 
     @property
-    def ndim(self):
+    def ndim(self) -> int:
         """Number of dimensions."""
         return len(self._shape)
 
@@ -428,7 +429,7 @@ class Array:
         return reduce(operator.mul, self._shape, 1)
 
     @property
-    def size(self):
+    def size(self) -> int:
         """The total number of elements in the array."""
         # N.B., this property depends on shape, and shape may change if array
         # is resized, hence need to refresh metadata
@@ -436,7 +437,7 @@ class Array:
         return self._size
 
     @property
-    def itemsize(self):
+    def itemsize(self) -> int:
         """The size in bytes of each item in the array."""
         return self.dtype.itemsize
 
@@ -445,7 +446,7 @@ class Array:
         return self._size * self.itemsize
 
     @property
-    def nbytes(self):
+    def nbytes(self) -> int:
         """The total number of bytes that would be required to store the
         array without compression."""
         # N.B., this property depends on shape, and shape may change if array
@@ -454,7 +455,7 @@ class Array:
         return self._nbytes
 
     @property
-    def nbytes_stored(self):
+    def nbytes_stored(self) -> int:
         """The total number of stored bytes of data for the array. This
         includes storage required for configuration metadata and user
         attributes."""
@@ -476,7 +477,7 @@ class Array:
             return tuple(math.ceil(s / c) for s, c in zip(self._shape, self._chunks))
 
     @property
-    def cdata_shape(self):
+    def cdata_shape(self) -> Tuple[int, ...]:
         """A tuple of integers describing the number of chunks along each
         dimension of the array."""
         self._refresh_metadata()
@@ -487,13 +488,13 @@ class Array:
         return reduce(operator.mul, self._cdata_shape, 1)
 
     @property
-    def nchunks(self):
+    def nchunks(self) -> int:
         """Total number of chunks."""
         self._refresh_metadata()
         return self._nchunks
 
     @property
-    def nchunks_initialized(self):
+    def nchunks_initialized(self) -> int:
         """The number of chunks that have been initialized with some data."""
 
         # count chunk keys
@@ -523,12 +524,12 @@ class Array:
     initialized = nchunks_initialized
 
     @property
-    def is_view(self):
+    def is_view(self) -> bool:
         """A boolean, True if this array is a view on another array."""
         return self._is_view
 
     @property
-    def oindex(self):
+    def oindex(self) -> OIndex:
         """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
         :func:`set_orthogonal_selection` for documentation and examples."""
         return self._oindex
@@ -541,7 +542,7 @@ class Array:
         return self._vindex
 
     @property
-    def blocks(self):
+    def blocks(self) -> BlockIndex:
         """Shortcut for blocked chunked indexing, see :func:`get_block_selection` and
         :func:`set_block_selection` for documentation and examples."""
         return self._blocks
