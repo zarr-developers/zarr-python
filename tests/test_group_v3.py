@@ -1,27 +1,74 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from zarr.v3.store.remote import MemoryStore, LocalStore
 import pytest
 import numpy as np
 
 from zarr.v3.group import AsyncGroup, Group, GroupMetadata
-from zarr.v3.store import LocalStore, StorePath
+from zarr.v3.store import StorePath
 from zarr.v3.config import RuntimeConfiguration
+from zarr.v3.sync import sync
+
+# todo: put RemoteStore in here
+@pytest.mark.parametrize("store_type", ("local_store", "memory_store"))
+def test_group_children(store_type, request):
+    """
+    Test that `Group.children` returns correct values, i.e. the arrays and groups
+    (explicit and implicit) contained in that group.
+    """
+
+    store: LocalStore | MemoryStore = request.getfixturevalue(store_type)
+    path = "group"
+    agroup = AsyncGroup(
+        metadata=GroupMetadata(),
+        store_path=StorePath(store=store, path=path),
+    )
+    group = Group(agroup)
+
+    subgroup = group.create_group("subgroup")
+    # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
+    # too deep in the hierarchy
+    _ = subgroup.create_group("subsubgroup")
+    subarray = group.create_array(
+        "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
+    )
+
+    # add an extra object to the domain of the group.
+    # the list of children should ignore this object.
+    sync(store.set(f"{path}/extra_object", b"000000"))
+    # add an extra object under a directory-like prefix in the domain of the group.
+    # this creates an implicit group called implicit_subgroup
+    sync(store.set(f"{path}/implicit_subgroup/extra_object", b"000000"))
+    # make the implicit subgroup
+    implicit_subgroup = Group(
+        AsyncGroup(
+            metadata=GroupMetadata(),
+            store_path=StorePath(store=store, path=f"{path}/implicit_subgroup"),
+        )
+    )
+    # note: these assertions are order-independent, because it is not clear
+    # if group.children guarantees a particular order for the children.
+    # If order is not guaranteed, then the better version of this test is
+    # to compare two sets, but presently neither the group nor array classes are hashable.
+    observed = group.children
+    assert len(observed) == 3
+    assert subarray in observed
+    assert implicit_subgroup in observed
+    assert subgroup in observed
 
 
-@pytest.fixture
-def store_path(tmpdir):
-    store = LocalStore(str(tmpdir))
-    p = StorePath(store)
-    return p
-
-
-def test_group(store_path) -> None:
-
+@pytest.mark.parametrize("store_type", (("local_store",)))
+def test_group(store_type, request) -> None:
+    store = request.getfixturevalue(store_type)
+    store_path = StorePath(store)
     agroup = AsyncGroup(
         metadata=GroupMetadata(),
         store_path=store_path,
         runtime_configuration=RuntimeConfiguration(),
     )
     group = Group(agroup)
-
     assert agroup.metadata is group.metadata
 
     # create two groups

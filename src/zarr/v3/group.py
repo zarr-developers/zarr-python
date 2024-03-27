@@ -1,10 +1,19 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING
 from dataclasses import asdict, dataclass, field, replace
 
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Literal, Optional, Union, AsyncIterator, Iterator, List
+
+if TYPE_CHECKING:
+    from typing import (
+        Any,
+        AsyncGenerator,
+        Literal,
+        AsyncIterator,
+        Iterator,
+    )
 from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.array import AsyncArray, Array
@@ -25,7 +34,7 @@ def parse_zarr_format(data: Any) -> Literal[2, 3]:
 
 
 # todo: convert None to empty dict
-def parse_attributes(data: Any) -> Dict[str, Any]:
+def parse_attributes(data: Any) -> dict[str, Any]:
     if data is None:
         return {}
     elif isinstance(data, dict) and all(map(lambda v: isinstance(v, str), data.keys())):
@@ -36,12 +45,12 @@ def parse_attributes(data: Any) -> Dict[str, Any]:
 
 @dataclass(frozen=True)
 class GroupMetadata(Metadata):
-    attributes: Dict[str, Any] = field(default_factory=dict)
+    attributes: dict[str, Any] = field(default_factory=dict)
     zarr_format: Literal[2, 3] = 3
     node_type: Literal["group"] = field(default="group", init=False)
 
     # todo: rename this, since it doesn't return bytes
-    def to_bytes(self) -> Dict[str, bytes]:
+    def to_bytes(self) -> dict[str, bytes]:
         if self.zarr_format == 3:
             return {ZARR_JSON: json.dumps(self.to_dict()).encode()}
         else:
@@ -50,7 +59,7 @@ class GroupMetadata(Metadata):
                 ZATTRS_JSON: json.dumps(self.attributes).encode(),
             }
 
-    def __init__(self, attributes: Dict[str, Any] = None, zarr_format: Literal[2, 3] = 3):
+    def __init__(self, attributes: dict[str, Any] = {}, zarr_format: Literal[2, 3] = 3):
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
 
@@ -58,11 +67,11 @@ class GroupMetadata(Metadata):
         object.__setattr__(self, "zarr_format", zarr_format_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> GroupMetadata:
+    def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
         assert data.pop("node_type", None) in ("group", None)
         return cls(**data)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -70,14 +79,14 @@ class GroupMetadata(Metadata):
 class AsyncGroup:
     metadata: GroupMetadata
     store_path: StorePath
-    runtime_configuration: RuntimeConfiguration
+    runtime_configuration: RuntimeConfiguration = RuntimeConfiguration()
 
     @classmethod
     async def create(
         cls,
         store: StoreLike,
         *,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: dict[str, Any] = {},
         exists_ok: bool = False,
         zarr_format: Literal[2, 3] = 3,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
@@ -89,7 +98,7 @@ class AsyncGroup:
             elif zarr_format == 2:
                 assert not await (store_path / ZGROUP_JSON).exists()
         group = cls(
-            metadata=GroupMetadata(attributes=attributes or {}, zarr_format=zarr_format),
+            metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
             runtime_configuration=runtime_configuration,
         )
@@ -137,7 +146,7 @@ class AsyncGroup:
     def from_dict(
         cls,
         store_path: StorePath,
-        data: Dict[str, Any],
+        data: dict[str, Any],
         runtime_configuration: RuntimeConfiguration,
     ) -> Group:
         group = cls(
@@ -150,15 +159,25 @@ class AsyncGroup:
     async def getitem(
         self,
         key: str,
-    ) -> Union[AsyncArray, AsyncGroup]:
+    ) -> AsyncArray | AsyncGroup:
 
         store_path = self.store_path / key
+
+        # Note:
+        # in zarr-python v2, we first check if `key` references an Array, else if `key` references
+        # a group,using standalone `contains_array` and `contains_group` functions. These functions
+        # are reusable, but for v3 they would perform redundant I/O operations.
+        # Not clear how much of that strategy we want to keep here.
+
+        # if `key` names an object in storage, it cannot be an array or group
+        if await store_path.exists():
+            raise KeyError(key)
 
         if self.metadata.zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
                 # implicit group?
-                logger.warning("group at {} is an implicit group", store_path)
+                logger.warning("group at %s is an implicit group", store_path)
                 zarr_json = {
                     "zarr_format": self.metadata.zarr_format,
                     "node_type": "group",
@@ -195,7 +214,7 @@ class AsyncGroup:
             else:
                 if zgroup_bytes is None:
                     # implicit group?
-                    logger.warning("group at {} is an implicit group", store_path)
+                    logger.warning("group at %s is an implicit group", store_path)
                 zgroup = (
                     json.loads(zgroup_bytes)
                     if zgroup_bytes is not None
@@ -247,7 +266,7 @@ class AsyncGroup:
             **kwargs,
         )
 
-    async def update_attributes(self, new_attributes: Dict[str, Any]):
+    async def update_attributes(self, new_attributes: dict[str, Any]):
         # metadata.attributes is "frozen" so we simply clear and update the dict
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -271,8 +290,32 @@ class AsyncGroup:
     async def nchildren(self) -> int:
         raise NotImplementedError
 
-    async def children(self) -> AsyncIterator[AsyncArray, AsyncGroup]:
-        raise NotImplementedError
+    async def children(self) -> AsyncGenerator[AsyncArray, AsyncGroup]:
+        """
+        Returns an AsyncGenerator over the arrays and groups contained in this group.
+        This method requires that `store_path.store` supports directory listing.
+        """
+        if not self.store_path.store.supports_listing:
+            msg = (
+                f"The store associated with this group ({type(self.store_path.store)}) "
+                "does not support listing, "
+                "specifically via the `list_dir` method. "
+                "This function requires a store that supports listing."
+            )
+
+            raise ValueError(msg)
+        subkeys = await self.store_path.store.list_dir(self.store_path.path)
+        # would be nice to make these special keys accessible programmatically,
+        # and scoped to specific zarr versions
+        subkeys_filtered = filter(lambda v: v not in ("zarr.json", ".zgroup", ".zattrs"), subkeys)
+        # is there a better way to schedule this?
+        for subkey in subkeys_filtered:
+            try:
+                yield await self.getitem(subkey)
+            except KeyError:
+                # keyerror is raised when `subkey``names an object in the store
+                # in which case `subkey` cannot be the name of a sub-array or sub-group.
+                pass
 
     async def contains(self, child: str) -> bool:
         raise NotImplementedError
@@ -330,7 +373,7 @@ class Group(SyncMixin):
         cls,
         store: StoreLike,
         *,
-        attributes: Optional[Dict[str, Any]] = None,
+        attributes: dict[str, Any] = {},
         exists_ok: bool = False,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Group:
@@ -357,7 +400,7 @@ class Group(SyncMixin):
         )
         return cls(obj)
 
-    def __getitem__(self, path: str) -> Union[Array, Group]:
+    def __getitem__(self, path: str) -> Array | Group:
         obj = self._sync(self._async_group.getitem(path))
         if isinstance(obj, AsyncArray):
             return Array(obj)
@@ -377,7 +420,7 @@ class Group(SyncMixin):
         """__setitem__ is not supported in v3"""
         raise NotImplementedError
 
-    async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> Group:
+    async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
@@ -396,7 +439,7 @@ class Group(SyncMixin):
     def info(self):
         return self._async_group.info
 
-    def update_attributes(self, new_attributes: Dict[str, Any]):
+    def update_attributes(self, new_attributes: dict[str, Any]):
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
@@ -405,7 +448,7 @@ class Group(SyncMixin):
         return self._sync(self._async_group.nchildren)
 
     @property
-    def children(self) -> List[Array, Group]:
+    def children(self) -> list[Array | Group]:
         _children = self._sync_iter(self._async_group.children)
         return [Array(obj) if isinstance(obj, AsyncArray) else Group(obj) for obj in _children]
 
@@ -415,14 +458,14 @@ class Group(SyncMixin):
     def group_keys(self) -> Iterator[str]:
         return self._sync_iter(self._async_group.group_keys)
 
-    def groups(self) -> List[Group]:
+    def groups(self) -> list[Group]:
         # TODO: in v2 this was a generator that return key: Group
         return [Group(obj) for obj in self._sync_iter(self._async_group.groups)]
 
-    def array_keys(self) -> List[str]:
+    def array_keys(self) -> list[str]:
         return self._sync_iter(self._async_group.array_keys)
 
-    def arrays(self) -> List[Array]:
+    def arrays(self) -> list[Array]:
         return [Array(obj) for obj in self._sync_iter(self._async_group.arrays)]
 
     def tree(self, expand=False, level=None) -> Any:
