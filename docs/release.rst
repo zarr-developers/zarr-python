@@ -18,8 +18,55 @@ Release notes
 Unreleased
 ----------
 
+Enhancements
+~~~~~~~~~~~~
+
+* Override IPython ``_repr_*_`` methods to avoid expensive lookups against object stores.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1716`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Add CI test environment for Python 3.12
+  By :user:`Joe Hamman <jhamman>` :issue:`1719`.
+
+* Bump minimum supported NumPy version to 1.23 (per spec 0000)
+  By :user:`Joe Hamman <jhamman>` :issue:`1719`.
+
+.. _release_2.17.1:
+
+2.17.1
+------
+
+Enhancements
+~~~~~~~~~~~~
+
 * Change occurrences of % and format() to f-strings.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1423`.
+
+* Proper argument for numpy.reshape.
+  By :user:`Dimitri Papadopoulos Orfanos <DmitriPapadopoulos>` :issue:`1425`.
+
+* Add typing to dimension separator arguments.
+  By :user:`David Stansby <dstansby>` :issue:`1620`.
+
+Docs
+~~~~
+
+* ZIP related tweaks.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1641`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Update config.yml with Zulip.
+  By :user:`Josh Moore <joshmoore>`.
+
+* Replace Gitter with the new Zulip Chat link.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1685`.
+
+* Fix RTD build.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1694`.
 
 .. _release_2.17.0:
 
