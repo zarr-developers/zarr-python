@@ -176,7 +176,7 @@ class Array:
         )
 
         # initialize info reporter
-        self._info_reporter = InfoReporter(self)
+        # self._info_reporter = InfoReporter(self)
 
         # initialize indexing helpers
         self._oindex = OIndex(self)
@@ -2429,7 +2429,7 @@ class Array:
         Chunks initialized : 0/10
 
         """
-        return self._info_reporter
+        return InfoReporter(self)
 
     def info_items(self):
         return self._synchronized_op(self._info_items_nosync)
