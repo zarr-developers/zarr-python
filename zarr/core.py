@@ -2471,14 +2471,16 @@ class Array:
             items += [("Synchronizer type", typestr(self._synchronizer))]
 
         # storage info
+        nbytes = self.nbytes
+        nbytes_stored = self.nbytes_stored
         items += [("Store type", typestr(self._store))]
         if self._chunk_store is not None:
             items += [("Chunk store type", typestr(self._chunk_store))]
-        items += [("No. bytes", bytestr(self.nbytes))]
-        if self.nbytes_stored > 0:
+        items += [("No. bytes", bytestr(nbytes))]
+        if nbytes_stored > 0:
             items += [
-                ("No. bytes stored", bytestr(self.nbytes_stored)),
-                ("Storage ratio", f"{self.nbytes / self.nbytes_stored:.1f}"),
+                ("No. bytes stored", bytestr(nbytes_stored)),
+                ("Storage ratio", f"{nbytes / nbytes_stored:.1f}"),
             ]
         items += [("Chunks initialized", f"{self.nchunks_initialized}/{self.nchunks}")]
 
