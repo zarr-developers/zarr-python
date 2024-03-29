@@ -174,6 +174,8 @@ class Array:
         self._attrs = Attributes(
             store, key=akey, read_only=read_only, synchronizer=synchronizer, cache=cache_attrs
         )
+        if cache_attrs:
+            self._attrs._cached_asdict = self._meta["attributes"]
 
         # initialize info reporter
         self._info_reporter = InfoReporter(self)
