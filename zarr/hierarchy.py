@@ -211,7 +211,7 @@ class Group(MutableMapping):
         )
 
         # setup info
-        self._info = InfoReporter(self)
+        # self._info = InfoReporter(self)
 
     @property
     def store(self):
@@ -266,7 +266,7 @@ class Group(MutableMapping):
     @property
     def info(self):
         """Return diagnostic information about the group."""
-        return self._info
+        return InfoReporter(self)
 
     @property
     def meta_array(self):
