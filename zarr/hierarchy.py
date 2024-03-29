@@ -209,6 +209,8 @@ class Group(MutableMapping):
         self._attrs = Attributes(
             store, key=akey, read_only=read_only, cache=cache_attrs, synchronizer=synchronizer
         )
+        if cache_attrs:
+            self._attrs._cached_asdict = self._meta["attributes"]
 
         # setup info
         self._info = InfoReporter(self)
