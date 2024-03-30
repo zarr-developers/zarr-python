@@ -176,7 +176,6 @@ class Array:
         )
 
         # initialize info reporter
-        # self._info_reporter = InfoReporter(self)
 
         # initialize indexing helpers
         self._oindex = OIndex(self)

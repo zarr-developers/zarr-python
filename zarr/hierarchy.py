@@ -211,7 +211,6 @@ class Group(MutableMapping):
         )
 
         # setup info
-        # self._info = InfoReporter(self)
 
     @property
     def store(self):
