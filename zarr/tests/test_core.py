@@ -123,7 +123,7 @@ class TestArray:
             "compressor": kwargs.pop("compressor", self.compressor),
             "chunk_store": chunk_store,
             "storage_transformers": self.create_storage_transformers(shape),
-            "filters": kwargs.pop("filters", self.create_filters(kwargs.get("dtype", None))),
+            "filters": kwargs.pop("filters", self.create_filters(kwargs.get("dtype"))),
         }
 
         # keyword arguments for array instantiation

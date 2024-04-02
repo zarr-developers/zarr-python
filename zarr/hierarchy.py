@@ -211,7 +211,6 @@ class Group(MutableMapping):
         )
 
         # setup info
-        self._info = InfoReporter(self)
 
     @property
     def store(self):
@@ -266,7 +265,7 @@ class Group(MutableMapping):
     @property
     def info(self):
         """Return diagnostic information about the group."""
-        return self._info
+        return InfoReporter(self)
 
     @property
     def meta_array(self):
@@ -515,6 +514,13 @@ class Group(MutableMapping):
             raise KeyError(item)
 
     def __getattr__(self, item):
+        # https://github.com/jupyter/notebook/issues/2014
+        # Save a possibly expensive lookup (for e.g. against cloud stores)
+        # Note: The _ipython_display_ method is required to display the right info as a side-effect.
+        # It is simpler to pretend it doesn't exist.
+        if item in ["_ipython_canary_method_should_not_exist_", "_ipython_display_"]:
+            raise AttributeError
+
         # allow access to group members via dot notation
         try:
             return self.__getitem__(item)
@@ -1330,6 +1336,40 @@ class Group(MutableMapping):
             self.require_group("/" + dest.rsplit("/", 1)[0])
 
         self._write_op(self._move_nosync, source, dest)
+
+    # Override ipython repr methods, GH1716
+    # https://ipython.readthedocs.io/en/stable/config/integrating.html#custom-methods
+    #     " If the methods don’t exist, the standard repr() is used. If a method exists and
+    #       returns None, it is treated the same as if it does not exist."
+    def _repr_html_(self):
+        return None
+
+    def _repr_latex_(self):
+        return None
+
+    def _repr_mimebundle_(self, **kwargs):
+        return None
+
+    def _repr_svg_(self):
+        return None
+
+    def _repr_png_(self):
+        return None
+
+    def _repr_jpeg_(self):
+        return None
+
+    def _repr_markdown_(self):
+        return None
+
+    def _repr_javascript_(self):
+        return None
+
+    def _repr_pdf_(self):
+        return None
+
+    def _repr_json_(self):
+        return None
 
 
 def _normalize_store_arg(store, *, storage_options=None, mode="r", zarr_version=None):
