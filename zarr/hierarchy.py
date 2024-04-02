@@ -207,10 +207,13 @@ class Group(MutableMapping):
             # object can still be created.
             akey = mkey
         self._attrs = Attributes(
-            store, key=akey, read_only=read_only, cache=cache_attrs, synchronizer=synchronizer
+            store,
+            key=akey,
+            read_only=read_only,
+            cache=cache_attrs,
+            synchronizer=synchronizer,
+            cached_dict=self._meta["attributes"] if self._version == 3 and self._meta else None,
         )
-        if cache_attrs:
-            self._attrs._cached_asdict = self._meta["attributes"]
 
         # setup info
         self._info = InfoReporter(self)
