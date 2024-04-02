@@ -181,7 +181,6 @@ class Array:
         )
 
         # initialize info reporter
-        self._info_reporter = InfoReporter(self)
 
         # initialize indexing helpers
         self._oindex = OIndex(self)
@@ -2434,7 +2433,7 @@ class Array:
         Chunks initialized : 0/10
 
         """
-        return self._info_reporter
+        return InfoReporter(self)
 
     def info_items(self):
         return self._synchronized_op(self._info_items_nosync)
@@ -2476,14 +2475,16 @@ class Array:
             items += [("Synchronizer type", typestr(self._synchronizer))]
 
         # storage info
+        nbytes = self.nbytes
+        nbytes_stored = self.nbytes_stored
         items += [("Store type", typestr(self._store))]
         if self._chunk_store is not None:
             items += [("Chunk store type", typestr(self._chunk_store))]
-        items += [("No. bytes", bytestr(self.nbytes))]
-        if self.nbytes_stored > 0:
+        items += [("No. bytes", bytestr(nbytes))]
+        if nbytes_stored > 0:
             items += [
-                ("No. bytes stored", bytestr(self.nbytes_stored)),
-                ("Storage ratio", f"{self.nbytes / self.nbytes_stored:.1f}"),
+                ("No. bytes stored", bytestr(nbytes_stored)),
+                ("Storage ratio", f"{nbytes / nbytes_stored:.1f}"),
             ]
         items += [("Chunks initialized", f"{self.nchunks_initialized}/{self.nchunks}")]
 

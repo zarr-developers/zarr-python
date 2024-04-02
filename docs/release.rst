@@ -21,6 +21,8 @@ Unreleased
 Enhancements
 ~~~~~~~~~~~~
 
+* Optimize ``Array.info`` so that it calls `getsize` only once.
+  By :user:`Deepak Cherian <dcherian>`.
 * Override IPython ``_repr_*_`` methods to avoid expensive lookups against object stores.
   By :user:`Deepak Cherian <dcherian>` :issue:`1716`.
 
