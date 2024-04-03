@@ -149,19 +149,20 @@ class Attributes(MutableMapping):
             if self.cache:
                 self._cached_asdict = d
         else:
-            if self.key in self.store:
+            try:
+                meta_unparsed = self.store[self.key]
                 # Cannot write the attributes directly to JSON, but have to
                 # store it within the pre-existing attributes key of the v3
                 # metadata.
 
                 # Note: this changes the store.counter result in test_caching_on!
 
-                meta = self.store._metadata_class.parse_metadata(self.store[self.key])
+                meta = self.store._metadata_class.parse_metadata(meta_unparsed)
                 if "attributes" in meta and "filters" in meta["attributes"]:
                     # need to preserve any existing "filters" attribute
                     d["attributes"]["filters"] = meta["attributes"]["filters"]
                 meta["attributes"] = d["attributes"]
-            else:
+            except KeyError:
                 meta = d
             self.store[self.key] = json_dumps(meta)
             if self.cache:
