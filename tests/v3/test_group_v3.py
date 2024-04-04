@@ -1,11 +1,10 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from zarr.v3.store.core import make_store_path
 
 if TYPE_CHECKING:
     from zarr.v3.store import MemoryStore, LocalStore
-    from typing import Literal
     from zarr.v3.common import ZarrFormat
 
 import pytest
@@ -192,14 +191,71 @@ async def test_asyncgroup_open(
         runtime_configuration=runtime_configuration,
     )
 
-    group_r = AsyncGroup.open(
+    group_r = await AsyncGroup.open(
         store=store, zarr_format=zarr_format, runtime_configuration=runtime_configuration
     )
 
-    assert group_r == group_w
+    assert group_w.attrs == group_w.attrs == attributes
+    assert group_w == group_r
+
+    # try opening with the wrong zarr format
+    if zarr_format == 3:
+        zarr_format_wrong = 2
+    elif zarr_format == 2:
+        zarr_format_wrong = 3
+    else:
+        assert False
+
+    # todo: get more specific than this
+    with pytest.raises(ValueError):
+        await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
 
 
+# todo: replace the dict[str, Any] type with something a bit more specific
+# should this be async?
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", ("2", "3"))
-def test_getitem(store: MemoryStore | LocalStore, zarr_format: Literal["2", "3"]):
-    ...
+@pytest.mark.parametrize(
+    "data",
+    (
+        {"zarr_format": 3, "node_type": "group", "attributes": {"foo": 100}},
+        {"zarr_format": 2, "attributes": {"foo": 100}},
+    ),
+)
+def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, Any]):
+    """
+    Test that we can create an AsyncGroup from a dict
+    """
+    path = "test"
+    store_path = StorePath(store=store, path=path)
+    group = AsyncGroup.from_dict(
+        store_path, data=data, runtime_configuration=RuntimeConfiguration()
+    )
+
+    assert group.metadata.zarr_format == data["zarr_format"]
+    assert group.metadata.attributes == data["attributes"]
+
+
+# todo: replace this with a declarative API where we model a full hierarchy
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat):
+    """
+    Create an `AsyncGroup`, then create members of that group, and ensure that we can access those
+    members via the `AsyncGroup.getitem` method.
+    """
+    agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+
+    sub_array_path = "sub_array"
+    sub_array = await agroup.create_array(
+        path=sub_array_path, shape=(10,), dtype="uint8", chunk_shape=(2,)
+    )
+    assert await agroup.getitem(sub_array_path) == sub_array
+
+    sub_group_path = "sub_group"
+    sub_group = await agroup.create_group(sub_group_path, attributes={"foo": 100})
+    assert await agroup.getitem(sub_group_path) == sub_group
+
+    # check that asking for a nonexistent key raises KeyError
+    with pytest.raises(KeyError):
+        agroup.getitem("foo")
