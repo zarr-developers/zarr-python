@@ -20,6 +20,9 @@ Unreleased
 
 Enhancements
 ~~~~~~~~~~~~
+* [v3] Dramatically reduce number of ``__contains_`` requests in favor of optimistically calling `__getitem__`
+  and handling any error that may arise.
+  By :user:`Deepak Cherian <dcherian>`.
 
 * Optimize ``Array.info`` so that it calls `getsize` only once.
   By :user:`Deepak Cherian <dcherian>`.
