@@ -1,8 +1,31 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+from zarr.v3.common import ZarrFormat
+from zarr.v3.group import AsyncGroup, Group
+
+if TYPE_CHECKING:
+    from typing import Any, Literal
+from dataclasses import dataclass, field
 import pathlib
+
 import pytest
 
+from zarr.v3.config import RuntimeConfiguration
 from zarr.v3.store import LocalStore, StorePath, MemoryStore
 from zarr.v3.store.remote import RemoteStore
+
+
+def parse_store(
+    store: Literal["local", "memory", "remote"], path: str
+) -> LocalStore | MemoryStore | RemoteStore:
+    if store == "local":
+        return LocalStore(path)
+    if store == "memory":
+        return MemoryStore()
+    if store == "remote":
+        return RemoteStore()
+    assert False
 
 
 @pytest.fixture(params=[str, pathlib.Path])
@@ -36,11 +59,26 @@ def memory_store():
 @pytest.fixture(scope="function")
 def store(request: str, tmpdir):
     param = request.param
-    if param == "local_store":
-        return LocalStore(str(tmpdir))
-    elif param == "memory_store":
-        return MemoryStore()
-    elif param == "remote_store":
-        return RemoteStore()
-    else:
-        assert False
+    return parse_store(param, str(tmpdir))
+
+
+@dataclass
+class AsyncGroupRequest:
+    zarr_format: ZarrFormat
+    store: str
+    attributes: dict[str, Any] = field(default_factory=dict)
+    runtime_configuration: RuntimeConfiguration = RuntimeConfiguration()
+
+
+@pytest.fixture(scope="function")
+async def async_group(request: AsyncGroupRequest, tmpdir) -> Group:
+    param: AsyncGroupRequest = request.param
+
+    store = parse_store(param.store, str(tmpdir))
+    return await AsyncGroup.create(
+        store,
+        attributes=param.attributes,
+        zarr_format=param.zarr_format,
+        runtime_configuration=param.runtime_configuration,
+        exists_ok=False,
+    )
