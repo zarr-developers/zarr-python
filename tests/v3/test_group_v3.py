@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from zarr.v3.store.remote import MemoryStore, LocalStore
+
 import pytest
 import numpy as np
 
@@ -11,15 +12,15 @@ from zarr.v3.store import StorePath
 from zarr.v3.config import RuntimeConfiguration
 from zarr.v3.sync import sync
 
+
 # todo: put RemoteStore in here
-@pytest.mark.parametrize("store_type", ("local_store", "memory_store"))
-def test_group_children(store_type, request):
+@pytest.mark.parametrize("store", ("local_store", "memory_store"), indirect=["store"])
+def test_group_children(store: MemoryStore | LocalStore):
     """
     Test that `Group.children` returns correct values, i.e. the arrays and groups
     (explicit and implicit) contained in that group.
     """
 
-    store: LocalStore | MemoryStore = request.getfixturevalue(store_type)
     path = "group"
     agroup = AsyncGroup(
         metadata=GroupMetadata(),
@@ -59,9 +60,8 @@ def test_group_children(store_type, request):
     assert subgroup in observed
 
 
-@pytest.mark.parametrize("store_type", (("local_store",)))
-def test_group(store_type, request) -> None:
-    store = request.getfixturevalue(store_type)
+@pytest.mark.parametrize("store", (("local_store", "memory_store")), indirect=["store"])
+def test_group(store: MemoryStore | LocalStore) -> None:
     store_path = StorePath(store)
     agroup = AsyncGroup(
         metadata=GroupMetadata(),
@@ -103,10 +103,10 @@ def test_group(store_type, request) -> None:
     assert dict(bar3.attrs) == {"baz": "qux", "name": "bar"}
 
 
-def test_group_sync_constructor(store_path) -> None:
-
+@pytest.mark.parametrize("store", ("local_store", "memory_store"), indirect=["store"])
+def test_group_sync_constructor(store: MemoryStore | LocalStore) -> None:
     group = Group.create(
-        store=store_path,
+        store=store,
         attributes={"title": "test 123"},
         runtime_configuration=RuntimeConfiguration(),
     )
