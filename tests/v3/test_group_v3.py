@@ -107,7 +107,9 @@ def test_group(store: MemoryStore | LocalStore) -> None:
 def test_group_create(
     store: MemoryStore | LocalStore, exists_ok: bool, runtime_configuration: RuntimeConfiguration
 ):
-
+    """
+    Test that `Group.create` works as expected.
+    """
     attributes = {"foo": 100}
     group = Group.create(
         store,
@@ -169,12 +171,32 @@ async def test_asyncgroup_create(
             )
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-async def test_asyncgroup_open(store: MemoryStore | LocalStore):
+@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("runtime_configuration", (RuntimeConfiguration(),))
+async def test_asyncgroup_open(
+    store: LocalStore | MemoryStore,
+    zarr_format: ZarrFormat,
+    runtime_configuration: RuntimeConfiguration,
+) -> None:
     """
-    Test that
+    Create an `AsyncGroup`, then ensure that we can open it using `AsyncGroup.open`
     """
-    ...
+    attributes = {"foo": 100}
+    group_w = await AsyncGroup.create(
+        store=store,
+        attributes=attributes,
+        exists_ok=False,
+        zarr_format=ZarrFormat,
+        runtime_configuration=runtime_configuration,
+    )
+
+    group_r = AsyncGroup.open(
+        store=store, zarr_format=zarr_format, runtime_configuration=runtime_configuration
+    )
+
+    assert group_r == group_w
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
