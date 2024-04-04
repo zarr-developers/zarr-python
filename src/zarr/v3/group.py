@@ -55,7 +55,7 @@ class GroupMetadata(Metadata):
             return {ZARR_JSON: json.dumps(self.to_dict()).encode()}
         else:
             return {
-                ZGROUP_JSON: self.zarr_format,
+                ZGROUP_JSON: json.dumps({"zarr_format": self.zarr_format}).encode(),
                 ZATTRS_JSON: json.dumps(self.attributes).encode(),
             }
 
