@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from zarr.v3.store.remote import MemoryStore, LocalStore
+    from typing import Literal
 
 import pytest
 import numpy as np
@@ -108,3 +109,27 @@ def test_group_sync_constructor(store: MemoryStore | LocalStore) -> None:
     )
 
     assert group._async_group.metadata.attributes["title"] == "test 123"
+
+
+@pytest.mark.parametrize("store", ("local_store", "memory_store"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", ("2", "3"))
+@pytest.mark.parametrize("exists_ok", (True, False))
+@pytest.mark.parametrize("runtime_configuration", (None,))
+def test_create(
+    store: MemoryStore | LocalStore,
+    exists_ok: bool,
+    zarr_format: Literal["2", "3"],
+    runtime_configuration: None,
+):
+    ...
+
+
+@pytest.mark.parametrize("store", ("local_store", "memory_store"), indirect=["store"])
+def test_from_dict(store: MemoryStore | LocalStore):
+    ...
+
+
+@pytest.mark.parametrize("store", ("local_store", "memory_store"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", ("2", "3"))
+def test_getitem(store: MemoryStore | LocalStore, zarr_format: Literal["2", "3"]):
+    ...
