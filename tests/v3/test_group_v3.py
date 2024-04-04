@@ -188,7 +188,7 @@ async def test_asyncgroup_open(
         store=store,
         attributes=attributes,
         exists_ok=False,
-        zarr_format=ZarrFormat,
+        zarr_format=zarr_format,
         runtime_configuration=runtime_configuration,
     )
 
