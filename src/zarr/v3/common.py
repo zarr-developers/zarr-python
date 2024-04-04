@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Union, Tuple, Iterable, Dict, List, TypeVar, overload
+from typing import TYPE_CHECKING, Literal, Union, Tuple, Iterable, Dict, List, TypeVar, overload
 import asyncio
 import contextvars
 from dataclasses import dataclass
@@ -21,6 +21,7 @@ ChunkCoords = Tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 SliceSelection = Tuple[slice, ...]
 Selection = Union[slice, SliceSelection]
+ZarrFormat = Literal[2, 3]
 JSON = Union[str, None, int, float, Enum, Dict[str, "JSON"], List["JSON"], Tuple["JSON", ...]]
 
 
