@@ -10,6 +10,8 @@ from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
 from zarr.context import Context
 
+from typing_extensions import deprecated
+
 # v2 store keys
 array_meta_key = ".zarray"
 group_meta_key = ".zgroup"
@@ -182,6 +184,9 @@ class Store(BaseStore):
         _rmdir_from_keys(self, path)
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class StoreV3(BaseStore):
     _store_version = 3
     _metadata_class = Metadata3
@@ -405,6 +410,9 @@ class StoreV3(BaseStore):
         )
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class StorageTransformer(MutableMapping, abc.ABC):
     """Base class for storage transformers. The methods simply pass on the data as-is
     and should be overwritten by sub-classes."""
@@ -560,6 +568,9 @@ def _path_to_prefix(path: Optional[str]) -> str:
     return prefix
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 def _get_hierarchy_metadata(store: StoreV3) -> Mapping[str, Any]:
     version = getattr(store, "_store_version", 2)
     if version < 3:
@@ -569,12 +580,18 @@ def _get_hierarchy_metadata(store: StoreV3) -> Mapping[str, Any]:
     return store._metadata_class.decode_hierarchy_metadata(store["zarr.json"])
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 def _get_metadata_suffix(store: StoreV3) -> str:
     if "zarr.json" in store:
         return _get_hierarchy_metadata(store)["metadata_key_suffix"]
     return ".json"
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 def _rename_metadata_v3(store: StoreV3, src_path: str, dst_path: str) -> bool:
     """Rename source or group metadata file associated with src_path."""
     any_renamed = False
@@ -628,6 +645,9 @@ def _rmdir_from_keys(store: StoreLike, path: Optional[str] = None) -> None:
             del store[key]
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
 
     meta_dir = meta_root + path

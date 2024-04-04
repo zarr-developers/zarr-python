@@ -1,5 +1,6 @@
 """This module contains storage classes related to Azure Blob Storage (ABS)"""
 
+from typing_extensions import deprecated
 import warnings
 from numcodecs.compat import ensure_bytes
 from zarr.util import normalize_storage_path
@@ -224,6 +225,9 @@ class ABSStore(Store):
         self.rmdir()
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class ABSStoreV3(ABSStore, StoreV3):
     def list(self):
         return list(self.keys())

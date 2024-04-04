@@ -2,6 +2,7 @@ import functools
 import itertools
 import os
 from typing import NamedTuple, Tuple, Optional, Union, Iterator
+from typing_extensions import deprecated
 
 from numcodecs.compat import ensure_bytes
 import numpy as np
@@ -97,6 +98,9 @@ class DummyStorageTransfomer(StorageTransformer):
         self.test_value = test_value
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class ShardingStorageTransformer(StorageTransformer):  # lgtm[py/missing-equals]
     """Implements sharding as a storage transformer, as described in the spec:
     https://zarr-specs.readthedocs.io/en/latest/extensions/storage-transformers/sharding/v1.0.html

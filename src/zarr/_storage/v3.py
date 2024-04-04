@@ -4,6 +4,7 @@ from collections import OrderedDict
 from collections.abc import MutableMapping
 from threading import Lock
 from typing import Union, Dict, Any
+from typing_extensions import deprecated
 
 from zarr.errors import (
     MetadataError,
@@ -71,6 +72,9 @@ Path = Union[str, bytes, None]
 StoreLike = Union[BaseStore, MutableMapping]
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class RmdirV3:
     """Mixin class that can be used to ensure override of any existing v2 rmdir class."""
 
@@ -79,6 +83,9 @@ class RmdirV3:
         _rmdir_from_keys_v3(self, path)  # type: ignore
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class KVStoreV3(RmdirV3, KVStore, StoreV3):
     def list(self):
         return list(self._mutable_mapping.keys())
@@ -117,6 +124,9 @@ def _get_files_and_dirs_from_path(store, path):
     return files, dirs
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class FSStoreV3(FSStore, StoreV3):
 
     # FSStoreV3 doesn't use this (FSStore uses it within _normalize_key)
@@ -224,6 +234,9 @@ class FSStoreV3(FSStore, StoreV3):
         return results
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class MemoryStoreV3(MemoryStore, StoreV3):
     def __init__(self, root=None, cls=dict, dimension_separator=None):
         if root is None:
@@ -306,6 +319,9 @@ class MemoryStoreV3(MemoryStore, StoreV3):
 MemoryStoreV3.__doc__ = MemoryStore.__doc__
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class DirectoryStoreV3(DirectoryStore, StoreV3):
     def list(self):
         return list(self.keys())
@@ -369,6 +385,9 @@ class DirectoryStoreV3(DirectoryStore, StoreV3):
 DirectoryStoreV3.__doc__ = DirectoryStore.__doc__
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class ZipStoreV3(ZipStore, StoreV3):
     def list(self):
         return list(self.keys())
@@ -407,6 +426,9 @@ class ZipStoreV3(ZipStore, StoreV3):
 ZipStoreV3.__doc__ = ZipStore.__doc__
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class RedisStoreV3(RmdirV3, RedisStore, StoreV3):
     def list(self):
         return list(self.keys())
@@ -419,6 +441,9 @@ class RedisStoreV3(RmdirV3, RedisStore, StoreV3):
 RedisStoreV3.__doc__ = RedisStore.__doc__
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class MongoDBStoreV3(RmdirV3, MongoDBStore, StoreV3):
     def list(self):
         return list(self.keys())
@@ -431,6 +456,9 @@ class MongoDBStoreV3(RmdirV3, MongoDBStore, StoreV3):
 MongoDBStoreV3.__doc__ = MongoDBStore.__doc__
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class DBMStoreV3(RmdirV3, DBMStore, StoreV3):
     def list(self):
         return list(self.keys())
@@ -443,6 +471,9 @@ class DBMStoreV3(RmdirV3, DBMStore, StoreV3):
 DBMStoreV3.__doc__ = DBMStore.__doc__
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class LMDBStoreV3(RmdirV3, LMDBStore, StoreV3):
     def list(self):
         return list(self.keys())
@@ -455,6 +486,9 @@ class LMDBStoreV3(RmdirV3, LMDBStore, StoreV3):
 LMDBStoreV3.__doc__ = LMDBStore.__doc__
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class SQLiteStoreV3(SQLiteStore, StoreV3):
     def list(self):
         return list(self.keys())
@@ -503,6 +537,9 @@ class SQLiteStoreV3(SQLiteStore, StoreV3):
 SQLiteStoreV3.__doc__ = SQLiteStore.__doc__
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class LRUStoreCacheV3(RmdirV3, LRUStoreCache, StoreV3):
     def __init__(self, store, max_size: int):
         self._store = StoreV3._ensure_store(store)
@@ -526,6 +563,9 @@ class LRUStoreCacheV3(RmdirV3, LRUStoreCache, StoreV3):
 LRUStoreCacheV3.__doc__ = LRUStoreCache.__doc__
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
     """A layer over other storage, where the metadata has been consolidated into
     a single key.
@@ -580,6 +620,9 @@ class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
         raise ReadOnlyError()
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 def _normalize_store_arg_v3(store: Any, storage_options=None, mode="r") -> BaseStore:
     # default to v2 store for backward compatibility
     zarr_version = getattr(store, "_store_version", 3)

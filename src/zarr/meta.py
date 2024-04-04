@@ -1,6 +1,7 @@
 import base64
 import itertools
 from collections.abc import Mapping
+from typing_extensions import deprecated
 
 import numcodecs
 import numpy as np
@@ -302,6 +303,9 @@ class Metadata2:
             return v
 
 
+@deprecated(
+    "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
+)
 class Metadata3(Metadata2):
     ZARR_FORMAT = ZARR_FORMAT_v3
 
