@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from zarr.v3.common import ZarrFormat
-from zarr.v3.group import AsyncGroup, Group
+from zarr.v3.group import AsyncGroup
 
 if TYPE_CHECKING:
     from typing import Any, Literal
@@ -71,14 +71,15 @@ class AsyncGroupRequest:
 
 
 @pytest.fixture(scope="function")
-async def async_group(request: AsyncGroupRequest, tmpdir) -> Group:
+async def async_group(request: AsyncGroupRequest, tmpdir) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
     store = parse_store(param.store, str(tmpdir))
-    return await AsyncGroup.create(
+    agroup = await AsyncGroup.create(
         store,
         attributes=param.attributes,
         zarr_format=param.zarr_format,
         runtime_configuration=param.runtime_configuration,
         exists_ok=False,
     )
+    return agroup
