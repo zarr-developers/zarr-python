@@ -172,7 +172,12 @@ class Array:
         # initialize attributes
         akey = _prefix_to_attrs_key(self._store, self._key_prefix)
         self._attrs = Attributes(
-            store, key=akey, read_only=read_only, synchronizer=synchronizer, cache=cache_attrs
+            store,
+            key=akey,
+            read_only=read_only,
+            synchronizer=synchronizer,
+            cache=cache_attrs,
+            cached_dict=self._meta["attributes"] if self._version == 3 else None,
         )
 
         # initialize info reporter

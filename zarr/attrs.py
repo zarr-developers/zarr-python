@@ -25,14 +25,16 @@ class Attributes(MutableMapping):
 
     """
 
-    def __init__(self, store, key=".zattrs", read_only=False, cache=True, synchronizer=None):
+    def __init__(
+        self, store, key=".zattrs", read_only=False, cache=True, synchronizer=None, cached_dict=None
+    ):
         self._version = getattr(store, "_store_version", 2)
         _Store = Store if self._version == 2 else StoreV3
         self.store = _Store._ensure_store(store)
         self.key = key
         self.read_only = read_only
         self.cache = cache
-        self._cached_asdict = None
+        self._cached_asdict = cached_dict if cache else None
         self.synchronizer = synchronizer
 
     def _get_nosync(self):
