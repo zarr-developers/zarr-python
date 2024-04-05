@@ -41,6 +41,9 @@ Maintenance
 
 * Bump minimum supported NumPy version to 1.23 (per spec 0000)
   By :user:`Joe Hamman <jhamman>` :issue:`1719`.
+  
+* FSStore now raises rather than return bad data.
+  By :user:`Martin Durant <martindurant>` and :user:`Ian Carroll <itcarroll>` :issue:`1604`.
 
 .. _release_2.17.1:
 
