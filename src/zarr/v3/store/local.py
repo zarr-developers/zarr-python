@@ -95,14 +95,23 @@ class LocalStore(Store):
     async def get_partial_values(
         self, key_ranges: List[Tuple[str, Tuple[int, int]]]
     ) -> List[bytes]:
+        """
+        Read byte ranges from multiple keys.
+
+        Parameters
+        ----------
+
+        key_ranges: List[Tuple[str, Tuple[int, int]]]
+            A list of (key, (start, length)) tuples. The first element of the tuple is the name of
+            the key in storage to fetch bytes from. The second element the tuple defines the byte
+            range to retrieve. These values are arguments to `get`, as this method wraps
+            concurrent invocation of `get`.
+        """
         args = []
         for key, byte_range in key_ranges:
             assert isinstance(key, str)
             path = self.root / key
-            if byte_range is not None:
-                args.append((_get, path, byte_range[0], byte_range[1]))
-            else:
-                args.append((_get, path))
+            args.append((_get, path, byte_range))
         return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: BytesLike) -> None:
