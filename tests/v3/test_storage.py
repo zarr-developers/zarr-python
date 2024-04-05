@@ -6,9 +6,108 @@
 # import tempfile
 
 # import numpy as np
+from __future__ import annotations
+from zarr.v3.store.local import LocalStore
+from pathlib import Path
 import pytest
 
-pytest.skip("old v3 tests are disabled", allow_module_level=True)
+
+@pytest.mark.parametrize("auto_mkdir", (True, False))
+def test_local_store_init(tmpdir, auto_mkdir: bool) -> None:
+    tmpdir_str = str(tmpdir)
+    tmpdir_path = Path(tmpdir_str)
+    store = LocalStore(root=tmpdir_str, auto_mkdir=auto_mkdir)
+
+    assert store.root == tmpdir_path
+    assert store.auto_mkdir == auto_mkdir
+
+    # ensure that str and pathlib.Path get normalized to the same output
+    # a stronger test is to ensure that these two store instances are identical
+    # but LocalStore.__eq__ is not defined at this time.
+    assert store.root == LocalStore(root=tmpdir_path, auto_mkdir=auto_mkdir).root
+
+    store_str = f"file://{tmpdir_str}"
+    assert str(store) == store_str
+    assert repr(store) == f"LocalStore({repr(store_str)})"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("byte_range", (None, (0, None), (1, None), (1, 2), (None, 1)))
+async def test_local_store_get(
+    local_store, byte_range: None | tuple[int | None, int | None]
+) -> None:
+    payload = b"\x01\x02\x03\x04"
+    object_name = "foo"
+    (local_store.root / object_name).write_bytes(payload)
+    observed = await local_store.get(object_name, byte_range=byte_range)
+
+    if byte_range is None:
+        start = 0
+        length = len(payload)
+    else:
+        maybe_start, maybe_len = byte_range
+        if maybe_start is None:
+            start = 0
+        else:
+            start = maybe_start
+
+        if maybe_len is None:
+            length = len(payload) - start
+        else:
+            length = maybe_len
+
+    expected = payload[start : start + length]
+    assert observed == expected
+
+    # test that it's an error to get bytes from a file that doesn't exist
+    with pytest.raises(FileNotFoundError):
+        await local_store.get(object_name + "_absent", byte_range=byte_range)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "key_ranges",
+    (
+        [],
+        [("key_0", (0, 1))],
+        [("dir/key_0", (0, 1)), ("key_1", (0, 2))],
+        [("key_0", (0, 1)), ("key_1", (0, 2)), ("key_1", (0, 2))],
+    ),
+)
+async def test_local_store_get_partial(
+    tmpdir, key_ranges: tuple[list[tuple[str, tuple[int, int]]]]
+) -> None:
+    store = LocalStore(str(tmpdir), auto_mkdir=True)
+    # use the utf-8 encoding of the key as the bytes
+    for key, _ in key_ranges:
+        payload = bytes(key, encoding="utf-8")
+        (store.root / key).write_bytes(payload)
+
+    results = await store.get_partial_values(key_ranges)
+    for idx, observed in enumerate(results):
+        key, byte_range = key_ranges[idx]
+        expected = await store.get(key, byte_range=byte_range)
+        assert observed == expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ("foo", "foo/bar"))
+@pytest.mark.parametrize("auto_mkdir", (True, False))
+async def test_local_store_set(tmpdir, path: str, auto_mkdir: bool) -> None:
+    store = LocalStore(str(tmpdir), auto_mkdir=auto_mkdir)
+    payload = b"\x01\x02\x03\x04"
+
+    if "/" in path and not auto_mkdir:
+        with pytest.raises(FileNotFoundError):
+            await store.set(path, payload)
+    else:
+        x = await store.set(path, payload)
+
+        # this method should not return anything
+        assert x is None
+
+        assert (store.root / path).read_bytes() == payload
+
 
 # import zarr
 # from zarr._storage.store import _get_hierarchy_metadata, v3_api_available, StorageTransformer

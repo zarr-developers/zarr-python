@@ -262,4 +262,4 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
 
     # check that asking for a nonexistent key raises KeyError
     with pytest.raises(KeyError):
-        agroup.getitem("foo")
+        await agroup.getitem("foo")
