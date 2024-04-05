@@ -10,6 +10,20 @@ from zarr.v3.common import BytesLike, concurrent_map, to_thread
 
 
 def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> bytes:
+    """
+    Fetch a contiguous region of bytes from a file.
+
+    Parameters
+    ----------
+
+    path: Path
+        The file to read bytes from.
+    byte_range: Optional[Tuple[int, Optional[int]]] = None
+        The range of bytes to read. If `byte_range` is `None`, then the entire file will be read.
+        If `byte_range` is a tuple, the first value specifies the index of the first byte to read,
+        and the second value specifies the total number of bytes to read. If the total value is
+        `None`, then the entire file after the first byte will be read.
+    """
     if byte_range is not None:
         start = byte_range[0]
         end = (start + byte_range[1]) if byte_range[1] is not None else None
@@ -95,7 +109,7 @@ class LocalStore(Store):
     async def set(self, key: str, value: BytesLike) -> None:
         assert isinstance(key, str)
         path = self.root / key
-        await to_thread(_put, path, value)
+        await to_thread(_put, path, value, auto_mkdir=self.auto_mkdir)
 
     async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
         args = []
