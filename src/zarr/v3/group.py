@@ -123,7 +123,6 @@ class AsyncGroup:
             zarr_json = (
                 json.loads(zarr_json_bytes) if zarr_json_bytes is not None else {"zarr_format": 3}
             )
-
         elif zarr_format == 2:
             # V2 groups are comprised of a .zgroup and .zattrs objects
             # (both are optional in the case of implicit groups)
