@@ -13,18 +13,18 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-.. _unreleased:
+.. _release_2.17.2:
 
-Unreleased
-----------
+2.17.2
+------
 
 Enhancements
 ~~~~~~~~~~~~
-* [v3] Dramatically reduce number of ``__contains_`` requests in favor of optimistically calling `__getitem__`
+* [v3] Dramatically reduce number of ``__contains__`` requests in favor of optimistically calling `__getitem__`
   and handling any error that may arise.
   By :user:`Deepak Cherian <dcherian>`.
 
-* [v3] Reuse the download array metadata when creating an ``Array``.
+* [v3] Reuse the downloaded array metadata when creating an ``Array``.
   By :user:`Deepak Cherian <dcherian>`.
 
 * Optimize ``Array.info`` so that it calls `getsize` only once.
@@ -32,6 +32,9 @@ Enhancements
 
 * Override IPython ``_repr_*_`` methods to avoid expensive lookups against object stores.
   By :user:`Deepak Cherian <dcherian>` :issue:`1716`.
+
+* FSStore now raises rather than return bad data.
+  By :user:`Martin Durant <martindurant>` and :user:`Ian Carroll <itcarroll>` :issue:`1604`.
 
 Maintenance
 ~~~~~~~~~~~
@@ -42,8 +45,6 @@ Maintenance
 * Bump minimum supported NumPy version to 1.23 (per spec 0000)
   By :user:`Joe Hamman <jhamman>` :issue:`1719`.
   
-* FSStore now raises rather than return bad data.
-  By :user:`Martin Durant <martindurant>` and :user:`Ian Carroll <itcarroll>` :issue:`1604`.
 
 .. _release_2.17.1:
 
