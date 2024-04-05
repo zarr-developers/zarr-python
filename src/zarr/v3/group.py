@@ -113,7 +113,7 @@ class AsyncGroup:
         zarr_format: Literal[2, 3] = 3,
     ) -> AsyncGroup:
         store_path = make_store_path(store)
-        zarr_json_bytes = await (store_path / ZARR_JSON).get_async()
+        zarr_json_bytes = await (store_path / ZARR_JSON).get()
         assert zarr_json_bytes is not None
 
         # TODO: consider trying to autodiscover the zarr-format here
@@ -124,7 +124,6 @@ class AsyncGroup:
             zarr_json = (
                 json.loads(zarr_json_bytes) if zarr_json_bytes is not None else {"zarr_format": 3}
             )
-
         elif zarr_format == 2:
             # V2 groups are comprised of a .zgroup and .zattrs objects
             # (both are optional in the case of implicit groups)
