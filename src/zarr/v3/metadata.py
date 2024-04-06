@@ -1,6 +1,6 @@
 from __future__ import annotations
 from enum import Enum
-from typing import TYPE_CHECKING, cast, Dict, Iterable
+from typing import TYPE_CHECKING, cast, Dict, Iterable, Any
 from dataclasses import dataclass, field
 import json
 import numpy as np
@@ -10,7 +10,7 @@ from zarr.v3.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 
 
 if TYPE_CHECKING:
-    from typing import Any, Literal, Union, List, Optional, Tuple
+    from typing import Literal, Union, List, Optional, Tuple
     from zarr.v3.codecs.pipeline import CodecPipeline
 
 
@@ -244,7 +244,7 @@ class ArrayV2Metadata(Metadata):
     filters: Optional[List[Dict[str, Any]]] = None
     dimension_separator: Literal[".", "/"] = "."
     compressor: Optional[Dict[str, Any]] = None
-    attributes: Optional[Dict[str, Any]] = field(default_factory=dict)
+    attributes: Optional[Dict[str, Any]] = cast(Dict[str, Any], field(default_factory=dict))
     zarr_format: Literal[2] = field(init=False, default=2)
 
     def __init__(
