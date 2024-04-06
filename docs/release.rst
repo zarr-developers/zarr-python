@@ -13,6 +13,23 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
+.. _unreleased:
+
+Unreleased
+----------
+
+Enhancements
+~~~~~~~~~~~~
+
+
+Docs
+~~~~
+
+
+Maintenance
+~~~~~~~~~~~
+
+
 .. _release_2.17.2:
 
 2.17.2
