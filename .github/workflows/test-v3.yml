@@ -10,7 +10,7 @@ on:
     branches: [ v3 ]
 
 jobs:
-  run-tests:
+  py=${{ matrix.python-version }}, np=${{ matrix.numpy-version }}, deps=${{ matrix.dependency-set }}:
 
     runs-on: ubuntu-latest
     strategy:
