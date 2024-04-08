@@ -649,7 +649,6 @@ def _rmdir_from_keys(store: StoreLike, path: Optional[str] = None) -> None:
     "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
 )
 def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
-
     meta_dir = meta_root + path
     meta_dir = meta_dir.rstrip("/")
     _rmdir_from_keys(store, meta_dir)

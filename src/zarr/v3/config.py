@@ -43,7 +43,6 @@ class RuntimeConfiguration:
         concurrency: Optional[int] = None,
         asyncio_loop: Optional[AbstractEventLoop] = None,
     ):
-
         order_parsed = parse_indexing_order(order)
         concurrency_parsed = parse_concurrency(concurrency)
         asyncio_loop_parsed = parse_asyncio_loop(asyncio_loop)

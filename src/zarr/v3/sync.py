@@ -103,7 +103,6 @@ T = TypeVar("T")
 
 
 class SyncMixin:
-
     _sync_configuration: SyncConfiguration
 
     def _sync(self, coroutine: Coroutine[Any, Any, T]) -> T:

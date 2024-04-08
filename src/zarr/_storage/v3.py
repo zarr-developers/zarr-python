@@ -128,7 +128,6 @@ def _get_files_and_dirs_from_path(store, path):
     "This implementation of Zarr V3 is out of date and will be supplanted in zarr-python 3.0"
 )
 class FSStoreV3(FSStore, StoreV3):
-
     # FSStoreV3 doesn't use this (FSStore uses it within _normalize_key)
     _META_KEYS = ()
 
