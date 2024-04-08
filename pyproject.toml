@@ -127,7 +127,8 @@ serve = "sphinx-autobuild docs docs/_build --ignore 'docs/_autoapi/**/*' --host 
 
 [tool.ruff]
 line-length = 100
-exclude = [
+force-exclude = true
+extend-exclude = [
     ".bzr",
     ".direnv",
     ".eggs",
@@ -145,21 +146,6 @@ exclude = [
     "venv",
     "docs"
 ]
-
-[tool.black]
-line-length = 100
-exclude = '''
-/(
-    \.git
-  | \.mypy_cache
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-  | docs
-)/
-'''
 
 [tool.mypy]
 python_version = "3.8"

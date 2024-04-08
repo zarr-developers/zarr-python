@@ -14,7 +14,6 @@ def store_path(tmpdir):
 
 
 def test_group(store_path) -> None:
-
     agroup = AsyncGroup(
         metadata=GroupMetadata(),
         store_path=store_path,
@@ -57,7 +56,6 @@ def test_group(store_path) -> None:
 
 
 def test_group_sync_constructor(store_path) -> None:
-
     group = Group.create(
         store=store_path,
         attributes={"title": "test 123"},

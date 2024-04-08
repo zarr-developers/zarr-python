@@ -1085,7 +1085,6 @@ class TestGroup(unittest.TestCase):
         g1.store.close()
 
     def test_pickle(self):
-
         # setup group
         g = self.create_group()
         d = g.create_dataset("foo/bar", shape=100, chunks=10)
@@ -1113,7 +1112,6 @@ class TestGroup(unittest.TestCase):
         g2.store.close()
 
     def test_context_manager(self):
-
         with self.create_group() as g:
             d = g.create_dataset("foo/bar", shape=100, chunks=10)
             d[:] = np.arange(100)
@@ -1375,7 +1373,6 @@ class TestGroupWithZipStore(TestGroup):
         return store, None
 
     def test_context_manager(self):
-
         with self.create_group() as g:
             store = g.store
             d = g.create_dataset("foo/bar", shape=100, chunks=10)
