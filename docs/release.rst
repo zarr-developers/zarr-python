@@ -37,6 +37,7 @@ Maintenance
 
 Enhancements
 ~~~~~~~~~~~~
+
 * [v3] Dramatically reduce number of ``__contains__`` requests in favor of optimistically calling `__getitem__`
   and handling any error that may arise.
   By :user:`Deepak Cherian <dcherian>`.
@@ -53,6 +54,21 @@ Enhancements
 * FSStore now raises rather than return bad data.
   By :user:`Martin Durant <martindurant>` and :user:`Ian Carroll <itcarroll>` :issue:`1604`.
 
+* Avoid redundant ``__contains__``.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1739`.
+
+Docs
+~~~~
+
+* Fix link to GCSMap in ``tutorial.rst``.
+  By :user:`Daniel Jahn <dahnj>` :issue:`1689`.
+
+* Endorse `SPEC0000 <https://scientific-python.org/specs/spec-0000/>`_ and state version support policy in ``installation.rst``.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1665`.
+
+* Migrate v1 and v2 specification to `Zarr-Specs <https://zarr-specs.readthedocs.io/en/latest/specs.html>`_.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1582`.
+
 Maintenance
 ~~~~~~~~~~~
 
@@ -61,7 +77,12 @@ Maintenance
 
 * Bump minimum supported NumPy version to 1.23 (per spec 0000)
   By :user:`Joe Hamman <jhamman>` :issue:`1719`.
-  
+
+* Minor fixes: Using ``is`` instead of ``type`` and removing unnecessary ``None``.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1737`.
+
+* Fix tests failure related to Pytest 8.
+  By :user:`David Stansby <dstansby>` :issue:`1714`.
 
 .. _release_2.17.1:
 
