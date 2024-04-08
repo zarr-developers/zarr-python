@@ -40,13 +40,13 @@ Enhancements
 
 * [v3] Dramatically reduce number of ``__contains__`` requests in favor of optimistically calling `__getitem__`
   and handling any error that may arise.
-  By :user:`Deepak Cherian <dcherian>`.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1741`.
 
 * [v3] Reuse the downloaded array metadata when creating an ``Array``.
-  By :user:`Deepak Cherian <dcherian>`.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1734`.
 
 * Optimize ``Array.info`` so that it calls `getsize` only once.
-  By :user:`Deepak Cherian <dcherian>`.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1733`.
 
 * Override IPython ``_repr_*_`` methods to avoid expensive lookups against object stores.
   By :user:`Deepak Cherian <dcherian>` :issue:`1716`.
