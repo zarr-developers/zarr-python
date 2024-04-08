@@ -409,14 +409,13 @@ def info_html_report(items: dict) -> str:
 class InfoReporter:
     def __init__(self, obj):
         self.obj = obj
+        self.items = self.obj.info_items()
 
     def __repr__(self):
-        items = self.obj.info_items()
-        return info_text_report(items)
+        return info_text_report(self.items)
 
     def _repr_html_(self):
-        items = self.obj.info_items()
-        return info_html_report(items)
+        return info_html_report(self.items)
 
 
 class TreeNode:
