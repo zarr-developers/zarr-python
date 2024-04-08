@@ -62,8 +62,8 @@ target/
 # Jupyter
 .ipynb_checkpoints/
 
-# setuptools-scm
-zarr/version.py
+# VCS versioning
+src/zarr/_version.py
 
 # emacs
 *~
@@ -78,5 +78,6 @@ zarr/version.py
 #doesnotexist
 #test_sync*
 data/*
+src/fixture/
 
 .DS_Store

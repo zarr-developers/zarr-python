@@ -30,7 +30,7 @@ repos:
     rev: v1.7.1
     hooks:
       - id: mypy
-        files: zarr
+        files: src
         args: []
         additional_dependencies:
           - types-redis

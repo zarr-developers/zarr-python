@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=64.0.0", "setuptools-scm>1.5.4"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 
 [project]
@@ -10,10 +10,10 @@ readme = { file = "README.md", content-type = "text/markdown" }
 maintainers = [
     { name = "Alistair Miles", email = "alimanfoo@googlemail.com" }
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
     'asciitree',
-    'numpy>=1.20,!=1.21.0',
+    'numpy>=1.24',
     'fasteners',
     'numcodecs>=0.10.0',
 ]
@@ -30,12 +30,11 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Operating System :: Unix',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.8',
-    'Programming Language :: Python :: 3.9',
     'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
 ]
-license = { text = "MIT" }
+license = "MIT"
 
 [project.optional-dependencies]
 jupyter = [
@@ -45,6 +44,7 @@ jupyter = [
 ]
 docs = [
     'sphinx',
+    'sphinx-autobuild>=2021.3.14',
     'sphinx-automodapi',
     'sphinx_design',
     'sphinx-issues',
@@ -52,6 +52,16 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
+]
+extra = [
+    'attrs',
+    'cattrs',
+    'msgpack',
+    'crc32c',
+    'zstandard'
+]
+optional = [
+    'lmdb',
 ]
 
 [project.urls]
@@ -69,18 +79,51 @@ exclude_lines = [
 
 [tool.coverage.run]
 omit = [
-    "zarr/meta_v1.py",
+    "src/zarr/meta_v1.py",
     "bench/compress_normal.py",
 ]
 
-[tool.setuptools]
-packages = ["zarr", "zarr._storage", "zarr.tests"]
-license-files = ["LICENSE.txt"]
+[tool.hatch]
+version.source = "vcs"
+build.hooks.vcs.version-file = "src/zarr/_version.py"
 
-[tool.setuptools_scm]
-version_scheme = "guess-next-dev"
-local_scheme = "dirty-tag"
-write_to = "zarr/version.py"
+[tool.hatch.envs.test]
+extra-dependencies = [
+    "coverage",
+    "pytest",
+    "pytest-cov",
+    "msgpack",
+    "lmdb",
+    "zstandard",
+    "crc32c",
+    "pytest-asyncio",
+    "typing_extensions"
+]
+features = ["extra"]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.10", "3.11"]
+numpy = ["1.24", "1.26"]
+version = ["minimal"]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.10", "3.11"]
+numpy = ["1.24", "1.26"]
+features = ["optional"]
+
+[tool.hatch.envs.test.scripts]
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
+run = "run-coverage --no-cov"
+run-verbose = "run-coverage --verbose"
+run-mypy = "mypy src"
+
+[tool.hatch.envs.docs]
+features = ['docs']
+
+[tool.hatch.envs.docs.scripts]
+build = "sphinx-build docs/ docs/_build/"
+rtd = "sphinx-build docs/ _readthedocs/html/"
+serve = "sphinx-autobuild docs docs/_build --ignore 'docs/_autoapi/**/*' --host 0.0.0.0"
 
 [tool.ruff]
 line-length = 100
