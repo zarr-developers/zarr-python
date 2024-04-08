@@ -1,23 +1,15 @@
 from __future__ import annotations
-
+from typing import TYPE_CHECKING, Union, Tuple, Iterable, Dict, List, TypeVar, overload
 import asyncio
 import contextvars
+from dataclasses import dataclass
+from enum import Enum
 import functools
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    Tuple,
-    TypeVar,
-    Union,
-)
+
+if TYPE_CHECKING:
+    from typing import Any, Awaitable, Callable, Iterator, Optional, Type
 
 import numpy as np
-from cattr import Converter
 
 ZARR_JSON = "zarr.json"
 ZARRAY_JSON = ".zarray"
@@ -26,83 +18,10 @@ ZATTRS_JSON = ".zattrs"
 
 BytesLike = Union[bytes, bytearray, memoryview]
 ChunkCoords = Tuple[int, ...]
+ChunkCoordsLike = Iterable[int]
 SliceSelection = Tuple[slice, ...]
 Selection = Union[slice, SliceSelection]
-
-
-def make_cattr():
-    from zarr.v3.metadata import (
-        ChunkKeyEncodingMetadata,
-        CodecMetadata,
-        DefaultChunkKeyEncodingMetadata,
-        V2ChunkKeyEncodingMetadata,
-    )
-    from zarr.v3.codecs.registry import get_codec_metadata_class
-
-    converter = Converter()
-
-    def _structure_chunk_key_encoding_metadata(d: Dict[str, Any], _t) -> ChunkKeyEncodingMetadata:
-        if d["name"] == "default":
-            return converter.structure(d, DefaultChunkKeyEncodingMetadata)
-        if d["name"] == "v2":
-            return converter.structure(d, V2ChunkKeyEncodingMetadata)
-        raise KeyError
-
-    converter.register_structure_hook(
-        ChunkKeyEncodingMetadata, _structure_chunk_key_encoding_metadata
-    )
-
-    def _structure_codec_metadata(d: Dict[str, Any], _t=None) -> CodecMetadata:
-        codec_metadata_cls = get_codec_metadata_class(d["name"])
-        return converter.structure(d, codec_metadata_cls)
-
-    converter.register_structure_hook(CodecMetadata, _structure_codec_metadata)
-
-    converter.register_structure_hook_factory(
-        lambda t: str(t) == "ForwardRef('CodecMetadata')",
-        lambda t: _structure_codec_metadata,
-    )
-
-    def _structure_order(d: Any, _t=None) -> Union[Literal["C", "F"], Tuple[int, ...]]:
-        if d == "C":
-            return "C"
-        if d == "F":
-            return "F"
-        if isinstance(d, list):
-            return tuple(d)
-        raise KeyError
-
-    converter.register_structure_hook_factory(
-        lambda t: str(t) == "typing.Union[typing.Literal['C', 'F'], typing.Tuple[int, ...]]",
-        lambda t: _structure_order,
-    )
-
-    # Needed for v2 fill_value
-    def _structure_fill_value(d: Any, _t=None) -> Union[None, int, float]:
-        if d is None:
-            return None
-        try:
-            return int(d)
-        except ValueError:
-            pass
-        try:
-            return float(d)
-        except ValueError:
-            pass
-        raise ValueError
-
-    converter.register_structure_hook_factory(
-        lambda t: str(t) == "typing.Union[NoneType, int, float]",
-        lambda t: _structure_fill_value,
-    )
-
-    # Needed for v2 dtype
-    converter.register_structure_hook(
-        np.dtype,
-        lambda d, _: np.dtype(d),
-    )
-
-    return converter
+JSON = Union[str, None, int, float, Enum, Dict[str, "JSON"], List["JSON"], Tuple["JSON", ...]]
 
 
 def product(tup: ChunkCoords) -> int:
@@ -134,3 +53,111 @@ async def to_thread(func, /, *args, **kwargs):
     ctx = contextvars.copy_context()
     func_call = functools.partial(ctx.run, func, *args, **kwargs)
     return await loop.run_in_executor(None, func_call)
+
+
+E = TypeVar("E", bound=Enum)
+
+
+def enum_names(enum: Type[E]) -> Iterator[str]:
+    for item in enum:
+        yield item.name
+
+
+def parse_enum(data: JSON, cls: Type[E]) -> E:
+    if isinstance(data, cls):
+        return data
+    if not isinstance(data, str):
+        raise TypeError(f"Expected str, got {type(data)}")
+    if data in enum_names(cls):
+        return cls(data)
+    raise ValueError(f"Value must be one of {repr(list(enum_names(cls)))}. Got {data} instead.")
+
+
+@dataclass(frozen=True)
+class ArraySpec:
+    shape: ChunkCoords
+    dtype: np.dtype
+    fill_value: Any
+
+    def __init__(self, shape, dtype, fill_value):
+        shape_parsed = parse_shapelike(shape)
+        dtype_parsed = parse_dtype(dtype)
+        fill_value_parsed = parse_fill_value(fill_value)
+
+        object.__setattr__(self, "shape", shape_parsed)
+        object.__setattr__(self, "dtype", dtype_parsed)
+        object.__setattr__(self, "fill_value", fill_value_parsed)
+
+    @property
+    def ndim(self) -> int:
+        return len(self.shape)
+
+
+def parse_name(data: JSON, expected: Optional[str] = None) -> str:
+    if isinstance(data, str):
+        if expected is None or data == expected:
+            return data
+        raise ValueError(f"Expected '{expected}'. Got {data} instead.")
+    else:
+        raise TypeError(f"Expected a string, got an instance of {type(data)}.")
+
+
+def parse_configuration(data: JSON) -> dict:
+    if not isinstance(data, dict):
+        raise TypeError(f"Expected dict, got {type(data)}")
+    return data
+
+
+@overload
+def parse_named_configuration(
+    data: JSON, expected_name: Optional[str] = None
+) -> Tuple[str, Dict[str, JSON]]:
+    ...
+
+
+@overload
+def parse_named_configuration(
+    data: JSON, expected_name: Optional[str] = None, *, require_configuration: bool = True
+) -> Tuple[str, Optional[Dict[str, JSON]]]:
+    ...
+
+
+def parse_named_configuration(
+    data: JSON, expected_name: Optional[str] = None, *, require_configuration: bool = True
+) -> Tuple[str, Optional[JSON]]:
+    if not isinstance(data, dict):
+        raise TypeError(f"Expected dict, got {type(data)}")
+    if "name" not in data:
+        raise ValueError(f"Named configuration does not have a 'name' key. Got {data}.")
+    name_parsed = parse_name(data["name"], expected_name)
+    if "configuration" in data:
+        configuration_parsed = parse_configuration(data["configuration"])
+    elif require_configuration:
+        raise ValueError(f"Named configuration does not have a 'configuration' key. Got {data}.")
+    else:
+        configuration_parsed = None
+    return name_parsed, configuration_parsed
+
+
+def parse_shapelike(data: Any) -> Tuple[int, ...]:
+    if not isinstance(data, Iterable):
+        raise TypeError(f"Expected an iterable. Got {data} instead.")
+    data_tuple = tuple(data)
+    if len(data_tuple) == 0:
+        raise ValueError("Expected at least one element. Got 0.")
+    if not all(isinstance(v, int) for v in data_tuple):
+        msg = f"Expected an iterable of integers. Got {type(data)} instead."
+        raise TypeError(msg)
+    if not all(lambda v: v > 0 for v in data_tuple):
+        raise ValueError(f"All values must be greater than 0. Got {data}.")
+    return data_tuple
+
+
+def parse_dtype(data: Any) -> np.dtype:
+    # todo: real validation
+    return np.dtype(data)
+
+
+def parse_fill_value(data: Any) -> Any:
+    # todo: real validation
+    return data

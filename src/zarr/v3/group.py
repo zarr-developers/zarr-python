@@ -1,15 +1,15 @@
 from __future__ import annotations
+from dataclasses import asdict, dataclass, field, replace
 
 import asyncio
 import json
 import logging
-from typing import Any, Dict, Literal, Optional, Union, AsyncIterator, Iterator, List
-
-from attr import asdict, field, frozen  # , validators
+from typing import Any, Dict, Literal, Optional, Union, AsyncIterator, List
+from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.array import AsyncArray, Array
 from zarr.v3.attributes import Attributes
-from zarr.v3.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, make_cattr
+from zarr.v3.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
 from zarr.v3.config import RuntimeConfiguration, SyncConfiguration
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import SyncMixin, sync
@@ -17,29 +17,56 @@ from zarr.v3.sync import SyncMixin, sync
 logger = logging.getLogger("zarr.group")
 
 
-@frozen
-class GroupMetadata:
-    attributes: Dict[str, Any] = field(factory=dict)
-    zarr_format: Literal[2, 3] = 3
-    node_type: Literal["group"] = field(default="group", init=True)
+def parse_zarr_format(data: Any) -> Literal[2, 3]:
+    if data in (2, 3):
+        return data
+    msg = msg = f"Invalid zarr_format. Expected one 2 or 3. Got {data}."
+    raise ValueError(msg)
 
+
+# todo: convert None to empty dict
+def parse_attributes(data: Any) -> Dict[str, Any]:
+    if data is None:
+        return {}
+    elif isinstance(data, dict) and all(map(lambda v: isinstance(v, str), data.keys())):
+        return data
+    msg = f"Expected dict with string keys. Got {type(data)} instead."
+    raise TypeError(msg)
+
+
+@dataclass(frozen=True)
+class GroupMetadata(Metadata):
+    attributes: Dict[str, Any] = field(default_factory=dict)
+    zarr_format: Literal[2, 3] = 3
+    node_type: Literal["group"] = field(default="group", init=False)
+
+    # todo: rename this, since it doesn't return bytes
     def to_bytes(self) -> Dict[str, bytes]:
         if self.zarr_format == 3:
-            return {ZARR_JSON: json.dumps(asdict(self)).encode()}
-        elif self.zarr_format == 2:
+            return {ZARR_JSON: json.dumps(self.to_dict()).encode()}
+        else:
             return {
-                ZGROUP_JSON: self.zarr_format,
+                ZGROUP_JSON: json.dumps({"zarr_format": 2}).encode(),
                 ZATTRS_JSON: json.dumps(self.attributes).encode(),
             }
-        else:
-            raise ValueError(f"unexpected zarr_format: {self.zarr_format}")
+
+    def __init__(self, attributes: Optional[Dict[str, Any]] = None, zarr_format: Literal[2, 3] = 3):
+        attributes_parsed = parse_attributes(attributes)
+        zarr_format_parsed = parse_zarr_format(zarr_format)
+
+        object.__setattr__(self, "attributes", attributes_parsed)
+        object.__setattr__(self, "zarr_format", zarr_format_parsed)
 
     @classmethod
-    def from_json(cls, zarr_json: Any) -> GroupMetadata:
-        return make_cattr().structure(zarr_json, GroupMetadata)
+    def from_dict(cls, data: Dict[str, Any]) -> GroupMetadata:
+        assert data.pop("node_type", None) in ("group", None)
+        return cls(**data)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
 
 
-@frozen
+@dataclass(frozen=True)
 class AsyncGroup:
     metadata: GroupMetadata
     store_path: StorePath
@@ -77,6 +104,8 @@ class AsyncGroup:
         zarr_format: Literal[2, 3] = 3,
     ) -> AsyncGroup:
         store_path = make_store_path(store)
+        zarr_json_bytes = await (store_path / ZARR_JSON).get()
+        assert zarr_json_bytes is not None
 
         # TODO: consider trying to autodiscover the zarr-format here
         if zarr_format == 3:
@@ -102,17 +131,17 @@ class AsyncGroup:
             zarr_json = {**zgroup, "attributes": zattrs}
         else:
             raise ValueError(f"unexpected zarr_format: {zarr_format}")
-        return cls.from_json(store_path, zarr_json, runtime_configuration)
+        return cls.from_dict(store_path, zarr_json, runtime_configuration)
 
     @classmethod
-    def from_json(
+    def from_dict(
         cls,
         store_path: StorePath,
-        zarr_json: Any,
+        data: Dict[str, Any],
         runtime_configuration: RuntimeConfiguration,
-    ) -> Group:
+    ) -> AsyncGroup:
         group = cls(
-            metadata=GroupMetadata.from_json(zarr_json),
+            metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
             runtime_configuration=runtime_configuration,
         )
@@ -137,11 +166,13 @@ class AsyncGroup:
             else:
                 zarr_json = json.loads(zarr_json_bytes)
             if zarr_json["node_type"] == "group":
-                return type(self).from_json(store_path, zarr_json, self.runtime_configuration)
-            if zarr_json["node_type"] == "array":
-                return AsyncArray.from_json(
+                return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
+            elif zarr_json["node_type"] == "array":
+                return AsyncArray.from_dict(
                     store_path, zarr_json, runtime_configuration=self.runtime_configuration
                 )
+            else:
+                raise ValueError(f"unexpected node_type: {zarr_json['node_type']}")
         elif self.metadata.zarr_format == 2:
             # Q: how do we like optimistically fetching .zgroup, .zarray, and .zattrs?
             # This guarantees that we will always make at least one extra request to the store
@@ -159,7 +190,7 @@ class AsyncGroup:
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
                 zarr_json = {**zarray, "attributes": zattrs}
-                return AsyncArray.from_json(
+                return AsyncArray.from_dict(
                     store_path, zarray, runtime_configuration=self.runtime_configuration
                 )
             else:
@@ -172,7 +203,7 @@ class AsyncGroup:
                     else {"zarr_format": self.metadata.zarr_format}
                 )
                 zarr_json = {**zgroup, "attributes": zattrs}
-                return type(self).from_json(store_path, zarr_json, self.runtime_configuration)
+                return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
@@ -241,7 +272,7 @@ class AsyncGroup:
     async def nchildren(self) -> int:
         raise NotImplementedError
 
-    async def children(self) -> AsyncIterator[AsyncArray, AsyncGroup]:
+    async def children(self) -> AsyncIterator[Union[AsyncArray, AsyncGroup]]:
         raise NotImplementedError
 
     async def contains(self, child: str) -> bool:
@@ -290,7 +321,7 @@ class AsyncGroup:
         raise NotImplementedError
 
 
-@frozen
+@dataclass(frozen=True)
 class Group(SyncMixin):
     _async_group: AsyncGroup
     _sync_configuration: SyncConfiguration = field(init=True, default=SyncConfiguration())
@@ -347,6 +378,17 @@ class Group(SyncMixin):
         """__setitem__ is not supported in v3"""
         raise NotImplementedError
 
+    async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> Group:
+        new_metadata = replace(self.metadata, attributes=new_attributes)
+
+        # Write new metadata
+        to_save = new_metadata.to_bytes()
+        awaitables = [(self.store_path / key).set(value) for key, value in to_save.items()]
+        await asyncio.gather(*awaitables)
+
+        async_group = replace(self._async_group, metadata=new_metadata)
+        return replace(self, _async_group=async_group)
+
     @property
     def metadata(self) -> GroupMetadata:
         return self._async_group.metadata
@@ -359,34 +401,38 @@ class Group(SyncMixin):
     def info(self):
         return self._async_group.info
 
+    @property
+    def store_path(self) -> StorePath:
+        return self._async_group.store_path
+
     def update_attributes(self, new_attributes: Dict[str, Any]):
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
     @property
     def nchildren(self) -> int:
-        return self._sync(self._async_group.nchildren)
+        return self._sync(self._async_group.nchildren())
 
     @property
-    def children(self) -> List[Array, Group]:
-        _children = self._sync_iter(self._async_group.children)
+    def children(self) -> List[Union[Array, Group]]:
+        _children = self._sync_iter(self._async_group.children())
         return [Array(obj) if isinstance(obj, AsyncArray) else Group(obj) for obj in _children]
 
     def __contains__(self, child) -> bool:
         return self._sync(self._async_group.contains(child))
 
-    def group_keys(self) -> Iterator[str]:
-        return self._sync_iter(self._async_group.group_keys)
+    def group_keys(self) -> List[str]:
+        return self._sync_iter(self._async_group.group_keys())
 
     def groups(self) -> List[Group]:
         # TODO: in v2 this was a generator that return key: Group
-        return [Group(obj) for obj in self._sync_iter(self._async_group.groups)]
+        return [Group(obj) for obj in self._sync_iter(self._async_group.groups())]
 
     def array_keys(self) -> List[str]:
-        return self._sync_iter(self._async_group.array_keys)
+        return self._sync_iter(self._async_group.array_keys())
 
     def arrays(self) -> List[Array]:
-        return [Array(obj) for obj in self._sync_iter(self._async_group.arrays)]
+        return [Array(obj) for obj in self._sync_iter(self._async_group.arrays())]
 
     def tree(self, expand=False, level=None) -> Any:
         return self._sync(self._async_group.tree(expand=expand, level=level))

@@ -10,15 +10,22 @@ on:
     branches: [ v3 ]
 
 jobs:
-  run-tests:
+  test:
+    name: py=${{ matrix.python-version }}, np=${{ matrix.numpy-version }}, deps=${{ matrix.dependency-set }}
 
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11']
+        numpy-version: ['1.24', '1.26']
+        dependency-set: ["minimal", "optional"]
+
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'
+        python-version: ${{ matrix.python-version }}
         cache: 'pip'
     - name: Install Hatch
       run: |
@@ -29,7 +36,7 @@ jobs:
         hatch env create
     - name: Run Tests
       run: |
-        hatch run test:run
+        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run
     - name: Run mypy
       continue-on-error: true
       run: |

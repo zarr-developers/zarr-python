@@ -92,8 +92,12 @@ extra-dependencies = [
     "coverage",
     "pytest",
     "pytest-cov",
+    "msgpack",
+    "lmdb",
+    "zstandard",
+    "crc32c",
     "pytest-asyncio",
-    "mypy",
+    "typing_extensions"
 ]
 features = ["extra"]
 
