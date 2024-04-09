@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from typing import Optional, MutableMapping, List, Tuple
 
 from zarr.v3.common import BytesLike
@@ -67,20 +68,18 @@ class MemoryStore(Store):
     async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
         raise NotImplementedError
 
-    async def list(self) -> List[str]:
-        return list(self._store_dict.keys())
+    async def list(self) -> AsyncGenerator[str, None]:
+        for key in self._store_dict:
+            yield key
 
-    async def list_prefix(self, prefix: str) -> List[str]:
-        return [key for key in self._store_dict if key.startswith(prefix)]
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+        for key in self._store_dict:
+            if key.startswith(prefix):
+                yield key
 
-    async def list_dir(self, prefix: str) -> List[str]:
-        if prefix == "":
-            return list({key.split("/", maxsplit=1)[0] for key in self._store_dict})
-        else:
-            return list(
-                {
-                    key.strip(prefix + "/").split("/")[0]
-                    for key in self._store_dict
-                    if (key.startswith(prefix + "/") and key != prefix)
-                }
-            )
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+        print('prefix', prefix)
+        print('keys in list_dir', list(self._store_dict))
+        for key in self._store_dict:
+            if key.startswith(prefix + "/") and key != prefix:
+                yield key.strip(prefix + "/").rsplit("/", maxsplit=1)[0]

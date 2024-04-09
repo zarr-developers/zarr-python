@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import shutil
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Union, Optional, List, Tuple
 
@@ -142,21 +143,19 @@ class LocalStore(Store):
         path = self.root / key
         return await to_thread(path.is_file)
 
-    async def list(self) -> List[str]:
+    async def list(self) -> AsyncGenerator[str, None]:
         """Retrieve all keys in the store.
 
         Returns
         -------
-        list[str]
+        AsyncGenerator[str, None]
         """
-        # Q: do we want to return strings or Paths?
-        def _list(root: Path) -> List[str]:
-            files = [str(p) for p in root.rglob("") if p.is_file()]
-            return files
+        for p in self.root.rglob(""):
+            if p.is_file():
+                yield str(p)
 
-        return await to_thread(_list, self.root)
 
-    async def list_prefix(self, prefix: str) -> List[str]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         """Retrieve all keys in the store with a given prefix.
 
         Parameters
@@ -165,16 +164,14 @@ class LocalStore(Store):
 
         Returns
         -------
-        list[str]
+        AsyncGenerator[str, None]
         """
+        for p in (self.root / prefix).rglob("*"):
+            if p.is_file():
+                yield str(p)
 
-        def _list_prefix(root: Path, prefix: str) -> List[str]:
-            files = [p for p in (root / prefix).rglob("*") if p.is_file()]
-            return files
 
-        return await to_thread(_list_prefix, self.root, prefix)
-
-    async def list_dir(self, prefix: str) -> List[str]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         """
         Retrieve all keys and prefixes with a given prefix and which do not contain the character
         “/” after the given prefix.
@@ -185,16 +182,16 @@ class LocalStore(Store):
 
         Returns
         -------
-        list[str]
+        AsyncGenerator[str, None]
         """
+        base = self.root / prefix
+        to_strip = str(base) + "/"
+        
+        try:
+            key_iter = base.iterdir()
+        except (FileNotFoundError, NotADirectoryError):
+            key_iter = []
 
-        def _list_dir(root: Path, prefix: str) -> List[str]:
+        for key in key_iter:
+            yield str(key).replace(to_strip, "")
 
-            base = root / prefix
-            to_strip = str(base) + "/"
-            try:
-                return [str(key).replace(to_strip, "") for key in base.iterdir()]
-            except (FileNotFoundError, NotADirectoryError):
-                return []
-
-        return await to_thread(_list_dir, self.root, prefix)
