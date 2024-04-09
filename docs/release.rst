@@ -18,6 +18,51 @@ Release notes
 Unreleased
 ----------
 
+Enhancements
+~~~~~~~~~~~~
+
+
+Docs
+~~~~
+
+
+Maintenance
+~~~~~~~~~~~
+
+
+.. _release_2.17.2:
+
+2.17.2
+------
+
+Enhancements
+~~~~~~~~~~~~
+* [v3] Dramatically reduce number of ``__contains__`` requests in favor of optimistically calling `__getitem__`
+  and handling any error that may arise.
+  By :user:`Deepak Cherian <dcherian>`.
+
+* [v3] Reuse the downloaded array metadata when creating an ``Array``.
+  By :user:`Deepak Cherian <dcherian>`.
+
+* Optimize ``Array.info`` so that it calls `getsize` only once.
+  By :user:`Deepak Cherian <dcherian>`.
+
+* Override IPython ``_repr_*_`` methods to avoid expensive lookups against object stores.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1716`.
+
+* FSStore now raises rather than return bad data.
+  By :user:`Martin Durant <martindurant>` and :user:`Ian Carroll <itcarroll>` :issue:`1604`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Add CI test environment for Python 3.12
+  By :user:`Joe Hamman <jhamman>` :issue:`1719`.
+
+* Bump minimum supported NumPy version to 1.23 (per spec 0000)
+  By :user:`Joe Hamman <jhamman>` :issue:`1719`.
+  
+
 .. _release_2.17.1:
 
 2.17.1
@@ -1610,11 +1655,11 @@ Bug fixes
 Documentation
 ~~~~~~~~~~~~~
 
-* Some changes have been made to the :ref:`spec_v2` document to clarify
+* Some changes have been made to the Zarr Specification v2 document to clarify
   ambiguities and add some missing information. These changes do not break compatibility
   with any of the material as previously implemented, and so the changes have been made
   in-place in the document without incrementing the document version number. See the
-  section on :ref:`spec_v2_changes` in the specification document for more information.
+  section on changes in the specification document for more information.
 * A new :ref:`tutorial_indexing` section has been added to the tutorial.
 * A new :ref:`tutorial_strings` section has been added to the tutorial
   (:issue:`135`, :issue:`175`).

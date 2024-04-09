@@ -1098,6 +1098,12 @@ class TestDirectoryStore(StoreTests):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStore(StoreTests):
+    @pytest.fixture
+    def memory_store(self):
+        store = FSStore("memory://")
+        yield store
+        store.fs.store.clear()
+
     def create_store(self, normalize_keys=False, dimension_separator=".", path=None, **kwargs):
         if path is None:
             path = tempfile.mkdtemp()
@@ -1336,6 +1342,25 @@ class TestFSStore(StoreTests):
             "data", shape=(8, 8, 8), fill_value=-1, chunks=(1, 1, 1), overwrite=True
         )
         assert (a[:] == -np.ones((8, 8, 8))).all()
+
+    def test_exceptions(self, memory_store):
+        fs = memory_store.fs
+        group = zarr.open(memory_store, mode="w")
+        x = group.create_dataset("x", data=[1, 2, 3])
+        y = group.create_dataset("y", data=1)
+        fs.store["/x/0"] = None
+        fs.store["/y/0"] = None
+        # no exception from FSStore.getitems getting KeyError
+        assert group.store.getitems(["foo"], contexts={}) == {}
+        # exception from FSStore.getitems getting AttributeError
+        with pytest.raises(Exception):
+            group.store.getitems(["x/0"], contexts={})
+        # exception from FSStore.getitems getting AttributeError
+        with pytest.raises(Exception):
+            x[...]
+        # exception from FSStore.__getitem__ getting AttributeError
+        with pytest.raises(Exception):
+            y[...]
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")

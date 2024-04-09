@@ -462,7 +462,7 @@ class StorageTransformer(MutableMapping, abc.ABC):
 
     def __eq__(self, other):
         return (
-            type(self) == type(other)
+            type(self) is type(other)
             and self._inner_store == other._inner_store
             and self.get_config() == other.get_config()
         )
