@@ -26,14 +26,16 @@ class Attributes(MutableMapping):
 
     """
 
-    def __init__(self, store, key=".zattrs", read_only=False, cache=True, synchronizer=None):
+    def __init__(
+        self, store, key=".zattrs", read_only=False, cache=True, synchronizer=None, cached_dict=None
+    ):
         self._version = getattr(store, "_store_version", 2)
         _Store = Store if self._version == 2 else StoreV3
         self.store = _Store._ensure_store(store)
         self.key = key
         self.read_only = read_only
         self.cache = cache
-        self._cached_asdict = None
+        self._cached_asdict = cached_dict if cache else None
         self.synchronizer = synchronizer
 
     def _get_nosync(self):
@@ -150,19 +152,20 @@ class Attributes(MutableMapping):
             if self.cache:
                 self._cached_asdict = d
         else:
-            if self.key in self.store:
+            try:
+                meta_unparsed = self.store[self.key]
                 # Cannot write the attributes directly to JSON, but have to
                 # store it within the pre-existing attributes key of the v3
                 # metadata.
 
                 # Note: this changes the store.counter result in test_caching_on!
 
-                meta = self.store._metadata_class.parse_metadata(self.store[self.key])
+                meta = self.store._metadata_class.parse_metadata(meta_unparsed)
                 if "attributes" in meta and "filters" in meta["attributes"]:
                     # need to preserve any existing "filters" attribute
                     d["attributes"]["filters"] = meta["attributes"]["filters"]
                 meta["attributes"] = d["attributes"]
-            else:
+            except KeyError:
                 meta = d
             self.store[self.key] = json_dumps(meta)
             if self.cache:
