@@ -12,7 +12,7 @@ def _dereference_path(root: str, path: str) -> str:
     assert isinstance(root, str)
     assert isinstance(path, str)
     root = root.rstrip("/")
-    path = f"{root}/{path}" if root != "" else path
+    path = f"{root}/{path}" if root else path
     path = path.rstrip("/")
     return path
 
