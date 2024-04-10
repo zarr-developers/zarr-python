@@ -7,8 +7,6 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
-from zarr._storage.store import DEFAULT_ZARR_VERSION
-from zarr._storage.v3_storage_transformers import DummyStorageTransfomer
 from zarr.codecs import Zlib
 from zarr.core import Array
 from zarr.creation import (
@@ -28,14 +26,12 @@ from zarr.creation import (
 from zarr.hierarchy import open_group
 from zarr.n5 import N5Store
 from zarr.storage import DirectoryStore, KVStore
-from zarr._storage.store import v3_api_available
-from zarr._storage.v3 import DirectoryStoreV3, KVStoreV3
 from zarr.sync import ThreadSynchronizer
 from .util import mktemp, have_fsspec
 
 
-_VERSIONS = (None, 2, 3) if v3_api_available else (None, 2)
-_VERSIONS2 = (2, 3) if v3_api_available else (2,)
+_VERSIONS = (None, 2)
+_VERSIONS2 = (2,)
 
 
 # something bcolz-like
@@ -64,25 +60,22 @@ class MockH5pyDataset:
         return self.data[item]
 
 
-def _init_creation_kwargs(zarr_version, at_root=True):
-    kwargs = {"zarr_version": zarr_version}
+def _init_creation_kwargs(at_root=True):
+    kwargs = {}
     if not at_root:
         kwargs["path"] = "array"
     return kwargs
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_array(zarr_version, at_root):
-    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
+def test_array(at_root):
+    kwargs = _init_creation_kwargs(at_root)
 
     # with numpy array
     a = np.arange(100)
     z = array(a, chunks=10, **kwargs)
     assert a.shape == z.shape
     assert a.dtype == z.dtype
-    assert z._store._store_version == expected_zarr_version
     assert_array_equal(a, z[:])
 
     # with array-like
@@ -131,39 +124,35 @@ def test_array(zarr_version, at_root):
     assert np.dtype("i8") == z.dtype
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_empty(zarr_version, at_root):
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
+def test_empty(at_root):
+    kwargs = _init_creation_kwargs(at_root)
     z = empty(100, chunks=10, **kwargs)
     assert (100,) == z.shape
     assert (10,) == z.chunks
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_zeros(zarr_version, at_root):
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
+def test_zeros(at_root):
+    kwargs = _init_creation_kwargs(at_root)
     z = zeros(100, chunks=10, **kwargs)
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.zeros(100), z[:])
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_ones(zarr_version, at_root):
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
+def test_ones(at_root):
+    kwargs = _init_creation_kwargs(at_root)
     z = ones(100, chunks=10, **kwargs)
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.ones(100), z[:])
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_full(zarr_version, at_root):
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
+def test_full(at_root):
+    kwargs = _init_creation_kwargs(at_root)
     z = full(100, chunks=10, fill_value=42, dtype="i4", **kwargs)
     assert (100,) == z.shape
     assert (10,) == z.chunks
@@ -174,10 +163,9 @@ def test_full(zarr_version, at_root):
     assert np.all(np.isnan(z[:]))
 
 
-@pytest.mark.parametrize("zarr_version", [None, 2])  # TODO
-def test_full_additional_dtypes(zarr_version):
+def test_full_additional_dtypes():
     """Test additional types that aren't part of the base v3 spec."""
-    kwargs = _init_creation_kwargs(zarr_version)
+    kwargs = _init_creation_kwargs()
     # NaT
     z = full(100, chunks=10, fill_value="NaT", dtype="M8[s]", **kwargs)
     assert np.all(np.isnat(z[:]))
@@ -209,11 +197,10 @@ def test_full_additional_dtypes(zarr_version):
 
 
 @pytest.mark.parametrize("dimension_separator", [".", "/", None])
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_open_array(zarr_version, at_root, dimension_separator):
+def test_open_array(at_root, dimension_separator):
     store = "data/array.zarr"
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
+    kwargs = _init_creation_kwargs(at_root)
 
     # mode == 'w'
     z = open_array(
@@ -221,23 +208,19 @@ def test_open_array(zarr_version, at_root, dimension_separator):
     )
     z[:] = 42
     assert isinstance(z, Array)
-    if z._store._store_version == 2:
-        assert isinstance(z.store, DirectoryStore)
-    else:
-        assert isinstance(z.store, DirectoryStoreV3)
+
+    assert isinstance(z.store, DirectoryStore)
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
 
     if dimension_separator is None:
-        assert z._dimension_separator == "/" if zarr_version == 3 else "."
+        assert z._dimension_separator == "."
     else:
         assert z._dimension_separator == dimension_separator
 
     # mode in 'r', 'r+'
     group_kwargs = kwargs.copy()
-    if zarr_version == 3:
-        group_kwargs["path"] = "group"
     open_group("data/group.zarr", mode="w", **group_kwargs)
     for mode in "r", "r+":
         with pytest.raises(ValueError):
@@ -246,10 +229,7 @@ def test_open_array(zarr_version, at_root, dimension_separator):
             open_array("data/group.zarr", mode=mode)
     z = open_array(store, mode="r", **kwargs)
     assert isinstance(z, Array)
-    if z._store._store_version == 2:
-        assert isinstance(z.store, DirectoryStore)
-    else:
-        assert isinstance(z.store, DirectoryStoreV3)
+    assert isinstance(z.store, DirectoryStore)
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
@@ -257,10 +237,7 @@ def test_open_array(zarr_version, at_root, dimension_separator):
         z[:] = 43
     z = open_array(store, mode="r+", **kwargs)
     assert isinstance(z, Array)
-    if z._store._store_version == 2:
-        assert isinstance(z.store, DirectoryStore)
-    else:
-        assert isinstance(z.store, DirectoryStoreV3)
+    assert isinstance(z.store, DirectoryStore)
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
@@ -272,18 +249,12 @@ def test_open_array(zarr_version, at_root, dimension_separator):
     z = open_array(store, mode="a", shape=100, chunks=10, **kwargs)
     z[:] = 42
     assert isinstance(z, Array)
-    if z._store._store_version == 2:
-        assert isinstance(z.store, DirectoryStore)
-    else:
-        assert isinstance(z.store, DirectoryStoreV3)
+    assert isinstance(z.store, DirectoryStore)
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
 
-    expected_error = TypeError if zarr_version == 3 else ValueError
-    # v3 path does not conflict, but will raise TypeError without shape kwarg
-    with pytest.raises(expected_error):
-        # array would end up at data/group.zarr/meta/root/array.array.json
+    with pytest.raises(ValueError):
         open_array("data/group.zarr", mode="a", **kwargs)
 
     # mode in 'w-', 'x'
@@ -292,18 +263,14 @@ def test_open_array(zarr_version, at_root, dimension_separator):
         z = open_array(store, mode=mode, shape=100, chunks=10, **kwargs)
         z[:] = 42
         assert isinstance(z, Array)
-        if z._store._store_version == 2:
-            assert isinstance(z.store, DirectoryStore)
-        else:
-            assert isinstance(z.store, DirectoryStoreV3)
+        assert isinstance(z.store, DirectoryStore)
         assert (100,) == z.shape
         assert (10,) == z.chunks
         assert_array_equal(np.full(100, fill_value=42), z[:])
         with pytest.raises(ValueError):
             open_array(store, mode=mode, **kwargs)
-        expected_error = TypeError if zarr_version == 3 else ValueError
-        # v3 path does not conflict, but will raise TypeError without shape kwarg
-        with pytest.raises(expected_error):
+
+        with pytest.raises(ValueError):
             open_array("data/group.zarr", mode=mode, **kwargs)
 
     # with synchronizer
@@ -327,21 +294,15 @@ def test_open_array(zarr_version, at_root, dimension_separator):
 
 
 def test_open_array_none():
-    # open with both store and zarr_version = None
+    # open with store = None
     z = open_array(mode="w", shape=100, chunks=10)
     assert isinstance(z, Array)
-    assert z._version == 2
 
 
 @pytest.mark.parametrize("dimension_separator", [".", "/", None])
-@pytest.mark.parametrize("zarr_version", _VERSIONS2)
-def test_open_array_infer_separator_from_store(zarr_version, dimension_separator):
-    if zarr_version == 3:
-        StoreClass = DirectoryStoreV3
-        path = "data"
-    else:
-        StoreClass = DirectoryStore
-        path = None
+def test_open_array_infer_separator_from_store(dimension_separator):
+    StoreClass = DirectoryStore
+    path = None
     store = StoreClass("data/array.zarr", dimension_separator=dimension_separator)
 
     # Note: no dimension_separator kwarg to open_array
@@ -349,25 +310,20 @@ def test_open_array_infer_separator_from_store(zarr_version, dimension_separator
     z = open_array(store, path=path, mode="w", shape=100, chunks=10)
     z[:] = 42
     assert isinstance(z, Array)
-    if z._store._store_version == 2:
-        assert isinstance(z.store, DirectoryStore)
-    else:
-        assert isinstance(z.store, DirectoryStoreV3)
+    assert isinstance(z.store, DirectoryStore)
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert_array_equal(np.full(100, fill_value=42), z[:])
 
     if dimension_separator is None:
-        assert z._dimension_separator == "/" if zarr_version == 3 else "."
+        assert z._dimension_separator == "."
     else:
         assert z._dimension_separator == dimension_separator
 
 
-# TODO: N5 support for v3
-@pytest.mark.parametrize("zarr_version", [None, 2])
-def test_open_array_n5(zarr_version):
+def test_open_array_n5():
     store = "data/array.zarr"
-    kwargs = _init_creation_kwargs(zarr_version)
+    kwargs = _init_creation_kwargs()
 
     # for N5 store
     store = "data/array.n5"
@@ -381,8 +337,6 @@ def test_open_array_n5(zarr_version):
 
     store = "data/group.n5"
     group_kwargs = kwargs.copy()
-    # if zarr_version == 3:
-    #     group_kwargs['path'] = 'group'
     z = open_group(store, mode="w", **group_kwargs)
     i = z.create_group("inner")
     a = i.zeros("array", shape=100, chunks=10)
@@ -401,13 +355,12 @@ def test_open_array_n5(zarr_version):
     assert_array_equal(np.full(100, fill_value=42), a[:])
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_open_array_dict_store(zarr_version, at_root):
+def test_open_array_dict_store(at_root):
     # dict will become a KVStore
     store = dict()
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
-    expected_store_type = KVStoreV3 if zarr_version == 3 else KVStore
+    kwargs = _init_creation_kwargs(at_root)
+    expected_store_type = KVStore
 
     # mode == 'w'
     z = open_array(store, mode="w", shape=100, chunks=10, **kwargs)
@@ -419,11 +372,10 @@ def test_open_array_dict_store(zarr_version, at_root):
     assert_array_equal(np.full(100, fill_value=42), z[:])
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_create_in_dict(zarr_version, at_root):
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
-    expected_store_type = KVStoreV3 if zarr_version == 3 else KVStore
+def test_create_in_dict(at_root):
+    kwargs = _init_creation_kwargs(at_root)
+    expected_store_type = KVStore
 
     for func in [empty, zeros, ones]:
         a = func(100, store=dict(), **kwargs)
@@ -434,27 +386,23 @@ def test_create_in_dict(zarr_version, at_root):
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_create_writeable_mode(zarr_version, at_root, tmp_path):
+def test_create_writeable_mode(at_root, tmp_path):
     # Regression test for https://github.com/zarr-developers/zarr-python/issues/1306
     import fsspec
 
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
+    kwargs = _init_creation_kwargs(at_root)
     store = fsspec.get_mapper(str(tmp_path))
     z = create(100, store=store, **kwargs)
     assert z.store.map == store
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_empty_like(zarr_version, at_root):
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
-    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
+def test_empty_like(at_root):
+    kwargs = _init_creation_kwargs(at_root)
 
     # zarr array
     z = empty(100, chunks=10, dtype="f4", compressor=Zlib(5), order="F", **kwargs)
-    # zarr_version will be inferred from z, but have to specify a path in v3
     z2 = empty_like(z, path=kwargs.get("path"))
     assert z.shape == z2.shape
     assert z.chunks == z2.chunks
@@ -462,7 +410,6 @@ def test_empty_like(zarr_version, at_root):
     assert z.compressor.get_config() == z2.compressor.get_config()
     assert z.fill_value == z2.fill_value
     assert z.order == z2.order
-    assert z._store._store_version == z2._store._store_version == expected_zarr_version
 
     # numpy array
     a = np.empty(100, dtype="f4")
@@ -471,7 +418,6 @@ def test_empty_like(zarr_version, at_root):
     assert (100,) == z3.chunks
     assert a.dtype == z3.dtype
     assert z3.fill_value is None
-    assert z3._store._store_version == expected_zarr_version
 
     # something slightly silly
     a = [0] * 100
@@ -494,11 +440,9 @@ def test_empty_like(zarr_version, at_root):
     assert isinstance(z.chunks, tuple)
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_zeros_like(zarr_version, at_root):
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
-    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
+def test_zeros_like(at_root):
+    kwargs = _init_creation_kwargs(at_root)
 
     # zarr array
     z = zeros(100, chunks=10, dtype="f4", compressor=Zlib(5), order="F", **kwargs)
@@ -509,7 +453,7 @@ def test_zeros_like(zarr_version, at_root):
     assert z.compressor.get_config() == z2.compressor.get_config()
     assert z.fill_value == z2.fill_value
     assert z.order == z2.order
-    assert z._store._store_version == z2._store._store_version == expected_zarr_version
+
     # numpy array
     a = np.empty(100, dtype="f4")
     z3 = zeros_like(a, chunks=10, **kwargs)
@@ -519,11 +463,9 @@ def test_zeros_like(zarr_version, at_root):
     assert 0 == z3.fill_value
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_ones_like(zarr_version, at_root):
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
-    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
+def test_ones_like(at_root):
+    kwargs = _init_creation_kwargs(at_root)
 
     # zarr array
     z = ones(100, chunks=10, dtype="f4", compressor=Zlib(5), order="F", **kwargs)
@@ -534,7 +476,7 @@ def test_ones_like(zarr_version, at_root):
     assert z.compressor.get_config() == z2.compressor.get_config()
     assert z.fill_value == z2.fill_value
     assert z.order == z2.order
-    assert z._store._store_version == z2._store._store_version == expected_zarr_version
+
     # numpy array
     a = np.empty(100, dtype="f4")
     z3 = ones_like(a, chunks=10, **kwargs)
@@ -542,14 +484,11 @@ def test_ones_like(zarr_version, at_root):
     assert (10,) == z3.chunks
     assert a.dtype == z3.dtype
     assert 1 == z3.fill_value
-    assert z3._store._store_version == expected_zarr_version
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_full_like(zarr_version, at_root):
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
-    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
+def test_full_like(at_root):
+    kwargs = _init_creation_kwargs(at_root)
 
     z = full(100, chunks=10, dtype="f4", compressor=Zlib(5), fill_value=42, order="F", **kwargs)
     z2 = full_like(z, path=kwargs.get("path"))
@@ -559,7 +498,7 @@ def test_full_like(zarr_version, at_root):
     assert z.compressor.get_config() == z2.compressor.get_config()
     assert z.fill_value == z2.fill_value
     assert z.order == z2.order
-    assert z._store._store_version == z2._store._store_version == expected_zarr_version
+
     # numpy array
     a = np.empty(100, dtype="f4")
     z3 = full_like(a, chunks=10, fill_value=42, **kwargs)
@@ -567,17 +506,15 @@ def test_full_like(zarr_version, at_root):
     assert (10,) == z3.chunks
     assert a.dtype == z3.dtype
     assert 42 == z3.fill_value
-    assert z3._store._store_version == expected_zarr_version
+
     with pytest.raises(TypeError):
         # fill_value missing
         full_like(a, chunks=10, **kwargs)
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_open_like(zarr_version, at_root):
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
-    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
+def test_open_like(at_root):
+    kwargs = _init_creation_kwargs(at_root)
 
     # zarr array
     path = mktemp()
@@ -590,24 +527,21 @@ def test_open_like(zarr_version, at_root):
     assert z.compressor.get_config() == z2.compressor.get_config()
     assert z.fill_value == z2.fill_value
     assert z.order == z2.order
-    assert z._store._store_version == z2._store._store_version == expected_zarr_version
+
     # numpy array
     path = mktemp()
     atexit.register(shutil.rmtree, path)
     a = np.empty(100, dtype="f4")
-    z3 = open_like(a, path, chunks=10, zarr_version=zarr_version)
+    z3 = open_like(a, path, chunks=10)
     assert a.shape == z3.shape
     assert (10,) == z3.chunks
     assert a.dtype == z3.dtype
     assert 0 == z3.fill_value
-    assert z3._store._store_version == expected_zarr_version
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_create(zarr_version, at_root):
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
-    expected_zarr_version = DEFAULT_ZARR_VERSION if zarr_version is None else zarr_version
+def test_create(at_root):
+    kwargs = _init_creation_kwargs(at_root)
 
     # defaults
     z = create(100, **kwargs)
@@ -617,7 +551,6 @@ def test_create(zarr_version, at_root):
     assert np.dtype(None) == z.dtype
     assert "blosc" == z.compressor.codec_id
     assert 0 == z.fill_value
-    assert z._store._store_version == expected_zarr_version
 
     # all specified
     z = create(100, chunks=10, dtype="i4", compressor=Zlib(1), fill_value=42, order="F", **kwargs)
@@ -629,7 +562,6 @@ def test_create(zarr_version, at_root):
     assert 1 == z.compressor.level
     assert 42 == z.fill_value
     assert "F" == z.order
-    assert z._store._store_version == expected_zarr_version
 
     # with synchronizer
     synchronizer = ThreadSynchronizer()
@@ -638,7 +570,6 @@ def test_create(zarr_version, at_root):
     assert (100,) == z.shape
     assert (10,) == z.chunks
     assert synchronizer is z.synchronizer
-    assert z._store._store_version == expected_zarr_version
 
     # don't allow string as compressor arg
     with pytest.raises(ValueError):
@@ -671,9 +602,8 @@ def test_create(zarr_version, at_root):
     assert z.chunks == z.shape
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
-def test_compression_args(zarr_version):
-    kwargs = _init_creation_kwargs(zarr_version)
+def test_compression_args():
+    kwargs = _init_creation_kwargs()
 
     with warnings.catch_warnings():
         warnings.simplefilter("default")
@@ -704,12 +634,11 @@ def test_compression_args(zarr_version):
             create(100, compressor=Zlib(9), compression_opts=1, **kwargs)
 
 
-@pytest.mark.parametrize("zarr_version", _VERSIONS)
 @pytest.mark.parametrize("at_root", [False, True])
-def test_create_read_only(zarr_version, at_root):
+def test_create_read_only(at_root):
     # https://github.com/alimanfoo/zarr/issues/151
 
-    kwargs = _init_creation_kwargs(zarr_version, at_root)
+    kwargs = _init_creation_kwargs(at_root)
 
     # create an array initially read-only, then enable writing
     z = create(100, read_only=True, **kwargs)
@@ -736,18 +665,6 @@ def test_create_read_only(zarr_version, at_root):
 def test_json_dumps_chunks_numpy_dtype():
     z = zeros((10,), chunks=(np.int64(2),))
     assert np.all(z[...] == 0)
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-@pytest.mark.parametrize("at_root", [False, True])
-def test_create_with_storage_transformers(at_root):
-    kwargs = _init_creation_kwargs(zarr_version=3, at_root=at_root)
-    transformer = DummyStorageTransfomer(
-        "dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT
-    )
-    z = create(1000000000, chunks=True, storage_transformers=[transformer], **kwargs)
-    assert isinstance(z.chunk_store, DummyStorageTransfomer)
-    assert z.chunk_store.test_value == DummyStorageTransfomer.TEST_CONSTANT
 
 
 @pytest.mark.parametrize(
