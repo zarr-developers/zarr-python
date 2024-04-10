@@ -212,24 +212,15 @@ def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str
 
 
 def _prefix_to_array_key(store: StoreLike, prefix: str) -> str:
-    if getattr(store, "_store_version", 2) == 3:
-        raise NotImplementedError("This function only supports Zarr version 2.")
-    else:
-        key = prefix + array_meta_key
+    key = prefix + array_meta_key
     return key
 
 
 def _prefix_to_group_key(store: StoreLike, prefix: str) -> str:
-    if getattr(store, "_store_version", 2) == 3:
-        raise NotImplementedError("This function only supports Zarr version 2.")
-    else:
-        key = prefix + group_meta_key
+    key = prefix + group_meta_key
     return key
 
 
 def _prefix_to_attrs_key(store: StoreLike, prefix: str) -> str:
-    if getattr(store, "_store_version", 2) == 3:
-        raise NotImplementedError("This function only supports Zarr version 2.")
-    else:
-        key = prefix + attrs_key
+    key = prefix + attrs_key
     return key
