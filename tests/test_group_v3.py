@@ -11,6 +11,7 @@ from zarr.v3.store import StorePath
 from zarr.v3.config import RuntimeConfiguration
 from zarr.v3.sync import sync
 
+
 # todo: put RemoteStore in here
 @pytest.mark.parametrize("store_type", ("local_store", "memory_store"))
 def test_group_members(store_type, request):
@@ -100,7 +101,6 @@ def test_group(store_type, request) -> None:
 
 
 def test_group_sync_constructor(store_path) -> None:
-
     group = Group.create(
         store=store_path,
         attributes={"title": "test 123"},

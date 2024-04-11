@@ -12,7 +12,6 @@ if TYPE_CHECKING:
         AsyncGenerator,
         Literal,
         AsyncIterator,
-        Iterator,
     )
 from zarr.v3.abc.metadata import Metadata
 
@@ -55,11 +54,11 @@ class GroupMetadata(Metadata):
             return {ZARR_JSON: json.dumps(self.to_dict()).encode()}
         else:
             return {
-                ZGROUP_JSON: self.zarr_format,
+                ZGROUP_JSON: json.dumps({"zarr_format": 2}).encode(),
                 ZATTRS_JSON: json.dumps(self.attributes).encode(),
             }
 
-    def __init__(self, attributes: dict[str, Any] = {}, zarr_format: Literal[2, 3] = 3):
+    def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: Literal[2, 3] = 3):
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
 
@@ -113,7 +112,7 @@ class AsyncGroup:
         zarr_format: Literal[2, 3] = 3,
     ) -> AsyncGroup:
         store_path = make_store_path(store)
-        zarr_json_bytes = await (store_path / ZARR_JSON).get_async()
+        zarr_json_bytes = await (store_path / ZARR_JSON).get()
         assert zarr_json_bytes is not None
 
         # TODO: consider trying to autodiscover the zarr-format here
@@ -148,7 +147,7 @@ class AsyncGroup:
         store_path: StorePath,
         data: dict[str, Any],
         runtime_configuration: RuntimeConfiguration,
-    ) -> Group:
+    ) -> AsyncGroup:
         group = cls(
             metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
@@ -160,7 +159,6 @@ class AsyncGroup:
         self,
         key: str,
     ) -> AsyncArray | AsyncGroup:
-
         store_path = self.store_path / key
 
         # Note:
@@ -187,10 +185,12 @@ class AsyncGroup:
                 zarr_json = json.loads(zarr_json_bytes)
             if zarr_json["node_type"] == "group":
                 return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
-            if zarr_json["node_type"] == "array":
+            elif zarr_json["node_type"] == "array":
                 return AsyncArray.from_dict(
                     store_path, zarr_json, runtime_configuration=self.runtime_configuration
                 )
+            else:
+                raise ValueError(f"unexpected node_type: {zarr_json['node_type']}")
         elif self.metadata.zarr_format == 2:
             # Q: how do we like optimistically fetching .zgroup, .zarray, and .zattrs?
             # This guarantees that we will always make at least one extra request to the store
@@ -430,8 +430,12 @@ class Group(SyncMixin):
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        await (self.store_path / ZARR_JSON).set_async(new_metadata.to_bytes())
-        return replace(self, metadata=new_metadata)
+        to_save = new_metadata.to_bytes()
+        awaitables = [(self.store_path / key).set(value) for key, value in to_save.items()]
+        await asyncio.gather(*awaitables)
+
+        async_group = replace(self._async_group, metadata=new_metadata)
+        return replace(self, _async_group=async_group)
 
     @property
     def metadata(self) -> GroupMetadata:
@@ -468,12 +472,12 @@ class Group(SyncMixin):
     def __contains__(self, member) -> bool:
         return self._sync(self._async_group.contains(member))
 
-    def group_keys(self) -> Iterator[str]:
-        return self._sync_iter(self._async_group.group_keys)
+    def group_keys(self) -> list[str]:
+        return self._sync_iter(self._async_group.group_keys())
 
     def groups(self) -> list[Group]:
         # TODO: in v2 this was a generator that return key: Group
-        return [Group(obj) for obj in self._sync_iter(self._async_group.groups)]
+        return [Group(obj) for obj in self._sync_iter(self._async_group.groups())]
 
     def array_keys(self) -> list[str]:
         return self._sync_iter(self._async_group.array_keys)

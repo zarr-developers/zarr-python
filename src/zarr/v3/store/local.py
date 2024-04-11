@@ -46,7 +46,6 @@ def _put(
 
 
 class LocalStore(Store):
-
     supports_writes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
@@ -126,6 +125,7 @@ class LocalStore(Store):
         -------
         list[str]
         """
+
         # Q: do we want to return strings or Paths?
         def _list(root: Path) -> List[str]:
             files = [str(p) for p in root.rglob("") if p.is_file()]
@@ -146,7 +146,7 @@ class LocalStore(Store):
         """
 
         def _list_prefix(root: Path, prefix: str) -> List[str]:
-            files = [p for p in (root / prefix).rglob("*") if p.is_file()]
+            files = [str(p) for p in (root / prefix).rglob("*") if p.is_file()]
             return files
 
         return await to_thread(_list_prefix, self.root, prefix)
@@ -166,7 +166,6 @@ class LocalStore(Store):
         """
 
         def _list_dir(root: Path, prefix: str) -> List[str]:
-
             base = root / prefix
             to_strip = str(base) + "/"
             try:
