@@ -168,7 +168,6 @@ module = [
     "zarr.indexing",
     "zarr.storage",
     "zarr.sync",
-    "zarr.util",
     "tests.*",
 ]
 check_untyped_defs = false

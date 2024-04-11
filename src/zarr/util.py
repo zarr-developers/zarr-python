@@ -623,6 +623,9 @@ class PartialReadBuffer:
 
     def read_part(self, start, nitems):
         assert self.buff is not None
+        assert self.start_points is not None
+        assert self.n_per_block is not None
+
         if self.nblocks == 1:
             return
         start_block = int(start / self.n_per_block)
