@@ -21,7 +21,8 @@ class ThreadSynchronizer:
 
     def __setstate__(self, *args):
         # reinitialize from scratch
-        self.__init__()
+        self.mutex = Lock()
+        self.locs = defaultdict(Lock)
 
 
 class ProcessSynchronizer:
