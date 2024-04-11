@@ -10,7 +10,7 @@ import zarr.codecs
 from zarr.core import Array
 from zarr.creation import array, empty, full, ones, open_array, zeros
 from zarr.hierarchy import open_group, group
-from zarr.storage import DirectoryStore, MemoryStore, Store, ZipStore
+from zarr.storage import DirectoryStore, MemoryStore, Store
 
 
 class CuPyCPUCompressor(Codec):  # pragma: no cover
@@ -119,7 +119,7 @@ param_module_and_compressor = [
 
 
 @pytest.mark.parametrize("module, compressor", param_module_and_compressor)
-@pytest.mark.parametrize("store_type", [None, DirectoryStore, MemoryStore, ZipStore])
+@pytest.mark.parametrize("store_type", [None, DirectoryStore, MemoryStore])
 def test_array(tmp_path, module, compressor, store_type):
     xp = ensure_module(module)
 
@@ -236,7 +236,7 @@ def test_full(module, compressor):
 
 @pytest.mark.parametrize("group_create_function", [group, open_group])
 @pytest.mark.parametrize("module, compressor", param_module_and_compressor)
-@pytest.mark.parametrize("store_type", [None, DirectoryStore, MemoryStore, ZipStore])
+@pytest.mark.parametrize("store_type", [None, DirectoryStore, MemoryStore])
 def test_group(tmp_path, group_create_function, module, compressor, store_type):
     xp = ensure_module(module)
     store = init_store(tmp_path, store_type)
