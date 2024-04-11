@@ -162,7 +162,7 @@ def rmdir(store: StoreLike, path: Path = None):
     path = normalize_storage_path(path)
     if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
         # pass through
-        store.rmdir(path)  # type: ignore
+        store.rmdir(path)
     else:
         # slow version, delete one key at a time
         _rmdir_from_keys(store, path)
@@ -189,7 +189,7 @@ def listdir(store: BaseStore, path: Path = None):
     path = normalize_storage_path(path)
     if hasattr(store, "listdir"):
         # pass through
-        return store.listdir(path)  # type: ignore
+        return store.listdir(path)
     else:
         # slow version, iterate through all keys
         warnings.warn(
@@ -231,7 +231,7 @@ def getsize(store: BaseStore, path: Path = None) -> int:
     if hasattr(store, "getsize"):
         # pass through
         path = normalize_storage_path(path)
-        return store.getsize(path)  # type: ignore
+        return store.getsize(path)
     elif isinstance(store, MutableMapping):
         return _getsize(store, path)
     else:
@@ -511,7 +511,7 @@ def _init_array_metadata(
 
     key = _prefix_to_array_key(store, _path_to_prefix(path))
     if hasattr(store, "_metadata_class"):
-        store[key] = store._metadata_class.encode_array_metadata(meta)  # type: ignore
+        store[key] = store._metadata_class.encode_array_metadata(meta)
     else:
         store[key] = encode_array_metadata(meta)
 
@@ -576,10 +576,10 @@ def _init_group_metadata(
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
     # be in future
-    meta = {}  # type: ignore
+    meta = {}
     key = _prefix_to_group_key(store, _path_to_prefix(path))
     if hasattr(store, "_metadata_class"):
-        store[key] = store._metadata_class.encode_group_metadata(meta)  # type: ignore
+        store[key] = store._metadata_class.encode_group_metadata(meta)
     else:
         store[key] = encode_group_metadata(meta)
 
