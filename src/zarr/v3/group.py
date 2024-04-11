@@ -454,16 +454,16 @@ class Group(SyncMixin):
         return self._sync(self._async_group.nmembers)
 
     @property
-    def members(self) -> dict[str, Array | Group]:
+    def members(self) -> tuple[tuple[str, Array | Group], ...]:
         """
-        Return the sub-arrays and sub-groups of this group as a `dict` of (name, array | group)
+        Return the sub-arrays and sub-groups of this group as a `tuple` of (name, array | group)
         pairs
         """
         _members = self._sync_iter(self._async_group.members)
-        return {
-            key: Array(value) if isinstance(value, AsyncArray) else Group(value)
+        return tuple(
+            (key, Array(value)) if isinstance(value, AsyncArray) else (key, Group(value))
             for key, value in _members
-        }
+        )
 
     def __contains__(self, member) -> bool:
         return self._sync(self._async_group.contains(member))

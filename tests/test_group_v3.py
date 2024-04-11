@@ -52,7 +52,7 @@ def test_group_members(store_type, request):
     )
     members_observed = group.members
     # members are not guaranteed to be ordered, so sort before comparing
-    assert sorted(members_observed) == sorted(members_expected)
+    assert sorted(dict(members_observed)) == sorted(members_expected)
 
 
 @pytest.mark.parametrize("store_type", (("local_store",)))
