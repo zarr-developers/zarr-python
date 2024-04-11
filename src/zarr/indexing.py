@@ -4,6 +4,7 @@ import math
 import numbers
 
 import numpy as np
+import numpy.typing as npt
 
 
 from zarr.errors import (
@@ -330,6 +331,7 @@ class BasicIndexer:
         # setup per-dimension indexers
         dim_indexers = []
         for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
+            dim_indexer: IntDimIndexer | SliceDimIndexer
             if is_integer(dim_sel):
                 dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
@@ -521,9 +523,12 @@ class IntArrayDimIndexer:
             else:
                 start = self.chunk_nitems_cumsum[dim_chunk_ix - 1]
             stop = self.chunk_nitems_cumsum[dim_chunk_ix]
+
+            dim_out_sel: slice | np.ndarray
             if self.order == Order.INCREASING:
                 dim_out_sel = slice(start, stop)
             else:
+                assert self.dim_out_sel is not None
                 dim_out_sel = self.dim_out_sel[start:stop]
 
             # find region in chunk
@@ -577,11 +582,10 @@ def oindex_set(a, selection, value):
     selection = ix_(selection, a.shape)
     if not np.isscalar(value) and drop_axes:
         value = np.asanyarray(value)
-        value_selection = [slice(None)] * len(a.shape)
+        value_selection: list[slice | None] = [slice(None)] * len(a.shape)
         for i in drop_axes:
             value_selection[i] = np.newaxis
-        value_selection = tuple(value_selection)
-        value = value[value_selection]
+        value = value[tuple(value_selection)]
     a[selection] = value
 
 
@@ -597,6 +601,7 @@ class OrthogonalIndexer:
         # setup per-dimension indexers
         dim_indexers = []
         for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
+            dim_indexer: IntDimIndexer | SliceDimIndexer | IntArrayDimIndexer | BoolArrayDimIndexer
             if is_integer(dim_sel):
                 dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
@@ -622,6 +627,8 @@ class OrthogonalIndexer:
         self.dim_indexers = dim_indexers
         self.shape = tuple(s.nitems for s in self.dim_indexers if not isinstance(s, IntDimIndexer))
         self.is_advanced = not is_basic_selection(selection)
+
+        self.drop_axes: tuple[int, ...] | None
         if self.is_advanced:
             self.drop_axes = tuple(
                 i
@@ -797,6 +804,7 @@ class CoordinateIndexer:
             boundscheck_indices(dim_sel, dim_len)
 
         # compute chunk index for each point in the selection
+        chunks_multi_index: npt.ArrayLike
         chunks_multi_index = tuple(
             dim_sel // dim_chunk_len for (dim_sel, dim_chunk_len) in zip(selection, array._chunks)
         )
@@ -848,6 +856,8 @@ class CoordinateIndexer:
             else:
                 start = self.chunk_nitems_cumsum[chunk_rix - 1]
             stop = self.chunk_nitems_cumsum[chunk_rix]
+
+            out_selection: slice | np.ndarray
             if self.sel_sort is None:
                 out_selection = slice(start, stop)
             else:
@@ -952,6 +962,7 @@ def check_no_multi_fields(fields):
 
 
 def pop_fields(selection):
+    fields: str | None | list[str]
     if isinstance(selection, str):
         # single field selection
         fields = selection

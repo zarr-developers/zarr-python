@@ -165,7 +165,6 @@ module = [
     "zarr.v3.group",
     "zarr.core",
     "zarr.hierarchy",
-    "zarr.indexing",
     "zarr.storage",
     "tests.*",
 ]
