@@ -287,13 +287,15 @@ class AsyncGroup:
     def __repr__(self):
         return f"<AsyncGroup {self.store_path}>"
 
-    async def nchildren(self) -> int:
+    async def nmembers(self) -> int:
         raise NotImplementedError
 
-    async def children(self) -> AsyncGenerator[AsyncArray, AsyncGroup]:
+    async def members(self) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
         This method requires that `store_path.store` supports directory listing.
+
+        The results are not guaranteed to be ordered.
         """
         if not self.store_path.store.supports_listing:
             msg = (
@@ -311,13 +313,17 @@ class AsyncGroup:
         # is there a better way to schedule this?
         for subkey in subkeys_filtered:
             try:
-                yield await self.getitem(subkey)
+                yield (subkey, await self.getitem(subkey))
             except KeyError:
-                # keyerror is raised when `subkey``names an object in the store
+                # keyerror is raised when `subkey` names an object (in the object storage sense),
+                # as opposed to a prefix, in the store under the prefix associated with this group
                 # in which case `subkey` cannot be the name of a sub-array or sub-group.
+                logger.warning(
+                    "Object at %s is not recognized as a component of a Zarr hierarchy.", subkey
+                )
                 pass
 
-    async def contains(self, child: str) -> bool:
+    async def contains(self, member: str) -> bool:
         raise NotImplementedError
 
     async def group_keys(self) -> AsyncIterator[str]:
@@ -444,16 +450,23 @@ class Group(SyncMixin):
         return self
 
     @property
-    def nchildren(self) -> int:
-        return self._sync(self._async_group.nchildren)
+    def nmembers(self) -> int:
+        return self._sync(self._async_group.nmembers)
 
     @property
-    def children(self) -> list[Array | Group]:
-        _children = self._sync_iter(self._async_group.children)
-        return [Array(obj) if isinstance(obj, AsyncArray) else Group(obj) for obj in _children]
+    def members(self) -> dict[str, Array | Group]:
+        """
+        Return the sub-arrays and sub-groups of this group as a `dict` of (name, array | group)
+        pairs
+        """
+        _members = self._sync_iter(self._async_group.members)
+        return {
+            key: Array(value) if isinstance(value, AsyncArray) else Group(value)
+            for key, value in _members
+        }
 
-    def __contains__(self, child) -> bool:
-        return self._sync(self._async_group.contains(child))
+    def __contains__(self, member) -> bool:
+        return self._sync(self._async_group.contains(member))
 
     def group_keys(self) -> Iterator[str]:
         return self._sync_iter(self._async_group.group_keys)

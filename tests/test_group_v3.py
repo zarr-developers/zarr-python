@@ -13,9 +13,9 @@ from zarr.v3.sync import sync
 
 # todo: put RemoteStore in here
 @pytest.mark.parametrize("store_type", ("local_store", "memory_store"))
-def test_group_children(store_type, request):
+def test_group_members(store_type, request):
     """
-    Test that `Group.children` returns correct values, i.e. the arrays and groups
+    Test that `Group.members` returns correct values, i.e. the arrays and groups
     (explicit and implicit) contained in that group.
     """
 
@@ -26,12 +26,14 @@ def test_group_children(store_type, request):
         store_path=StorePath(store=store, path=path),
     )
     group = Group(agroup)
+    members_expected = {}
 
-    subgroup = group.create_group("subgroup")
+    members_expected["subgroup"] = group.create_group("subgroup")
     # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
     # too deep in the hierarchy
-    _ = subgroup.create_group("subsubgroup")
-    subarray = group.create_array(
+    _ = members_expected["subgroup"].create_group("subsubgroup")
+
+    members_expected["subarray"] = group.create_array(
         "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
     )
 
@@ -42,21 +44,15 @@ def test_group_children(store_type, request):
     # this creates an implicit group called implicit_subgroup
     sync(store.set(f"{path}/implicit_subgroup/extra_object", b"000000"))
     # make the implicit subgroup
-    implicit_subgroup = Group(
+    members_expected["implicit_subgroup"] = Group(
         AsyncGroup(
             metadata=GroupMetadata(),
             store_path=StorePath(store=store, path=f"{path}/implicit_subgroup"),
         )
     )
-    # note: these assertions are order-independent, because it is not clear
-    # if group.children guarantees a particular order for the children.
-    # If order is not guaranteed, then the better version of this test is
-    # to compare two sets, but presently neither the group nor array classes are hashable.
-    observed = group.children
-    assert len(observed) == 3
-    assert subarray in observed
-    assert implicit_subgroup in observed
-    assert subgroup in observed
+    members_observed = group.members
+    # members are not guaranteed to be ordered, so sort before comparing
+    assert sorted(members_observed) == sorted(members_expected)
 
 
 @pytest.mark.parametrize("store_type", (("local_store",)))
