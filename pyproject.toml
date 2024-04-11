@@ -150,7 +150,7 @@ extend-exclude = [
 [tool.mypy]
 python_version = "3.8"
 ignore_missing_imports = true
-follow_imports = "silent"
+namespace_packages = false
 
 [tool.pytest.ini_options]
 doctest_optionflags = [
