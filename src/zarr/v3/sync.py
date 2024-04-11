@@ -113,7 +113,7 @@ class SyncMixin:
     def _sync_iter(self, coroutine: Coroutine[Any, Any, AsyncIterator[T]]) -> List[T]:
         async def iter_to_list() -> List[T]:
             # TODO: replace with generators so we don't materialize the entire iterator at once
-            async_iterator = await coroutine
-            return [item async for item in async_iterator]
+            # async_iterator = await coroutine
+            return [item async for item in coroutine()]
 
         return self._sync(iter_to_list())

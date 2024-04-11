@@ -438,6 +438,10 @@ class Group(SyncMixin):
         return replace(self, _async_group=async_group)
 
     @property
+    def store_path(self) -> StorePath:
+        return self._async_group.store_path
+
+    @property
     def metadata(self) -> GroupMetadata:
         return self._async_group.metadata
 
@@ -463,7 +467,7 @@ class Group(SyncMixin):
         Return the sub-arrays and sub-groups of this group as a `tuple` of (name, array | group)
         pairs
         """
-        _members = self._sync_iter(self._async_group.members)
+        _members: list[AsyncArray | AsyncGroup] = self._sync_iter(self._async_group.members)
         return tuple(
             (key, Array(value)) if isinstance(value, AsyncArray) else (key, Group(value))
             for key, value in _members
