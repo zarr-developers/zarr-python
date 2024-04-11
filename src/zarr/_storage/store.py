@@ -340,20 +340,20 @@ class StoreV3(BaseStore):
             old_value = self.get(key)
             values[key] = None if old_value is None else bytearray(old_value)
         for key, start, value in key_start_values:
-            if values[key] is None:
+            if (old_value := values[key]) is None:
                 assert start == 0
                 values[key] = value
             else:
-                if start > len(values[key]):  # pragma: no cover
+                if start > len(old_value):
                     raise ValueError(
                         f"Cannot set value at start {start}, "
                         + f"since it is beyond the data at key {key}, "
-                        + f"having length {len(values[key])}."
+                        + f"having length {len(old_value)}."
                     )
                 if start < 0:
-                    values[key][start:] = value
+                    old_value[start:] = value
                 else:
-                    values[key][start : start + len(value)] = value
+                    old_value[start : start + len(value)] = value
         for key, value in values.items():
             self[key] = value
 
@@ -474,7 +474,7 @@ class StorageTransformer(MutableMapping, abc.ABC):
         return list(self.keys())
 
     def list_dir(self, prefix):
-        return StoreV3.list_dir(self, prefix)
+        return self.inner_store.list_dir(prefix)
 
     def is_readable(self):
         return self.inner_store.is_readable()
