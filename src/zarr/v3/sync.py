@@ -90,8 +90,9 @@ def _get_loop():
             # repeat the check just in case the loop got filled between the
             # previous two calls from another thread
             if loop[0] is None:
-                loop[0] = asyncio.new_event_loop()
-                th = threading.Thread(target=loop[0].run_forever, name="zarrIO")
+                new_loop = asyncio.new_event_loop()
+                loop[0] = new_loop
+                th = threading.Thread(target=new_loop.run_forever, name="zarrIO")
                 th.daemon = True
                 th.start()
                 iothread[0] = th

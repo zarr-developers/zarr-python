@@ -1,3 +1,4 @@
+from typing import Any
 import warnings
 from collections.abc import MutableMapping
 
@@ -39,7 +40,7 @@ class Attributes(MutableMapping):
         try:
             data = self.store[self.key]
         except KeyError:
-            d = dict()
+            d: dict[str, Any] = dict()
             if self._version > 2:
                 d["attributes"] = {}
         else:
