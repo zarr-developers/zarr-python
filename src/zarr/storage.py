@@ -576,7 +576,7 @@ def _init_group_metadata(
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
     # be in future
-    meta = {}
+    meta: dict[str, Any] = {}
     key = _prefix_to_group_key(store, _path_to_prefix(path))
     if hasattr(store, "_metadata_class"):
         store[key] = store._metadata_class.encode_group_metadata(meta)
