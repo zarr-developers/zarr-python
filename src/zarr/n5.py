@@ -325,10 +325,9 @@ class N5FSStore(FSStore):
 
     def __init__(self, *args, **kwargs):
         if "dimension_separator" in kwargs:
-            kwargs.pop("dimension_separator")
             warnings.warn("Keyword argument `dimension_separator` will be ignored")
-        dimension_separator = "."
-        super().__init__(*args, dimension_separator=dimension_separator, **kwargs)
+        kwargs["dimension_separator"] = "."
+        super().__init__(*args, **kwargs)
 
     @staticmethod
     def _swap_separator(key: str):
