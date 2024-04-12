@@ -31,3 +31,16 @@ def remote_store():
 @pytest.fixture(scope="function")
 def memory_store():
     return MemoryStore()
+
+
+@pytest.fixture(scope="function")
+def store(request: str, tmpdir):
+    param = request.param
+    if param == "local_store":
+        return LocalStore(str(tmpdir))
+    elif param == "memory_store":
+        return MemoryStore()
+    elif param == "remote_store":
+        return RemoteStore()
+    else:
+        assert False
