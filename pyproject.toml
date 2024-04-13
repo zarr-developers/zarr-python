@@ -149,13 +149,31 @@ extend-exclude = [
 ]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 ignore_missing_imports = true
 namespace_packages = false
 
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
+
+
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr._storage.store",
+    "zarr._storage.v3_storage_transformers",
+    "zarr.v3.group",
+    "zarr.core",
+    "zarr.hierarchy",
+    "zarr.indexing",
+    "zarr.storage",
+    "zarr.sync",
+    "zarr.util",
+    "tests.*",
+]
+check_untyped_defs = false
 
 
 [tool.pytest.ini_options]
