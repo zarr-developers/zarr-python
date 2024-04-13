@@ -67,6 +67,9 @@ class LocalStore(Store):
     def __repr__(self) -> str:
         return f"LocalStore({repr(str(self))})"
 
+    def __eq__(self, other: 'LocalStore') -> bool:
+        return isinstance(other, type(self)) and self.root == other.root
+
     async def get(
         self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
     ) -> Optional[bytes]:
