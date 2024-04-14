@@ -22,7 +22,7 @@ class ThreadSynchronizer:
     def __setstate__(self, *args):
         # reinitialize from scratch
         self.mutex = Lock()
-        self.locs = defaultdict(Lock)
+        self.locks = defaultdict(Lock)
 
 
 class ProcessSynchronizer:
