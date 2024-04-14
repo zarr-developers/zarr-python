@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union, List
+from typing import TYPE_CHECKING, Any, Optional, Tuple, Type, Union, List
 
 import fsspec
 from zarr.v3.abc.store import Store
-from zarr.v3.store.core import _dereference_path, make_store_path
+from zarr.v3.store.core import _dereference_path
 from zarr.v3.common import BytesLike
 
 
@@ -19,13 +19,17 @@ class FsspecStore(Store):
     supports_listing: bool = True
 
     _fs: AsyncFileSystem
-    exceptions = tuple[type]
+    exceptions = Tuple[Type[Exception], ...]
 
     def __init__(
-            self,
-            url: Union[UPath, str],
-            allowed_exceptions: tuple[type] = (FileNotFoundError, IsADirectoryError, NotADirectoryError),
-            **storage_options: Any
+        self,
+        url: Union[UPath, str],
+        allowed_exceptions: Tuple[Type[Exception], ...] = (
+            FileNotFoundError,
+            IsADirectoryError,
+            NotADirectoryError,
+        ),
+        **storage_options: Any,
     ):
         """
         Parameters
@@ -40,7 +44,7 @@ class FsspecStore(Store):
 
         if isinstance(url, str):
             self._fs, self.path = fsspec.url_to_fs(url, **storage_options)
-        elif hasattr(u, "protocol") and hasattr(u, "fs"):
+        elif hasattr(url, "protocol") and hasattr(url, "fs"):
             # is UPath-like - but without importing
             assert len(storage_options) == 0, (
                 "If constructed with a UPath object, no additional "
@@ -50,15 +54,16 @@ class FsspecStore(Store):
             self._fs = url._fs
         else:
             raise ValueError("URL not understood, %s", url)
-        self.exceptions = allowed_exceptions
+        # dear mypy: these have the same type annotations
+        self.exceptions = allowed_exceptions  # type: ignore
         # test instantiate file system
         assert self._fs.async_impl, "FileSystem needs to support async operations."
 
     def __str__(self) -> str:
-        return f"Remote fsspec store: {self.root}"
+        return f"Remote fsspec store: {self.path}"
 
     def __repr__(self) -> str:
-        return f"<FsspecStore({self.root})>"
+        return f"<FsspecStore({self.path})>"
 
     async def get(
         self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
@@ -71,7 +76,8 @@ class FsspecStore(Store):
                 if byte_range
                 else self._fs._cat_file(path)
             )
-        except self.exceptions:
+        # dear mypy: this is indeed defined as a tuple of exceptions
+        except self.exceptions:  # type: ignore
             return None
 
     async def set(
@@ -88,7 +94,8 @@ class FsspecStore(Store):
         path = _dereference_path(self.path, key)
         try:
             await self._fs._rm(path)
-        except FileNotFoundError + self.exceptions:
+        # dear mypy: yes, I can add a tuple to a tuple
+        except (FileNotFoundError,) + self.exceptions:  # type: ignore
             pass
 
     async def exists(self, key: str) -> bool:
@@ -110,10 +117,11 @@ class FsspecStore(Store):
     async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
         raise NotImplementedError
 
-    async def get_partial_values(self, key_ranges: List[Tuple[str, Tuple[int, int]]]) -> List[bytes]:
+    async def get_partial_values(
+        self, key_ranges: List[Tuple[str, Tuple[int, int]]]
+    ) -> List[bytes]:
         paths, starts, stops = [
-            (_dereference_path(self.path, k[0]), k[1][0], k[1][1])
-            for k in key_ranges
+            (_dereference_path(self.path, k[0]), k[1][0], k[1][1]) for k in key_ranges
         ]
         # TODO: expectations for exceptions or missing keys?
         return await self._fs._cat_ranges(paths, starts, stops, on_error="return")
