@@ -155,7 +155,8 @@ namespace_packages = false
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-
+strict_equality = true
+strict_concatenate = true
 
 check_untyped_defs = true
 
