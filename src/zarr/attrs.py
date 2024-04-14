@@ -6,7 +6,7 @@ from zarr._storage.store import Store, StoreV3
 from zarr.util import json_dumps
 
 
-class Attributes(MutableMapping):
+class Attributes(MutableMapping[str, Any]):
     """Class providing access to user attributes on an array or group. Should not be
     instantiated directly, will be available via the `.attrs` property of an array or
     group.

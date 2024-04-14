@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, cast, Dict, Iterable, Any
 from dataclasses import dataclass, field
 import json
 import numpy as np
+import numpy.typing as npt
 
 from zarr.v3.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.v3.chunk_key_encodings import ChunkKeyEncoding, parse_separator
@@ -90,7 +91,7 @@ class DataType(Enum):
         return data_type_to_numpy[self]
 
     @classmethod
-    def from_dtype(cls, dtype: np.dtype) -> DataType:
+    def from_dtype(cls, dtype: np.dtype[Any]) -> DataType:
         dtype_to_data_type = {
             "|b1": "bool",
             "bool": "bool",
@@ -111,7 +112,7 @@ class DataType(Enum):
 @dataclass(frozen=True)
 class ArrayMetadata(Metadata):
     shape: ChunkCoords
-    data_type: np.dtype
+    data_type: np.dtype[Any]
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
@@ -176,7 +177,7 @@ class ArrayMetadata(Metadata):
         self.codecs.validate(self)
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> np.dtype[Any]:
         return self.data_type
 
     @property
@@ -238,7 +239,7 @@ class ArrayMetadata(Metadata):
 class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
     chunks: ChunkCoords
-    dtype: np.dtype
+    dtype: np.dtype[Any]
     fill_value: Union[None, int, float] = 0
     order: Literal["C", "F"] = "C"
     filters: Optional[List[Dict[str, Any]]] = None
@@ -251,7 +252,7 @@ class ArrayV2Metadata(Metadata):
         self,
         *,
         shape: ChunkCoords,
-        dtype: np.dtype,
+        dtype: npt.DTypeLike,
         chunks: ChunkCoords,
         fill_value: Any,
         order: Literal["C", "F"],

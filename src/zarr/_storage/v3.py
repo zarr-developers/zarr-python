@@ -68,7 +68,7 @@ except ImportError:  # pragma: no cover
 
 Path = Union[str, bytes, None]
 # allow MutableMapping for backwards compatibility
-StoreLike = Union[BaseStore, MutableMapping]
+StoreLike = Union[BaseStore, MutableMapping[str, Any]]
 
 
 class RmdirV3:

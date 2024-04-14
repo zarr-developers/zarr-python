@@ -5,6 +5,7 @@ from typing import NamedTuple, Tuple, Optional, Union, Iterator
 
 from numcodecs.compat import ensure_bytes
 import numpy as np
+import numpy.typing as npt
 
 from zarr._storage.store import StorageTransformer, StoreV3, _rmdir_from_keys_v3
 from zarr.util import normalize_storage_path
@@ -27,7 +28,7 @@ def assert_zarr_v3_sharding_available():
 class _ShardIndex(NamedTuple):
     store: "ShardingStorageTransformer"
     # dtype uint64, shape (chunks_per_shard_0, chunks_per_shard_1, ..., 2)
-    offsets_and_lengths: np.ndarray
+    offsets_and_lengths: npt.NDArray[np.uint64]
 
     def __localize_chunk__(self, chunk: Tuple[int, ...]) -> Tuple[int, ...]:
         return tuple(

@@ -32,7 +32,7 @@ def assert_zarr_v3_api_available():
         )  # pragma: no cover
 
 
-class BaseStore(MutableMapping):
+class BaseStore(MutableMapping[str, Any]):
     """Abstract base class for store implementations.
 
     This is a thin wrapper over MutableMapping that provides methods to check
@@ -405,7 +405,7 @@ class StoreV3(BaseStore):
         )
 
 
-class StorageTransformer(MutableMapping, abc.ABC):
+class StorageTransformer(MutableMapping[str, Any], abc.ABC):
     """Base class for storage transformers. The methods simply pass on the data as-is
     and should be overwritten by sub-classes."""
 
@@ -548,7 +548,7 @@ class StorageTransformer(MutableMapping, abc.ABC):
 
 
 # allow MutableMapping for backwards compatibility
-StoreLike = Union[BaseStore, MutableMapping]
+StoreLike = Union[BaseStore, MutableMapping[str, Any]]
 
 
 def _path_to_prefix(path: Optional[str]) -> str:

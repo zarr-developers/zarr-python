@@ -160,6 +160,7 @@ strict_concatenate = true
 
 check_untyped_defs = true
 disallow_untyped_decorators = true
+disallow_any_generics = true
 
 [[tool.mypy.overrides]]
 module = [
@@ -175,6 +176,21 @@ module = [
     "tests.*",
 ]
 check_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr.v3.abc.codec",
+    "zarr.v3.codecs.bytes",
+    "zarr.v3.codecs.pipeline",
+    "zarr.v3.codecs.sharding",
+    "zarr.v3.codecs.transpose",
+    "zarr.v3.array_v2",
+    "zarr.v3.array",
+    "zarr.v3.sync",
+    "zarr.convenience",
+    "zarr.meta",
+]
+disallow_any_generics = false
 
 
 [tool.pytest.ini_options]

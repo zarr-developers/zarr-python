@@ -20,6 +20,7 @@ from typing import (
 )
 
 import numpy as np
+import numpy.typing as npt
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
 from numcodecs.compat import (
@@ -36,7 +37,7 @@ KeyType = TypeVar("KeyType")
 ValueType = TypeVar("ValueType")
 
 
-def flatten(arg: Iterable) -> Iterable:
+def flatten(arg: Iterable[Any]) -> Iterable[Any]:
     for element in arg:
         if isinstance(element, Iterable) and not isinstance(element, (str, bytes)):
             yield from flatten(element)
@@ -179,7 +180,7 @@ def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tupl
     return chunks
 
 
-def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype, Any]:
+def normalize_dtype(dtype: Union[str, npt.DTypeLike], object_codec) -> Tuple[np.dtype[Any], Any]:
     # convenience API for object arrays
     if inspect.isclass(dtype):
         dtype = dtype.__name__
@@ -291,7 +292,7 @@ def normalize_dimension_separator(sep: Optional[str]) -> Optional[str]:
         raise ValueError("dimension_separator must be either '.' or '/', found: %r" % sep)
 
 
-def normalize_fill_value(fill_value, dtype: np.dtype):
+def normalize_fill_value(fill_value, dtype: np.dtype[Any]):
     if fill_value is None or dtype.hasobject:
         # no fill value
         pass
@@ -668,7 +669,7 @@ class UncompressedPartialReadBufferV3:
 
 
 def retry_call(
-    callabl: Callable,
+    callabl: Callable[..., Any],
     args=None,
     kwargs=None,
     exceptions: Tuple[Any, ...] = (),
