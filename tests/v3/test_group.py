@@ -147,7 +147,7 @@ async def test_asyncgroup_create(
     Test that `AsyncGroup.create` works as expected.
     """
     attributes = {"foo": 100}
-    group = await AsyncGroup.create(
+    agroup = await AsyncGroup.create(
         store,
         attributes=attributes,
         exists_ok=exists_ok,
@@ -155,19 +155,41 @@ async def test_asyncgroup_create(
         runtime_configuration=runtime_configuration,
     )
 
-    assert group.metadata == GroupMetadata(zarr_format=zarr_format, attributes=attributes)
-    assert group.store_path == make_store_path(store)
-    assert group.runtime_configuration == runtime_configuration
+    assert agroup.metadata == GroupMetadata(zarr_format=zarr_format, attributes=attributes)
+    assert agroup.store_path == make_store_path(store)
+    assert agroup.runtime_configuration == runtime_configuration
 
     if not exists_ok:
         with pytest.raises(AssertionError):
-            group = await AsyncGroup.create(
+            agroup = await AsyncGroup.create(
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
                 zarr_format=zarr_format,
                 runtime_configuration=runtime_configuration,
             )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_asyncgroup_attrs(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    attributes = {"foo": 100}
+    agroup = await AsyncGroup.create(store, zarr_format=zarr_format, attributes=attributes)
+
+    assert agroup.attrs == agroup.metadata.attributes == attributes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_asyncgroup_info(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    agroup = await AsyncGroup.create(  # noqa
+        store,
+        zarr_format=zarr_format,
+    )
+    pytest.xfail("Info is not implemented for metadata yet")
+    # assert agroup.info == agroup.metadata.info
 
 
 @pytest.mark.asyncio
@@ -198,6 +220,16 @@ async def test_asyncgroup_open(
     assert group_w.attrs == group_w.attrs == attributes
     assert group_w == group_r
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (pytest.param(2, marks=pytest.mark.xfail), 3))
+async def test_asyncgroup_open_wrong_format(
+    store: LocalStore | MemoryStore,
+    zarr_format: ZarrFormat,
+) -> None:
+    _ = await AsyncGroup.create(store=store, exists_ok=False, zarr_format=zarr_format)
+
     # try opening with the wrong zarr format
     if zarr_format == 3:
         zarr_format_wrong = 2
@@ -206,9 +238,8 @@ async def test_asyncgroup_open(
     else:
         assert False
 
-    # todo: uncomment this test when we get rid of implicit groups
-    # with pytest.raises(FileNotFoundError):
-    #    await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
+    with pytest.raises(FileNotFoundError):
+        await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
 
 
 # todo: replace the dict[str, Any] type with something a bit more specific
@@ -238,7 +269,10 @@ def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, A
 # todo: replace this with a declarative API where we model a full hierarchy
 @pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (3,))  # todo: add testing for v2 when we support v2 arrays
+@pytest.mark.parametrize(
+    "zarr_format",
+    (pytest.param(2, marks=pytest.mark.xfail), 3),
+)
 async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat):
     """
     Create an `AsyncGroup`, then create members of that group, and ensure that we can access those
@@ -259,3 +293,62 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
     # check that asking for a nonexistent key raises KeyError
     with pytest.raises(KeyError):
         await agroup.getitem("foo")
+
+
+# todo: replace this with a declarative API where we model a full hierarchy
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat):
+    agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    sub_array_path = "sub_array"
+    _ = await agroup.create_array(
+        path=sub_array_path, shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
+    )
+    await agroup.delitem(sub_array_path)
+
+    #  todo: clean up the code duplication here
+    if zarr_format == 2:
+        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zarray")
+        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zattrs")
+    elif zarr_format == 3:
+        assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
+    else:
+        assert False
+
+    sub_group_path = "sub_group"
+    _ = await agroup.create_group(sub_group_path, attributes={"foo": 100})
+    await agroup.delitem(sub_group_path)
+    if zarr_format == 2:
+        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zgroup")
+        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zattrs")
+    elif zarr_format == 3:
+        assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
+    else:
+        assert False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_asyncgroup_create_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat):
+    agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+
+    shape = (10,)
+    dtype = "uint8"
+    chunk_shape = (4,)
+    attributes = {"foo": 100}
+
+    sub_array_path = "sub_array"
+    array = await agroup.create_array(
+        path=sub_array_path,
+        shape=shape,
+        dtype=dtype,
+        chunk_shape=chunk_shape,
+        attributes=attributes,
+    )
+
+    assert array.shape == shape
+    assert array.dtype == dtype
+    # todo: fix this
+    assert array.metadata.chunk_grid.chunk_shape == chunk_shape
