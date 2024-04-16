@@ -126,11 +126,12 @@ class AsyncGroup:
             )
         elif zarr_format == 2:
             # V2 groups are comprised of a .zgroup and .zattrs objects
-            # (both are optional in the case of implicit groups)
             zgroup_bytes, zattrs_bytes = await asyncio.gather(
                 (store_path / ZGROUP_JSON).get(), (store_path / ZATTRS_JSON).get()
             )
-            zgroup = json.loads(zgroup_bytes) if zgroup_bytes is not None else {"zarr_format": 2}
+            if zgroup_bytes is None:
+                raise FileNotFoundError(f"No Zarr v2 group metadata found at {store_path}")
+            zgroup = json.loads(zgroup_bytes)
             zattrs = json.loads(zattrs_bytes) if zattrs_bytes is not None else {}
             zarr_json = {**zgroup, "attributes": zattrs}
         else:
@@ -159,6 +160,12 @@ class AsyncGroup:
 
         # if `key` names an object in storage, it cannot be an array or group
         if await store_path.exists():
+            raise KeyError(key)
+
+        # calling list_dir here is a big performance loss. We should try to find a way around
+        # this.
+        # see https://github.com/zarr-developers/zarr-python/pull/1743#issuecomment-2058681807
+        if key not in await store_path.store.list_dir(self.store_path.path):
             raise KeyError(key)
 
         if self.metadata.zarr_format == 3:
@@ -202,9 +209,6 @@ class AsyncGroup:
                     store_path, zarray, runtime_configuration=self.runtime_configuration
                 )
             else:
-                if zgroup_bytes is None:
-                    # implicit group?
-                    logger.warning("group at %s is an implicit group", store_path)
                 zgroup = (
                     json.loads(zgroup_bytes)
                     if zgroup_bytes is not None

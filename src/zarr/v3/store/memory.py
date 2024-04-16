@@ -79,7 +79,7 @@ class MemoryStore(Store):
         else:
             return list(
                 {
-                    key.strip(prefix + "/").split("/")[0]
+                    key.removeprefix(prefix + "/").split("/")[0]
                     for key in self._store_dict
                     if (key.startswith(prefix + "/") and key != prefix)
                 }

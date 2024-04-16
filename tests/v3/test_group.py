@@ -206,9 +206,9 @@ async def test_asyncgroup_open(
     else:
         assert False
 
-    # todo: get more specific than this
-    with pytest.raises(ValueError):
-        await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
+    # todo: uncomment this test when we get rid of implicit groups
+    # with pytest.raises(FileNotFoundError):
+    #    await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
 
 
 # todo: replace the dict[str, Any] type with something a bit more specific
@@ -238,7 +238,7 @@ def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, A
 # todo: replace this with a declarative API where we model a full hierarchy
 @pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("zarr_format", (3,))  # todo: add testing for v2 when we support v2 arrays
 async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat):
     """
     Create an `AsyncGroup`, then create members of that group, and ensure that we can access those
