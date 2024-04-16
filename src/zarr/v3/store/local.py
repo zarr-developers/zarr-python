@@ -25,7 +25,11 @@ def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> 
         `None`, then the entire file after the first byte will be read.
     """
     if byte_range is not None:
-        start = byte_range[0]
+        if byte_range[0] is None:
+            start = 0
+        else:
+            start = byte_range[0]
+
         end = (start + byte_range[1]) if byte_range[1] is not None else None
     else:
         return path.read_bytes()
