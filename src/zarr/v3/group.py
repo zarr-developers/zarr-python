@@ -112,8 +112,8 @@ class AsyncGroup:
         zarr_format: Literal[2, 3] = 3,
     ) -> AsyncGroup:
         store_path = make_store_path(store)
-        zarr_json_bytes = await (store_path / ZARR_JSON).get()
-        assert zarr_json_bytes is not None
+
+        zarr_json_bytes: bytes | None
 
         # TODO: consider trying to autodiscover the zarr-format here
         if zarr_format == 3:
@@ -129,12 +129,8 @@ class AsyncGroup:
             zgroup_bytes, zattrs_bytes = await asyncio.gather(
                 (store_path / ZGROUP_JSON).get(), (store_path / ZATTRS_JSON).get()
             )
-            zgroup = (
-                json.loads(json.loads(zgroup_bytes))
-                if zgroup_bytes is not None
-                else {"zarr_format": 2}
-            )
-            zattrs = json.loads(json.loads(zattrs_bytes)) if zattrs_bytes is not None else {}
+            zgroup = json.loads(zgroup_bytes) if zgroup_bytes is not None else {"zarr_format": 2}
+            zattrs = json.loads(zattrs_bytes) if zattrs_bytes is not None else {}
             zarr_json = {**zgroup, "attributes": zattrs}
         else:
             raise ValueError(f"unexpected zarr_format: {zarr_format}")
@@ -159,12 +155,6 @@ class AsyncGroup:
         key: str,
     ) -> AsyncArray | AsyncGroup:
         store_path = self.store_path / key
-
-        # Note:
-        # in zarr-python v2, we first check if `key` references an Array, else if `key` references
-        # a group,using standalone `contains_array` and `contains_group` functions. These functions
-        # are reusable, but for v3 they would perform redundant I/O operations.
-        # Not clear how much of that strategy we want to keep here.
 
         # if `key` names an object in storage, it cannot be an array or group
         if await store_path.exists():
