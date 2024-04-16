@@ -59,9 +59,8 @@ async def test_local_store_get(
     expected = payload[start : start + length]
     assert observed == expected
 
-    # test that it's an error to get bytes from a file that doesn't exist
-    with pytest.raises(FileNotFoundError):
-        await local_store.get(object_name + "_absent", byte_range=byte_range)
+    # test that getting from a file that doesn't exist returns None
+    assert await local_store.get(object_name + "_absent", byte_range=byte_range) is None
 
 
 @pytest.mark.asyncio
@@ -81,7 +80,11 @@ async def test_local_store_get_partial(
     # use the utf-8 encoding of the key as the bytes
     for key, _ in key_ranges:
         payload = bytes(key, encoding="utf-8")
-        (store.root / key).write_bytes(payload)
+        target_path: Path = store.root / key
+        # create the parent directories
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        # write bytes
+        target_path.write_bytes(payload)
 
     results = await store.get_partial_values(key_ranges)
     for idx, observed in enumerate(results):
