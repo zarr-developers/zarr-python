@@ -249,6 +249,7 @@ class AsyncGroup:
         return await type(self).create(
             self.store_path / path,
             runtime_configuration=runtime_configuration,
+            zarr_format=self.metadata.zarr_format,
             **kwargs,
         )
 
@@ -257,6 +258,7 @@ class AsyncGroup:
         return await AsyncArray.create(
             self.store_path / path,
             runtime_configuration=runtime_configuration,
+            zarr_format=self.metadata.zarr_format,
             **kwargs,
         )
 

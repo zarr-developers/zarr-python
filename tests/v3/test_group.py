@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
+from zarr.v3.array import AsyncArray
 from zarr.v3.store.core import make_store_path
 
 if TYPE_CHECKING:
@@ -18,7 +19,7 @@ from zarr.v3.sync import sync
 
 # todo: put RemoteStore in here
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-def test_group_children(store: MemoryStore | LocalStore):
+def test_group_children(store: MemoryStore | LocalStore) -> None:
     """
     Test that `Group.members` returns correct values, i.e. the arrays and groups
     (explicit and implicit) contained in that group.
@@ -105,7 +106,7 @@ def test_group(store: MemoryStore | LocalStore) -> None:
 )
 def test_group_create(
     store: MemoryStore | LocalStore, exists_ok: bool, runtime_configuration: RuntimeConfiguration
-):
+) -> None:
     """
     Test that `Group.create` works as expected.
     """
@@ -142,7 +143,7 @@ async def test_asyncgroup_create(
     exists_ok: bool,
     zarr_format: ZarrFormat,
     runtime_configuration: RuntimeConfiguration,
-):
+) -> None:
     """
     Test that `AsyncGroup.create` works as expected.
     """
@@ -252,7 +253,7 @@ async def test_asyncgroup_open_wrong_format(
         {"zarr_format": 2, "attributes": {"foo": 100}},
     ),
 )
-def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, Any]):
+def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, Any]) -> None:
     """
     Test that we can create an AsyncGroup from a dict
     """
@@ -271,9 +272,9 @@ def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, A
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize(
     "zarr_format",
-    (pytest.param(2, marks=pytest.mark.xfail), 3),
+    (pytest.param(2, marks=pytest.mark.xfail(reason="V2 arrays cannot be created yet.")), 3),
 )
-async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat):
+async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     """
     Create an `AsyncGroup`, then create members of that group, and ensure that we can access those
     members via the `AsyncGroup.getitem` method.
@@ -298,8 +299,11 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
 # todo: replace this with a declarative API where we model a full hierarchy
 @pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
-async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat):
+@pytest.mark.parametrize(
+    "zarr_format",
+    (pytest.param(2, marks=pytest.mark.xfail(reason="V2 arrays cannot be created yet.")), 3),
+)
+async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     sub_array_path = "sub_array"
     _ = await agroup.create_array(
@@ -330,25 +334,96 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize(
+    "runtime_configuration", (RuntimeConfiguration(), RuntimeConfiguration(order="F"))
+)
 @pytest.mark.parametrize("zarr_format", (2, 3))
-async def test_asyncgroup_create_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat):
-    agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+async def test_asyncgroup_create_group(
+    store: LocalStore | MemoryStore,
+    zarr_format: ZarrFormat,
+    runtime_configuration: RuntimeConfiguration,
+) -> None:
+    agroup = await AsyncGroup.create(
+        store=store, zarr_format=zarr_format, runtime_configuration=RuntimeConfiguration
+    )
+    sub_node_path = "sub_group"
+    attributes = {"foo": 999}
+    subnode = await agroup.create_group(
+        path=sub_node_path, attributes=attributes, runtime_configuration=runtime_configuration
+    )
+
+    assert isinstance(subnode, AsyncGroup)
+    assert subnode.runtime_configuration == runtime_configuration
+    assert subnode.attrs == attributes
+    assert subnode.store_path.path == sub_node_path
+    assert subnode.store_path.store == store
+    assert subnode.metadata.zarr_format == zarr_format
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize(
+    "runtime_configuration", (RuntimeConfiguration(), RuntimeConfiguration(order="F"))
+)
+@pytest.mark.parametrize(
+    "zarr_format",
+    (pytest.param(2, marks=pytest.mark.xfail(reason="V2 arrays cannot be created yet")), 3),
+)
+async def test_asyncgroup_create_array(
+    store: LocalStore | MemoryStore,
+    runtime_configuration: RuntimeConfiguration,
+    zarr_format: ZarrFormat,
+) -> None:
+    """
+    Test that the AsyncGroup.create_array method works correctly. We ensure that array properties
+    specified in create_array are present on the resulting array.
+    """
+
+    agroup = await AsyncGroup.create(
+        store=store, zarr_format=zarr_format, runtime_configuration=runtime_configuration
+    )
 
     shape = (10,)
     dtype = "uint8"
     chunk_shape = (4,)
     attributes = {"foo": 100}
 
-    sub_array_path = "sub_array"
-    array = await agroup.create_array(
-        path=sub_array_path,
+    sub_node_path = "sub_array"
+    subnode = await agroup.create_array(
+        path=sub_node_path,
         shape=shape,
         dtype=dtype,
         chunk_shape=chunk_shape,
         attributes=attributes,
+        runtime_configuration=runtime_configuration,
+    )
+    assert isinstance(subnode, AsyncArray)
+    assert subnode.runtime_configuration == runtime_configuration
+    assert subnode.attrs == attributes
+    assert subnode.store_path.path == sub_node_path
+    assert subnode.store_path.store == store
+    assert subnode.shape == shape
+    assert subnode.dtype == dtype
+    # todo: fix the type annotation of array.metadata.chunk_grid so that we get some autocomplete
+    # here.
+    assert subnode.metadata.chunk_grid.chunk_shape == chunk_shape
+    assert subnode.metadata.zarr_format == zarr_format
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_asyncgroup_update_attributes(
+    store: LocalStore | MemoryStore, zarr_format: ZarrFormat
+) -> None:
+    """
+    Test that the AsyncGroup.update_attributes method works correctly.
+    """
+    attributes_old = {"foo": 10}
+    attributes_new = {"baz": "new"}
+    agroup = await AsyncGroup.create(
+        store=store, zarr_format=zarr_format, attributes=attributes_old
     )
 
-    assert array.shape == shape
-    assert array.dtype == dtype
-    # todo: fix this
-    assert array.metadata.chunk_grid.chunk_shape == chunk_shape
+    agroup_new_attributes = await agroup.update_attributes(attributes_new)
+    assert agroup_new_attributes.attrs == attributes_new
