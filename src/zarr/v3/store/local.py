@@ -67,7 +67,7 @@ class LocalStore(Store):
     def __repr__(self) -> str:
         return f"LocalStore({repr(str(self))})"
 
-    def __eq__(self, other: 'LocalStore') -> bool:
+    def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.root == other.root
 
     async def get(
