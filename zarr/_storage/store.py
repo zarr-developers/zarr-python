@@ -25,7 +25,7 @@ DEFAULT_ZARR_VERSION: ZARR_VERSION = 2
 v3_api_available = os.environ.get("ZARR_V3_EXPERIMENTAL_API", "0").lower() not in ["0", "false"]
 
 V3_DEPRECATION_MESSAGE = (
-    "The {store} is deprecated and will be removed in a Zarr-Python version 3, see"
+    "The {store} is deprecated and will be removed in a Zarr-Python version 3, see "
     "https://github.com/zarr-developers/zarr-python/issues/1274 for more information."
 )
 
