@@ -5,7 +5,6 @@ import threading
 from typing import (
     Any,
     AsyncIterator,
-    Callable,
     Coroutine,
     List,
     Optional,
@@ -91,8 +90,9 @@ def _get_loop():
             # repeat the check just in case the loop got filled between the
             # previous two calls from another thread
             if loop[0] is None:
-                loop[0] = asyncio.new_event_loop()
-                th = threading.Thread(target=loop[0].run_forever, name="zarrIO")
+                new_loop = asyncio.new_event_loop()
+                loop[0] = new_loop
+                th = threading.Thread(target=new_loop.run_forever, name="zarrIO")
                 th.daemon = True
                 th.start()
                 iothread[0] = th
@@ -104,7 +104,6 @@ T = TypeVar("T")
 
 
 class SyncMixin:
-
     _sync_configuration: SyncConfiguration
 
     def _sync(self, coroutine: Coroutine[Any, Any, T]) -> T:
@@ -112,11 +111,10 @@ class SyncMixin:
         # this should allow us to better type the sync wrapper
         return sync(coroutine, loop=self._sync_configuration.asyncio_loop)
 
-    def _sync_iter(
-        self, func: Callable[P, AsyncIterator[T]], *args: P.args, **kwargs: P.kwargs
-    ) -> List[T]:
+    def _sync_iter(self, coroutine: Coroutine[Any, Any, AsyncIterator[T]]) -> List[T]:
         async def iter_to_list() -> List[T]:
             # TODO: replace with generators so we don't materialize the entire iterator at once
-            return [item async for item in func(*args, **kwargs)]
+            # async_iterator = await coroutine
+            return [item async for item in coroutine()]
 
         return self._sync(iter_to_list())

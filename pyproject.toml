@@ -127,7 +127,8 @@ serve = "sphinx-autobuild docs docs/_build --ignore 'docs/_autoapi/**/*' --host 
 
 [tool.ruff]
 line-length = 100
-exclude = [
+force-exclude = true
+extend-exclude = [
     ".bzr",
     ".direnv",
     ".eggs",
@@ -146,25 +147,33 @@ exclude = [
     "docs"
 ]
 
-[tool.black]
-line-length = 100
-exclude = '''
-/(
-    \.git
-  | \.mypy_cache
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-  | docs
-)/
-'''
-
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 ignore_missing_imports = true
-follow_imports = "silent"
+namespace_packages = false
+
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr._storage.store",
+    "zarr._storage.v3_storage_transformers",
+    "zarr.v3.group",
+    "zarr.core",
+    "zarr.hierarchy",
+    "zarr.indexing",
+    "zarr.storage",
+    "zarr.sync",
+    "zarr.util",
+    "tests.*",
+]
+check_untyped_defs = false
+
 
 [tool.pytest.ini_options]
 doctest_optionflags = [

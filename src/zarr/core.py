@@ -2536,7 +2536,7 @@ class Array:
         checksum = binascii.hexlify(self.digest(hashname=hashname))
 
         # This is a bytes object on Python 3 and we want a str.
-        if type(checksum) is not str:
+        if not isinstance(checksum, str):
             checksum = checksum.decode("utf8")
 
         return checksum

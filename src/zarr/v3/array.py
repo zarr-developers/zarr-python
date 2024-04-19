@@ -27,6 +27,7 @@ from zarr.v3.common import (
     ChunkCoords,
     Selection,
     SliceSelection,
+    ZarrFormat,
     concurrent_map,
 )
 from zarr.v3.config import RuntimeConfiguration
@@ -88,6 +89,7 @@ class AsyncArray:
         attributes: Optional[Dict[str, Any]] = None,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         exists_ok: bool = False,
+        zarr_format: ZarrFormat = 3,
     ) -> AsyncArray:
         store_path = make_store_path(store)
         if not exists_ok:
@@ -100,31 +102,33 @@ class AsyncArray:
                 fill_value = False
             else:
                 fill_value = 0
+        if zarr_format == 3:
+            metadata = ArrayMetadata(
+                shape=shape,
+                data_type=dtype,
+                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+                chunk_key_encoding=(
+                    V2ChunkKeyEncoding(separator=chunk_key_encoding[1])
+                    if chunk_key_encoding[0] == "v2"
+                    else DefaultChunkKeyEncoding(separator=chunk_key_encoding[1])
+                ),
+                fill_value=fill_value,
+                codecs=codecs,
+                dimension_names=tuple(dimension_names) if dimension_names else None,
+                attributes=attributes or {},
+            )
+            runtime_configuration = runtime_configuration or RuntimeConfiguration()
 
-        metadata = ArrayMetadata(
-            shape=shape,
-            data_type=dtype,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
-            chunk_key_encoding=(
-                V2ChunkKeyEncoding(separator=chunk_key_encoding[1])
-                if chunk_key_encoding[0] == "v2"
-                else DefaultChunkKeyEncoding(separator=chunk_key_encoding[1])
-            ),
-            fill_value=fill_value,
-            codecs=codecs,
-            dimension_names=tuple(dimension_names) if dimension_names else None,
-            attributes=attributes or {},
-        )
-        runtime_configuration = runtime_configuration or RuntimeConfiguration()
+            array = cls(
+                metadata=metadata,
+                store_path=store_path,
+                runtime_configuration=runtime_configuration,
+            )
 
-        array = cls(
-            metadata=metadata,
-            store_path=store_path,
-            runtime_configuration=runtime_configuration,
-        )
-
-        await array._save_metadata()
-        return array
+            await array._save_metadata()
+            return array
+        else:
+            raise NotImplementedError("Zarr version 2 arrays cannot be created yet.")
 
     @classmethod
     def from_dict(
@@ -182,7 +186,7 @@ class AsyncArray:
 
     @property
     def size(self) -> int:
-        return np.prod(self.metadata.shape)
+        return np.prod(self.metadata.shape).item()
 
     @property
     def dtype(self) -> np.dtype:

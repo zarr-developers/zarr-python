@@ -5,11 +5,12 @@ if TYPE_CHECKING:
     from typing import Dict
     from typing_extensions import Self
 
-from dataclasses import fields
+from dataclasses import fields, dataclass
 
 from zarr.v3.common import JSON
 
 
+@dataclass(frozen=True)
 class Metadata:
     def to_dict(self) -> JSON:
         """

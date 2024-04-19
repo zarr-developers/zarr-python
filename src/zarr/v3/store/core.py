@@ -5,6 +5,7 @@ from typing import Any, Optional, Tuple, Union
 
 from zarr.v3.common import BytesLike
 from zarr.v3.abc.store import Store
+from zarr.v3.store.local import LocalStore
 
 
 def _dereference_path(root: str, path: str) -> str:
@@ -23,10 +24,6 @@ class StorePath:
     def __init__(self, store: Store, path: Optional[str] = None):
         self.store = store
         self.path = path or ""
-
-    @classmethod
-    def from_path(cls, pth: Path) -> StorePath:
-        return cls(Store.from_path(pth))
 
     async def get(
         self, byte_range: Optional[Tuple[int, Optional[int]]] = None
@@ -70,14 +67,6 @@ def make_store_path(store_like: StoreLike) -> StorePath:
         return store_like
     elif isinstance(store_like, Store):
         return StorePath(store_like)
-    # elif isinstance(store_like, Path):
-    #     return StorePath(Store.from_path(store_like))
     elif isinstance(store_like, str):
-        try:
-            from upath import UPath
-
-            return StorePath(Store.from_path(UPath(store_like)))
-        except ImportError as e:
-            raise e
-            # return StorePath(LocalStore(Path(store_like)))
+        return StorePath(LocalStore(Path(store_like)))
     raise TypeError

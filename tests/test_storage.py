@@ -303,7 +303,6 @@ class StoreTests:
 
     @pytest.mark.asyncio
     async def test_pickle(self):
-
         # setup store
         store = self.create_store()
         await store.set(self.root + "foo", b"bar")

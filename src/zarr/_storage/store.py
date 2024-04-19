@@ -629,7 +629,6 @@ def _rmdir_from_keys(store: StoreLike, path: Optional[str] = None) -> None:
 
 
 def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
-
     meta_dir = meta_root + path
     meta_dir = meta_dir.rstrip("/")
     _rmdir_from_keys(store, meta_dir)
@@ -643,10 +642,10 @@ def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
     sfx = _get_metadata_suffix(store)
     array_meta_file = meta_dir + ".array" + sfx
     if array_meta_file in store:
-        store.erase(array_meta_file)  # type: ignore
+        store.erase(array_meta_file)
     group_meta_file = meta_dir + ".group" + sfx
     if group_meta_file in store:
-        store.erase(group_meta_file)  # type: ignore
+        store.erase(group_meta_file)
 
 
 def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str]:

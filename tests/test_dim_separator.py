@@ -46,7 +46,6 @@ def dataset(tmpdir, request):
         static = project_root / "fixture" / suffix
 
         if not static.exists():  # pragma: no cover
-
             if "nested" in which:
                 # No way to reproduce the nested_legacy file via code
                 generator = NestedDirectoryStore
