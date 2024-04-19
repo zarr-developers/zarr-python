@@ -78,8 +78,6 @@ class MemoryStore(Store):
                 yield key
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
-        print('prefix', prefix)
-        print('keys in list_dir', list(self._store_dict))
         for key in self._store_dict:
             if key.startswith(prefix + "/") and key != prefix:
                 yield key.strip(prefix + "/").rsplit("/", maxsplit=1)[0]
