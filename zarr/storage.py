@@ -88,6 +88,7 @@ from zarr._storage.store import (  # noqa: F401
     DEFAULT_ZARR_VERSION,
     BaseStore,
     Store,
+    V3_DEPRECATION_MESSAGE,
 )
 
 __doctest_requires__ = {
@@ -2083,6 +2084,12 @@ class DBMStore(Store):
         dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
         **open_kwargs,
     ):
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=2,
+        )
+
         if open is None:
             import dbm
 
@@ -2260,6 +2267,12 @@ class LMDBStore(Store):
         **kwargs,
     ):
         import lmdb
+
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=2,
+        )
 
         # set default memory map size to something larger than the lmdb default, which is
         # very likely to be too small for any moderate array (logic copied from zict)
@@ -2612,6 +2625,12 @@ class SQLiteStore(Store):
     def __init__(self, path, dimension_separator: Optional[DIMENSION_SEPARATOR] = None, **kwargs):
         import sqlite3
 
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=2,
+        )
+
         self._dimension_separator = dimension_separator
 
         # normalize path
@@ -2810,6 +2829,12 @@ class MongoDBStore(Store):
     ):
         import pymongo
 
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=2,
+        )
+
         self._database = database
         self._collection = collection
         self._dimension_separator = dimension_separator
@@ -2884,6 +2909,12 @@ class RedisStore(Store):
         self, prefix="zarr", dimension_separator: Optional[DIMENSION_SEPARATOR] = None, **kwargs
     ):
         import redis
+
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=2,
+        )
 
         self._prefix = prefix
         self._kwargs = kwargs
