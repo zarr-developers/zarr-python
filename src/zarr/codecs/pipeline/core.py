@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Iterable
 import numpy as np
 from dataclasses import dataclass
@@ -10,6 +11,8 @@ from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
+    ByteGetter,
+    ByteSetter,
     BytesBytesCodec,
     Codec,
 )
@@ -20,20 +23,19 @@ from zarr.common import parse_named_configuration
 if TYPE_CHECKING:
     from typing import Iterator, List, Optional, Tuple, Union
     from typing_extensions import Self
-    from zarr.store import StorePath
     from zarr.metadata import ArrayMetadata
     from zarr.config import RuntimeConfiguration
     from zarr.common import JSON, ArraySpec, BytesLike, SliceSelection
 
 
 @dataclass(frozen=True)
-class CodecPipeline(Metadata):
+class CodecPipeline(Metadata, ABC):
     array_array_codecs: Tuple[ArrayArrayCodec, ...]
     array_bytes_codec: ArrayBytesCodec
     bytes_bytes_codecs: Tuple[BytesBytesCodec, ...]
 
     @classmethod
-    def from_dict(cls, data: Iterable[Union[JSON, Codec]]) -> CodecPipeline:
+    def from_dict(cls, data: Iterable[Union[JSON, Codec]]) -> Self:
         out: List[Codec] = []
         if not isinstance(data, Iterable):
             raise TypeError(f"Expected iterable, got {type(data)}")
@@ -126,116 +128,58 @@ class CodecPipeline(Metadata):
         for codec in self:
             codec.validate(array_metadata)
 
-    def _codecs_with_resolved_metadata(
-        self, chunk_spec: ArraySpec
-    ) -> Tuple[
-        List[Tuple[ArrayArrayCodec, ArraySpec]],
-        Tuple[ArrayBytesCodec, ArraySpec],
-        List[Tuple[BytesBytesCodec, ArraySpec]],
-    ]:
-        aa_codecs_with_spec: List[Tuple[ArrayArrayCodec, ArraySpec]] = []
-        for aa_codec in self.array_array_codecs:
-            aa_codecs_with_spec.append((aa_codec, chunk_spec))
-            chunk_spec = aa_codec.resolve_metadata(chunk_spec)
-
-        ab_codec_with_spec = (self.array_bytes_codec, chunk_spec)
-        chunk_spec = self.array_bytes_codec.resolve_metadata(chunk_spec)
-
-        bb_codecs_with_spec: List[Tuple[BytesBytesCodec, ArraySpec]] = []
-        for bb_codec in self.bytes_bytes_codecs:
-            bb_codecs_with_spec.append((bb_codec, chunk_spec))
-            chunk_spec = bb_codec.resolve_metadata(chunk_spec)
-
-        return (aa_codecs_with_spec, ab_codec_with_spec, bb_codecs_with_spec)
-
-    async def decode(
-        self,
-        chunk_bytes: BytesLike,
-        chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
-    ) -> np.ndarray:
-        (
-            aa_codecs_with_spec,
-            ab_codec_with_spec,
-            bb_codecs_with_spec,
-        ) = self._codecs_with_resolved_metadata(chunk_spec)
-
-        for bb_codec, chunk_spec in bb_codecs_with_spec[::-1]:
-            chunk_bytes = await bb_codec.decode(chunk_bytes, chunk_spec, runtime_configuration)
-
-        ab_codec, chunk_spec = ab_codec_with_spec
-        chunk_array = await ab_codec.decode(chunk_bytes, chunk_spec, runtime_configuration)
-
-        for aa_codec, chunk_spec in aa_codecs_with_spec[::-1]:
-            chunk_array = await aa_codec.decode(chunk_array, chunk_spec, runtime_configuration)
-
-        return chunk_array
-
-    async def decode_partial(
-        self,
-        store_path: StorePath,
-        selection: SliceSelection,
-        chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[np.ndarray]:
-        assert self.supports_partial_decode
-        assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
-        return await self.array_bytes_codec.decode_partial(
-            store_path, selection, chunk_spec, runtime_configuration
-        )
-
-    async def encode(
-        self,
-        chunk_array: np.ndarray,
-        chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[BytesLike]:
-        (
-            aa_codecs_with_spec,
-            ab_codec_with_spec,
-            bb_codecs_with_spec,
-        ) = self._codecs_with_resolved_metadata(chunk_spec)
-
-        for aa_codec, chunk_spec in aa_codecs_with_spec:
-            chunk_array_maybe = await aa_codec.encode(
-                chunk_array, chunk_spec, runtime_configuration
-            )
-            if chunk_array_maybe is None:
-                return None
-            chunk_array = chunk_array_maybe
-
-        ab_codec, array_spec = ab_codec_with_spec
-        chunk_bytes_maybe = await ab_codec.encode(chunk_array, array_spec, runtime_configuration)
-        if chunk_bytes_maybe is None:
-            return None
-        chunk_bytes = chunk_bytes_maybe
-
-        for bb_codec, array_spec in bb_codecs_with_spec:
-            chunk_bytes_maybe = await bb_codec.encode(
-                chunk_bytes, array_spec, runtime_configuration
-            )
-            if chunk_bytes_maybe is None:
-                return None
-            chunk_bytes = chunk_bytes_maybe
-
-        return chunk_bytes
-
-    async def encode_partial(
-        self,
-        store_path: StorePath,
-        chunk_array: np.ndarray,
-        selection: SliceSelection,
-        chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
-    ) -> None:
-        assert self.supports_partial_encode
-        assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
-        await self.array_bytes_codec.encode_partial(
-            store_path, chunk_array, selection, chunk_spec, runtime_configuration
-        )
-
     def compute_encoded_size(self, byte_length: int, array_spec: ArraySpec) -> int:
         for codec in self:
             byte_length = codec.compute_encoded_size(byte_length, array_spec)
             array_spec = codec.resolve_metadata(array_spec)
         return byte_length
+
+    @abstractmethod
+    async def decode(
+        self,
+        chunk_bytes_and_specs: Iterable[Tuple[Optional[BytesLike], ArraySpec]],
+        runtime_configuration: RuntimeConfiguration,
+    ) -> Iterable[Optional[np.ndarray]]:
+        pass
+
+    @abstractmethod
+    async def decode_partial(
+        self,
+        batch_info: Iterable[Tuple[ByteGetter, SliceSelection, ArraySpec]],
+        runtime_configuration: RuntimeConfiguration,
+    ) -> Iterable[Optional[np.ndarray]]:
+        pass
+
+    @abstractmethod
+    async def encode(
+        self,
+        chunk_arrays_and_specs: Iterable[Tuple[Optional[np.ndarray], ArraySpec]],
+        runtime_configuration: RuntimeConfiguration,
+    ) -> Iterable[Optional[BytesLike]]:
+        pass
+
+    @abstractmethod
+    async def encode_partial(
+        self,
+        batch_info: Iterable[Tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]],
+        runtime_configuration: RuntimeConfiguration,
+    ) -> None:
+        pass
+
+    @abstractmethod
+    async def read_batch(
+        self,
+        batch_info: Iterable[Tuple[ByteGetter, ArraySpec, SliceSelection, SliceSelection]],
+        out: np.ndarray,
+        runtime_configuration: RuntimeConfiguration,
+    ) -> None:
+        pass
+
+    @abstractmethod
+    async def write_batch(
+        self,
+        batch_info: Iterable[Tuple[ByteSetter, ArraySpec, SliceSelection, SliceSelection]],
+        value: np.ndarray,
+        runtime_configuration: RuntimeConfiguration,
+    ) -> None:
+        pass

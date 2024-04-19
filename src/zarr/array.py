@@ -207,7 +207,7 @@ class AsyncArray:
         )
 
         # reading chunks and decoding them
-        await self.codecs.read_batched(
+        await self.codecs.read_batch(
             [
                 (
                     self.store_path
@@ -253,7 +253,7 @@ class AsyncArray:
                 value = value.astype(self.metadata.dtype, order="A")
 
         # merging with existing data and encoding chunks
-        await self.codecs.write_batched(
+        await self.codecs.write_batch(
             [
                 (
                     self.store_path

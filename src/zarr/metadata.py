@@ -11,8 +11,8 @@ from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, List, Optional, Tuple
-    from zarr.codecs.batched_pipeline import BatchedCodecPipeline
+    from typing import Any, Literal, Union, List, Optional, Tuple
+    from zarr.codecs import CodecPipeline
 
 
 from zarr.abc.codec import Codec
@@ -116,7 +116,7 @@ class ArrayMetadata(Metadata):
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
-    codecs: BatchedCodecPipeline
+    codecs: CodecPipeline
     attributes: Dict[str, Any] = field(default_factory=dict)
     dimension_names: Optional[Tuple[str, ...]] = None
     zarr_format: Literal[3] = field(default=3, init=False)
@@ -370,12 +370,17 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
 
 
 <<<<<<< HEAD:src/zarr/metadata.py
+<<<<<<< HEAD:src/zarr/metadata.py
 def parse_codecs(data: Iterable[Union[Codec, JSON]]) -> CodecPipeline:
     from zarr.codecs.pipeline import CodecPipeline
 =======
 def parse_codecs(data: Iterable[Union[Codec, JSON]]) -> BatchedCodecPipeline:
     from zarr.v3.codecs.batched_pipeline import BatchedCodecPipeline
 >>>>>>> 450bcc64 (merge):src/zarr/v3/metadata.py
+=======
+def parse_codecs(data: Iterable[Union[Codec, JSON]]) -> CodecPipeline:
+    from zarr.v3.codecs.pipeline.batched import BatchedCodecPipeline
+>>>>>>> 51d3c921 (refactors CodecPipelines):src/zarr/v3/metadata.py
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")
