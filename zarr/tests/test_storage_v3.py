@@ -9,7 +9,12 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr._storage.store import _get_hierarchy_metadata, v3_api_available, StorageTransformer
+from zarr._storage.store import (
+    _get_hierarchy_metadata,
+    assert_zarr_v3_api_available,
+    v3_api_available,
+    StorageTransformer,
+)
 from zarr._storage.v3_storage_transformers import ShardingStorageTransformer, v3_sharding_available
 from zarr.core import Array
 from zarr.meta import _default_entry_point_metadata_v3
@@ -676,6 +681,14 @@ def test_top_level_imports():
             assert hasattr(zarr, store_name)  # pragma: no cover
         else:
             assert not hasattr(zarr, store_name)  # pragma: no cover
+
+
+def test_assert_zarr_v3_api_available_warns_once():
+    with pytest.warns() as record:
+        assert_zarr_v3_api_available()
+        assert_zarr_v3_api_available()
+    assert len(record) == 1
+    assert "The experimental Zarr V3 implementation" in str(record[0].message)
 
 
 def _get_public_and_dunder_methods(some_class):
