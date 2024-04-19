@@ -1,4 +1,5 @@
 from __future__ import annotations
+from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 from dataclasses import asdict, dataclass, field, replace
 
@@ -9,7 +10,6 @@ import logging
 if TYPE_CHECKING:
     from typing import (
         Any,
-        AsyncGenerator,
         Literal,
         AsyncIterator,
     )
@@ -157,6 +157,7 @@ class AsyncGroup:
         key: str,
     ) -> AsyncArray | AsyncGroup:
         store_path = self.store_path / key
+        logger.warning("key=%s, store_path=%s", key, store_path)
 
         # if `key` names an object in storage, it cannot be an array or group
         if await store_path.exists():
@@ -302,22 +303,24 @@ class AsyncGroup:
             )
 
             raise ValueError(msg)
-        subkeys = await self.store_path.store.list_dir(self.store_path.path)
-        # would be nice to make these special keys accessible programmatically,
-        # and scoped to specific zarr versions
-        subkeys_filtered = filter(lambda v: v not in ("zarr.json", ".zgroup", ".zattrs"), subkeys)
-        # is there a better way to schedule this?
-        for subkey in subkeys_filtered:
-            try:
-                yield (subkey, await self.getitem(subkey))
-            except KeyError:
-                # keyerror is raised when `subkey` names an object (in the object storage sense),
-                # as opposed to a prefix, in the store under the prefix associated with this group
-                # in which case `subkey` cannot be the name of a sub-array or sub-group.
-                logger.warning(
-                    "Object at %s is not recognized as a component of a Zarr hierarchy.", subkey
-                )
-                pass
+
+        async for key in self.store_path.store.list_dir(self.store_path.path):
+            # these keys are not valid child names so we make sure to skip them
+            # TODO: it would be nice to make these special keys accessible programmatically,
+            # and scoped to specific zarr versions
+            if key not in ("zarr.json", ".zgroup", ".zattrs"):
+                try:
+                    # TODO: performance optimization -- load children concurrently   
+                    child = await self.getitem(key)
+                    yield key, child
+                except KeyError:
+                    # keyerror is raised when `key` names an object (in the object storage sense),
+                    # as opposed to a prefix, in the store under the prefix associated with this group.
+                    # In this case, `key` cannot be the name of a sub-array or sub-group.
+                    logger.warning(
+                        "Object at %s is not recognized as a component of a Zarr hierarchy.", key
+                    )
+                    pass
 
     async def contains(self, member: str) -> bool:
         raise NotImplementedError
