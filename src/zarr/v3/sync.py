@@ -89,7 +89,7 @@ def sync(coro: Coroutine[Any, Any, T], loop: asyncio.AbstractEventLoop | None = 
         return return_result
 
 
-def _get_loop() -> asyncio.AbstractEventLoop | None:
+def _get_loop() -> asyncio.AbstractEventLoop:
     """Create or return the default fsspec IO loop
 
     The loop will be running on a separate thread.
@@ -105,6 +105,7 @@ def _get_loop() -> asyncio.AbstractEventLoop | None:
                 th.daemon = True
                 th.start()
                 iothread[0] = th
+    assert loop[0] is not None
     return loop[0]
 
 
