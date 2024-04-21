@@ -27,6 +27,10 @@ _lock: threading.Lock | None = None  # global lock placeholder
 get_running_loop = asyncio.get_running_loop
 
 
+class SyncError(Exception):
+    pass
+
+
 def _get_lock() -> threading.Lock:
     """Allocate or return a threading lock.
 
@@ -61,12 +65,14 @@ def sync(coro: Coroutine[Any, Any, T], loop: asyncio.AbstractEventLoop | None = 
         # NB: if the loop is not running *yet*, it is OK to submit work
         # and we will wait for it
         loop = _get_loop()
-    if loop is None or loop.is_closed():
+    if not isinstance(loop, asyncio.AbstractEventLoop):
+        raise TypeError(f"loop cannot be of type {type(loop)}")
+    if loop.is_closed():
         raise RuntimeError("Loop is not running")
     try:
         loop0 = asyncio.events.get_running_loop()
         if loop0 is loop:
-            raise NotImplementedError("Calling sync() from within a running loop")
+            raise SyncError("Calling sync() from within a running loop")
     except RuntimeError:
         pass
 
@@ -108,10 +114,8 @@ class SyncMixin:
         # this should allow us to better type the sync wrapper
         return sync(coroutine, loop=self._sync_configuration.asyncio_loop)
 
-    def _sync_iter(self, coroutine: Coroutine[Any, Any, AsyncIterator[T]]) -> List[T]:
+    def _sync_iter(self, async_iterator: AsyncIterator[T]) -> List[T]:
         async def iter_to_list() -> List[T]:
-            # TODO: replace with generators so we don't materialize the entire iterator at once
-            async_iterator = await coroutine
             return [item async for item in async_iterator]
 
         return self._sync(iter_to_list())
