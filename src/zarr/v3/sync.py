@@ -78,7 +78,9 @@ def sync(coro: Coroutine[Any, Any, T], loop: asyncio.AbstractEventLoop | None = 
 
     future = asyncio.run_coroutine_threadsafe(_runner(coro), loop)
 
-    done, _ = wait([future])
+    # TODO: add timeout
+    done, _ = wait([future], return_when=asyncio.ALL_COMPLETED)
+    assert len(done) == 1
     return_result = list(done)[0].result()
 
     if isinstance(return_result, BaseException):
