@@ -1,27 +1,29 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import wait
 import threading
 from typing import (
     Any,
     AsyncIterator,
     Coroutine,
     List,
-    Optional,
     TypeVar,
 )
 from typing_extensions import ParamSpec
 
 from zarr.v3.config import SyncConfiguration
 
+P = ParamSpec("P")
+T = TypeVar("T")
 
 # From https://github.com/fsspec/filesystem_spec/blob/master/fsspec/asyn.py
 
-iothread: List[Optional[threading.Thread]] = [None]  # dedicated IO thread
-loop: List[Optional[asyncio.AbstractEventLoop]] = [
+iothread: list[threading.Thread | None] = [None]  # dedicated IO thread
+loop: list[asyncio.AbstractEventLoop | None] = [
     None
 ]  # global event loop for any non-async instance
-_lock: Optional[threading.Lock] = None  # global lock placeholder
+_lock: threading.Lock | None = None  # global lock placeholder
 get_running_loop = asyncio.get_running_loop
 
 
@@ -36,16 +38,18 @@ def _get_lock() -> threading.Lock:
     return _lock
 
 
-async def _runner(event: threading.Event, coro: Coroutine, result_box: List[Optional[Any]]):
+async def _runner(coro: Coroutine[Any, Any, T]) -> T | BaseException:
+    """
+    Await a coroutine and return the result of running it. If await it raises an exception,
+    that will be returned instead.
+    """
     try:
-        result_box[0] = await coro
+        return await coro
     except Exception as ex:
-        result_box[0] = ex
-    finally:
-        event.set()
+        return ex
 
 
-def sync(coro: Coroutine, loop: Optional[asyncio.AbstractEventLoop] = None):
+def sync(coro: Coroutine[Any, Any, T], loop: asyncio.AbstractEventLoop | None = None) -> T:
     """
     Make loop run coroutine until it returns. Runs in other thread
 
@@ -65,22 +69,19 @@ def sync(coro: Coroutine, loop: Optional[asyncio.AbstractEventLoop] = None):
             raise NotImplementedError("Calling sync() from within a running loop")
     except RuntimeError:
         pass
-    result_box: List[Optional[Any]] = [None]
-    event = threading.Event()
-    asyncio.run_coroutine_threadsafe(_runner(event, coro, result_box), loop)
-    while True:
-        # this loops allows thread to get interrupted
-        if event.wait(1):
-            break
 
-    return_result = result_box[0]
+    future = asyncio.run_coroutine_threadsafe(_runner(coro), loop)
+
+    done, _ = wait([future])
+    return_result = list(done)[0].result()
+
     if isinstance(return_result, BaseException):
         raise return_result
     else:
         return return_result
 
 
-def _get_loop():
+def _get_loop() -> asyncio.AbstractEventLoop | None:
     """Create or return the default fsspec IO loop
 
     The loop will be running on a separate thread.
@@ -97,10 +98,6 @@ def _get_loop():
                 th.start()
                 iothread[0] = th
     return loop[0]
-
-
-P = ParamSpec("P")
-T = TypeVar("T")
 
 
 class SyncMixin:
