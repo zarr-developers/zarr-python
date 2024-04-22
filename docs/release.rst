@@ -18,6 +18,12 @@ Release notes
 Unreleased (v3)
 ---------------
 
+Refactoring
+~~~~~~~~~~~
+
+* Remove storage classes for the following backends: N5, Redis, MongoDB, ABS, LMDB, DBM, and SQLite. 
+The intention is that these storage classes will be developed external to ``zarr-python``.
+
 Maintenance
 ~~~~~~~~~~~
 
