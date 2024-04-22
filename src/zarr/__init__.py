@@ -37,7 +37,6 @@ from zarr.storage import (
     LRUStoreCache,
     MemoryStore,
     NestedDirectoryStore,
-    SQLiteStore,
     TempStore,
     ZipStore,
 )

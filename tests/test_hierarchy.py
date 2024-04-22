@@ -28,7 +28,6 @@ from zarr.storage import (
     LRUStoreCache,
     MemoryStore,
     NestedDirectoryStore,
-    SQLiteStore,
     ZipStore,
     array_meta_key,
     atexit_rmtree,
@@ -1100,15 +1099,6 @@ class TestGroupWithZipStore(TestGroup):
         # zip store is not erasable (can so far only append to a zip
         # so we can't test for move.
         pass
-
-
-class TestGroupWithSQLiteStore(TestGroup):
-    def create_store(self):
-        pytest.importorskip("sqlite3")
-        path = mktemp(suffix=".db")
-        atexit.register(atexit_rmtree, path)
-        store = SQLiteStore(path)
-        return store, None
 
 
 class TestGroupWithChunkStore(TestGroup):

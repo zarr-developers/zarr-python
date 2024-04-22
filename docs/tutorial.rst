@@ -805,16 +805,6 @@ boundaries. Note also that the ``close()`` method must be called after writing
 any data to the store, otherwise essential records will not be written to the
 underlying zip file.
 
-In Zarr version 2.3 is the :class:`zarr.storage.SQLiteStore` class which
-enables the SQLite database to be used for storing an array or group (requires
-Python is built with SQLite support)::
-
-    >>> store = zarr.SQLiteStore('data/example.sqldb')
-    >>> root = zarr.group(store=store, overwrite=True)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
-    >>> store.close()
-
 Distributed/cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

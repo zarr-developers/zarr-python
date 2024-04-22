@@ -38,7 +38,6 @@ from zarr.storage import (
     #     LRUStoreCache,
     #     MemoryStore,
     #     NestedDirectoryStore,
-    #     SQLiteStore,
     #     Store,
     #     TempStore,
     #     ZipStore,
@@ -1599,42 +1598,6 @@ class TestDirectoryStore(StoreTests):
 #         store["foo"] = x
 #         y = np.frombuffer(store["foo"], dtype=x.dtype).reshape(x.shape)
 #         assert np.array_equiv(y, x)
-
-
-# class TestSQLiteStore(StoreTests):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("sqlite3")
-#         path = mktemp(suffix=".db")
-#         atexit.register(atexit_rmtree, path)
-#         store = SQLiteStore(path, **kwargs)
-#         return store
-
-#     def test_underscore_in_name(self):
-#         path = mktemp(suffix=".db")
-#         atexit.register(atexit_rmtree, path)
-#         store = SQLiteStore(path)
-#         store["a"] = b"aaa"
-#         store["a_b"] = b"aa_bb"
-#         store.rmdir("a")
-#         assert "a_b" in store
-
-
-# class TestSQLiteStoreInMemory(TestSQLiteStore):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("sqlite3")
-#         store = SQLiteStore(":memory:", **kwargs)
-#         return store
-
-#     def test_pickle(self):
-
-#         # setup store
-#         store = self.create_store()
-#         store[self.root + "foo"] = b"bar"
-#         store[self.root + "baz"] = b"quux"
-
-#         # round-trip through pickle
-#         with pytest.raises(PicklingError):
-#             pickle.dumps(store)
 
 
 # class TestLRUStoreCache(StoreTests):

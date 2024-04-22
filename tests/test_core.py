@@ -41,15 +41,13 @@ from zarr.storage import (
     KVStore,
     LRUStoreCache,
     NestedDirectoryStore,
-    SQLiteStore,
-    atexit_rmtree,
     init_array,
     init_group,
     normalize_store_arg,
 )
 
 from zarr.util import buffer_size
-from .util import have_fsspec, mktemp
+from .util import have_fsspec
 
 # noinspection PyMethodMayBeStatic
 
@@ -1663,18 +1661,6 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
             "719a88b34e362ff65df30e8f8810c1146ab72bc1",
             "6e0abf30daf45de51593c227fb907759ca725551",
         ]
-
-
-class TestArrayWithSQLiteStore(TestArray):
-    def create_store(self):
-        pytest.importorskip("sqlite3")
-        path = mktemp(suffix=".db")
-        atexit.register(atexit_rmtree, path)
-        store = SQLiteStore(path)
-        return store
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
 
 
 class TestArrayWithNoCompressor(TestArray):

@@ -37,7 +37,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #     KVStoreV3,
 #     LRUStoreCacheV3,
 #     MemoryStoreV3,
-#     SQLiteStoreV3,
 #     StoreV3,
 #     ZipStoreV3,
 # )
@@ -50,8 +49,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 # from .test_storage import TestFSStore as _TestFSStore
 # from .test_storage import TestLRUStoreCache as _TestLRUStoreCache
 # from .test_storage import TestMemoryStore as _TestMemoryStore
-# from .test_storage import TestSQLiteStore as _TestSQLiteStore
-# from .test_storage import TestSQLiteStoreInMemory as _TestSQLiteStoreInMemory
 # from .test_storage import TestZipStore as _TestZipStore
 # from .test_storage import dimension_separator_fixture, s3, skip_if_nested_chunks  # noqa
 
@@ -407,22 +404,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #         return store
 
 
-# class TestSQLiteStoreV3(_TestSQLiteStore, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("sqlite3")
-#         path = mktemp(suffix=".db")
-#         atexit.register(atexit_rmtree, path)
-#         store = SQLiteStoreV3(path, **kwargs)
-#         return store
-
-
-# class TestSQLiteStoreV3InMemory(_TestSQLiteStoreInMemory, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("sqlite3")
-#         store = SQLiteStoreV3(":memory:", **kwargs)
-#         return store
-
-
 # @pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
 # class TestStorageTransformerV3(TestMappingStoreV3):
 #     def create_store(self, **kwargs):
@@ -558,7 +539,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #         "DirectoryStoreV3",
 #         "LRUStoreCacheV3",
 #         "MemoryStoreV3",
-#         "SQLiteStoreV3",
 #         "ZipStoreV3",
 #     ]:
 #         if v3_api_available:
