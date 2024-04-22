@@ -805,19 +805,6 @@ boundaries. Note also that the ``close()`` method must be called after writing
 any data to the store, otherwise essential records will not be written to the
 underlying zip file.
 
-Another storage alternative is the :class:`zarr.storage.DBMStore` class, added
-in Zarr version 2.2. This class allows any DBM-style database to be used for
-storing an array or group. Here is an example using a Berkeley DB B-tree
-database for storage (requires `bsddb3
-<https://www.jcea.es/programacion/pybsddb.htm>`_ to be installed)::
-
-    >>> import bsddb3
-    >>> store = zarr.DBMStore('data/example.bdb', open=bsddb3.btopen)
-    >>> root = zarr.group(store=store, overwrite=True)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
-    >>> store.close()
-
 In Zarr version 2.3 is the :class:`zarr.storage.SQLiteStore` class which
 enables the SQLite database to be used for storing an array or group (requires
 Python is built with SQLite support)::
@@ -1542,8 +1529,8 @@ storage.
 Note that if an array or group is backed by an in-memory store like a ``dict`` or
 :class:`zarr.storage.MemoryStore`, then when it is pickled all of the store data will be
 included in the pickled data. However, if an array or group is backed by a persistent
-store like a :class:`zarr.storage.DirectoryStore`, :class:`zarr.storage.ZipStore` or
-:class:`zarr.storage.DBMStore` then the store data **are not** pickled. The only thing
+store like a :class:`zarr.storage.DirectoryStore` or :class:`zarr.storage.ZipStore` 
+then the store data **are not** pickled. The only thing
 that is pickled is the necessary parameters to allow the store to re-open any
 underlying files or databases upon being unpickled.
 

@@ -1,5 +1,4 @@
 import atexit
-import os
 import pickle
 import shutil
 from typing import Any, Literal, Optional, Tuple, Union
@@ -37,14 +36,12 @@ from zarr._storage.store import (
 from zarr.core import Array
 from zarr.meta import json_loads
 from zarr.storage import (
-    DBMStore,
     DirectoryStore,
     FSStore,
     KVStore,
     LRUStoreCache,
     NestedDirectoryStore,
     SQLiteStore,
-    atexit_rmglob,
     atexit_rmtree,
     init_array,
     init_group,
@@ -1666,30 +1663,6 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
             "719a88b34e362ff65df30e8f8810c1146ab72bc1",
             "6e0abf30daf45de51593c227fb907759ca725551",
         ]
-
-
-class TestArrayWithDBMStore(TestArray):
-    def create_store(self):
-        path = mktemp(suffix=".anydbm")
-        atexit.register(atexit_rmglob, path + "*")
-        store = DBMStore(path, flag="n")
-        return store
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
-
-
-@pytest.mark.skip(reason="can't get bsddb3 to work on CI right now")
-class TestArrayWithDBMStoreBerkeleyDB(TestArray):
-    def create_store(self):
-        bsddb3 = pytest.importorskip("bsddb3")
-        path = mktemp(suffix=".dbm")
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag="n", open=bsddb3.btopen)
-        return store
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
 
 
 class TestArrayWithSQLiteStore(TestArray):

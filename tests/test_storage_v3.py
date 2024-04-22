@@ -31,7 +31,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 # )
 # from zarr._storage.v3 import (
 #     ConsolidatedMetadataStoreV3,
-#     DBMStoreV3,
 #     DirectoryStoreV3,
 #     FSStoreV3,
 #     KVStore,
@@ -47,11 +46,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 # # pytest will fail to run if the following fixtures aren't imported here
 # from .test_storage import StoreTests as _StoreTests
 # from .test_storage import TestConsolidatedMetadataStore as _TestConsolidatedMetadataStore
-# from .test_storage import TestDBMStore as _TestDBMStore
-# from .test_storage import TestDBMStoreBerkeleyDB as _TestDBMStoreBerkeleyDB
-# from .test_storage import TestDBMStoreDumb as _TestDBMStoreDumb
-# from .test_storage import TestDBMStoreGnu as _TestDBMStoreGnu
-# from .test_storage import TestDBMStoreNDBM as _TestDBMStoreNDBM
 # from .test_storage import TestDirectoryStore as _TestDirectoryStore
 # from .test_storage import TestFSStore as _TestFSStore
 # from .test_storage import TestLRUStoreCache as _TestLRUStoreCache
@@ -413,55 +407,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #         return store
 
 
-# class TestDBMStoreV3(_TestDBMStore, StoreV3Tests):
-#     def create_store(self, dimension_separator=None):
-#         path = mktemp(suffix=".anydbm")
-#         atexit.register(atexit_rmglob, path + "*")
-#         # create store using default dbm implementation
-#         store = DBMStoreV3(path, flag="n", dimension_separator=dimension_separator)
-#         return store
-
-
-# class TestDBMStoreV3Dumb(_TestDBMStoreDumb, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         path = mktemp(suffix=".dumbdbm")
-#         atexit.register(atexit_rmglob, path + "*")
-
-#         import dbm.dumb as dumbdbm
-
-#         store = DBMStoreV3(path, flag="n", open=dumbdbm.open, **kwargs)
-#         return store
-
-
-# class TestDBMStoreV3Gnu(_TestDBMStoreGnu, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         gdbm = pytest.importorskip("dbm.gnu")
-#         path = mktemp(suffix=".gdbm")  # pragma: no cover
-#         atexit.register(os.remove, path)  # pragma: no cover
-#         store = DBMStoreV3(
-#             path, flag="n", open=gdbm.open, write_lock=False, **kwargs
-#         )  # pragma: no cover
-#         return store  # pragma: no cover
-
-
-# class TestDBMStoreV3NDBM(_TestDBMStoreNDBM, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         ndbm = pytest.importorskip("dbm.ndbm")
-#         path = mktemp(suffix=".ndbm")  # pragma: no cover
-#         atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
-#         store = DBMStoreV3(path, flag="n", open=ndbm.open, **kwargs)  # pragma: no cover
-#         return store  # pragma: no cover
-
-
-# class TestDBMStoreV3BerkeleyDB(_TestDBMStoreBerkeleyDB, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         bsddb3 = pytest.importorskip("bsddb3")
-#         path = mktemp(suffix=".dbm")
-#         atexit.register(os.remove, path)
-#         store = DBMStoreV3(path, flag="n", open=bsddb3.btopen, write_lock=False, **kwargs)
-#         return store
-
-
 # class TestSQLiteStoreV3(_TestSQLiteStore, StoreV3Tests):
 #     def create_store(self, **kwargs):
 #         pytest.importorskip("sqlite3")
@@ -609,7 +554,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 
 # def test_top_level_imports():
 #     for store_name in [
-#         "DBMStoreV3",
 #         "KVStoreV3",
 #         "DirectoryStoreV3",
 #         "LRUStoreCacheV3",

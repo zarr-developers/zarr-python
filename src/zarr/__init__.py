@@ -31,7 +31,6 @@ from zarr.creation import (
 from zarr.errors import CopyError, MetadataError
 from zarr.hierarchy import Group, group, open_group
 from zarr.storage import (
-    DBMStore,
     DictStore,
     DirectoryStore,
     KVStore,

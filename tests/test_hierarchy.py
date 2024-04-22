@@ -22,7 +22,6 @@ from zarr.core import Array
 from zarr.creation import open_array
 from zarr.hierarchy import Group, group, open_group
 from zarr.storage import (
-    DBMStore,
     KVStore,
     DirectoryStore,
     FSStore,
@@ -32,7 +31,6 @@ from zarr.storage import (
     SQLiteStore,
     ZipStore,
     array_meta_key,
-    atexit_rmglob,
     atexit_rmtree,
     group_meta_key,
     init_array,
@@ -1102,25 +1100,6 @@ class TestGroupWithZipStore(TestGroup):
         # zip store is not erasable (can so far only append to a zip
         # so we can't test for move.
         pass
-
-
-class TestGroupWithDBMStore(TestGroup):
-    @staticmethod
-    def create_store():
-        path = mktemp(suffix=".anydbm")
-        atexit.register(atexit_rmglob, path + "*")
-        store = DBMStore(path, flag="n")
-        return store, None
-
-
-class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
-    @staticmethod
-    def create_store():
-        bsddb3 = pytest.importorskip("bsddb3")
-        path = mktemp(suffix=".dbm")
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag="n", open=bsddb3.btopen)
-        return store, None
 
 
 class TestGroupWithSQLiteStore(TestGroup):

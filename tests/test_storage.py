@@ -32,7 +32,6 @@ import pytest
 
 from zarr.storage import (
     #     ConsolidatedMetadataStore,
-    #     DBMStore,
     #     DictStore,
     #     DirectoryStore,
     #     KVStore,
@@ -1600,61 +1599,6 @@ class TestDirectoryStore(StoreTests):
 #         store["foo"] = x
 #         y = np.frombuffer(store["foo"], dtype=x.dtype).reshape(x.shape)
 #         assert np.array_equiv(y, x)
-
-
-# class TestDBMStore(StoreTests):
-#     def create_store(self, dimension_separator=None):
-#         path = mktemp(suffix=".anydbm")
-#         atexit.register(atexit_rmglob, path + "*")
-#         # create store using default dbm implementation
-#         store = DBMStore(path, flag="n", dimension_separator=dimension_separator)
-#         return store
-
-#     def test_context_manager(self):
-#         with self.create_store() as store:
-#             store[self.root + "foo"] = b"bar"
-#             store[self.root + "baz"] = b"qux"
-#             assert 2 == len(store)
-
-
-# class TestDBMStoreDumb(TestDBMStore):
-#     def create_store(self, **kwargs):
-#         path = mktemp(suffix=".dumbdbm")
-#         atexit.register(atexit_rmglob, path + "*")
-
-#         import dbm.dumb as dumbdbm
-
-#         store = DBMStore(path, flag="n", open=dumbdbm.open, **kwargs)
-#         return store
-
-
-# class TestDBMStoreGnu(TestDBMStore):
-#     def create_store(self, **kwargs):
-#         gdbm = pytest.importorskip("dbm.gnu")
-#         path = mktemp(suffix=".gdbm")  # pragma: no cover
-#         atexit.register(os.remove, path)  # pragma: no cover
-#         store = DBMStore(
-#             path, flag="n", open=gdbm.open, write_lock=False, **kwargs
-#         )  # pragma: no cover
-#         return store  # pragma: no cover
-
-
-# class TestDBMStoreNDBM(TestDBMStore):
-#     def create_store(self, **kwargs):
-#         ndbm = pytest.importorskip("dbm.ndbm")
-#         path = mktemp(suffix=".ndbm")  # pragma: no cover
-#         atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
-#         store = DBMStore(path, flag="n", open=ndbm.open, **kwargs)  # pragma: no cover
-#         return store  # pragma: no cover
-
-
-# class TestDBMStoreBerkeleyDB(TestDBMStore):
-#     def create_store(self, **kwargs):
-#         bsddb3 = pytest.importorskip("bsddb3")
-#         path = mktemp(suffix=".dbm")
-#         atexit.register(os.remove, path)
-#         store = DBMStore(path, flag="n", open=bsddb3.btopen, write_lock=False, **kwargs)
-#         return store
 
 
 # class TestSQLiteStore(StoreTests):
