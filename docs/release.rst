@@ -20,6 +20,8 @@ Unreleased
 
 Enhancements
 ~~~~~~~~~~~~
+* Performance improvement for reading and writing chunks if any of the dimensions is size 1. :issue:`1730`
+  By :user:`Deepak Cherian <dcherian>`.
 
 
 Docs
