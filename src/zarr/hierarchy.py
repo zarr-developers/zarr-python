@@ -1,5 +1,6 @@
 from collections.abc import MutableMapping
 from itertools import islice
+from typing import Any
 
 import numpy as np
 
@@ -48,7 +49,7 @@ from zarr.util import (
 )
 
 
-class Group(MutableMapping):
+class Group(MutableMapping[str, Any]):
     """Instantiate a group from an initialized store.
 
     Parameters

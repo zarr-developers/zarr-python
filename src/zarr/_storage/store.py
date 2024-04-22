@@ -14,7 +14,7 @@ attrs_key = ".zattrs"
 DEFAULT_ZARR_VERSION = 2
 
 
-class BaseStore(MutableMapping):
+class BaseStore(MutableMapping[str, Any]):
     """Abstract base class for store implementations.
 
     This is a thin wrapper over MutableMapping that provides methods to check
@@ -165,7 +165,7 @@ class Store(BaseStore):
 
 
 # allow MutableMapping for backwards compatibility
-StoreLike = Union[BaseStore, MutableMapping]
+StoreLike = Union[BaseStore, MutableMapping[str, Any]]
 
 
 def _path_to_prefix(path: Optional[str]) -> str:

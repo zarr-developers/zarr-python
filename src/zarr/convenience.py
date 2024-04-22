@@ -20,9 +20,9 @@ from zarr.storage import (
 )
 from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 
-from typing import Union
+from typing import Any, Union
 
-StoreLike = Union[BaseStore, MutableMapping, str, None]
+StoreLike = Union[BaseStore, MutableMapping[str, Any], str, None]
 
 _builtin_open = open  # builtin open is later shadowed by a local open function
 

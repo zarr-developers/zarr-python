@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Union, Tuple, Iterable, Dict, List, TypeVar, overload
+from typing import TYPE_CHECKING, Union, Tuple, Iterable, Dict, List, TypeVar, overload, Any
 import asyncio
 import contextvars
 from dataclasses import dataclass
@@ -28,7 +28,7 @@ def product(tup: ChunkCoords) -> int:
     return functools.reduce(lambda x, y: x * y, tup, 1)
 
 
-T = TypeVar("T", bound=Tuple)
+T = TypeVar("T", bound=Tuple[Any, ...])
 V = TypeVar("V")
 
 
@@ -76,7 +76,7 @@ def parse_enum(data: JSON, cls: Type[E]) -> E:
 @dataclass(frozen=True)
 class ArraySpec:
     shape: ChunkCoords
-    dtype: np.dtype
+    dtype: np.dtype[Any]
     fill_value: Any
 
     def __init__(self, shape, dtype, fill_value):
@@ -102,7 +102,7 @@ def parse_name(data: JSON, expected: Optional[str] = None) -> str:
         raise TypeError(f"Expected a string, got an instance of {type(data)}.")
 
 
-def parse_configuration(data: JSON) -> dict:
+def parse_configuration(data: JSON) -> JSON:
     if not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")
     return data
@@ -153,7 +153,7 @@ def parse_shapelike(data: Any) -> Tuple[int, ...]:
     return data_tuple
 
 
-def parse_dtype(data: Any) -> np.dtype:
+def parse_dtype(data: Any) -> np.dtype[Any]:
     # todo: real validation
     return np.dtype(data)
 

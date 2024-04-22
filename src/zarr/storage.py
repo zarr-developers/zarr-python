@@ -99,7 +99,7 @@ except ImportError:  # pragma: no cover
 
 Path = Union[str, bytes, None]
 # allow MutableMapping for backwards compatibility
-StoreLike = Union[BaseStore, MutableMapping]
+StoreLike = Union[BaseStore, MutableMapping[str, Any]]
 
 
 def contains_array(store: StoreLike, path: Path = None) -> bool:
@@ -202,7 +202,7 @@ def listdir(store: BaseStore, path: Path = None):
 
 def _getsize(store: BaseStore, path: Path = None) -> int:
     # compute from size of values
-    if path and path in store:
+    if isinstance(path, str) and path in store:
         v = store[path]
         size = buffer_size(v)
     else:
@@ -584,7 +584,7 @@ def _init_group_metadata(
         store[key] = encode_group_metadata(meta)
 
 
-def _dict_store_keys(d: Dict, prefix="", cls=dict):
+def _dict_store_keys(d: dict[str, Any], prefix="", cls=dict):
     for k in d.keys():
         v = d[k]
         if isinstance(v, cls):
