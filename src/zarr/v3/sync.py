@@ -42,8 +42,8 @@ def _get_lock() -> threading.Lock:
 
 async def _runner(coro: Coroutine[Any, Any, T]) -> T | BaseException:
     """
-    Await a coroutine and return the result of running it. If await it raises an exception,
-    that will be returned instead.
+    Await a coroutine and return the result of running it. If awaiting the coroutine raises an exception,
+    the exception will be returned.
     """
     try:
         return await coro
