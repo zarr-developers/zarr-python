@@ -881,23 +881,6 @@ Here is an example using S3Map to read an array created previously::
     >>> z[:].tobytes()
     b'Hello from the cloud!'
 
-Zarr now also has a builtin storage backend for Azure Blob Storage.
-The class is :class:`zarr.storage.ABSStore` (requires
-`azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
-to be installed)::
-
-    >>> import azure.storage.blob
-    >>> container_client = azure.storage.blob.ContainerClient(...)  # doctest: +SKIP
-    >>> store = zarr.ABSStore(client=container_client, prefix='zarr-testing')  # doctest: +SKIP
-    >>> root = zarr.group(store=store, overwrite=True)  # doctest: +SKIP
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')  # doctest: +SKIP
-    >>> z[:] = 42  # doctest: +SKIP
-
-When using an actual storage account, provide ``account_name`` and
-``account_key`` arguments to :class:`zarr.storage.ABSStore`, the
-above client is just testing against the emulator. Please also note
-that this is an experimental feature.
-
 Note that retrieving data from a remote service via the network can be significantly
 slower than retrieving data from a local file system, and will depend on network latency
 and bandwidth between the client and server systems. If you are experiencing poor

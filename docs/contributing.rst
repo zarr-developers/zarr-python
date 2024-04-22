@@ -161,13 +161,6 @@ optional dependencies to be installed), run::
 
     $ python -m doctest -o NORMALIZE_WHITESPACE -o ELLIPSIS docs/tutorial.rst docs/spec/v2.rst
 
-Note that some tests also require storage services to be running
-locally. To run the Azure Blob Service storage tests, run an Azure
-storage emulator (e.g., azurite) and set the environment variable
-``ZARR_TEST_ABS=1``. If you're using Docker to run azurite, start the service with::
-
-    docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0
-
 All tests are automatically run via GitHub Actions for every pull
 request and must pass before code can be accepted. Test coverage is
 also collected automatically via the Codecov service, and total

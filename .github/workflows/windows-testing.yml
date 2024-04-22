@@ -50,7 +50,6 @@ jobs:
           azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
           pytest -sv --timeout=300
         env:
-          ZARR_TEST_ABS: 1
           ZARR_V3_EXPERIMENTAL_API: 1
           ZARR_V3_SHARDING: 1
       - name: Conda info

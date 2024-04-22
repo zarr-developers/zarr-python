@@ -1,6 +1,5 @@
 import atexit
 import os
-import sys
 import pickle
 import shutil
 import tempfile
@@ -23,7 +22,6 @@ from zarr.core import Array
 from zarr.creation import open_array
 from zarr.hierarchy import Group, group, open_group
 from zarr.storage import (
-    ABSStore,
     DBMStore,
     KVStore,
     DirectoryStore,
@@ -43,7 +41,7 @@ from zarr.storage import (
 )
 
 from zarr.util import InfoReporter
-from .util import skip_test_env_var, have_fsspec, abs_container, mktemp
+from .util import have_fsspec, mktemp
 
 # noinspection PyStatementEffect
 
@@ -1027,21 +1025,6 @@ class TestGroupWithDirectoryStore(TestGroup):
         atexit.register(atexit_rmtree, path)
         store = DirectoryStore(path)
         return store, None
-
-
-@skip_test_env_var("ZARR_TEST_ABS")
-class TestGroupWithABSStore(TestGroup):
-    @staticmethod
-    def create_store():
-        container_client = abs_container()
-        store = ABSStore(client=container_client)
-        store.rmdir()
-        return store, None
-
-    @pytest.mark.skipif(sys.version_info < (3, 7), reason="attr not serializable in py36")
-    def test_pickle(self):
-        # internal attribute on ContainerClient isn't serializable for py36 and earlier
-        super().test_pickle()
 
 
 class TestGroupWithNestedDirectoryStore(TestGroup):

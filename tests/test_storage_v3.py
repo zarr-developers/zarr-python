@@ -30,7 +30,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #     normalize_store_arg,
 # )
 # from zarr._storage.v3 import (
-#     ABSStoreV3,
 #     ConsolidatedMetadataStoreV3,
 #     DBMStoreV3,
 #     DirectoryStoreV3,
@@ -48,7 +47,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 
 # # pytest will fail to run if the following fixtures aren't imported here
 # from .test_storage import StoreTests as _StoreTests
-# from .test_storage import TestABSStore as _TestABSStore
 # from .test_storage import TestConsolidatedMetadataStore as _TestConsolidatedMetadataStore
 # from .test_storage import TestDBMStore as _TestDBMStore
 # from .test_storage import TestDBMStoreBerkeleyDB as _TestDBMStoreBerkeleyDB
@@ -540,12 +538,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #     LRUStoreClass = LRUStoreCacheV3
 
 
-# @skip_test_env_var("ZARR_TEST_ABS")
-# class TestABSStoreV3(_TestABSStore, StoreV3Tests):
-
-#     ABSStoreClass = ABSStoreV3
-
-
 # def test_normalize_store_arg_v3(tmpdir):
 
 #     fn = tmpdir.join("store.zip")
@@ -629,7 +621,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 
 # def test_top_level_imports():
 #     for store_name in [
-#         "ABSStoreV3",
 #         "DBMStoreV3",
 #         "KVStoreV3",
 #         "DirectoryStoreV3",

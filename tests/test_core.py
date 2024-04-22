@@ -1,6 +1,5 @@
 import atexit
 import os
-import sys
 import pickle
 import shutil
 from typing import Any, Literal, Optional, Tuple, Union
@@ -38,7 +37,6 @@ from zarr._storage.store import (
 from zarr.core import Array
 from zarr.meta import json_loads
 from zarr.storage import (
-    ABSStore,
     DBMStore,
     DirectoryStore,
     FSStore,
@@ -55,7 +53,7 @@ from zarr.storage import (
 )
 
 from zarr.util import buffer_size
-from .util import abs_container, skip_test_env_var, have_fsspec, mktemp
+from .util import have_fsspec, mktemp
 
 # noinspection PyMethodMayBeStatic
 
@@ -1652,24 +1650,6 @@ def test_array_init_from_dict():
     assert isinstance(a, Array)
     assert a.store is not store
     assert isinstance(a.store, KVStore)
-
-
-@skip_test_env_var("ZARR_TEST_ABS")
-class TestArrayWithABSStore(TestArray):
-    def create_store(self):
-        client = abs_container()
-        store = ABSStore(client=client)
-        store.rmdir()
-        return store
-
-    @pytest.mark.xfail
-    def test_nbytes_stored(self):
-        return super().test_nbytes_stored()
-
-    @pytest.mark.skipif(sys.version_info < (3, 7), reason="attr not serializable in py36")
-    def test_pickle(self):
-        # internal attribute on ContainerClient isn't serializable for py36 and earlier
-        super().test_pickle()
 
 
 class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):

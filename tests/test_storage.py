@@ -31,7 +31,6 @@ import pytest
 # from zarr.meta import ZARR_FORMAT, decode_array_metadata
 
 from zarr.storage import (
-    #     ABSStore,
     #     ConsolidatedMetadataStore,
     #     DBMStore,
     #     DictStore,
@@ -2122,78 +2121,6 @@ class TestDirectoryStore(StoreTests):
 #             else:
 #                 assert compressor.codec_id == z.compressor.codec_id
 #                 assert compressor.get_config() == z.compressor.get_config()
-
-
-# @skip_test_env_var("ZARR_TEST_ABS")
-# class TestABSStore(StoreTests):
-
-#     ABSStoreClass = ABSStore
-
-#     def create_store(self, prefix=None, **kwargs):
-#         container_client = abs_container()
-#         store = self.ABSStoreClass(
-#             prefix=prefix,
-#             client=container_client,
-#             **kwargs,
-#         )
-#         store.rmdir()
-#         return store
-
-#     def test_non_client_deprecated(self):
-#         with pytest.warns(FutureWarning, match="Providing"):
-#             store = self.ABSStoreClass(
-#                 "container", account_name="account_name", account_key="account_key"
-#             )
-
-#         for attr in ["container", "account_name", "account_key"]:
-#             with pytest.warns(FutureWarning, match=attr):
-#                 result = getattr(store, attr)
-#             assert result == attr
-
-#     def test_iterators_with_prefix(self):
-#         prefixes = ["test_prefix", "/test_prefix", "test_prefix/", "test/prefix"]
-
-#         if self.version < 3:
-#             # empty prefix not allowed in v3
-#             prefixes += ["", None]
-
-#         for prefix in prefixes:
-#             store = self.create_store(prefix=prefix)
-
-#             # test iterator methods on empty store
-#             assert 0 == len(store)
-#             assert set() == set(store)
-#             assert set() == set(store.keys())
-#             assert set() == set(store.values())
-#             assert set() == set(store.items())
-
-#             prefix = meta_root if self.version > 2 else ""
-#             # setup some values
-#             store[prefix + "a"] = b"aaa"
-#             store[prefix + "b"] = b"bbb"
-#             store[prefix + "c/d"] = b"ddd"
-#             store[prefix + "c/e/f"] = b"fff"
-
-#             # test iterators on store with data
-#             assert 4 == len(store)
-#             keys = [prefix + "a", prefix + "b", prefix + "c/d", prefix + "c/e/f"]
-#             values = [b"aaa", b"bbb", b"ddd", b"fff"]
-#             items = list(zip(keys, values))
-#             assert set(keys) == set(store)
-#             assert set(keys) == set(store.keys())
-#             assert set(values) == set(store.values())
-#             assert set(items) == set(store.items())
-
-#     def test_getsize(self):
-#         return super().test_getsize()
-
-#     def test_hierarchy(self):
-#         return super().test_hierarchy()
-
-#     @pytest.mark.skipif(sys.version_info < (3, 7), reason="attr not serializable in py36")
-#     def test_pickle(self):
-#         # internal attribute on ContainerClient isn't serializable for py36 and earlier
-#         super().test_pickle()
 
 
 # class TestConsolidatedMetadataStore:

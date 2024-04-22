@@ -31,8 +31,6 @@ Storage (``zarr.storage``)
     .. automethod:: invalidate_values
     .. automethod:: invalidate_keys
 
-.. autoclass:: ABSStore
-
 .. autoclass:: FSStore
 
 .. autoclass:: ConsolidatedMetadataStore

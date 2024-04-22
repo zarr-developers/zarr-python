@@ -63,7 +63,6 @@ from zarr.util import (
     ensure_contiguous_ndarray_or_bytes,
 )
 
-from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (  # noqa: F401
     _listdir_from_keys,
     _rename_from_keys,
