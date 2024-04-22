@@ -144,10 +144,6 @@ def normalize_store_arg(store: Any, storage_options=None, mode="r") -> BaseStore
             raise ValueError("storage_options passed with non-fsspec path")
         if store.endswith(".zip"):
             return ZipStore(store, mode=mode)
-        elif store.endswith(".n5"):
-            from zarr.n5 import N5Store
-
-            return N5Store(store)
         else:
             return DirectoryStore(store)
     else:
