@@ -80,11 +80,8 @@ jobs:
         mkdir ~/blob_emulator
         azurite -l ~/blob_emulator --debug debug.log 2>&1 > stdouterr.log &
         pytest --cov=zarr --cov-config=pyproject.toml --doctest-plus --cov-report xml --cov=./ --timeout=300
-    - uses: codecov/codecov-action@v3
+    - uses: codecov/codecov-action@v4
+      env:
+        CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       with:
-        token: ${{ secrets.CODECOV_TOKEN }} # not required for public repos
-          #files: ./coverage1.xml,./coverage2.xml # optional
-          #flags: unittests # optional
-          #name: codecov-umbrella # optional
-          #fail_ci_if_error: true # optional (default = false)
         verbose: true # optional (default = false)
