@@ -4,6 +4,7 @@ import copy
 import inspect
 import os
 import tempfile
+import warnings
 
 import numpy as np
 import pytest
@@ -674,6 +675,10 @@ def test_top_level_imports():
 
 
 def test_assert_zarr_v3_api_available_warns_once():
+    import zarr._storage.store
+
+    zarr._storage.store._has_warned_about_v3 = False
+    warnings.resetwarnings()
     with pytest.warns() as record:
         assert_zarr_v3_api_available()
         assert_zarr_v3_api_available()
