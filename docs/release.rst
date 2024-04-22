@@ -22,7 +22,8 @@ Refactoring
 ~~~~~~~~~~~
 
 * Remove storage classes for the following backends: N5, Redis, MongoDB, ABS, LMDB, DBM, and SQLite. 
-The intention is that these storage classes will be developed external to ``zarr-python``.
+  The intention is that these storage classes will be developed external to ``zarr-python``.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1791`.
 
 Maintenance
 ~~~~~~~~~~~
