@@ -51,7 +51,11 @@ async def _runner(coro: Coroutine[Any, Any, T]) -> T | BaseException:
         return ex
 
 
-def sync(coro: Coroutine[Any, Any, T], loop: asyncio.AbstractEventLoop | None = None) -> T:
+def sync(
+    coro: Coroutine[Any, Any, T],
+    loop: asyncio.AbstractEventLoop | None = None,
+    timeout: float | None = None,
+) -> T:
     """
     Make loop run coroutine until it returns. Runs in other thread
 
@@ -76,10 +80,11 @@ def sync(coro: Coroutine[Any, Any, T], loop: asyncio.AbstractEventLoop | None = 
 
     future = asyncio.run_coroutine_threadsafe(_runner(coro), loop)
 
-    # TODO: add timeout
-    done, _ = wait([future], return_when=asyncio.ALL_COMPLETED)
-    assert len(done) == 1
-    return_result = list(done)[0].result()
+    finished, unfinished = wait([future], return_when=asyncio.ALL_COMPLETED, timeout=timeout)
+    if len(unfinished) > 0:
+        raise asyncio.TimeoutError(f"Coroutine {coro} failed to finish in within {timeout}s")
+    assert len(finished) == 1
+    return_result = list(finished)[0].result()
 
     if isinstance(return_result, BaseException):
         raise return_result
@@ -113,7 +118,11 @@ class SyncMixin:
     def _sync(self, coroutine: Coroutine[Any, Any, T]) -> T:
         # TODO: refactor this to to take *args and **kwargs and pass those to the method
         # this should allow us to better type the sync wrapper
-        return sync(coroutine, loop=self._sync_configuration.asyncio_loop)
+        return sync(
+            coroutine,
+            loop=self._sync_configuration.asyncio_loop,
+            timeout=self._sync_configuration.timeout,
+        )
 
     def _sync_iter(self, async_iterator: AsyncIterator[T]) -> list[T]:
         async def iter_to_list() -> list[T]:

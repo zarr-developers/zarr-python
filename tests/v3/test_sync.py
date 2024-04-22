@@ -1,5 +1,6 @@
 from collections.abc import AsyncGenerator
 import asyncio
+import time
 from unittest.mock import patch
 
 from zarr.v3.sync import sync, _get_loop, _get_lock, SyncError, SyncMixin
@@ -44,6 +45,16 @@ def test_sync_raises(sync_loop: asyncio.AbstractEventLoop | None) -> None:
 
     with pytest.raises(ValueError):
         sync(foo(), loop=sync_loop)
+
+
+def test_sync_timeout() -> None:
+    duration = 0.002
+
+    async def foo() -> None:
+        time.sleep(duration)
+
+    with pytest.raises(asyncio.TimeoutError):
+        sync(foo(), timeout=duration / 2)
 
 
 def test_sync_raises_if_no_coroutine(sync_loop: asyncio.AbstractEventLoop | None) -> None:
