@@ -288,7 +288,6 @@ class StoreTests:
         store.close()
 
     def test_pickle(self):
-
         # setup store
         store = self.create_store()
         store[self.root + "foo"] = b"bar"
@@ -483,7 +482,6 @@ class StoreTests:
         store.close()
 
     def test_init_array(self, dimension_separator_fixture):
-
         pass_dim_sep, want_dim_sep = dimension_separator_fixture
 
         store = self.create_store(dimension_separator=pass_dim_sep)
@@ -1023,7 +1021,6 @@ class TestDirectoryStore(StoreTests):
         return store
 
     def test_filesystem_path(self):
-
         # test behaviour with path that does not exist
         path = "data/store"
         if os.path.exists(path):
@@ -1101,8 +1098,13 @@ class TestDirectoryStore(StoreTests):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStore(StoreTests):
-    def create_store(self, normalize_keys=False, dimension_separator=".", path=None, **kwargs):
+    @pytest.fixture
+    def memory_store(self):
+        store = FSStore("memory://")
+        yield store
+        store.fs.store.clear()
 
+    def create_store(self, normalize_keys=False, dimension_separator=".", path=None, **kwargs):
         if path is None:
             path = tempfile.mkdtemp()
             atexit.register(atexit_rmtree, path)
@@ -1341,11 +1343,29 @@ class TestFSStore(StoreTests):
         )
         assert (a[:] == -np.ones((8, 8, 8))).all()
 
+    def test_exceptions(self, memory_store):
+        fs = memory_store.fs
+        group = zarr.open(memory_store, mode="w")
+        x = group.create_dataset("x", data=[1, 2, 3])
+        y = group.create_dataset("y", data=1)
+        fs.store["/x/0"] = None
+        fs.store["/y/0"] = None
+        # no exception from FSStore.getitems getting KeyError
+        assert group.store.getitems(["foo"], contexts={}) == {}
+        # exception from FSStore.getitems getting AttributeError
+        with pytest.raises(Exception):
+            group.store.getitems(["x/0"], contexts={})
+        # exception from FSStore.getitems getting AttributeError
+        with pytest.raises(Exception):
+            x[...]
+        # exception from FSStore.__getitem__ getting AttributeError
+        with pytest.raises(Exception):
+            y[...]
+
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestFSStoreWithKeySeparator(StoreTests):
     def create_store(self, normalize_keys=False, key_separator=".", **kwargs):
-
         # Since the user is passing key_separator, that will take priority.
         skip_if_nested_chunks(**kwargs)
 
@@ -1399,9 +1419,9 @@ def s3(request):
     pytest.importorskip("moto")
 
     port = 5555
-    endpoint_uri = "http://127.0.0.1:%d/" % port
+    endpoint_uri = f"http://127.0.0.1:{port}/"
     proc = subprocess.Popen(
-        shlex.split("moto_server s3 -p %d" % port),
+        shlex.split(f"moto_server -p {port}"),
         stderr=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
     )
@@ -1613,7 +1633,6 @@ class TestN5Store(TestNestedDirectoryStore):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestN5FSStore(TestFSStore):
     def create_store(self, normalize_keys=False, path=None, **kwargs):
-
         if path is None:
             path = tempfile.mkdtemp()
             atexit.register(atexit_rmtree, path)
@@ -1722,7 +1741,6 @@ class TestN5FSStore(TestFSStore):
         self._test_init_group_overwrite_chunk_store("C")
 
     def test_dimension_separator(self):
-
         with pytest.warns(UserWarning, match="dimension_separator"):
             self.create_store(dimension_separator="/")
 
@@ -1787,7 +1805,6 @@ class TestTempStore(StoreTests):
 
 
 class TestZipStore(StoreTests):
-
     ZipStoreClass = ZipStore
 
     def create_store(self, **kwargs):
@@ -1965,7 +1982,6 @@ class TestSQLiteStoreInMemory(TestSQLiteStore):
         return store
 
     def test_pickle(self):
-
         # setup store
         store = self.create_store()
         store[self.root + "foo"] = b"bar"
@@ -2001,7 +2017,6 @@ class TestRedisStore(StoreTests):
 
 
 class TestLRUStoreCache(StoreTests):
-
     CountingClass = CountingDict
     LRUStoreClass = LRUStoreCache
 
@@ -2011,7 +2026,6 @@ class TestLRUStoreCache(StoreTests):
         return self.LRUStoreClass(dict(), max_size=2**27)
 
     def test_cache_values_no_max_size(self):
-
         # setup store
         store = self.CountingClass()
         foo_key = self.root + "foo"
@@ -2077,7 +2091,6 @@ class TestLRUStoreCache(StoreTests):
         assert 1 == store.counter["__setitem__", bar_key]
 
     def test_cache_values_with_max_size(self):
-
         # setup store
         store = self.CountingClass()
         foo_key = self.root + "foo"
@@ -2175,7 +2188,6 @@ class TestLRUStoreCache(StoreTests):
         assert 2 == cache.misses
 
     def test_cache_keys(self):
-
         # setup
         store = self.CountingClass()
         foo_key = self.root + "foo"
@@ -2324,7 +2336,6 @@ def test_migrate_1to2(dict_store):
 
 
 def test_format_compatibility():
-
     # This test is intended to catch any unintended changes that break the ability to
     # read data stored with a previous minor version (which should be format-compatible).
 
@@ -2380,14 +2391,13 @@ def test_format_compatibility():
     ]
 
     for i, (arr, chunks) in enumerate(arrays_chunks):
-
         if arr.flags.f_contiguous:
             order = "F"
         else:
             order = "C"
 
         for j, compressor in enumerate(compressors):
-            path = "{}/{}".format(i, j)
+            path = f"{i}/{j}"
 
             if path not in fixture:  # pragma: no cover
                 # store the data - should be one-time operation
@@ -2415,7 +2425,6 @@ def test_format_compatibility():
 
 @skip_test_env_var("ZARR_TEST_ABS")
 class TestABSStore(StoreTests):
-
     ABSStoreClass = ABSStore
 
     def create_store(self, prefix=None, **kwargs):
@@ -2486,7 +2495,6 @@ class TestABSStore(StoreTests):
 
 
 class TestConsolidatedMetadataStore:
-
     version = 2
     ConsolidatedMetadataClass = ConsolidatedMetadataStore
 
@@ -2495,7 +2503,6 @@ class TestConsolidatedMetadataStore:
         return ".zmetadata"
 
     def test_bad_format(self):
-
         # setup store with consolidated metadata
         store = dict()
         consolidated = {
@@ -2513,7 +2520,6 @@ class TestConsolidatedMetadataStore:
             self.ConsolidatedMetadataClass(KVStoreV3(dict()))
 
     def test_read_write(self):
-
         # setup store with consolidated metadata
         store = dict()
         consolidated = {
@@ -2584,7 +2590,6 @@ def test_normalize_store_arg(tmpdir):
 
 
 def test_meta_prefix_6853():
-
     fixture = pathlib.Path(zarr.__file__).resolve().parent.parent / "fixture"
     meta = fixture / "meta"
     if not meta.exists():  # pragma: no cover

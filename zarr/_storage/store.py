@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 from zarr.meta import Metadata2, Metadata3
 from zarr.util import normalize_storage_path
 from zarr.context import Context
+from zarr.types import ZARR_VERSION
 
 # v2 store keys
 array_meta_key = ".zarray"
@@ -20,7 +21,7 @@ attrs_key = ".zattrs"
 meta_root = "meta/root/"
 data_root = "data/root/"
 
-DEFAULT_ZARR_VERSION = 2
+DEFAULT_ZARR_VERSION: ZARR_VERSION = 2
 
 v3_api_available = os.environ.get("ZARR_V3_EXPERIMENTAL_API", "0").lower() not in ["0", "false"]
 _has_warned_about_v3 = False  # to avoid printing the warning multiple times
@@ -234,13 +235,12 @@ class StoreV3(BaseStore):
             )
 
         if (
-            not key.startswith("data/")
-            and (not key.startswith("meta/"))
-            and (not key == "zarr.json")
+            not key.startswith(("data/", "meta/"))
+            and key != "zarr.json"
             # TODO: Possibly allow key == ".zmetadata" too if we write a
             #       consolidated metadata spec corresponding to this?
         ):
-            raise ValueError("keys starts with unexpected value: `{}`".format(key))
+            raise ValueError(f"key starts with unexpected value: `{key}`")
 
         if key.endswith("/"):
             raise ValueError("keys may not end in /")
@@ -475,7 +475,7 @@ class StorageTransformer(MutableMapping, abc.ABC):
 
     def __eq__(self, other):
         return (
-            type(self) == type(other)
+            type(self) is type(other)
             and self._inner_store == other._inner_store
             and self.get_config() == other.get_config()
         )
@@ -642,7 +642,6 @@ def _rmdir_from_keys(store: StoreLike, path: Optional[str] = None) -> None:
 
 
 def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
-
     meta_dir = meta_root + path
     meta_dir = meta_dir.rstrip("/")
     _rmdir_from_keys(store, meta_dir)
@@ -656,10 +655,10 @@ def _rmdir_from_keys_v3(store: StoreV3, path: str = "") -> None:
     sfx = _get_metadata_suffix(store)
     array_meta_file = meta_dir + ".array" + sfx
     if array_meta_file in store:
-        store.erase(array_meta_file)  # type: ignore
+        store.erase(array_meta_file)
     group_meta_file = meta_dir + ".group" + sfx
     if group_meta_file in store:
-        store.erase(group_meta_file)  # type: ignore
+        store.erase(group_meta_file)
 
 
 def _listdir_from_keys(store: BaseStore, path: Optional[str] = None) -> List[str]:

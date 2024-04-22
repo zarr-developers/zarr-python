@@ -111,7 +111,6 @@ def is_pure_orthogonal_indexing(selection, ndim):
 
 
 def normalize_integer_selection(dim_sel, dim_len):
-
     # normalize type to int
     dim_sel = int(dim_sel)
 
@@ -145,7 +144,6 @@ dim_out_sel
 
 class IntDimIndexer:
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
-
         # normalize
         dim_sel = normalize_integer_selection(dim_sel, dim_len)
 
@@ -169,7 +167,6 @@ def ceildiv(a, b):
 
 class SliceDimIndexer:
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
-
         # normalize
         self.start, self.stop, self.step = dim_sel.indices(dim_len)
         if self.step < 1:
@@ -182,14 +179,12 @@ class SliceDimIndexer:
         self.nchunks = ceildiv(self.dim_len, self.dim_chunk_len)
 
     def __iter__(self):
-
         # figure out the range of chunks we need to visit
         dim_chunk_ix_from = self.start // self.dim_chunk_len
         dim_chunk_ix_to = ceildiv(self.stop, self.dim_chunk_len)
 
         # iterate over chunks in range
         for dim_chunk_ix in range(dim_chunk_ix_from, dim_chunk_ix_to):
-
             # compute offsets for chunk within overall array
             dim_offset = dim_chunk_ix * self.dim_chunk_len
             dim_limit = min(self.dim_len, (dim_chunk_ix + 1) * self.dim_chunk_len)
@@ -237,7 +232,6 @@ def check_selection_length(selection, shape):
 
 
 def replace_ellipsis(selection, shape):
-
     selection = ensure_tuple(selection)
 
     # count number of ellipsis present
@@ -330,14 +324,12 @@ def is_basic_selection(selection):
 # noinspection PyProtectedMember
 class BasicIndexer:
     def __init__(self, selection, array):
-
         # handle ellipsis
         selection = replace_ellipsis(selection, array._shape)
 
         # setup per-dimension indexers
         dim_indexers = []
         for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
-
             if is_integer(dim_sel):
                 dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
@@ -346,8 +338,8 @@ class BasicIndexer:
 
             else:
                 raise IndexError(
-                    "unsupported selection item for basic indexing; "
-                    "expected integer or slice, got {!r}".format(type(dim_sel))
+                    f"unsupported selection item for basic indexing; "
+                    f"expected integer or slice, got {type(dim_sel)!r}"
                 )
 
             dim_indexers.append(dim_indexer)
@@ -358,7 +350,6 @@ class BasicIndexer:
 
     def __iter__(self):
         for dim_projections in itertools.product(*self.dim_indexers):
-
             chunk_coords = tuple(p.dim_chunk_ix for p in dim_projections)
             chunk_selection = tuple(p.dim_chunk_sel for p in dim_projections)
             out_selection = tuple(
@@ -370,7 +361,6 @@ class BasicIndexer:
 
 class BoolArrayDimIndexer:
     def __init__(self, dim_sel, dim_len, dim_chunk_len):
-
         # check number of dimensions
         if not is_bool_array(dim_sel, 1):
             raise IndexError(
@@ -380,8 +370,8 @@ class BoolArrayDimIndexer:
         # check shape
         if dim_sel.shape[0] != dim_len:
             raise IndexError(
-                "Boolean array has the wrong length for dimension; "
-                "expected {}, got {}".format(dim_len, dim_sel.shape[0])
+                f"Boolean array has the wrong length for dimension; "
+                f"expected {dim_len}, got { dim_sel.shape[0]}"
             )
 
         # store attributes
@@ -402,10 +392,8 @@ class BoolArrayDimIndexer:
         self.dim_chunk_ixs = np.nonzero(self.chunk_nitems)[0]
 
     def __iter__(self):
-
         # iterate over chunks with at least one item
         for dim_chunk_ix in self.dim_chunk_ixs:
-
             # find region in chunk
             dim_offset = dim_chunk_ix * self.dim_chunk_len
             dim_chunk_sel = self.dim_sel[dim_offset : dim_offset + self.dim_chunk_len]
@@ -472,7 +460,6 @@ class IntArrayDimIndexer:
         boundscheck=True,
         order=Order.UNKNOWN,
     ):
-
         # ensure 1d array
         dim_sel = np.asanyarray(dim_sel)
         if not is_integer_array(dim_sel, 1):
@@ -526,9 +513,7 @@ class IntArrayDimIndexer:
         self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
 
     def __iter__(self):
-
         for dim_chunk_ix in self.dim_chunk_ixs:
-
             # find region in output
             if dim_chunk_ix == 0:
                 start = 0
@@ -560,11 +545,11 @@ def ix_(selection, shape):
 
     # replace slice and int as these are not supported by numpy.ix_
     selection = [
-        slice_to_range(dim_sel, dim_len)
-        if isinstance(dim_sel, slice)
-        else [dim_sel]
-        if is_integer(dim_sel)
-        else dim_sel
+        (
+            slice_to_range(dim_sel, dim_len)
+            if isinstance(dim_sel, slice)
+            else [dim_sel] if is_integer(dim_sel) else dim_sel
+        )
         for dim_sel, dim_len in zip(selection, shape)
     ]
 
@@ -602,7 +587,6 @@ def oindex_set(a, selection, value):
 # noinspection PyProtectedMember
 class OrthogonalIndexer:
     def __init__(self, selection, array):
-
         # handle ellipsis
         selection = replace_ellipsis(selection, array._shape)
 
@@ -612,7 +596,6 @@ class OrthogonalIndexer:
         # setup per-dimension indexers
         dim_indexers = []
         for dim_sel, dim_len, dim_chunk_len in zip(selection, array._shape, array._chunks):
-
             if is_integer(dim_sel):
                 dim_indexer = IntDimIndexer(dim_sel, dim_len, dim_chunk_len)
 
@@ -627,9 +610,9 @@ class OrthogonalIndexer:
 
             else:
                 raise IndexError(
-                    "unsupported selection item for orthogonal indexing; "
-                    "expected integer, slice, integer array or Boolean "
-                    "array, got {!r}".format(type(dim_sel))
+                    f"unsupported selection item for orthogonal indexing; "
+                    f"expected integer, slice, integer array or Boolean "
+                    f"array, got {type(dim_sel)!r}"
                 )
 
             dim_indexers.append(dim_indexer)
@@ -649,7 +632,6 @@ class OrthogonalIndexer:
 
     def __iter__(self):
         for dim_projections in itertools.product(*self.dim_indexers):
-
             chunk_coords = tuple(p.dim_chunk_ix for p in dim_projections)
             chunk_selection = tuple(p.dim_chunk_sel for p in dim_projections)
             out_selection = tuple(
@@ -658,7 +640,6 @@ class OrthogonalIndexer:
 
             # handle advanced indexing arrays orthogonally
             if self.is_advanced:
-
                 # N.B., numpy doesn't support orthogonal indexing directly as yet,
                 # so need to work around via np.ix_. Also np.ix_ does not support a
                 # mixture of arrays and slices or integers, so need to convert slices
@@ -692,7 +673,6 @@ class OIndex:
 # noinspection PyProtectedMember
 class BlockIndexer:
     def __init__(self, selection, array):
-
         # handle ellipsis
         selection = replace_ellipsis(selection, array._shape)
 
@@ -718,8 +698,8 @@ class BlockIndexer:
 
                 if dim_sel.step not in {1, None}:
                     raise IndexError(
-                        "unsupported selection item for block indexing; "
-                        "expected integer or slice with step=1, got {!r}".format(type(dim_sel))
+                        f"unsupported selection item for block indexing; "
+                        f"expected integer or slice with step=1, got {type(dim_sel)!r}"
                     )
 
                 # Can't reuse wraparound_indices because it expects a numpy array
@@ -735,8 +715,8 @@ class BlockIndexer:
 
             else:
                 raise IndexError(
-                    "unsupported selection item for block indexing; "
-                    "expected integer or slice, got {!r}".format(type(dim_sel))
+                    f"unsupported selection item for block indexing; "
+                    f"expected integer or slice, got {type(dim_sel)!r}"
                 )
 
             dim_indexer = SliceDimIndexer(slice_, dim_len, dim_chunk_size)
@@ -794,7 +774,6 @@ def is_mask_selection(selection, array):
 # noinspection PyProtectedMember
 class CoordinateIndexer:
     def __init__(self, selection, array):
-
         # some initial normalization
         selection = ensure_tuple(selection)
         selection = tuple([i] if is_integer(i) else i for i in selection)
@@ -803,14 +782,13 @@ class CoordinateIndexer:
         # validation
         if not is_coordinate_selection(selection, array):
             raise IndexError(
-                "invalid coordinate selection; expected one integer "
-                "(coordinate) array per dimension of the target array, "
-                "got {!r}".format(selection)
+                f"invalid coordinate selection; expected one integer "
+                f"(coordinate) array per dimension of the target array, "
+                f"got {selection!r}"
             )
 
         # handle wraparound, boundscheck
         for dim_sel, dim_len in zip(selection, array.shape):
-
             # handle wraparound
             wraparound_indices(dim_sel, dim_len)
 
@@ -861,10 +839,8 @@ class CoordinateIndexer:
         self.chunk_mixs = np.unravel_index(self.chunk_rixs, array._cdata_shape)
 
     def __iter__(self):
-
         # iterate over chunks
         for i, chunk_rix in enumerate(self.chunk_rixs):
-
             chunk_coords = tuple(m[i] for m in self.chunk_mixs)
             if chunk_rix == 0:
                 start = 0
@@ -891,7 +867,6 @@ class CoordinateIndexer:
 # noinspection PyProtectedMember
 class MaskIndexer(CoordinateIndexer):
     def __init__(self, selection, array):
-
         # some initial normalization
         selection = ensure_tuple(selection)
         selection = replace_lists(selection)
@@ -899,8 +874,8 @@ class MaskIndexer(CoordinateIndexer):
         # validation
         if not is_mask_selection(selection, array):
             raise IndexError(
-                "invalid mask selection; expected one Boolean (mask)"
-                "array with the same shape as the target array, got {!r}".format(selection)
+                f"invalid mask selection; expected one Boolean (mask)"
+                f"array with the same shape as the target array, got {selection!r}"
             )
 
         # convert to indices
@@ -944,8 +919,7 @@ def check_fields(fields, dtype):
     # check type
     if not isinstance(fields, (str, list, tuple)):
         raise IndexError(
-            "'fields' argument must be a string or list of strings; found "
-            "{!r}".format(type(fields))
+            f"'fields' argument must be a string or list of strings; found " f"{type(fields)!r}"
         )
     if fields:
         if dtype.names is None:
@@ -958,7 +932,7 @@ def check_fields(fields, dtype):
                 # multiple field selection
                 out_dtype = np.dtype([(f, dtype[f]) for f in fields])
         except KeyError as e:
-            raise IndexError("invalid 'fields' argument, field not found: {!r}".format(e))
+            raise IndexError(f"invalid 'fields' argument, field not found: {e!r}")
         else:
             return out_dtype
     else:

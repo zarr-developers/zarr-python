@@ -3,13 +3,14 @@ import shutil
 from collections import OrderedDict
 from collections.abc import MutableMapping
 from threading import Lock
-from typing import Union, Dict, Any
+from typing import Union, Dict, Any, Optional
 
 from zarr.errors import (
     MetadataError,
     ReadOnlyError,
 )
 from zarr.util import buffer_size, json_loads, normalize_storage_path
+from zarr.types import DIMENSION_SEPARATOR
 
 from zarr._storage.absstore import ABSStoreV3  # noqa: F401
 from zarr._storage.store import (  # noqa: F401
@@ -118,7 +119,6 @@ def _get_files_and_dirs_from_path(store, path):
 
 
 class FSStoreV3(FSStore, StoreV3):
-
     # FSStoreV3 doesn't use this (FSStore uses it within _normalize_key)
     _META_KEYS = ()
 
@@ -225,7 +225,9 @@ class FSStoreV3(FSStore, StoreV3):
 
 
 class MemoryStoreV3(MemoryStore, StoreV3):
-    def __init__(self, root=None, cls=dict, dimension_separator=None):
+    def __init__(
+        self, root=None, cls=dict, dimension_separator: Optional[DIMENSION_SEPARATOR] = None
+    ):
         if root is None:
             self.root = cls()
         else:
@@ -570,7 +572,7 @@ class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
         consolidated_format = meta.get("zarr_consolidated_format", None)
         if consolidated_format != 1:
             raise MetadataError(
-                "unsupported zarr consolidated metadata format: %s" % consolidated_format
+                f"unsupported zarr consolidated metadata format: {consolidated_format}"
             )
 
         # decode metadata

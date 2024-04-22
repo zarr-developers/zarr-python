@@ -30,7 +30,6 @@ class TestAttributes:
         return Attributes(store, key=root + "attrs", read_only=read_only, cache=cache)
 
     def test_storage(self, zarr_version):
-
         store = _init_store(zarr_version)
         root = ".z" if zarr_version == 2 else meta_root
         attrs_key = root + "attrs"
@@ -50,7 +49,6 @@ class TestAttributes:
         assert dict(foo="bar", baz=42) == d
 
     def test_utf8_encoding(self, zarr_version):
-
         project_root = pathlib.Path(zarr.__file__).resolve().parent.parent
         fixdir = project_root / "fixture"
         testdir = fixdir / "utf8attrs"
@@ -67,7 +65,6 @@ class TestAttributes:
         assert fixture["utf8attrs"].attrs.asdict() == dict(foo="た")
 
     def test_get_set_del_contains(self, zarr_version):
-
         store = _init_store(zarr_version)
         a = self.init_attributes(store, zarr_version=zarr_version)
         assert "foo" not in a
@@ -84,7 +81,6 @@ class TestAttributes:
             a["foo"]
 
     def test_update_put(self, zarr_version):
-
         store = _init_store(zarr_version)
         a = self.init_attributes(store, zarr_version=zarr_version)
         assert "foo" not in a
@@ -102,7 +98,6 @@ class TestAttributes:
         assert "baz" not in a
 
     def test_iterators(self, zarr_version):
-
         store = _init_store(zarr_version)
         a = self.init_attributes(store, zarr_version=zarr_version)
         assert 0 == len(a)
@@ -232,7 +227,6 @@ class TestAttributes:
         assert get_cnt == store.counter["__getitem__", attrs_key]
 
     def test_caching_off(self, zarr_version):
-
         # setup store
         store = CountingDict() if zarr_version == 2 else CountingDictV3()
         attrs_key = ".zattrs" if zarr_version == 2 else "meta/root/attrs"

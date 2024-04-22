@@ -10,11 +10,11 @@ readme = { file = "README.md", content-type = "text/markdown" }
 maintainers = [
     { name = "Alistair Miles", email = "alimanfoo@googlemail.com" }
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     'asciitree',
-    'numpy>=1.20,!=1.21.0',
-    'fasteners',
+    'numpy>=1.23',
+    'fasteners; sys_platform != "emscripten"',
     'numcodecs>=0.10.0',
 ]
 dynamic = [
@@ -30,7 +30,6 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Operating System :: Unix',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.8',
     'Programming Language :: Python :: 3.9',
     'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
@@ -65,6 +64,7 @@ Homepage = "https://github.com/zarr-developers/zarr-python"
 exclude_lines = [
     "pragma: no cover",
     "pragma: ${PY_MAJOR_VERSION} no cover",
+    '.*\.\.\.' # Ignore "..." lines
 ]
 
 [tool.coverage.run]
@@ -119,9 +119,10 @@ exclude = '''
 '''
 
 [tool.mypy]
-python_version = "3.8"
 ignore_missing_imports = true
-follow_imports = "silent"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
 
 [tool.pytest.ini_options]
 doctest_optionflags = [
@@ -138,3 +139,8 @@ filterwarnings = [
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
     "ignore:The experimental Zarr V3 implementation in this version .*:FutureWarning",
 ]
+
+
+[tool.codespell]
+ignore-words-list = "ba,ihs,kake,nd,noe,nwo,te,fo,zar"
+skip = 'fixture,.git'

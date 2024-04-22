@@ -27,6 +27,7 @@ from zarr.creation import (
 from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,
+    ArrayNotFoundError,
     GroupNotFoundError,
     ReadOnlyError,
 )
@@ -145,7 +146,7 @@ class Group(MutableMapping):
         synchronizer=None,
         zarr_version=None,
         *,
-        meta_array=None
+        meta_array=None,
     ):
         store: BaseStore = _normalize_store_arg(store, zarr_version=zarr_version)
         if zarr_version is None:
@@ -207,11 +208,15 @@ class Group(MutableMapping):
             # object can still be created.
             akey = mkey
         self._attrs = Attributes(
-            store, key=akey, read_only=read_only, cache=cache_attrs, synchronizer=synchronizer
+            store,
+            key=akey,
+            read_only=read_only,
+            cache=cache_attrs,
+            synchronizer=synchronizer,
+            cached_dict=self._meta["attributes"] if self._version == 3 and self._meta else None,
         )
 
         # setup info
-        self._info = InfoReporter(self)
 
     @property
     def store(self):
@@ -266,7 +271,7 @@ class Group(MutableMapping):
     @property
     def info(self):
         """Return diagnostic information about the group."""
-        return self._info
+        return InfoReporter(self)
 
     @property
     def meta_array(self):
@@ -340,9 +345,9 @@ class Group(MutableMapping):
 
     def __repr__(self):
         t = type(self)
-        r = "<{}.{}".format(t.__module__, t.__name__)
+        r = f"<{t.__module__}.{t.__name__}"
         if self.name:
-            r += " %r" % self.name
+            r += f" {self.name!r}"
         if self._read_only:
             r += " read-only"
         r += ">"
@@ -358,7 +363,7 @@ class Group(MutableMapping):
 
     def info_items(self):
         def typestr(o):
-            return "{}.{}".format(type(o).__module__, type(o).__name__)
+            return f"{type(o).__module__}.{type(o).__name__}"
 
         items = []
 
@@ -458,7 +463,7 @@ class Group(MutableMapping):
 
         """
         path = self._item_path(item)
-        if contains_array(self._store, path):
+        try:
             return Array(
                 self._store,
                 read_only=self._read_only,
@@ -469,7 +474,10 @@ class Group(MutableMapping):
                 zarr_version=self._version,
                 meta_array=self._meta_array,
             )
-        elif contains_group(self._store, path, explicit_only=True):
+        except ArrayNotFoundError:
+            pass
+
+        try:
             return Group(
                 self._store,
                 read_only=self._read_only,
@@ -480,7 +488,10 @@ class Group(MutableMapping):
                 zarr_version=self._version,
                 meta_array=self._meta_array,
             )
-        elif self._version == 3:
+        except GroupNotFoundError:
+            pass
+
+        if self._version == 3:
             implicit_group = meta_root + path + "/"
             # non-empty folder in the metadata path implies an implicit group
             if self._store.list_prefix(implicit_group):
@@ -515,6 +526,13 @@ class Group(MutableMapping):
             raise KeyError(item)
 
     def __getattr__(self, item):
+        # https://github.com/jupyter/notebook/issues/2014
+        # Save a possibly expensive lookup (for e.g. against cloud stores)
+        # Note: The _ipython_display_ method is required to display the right info as a side-effect.
+        # It is simpler to pretend it doesn't exist.
+        if item in ["_ipython_canary_method_should_not_exist_", "_ipython_display_"]:
+            raise AttributeError
+
         # allow access to group members via dot notation
         try:
             return self.__getitem__(item)
@@ -919,7 +937,6 @@ class Group(MutableMapping):
         return TreeViewer(self, expand=expand, level=level)
 
     def _write_op(self, f, *args, **kwargs):
-
         # guard condition
         if self._read_only:
             raise ReadOnlyError()
@@ -1094,7 +1111,6 @@ class Group(MutableMapping):
         return self._write_op(self._create_dataset_nosync, name, **kwargs)
 
     def _create_dataset_nosync(self, name, data=None, **kwargs):
-
         assert "mode" not in kwargs
         path = self._item_path(name)
 
@@ -1138,11 +1154,9 @@ class Group(MutableMapping):
         )
 
     def _require_dataset_nosync(self, name, shape, dtype=None, exact=False, **kwargs):
-
         path = self._item_path(name)
 
         if contains_array(self._store, path):
-
             # array already exists at path, validate that it is the right shape and type
 
             synchronizer = kwargs.get("synchronizer", self._synchronizer)
@@ -1161,17 +1175,15 @@ class Group(MutableMapping):
             shape = normalize_shape(shape)
             if shape != a.shape:
                 raise TypeError(
-                    "shape do not match existing array; expected {}, got {}".format(a.shape, shape)
+                    f"shape do not match existing array; expected {a.shape}, got {shape}"
                 )
             dtype = np.dtype(dtype)
             if exact:
                 if dtype != a.dtype:
-                    raise TypeError(
-                        "dtypes do not match exactly; expected {}, got {}".format(a.dtype, dtype)
-                    )
+                    raise TypeError(f"dtypes do not match exactly; expected {a.dtype}, got {dtype}")
             else:
                 if not np.can_cast(dtype, a.dtype):
-                    raise TypeError("dtypes ({}, {}) cannot be safely cast".format(dtype, a.dtype))
+                    raise TypeError(f"dtypes ({dtype}, {a.dtype}) cannot be safely cast")
             return a
 
         else:
@@ -1235,7 +1247,7 @@ class Group(MutableMapping):
             path=path,
             chunk_store=self._chunk_store,
             fill_value=fill_value,
-            **kwargs
+            **kwargs,
         )
 
     def array(self, name, data, **kwargs):
@@ -1337,6 +1349,40 @@ class Group(MutableMapping):
 
         self._write_op(self._move_nosync, source, dest)
 
+    # Override ipython repr methods, GH1716
+    # https://ipython.readthedocs.io/en/stable/config/integrating.html#custom-methods
+    #     " If the methods don’t exist, the standard repr() is used. If a method exists and
+    #       returns None, it is treated the same as if it does not exist."
+    def _repr_html_(self):
+        return None
+
+    def _repr_latex_(self):
+        return None
+
+    def _repr_mimebundle_(self, **kwargs):
+        return None
+
+    def _repr_svg_(self):
+        return None
+
+    def _repr_png_(self):
+        return None
+
+    def _repr_jpeg_(self):
+        return None
+
+    def _repr_markdown_(self):
+        return None
+
+    def _repr_javascript_(self):
+        return None
+
+    def _repr_pdf_(self):
+        return None
+
+    def _repr_json_(self):
+        return None
+
 
 def _normalize_store_arg(store, *, storage_options=None, mode="r", zarr_version=None):
     if zarr_version is None:
@@ -1361,7 +1407,7 @@ def group(
     path=None,
     *,
     zarr_version=None,
-    meta_array=None
+    meta_array=None,
 ):
     """Create a group.
 
@@ -1452,7 +1498,7 @@ def open_group(
     storage_options=None,
     *,
     zarr_version=None,
-    meta_array=None
+    meta_array=None,
 ):
     """Open a group using file-mode-like semantics.
 

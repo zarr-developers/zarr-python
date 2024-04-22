@@ -3,7 +3,7 @@ import os
 import sys
 import pickle
 import shutil
-from typing import Any, Literal, Optional, Tuple, Union
+from typing import Any, Literal, Optional, Tuple, Union, Sequence
 import unittest
 from itertools import zip_longest
 from tempfile import mkdtemp
@@ -26,6 +26,7 @@ from numcodecs import (
     VLenUTF8,
     Zlib,
 )
+from numcodecs.abc import Codec
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 from numpy.testing import assert_array_almost_equal, assert_array_equal
@@ -72,7 +73,16 @@ from zarr._storage.v3 import (
 )
 from zarr.tests.test_storage_v3 import DummyStorageTransfomer
 from zarr.util import buffer_size
-from zarr.tests.util import abs_container, skip_test_env_var, have_fsspec, mktemp
+from zarr.tests.util import (
+    abs_container,
+    have_bsddb3,
+    have_fsspec,
+    have_lmdb,
+    have_sqlite3,
+    mktemp,
+    skip_test_env_var,
+)
+from zarr.types import DIMENSION_SEPARATOR
 
 # noinspection PyMethodMayBeStatic
 
@@ -82,8 +92,8 @@ class TestArray:
     root = ""
     path = ""
     compressor = Zlib(level=1)
-    filters = None
-    dimension_separator: Literal["/", ".", None] = None
+    filters: Optional[Sequence[Codec]] = None
+    dimension_separator: Optional[DIMENSION_SEPARATOR] = None
     cache_metadata = True
     cache_attrs = True
     partial_decompress: bool = False
@@ -113,7 +123,7 @@ class TestArray:
             "compressor": kwargs.pop("compressor", self.compressor),
             "chunk_store": chunk_store,
             "storage_transformers": self.create_storage_transformers(shape),
-            "filters": kwargs.pop("filters", self.create_filters(kwargs.get("dtype", None))),
+            "filters": kwargs.pop("filters", self.create_filters(kwargs.get("dtype"))),
         }
 
         # keyword arguments for array instantiation
@@ -178,7 +188,7 @@ class TestArray:
 
         for k in z.chunk_store.keys():
             if not isinstance(k, expected_type):  # pragma: no cover
-                pytest.fail("Non-text key: %s" % repr(k))
+                pytest.fail(f"Non-text key: {k!r}")
 
         z.store.close()
 
@@ -192,7 +202,7 @@ class TestArray:
             try:
                 ensure_ndarray(v)
             except TypeError:  # pragma: no cover
-                pytest.fail("Non-bytes-like value: %s" % repr(v))
+                pytest.fail(f"Non-bytes-like value: {v!r}")
 
         z.store.close()
 
@@ -1202,7 +1212,7 @@ class TestArray:
         # datetime, timedelta
         for base_type in "Mm":
             for resolution in "D", "us", "ns":
-                dtype = "{}8[{}]".format(base_type, resolution)
+                dtype = f"{base_type}8[{resolution}]"
                 z = self.create_array(shape=100, dtype=dtype, fill_value=0)
                 assert z.dtype == np.dtype(dtype)
                 a = np.random.randint(
@@ -1392,7 +1402,7 @@ class TestArray:
 
         # convenience API
         for item_type in "int", "<u4":
-            z = self.create_array(shape=data.shape, dtype="array:{}".format(item_type))
+            z = self.create_array(shape=data.shape, dtype=f"array:{item_type}")
             assert z.dtype == object
             assert isinstance(z.filters[0], VLenArray)
             assert z.filters[0].dtype == np.dtype(item_type)
@@ -1962,7 +1972,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         # convenience API
         for item_type in "int", "<u4":
             with pytest.raises(ValueError):
-                self.create_array(shape=data.shape, dtype="array:{}".format(item_type))
+                self.create_array(shape=data.shape, dtype=f"array:{item_type}")
 
     def test_object_arrays_danger(self):
         # Cannot hacking out object codec as N5 doesn't allow object codecs
@@ -2036,9 +2046,11 @@ class TestArrayWithDBMStore(TestArray):
         pass  # not implemented
 
 
+@pytest.mark.skipif(have_bsddb3 is False, reason="needs bsddb3")
 class TestArrayWithDBMStoreBerkeleyDB(TestArray):
     def create_store(self):
-        bsddb3 = pytest.importorskip("bsddb3")
+        import bsddb3
+
         path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
         store = DBMStore(path, flag="n", open=bsddb3.btopen)
@@ -2048,9 +2060,9 @@ class TestArrayWithDBMStoreBerkeleyDB(TestArray):
         pass  # not implemented
 
 
+@pytest.mark.skipif(have_lmdb is False, reason="needs lmdb")
 class TestArrayWithLMDBStore(TestArray):
     def create_store(self):
-        pytest.importorskip("lmdb")
         path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=True)
@@ -2063,9 +2075,9 @@ class TestArrayWithLMDBStore(TestArray):
         pass  # not implemented
 
 
+@pytest.mark.skipif(have_lmdb is False, reason="needs lmdb")
 class TestArrayWithLMDBStoreNoBuffers(TestArray):
     def create_store(self):
-        pytest.importorskip("lmdb")
         path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
         store = LMDBStore(path, buffers=False)
@@ -2075,9 +2087,9 @@ class TestArrayWithLMDBStoreNoBuffers(TestArray):
         pass  # not implemented
 
 
+@pytest.mark.skipif(have_sqlite3 is False, reason="needs sqlite3")
 class TestArrayWithSQLiteStore(TestArray):
     def create_store(self):
-        pytest.importorskip("sqlite3")
         path = mktemp(suffix=".db")
         atexit.register(atexit_rmtree, path)
         store = SQLiteStore(path)
@@ -2756,9 +2768,11 @@ class TestArrayWithDBMStoreV3(TestArrayV3):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+@pytest.mark.skipif(have_bsddb3 is False, reason="needs bsddb3")
 class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
     def create_store(self) -> DBMStoreV3:
-        bsddb3 = pytest.importorskip("bsddb3")
+        import bsddb3
+
         path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
         store = DBMStoreV3(path, flag="n", open=bsddb3.btopen)
@@ -2769,11 +2783,11 @@ class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+@pytest.mark.skipif(have_lmdb is False, reason="needs lmdb")
 class TestArrayWithLMDBStoreV3(TestArrayV3):
     lmdb_buffers = True
 
     def create_store(self) -> LMDBStoreV3:
-        pytest.importorskip("lmdb")
         path = mktemp(suffix=".lmdb")
         atexit.register(atexit_rmtree, path)
         store = LMDBStoreV3(path, buffers=self.lmdb_buffers)
@@ -2795,9 +2809,9 @@ class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreV3):
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
+@pytest.mark.skipif(have_sqlite3 is False, reason="needs sqlite3")
 class TestArrayWithSQLiteStoreV3(TestArrayV3):
     def create_store(self):
-        pytest.importorskip("sqlite3")
         path = mktemp(suffix=".db")
         atexit.register(atexit_rmtree, path)
         store = SQLiteStoreV3(path)

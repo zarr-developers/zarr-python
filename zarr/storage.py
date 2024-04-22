@@ -14,6 +14,7 @@ classes may also optionally implement a `rename` method (rename all members unde
 path) and a `getsize` method (return the size in bytes of a given value).
 
 """
+
 import atexit
 import errno
 import glob
@@ -40,6 +41,8 @@ from numcodecs.abc import Codec
 from numcodecs.compat import ensure_bytes, ensure_text, ensure_contiguous_ndarray_like
 from numcodecs.registry import codec_registry
 from zarr.context import Context
+from zarr.types import PathLike as Path, DIMENSION_SEPARATOR
+from zarr.util import NoLock
 
 from zarr.errors import (
     MetadataError,
@@ -105,7 +108,6 @@ except ImportError:  # pragma: no cover
     default_compressor = Zlib()
 
 
-Path = Union[str, bytes, None]
 # allow MutableMapping for backwards compatibility
 StoreLike = Union[BaseStore, MutableMapping]
 
@@ -206,7 +208,7 @@ def rmdir(store: StoreLike, path: Path = None):
     store_version = getattr(store, "_store_version", 2)
     if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
         # pass through
-        store.rmdir(path)  # type: ignore
+        store.rmdir(path)
     else:
         # slow version, delete one key at a time
         if store_version == 2:
@@ -236,7 +238,7 @@ def listdir(store: BaseStore, path: Path = None):
     path = normalize_storage_path(path)
     if hasattr(store, "listdir"):
         # pass through
-        return store.listdir(path)  # type: ignore
+        return store.listdir(path)
     else:
         # slow version, iterate through all keys
         warnings.warn(
@@ -289,7 +291,7 @@ def getsize(store: BaseStore, path: Path = None) -> int:
     if hasattr(store, "getsize"):
         # pass through
         path = normalize_storage_path(path)
-        return store.getsize(path)  # type: ignore
+        return store.getsize(path)
     elif isinstance(store, MutableMapping):
         return _getsize(store, path)
     else:
@@ -326,7 +328,7 @@ def init_array(
     chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
-    dimension_separator=None,
+    dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
     storage_transformers=(),
 ):
     """Initialize an array store with the given configuration. Note that this is a low-level
@@ -480,10 +482,9 @@ def _init_array_metadata(
     chunk_store: Optional[StoreLike] = None,
     filters=None,
     object_codec=None,
-    dimension_separator=None,
+    dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
     storage_transformers=(),
 ):
-
     store_version = getattr(store, "_store_version", 2)
 
     path = normalize_storage_path(path)
@@ -628,7 +629,7 @@ def _init_array_metadata(
 
     key = _prefix_to_array_key(store, _path_to_prefix(path))
     if hasattr(store, "_metadata_class"):
-        store[key] = store._metadata_class.encode_array_metadata(meta)  # type: ignore
+        store[key] = store._metadata_class.encode_array_metadata(meta)
     else:
         store[key] = encode_array_metadata(meta)
 
@@ -688,7 +689,6 @@ def _init_group_metadata(
     path: Optional[str] = None,
     chunk_store: Optional[StoreLike] = None,
 ):
-
     store_version = getattr(store, "_store_version", 2)
     path = normalize_storage_path(path)
 
@@ -732,10 +732,10 @@ def _init_group_metadata(
     if store_version == 3:
         meta = {"attributes": {}}  # type: ignore
     else:
-        meta = {}  # type: ignore
+        meta = {}
     key = _prefix_to_group_key(store, _path_to_prefix(path))
     if hasattr(store, "_metadata_class"):
-        store[key] = store._metadata_class.encode_group_metadata(meta)  # type: ignore
+        store[key] = store._metadata_class.encode_group_metadata(meta)
     else:
         store[key] = encode_group_metadata(meta)
 
@@ -786,7 +786,7 @@ class KVStore(Store):
         return len(self._mutable_mapping)
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}: \n{repr(self._mutable_mapping)}\n at {hex(id(self))}>"
+        return f"<{self.__class__.__name__}: \n{self._mutable_mapping!r}\n at {id(self):#x}>"
 
     def __eq__(self, other):
         if isinstance(other, KVStore):
@@ -1055,8 +1055,9 @@ class DirectoryStore(Store):
 
     """
 
-    def __init__(self, path, normalize_keys=False, dimension_separator=None):
-
+    def __init__(
+        self, path, normalize_keys=False, dimension_separator: Optional[DIMENSION_SEPARATOR] = None
+    ):
         # guard conditions
         path = os.path.abspath(path)
         if os.path.exists(path) and not os.path.isdir(path):
@@ -1351,7 +1352,7 @@ class FSStore(Store):
         key_separator=None,
         mode="w",
         exceptions=(KeyError, PermissionError, IOError),
-        dimension_separator=None,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
         fs=None,
         check=False,
         create=False,
@@ -1416,12 +1417,23 @@ class FSStore(Store):
     def getitems(
         self, keys: Sequence[str], *, contexts: Mapping[str, Context]
     ) -> Mapping[str, Any]:
-
-        keys_transformed = [self._normalize_key(key) for key in keys]
-        results = self.map.getitems(keys_transformed, on_error="omit")
-        # The function calling this method may not recognize the transformed keys
-        # So we send the values returned by self.map.getitems back into the original key space.
-        return {keys[keys_transformed.index(rk)]: rv for rk, rv in results.items()}
+        keys_transformed = {self._normalize_key(key): key for key in keys}
+        results_transformed = self.map.getitems(list(keys_transformed), on_error="return")
+        results = {}
+        for k, v in results_transformed.items():
+            if isinstance(v, self.exceptions):
+                # Cause recognized exceptions to prompt a KeyError in the
+                # function calling this method
+                continue
+            elif isinstance(v, Exception):
+                # Raise any other exception
+                raise v
+            else:
+                # The function calling this method may not recognize the transformed
+                # keys, so we send the values returned by self.map.getitems back into
+                # the original key space.
+                results[keys_transformed[k]] = v
+        return results
 
     def __getitem__(self, key):
         key = self._normalize_key(key)
@@ -1571,7 +1583,12 @@ class TempStore(DirectoryStore):
 
     # noinspection PyShadowingBuiltins
     def __init__(
-        self, suffix="", prefix="zarr", dir=None, normalize_keys=False, dimension_separator=None
+        self,
+        suffix="",
+        prefix="zarr",
+        dir=None,
+        normalize_keys=False,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
     ):
         path = tempfile.mkdtemp(suffix=suffix, prefix=prefix, dir=dir)
         atexit.register(atexit_rmtree, path)
@@ -1655,7 +1672,9 @@ class NestedDirectoryStore(DirectoryStore):
 
     """
 
-    def __init__(self, path, normalize_keys=False, dimension_separator="/"):
+    def __init__(
+        self, path, normalize_keys=False, dimension_separator: Optional[DIMENSION_SEPARATOR] = "/"
+    ):
         super().__init__(path, normalize_keys=normalize_keys)
         if dimension_separator is None:
             dimension_separator = "/"
@@ -1768,9 +1787,8 @@ class ZipStore(Store):
         compression=zipfile.ZIP_STORED,
         allowZip64=True,
         mode="a",
-        dimension_separator=None,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
     ):
-
         # store properties
         path = os.path.abspath(path)
         self.path = path
@@ -2062,7 +2080,7 @@ class DBMStore(Store):
         mode=0o666,
         open=None,
         write_lock=True,
-        dimension_separator=None,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
         **open_kwargs,
     ):
         if open is None:
@@ -2077,6 +2095,7 @@ class DBMStore(Store):
         self.mode = mode
         self.open = open
         self.write_lock = write_lock
+        self.write_mutex: Union[Lock, NoLock]
         if write_lock:
             # This may not be required as some dbm implementations manage their own
             # locks, but err on the side of caution.
@@ -2233,7 +2252,13 @@ class LMDBStore(Store):
 
     """
 
-    def __init__(self, path, buffers=True, dimension_separator=None, **kwargs):
+    def __init__(
+        self,
+        path,
+        buffers=True,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
+        **kwargs,
+    ):
         import lmdb
 
         # set default memory map size to something larger than the lmdb default, which is
@@ -2584,7 +2609,7 @@ class SQLiteStore(Store):
         >>> store.close()  # don't forget to call this when you're done
     """
 
-    def __init__(self, path, dimension_separator=None, **kwargs):
+    def __init__(self, path, dimension_separator: Optional[DIMENSION_SEPARATOR] = None, **kwargs):
         import sqlite3
 
         self._dimension_separator = dimension_separator
@@ -2704,14 +2729,12 @@ class SQLiteStore(Store):
         path = normalize_storage_path(path)
         sep = "_" if path == "" else "/"
         keys = self.cursor.execute(
-            """
+            f"""
             SELECT DISTINCT SUBSTR(m, 0, INSTR(m, "/")) AS l FROM (
                 SELECT LTRIM(SUBSTR(k, LENGTH(?) + 1), "/") || "/" AS m
                 FROM zarr WHERE k LIKE (? || "{sep}%")
             ) ORDER BY l ASC
-            """.format(
-                sep=sep
-            ),
+            """,
             (path, path),
         )
         keys = list(map(operator.itemgetter(0), keys))
@@ -2782,7 +2805,7 @@ class MongoDBStore(Store):
         self,
         database="mongodb_zarr",
         collection="zarr_collection",
-        dimension_separator=None,
+        dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
         **kwargs,
     ):
         import pymongo
@@ -2857,7 +2880,9 @@ class RedisStore(Store):
 
     """
 
-    def __init__(self, prefix="zarr", dimension_separator=None, **kwargs):
+    def __init__(
+        self, prefix="zarr", dimension_separator: Optional[DIMENSION_SEPARATOR] = None, **kwargs
+    ):
         import redis
 
         self._prefix = prefix
@@ -2867,7 +2892,7 @@ class RedisStore(Store):
         self.client = redis.Redis(**kwargs)
 
     def _key(self, key):
-        return "{prefix}:{key}".format(prefix=self._prefix, key=key)
+        return f"{self._prefix}:{key}"
 
     def __getitem__(self, key):
         return self.client[self._key(key)]
@@ -2952,7 +2977,7 @@ class ConsolidatedMetadataStore(Store):
         consolidated_format = meta.get("zarr_consolidated_format", None)
         if consolidated_format != 1:
             raise MetadataError(
-                "unsupported zarr consolidated metadata format: %s" % consolidated_format
+                f"unsupported zarr consolidated metadata format: {consolidated_format}"
             )
 
         # decode metadata

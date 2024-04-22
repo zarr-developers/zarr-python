@@ -15,13 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
-        numpy_version: ['>=1.22.0', '==1.20.*']
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+        numpy_version: ['>=1.24.0', '==1.23.*']
         exclude:
           - python-version: '3.10'
-            numpy_version: '==1.20.*'
+            numpy_version: '==1.23.*'
           - python-version: '3.11'
-            numpy_version: '==1.20.*'
+            numpy_version: '==1.23.*'
+          - python-version: '3.12'
+            numpy_version: '==1.23.*'
     services:
       redis:
         image: redis
@@ -42,7 +44,7 @@ jobs:
       with:
         fetch-depth: 0
     - name: Setup Miniconda
-      uses: conda-incubator/setup-miniconda@v3.0.1
+      uses: conda-incubator/setup-miniconda@v3.0.3
       with:
           channels: conda-forge
           python-version: ${{ matrix.python-version }}
@@ -62,7 +64,7 @@ jobs:
         python -m pip install --upgrade pip
         python -m pip install -U pip setuptools wheel line_profiler
         python -m pip install -rrequirements_dev_minimal.txt numpy${{matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
-        python -m pip install .
+        python -m pip install -e .
         python -m pip freeze
     - name: Tests
       shell: "bash -l {0}"
