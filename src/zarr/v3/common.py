@@ -111,15 +111,13 @@ def parse_configuration(data: JSON) -> JSON:
 @overload
 def parse_named_configuration(
     data: JSON, expected_name: Optional[str] = None
-) -> Tuple[str, Dict[str, JSON]]:
-    ...
+) -> Tuple[str, Dict[str, JSON]]: ...
 
 
 @overload
 def parse_named_configuration(
     data: JSON, expected_name: Optional[str] = None, *, require_configuration: bool = True
-) -> Tuple[str, Optional[Dict[str, JSON]]]:
-    ...
+) -> Tuple[str, Optional[Dict[str, JSON]]]: ...
 
 
 def parse_named_configuration(

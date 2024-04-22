@@ -9,20 +9,17 @@ from zarr.v3.metadata import parse_dimension_names, parse_zarr_format_v2, parse_
 
 
 # todo: test
-def test_datatype_enum():
-    ...
+def test_datatype_enum(): ...
 
 
 # todo: test
 # this will almost certainly be a collection of tests
-def test_array_metadata_v3():
-    ...
+def test_array_metadata_v3(): ...
 
 
 # todo: test
 # this will almost certainly be a collection of tests
-def test_array_metadata_v2():
-    ...
+def test_array_metadata_v2(): ...
 
 
 @pytest.mark.parametrize("data", [None, ("a", "b", "c"), ["a", "a", "a"]])
@@ -37,8 +34,7 @@ def parse_dimension_names_invalid(data: Any) -> None:
 
 
 # todo: test
-def test_parse_attributes() -> None:
-    ...
+def test_parse_attributes() -> None: ...
 
 
 def test_parse_zarr_format_v3_valid() -> None:

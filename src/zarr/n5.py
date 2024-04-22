@@ -1,5 +1,5 @@
-"""This module contains a storage class and codec to support the N5 format.
-"""
+"""This module contains a storage class and codec to support the N5 format."""
+
 import os
 import struct
 import sys
