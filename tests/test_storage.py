@@ -42,7 +42,6 @@ from zarr.storage import (
     #     MemoryStore,
     #     MongoDBStore,
     #     NestedDirectoryStore,
-    #     RedisStore,
     #     SQLiteStore,
     #     Store,
     #     TempStore,
@@ -1720,18 +1719,6 @@ class TestDirectoryStore(StoreTests):
 #         store = MongoDBStore(
 #             host="127.0.0.1", database="zarr_tests", collection="zarr_tests", **kwargs
 #         )
-#         # start with an empty store
-#         store.clear()
-#         return store
-
-
-# @skip_test_env_var("ZARR_TEST_REDIS")
-# class TestRedisStore(StoreTests):
-#     def create_store(self, **kwargs):
-#         # TODO: this is the default host for Redis on Travis,
-#         # we probably want to generalize this though
-#         pytest.importorskip("redis")
-#         store = RedisStore(host="localhost", port=6379, **kwargs)
 #         # start with an empty store
 #         store.clear()
 #         return store

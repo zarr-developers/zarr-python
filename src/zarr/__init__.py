@@ -41,7 +41,6 @@ from zarr.storage import (
     MemoryStore,
     MongoDBStore,
     NestedDirectoryStore,
-    RedisStore,
     SQLiteStore,
     TempStore,
     ZipStore,

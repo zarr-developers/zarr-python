@@ -26,7 +26,6 @@ Storage (``zarr.storage``)
     .. automethod:: close
 
 .. autoclass:: MongoDBStore
-.. autoclass:: RedisStore
 .. autoclass:: LRUStoreCache
 
     .. automethod:: invalidate

@@ -41,7 +41,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #     LRUStoreCacheV3,
 #     MemoryStoreV3,
 #     MongoDBStoreV3,
-#     RedisStoreV3,
 #     SQLiteStoreV3,
 #     StoreV3,
 #     ZipStoreV3,
@@ -506,18 +505,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #         return store
 
 
-# @skip_test_env_var("ZARR_TEST_REDIS")
-# class TestRedisStoreV3(StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         # TODO: this is the default host for Redis on Travis,
-#         # we probably want to generalize this though
-#         pytest.importorskip("redis")
-#         store = RedisStoreV3(host="localhost", port=6379, **kwargs)
-#         # start with an empty store
-#         store.clear()
-#         return store
-
-
 # @pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
 # class TestStorageTransformerV3(TestMappingStoreV3):
 #     def create_store(self, **kwargs):
@@ -663,7 +650,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #         "LRUStoreCacheV3",
 #         "MemoryStoreV3",
 #         "MongoDBStoreV3",
-#         "RedisStoreV3",
 #         "SQLiteStoreV3",
 #         "ZipStoreV3",
 #     ]:
