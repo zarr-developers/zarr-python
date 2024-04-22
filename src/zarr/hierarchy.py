@@ -4,13 +4,6 @@ from typing import Any
 
 import numpy as np
 
-from zarr._storage.store import (
-    _get_metadata_suffix,
-    data_root,
-    meta_root,
-    DEFAULT_ZARR_VERSION,
-    assert_zarr_v3_api_available,
-)
 from zarr.attrs import Attributes
 from zarr.core import Array
 from zarr.creation import (
@@ -32,21 +25,20 @@ from zarr.errors import (
     ReadOnlyError,
 )
 from zarr.storage import (
-    _get_hierarchy_metadata,
     _prefix_to_group_key,
     BaseStore,
     MemoryStore,
+    group_meta_key,
     attrs_key,
     contains_array,
     contains_group,
-    group_meta_key,
     init_group,
     listdir,
     normalize_store_arg,
     rename,
     rmdir,
 )
-from zarr._storage.v3 import MemoryStoreV3
+
 from zarr.util import (
     InfoReporter,
     TreeViewer,
@@ -144,19 +136,12 @@ class Group(MutableMapping[str, Any]):
         chunk_store=None,
         cache_attrs=True,
         synchronizer=None,
-        zarr_version=None,
         *,
         meta_array=None,
     ):
-        store: BaseStore = _normalize_store_arg(store, zarr_version=zarr_version)
-        if zarr_version is None:
-            zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
-
-        if zarr_version != 2:
-            assert_zarr_v3_api_available()
-
+        store: BaseStore = _normalize_store_arg(store)
         if chunk_store is not None:
-            chunk_store: BaseStore = _normalize_store_arg(chunk_store, zarr_version=zarr_version)
+            chunk_store: BaseStore = _normalize_store_arg(chunk_store)
         self._store = store
         self._chunk_store = chunk_store
         self._path = normalize_storage_path(path)
@@ -170,12 +155,6 @@ class Group(MutableMapping[str, Any]):
             self._meta_array = np.empty_like(meta_array, shape=())
         else:
             self._meta_array = np.empty(())
-        self._version = zarr_version
-        if self._version == 3:
-            self._data_key_prefix = data_root + self._key_prefix
-            self._data_path = data_root + self._path
-            self._hierarchy_metadata = _get_hierarchy_metadata(store=self._store)
-            self._metadata_key_suffix = _get_metadata_suffix(store=self._store)
 
         # guard conditions
         if contains_array(store, path=self._path):
@@ -188,25 +167,13 @@ class Group(MutableMapping[str, Any]):
             assert not mkey.endswith("root/.group")
             meta_bytes = store[mkey]
         except KeyError:
-            if self._version == 2:
-                raise GroupNotFoundError(path)
-            else:
-                implicit_prefix = meta_root + self._key_prefix
-                if self._store.list_prefix(implicit_prefix):
-                    # implicit group does not have any metadata
-                    self._meta = None
-                else:
-                    raise GroupNotFoundError(path)
+            raise GroupNotFoundError(path)
         else:
             self._meta = self._store._metadata_class.decode_group_metadata(meta_bytes)
 
         # setup attributes
-        if self._version == 2:
-            akey = self._key_prefix + attrs_key
-        else:
-            # Note: mkey doesn't actually exist for implicit groups, but the
-            # object can still be created.
-            akey = mkey
+        akey = self._key_prefix + attrs_key
+
         self._attrs = Attributes(
             store, key=akey, read_only=read_only, cache=cache_attrs, synchronizer=synchronizer
         )
@@ -305,35 +272,11 @@ class Group(MutableMapping[str, Any]):
         quux
 
         """
-        if getattr(self._store, "_store_version", 2) == 2:
-            for key in sorted(listdir(self._store, self._path)):
-                path = self._key_prefix + key
-                if contains_array(self._store, path) or contains_group(self._store, path):
-                    yield key
-        else:
-            # TODO: Should this iterate over data folders and/or metadata
-            #       folders and/or metadata files
 
-            dir_path = meta_root + self._key_prefix
-            name_start = len(dir_path)
-            keys, prefixes = self._store.list_dir(dir_path)
-
-            # yield any groups or arrays
-            sfx = self._metadata_key_suffix
-            for key in keys:
-                len_suffix = len(".group") + len(sfx)  # same for .array
-                if key.endswith((".group" + sfx, ".array" + sfx)):
-                    yield key[name_start:-len_suffix]
-
-            # also yield any implicit groups
-            for prefix in prefixes:
-                prefix = prefix.rstrip("/")
-                # only implicit if there is no .group.sfx file
-                if prefix + ".group" + sfx not in self._store:
-                    yield prefix[name_start:]
-
-            # Note: omit data/root/ to avoid duplicate listings
-            #       any group in data/root/ must has an entry in meta/root/
+        for key in sorted(listdir(self._store, self._path)):
+            path = self._key_prefix + key
+            if contains_array(self._store, path) or contains_group(self._store, path):
+                yield key
 
     def __len__(self):
         """Number of members."""
@@ -401,7 +344,6 @@ class Group(MutableMapping[str, Any]):
             "chunk_store": self._chunk_store,
             "cache_attrs": self._attrs.cache,
             "synchronizer": self._synchronizer,
-            "zarr_version": self._version,
             "meta_array": self._meta_array,
         }
 
@@ -467,7 +409,6 @@ class Group(MutableMapping[str, Any]):
                 chunk_store=self._chunk_store,
                 synchronizer=self._synchronizer,
                 cache_attrs=self.attrs.cache,
-                zarr_version=self._version,
                 meta_array=self._meta_array,
             )
         elif contains_group(self._store, path, explicit_only=True):
@@ -478,25 +419,8 @@ class Group(MutableMapping[str, Any]):
                 chunk_store=self._chunk_store,
                 cache_attrs=self.attrs.cache,
                 synchronizer=self._synchronizer,
-                zarr_version=self._version,
                 meta_array=self._meta_array,
             )
-        elif self._version == 3:
-            implicit_group = meta_root + path + "/"
-            # non-empty folder in the metadata path implies an implicit group
-            if self._store.list_prefix(implicit_group):
-                return Group(
-                    self._store,
-                    read_only=self._read_only,
-                    path=path,
-                    chunk_store=self._chunk_store,
-                    cache_attrs=self.attrs.cache,
-                    synchronizer=self._synchronizer,
-                    zarr_version=self._version,
-                    meta_array=self._meta_array,
-                )
-            else:
-                raise KeyError(item)
         else:
             raise KeyError(item)
 
@@ -547,29 +471,11 @@ class Group(MutableMapping[str, Any]):
         ['bar', 'foo']
 
         """
-        if self._version == 2:
-            for key in sorted(listdir(self._store, self._path)):
-                path = self._key_prefix + key
-                if contains_group(self._store, path):
-                    yield key
-        else:
-            dir_name = meta_root + self._path
-            group_sfx = ".group" + self._metadata_key_suffix
-            # The fact that we call sorted means this can't be a streaming generator.
-            # The keys are already in memory.
-            all_keys = sorted(listdir(self._store, dir_name))
-            for key in all_keys:
-                if key.endswith(group_sfx):
-                    key = key[: -len(group_sfx)]
-                    if key in all_keys:
-                        # otherwise we will double count this group
-                        continue
-                path = self._key_prefix + key
-                if path.endswith(".array" + self._metadata_key_suffix):
-                    # skip array keys
-                    continue
-                if contains_group(self._store, path, explicit_only=False):
-                    yield key
+
+        for key in sorted(listdir(self._store, self._path)):
+            path = self._key_prefix + key
+            if contains_group(self._store, path):
+                yield key
 
     def groups(self):
         """Return an iterator over (name, value) pairs for groups only.
@@ -588,26 +494,10 @@ class Group(MutableMapping[str, Any]):
         foo <class 'zarr.hierarchy.Group'>
 
         """
-        if self._version == 2:
-            for key in sorted(listdir(self._store, self._path)):
-                path = self._key_prefix + key
-                if contains_group(self._store, path, explicit_only=False):
-                    yield (
-                        key,
-                        Group(
-                            self._store,
-                            path=path,
-                            read_only=self._read_only,
-                            chunk_store=self._chunk_store,
-                            cache_attrs=self.attrs.cache,
-                            synchronizer=self._synchronizer,
-                            zarr_version=self._version,
-                        ),
-                    )
 
-        else:
-            for key in self.group_keys():
-                path = self._key_prefix + key
+        for key in sorted(listdir(self._store, self._path)):
+            path = self._key_prefix + key
+            if contains_group(self._store, path, explicit_only=False):
                 yield (
                     key,
                     Group(
@@ -617,7 +507,6 @@ class Group(MutableMapping[str, Any]):
                         chunk_store=self._chunk_store,
                         cache_attrs=self.attrs.cache,
                         synchronizer=self._synchronizer,
-                        zarr_version=self._version,
                     ),
                 )
 
@@ -672,34 +561,14 @@ class Group(MutableMapping[str, Any]):
         return self._array_iter(keys_only=False, method="arrays", recurse=recurse)
 
     def _array_iter(self, keys_only, method, recurse):
-        if self._version == 2:
-            for key in sorted(listdir(self._store, self._path)):
-                path = self._key_prefix + key
-                if contains_array(self._store, path):
-                    _key = key.rstrip("/")
-                    yield _key if keys_only else (_key, self[key])
-                elif recurse and contains_group(self._store, path):
-                    group = self[key]
-                    yield from getattr(group, method)(recurse=recurse)
-        else:
-            dir_name = meta_root + self._path
-            array_sfx = ".array" + self._metadata_key_suffix
-            group_sfx = ".group" + self._metadata_key_suffix
-
-            for key in sorted(listdir(self._store, dir_name)):
-                if key.endswith(array_sfx):
-                    key = key[: -len(array_sfx)]
-                    _key = key.rstrip("/")
-                    yield _key if keys_only else (_key, self[key])
-
-                path = self._key_prefix + key
-                assert not path.startswith("meta/")
-                if key.endswith(group_sfx):
-                    # skip group metadata keys
-                    continue
-                elif recurse and contains_group(self._store, path):
-                    group = self[key]
-                    yield from getattr(group, method)(recurse=recurse)
+        for key in sorted(listdir(self._store, self._path)):
+            path = self._key_prefix + key
+            if contains_array(self._store, path):
+                _key = key.rstrip("/")
+                yield _key if keys_only else (_key, self[key])
+            elif recurse and contains_group(self._store, path):
+                group = self[key]
+                yield from getattr(group, method)(recurse=recurse)
 
     def visitvalues(self, func):
         """Run ``func`` on each object.
@@ -979,7 +848,6 @@ class Group(MutableMapping[str, Any]):
             chunk_store=self._chunk_store,
             cache_attrs=self.attrs.cache,
             synchronizer=self._synchronizer,
-            zarr_version=self._version,
         )
 
     def create_groups(self, *names, **kwargs):
@@ -1029,7 +897,6 @@ class Group(MutableMapping[str, Any]):
             chunk_store=self._chunk_store,
             cache_attrs=self.attrs.cache,
             synchronizer=self._synchronizer,
-            zarr_version=self._version,
         )
 
     def require_groups(self, *names):
@@ -1341,18 +1208,10 @@ class Group(MutableMapping[str, Any]):
         self._write_op(self._move_nosync, source, dest)
 
 
-def _normalize_store_arg(store, *, storage_options=None, mode="r", zarr_version=None):
-    if zarr_version is None:
-        zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
-
-    if zarr_version != 2:
-        assert_zarr_v3_api_available()
-
+def _normalize_store_arg(store, *, storage_options=None, mode="r"):
     if store is None:
-        return MemoryStore() if zarr_version == 2 else MemoryStoreV3()
-    return normalize_store_arg(
-        store, storage_options=storage_options, mode=mode, zarr_version=zarr_version
-    )
+        return MemoryStore()
+    return normalize_store_arg(store, storage_options=storage_options, mode=mode)
 
 
 def group(
@@ -1363,7 +1222,6 @@ def group(
     synchronizer=None,
     path=None,
     *,
-    zarr_version=None,
     meta_array=None,
 ):
     """Create a group.
@@ -1415,20 +1273,11 @@ def group(
     """
 
     # handle polymorphic store arg
-    store = _normalize_store_arg(store, zarr_version=zarr_version, mode="w")
-    if zarr_version is None:
-        zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
-
-    if zarr_version != 2:
-        assert_zarr_v3_api_available()
+    store = _normalize_store_arg(store, mode="w")
 
     path = normalize_storage_path(path)
 
-    requires_init = None
-    if zarr_version == 2:
-        requires_init = overwrite or not contains_group(store)
-    elif zarr_version == 3:
-        requires_init = overwrite or not contains_group(store, path)
+    requires_init = overwrite or not contains_group(store)
 
     if requires_init:
         init_group(store, overwrite=overwrite, chunk_store=chunk_store, path=path)
@@ -1440,7 +1289,6 @@ def group(
         cache_attrs=cache_attrs,
         synchronizer=synchronizer,
         path=path,
-        zarr_version=zarr_version,
         meta_array=meta_array,
     )
 
@@ -1454,7 +1302,6 @@ def open_group(
     chunk_store=None,
     storage_options=None,
     *,
-    zarr_version=None,
     meta_array=None,
 ):
     """Open a group using file-mode-like semantics.
@@ -1508,21 +1355,10 @@ def open_group(
     """
 
     # handle polymorphic store arg
-    store = _normalize_store_arg(
-        store, storage_options=storage_options, mode=mode, zarr_version=zarr_version
-    )
-    if zarr_version is None:
-        zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
-
-    if zarr_version != 2:
-        assert_zarr_v3_api_available()
+    store = _normalize_store_arg(store, storage_options=storage_options, mode=mode)
 
     if chunk_store is not None:
-        chunk_store = _normalize_store_arg(
-            chunk_store, storage_options=storage_options, mode=mode, zarr_version=zarr_version
-        )
-        if getattr(chunk_store, "_store_version", DEFAULT_ZARR_VERSION) != zarr_version:
-            raise ValueError("zarr_version of store and chunk_store must match")  # pragma: no cover
+        chunk_store = _normalize_store_arg(chunk_store, storage_options=storage_options, mode=mode)
 
     path = normalize_storage_path(path)
 
@@ -1561,6 +1397,5 @@ def open_group(
         synchronizer=synchronizer,
         path=path,
         chunk_store=chunk_store,
-        zarr_version=zarr_version,
         meta_array=meta_array,
     )

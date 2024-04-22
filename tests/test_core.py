@@ -33,15 +33,9 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 import zarr
 from zarr._storage.store import (
     BaseStore,
-    v3_api_available,
 )
-from zarr._storage.v3_storage_transformers import (
-    DummyStorageTransfomer,
-    ShardingStorageTransformer,
-    v3_sharding_available,
-)
+
 from zarr.core import Array
-from zarr.errors import ArrayNotFoundError, ContainsGroupError
 from zarr.meta import json_loads
 from zarr.n5 import N5Store, N5FSStore, n5_keywords
 from zarr.storage import (
@@ -56,23 +50,9 @@ from zarr.storage import (
     SQLiteStore,
     atexit_rmglob,
     atexit_rmtree,
-    data_root,
     init_array,
     init_group,
-    meta_root,
     normalize_store_arg,
-)
-from zarr._storage.v3 import (
-    ABSStoreV3,
-    DBMStoreV3,
-    DirectoryStoreV3,
-    FSStoreV3,
-    KVStoreV3,
-    LMDBStoreV3,
-    LRUStoreCacheV3,
-    RmdirV3,
-    SQLiteStoreV3,
-    StoreV3,
 )
 
 from zarr.util import buffer_size
@@ -82,7 +62,6 @@ from .util import abs_container, skip_test_env_var, have_fsspec, mktemp
 
 
 class TestArray:
-    version = 2
     root = ""
     path = ""
     compressor = Zlib(level=1)
@@ -139,7 +118,7 @@ class TestArray:
         # normal initialization
         store = self.create_store()
         init_array(store, shape=100, chunks=10, dtype="<f8")
-        a = Array(store, zarr_version=self.version)
+        a = Array(store)
         assert isinstance(a, Array)
         assert (100,) == a.shape
         assert (10,) == a.chunks
@@ -152,7 +131,7 @@ class TestArray:
         # initialize at path
         store = self.create_store()
         init_array(store, shape=100, chunks=10, path="foo/bar", dtype="<f8")
-        a = Array(store, path="foo/bar", zarr_version=self.version)
+        a = Array(store, path="foo/bar")
         assert isinstance(a, Array)
         assert (100,) == a.shape
         assert (10,) == a.chunks
@@ -164,13 +143,13 @@ class TestArray:
         # store not initialized
         store = self.create_store()
         with pytest.raises(ValueError):
-            Array(store, zarr_version=self.version)
+            Array(store)
 
         # group is in the way
         store = self.create_store()
         init_group(store, path="baz")
         with pytest.raises(ValueError):
-            Array(store, path="baz", zarr_version=self.version)
+            Array(store, path="baz")
 
     def test_store_has_text_keys(self):
         # Initialize array
@@ -218,28 +197,15 @@ class TestArray:
     def test_nbytes_stored(self):
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
-        if self.version == 3:
-            expect_nbytes_stored = sum(
-                buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
-            )
-        else:
-            expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
+        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        if self.version == 3:
-            expect_nbytes_stored = sum(
-                buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
-            )
-        else:
-            expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
+        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
         assert expect_nbytes_stored == z.nbytes_stored
 
         # mess with store
         try:
-            if self.version == 2:
-                z.store[z._key_prefix + "foo"] = list(range(10))
-            else:
-                z.store[f"meta/root{z.name}/foo"] = list(range(10))
+            z.store[z._key_prefix + "foo"] = list(range(10))
             assert -1 == z.nbytes_stored
         except TypeError:
             pass
@@ -618,8 +584,6 @@ class TestArray:
         z.store.close()
 
     def expected(self):
-        # tests for array without path will not be run for v3 stores
-        assert self.version == 2
         return [
             "063b02ff8d9d3bab6da932ad5828b506ef0a6578",
             "f97b84dc9ffac807415f750100108764e837bb82",
@@ -1580,17 +1544,11 @@ class TestArray:
         a.attrs["foo"] = "bar"
         assert a.attrs.key in a.store
         attrs = json_loads(a.store[a.attrs.key])
-        if self.version > 2:
-            # in v3, attributes are in a sub-dictionary of the metadata
-            attrs = attrs["attributes"]
         assert "foo" in attrs and attrs["foo"] == "bar"
 
         a.attrs["bar"] = "foo"
         assert a.attrs.key in a.store
         attrs = json_loads(a.store[a.attrs.key])
-        if self.version > 2:
-            # in v3, attributes are in a sub-dictionary of the metadata
-            attrs = attrs["attributes"]
         assert "foo" in attrs and attrs["foo"] == "bar"
         assert "bar" in attrs and attrs["bar"] == "foo"
         a.store.close()
@@ -2298,7 +2256,7 @@ class TestArrayWithCustomMapping(TestArray):
 class TestArrayNoCache(TestArray):
     def test_cache_metadata(self):
         a1 = self.create_array(shape=100, chunks=10, dtype="i1", cache_metadata=False)
-        path = None if self.version == 2 else a1.path
+        path = None
         a2 = Array(a1.store, path=path, cache_metadata=True)
         assert a1.shape == a2.shape
         assert a1.size == a2.size
@@ -2339,7 +2297,7 @@ class TestArrayNoCache(TestArray):
 
     def test_cache_attrs(self):
         a1 = self.create_array(shape=100, chunks=10, dtype="i1", cache_attrs=False)
-        path = None if self.version == 2 else "arr1"
+        path = None
         a2 = Array(a1.store, path=path, cache_attrs=True)
         assert a1.attrs.asdict() == a2.attrs.asdict()
 
@@ -2460,7 +2418,7 @@ class TestArrayWithFSStorePartialRead(TestArray):
         """
         z = self.create_array(shape=1000000, chunks=100_000)
         z[40_000:80_000] = 1
-        path = None if self.version == 2 else z.path
+        path = None
         b = Array(z.store, path=path, read_only=True, partial_decompress=True)
         assert (b[40_000:80_000] == 1).all()
 
@@ -2470,7 +2428,7 @@ class TestArrayWithFSStorePartialRead(TestArray):
         """
         z = self.create_array(shape=1000000, chunks=100_000)
         z[2:99_000] = 1
-        path = None if self.version == 2 else z.path
+        path = None
         b = Array(z.store, path=path, read_only=True, partial_decompress=True)
         assert (b[2:99_000] == 1).all()
 
@@ -2517,7 +2475,7 @@ class TestArrayWithFSStoreNestedPartialRead(TestArrayWithFSStore):
         """
         z = self.create_array(shape=1000000, chunks=100_000)
         z[40_000:80_000] = 1
-        path = None if self.version == 2 else z.path
+        path = None
         b = Array(z.store, path=path, read_only=True, partial_decompress=True)
         assert (b[40_000:80_000] == 1).all()
 
@@ -2527,605 +2485,9 @@ class TestArrayWithFSStoreNestedPartialRead(TestArrayWithFSStore):
         """
         z = self.create_array(shape=1000000, chunks=100_000)
         z[2:99_000] = 1
-        path = None if self.version == 2 else z.path
+        path = None
         b = Array(z.store, path=path, read_only=True, partial_decompress=True)
         assert (b[2:99_000] == 1).all()
-
-
-####
-# StoreV3 test classes inheriting from the above below this point
-####
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayV3(TestArray):
-    version = 3
-    root = meta_root
-    path = "arr1"
-
-    def create_store(self):
-        return KVStoreV3(dict())
-
-    def expected(self):
-        # tests for array without path will not be run for v3 stores
-        assert self.version == 3
-        return [
-            "73ab8ace56719a5c9308c3754f5e2d57bc73dc20",
-            "5fb3d02b8f01244721582929b3cad578aec5cea5",
-            "26b098bedb640846e18dc2fbc1c27684bb02b532",
-            "799a458c287d431d747bec0728987ca4fe764549",
-            "c780221df84eb91cb62f633f12d3f1eaa9cee6bd",
-        ]
-
-    # TODO: fix test_nbytes_stored
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithPathV3(TestArrayV3):
-    def test_array_init(self):
-        store = self.create_store()
-        # can initialize an array without a path
-        init_array(store, shape=100, chunks=10, dtype="<f8")
-        b = Array(store)
-        assert not b.is_view
-        assert isinstance(b, Array)
-        assert (100,) == b.shape
-        assert (10,) == b.chunks
-        assert "" == b.path
-        assert b.name is None
-        assert b.basename is None
-        assert store is b.store
-        assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == b.hexdigest()
-
-        # initialize at path
-        store = self.create_store()
-        path = "foo/bar"
-        init_array(store, shape=100, chunks=10, path=path, dtype="<f8")
-        a = Array(store, path=path)
-        assert not a.is_view
-        assert isinstance(a, Array)
-        assert (100,) == a.shape
-        assert (10,) == a.chunks
-        assert path == a.path
-        assert "/" + path == a.name
-        assert "bar" == a.basename
-        assert store is a.store
-        assert "968dccbbfc0139f703ead2fd1d503ad6e44db307" == a.hexdigest()
-
-        # store not initialized
-        store = self.create_store()
-        with pytest.raises(ValueError):
-            Array(store)
-
-        # group is in the way
-        store = self.create_store()
-        path = "baz"
-        init_group(store, path=path)
-        # can't open with an uninitialized array
-        with pytest.raises(ArrayNotFoundError):
-            Array(store, path=path)
-        # can't open at same path as an existing group
-        with pytest.raises(ContainsGroupError):
-            init_array(store, shape=100, chunks=10, path=path, dtype="<f8")
-        group_key = meta_root + path + ".group.json"
-        assert group_key in store
-        del store[group_key]
-        init_array(store, shape=100, chunks=10, path=path, dtype="<f8")
-        Array(store, path=path)
-        assert group_key not in store
-        assert (meta_root + path + ".array.json") in store
-
-    def expected(self):
-        return [
-            "73ab8ace56719a5c9308c3754f5e2d57bc73dc20",
-            "5fb3d02b8f01244721582929b3cad578aec5cea5",
-            "26b098bedb640846e18dc2fbc1c27684bb02b532",
-            "799a458c287d431d747bec0728987ca4fe764549",
-            "c780221df84eb91cb62f633f12d3f1eaa9cee6bd",
-        ]
-
-    def test_nbytes_stored(self):
-        # dict as store
-        z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
-        assert expect_nbytes_stored == z.nbytes_stored
-        z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
-        assert expect_nbytes_stored == z.nbytes_stored
-        assert z.nchunks_initialized == 10
-
-        # mess with store
-        if not isinstance(z.store, (LRUStoreCacheV3, FSStoreV3)):
-            z.store[data_root + z._key_prefix + "foo"] = list(range(10))
-            assert -1 == z.nbytes_stored
-
-        z.store.close()
-
-    def test_view(self):
-        # dict as store
-        z = self.create_array(shape=1005, chunks=100, dtype=float)
-
-        # with with different dtype
-        x = z.view(dtype=bytes)
-        assert x.is_view
-        assert x.dtype == bytes
-
-        new_shape = (1, z.shape[0])
-        x = z.view(shape=new_shape)
-        assert x.is_view
-        assert x.shape == new_shape
-
-        x = z.view(chunks=10)
-        assert x.is_view
-        assert x.chunks == (10,)
-
-        x = z.view(fill_value=5)
-        assert x.is_view
-        assert x[-1] == 5
-
-        with pytest.raises(PermissionError):
-            x.fill_value = 8
-
-    def test_nchunks_initialized(self):
-        # copied from TestArray so the empty version from TestArrayWithPath is
-        # not used
-
-        z = self.create_array(shape=100, chunks=10)
-        assert 0 == z.nchunks_initialized
-        # manually put something into the store to confuse matters
-        z.store["meta/root/foo"] = b"bar"
-        assert 0 == z.nchunks_initialized
-        z[:] = 42
-        assert 10 == z.nchunks_initialized
-
-        z.store.close()
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithChunkStoreV3(TestArrayV3):
-    compressor = Blosc()
-
-    def create_chunk_store(self):
-        store = KVStoreV3(dict())
-        return store
-
-    def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
-
-    def test_nbytes_stored(self):
-        z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
-        expect_nbytes_stored += sum(
-            buffer_size(v) for k, v in z.chunk_store.items() if k != "zarr.json"
-        )
-        assert expect_nbytes_stored == z.nbytes_stored
-        z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
-        expect_nbytes_stored += sum(
-            buffer_size(v) for k, v in z.chunk_store.items() if k != "zarr.json"
-        )
-        assert expect_nbytes_stored == z.nbytes_stored
-
-        # mess with store
-        z.chunk_store[data_root + z._key_prefix + "foo"] = list(range(10))
-        assert -1 == z.nbytes_stored
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithDirectoryStoreV3(TestArrayV3):
-    def create_store(self) -> BaseStore:
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        return DirectoryStoreV3(path)
-
-    def test_nbytes_stored(self):
-        # dict as store
-        z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
-        assert expect_nbytes_stored == z.nbytes_stored
-        z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
-        assert expect_nbytes_stored == z.nbytes_stored
-
-
-@skip_test_env_var("ZARR_TEST_ABS")
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithABSStoreV3(TestArrayV3):
-    def create_store(self) -> ABSStoreV3:
-        client = abs_container()
-        store = ABSStoreV3(client=client)
-        store.rmdir()
-        return store
-
-
-# TODO: TestArrayWithN5StoreV3
-# class TestArrayWithN5StoreV3(TestArrayWithDirectoryStoreV3):
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithDBMStoreV3(TestArrayV3):
-    def create_store(self) -> DBMStoreV3:
-        path = mktemp(suffix=".anydbm")
-        atexit.register(atexit_rmglob, path + "*")
-        store = DBMStoreV3(path, flag="n")
-        return store
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
-    def create_store(self) -> DBMStoreV3:
-        bsddb3 = pytest.importorskip("bsddb3")
-        path = mktemp(suffix=".dbm")
-        atexit.register(os.remove, path)
-        store = DBMStoreV3(path, flag="n", open=bsddb3.btopen)
-        return store
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithLMDBStoreV3(TestArrayV3):
-    lmdb_buffers = True
-
-    def create_store(self) -> LMDBStoreV3:
-        pytest.importorskip("lmdb")
-        path = mktemp(suffix=".lmdb")
-        atexit.register(atexit_rmtree, path)
-        store = LMDBStoreV3(path, buffers=self.lmdb_buffers)
-        return store
-
-    def test_store_has_bytes_values(self):
-        pass  # returns values as memoryviews/buffers instead of bytes
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithLMDBStoreV3NoBuffers(TestArrayWithLMDBStoreV3):
-    lmdb_buffers = False
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithSQLiteStoreV3(TestArrayV3):
-    def create_store(self):
-        pytest.importorskip("sqlite3")
-        path = mktemp(suffix=".db")
-        atexit.register(atexit_rmtree, path)
-        store = SQLiteStoreV3(path)
-        return store
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
-
-
-# skipped adding V3 equivalents for compressors (no change in v3):
-#    TestArrayWithNoCompressor
-#    TestArrayWithBZ2Compressor
-#    TestArrayWithBloscCompressor
-#    TestArrayWithLZMACompressor
-
-# skipped test with filters  (v3 protocol removed filters)
-#    TestArrayWithFilters
-
-
-# custom store, does not support getsize()
-# Note: this custom mapping doesn't actually have all methods in the
-#       v3 spec (e.g. erase), but they aren't needed here.
-
-
-class CustomMappingV3(RmdirV3, StoreV3):
-    def __init__(self):
-        self.inner = KVStoreV3(dict())
-
-    def __iter__(self):
-        return iter(self.keys())
-
-    def __len__(self):
-        return len(self.inner)
-
-    def keys(self):
-        return self.inner.keys()
-
-    def values(self):
-        return self.inner.values()
-
-    def get(self, item, default=None):
-        try:
-            return self.inner[item]
-        except KeyError:
-            return default
-
-    def __getitem__(self, item):
-        return self.inner[item]
-
-    def __setitem__(self, item, value):
-        self.inner[item] = ensure_bytes(value)
-
-    def __delitem__(self, key):
-        del self.inner[key]
-
-    def __contains__(self, item):
-        return item in self.inner
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithCustomMappingV3(TestArrayV3):
-    def create_store(self):
-        store = CustomMappingV3()
-        return store
-
-    def test_nbytes_stored(self):
-        z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
-        assert expect_nbytes_stored == z.nbytes_stored
-        z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z.store.items() if k != "zarr.json")
-        assert expect_nbytes_stored == z.nbytes_stored
-
-    def test_len(self):
-        # dict as store
-        z = self.create_array(shape=1000, chunks=100)
-        assert len(z._store) == 2
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayNoCacheV3(TestArrayWithPathV3):
-    def create_store(self):
-        store = KVStoreV3(dict())
-        return store
-
-    def test_object_arrays_danger(self):
-        # skip this one as it only works if metadata are cached
-        pass
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithStoreCacheV3(TestArrayV3):
-    def create_store(self):
-        store = LRUStoreCacheV3(dict(), max_size=None)
-        return store
-
-    def test_store_has_bytes_values(self):
-        # skip as the cache has no control over how the store provides values
-        pass
-
-
-@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithFSStoreV3(TestArrayV3):
-    compressor = Blosc()
-
-    def create_store(self):
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        key_separator = self.dimension_separator
-        store = FSStoreV3(
-            path,
-            key_separator=key_separator,
-            auto_mkdir=True,
-            create=True,
-            check=True,
-            missing_exceptions=None,
-        )
-        return store
-
-    def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
-
-
-@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithFSStoreV3):
-    def create_store(self):
-        from fsspec.implementations.local import LocalFileSystem
-
-        fs = LocalFileSystem(auto_mkdir=True)
-        path = mkdtemp()
-        atexit.register(shutil.rmtree, path)
-        key_separator = self.dimension_separator
-        store = FSStoreV3(
-            path,
-            fs=fs,
-            key_separator=key_separator,
-            create=True,
-            check=True,
-            missing_exceptions=None,
-        )
-        return store
-
-    def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
-
-
-@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithFSStoreV3PartialRead(TestArrayWithFSStoreV3):
-    partial_decompress = True
-
-    def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
-
-
-@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-@pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
-class TestArrayWithFSStoreV3PartialReadUncompressedSharded(TestArrayWithFSStoreV3):
-    partial_decompress = True
-    compressor = None
-
-    def create_storage_transformers(self, shape) -> Tuple[Any]:
-        num_dims = 1 if isinstance(shape, int) else len(shape)
-        sharding_transformer = ShardingStorageTransformer(
-            "indexed", chunks_per_shard=(2,) * num_dims
-        )
-        return (sharding_transformer,)
-
-    def test_nbytes_stored(self):
-        z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z._store.items() if k != "zarr.json")
-        assert expect_nbytes_stored == z.nbytes_stored
-        z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z._store.items() if k != "zarr.json")
-        assert expect_nbytes_stored == z.nbytes_stored
-
-    def test_supports_efficient_get_set_partial_values(self):
-        z = self.create_array(shape=100, chunks=10)
-        assert z.chunk_store.supports_efficient_get_partial_values
-        assert not z.chunk_store.supports_efficient_set_partial_values()
-
-    def expected(self):
-        return [
-            "90109fc2a4e17efbcb447003ea1c08828b91f71e",
-            "2b73519f7260dba3ddce0d2b70041888856fec6b",
-            "bca5798be2ed71d444f3045b05432d937682b7dd",
-            "9ff1084501e28520e577662a6e3073f1116c76a2",
-            "882a97cad42417f90f111d0cb916a21579650467",
-        ]
-
-
-@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithFSStoreV3Nested(TestArrayWithFSStoreV3):
-    dimension_separator = "/"
-
-    def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
-
-
-@pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithFSStoreV3):
-    dimension_separator = "/"
-
-    def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
-    def create_storage_transformers(self, shape) -> Tuple[Any]:
-        return (
-            DummyStorageTransfomer("dummy_type", test_value=DummyStorageTransfomer.TEST_CONSTANT),
-        )
-
-    def expected(self):
-        return [
-            "3fb9a4f8233b09ad02067b6b7fc9fd5caa405c7d",
-            "89c8eb364beb84919fc9153d2c1ed2696274ec18",
-            "73307055c3aec095dd1232c38d793ef82a06bd97",
-            "6152c09255a5efa43b1a115546e35affa00c138c",
-            "2f8802fc391f67f713302e84fad4fd8f1366d6c2",
-        ]
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-@pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
-class TestArrayWithShardingStorageTransformerV3(TestArrayV3):
-    compressor = None
-
-    def create_storage_transformers(self, shape) -> Tuple[Any]:
-        num_dims = 1 if isinstance(shape, int) else len(shape)
-        return (ShardingStorageTransformer("indexed", chunks_per_shard=(2,) * num_dims),)
-
-    def test_nbytes_stored(self):
-        z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z._store.items() if k != "zarr.json")
-        assert expect_nbytes_stored == z.nbytes_stored
-        z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for k, v in z._store.items() if k != "zarr.json")
-        assert expect_nbytes_stored == z.nbytes_stored
-
-        # mess with store
-        z.store[data_root + z._key_prefix + "foo"] = list(range(10))
-        assert -1 == z.nbytes_stored
-
-    def test_keys_inner_store(self):
-        z = self.create_array(shape=1000, chunks=100)
-        assert z.chunk_store.keys() == z._store.keys()
-        meta_keys = set(z.store.keys())
-        z[:] = 42
-        assert len(z.chunk_store.keys() - meta_keys) == 10
-        # inner store should have half the data keys,
-        # since chunks_per_shard is 2:
-        assert len(z._store.keys() - meta_keys) == 5
-
-    def test_supports_efficient_get_set_partial_values(self):
-        z = self.create_array(shape=100, chunks=10)
-        assert not z.chunk_store.supports_efficient_get_partial_values
-        assert not z.chunk_store.supports_efficient_set_partial_values()
-
-    def expected(self):
-        return [
-            "90109fc2a4e17efbcb447003ea1c08828b91f71e",
-            "2b73519f7260dba3ddce0d2b70041888856fec6b",
-            "bca5798be2ed71d444f3045b05432d937682b7dd",
-            "9ff1084501e28520e577662a6e3073f1116c76a2",
-            "882a97cad42417f90f111d0cb916a21579650467",
-        ]
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-def test_array_mismatched_store_versions():
-    store_v3 = KVStoreV3(dict())
-    store_v2 = KVStore(dict())
-
-    # separate chunk store
-    chunk_store_v2 = KVStore(dict())
-    chunk_store_v3 = KVStoreV3(dict())
-
-    init_kwargs = dict(shape=100, chunks=10, dtype="<f8")
-    init_array(store_v2, path="dataset", chunk_store=chunk_store_v2, **init_kwargs)
-    init_array(store_v3, path="dataset", chunk_store=chunk_store_v3, **init_kwargs)
-
-    # store and chunk_store must have the same zarr protocol version
-    with pytest.raises(ValueError):
-        Array(store_v3, path="dataset", read_only=False, chunk_store=chunk_store_v2)
-    with pytest.raises(ValueError):
-        Array(store_v2, path="dataset", read_only=False, chunk_store=chunk_store_v3)
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
