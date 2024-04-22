@@ -16,11 +16,6 @@ Storage (``zarr.storage``)
     .. automethod:: close
     .. automethod:: flush
 
-.. autoclass:: LMDBStore
-
-    .. automethod:: close
-    .. automethod:: flush
-
 .. autoclass:: SQLiteStore
 
     .. automethod:: close

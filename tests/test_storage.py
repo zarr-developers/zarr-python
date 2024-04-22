@@ -36,7 +36,6 @@ from zarr.storage import (
     #     DictStore,
     #     DirectoryStore,
     #     KVStore,
-    #     LMDBStore,
     #     LRUStoreCache,
     #     MemoryStore,
     #     NestedDirectoryStore,
@@ -1656,22 +1655,6 @@ class TestDirectoryStore(StoreTests):
 #         atexit.register(os.remove, path)
 #         store = DBMStore(path, flag="n", open=bsddb3.btopen, write_lock=False, **kwargs)
 #         return store
-
-
-# class TestLMDBStore(StoreTests):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("lmdb")
-#         path = mktemp(suffix=".lmdb")
-#         atexit.register(atexit_rmtree, path)
-#         buffers = True
-#         store = LMDBStore(path, buffers=buffers, **kwargs)
-#         return store
-
-#     def test_context_manager(self):
-#         with self.create_store() as store:
-#             store[self.root + "foo"] = b"bar"
-#             store[self.root + "baz"] = b"qux"
-#             assert 2 == len(store)
 
 
 # class TestSQLiteStore(StoreTests):

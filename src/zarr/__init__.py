@@ -35,7 +35,6 @@ from zarr.storage import (
     DictStore,
     DirectoryStore,
     KVStore,
-    LMDBStore,
     LRUStoreCache,
     MemoryStore,
     NestedDirectoryStore,

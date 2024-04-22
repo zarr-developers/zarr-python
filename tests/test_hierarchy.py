@@ -26,7 +26,6 @@ from zarr.storage import (
     KVStore,
     DirectoryStore,
     FSStore,
-    LMDBStore,
     LRUStoreCache,
     MemoryStore,
     NestedDirectoryStore,
@@ -1121,16 +1120,6 @@ class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
         path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
         store = DBMStore(path, flag="n", open=bsddb3.btopen)
-        return store, None
-
-
-class TestGroupWithLMDBStore(TestGroup):
-    @staticmethod
-    def create_store():
-        pytest.importorskip("lmdb")
-        path = mktemp(suffix=".lmdb")
-        atexit.register(atexit_rmtree, path)
-        store = LMDBStore(path)
         return store, None
 
 

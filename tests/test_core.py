@@ -41,7 +41,6 @@ from zarr.storage import (
     DirectoryStore,
     FSStore,
     KVStore,
-    LMDBStore,
     LRUStoreCache,
     NestedDirectoryStore,
     SQLiteStore,
@@ -1687,33 +1686,6 @@ class TestArrayWithDBMStoreBerkeleyDB(TestArray):
         path = mktemp(suffix=".dbm")
         atexit.register(os.remove, path)
         store = DBMStore(path, flag="n", open=bsddb3.btopen)
-        return store
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
-
-
-class TestArrayWithLMDBStore(TestArray):
-    def create_store(self):
-        pytest.importorskip("lmdb")
-        path = mktemp(suffix=".lmdb")
-        atexit.register(atexit_rmtree, path)
-        store = LMDBStore(path, buffers=True)
-        return store
-
-    def test_store_has_bytes_values(self):
-        pass  # returns values as memoryviews/buffers instead of bytes
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
-
-
-class TestArrayWithLMDBStoreNoBuffers(TestArray):
-    def create_store(self):
-        pytest.importorskip("lmdb")
-        path = mktemp(suffix=".lmdb")
-        atexit.register(atexit_rmtree, path)
-        store = LMDBStore(path, buffers=False)
         return store
 
     def test_nbytes_stored(self):

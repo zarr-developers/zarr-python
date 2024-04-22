@@ -818,16 +818,6 @@ database for storage (requires `bsddb3
     >>> z[:] = 42
     >>> store.close()
 
-Also added in Zarr version 2.2 is the :class:`zarr.storage.LMDBStore` class which
-enables the lightning memory-mapped database (LMDB) to be used for storing an array or
-group (requires `lmdb <https://lmdb.readthedocs.io/>`_ to be installed)::
-
-    >>> store = zarr.LMDBStore('data/example.lmdb')
-    >>> root = zarr.group(store=store, overwrite=True)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
-    >>> store.close()
-
 In Zarr version 2.3 is the :class:`zarr.storage.SQLiteStore` class which
 enables the SQLite database to be used for storing an array or group (requires
 Python is built with SQLite support)::

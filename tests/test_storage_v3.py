@@ -36,7 +36,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #     FSStoreV3,
 #     KVStore,
 #     KVStoreV3,
-#     LMDBStoreV3,
 #     LRUStoreCacheV3,
 #     MemoryStoreV3,
 #     SQLiteStoreV3,
@@ -55,7 +54,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 # from .test_storage import TestDBMStoreNDBM as _TestDBMStoreNDBM
 # from .test_storage import TestDirectoryStore as _TestDirectoryStore
 # from .test_storage import TestFSStore as _TestFSStore
-# from .test_storage import TestLMDBStore as _TestLMDBStore
 # from .test_storage import TestLRUStoreCache as _TestLRUStoreCache
 # from .test_storage import TestMemoryStore as _TestMemoryStore
 # from .test_storage import TestSQLiteStore as _TestSQLiteStore
@@ -464,16 +462,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #         return store
 
 
-# class TestLMDBStoreV3(_TestLMDBStore, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("lmdb")
-#         path = mktemp(suffix=".lmdb")
-#         atexit.register(atexit_rmtree, path)
-#         buffers = True
-#         store = LMDBStoreV3(path, buffers=buffers, **kwargs)
-#         return store
-
-
 # class TestSQLiteStoreV3(_TestSQLiteStore, StoreV3Tests):
 #     def create_store(self, **kwargs):
 #         pytest.importorskip("sqlite3")
@@ -624,7 +612,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #         "DBMStoreV3",
 #         "KVStoreV3",
 #         "DirectoryStoreV3",
-#         "LMDBStoreV3",
 #         "LRUStoreCacheV3",
 #         "MemoryStoreV3",
 #         "SQLiteStoreV3",

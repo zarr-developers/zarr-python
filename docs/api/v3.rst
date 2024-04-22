@@ -51,7 +51,6 @@ You can also check ``Store type`` here (which indicates Zarr V3).
 .. autoclass:: DirectoryStoreV3
 .. autoclass:: ZipStoreV3
 .. autoclass:: DBMStoreV3
-.. autoclass:: LMDBStoreV3
 .. autoclass:: SQLiteStoreV3
 .. autoclass:: LRUStoreCacheV3
 .. autoclass:: ConsolidatedMetadataStoreV3
