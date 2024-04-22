@@ -40,7 +40,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #     LMDBStoreV3,
 #     LRUStoreCacheV3,
 #     MemoryStoreV3,
-#     MongoDBStoreV3,
 #     SQLiteStoreV3,
 #     StoreV3,
 #     ZipStoreV3,
@@ -493,18 +492,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #         return store
 
 
-# @skip_test_env_var("ZARR_TEST_MONGO")
-# class TestMongoDBStoreV3(StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("pymongo")
-#         store = MongoDBStoreV3(
-#             host="127.0.0.1", database="zarr_tests", collection="zarr_tests", **kwargs
-#         )
-#         # start with an empty store
-#         store.clear()
-#         return store
-
-
 # @pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
 # class TestStorageTransformerV3(TestMappingStoreV3):
 #     def create_store(self, **kwargs):
@@ -649,7 +636,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #         "LMDBStoreV3",
 #         "LRUStoreCacheV3",
 #         "MemoryStoreV3",
-#         "MongoDBStoreV3",
 #         "SQLiteStoreV3",
 #         "ZipStoreV3",
 #     ]:

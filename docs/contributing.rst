@@ -168,11 +168,6 @@ storage emulator (e.g., azurite) and set the environment variable
 
     docker run --rm -p 10000:10000 mcr.microsoft.com/azure-storage/azurite azurite-blob --loose --blobHost 0.0.0.0
 
-To run the Mongo DB storage tests, run a Mongo
-server locally and set the environment variable ``ZARR_TEST_MONGO=1``.
-To run the Redis storage tests, run a Redis server locally on port
-6379 and set the environment variable ``ZARR_TEST_REDIS=1``.
-
 All tests are automatically run via GitHub Actions for every pull
 request and must pass before code can be accepted. Test coverage is
 also collected automatically via the Codecov service, and total

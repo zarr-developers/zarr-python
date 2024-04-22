@@ -40,7 +40,6 @@ from zarr.storage import (
     #     LMDBStore,
     #     LRUStoreCache,
     #     MemoryStore,
-    #     MongoDBStore,
     #     NestedDirectoryStore,
     #     SQLiteStore,
     #     Store,
@@ -1710,18 +1709,6 @@ class TestDirectoryStore(StoreTests):
 #         # round-trip through pickle
 #         with pytest.raises(PicklingError):
 #             pickle.dumps(store)
-
-
-# @skip_test_env_var("ZARR_TEST_MONGO")
-# class TestMongoDBStore(StoreTests):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("pymongo")
-#         store = MongoDBStore(
-#             host="127.0.0.1", database="zarr_tests", collection="zarr_tests", **kwargs
-#         )
-#         # start with an empty store
-#         store.clear()
-#         return store
 
 
 # class TestLRUStoreCache(StoreTests):

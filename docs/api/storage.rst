@@ -25,7 +25,6 @@ Storage (``zarr.storage``)
 
     .. automethod:: close
 
-.. autoclass:: MongoDBStore
 .. autoclass:: LRUStoreCache
 
     .. automethod:: invalidate

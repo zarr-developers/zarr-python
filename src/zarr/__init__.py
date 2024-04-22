@@ -39,7 +39,6 @@ from zarr.storage import (
     LMDBStore,
     LRUStoreCache,
     MemoryStore,
-    MongoDBStore,
     NestedDirectoryStore,
     SQLiteStore,
     TempStore,
