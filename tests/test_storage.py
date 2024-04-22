@@ -12,6 +12,7 @@ import tempfile
 
 # from contextlib import contextmanager
 # from pickle import PicklingError
+# from zipfile import ZipFile
 
 # import numpy as np
 import pytest
@@ -29,16 +30,24 @@ import pytest
 # from zarr.hierarchy import group
 # from zarr.meta import ZARR_FORMAT, decode_array_metadata
 
+# from zarr.n5 import N5Store, N5FSStore, N5_FORMAT, n5_attrs_key
 from zarr.storage import (
+    #     ABSStore,
     #     ConsolidatedMetadataStore,
+    #     DBMStore,
     #     DictStore,
     #     DirectoryStore,
     #     KVStore,
+    #     LMDBStore,
     #     LRUStoreCache,
     #     MemoryStore,
+    #     MongoDBStore,
     #     NestedDirectoryStore,
+    #     RedisStore,
+    #     SQLiteStore,
     #     Store,
     #     TempStore,
+    #     ZipStore,
     #     array_meta_key,
     #     atexit_rmglob,
     atexit_rmtree,
@@ -1479,6 +1488,275 @@ class TestDirectoryStore(StoreTests):
 #             NestedDirectoryStore(path, normalize_keys=True, dimension_separator=".")
 
 
+# class TestN5Store(TestNestedDirectoryStore):
+#     def create_store(self, normalize_keys=False):
+#         path = tempfile.mkdtemp()
+#         atexit.register(atexit_rmtree, path)
+#         store = N5Store(path, normalize_keys=normalize_keys)
+#         return store
+
+#     def test_equal(self):
+#         store_a = self.create_store()
+#         store_b = N5Store(store_a.path)
+#         assert store_a == store_b
+
+#     @pytest.mark.parametrize("zarr_meta_key", [".zarray", ".zattrs", ".zgroup"])
+#     def test_del_zarr_meta_key(self, zarr_meta_key):
+#         store = self.create_store()
+#         store[n5_attrs_key] = json_dumps({"foo": "bar"})
+#         del store[zarr_meta_key]
+#         assert n5_attrs_key not in store
+
+#     def test_chunk_nesting(self):
+#         store = self.create_store()
+#         store["0.0"] = b"xxx"
+#         assert "0.0" in store
+#         assert b"xxx" == store["0.0"]
+#         # assert b'xxx' == store['0/0']
+#         store["foo/10.20.30"] = b"yyy"
+#         assert "foo/10.20.30" in store
+#         assert b"yyy" == store["foo/10.20.30"]
+#         # N5 reverses axis order
+#         assert b"yyy" == store["foo/30/20/10"]
+#         del store["foo/10.20.30"]
+#         assert "foo/30/20/10" not in store
+#         store["42"] = b"zzz"
+#         assert "42" in store
+#         assert b"zzz" == store["42"]
+
+#     def test_init_array(self):
+#         store = self.create_store()
+#         init_array(store, shape=1000, chunks=100)
+
+#         # check metadata
+#         assert array_meta_key in store
+#         meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
+#         assert ZARR_FORMAT == meta["zarr_format"]
+#         assert (1000,) == meta["shape"]
+#         assert (100,) == meta["chunks"]
+#         assert np.dtype(None) == meta["dtype"]
+#         # N5Store wraps the actual compressor
+#         compressor_config = meta["compressor"]["compressor_config"]
+#         assert default_compressor.get_config() == compressor_config
+#         # N5Store always has a fill value of 0
+#         assert meta["fill_value"] == 0
+#         assert meta["dimension_separator"] == "."
+#         # Top-level groups AND arrays should have
+#         # the n5 keyword in metadata
+#         raw_n5_meta = json.loads(store[n5_attrs_key])
+#         assert raw_n5_meta.get("n5", None) == N5_FORMAT
+
+#     def test_init_array_path(self):
+#         path = "foo/bar"
+#         store = self.create_store()
+#         init_array(store, shape=1000, chunks=100, path=path)
+
+#         # check metadata
+#         key = path + "/" + array_meta_key
+#         assert key in store
+#         meta = store._metadata_class.decode_array_metadata(store[key])
+#         assert ZARR_FORMAT == meta["zarr_format"]
+#         assert (1000,) == meta["shape"]
+#         assert (100,) == meta["chunks"]
+#         assert np.dtype(None) == meta["dtype"]
+#         # N5Store wraps the actual compressor
+#         compressor_config = meta["compressor"]["compressor_config"]
+#         assert default_compressor.get_config() == compressor_config
+#         # N5Store always has a fill value of 0
+#         assert meta["fill_value"] == 0
+
+#     def test_init_array_compat(self):
+#         store = self.create_store()
+#         init_array(store, shape=1000, chunks=100, compressor="none")
+#         meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
+#         # N5Store wraps the actual compressor
+#         compressor_config = meta["compressor"]["compressor_config"]
+#         assert compressor_config is None
+
+#     def test_init_array_overwrite(self):
+#         self._test_init_array_overwrite("C")
+
+#     def test_init_array_overwrite_path(self):
+#         self._test_init_array_overwrite_path("C")
+
+#     def test_init_array_overwrite_chunk_store(self):
+#         self._test_init_array_overwrite_chunk_store("C")
+
+#     def test_init_group_overwrite(self):
+#         self._test_init_group_overwrite("C")
+
+#     def test_init_group_overwrite_path(self):
+#         self._test_init_group_overwrite_path("C")
+
+#     def test_init_group_overwrite_chunk_store(self):
+#         self._test_init_group_overwrite_chunk_store("C")
+
+#     def test_init_group(self):
+#         store = self.create_store()
+#         init_group(store)
+#         store[".zattrs"] = json_dumps({"foo": "bar"})
+#         # check metadata
+#         assert group_meta_key in store
+#         assert group_meta_key in store.listdir()
+#         assert group_meta_key in store.listdir("")
+#         meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
+#         assert ZARR_FORMAT == meta["zarr_format"]
+
+#     def test_filters(self):
+#         all_filters, all_errors = zip(
+#             *[
+#                 (None, does_not_raise()),
+#                 ([], does_not_raise()),
+#                 ([AsType("f4", "f8")], pytest.raises(ValueError)),
+#             ]
+#         )
+#         for filters, error in zip(all_filters, all_errors):
+#             store = self.create_store()
+#             with error:
+#                 init_array(store, shape=1000, chunks=100, filters=filters)
+
+
+# @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
+# class TestN5FSStore(TestFSStore):
+#     def create_store(self, normalize_keys=False, path=None, **kwargs):
+
+#         if path is None:
+#             path = tempfile.mkdtemp()
+#             atexit.register(atexit_rmtree, path)
+
+#         store = N5FSStore(path, normalize_keys=normalize_keys, **kwargs)
+#         return store
+
+#     def test_equal(self):
+#         store_a = self.create_store()
+#         store_b = N5FSStore(store_a.path)
+#         assert store_a == store_b
+
+#     # This is copied wholesale from the N5Store tests. The same test could
+#     # be run by making TestN5FSStore inherit from both TestFSStore and
+#     # TestN5Store, but a direct copy is arguably more explicit.
+
+#     @pytest.mark.parametrize("zarr_meta_key", [".zarray", ".zattrs", ".zgroup"])
+#     def test_del_zarr_meta_key(self, zarr_meta_key):
+#         store = self.create_store()
+#         store[n5_attrs_key] = json_dumps({"foo": "bar"})
+#         del store[zarr_meta_key]
+#         assert n5_attrs_key not in store
+
+#     def test_chunk_nesting(self):
+#         store = self.create_store()
+#         store["0.0"] = b"xxx"
+#         assert "0.0" in store
+#         assert b"xxx" == store["0.0"]
+#         # assert b'xxx' == store['0/0']
+#         store["foo/10.20.30"] = b"yyy"
+#         assert "foo/10.20.30" in store
+#         assert b"yyy" == store["foo/10.20.30"]
+#         # N5 reverses axis order
+#         assert b"yyy" == store["foo/30/20/10"]
+#         del store["foo/10.20.30"]
+#         assert "foo/30/20/10" not in store
+#         store["42"] = b"zzz"
+#         assert "42" in store
+#         assert b"zzz" == store["42"]
+
+#     def test_init_array(self):
+#         store = self.create_store()
+#         init_array(store, shape=1000, chunks=100)
+
+#         # check metadata
+#         assert array_meta_key in store
+#         meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
+#         assert ZARR_FORMAT == meta["zarr_format"]
+#         assert (1000,) == meta["shape"]
+#         assert (100,) == meta["chunks"]
+#         assert np.dtype(None) == meta["dtype"]
+#         # N5Store wraps the actual compressor
+#         compressor_config = meta["compressor"]["compressor_config"]
+#         assert default_compressor.get_config() == compressor_config
+#         # N5Store always has a fill value of 0
+#         assert meta["fill_value"] == 0
+#         assert meta["dimension_separator"] == "."
+#         # Top-level groups AND arrays should have
+#         # the n5 keyword in metadata
+#         raw_n5_meta = json.loads(store[n5_attrs_key])
+#         assert raw_n5_meta.get("n5", None) == N5_FORMAT
+
+#     def test_init_array_path(self):
+#         path = "foo/bar"
+#         store = self.create_store()
+#         init_array(store, shape=1000, chunks=100, path=path)
+
+#         # check metadata
+#         key = path + "/" + array_meta_key
+#         assert key in store
+#         meta = store._metadata_class.decode_array_metadata(store[key])
+#         assert ZARR_FORMAT == meta["zarr_format"]
+#         assert (1000,) == meta["shape"]
+#         assert (100,) == meta["chunks"]
+#         assert np.dtype(None) == meta["dtype"]
+#         # N5Store wraps the actual compressor
+#         compressor_config = meta["compressor"]["compressor_config"]
+#         assert default_compressor.get_config() == compressor_config
+#         # N5Store always has a fill value of 0
+#         assert meta["fill_value"] == 0
+
+#     def test_init_array_compat(self):
+#         store = self.create_store()
+#         init_array(store, shape=1000, chunks=100, compressor="none")
+#         meta = store._metadata_class.decode_array_metadata(store[array_meta_key])
+#         # N5Store wraps the actual compressor
+#         compressor_config = meta["compressor"]["compressor_config"]
+#         assert compressor_config is None
+
+#     def test_init_array_overwrite(self):
+#         self._test_init_array_overwrite("C")
+
+#     def test_init_array_overwrite_path(self):
+#         self._test_init_array_overwrite_path("C")
+
+#     def test_init_array_overwrite_chunk_store(self):
+#         self._test_init_array_overwrite_chunk_store("C")
+
+#     def test_init_group_overwrite(self):
+#         self._test_init_group_overwrite("C")
+
+#     def test_init_group_overwrite_path(self):
+#         self._test_init_group_overwrite_path("C")
+
+#     def test_init_group_overwrite_chunk_store(self):
+#         self._test_init_group_overwrite_chunk_store("C")
+
+#     def test_dimension_separator(self):
+
+#         with pytest.warns(UserWarning, match="dimension_separator"):
+#             self.create_store(dimension_separator="/")
+
+#     def test_init_group(self):
+#         store = self.create_store()
+#         init_group(store)
+#         store[".zattrs"] = json_dumps({"foo": "bar"})
+#         # check metadata
+#         assert group_meta_key in store
+#         assert group_meta_key in store.listdir()
+#         assert group_meta_key in store.listdir("")
+#         meta = store._metadata_class.decode_group_metadata(store[group_meta_key])
+#         assert ZARR_FORMAT == meta["zarr_format"]
+
+#     def test_filters(self):
+#         all_filters, all_errors = zip(
+#             *[
+#                 (None, does_not_raise()),
+#                 ([], does_not_raise()),
+#                 ([AsType("f4", "f8")], pytest.raises(ValueError)),
+#             ]
+#         )
+#         for filters, error in zip(all_filters, all_errors):
+#             store = self.create_store()
+#             with error:
+#                 init_array(store, shape=1000, chunks=100, filters=filters)
+
+
 # @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 # class TestNestedFSStore(TestNestedDirectoryStore):
 #     def create_store(self, normalize_keys=False, path=None, **kwargs):
@@ -1513,6 +1791,220 @@ class TestDirectoryStore(StoreTests):
 #     def test_setdel(self):
 #         store = self.create_store()
 #         setdel_hierarchy_checks(store, self.root)
+
+
+# class TestZipStore(StoreTests):
+
+#     ZipStoreClass = ZipStore
+
+#     def create_store(self, **kwargs):
+#         path = mktemp(suffix=".zip")
+#         atexit.register(os.remove, path)
+#         store = ZipStore(path, mode="w", **kwargs)
+#         return store
+
+#     def test_mode(self):
+#         with self.ZipStoreClass("data/store.zip", mode="w") as store:
+#             store[self.root + "foo"] = b"bar"
+#         store = self.ZipStoreClass("data/store.zip", mode="r")
+#         with pytest.raises(PermissionError):
+#             store[self.root + "foo"] = b"bar"
+#         with pytest.raises(PermissionError):
+#             store.clear()
+
+#     def test_flush(self):
+#         store = self.ZipStoreClass("data/store.zip", mode="w")
+#         store[self.root + "foo"] = b"bar"
+#         store.flush()
+#         assert store[self.root + "foo"] == b"bar"
+#         store.close()
+
+#         store = self.ZipStoreClass("data/store.zip", mode="r")
+#         store.flush()  # no-op
+
+#     def test_context_manager(self):
+#         with self.create_store() as store:
+#             store[self.root + "foo"] = b"bar"
+#             store[self.root + "baz"] = b"qux"
+#             assert 2 == len(store)
+
+#     def test_pop(self):
+#         # override because not implemented
+#         store = self.create_store()
+#         store[self.root + "foo"] = b"bar"
+#         with pytest.raises(NotImplementedError):
+#             store.pop(self.root + "foo")
+
+#     def test_popitem(self):
+#         # override because not implemented
+#         store = self.create_store()
+#         store[self.root + "foo"] = b"bar"
+#         with pytest.raises(NotImplementedError):
+#             store.popitem()
+
+#     def test_permissions(self):
+#         store = self.ZipStoreClass("data/store.zip", mode="w")
+#         foo_key = "foo" if self.version == 2 else self.root + "foo"
+#         # TODO: cannot provide key ending in / for v3
+#         #       how to create an empty folder in that case?
+#         baz_key = "baz/" if self.version == 2 else self.root + "baz"
+#         store[foo_key] = b"bar"
+#         store[baz_key] = b""
+
+#         store.flush()
+#         store.close()
+#         z = ZipFile("data/store.zip", "r")
+#         info = z.getinfo(foo_key)
+#         perm = oct(info.external_attr >> 16)
+#         assert perm == "0o644"
+#         info = z.getinfo(baz_key)
+#         perm = oct(info.external_attr >> 16)
+#         # only for posix platforms
+#         if os.name == "posix":
+#             if self.version == 2:
+#                 assert perm == "0o40775"
+#             else:
+#                 # baz/ on v2, but baz on v3, so not a directory
+#                 assert perm == "0o644"
+#         z.close()
+
+#     def test_store_and_retrieve_ndarray(self):
+#         store = ZipStore("data/store.zip")
+#         x = np.array([[1, 2], [3, 4]])
+#         store["foo"] = x
+#         y = np.frombuffer(store["foo"], dtype=x.dtype).reshape(x.shape)
+#         assert np.array_equiv(y, x)
+
+
+# class TestDBMStore(StoreTests):
+#     def create_store(self, dimension_separator=None):
+#         path = mktemp(suffix=".anydbm")
+#         atexit.register(atexit_rmglob, path + "*")
+#         # create store using default dbm implementation
+#         store = DBMStore(path, flag="n", dimension_separator=dimension_separator)
+#         return store
+
+#     def test_context_manager(self):
+#         with self.create_store() as store:
+#             store[self.root + "foo"] = b"bar"
+#             store[self.root + "baz"] = b"qux"
+#             assert 2 == len(store)
+
+
+# class TestDBMStoreDumb(TestDBMStore):
+#     def create_store(self, **kwargs):
+#         path = mktemp(suffix=".dumbdbm")
+#         atexit.register(atexit_rmglob, path + "*")
+
+#         import dbm.dumb as dumbdbm
+
+#         store = DBMStore(path, flag="n", open=dumbdbm.open, **kwargs)
+#         return store
+
+
+# class TestDBMStoreGnu(TestDBMStore):
+#     def create_store(self, **kwargs):
+#         gdbm = pytest.importorskip("dbm.gnu")
+#         path = mktemp(suffix=".gdbm")  # pragma: no cover
+#         atexit.register(os.remove, path)  # pragma: no cover
+#         store = DBMStore(
+#             path, flag="n", open=gdbm.open, write_lock=False, **kwargs
+#         )  # pragma: no cover
+#         return store  # pragma: no cover
+
+
+# class TestDBMStoreNDBM(TestDBMStore):
+#     def create_store(self, **kwargs):
+#         ndbm = pytest.importorskip("dbm.ndbm")
+#         path = mktemp(suffix=".ndbm")  # pragma: no cover
+#         atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
+#         store = DBMStore(path, flag="n", open=ndbm.open, **kwargs)  # pragma: no cover
+#         return store  # pragma: no cover
+
+
+# class TestDBMStoreBerkeleyDB(TestDBMStore):
+#     def create_store(self, **kwargs):
+#         bsddb3 = pytest.importorskip("bsddb3")
+#         path = mktemp(suffix=".dbm")
+#         atexit.register(os.remove, path)
+#         store = DBMStore(path, flag="n", open=bsddb3.btopen, write_lock=False, **kwargs)
+#         return store
+
+
+# class TestLMDBStore(StoreTests):
+#     def create_store(self, **kwargs):
+#         pytest.importorskip("lmdb")
+#         path = mktemp(suffix=".lmdb")
+#         atexit.register(atexit_rmtree, path)
+#         buffers = True
+#         store = LMDBStore(path, buffers=buffers, **kwargs)
+#         return store
+
+#     def test_context_manager(self):
+#         with self.create_store() as store:
+#             store[self.root + "foo"] = b"bar"
+#             store[self.root + "baz"] = b"qux"
+#             assert 2 == len(store)
+
+
+# class TestSQLiteStore(StoreTests):
+#     def create_store(self, **kwargs):
+#         pytest.importorskip("sqlite3")
+#         path = mktemp(suffix=".db")
+#         atexit.register(atexit_rmtree, path)
+#         store = SQLiteStore(path, **kwargs)
+#         return store
+
+#     def test_underscore_in_name(self):
+#         path = mktemp(suffix=".db")
+#         atexit.register(atexit_rmtree, path)
+#         store = SQLiteStore(path)
+#         store["a"] = b"aaa"
+#         store["a_b"] = b"aa_bb"
+#         store.rmdir("a")
+#         assert "a_b" in store
+
+
+# class TestSQLiteStoreInMemory(TestSQLiteStore):
+#     def create_store(self, **kwargs):
+#         pytest.importorskip("sqlite3")
+#         store = SQLiteStore(":memory:", **kwargs)
+#         return store
+
+#     def test_pickle(self):
+
+#         # setup store
+#         store = self.create_store()
+#         store[self.root + "foo"] = b"bar"
+#         store[self.root + "baz"] = b"quux"
+
+#         # round-trip through pickle
+#         with pytest.raises(PicklingError):
+#             pickle.dumps(store)
+
+
+# @skip_test_env_var("ZARR_TEST_MONGO")
+# class TestMongoDBStore(StoreTests):
+#     def create_store(self, **kwargs):
+#         pytest.importorskip("pymongo")
+#         store = MongoDBStore(
+#             host="127.0.0.1", database="zarr_tests", collection="zarr_tests", **kwargs
+#         )
+#         # start with an empty store
+#         store.clear()
+#         return store
+
+
+# @skip_test_env_var("ZARR_TEST_REDIS")
+# class TestRedisStore(StoreTests):
+#     def create_store(self, **kwargs):
+#         # TODO: this is the default host for Redis on Travis,
+#         # we probably want to generalize this though
+#         pytest.importorskip("redis")
+#         store = RedisStore(host="localhost", port=6379, **kwargs)
+#         # start with an empty store
+#         store.clear()
+#         return store
 
 
 # class TestLRUStoreCache(StoreTests):

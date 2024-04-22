@@ -24,6 +24,7 @@ from zarr.creation import (
     zeros_like,
 )
 from zarr.hierarchy import open_group
+from zarr.n5 import N5Store
 from zarr.storage import DirectoryStore, KVStore
 from zarr.sync import ThreadSynchronizer
 from .util import mktemp, have_fsspec
@@ -318,6 +319,40 @@ def test_open_array_infer_separator_from_store(dimension_separator):
         assert z._dimension_separator == "."
     else:
         assert z._dimension_separator == dimension_separator
+
+
+def test_open_array_n5():
+    store = "data/array.zarr"
+    kwargs = _init_creation_kwargs()
+
+    # for N5 store
+    store = "data/array.n5"
+    z = open_array(store, mode="w", shape=100, chunks=10, **kwargs)
+    z[:] = 42
+    assert isinstance(z, Array)
+    assert isinstance(z.store, N5Store)
+    assert (100,) == z.shape
+    assert (10,) == z.chunks
+    assert_array_equal(np.full(100, fill_value=42), z[:])
+
+    store = "data/group.n5"
+    group_kwargs = kwargs.copy()
+    z = open_group(store, mode="w", **group_kwargs)
+    i = z.create_group("inner")
+    a = i.zeros("array", shape=100, chunks=10)
+    a[:] = 42
+
+    # Edit inner/attributes.json to not include "n5"
+    with open("data/group.n5/inner/attributes.json", "w") as o:
+        o.write("{}")
+
+    # Re-open
+    a = open_group(store, **group_kwargs)["inner"]["array"]
+    assert isinstance(a, Array)
+    assert isinstance(z.store, N5Store)
+    assert (100,) == a.shape
+    assert (10,) == a.chunks
+    assert_array_equal(np.full(100, fill_value=42), a[:])
 
 
 @pytest.mark.parametrize("at_root", [False, True])
