@@ -1,6 +1,5 @@
 import atexit
 import os
-import sys
 import pickle
 import shutil
 import tempfile
@@ -23,19 +22,14 @@ from zarr.core import Array
 from zarr.creation import open_array
 from zarr.hierarchy import Group, group, open_group
 from zarr.storage import (
-    ABSStore,
-    DBMStore,
     KVStore,
     DirectoryStore,
     FSStore,
-    LMDBStore,
     LRUStoreCache,
     MemoryStore,
     NestedDirectoryStore,
-    SQLiteStore,
     ZipStore,
     array_meta_key,
-    atexit_rmglob,
     atexit_rmtree,
     group_meta_key,
     init_array,
@@ -43,7 +37,7 @@ from zarr.storage import (
 )
 
 from zarr.util import InfoReporter
-from .util import skip_test_env_var, have_fsspec, abs_container, mktemp
+from .util import have_fsspec, mktemp
 
 # noinspection PyStatementEffect
 
@@ -1029,21 +1023,6 @@ class TestGroupWithDirectoryStore(TestGroup):
         return store, None
 
 
-@skip_test_env_var("ZARR_TEST_ABS")
-class TestGroupWithABSStore(TestGroup):
-    @staticmethod
-    def create_store():
-        container_client = abs_container()
-        store = ABSStore(client=container_client)
-        store.rmdir()
-        return store, None
-
-    @pytest.mark.skipif(sys.version_info < (3, 7), reason="attr not serializable in py36")
-    def test_pickle(self):
-        # internal attribute on ContainerClient isn't serializable for py36 and earlier
-        super().test_pickle()
-
-
 class TestGroupWithNestedDirectoryStore(TestGroup):
     @staticmethod
     def create_store():
@@ -1120,44 +1099,6 @@ class TestGroupWithZipStore(TestGroup):
         # zip store is not erasable (can so far only append to a zip
         # so we can't test for move.
         pass
-
-
-class TestGroupWithDBMStore(TestGroup):
-    @staticmethod
-    def create_store():
-        path = mktemp(suffix=".anydbm")
-        atexit.register(atexit_rmglob, path + "*")
-        store = DBMStore(path, flag="n")
-        return store, None
-
-
-class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
-    @staticmethod
-    def create_store():
-        bsddb3 = pytest.importorskip("bsddb3")
-        path = mktemp(suffix=".dbm")
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag="n", open=bsddb3.btopen)
-        return store, None
-
-
-class TestGroupWithLMDBStore(TestGroup):
-    @staticmethod
-    def create_store():
-        pytest.importorskip("lmdb")
-        path = mktemp(suffix=".lmdb")
-        atexit.register(atexit_rmtree, path)
-        store = LMDBStore(path)
-        return store, None
-
-
-class TestGroupWithSQLiteStore(TestGroup):
-    def create_store(self):
-        pytest.importorskip("sqlite3")
-        path = mktemp(suffix=".db")
-        atexit.register(atexit_rmtree, path)
-        store = SQLiteStore(path)
-        return store, None
 
 
 class TestGroupWithChunkStore(TestGroup):

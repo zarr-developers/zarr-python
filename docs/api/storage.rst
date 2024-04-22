@@ -11,29 +11,11 @@ Storage (``zarr.storage``)
     .. automethod:: close
     .. automethod:: flush
 
-.. autoclass:: DBMStore
-
-    .. automethod:: close
-    .. automethod:: flush
-
-.. autoclass:: LMDBStore
-
-    .. automethod:: close
-    .. automethod:: flush
-
-.. autoclass:: SQLiteStore
-
-    .. automethod:: close
-
-.. autoclass:: MongoDBStore
-.. autoclass:: RedisStore
 .. autoclass:: LRUStoreCache
 
     .. automethod:: invalidate
     .. automethod:: invalidate_values
     .. automethod:: invalidate_keys
-
-.. autoclass:: ABSStore
 
 .. autoclass:: FSStore
 

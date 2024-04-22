@@ -1,5 +1,0 @@
-N5 (``zarr.n5``)
-================
-.. automodule:: zarr.n5
-
-.. autoclass:: N5Store

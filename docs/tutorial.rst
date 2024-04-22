@@ -805,60 +805,6 @@ boundaries. Note also that the ``close()`` method must be called after writing
 any data to the store, otherwise essential records will not be written to the
 underlying zip file.
 
-Another storage alternative is the :class:`zarr.storage.DBMStore` class, added
-in Zarr version 2.2. This class allows any DBM-style database to be used for
-storing an array or group. Here is an example using a Berkeley DB B-tree
-database for storage (requires `bsddb3
-<https://www.jcea.es/programacion/pybsddb.htm>`_ to be installed)::
-
-    >>> import bsddb3
-    >>> store = zarr.DBMStore('data/example.bdb', open=bsddb3.btopen)
-    >>> root = zarr.group(store=store, overwrite=True)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
-    >>> store.close()
-
-Also added in Zarr version 2.2 is the :class:`zarr.storage.LMDBStore` class which
-enables the lightning memory-mapped database (LMDB) to be used for storing an array or
-group (requires `lmdb <https://lmdb.readthedocs.io/>`_ to be installed)::
-
-    >>> store = zarr.LMDBStore('data/example.lmdb')
-    >>> root = zarr.group(store=store, overwrite=True)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
-    >>> store.close()
-
-In Zarr version 2.3 is the :class:`zarr.storage.SQLiteStore` class which
-enables the SQLite database to be used for storing an array or group (requires
-Python is built with SQLite support)::
-
-    >>> store = zarr.SQLiteStore('data/example.sqldb')
-    >>> root = zarr.group(store=store, overwrite=True)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
-    >>> store.close()
-
-Also added in Zarr version 2.3 are two storage classes for interfacing with server-client
-databases. The :class:`zarr.storage.RedisStore` class interfaces `Redis <https://redis.io/>`_
-(an in memory data structure store), and the :class:`zarr.storage.MongoDB` class interfaces
-with `MongoDB <https://www.mongodb.com/>`_ (an object oriented NoSQL database). These stores
-respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
-`pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed.
-
-For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
-an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
-:class:`zarr.n5.N5Store` can be instantiated directly::
-
-    >>> store = zarr.N5Store('data/example.n5')
-    >>> root = zarr.group(store=store)
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')
-    >>> z[:] = 42
-
-For convenience, the N5 backend will automatically be chosen when the filename
-ends with `.n5`::
-
-    >>> root = zarr.open('data/example.n5', mode='w')
-
 Distributed/cloud storage
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -901,23 +847,6 @@ Here is an example using S3Map to read an array created previously::
           dtype='|S1')
     >>> z[:].tobytes()
     b'Hello from the cloud!'
-
-Zarr now also has a builtin storage backend for Azure Blob Storage.
-The class is :class:`zarr.storage.ABSStore` (requires
-`azure-storage-blob <https://docs.microsoft.com/en-us/azure/storage/blobs/storage-quickstart-blobs-python>`_
-to be installed)::
-
-    >>> import azure.storage.blob
-    >>> container_client = azure.storage.blob.ContainerClient(...)  # doctest: +SKIP
-    >>> store = zarr.ABSStore(client=container_client, prefix='zarr-testing')  # doctest: +SKIP
-    >>> root = zarr.group(store=store, overwrite=True)  # doctest: +SKIP
-    >>> z = root.zeros('foo/bar', shape=(1000, 1000), chunks=(100, 100), dtype='i4')  # doctest: +SKIP
-    >>> z[:] = 42  # doctest: +SKIP
-
-When using an actual storage account, provide ``account_name`` and
-``account_key`` arguments to :class:`zarr.storage.ABSStore`, the
-above client is just testing against the emulator. Please also note
-that this is an experimental feature.
 
 Note that retrieving data from a remote service via the network can be significantly
 slower than retrieving data from a local file system, and will depend on network latency
@@ -1590,8 +1519,8 @@ storage.
 Note that if an array or group is backed by an in-memory store like a ``dict`` or
 :class:`zarr.storage.MemoryStore`, then when it is pickled all of the store data will be
 included in the pickled data. However, if an array or group is backed by a persistent
-store like a :class:`zarr.storage.DirectoryStore`, :class:`zarr.storage.ZipStore` or
-:class:`zarr.storage.DBMStore` then the store data **are not** pickled. The only thing
+store like a :class:`zarr.storage.DirectoryStore` or :class:`zarr.storage.ZipStore` 
+then the store data **are not** pickled. The only thing
 that is pickled is the necessary parameters to allow the store to re-open any
 underlying files or databases upon being unpickled.
 

@@ -30,19 +30,13 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #     normalize_store_arg,
 # )
 # from zarr._storage.v3 import (
-#     ABSStoreV3,
 #     ConsolidatedMetadataStoreV3,
-#     DBMStoreV3,
 #     DirectoryStoreV3,
 #     FSStoreV3,
 #     KVStore,
 #     KVStoreV3,
-#     LMDBStoreV3,
 #     LRUStoreCacheV3,
 #     MemoryStoreV3,
-#     MongoDBStoreV3,
-#     RedisStoreV3,
-#     SQLiteStoreV3,
 #     StoreV3,
 #     ZipStoreV3,
 # )
@@ -50,20 +44,11 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 
 # # pytest will fail to run if the following fixtures aren't imported here
 # from .test_storage import StoreTests as _StoreTests
-# from .test_storage import TestABSStore as _TestABSStore
 # from .test_storage import TestConsolidatedMetadataStore as _TestConsolidatedMetadataStore
-# from .test_storage import TestDBMStore as _TestDBMStore
-# from .test_storage import TestDBMStoreBerkeleyDB as _TestDBMStoreBerkeleyDB
-# from .test_storage import TestDBMStoreDumb as _TestDBMStoreDumb
-# from .test_storage import TestDBMStoreGnu as _TestDBMStoreGnu
-# from .test_storage import TestDBMStoreNDBM as _TestDBMStoreNDBM
 # from .test_storage import TestDirectoryStore as _TestDirectoryStore
 # from .test_storage import TestFSStore as _TestFSStore
-# from .test_storage import TestLMDBStore as _TestLMDBStore
 # from .test_storage import TestLRUStoreCache as _TestLRUStoreCache
 # from .test_storage import TestMemoryStore as _TestMemoryStore
-# from .test_storage import TestSQLiteStore as _TestSQLiteStore
-# from .test_storage import TestSQLiteStoreInMemory as _TestSQLiteStoreInMemory
 # from .test_storage import TestZipStore as _TestZipStore
 # from .test_storage import dimension_separator_fixture, s3, skip_if_nested_chunks  # noqa
 
@@ -419,105 +404,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 #         return store
 
 
-# class TestDBMStoreV3(_TestDBMStore, StoreV3Tests):
-#     def create_store(self, dimension_separator=None):
-#         path = mktemp(suffix=".anydbm")
-#         atexit.register(atexit_rmglob, path + "*")
-#         # create store using default dbm implementation
-#         store = DBMStoreV3(path, flag="n", dimension_separator=dimension_separator)
-#         return store
-
-
-# class TestDBMStoreV3Dumb(_TestDBMStoreDumb, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         path = mktemp(suffix=".dumbdbm")
-#         atexit.register(atexit_rmglob, path + "*")
-
-#         import dbm.dumb as dumbdbm
-
-#         store = DBMStoreV3(path, flag="n", open=dumbdbm.open, **kwargs)
-#         return store
-
-
-# class TestDBMStoreV3Gnu(_TestDBMStoreGnu, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         gdbm = pytest.importorskip("dbm.gnu")
-#         path = mktemp(suffix=".gdbm")  # pragma: no cover
-#         atexit.register(os.remove, path)  # pragma: no cover
-#         store = DBMStoreV3(
-#             path, flag="n", open=gdbm.open, write_lock=False, **kwargs
-#         )  # pragma: no cover
-#         return store  # pragma: no cover
-
-
-# class TestDBMStoreV3NDBM(_TestDBMStoreNDBM, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         ndbm = pytest.importorskip("dbm.ndbm")
-#         path = mktemp(suffix=".ndbm")  # pragma: no cover
-#         atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
-#         store = DBMStoreV3(path, flag="n", open=ndbm.open, **kwargs)  # pragma: no cover
-#         return store  # pragma: no cover
-
-
-# class TestDBMStoreV3BerkeleyDB(_TestDBMStoreBerkeleyDB, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         bsddb3 = pytest.importorskip("bsddb3")
-#         path = mktemp(suffix=".dbm")
-#         atexit.register(os.remove, path)
-#         store = DBMStoreV3(path, flag="n", open=bsddb3.btopen, write_lock=False, **kwargs)
-#         return store
-
-
-# class TestLMDBStoreV3(_TestLMDBStore, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("lmdb")
-#         path = mktemp(suffix=".lmdb")
-#         atexit.register(atexit_rmtree, path)
-#         buffers = True
-#         store = LMDBStoreV3(path, buffers=buffers, **kwargs)
-#         return store
-
-
-# class TestSQLiteStoreV3(_TestSQLiteStore, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("sqlite3")
-#         path = mktemp(suffix=".db")
-#         atexit.register(atexit_rmtree, path)
-#         store = SQLiteStoreV3(path, **kwargs)
-#         return store
-
-
-# class TestSQLiteStoreV3InMemory(_TestSQLiteStoreInMemory, StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("sqlite3")
-#         store = SQLiteStoreV3(":memory:", **kwargs)
-#         return store
-
-
-# @skip_test_env_var("ZARR_TEST_MONGO")
-# class TestMongoDBStoreV3(StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         pytest.importorskip("pymongo")
-#         store = MongoDBStoreV3(
-#             host="127.0.0.1", database="zarr_tests", collection="zarr_tests", **kwargs
-#         )
-#         # start with an empty store
-#         store.clear()
-#         return store
-
-
-# @skip_test_env_var("ZARR_TEST_REDIS")
-# class TestRedisStoreV3(StoreV3Tests):
-#     def create_store(self, **kwargs):
-#         # TODO: this is the default host for Redis on Travis,
-#         # we probably want to generalize this though
-#         pytest.importorskip("redis")
-#         store = RedisStoreV3(host="localhost", port=6379, **kwargs)
-#         # start with an empty store
-#         store.clear()
-#         return store
-
-
 # @pytest.mark.skipif(not v3_sharding_available, reason="sharding is disabled")
 # class TestStorageTransformerV3(TestMappingStoreV3):
 #     def create_store(self, **kwargs):
@@ -564,12 +450,6 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 
 #     CountingClass = CountingDictV3
 #     LRUStoreClass = LRUStoreCacheV3
-
-
-# @skip_test_env_var("ZARR_TEST_ABS")
-# class TestABSStoreV3(_TestABSStore, StoreV3Tests):
-
-#     ABSStoreClass = ABSStoreV3
 
 
 # def test_normalize_store_arg_v3(tmpdir):
@@ -655,16 +535,10 @@ pytest.skip("old v3 tests are disabled", allow_module_level=True)
 
 # def test_top_level_imports():
 #     for store_name in [
-#         "ABSStoreV3",
-#         "DBMStoreV3",
 #         "KVStoreV3",
 #         "DirectoryStoreV3",
-#         "LMDBStoreV3",
 #         "LRUStoreCacheV3",
 #         "MemoryStoreV3",
-#         "MongoDBStoreV3",
-#         "RedisStoreV3",
-#         "SQLiteStoreV3",
 #         "ZipStoreV3",
 #     ]:
 #         if v3_api_available:
