@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 from numcodecs.compat import ensure_bytes
 
-from zarr._storage.store import _prefix_to_attrs_key, assert_zarr_v3_api_available
+from zarr._storage.store import _prefix_to_attrs_key
 from zarr.attrs import Attributes
 from zarr.codecs import AsType, get_codec
 from zarr.context import Context
@@ -36,7 +36,6 @@ from zarr.indexing import (
     pop_fields,
 )
 from zarr.storage import (
-    _get_hierarchy_metadata,
     _prefix_to_array_key,
     KVStore,
     getsize,
@@ -45,6 +44,7 @@ from zarr.storage import (
 )
 from zarr.util import (
     ConstantMap,
+    UncompressedPartialReadBufferV3,
     all_equal,
     InfoReporter,
     check_array_shape,
@@ -56,7 +56,6 @@ from zarr.util import (
     normalize_shape,
     normalize_storage_path,
     PartialReadBuffer,
-    UncompressedPartialReadBufferV3,
     ensure_ndarray_like,
 )
 
@@ -125,21 +124,14 @@ class Array:
         cache_attrs=True,
         partial_decompress=False,
         write_empty_chunks=True,
-        zarr_version=None,
         meta_array=None,
     ):
         # N.B., expect at this point store is fully initialized with all
         # configuration metadata fully specified and normalized
-
-        store = normalize_store_arg(store, zarr_version=zarr_version)
-        if zarr_version is None:
-            zarr_version = store._store_version
-
-        if zarr_version != 2:
-            assert_zarr_v3_api_available()
+        store = normalize_store_arg(store)
 
         if chunk_store is not None:
-            chunk_store = normalize_store_arg(chunk_store, zarr_version=zarr_version)
+            chunk_store = normalize_store_arg(chunk_store)
 
         self._store = store
         self._chunk_store = chunk_store
@@ -159,12 +151,6 @@ class Array:
             self._meta_array = np.empty_like(meta_array, shape=())
         else:
             self._meta_array = np.empty(())
-        self._version = zarr_version
-        if self._version == 3:
-            self._data_key_prefix = "data/root/" + self._key_prefix
-            self._data_path = "data/root/" + self._path
-            self._hierarchy_metadata = _get_hierarchy_metadata(store=self._store)
-            self._metadata_key_suffix = self._hierarchy_metadata["metadata_key_suffix"]
 
         # initialize metadata
         self._load_metadata()
@@ -205,26 +191,19 @@ class Array:
             self._shape = meta["shape"]
             self._fill_value = meta["fill_value"]
             dimension_separator = meta.get("dimension_separator", None)
-            if self._version == 2:
-                self._chunks = meta["chunks"]
-                self._dtype = meta["dtype"]
-                self._order = meta["order"]
-                if dimension_separator is None:
-                    try:
-                        dimension_separator = self._store._dimension_separator
-                    except (AttributeError, KeyError):
-                        pass
 
-                    # Fallback for any stores which do not choose a default
-                    if dimension_separator is None:
-                        dimension_separator = "."
-            else:
-                self._chunks = meta["chunk_grid"]["chunk_shape"]
-                self._dtype = meta["data_type"]
-                self._order = meta["chunk_memory_layout"]
-                chunk_separator = meta["chunk_grid"]["separator"]
+            self._chunks = meta["chunks"]
+            self._dtype = meta["dtype"]
+            self._order = meta["order"]
+            if dimension_separator is None:
+                try:
+                    dimension_separator = self._store._dimension_separator
+                except (AttributeError, KeyError):
+                    pass
+
+                # Fallback for any stores which do not choose a default
                 if dimension_separator is None:
-                    dimension_separator = meta.get("dimension_separator", chunk_separator)
+                    dimension_separator = "."
 
             self._dimension_separator = dimension_separator
 
@@ -232,31 +211,16 @@ class Array:
             compressor = meta.get("compressor", None)
             if compressor is None:
                 self._compressor = None
-            elif self._version == 2:
-                self._compressor = get_codec(compressor)
             else:
-                self._compressor = compressor
+                self._compressor = get_codec(compressor)
 
             # setup filters
-            if self._version == 2:
-                filters = meta.get("filters", [])
-            else:
-                # TODO: storing filters under attributes for now since the v3
-                #       array metadata does not have a 'filters' attribute.
-                filters = meta["attributes"].get("filters", [])
+
+            filters = meta.get("filters", [])
+
             if filters:
                 filters = [get_codec(config) for config in filters]
             self._filters = filters
-
-            if self._version == 3:
-                storage_transformers = meta.get("storage_transformers", [])
-                if storage_transformers:
-                    transformed_store = self._chunk_store or self._store
-                    for storage_transformer in storage_transformers[::-1]:
-                        transformed_store = storage_transformer._copy_for_array(
-                            self, transformed_store
-                        )
-                    self._transformed_chunk_store = transformed_store
 
     def _refresh_metadata(self):
         if not self._cache_metadata:
@@ -278,35 +242,22 @@ class Array:
             filters_config = [f.get_config() for f in self._filters]
         else:
             filters_config = None
-        _compressor = compressor_config if self._version == 2 else self._compressor
+        _compressor = compressor_config
         meta = dict(
             shape=self._shape,
             compressor=_compressor,
             fill_value=self._fill_value,
             filters=filters_config,
         )
-        if getattr(self._store, "_store_version", 2) == 2:
-            meta.update(
-                dict(
-                    chunks=self._chunks,
-                    dtype=self._dtype,
-                    order=self._order,
-                    dimension_separator=self._dimension_separator,
-                )
+
+        meta.update(
+            dict(
+                chunks=self._chunks,
+                dtype=self._dtype,
+                order=self._order,
+                dimension_separator=self._dimension_separator,
             )
-        else:
-            meta.update(
-                dict(
-                    chunk_grid=dict(
-                        type="regular",
-                        chunk_shape=self._chunks,
-                        separator=self._dimension_separator,
-                    ),
-                    data_type=self._dtype,
-                    chunk_memory_layout=self._order,
-                    attributes=self.attrs.asdict(),
-                )
-            )
+        )
         mkey = _prefix_to_array_key(self._store, self._key_prefix)
         self._store[mkey] = self._store._metadata_class.encode_array_metadata(meta)
 
@@ -496,28 +447,11 @@ class Array:
     def nchunks_initialized(self):
         """The number of chunks that have been initialized with some data."""
 
+        # key pattern for chunk keys
+        prog = re.compile(r"\.".join([r"\d+"] * min(1, self.ndim)))
+
         # count chunk keys
-        if self._version == 3:
-            # # key pattern for chunk keys
-            # prog = re.compile(r'\.'.join([r'c\d+'] * min(1, self.ndim)))
-            # # get chunk keys, excluding the prefix
-            # members = self.chunk_store.list_prefix(self._data_path)
-            # members = [k.split(self._data_key_prefix)[1] for k in members]
-            # # count the chunk keys
-            # return sum(1 for k in members if prog.match(k))
-
-            # key pattern for chunk keys
-            prog = re.compile(self._data_key_prefix + r"c\d+")  # TODO: ndim == 0 case?
-            # get chunk keys, excluding the prefix
-            members = self.chunk_store.list_prefix(self._data_path)
-            # count the chunk keys
-            return sum(1 for k in members if prog.match(k))
-        else:
-            # key pattern for chunk keys
-            prog = re.compile(r"\.".join([r"\d+"] * min(1, self.ndim)))
-
-            # count chunk keys
-            return sum(1 for k in listdir(self.chunk_store, self._path) if prog.match(k))
+        return sum(1 for k in listdir(self.chunk_store, self._path) if prog.match(k))
 
     # backwards compatibility
     initialized = nchunks_initialized
@@ -2044,8 +1978,6 @@ class Array:
                         cdata = cdata.read_full()
                     self._compressor.decode(cdata, dest)
                 else:
-                    if isinstance(cdata, UncompressedPartialReadBufferV3):
-                        cdata = cdata.read_full()
                     chunk = ensure_ndarray_like(cdata).view(self._dtype)
                     chunk = chunk.reshape(self._chunks, order=self._order)
                     np.copyto(dest, chunk)
@@ -2065,21 +1997,13 @@ class Array:
                         else dim
                         for i, dim in enumerate(self.chunks)
                     ]
-                    if isinstance(cdata, UncompressedPartialReadBufferV3):
-                        chunk_partial = self._decode_chunk(
-                            cdata.read_part(start, nitems),
-                            start=start,
-                            nitems=nitems,
-                            expected_shape=expected_shape,
-                        )
-                    else:
-                        cdata.read_part(start, nitems)
-                        chunk_partial = self._decode_chunk(
-                            cdata.buff,
-                            start=start,
-                            nitems=nitems,
-                            expected_shape=expected_shape,
-                        )
+                    cdata.read_part(start, nitems)
+                    chunk_partial = self._decode_chunk(
+                        cdata.buff,
+                        start=start,
+                        nitems=nitems,
+                        expected_shape=expected_shape,
+                    )
                     tmp[partial_out_selection] = chunk_partial
                 out[out_selection] = tmp[chunk_selection]
                 return
@@ -2318,19 +2242,7 @@ class Array:
         return chunk
 
     def _chunk_key(self, chunk_coords):
-        if self._version == 3:
-            # _chunk_key() corresponds to data_key(P, i, j, ...) example in the spec
-            # where P = self._key_prefix,  i, j, ... = chunk_coords
-            # e.g. c0/2/3 for 3d array with chunk index (0, 2, 3)
-            # https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/core/v3.0.html#regular-grids
-            return (
-                "data/root/"
-                + self._key_prefix
-                + "c"
-                + self._dimension_separator.join(map(str, chunk_coords))
-            )
-        else:
-            return self._key_prefix + self._dimension_separator.join(map(str, chunk_coords))
+        return self._key_prefix + self._dimension_separator.join(map(str, chunk_coords))
 
     def _decode_chunk(self, cdata, start=None, nitems=None, expected_shape=None):
         # decompress
@@ -2552,7 +2464,6 @@ class Array:
             "cache_attrs": self._attrs.cache,
             "partial_decompress": self._partial_decompress,
             "write_empty_chunks": self._write_empty_chunks,
-            "zarr_version": self._version,
             "meta_array": self._meta_array,
         }
 
@@ -2860,7 +2771,6 @@ class Array:
             read_only=read_only,
             synchronizer=synchronizer,
             cache_metadata=True,
-            zarr_version=self._version,
         )
         a._is_view = True
 
