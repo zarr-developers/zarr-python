@@ -1,15 +1,13 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING, TypeVar
+
+if TYPE_CHECKING:
+    from typing import Any, AsyncIterator, Coroutine
 
 import asyncio
 from concurrent.futures import wait
 import threading
-from typing import (
-    Any,
-    AsyncIterator,
-    Coroutine,
-    List,
-    TypeVar,
-)
+
 from typing_extensions import ParamSpec
 
 from zarr.v3.config import SyncConfiguration
@@ -117,8 +115,8 @@ class SyncMixin:
         # this should allow us to better type the sync wrapper
         return sync(coroutine, loop=self._sync_configuration.asyncio_loop)
 
-    def _sync_iter(self, async_iterator: AsyncIterator[T]) -> List[T]:
-        async def iter_to_list() -> List[T]:
+    def _sync_iter(self, async_iterator: AsyncIterator[T]) -> list[T]:
+        async def iter_to_list() -> list[T]:
             return [item async for item in async_iterator]
 
         return self._sync(iter_to_list())
