@@ -4,7 +4,6 @@ from warnings import warn
 import numpy as np
 from numcodecs.registry import codec_registry
 
-from zarr._storage.store import DEFAULT_ZARR_VERSION
 from zarr.core import Array
 from zarr.errors import (
     ArrayNotFoundError,
@@ -42,9 +41,7 @@ def create(
     dimension_separator=None,
     write_empty_chunks=True,
     *,
-    zarr_version=None,
     meta_array=None,
-    storage_transformers=(),
     **kwargs,
 ):
     """Create an array.
@@ -109,21 +106,6 @@ def create(
 
         .. versionadded:: 2.11
 
-    storage_transformers : sequence of StorageTransformers, optional
-        Setting storage transformers, changes the storage structure and behaviour
-        of data coming from the underlying store. The transformers are applied in the
-        order of the given sequence. Supplying an empty sequence is the same as omitting
-        the argument or setting it to None. May only be set when using zarr_version 3.
-
-        .. versionadded:: 2.13
-
-    zarr_version : {None, 2, 3}, optional
-        The zarr protocol version of the created array. If None, it will be
-        inferred from ``store`` or ``chunk_store`` if they are provided,
-        otherwise defaulting to 2.
-
-        .. versionadded:: 2.12
-
     meta_array : array-like, optional
         An array instance to use for determining arrays to create and return
         to users. Use `numpy.empty(())` by default.
@@ -173,12 +155,9 @@ def create(
         <zarr.core.Array (10000, 10000) float64>
 
     """
-    if zarr_version is None and store is None:
-        zarr_version = getattr(chunk_store, "_store_version", DEFAULT_ZARR_VERSION)
 
     # handle polymorphic store arg
-    store = normalize_store_arg(store, zarr_version=zarr_version, mode="w")
-    zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
+    store = normalize_store_arg(store, mode="w")
 
     # API compatibility with h5py
     compressor, fill_value = _kwargs_compat(compressor, fill_value, kwargs)
@@ -196,9 +175,6 @@ def create(
             )
     dimension_separator = normalize_dimension_separator(dimension_separator)
 
-    if zarr_version > 2 and path is None:
-        path = "/"
-
     # initialize array metadata
     init_array(
         store,
@@ -214,7 +190,6 @@ def create(
         filters=filters,
         object_codec=object_codec,
         dimension_separator=dimension_separator,
-        storage_transformers=storage_transformers,
     )
 
     # instantiate array
@@ -463,7 +438,6 @@ def open_array(
     partial_decompress=False,
     write_empty_chunks=True,
     *,
-    zarr_version=None,
     dimension_separator=None,
     meta_array=None,
     **kwargs,
@@ -531,15 +505,10 @@ def open_array(
 
         .. versionadded:: 2.11
 
-    zarr_version : {None, 2, 3}, optional
-        The zarr protocol version of the array to be opened. If None, it will
-        be inferred from ``store`` or ``chunk_store`` if they are provided,
-        otherwise defaulting to 2.
     dimension_separator : {None, '.', '/'}, optional
         Can be used to specify whether the array is in a flat ('.') or nested
         ('/') format. If None, the appropriate value will be read from `store`
-        when present. Otherwise, defaults to '.' when ``zarr_version == 2``
-        and `/` otherwise.
+        when present. Otherwise, defaults to '.'.
     meta_array : array-like, optional
         An array instance to use for determining arrays to create and return
         to users. Use `numpy.empty(())` by default.
@@ -579,28 +548,18 @@ def open_array(
     # w- or x : create, fail if exists
     # a : read/write if exists, create otherwise (default)
 
-    if zarr_version is None and store is None:
-        zarr_version = getattr(chunk_store, "_store_version", DEFAULT_ZARR_VERSION)
-
     # handle polymorphic store arg
-    store = normalize_store_arg(
-        store, storage_options=storage_options, mode=mode, zarr_version=zarr_version
-    )
-    zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
+    store = normalize_store_arg(store, storage_options=storage_options, mode=mode)
+
     if chunk_store is not None:
-        chunk_store = normalize_store_arg(
-            chunk_store, storage_options=storage_options, mode=mode, zarr_version=zarr_version
-        )
+        chunk_store = normalize_store_arg(chunk_store, storage_options=storage_options, mode=mode)
 
     # respect the dimension separator specified in a store, if present
     if dimension_separator is None:
         if hasattr(store, "_dimension_separator"):
             dimension_separator = store._dimension_separator
         else:
-            dimension_separator = "." if zarr_version == 2 else "/"
-
-    if zarr_version == 3 and path is None:
-        path = "array"  # TODO: raise ValueError instead?
+            dimension_separator = "."
 
     path = normalize_storage_path(path)
 
@@ -709,7 +668,6 @@ def _like_args(a, kwargs):
         kwargs.setdefault("compressor", a.compressor)
         kwargs.setdefault("order", a.order)
         kwargs.setdefault("filters", a.filters)
-        kwargs.setdefault("zarr_version", a._version)
     else:
         kwargs.setdefault("compressor", "default")
         kwargs.setdefault("order", "C")
