@@ -111,10 +111,10 @@ class SyncMixin:
         # this should allow us to better type the sync wrapper
         return sync(coroutine, loop=self._sync_configuration.asyncio_loop)
 
-    def _sync_iter(self, coroutine: Coroutine[Any, Any, AsyncIterator[T]]) -> List[T]:
-        async def iter_to_list() -> List[T]:
+    def _sync_iter(self, async_gen: AsyncIterator[T]) -> List[T]:
+        async def iter_to_list(gen) -> list[T]:
             # TODO: replace with generators so we don't materialize the entire iterator at once
             # async_iterator = await coroutine
-            return [item async for item in coroutine()]
+            return [item async for item in gen]
 
-        return self._sync(iter_to_list())
+        return self._sync(iter_to_list(async_gen))

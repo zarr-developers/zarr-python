@@ -459,7 +459,7 @@ class Group(SyncMixin):
 
     @property
     def nmembers(self) -> int:
-        return self._sync(self._async_group.nmembers)
+        return self._sync(self._async_group.nmembers())
 
     @property
     def members(self) -> tuple[tuple[str, Array | Group], ...]:
@@ -467,27 +467,40 @@ class Group(SyncMixin):
         Return the sub-arrays and sub-groups of this group as a `tuple` of (name, array | group)
         pairs
         """
-        _members: list[AsyncArray | AsyncGroup] = self._sync_iter(self._async_group.members)
-        return tuple(
-            (key, Array(value)) if isinstance(value, AsyncArray) else (key, Group(value))
-            for key, value in _members
+        _members: list[tuple[str, AsyncArray | AsyncGroup]] = self._sync_iter(
+            self._async_group.members()
         )
+        ret: list[tuple[str, Array | Group]] = []
+        for key, value in _members:
+            if isinstance(value, AsyncArray):
+                ret.append((key, Array(value)))
+            else:
+                ret.append((key, Group(value)))
+        return tuple(ret)
 
     def __contains__(self, member) -> bool:
         return self._sync(self._async_group.contains(member))
 
     def group_keys(self) -> list[str]:
-        return self._sync_iter(self._async_group.group_keys())
+        # uncomment with AsyncGroup implements this method
+        # return self._sync_iter(self._async_group.group_keys())
+        raise NotImplementedError
 
     def groups(self) -> list[Group]:
         # TODO: in v2 this was a generator that return key: Group
-        return [Group(obj) for obj in self._sync_iter(self._async_group.groups())]
+        # uncomment with AsyncGroup implements this method
+        # return [Group(obj) for obj in self._sync_iter(self._async_group.groups())]
+        raise NotImplementedError
 
     def array_keys(self) -> list[str]:
-        return self._sync_iter(self._async_group.array_keys)
+        # uncomment with AsyncGroup implements this method
+        # return self._sync_iter(self._async_group.array_keys)
+        raise NotImplementedError
 
     def arrays(self) -> list[Array]:
-        return [Array(obj) for obj in self._sync_iter(self._async_group.arrays)]
+        # uncomment with AsyncGroup implements this method
+        # return [Array(obj) for obj in self._sync_iter(self._async_group.arrays)]
+        raise NotImplementedError
 
     def tree(self, expand=False, level=None) -> Any:
         return self._sync(self._async_group.tree(expand=expand, level=level))
