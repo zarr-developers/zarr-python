@@ -35,7 +35,6 @@ from typing import Sequence, Mapping, Optional, Union, List, Tuple, Dict, Any
 import uuid
 import time
 
-from numcodecs.abc import Codec
 from numcodecs.compat import ensure_bytes, ensure_text, ensure_contiguous_ndarray_like
 from numcodecs.registry import codec_registry
 from zarr.context import Context
@@ -66,21 +65,15 @@ from zarr.util import (
 
 from zarr._storage.absstore import ABSStore  # noqa: F401
 from zarr._storage.store import (  # noqa: F401
-    _get_hierarchy_metadata,
-    _get_metadata_suffix,
     _listdir_from_keys,
     _rename_from_keys,
-    _rename_metadata_v3,
     _rmdir_from_keys,
-    _rmdir_from_keys_v3,
     _path_to_prefix,
     _prefix_to_array_key,
     _prefix_to_group_key,
     array_meta_key,
     attrs_key,
-    data_root,
     group_meta_key,
-    meta_root,
     DEFAULT_ZARR_VERSION,
     BaseStore,
     Store,
@@ -122,28 +115,10 @@ def contains_group(store: StoreLike, path: Path = None, explicit_only=True) -> b
     path = normalize_storage_path(path)
     prefix = _path_to_prefix(path)
     key = _prefix_to_group_key(store, prefix)
-    store_version = getattr(store, "_store_version", 2)
-    if store_version == 2 or explicit_only:
-        return key in store
-    else:
-        if key in store:
-            return True
-        # for v3, need to also handle implicit groups
-
-        sfx = _get_metadata_suffix(store)  # type: ignore
-        implicit_prefix = key.replace(".group" + sfx, "")
-        if not implicit_prefix.endswith("/"):
-            implicit_prefix += "/"
-        if store.list_prefix(implicit_prefix):  # type: ignore
-            return True
-        return False
+    return key in store
 
 
-def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseStore:
-    # default to v2 store for backward compatibility
-    zarr_version = getattr(store, "_store_version", 2)
-    if zarr_version != 2:
-        raise ValueError("store must be a version 2 store")
+def normalize_store_arg(store: Any, storage_options=None, mode="r") -> BaseStore:
     if store is None:
         store = KVStore(dict())
         return store
@@ -180,38 +155,17 @@ def _normalize_store_arg_v2(store: Any, storage_options=None, mode="r") -> BaseS
     return store
 
 
-def normalize_store_arg(
-    store: Any, storage_options=None, mode="r", *, zarr_version=None
-) -> BaseStore:
-    if zarr_version is None:
-        # default to v2 store for backward compatibility
-        zarr_version = getattr(store, "_store_version", DEFAULT_ZARR_VERSION)
-    if zarr_version == 2:
-        normalize_store = _normalize_store_arg_v2
-    elif zarr_version == 3:
-        from zarr._storage.v3 import _normalize_store_arg_v3
-
-        normalize_store = _normalize_store_arg_v3
-    else:
-        raise ValueError("zarr_version must be either 2 or 3")
-    return normalize_store(store, storage_options, mode)
-
-
 def rmdir(store: StoreLike, path: Path = None):
     """Remove all items under the given path. If `store` provides a `rmdir` method,
     this will be called, otherwise will fall back to implementation via the
     `Store` interface."""
     path = normalize_storage_path(path)
-    store_version = getattr(store, "_store_version", 2)
     if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
         # pass through
         store.rmdir(path)
     else:
         # slow version, delete one key at a time
-        if store_version == 2:
-            _rmdir_from_keys(store, path)
-        else:
-            _rmdir_from_keys_v3(store, path)  # type: ignore
+        _rmdir_from_keys(store, path)
 
 
 def rename(store: Store, src_path: Path, dst_path: Path):
@@ -254,21 +208,10 @@ def _getsize(store: BaseStore, path: Path = None) -> int:
     else:
         path = "" if path is None else normalize_storage_path(path)
         size = 0
-        store_version = getattr(store, "_store_version", 2)
-        if store_version == 3:
-            if path == "":
-                # have to list the root folders without trailing / in this case
-                members = store.list_prefix(data_root.rstrip("/"))  # type: ignore
-                members += store.list_prefix(meta_root.rstrip("/"))  # type: ignore
-            else:
-                members = store.list_prefix(data_root + path)  # type: ignore
-                members += store.list_prefix(meta_root + path)  # type: ignore
-            # also include zarr.json?
-            # members += ['zarr.json']
-        else:
-            members = listdir(store, path)
-            prefix = _path_to_prefix(path)
-            members = [prefix + k for k in members]
+
+        members = listdir(store, path)
+        prefix = _path_to_prefix(path)
+        members = [prefix + k for k in members]
         for k in members:
             try:
                 v = store[k]
@@ -437,13 +380,8 @@ def init_array(
     path = normalize_storage_path(path)
 
     # ensure parent group initialized
-    store_version = getattr(store, "_store_version", 2)
-    if store_version < 3:
-        _require_parent_group(path, store=store, chunk_store=chunk_store, overwrite=overwrite)
 
-    if store_version == 3 and "zarr.json" not in store:
-        # initialize with default zarr.json entry level metadata
-        store["zarr.json"] = store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore
+    _require_parent_group(path, store=store, chunk_store=chunk_store, overwrite=overwrite)
 
     if not compressor:
         # compatibility with legacy tests using compressor=[]
@@ -482,50 +420,20 @@ def _init_array_metadata(
     dimension_separator=None,
     storage_transformers=(),
 ):
-    store_version = getattr(store, "_store_version", 2)
-
     path = normalize_storage_path(path)
 
     # guard conditions
     if overwrite:
-        if store_version == 2:
-            # attempt to delete any pre-existing array in store
-            rmdir(store, path)
-            if chunk_store is not None:
-                rmdir(chunk_store, path)
-        else:
-            group_meta_key = _prefix_to_group_key(store, _path_to_prefix(path))
-            array_meta_key = _prefix_to_array_key(store, _path_to_prefix(path))
-            data_prefix = data_root + _path_to_prefix(path)
-
-            # attempt to delete any pre-existing array in store
-            if array_meta_key in store:
-                store.erase(array_meta_key)  # type: ignore
-            if group_meta_key in store:
-                store.erase(group_meta_key)  # type: ignore
-            store.erase_prefix(data_prefix)  # type: ignore
-            if chunk_store is not None:
-                chunk_store.erase_prefix(data_prefix)  # type: ignore
-
-            if "/" in path:
-                # path is a subfolder of an existing array, remove that array
-                parent_path = "/".join(path.split("/")[:-1])
-                sfx = _get_metadata_suffix(store)  # type: ignore
-                array_key = meta_root + parent_path + ".array" + sfx
-                if array_key in store:
-                    store.erase(array_key)  # type: ignore
+        # attempt to delete any pre-existing array in store
+        rmdir(store, path)
+        if chunk_store is not None:
+            rmdir(chunk_store, path)
 
     if not overwrite:
         if contains_array(store, path):
             raise ContainsArrayError(path)
-        elif contains_group(store, path, explicit_only=False):
+        if contains_group(store, path, explicit_only=False):
             raise ContainsGroupError(path)
-        elif store_version == 3:
-            if "/" in path:
-                # cannot create an array within an existing array path
-                parent_path = "/".join(path.split("/")[:-1])
-                if contains_array(store, parent_path):
-                    raise ContainsArrayError(path)
 
     # normalize metadata
     dtype, object_codec = normalize_dtype(dtype, object_codec)
@@ -536,7 +444,7 @@ def _init_array_metadata(
     fill_value = normalize_fill_value(fill_value, dtype)
 
     # optional array metadata
-    if dimension_separator is None and store_version == 2:
+    if dimension_separator is None:
         dimension_separator = getattr(store, "_dimension_separator", None)
     dimension_separator = normalize_dimension_separator(dimension_separator)
 
@@ -553,16 +461,10 @@ def _init_array_metadata(
     # obtain compressor config
     compressor_config = None
     if compressor:
-        if store_version == 2:
-            try:
-                compressor_config = compressor.get_config()
-            except AttributeError as e:
-                raise BadCompressorError(compressor) from e
-        elif not isinstance(compressor, Codec):
-            raise ValueError("expected a numcodecs Codec for compressor")
-            # TODO: alternatively, could autoconvert str to a Codec
-            #       e.g. 'zlib' -> numcodec.Zlib object
-            # compressor = numcodecs.get_codec({'id': compressor})
+        try:
+            compressor_config = compressor.get_config()
+        except AttributeError as e:
+            raise BadCompressorError(compressor) from e
 
     # obtain filters config
     if filters:
@@ -596,33 +498,16 @@ def _init_array_metadata(
         filters_config = None  # type: ignore
 
     # initialize metadata
-    # TODO: don't store redundant dimension_separator for v3?
-    _compressor = compressor_config if store_version == 2 else compressor
+    _compressor = compressor_config
     meta = dict(
         shape=shape,
         compressor=_compressor,
         fill_value=fill_value,
         dimension_separator=dimension_separator,
     )
-    if store_version < 3:
-        meta.update(dict(chunks=chunks, dtype=dtype, order=order, filters=filters_config))
-        assert not storage_transformers
-    else:
-        if dimension_separator is None:
-            dimension_separator = "/"
-        if filters_config:
-            attributes = {"filters": filters_config}
-        else:
-            attributes = {}
-        meta.update(
-            dict(
-                chunk_grid=dict(type="regular", chunk_shape=chunks, separator=dimension_separator),
-                chunk_memory_layout=order,
-                data_type=dtype,
-                attributes=attributes,
-                storage_transformers=storage_transformers,
-            )
-        )
+
+    meta.update(dict(chunks=chunks, dtype=dtype, order=order, filters=filters_config))
+    assert not storage_transformers
 
     key = _prefix_to_array_key(store, _path_to_prefix(path))
     if hasattr(store, "_metadata_class"):
@@ -661,23 +546,10 @@ def init_group(
     # normalize path
     path = normalize_storage_path(path)
 
-    store_version = getattr(store, "_store_version", 2)
-    if store_version < 3:
-        # ensure parent group initialized
-        _require_parent_group(path, store=store, chunk_store=chunk_store, overwrite=overwrite)
-
-    if store_version == 3 and "zarr.json" not in store:
-        # initialize with default zarr.json entry level metadata
-        store["zarr.json"] = store._metadata_class.encode_hierarchy_metadata(None)  # type: ignore
+    _require_parent_group(path, store=store, chunk_store=chunk_store, overwrite=overwrite)
 
     # initialise metadata
     _init_group_metadata(store=store, overwrite=overwrite, path=path, chunk_store=chunk_store)
-
-    if store_version == 3:
-        # TODO: Should initializing a v3 group also create a corresponding
-        #       empty folder under data/root/? I think probably not until there
-        #       is actual data written there.
-        pass
 
 
 def _init_group_metadata(
@@ -686,50 +558,25 @@ def _init_group_metadata(
     path: Optional[str] = None,
     chunk_store: Optional[StoreLike] = None,
 ):
-    store_version = getattr(store, "_store_version", 2)
     path = normalize_storage_path(path)
 
     # guard conditions
     if overwrite:
-        if store_version == 2:
-            # attempt to delete any pre-existing items in store
-            rmdir(store, path)
-            if chunk_store is not None:
-                rmdir(chunk_store, path)
-        else:
-            group_meta_key = _prefix_to_group_key(store, _path_to_prefix(path))
-            array_meta_key = _prefix_to_array_key(store, _path_to_prefix(path))
-            data_prefix = data_root + _path_to_prefix(path)
-            meta_prefix = meta_root + _path_to_prefix(path)
-
-            # attempt to delete any pre-existing array in store
-            if array_meta_key in store:
-                store.erase(array_meta_key)  # type: ignore
-            if group_meta_key in store:
-                store.erase(group_meta_key)  # type: ignore
-            store.erase_prefix(data_prefix)  # type: ignore
-            store.erase_prefix(meta_prefix)  # type: ignore
-            if chunk_store is not None:
-                chunk_store.erase_prefix(data_prefix)  # type: ignore
+        # attempt to delete any pre-existing items in store
+        rmdir(store, path)
+        if chunk_store is not None:
+            rmdir(chunk_store, path)
 
     if not overwrite:
         if contains_array(store, path):
             raise ContainsArrayError(path)
         elif contains_group(store, path):
             raise ContainsGroupError(path)
-        elif store_version == 3 and "/" in path:
-            # cannot create a group overlapping with an existing array name
-            parent_path = "/".join(path.split("/")[:-1])
-            if contains_array(store, parent_path):
-                raise ContainsArrayError(path)
 
     # initialize metadata
     # N.B., currently no metadata properties are needed, however there may
     # be in future
-    if store_version == 3:
-        meta = {"attributes": {}}  # type: ignore
-    else:
-        meta = {}
+    meta: dict[str, Any] = {}
     key = _prefix_to_group_key(store, _path_to_prefix(path))
     if hasattr(store, "_metadata_class"):
         store[key] = store._metadata_class.encode_group_metadata(meta)
