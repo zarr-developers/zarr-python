@@ -3,8 +3,6 @@ import itertools
 import os
 import re
 from collections.abc import Mapping, MutableMapping
-
-from zarr._storage.store import data_root, meta_root, assert_zarr_v3_api_available
 from zarr.core import Array
 from zarr.creation import array as _create_array
 from zarr.creation import open_array
@@ -14,14 +12,12 @@ from zarr.hierarchy import group as _create_group
 from zarr.hierarchy import open_group
 from zarr.meta import json_dumps, json_loads
 from zarr.storage import (
-    _get_metadata_suffix,
     contains_array,
     contains_group,
     normalize_store_arg,
     BaseStore,
     ConsolidatedMetadataStore,
 )
-from zarr._storage.v3 import ConsolidatedMetadataStoreV3
 from zarr.util import TreeViewer, buffer_size, normalize_storage_path
 
 from typing import Any, Union
@@ -38,7 +34,7 @@ def _check_and_update_path(store: BaseStore, path):
 
 
 # noinspection PyShadowingBuiltins
-def open(store: StoreLike = None, mode: str = "a", *, zarr_version=None, path=None, **kwargs):
+def open(store: StoreLike = None, mode: str = "a", *, path=None, **kwargs):
     """Convenience function to open a group or array using file-mode-like semantics.
 
     Parameters
@@ -50,10 +46,6 @@ def open(store: StoreLike = None, mode: str = "a", *, zarr_version=None, path=No
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
         (fail if exists).
-    zarr_version : {2, 3, None}, optional
-        The zarr protocol version to use. The default value of None will attempt
-        to infer the version from `store` if possible, otherwise it will fall
-        back to 2.
     path : str or None, optional
         The path within the store to open.
     **kwargs
@@ -101,10 +93,7 @@ def open(store: StoreLike = None, mode: str = "a", *, zarr_version=None, path=No
     # we pass storage options explicitly, since normalize_store_arg might construct
     # a store if the input is a fsspec-compatible URL
     _store: BaseStore = normalize_store_arg(
-        store,
-        storage_options=kwargs.pop("storage_options", {}),
-        mode=mode,
-        zarr_version=zarr_version,
+        store, storage_options=kwargs.pop("storage_options", {}), mode=mode
     )
     # path = _check_and_update_path(_store, path)
     path = normalize_storage_path(path)
@@ -135,7 +124,7 @@ def _might_close(path):
     return isinstance(path, (str, os.PathLike))
 
 
-def save_array(store: StoreLike, arr, *, zarr_version=None, path=None, **kwargs):
+def save_array(store: StoreLike, arr, *, path=None, **kwargs):
     """Convenience function to save a NumPy array to the local file system, following a
     similar API to the NumPy save() function.
 
@@ -145,10 +134,6 @@ def save_array(store: StoreLike, arr, *, zarr_version=None, path=None, **kwargs)
         Store or path to directory in file system or name of zip file.
     arr : ndarray
         NumPy array with data to save.
-    zarr_version : {2, 3, None}, optional
-        The zarr protocol version to use when saving. The default value of None
-        will attempt to infer the version from `store` if possible, otherwise
-        it will fall back to 2.
     path : str or None, optional
         The path within the store where the array will be saved.
     kwargs
@@ -173,19 +158,17 @@ def save_array(store: StoreLike, arr, *, zarr_version=None, path=None, **kwargs)
 
     """
     may_need_closing = _might_close(store)
-    _store: BaseStore = normalize_store_arg(store, mode="w", zarr_version=zarr_version)
+    _store: BaseStore = normalize_store_arg(store, mode="w")
     path = _check_and_update_path(_store, path)
     try:
-        _create_array(
-            arr, store=_store, overwrite=True, zarr_version=zarr_version, path=path, **kwargs
-        )
+        _create_array(arr, store=_store, overwrite=True, path=path, **kwargs)
     finally:
         if may_need_closing:
             # needed to ensure zip file records are written
             _store.close()
 
 
-def save_group(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
+def save_group(store: StoreLike, *args, path=None, **kwargs):
     """Convenience function to save several NumPy arrays to the local file system, following a
     similar API to the NumPy savez()/savez_compressed() functions.
 
@@ -195,10 +178,6 @@ def save_group(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         Store or path to directory in file system or name of zip file.
     args : ndarray
         NumPy arrays with data to save.
-    zarr_version : {2, 3, None}, optional
-        The zarr protocol version to use when saving. The default value of None
-        will attempt to infer the version from `store` if possible, otherwise
-        it will fall back to 2.
     path : str or None, optional
         Path within the store where the group will be saved.
     kwargs
@@ -253,22 +232,22 @@ def save_group(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         raise ValueError("at least one array must be provided")
     # handle polymorphic store arg
     may_need_closing = _might_close(store)
-    _store: BaseStore = normalize_store_arg(store, mode="w", zarr_version=zarr_version)
+    _store: BaseStore = normalize_store_arg(store, mode="w")
     path = _check_and_update_path(_store, path)
     try:
-        grp = _create_group(_store, path=path, overwrite=True, zarr_version=zarr_version)
+        grp = _create_group(_store, path=path, overwrite=True)
         for i, arr in enumerate(args):
             k = "arr_{}".format(i)
-            grp.create_dataset(k, data=arr, overwrite=True, zarr_version=zarr_version)
+            grp.create_dataset(k, data=arr, overwrite=True)
         for k, arr in kwargs.items():
-            grp.create_dataset(k, data=arr, overwrite=True, zarr_version=zarr_version)
+            grp.create_dataset(k, data=arr, overwrite=True)
     finally:
         if may_need_closing:
             # needed to ensure zip file records are written
             _store.close()
 
 
-def save(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
+def save(store: StoreLike, *args, path=None, **kwargs):
     """Convenience function to save an array or group of arrays to the local file system.
 
     Parameters
@@ -277,10 +256,6 @@ def save(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         Store or path to directory in file system or name of zip file.
     args : ndarray
         NumPy arrays with data to save.
-    zarr_version : {2, 3, None}, optional
-        The zarr protocol version to use when saving. The default value of None
-        will attempt to infer the version from `store` if possible, otherwise
-        it will fall back to 2.
     path : str or None, optional
         The path within the group where the arrays will be saved.
     kwargs
@@ -349,9 +324,9 @@ def save(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
     if len(args) == 1 and len(kwargs) == 0:
-        save_array(store, args[0], zarr_version=zarr_version, path=path)
+        save_array(store, args[0], path=path)
     else:
-        save_group(store, *args, zarr_version=zarr_version, path=path, **kwargs)
+        save_group(store, *args, path=path, **kwargs)
 
 
 class LazyLoader(Mapping):
@@ -383,17 +358,13 @@ class LazyLoader(Mapping):
         return r
 
 
-def load(store: StoreLike, zarr_version=None, path=None):
+def load(store: StoreLike, path=None):
     """Load data from an array or group into memory.
 
     Parameters
     ----------
     store : MutableMapping or string
         Store or path to directory in file system or name of zip file.
-    zarr_version : {2, 3, None}, optional
-        The zarr protocol version to use when loading. The default value of
-        None will attempt to infer the version from `store` if possible,
-        otherwise it will fall back to 2.
     path : str or None, optional
         The path within the store from which to load.
 
@@ -415,7 +386,7 @@ def load(store: StoreLike, zarr_version=None, path=None):
 
     """
     # handle polymorphic store arg
-    _store = normalize_store_arg(store, zarr_version=zarr_version)
+    _store = normalize_store_arg(store)
     path = _check_and_update_path(_store, path)
     if contains_array(_store, path=path):
         return Array(store=_store, path=path)[...]
@@ -669,9 +640,7 @@ def copy_store(
         raise ValueError("zarr stores must share the same protocol version")
 
     if source_store_version > 2:
-        nchar_root = len(meta_root)
-        # code below assumes len(meta_root) === len(data_root)
-        assert len(data_root) == nchar_root
+        raise NotImplementedError("This function only supports Zarr version 2.")
 
     # setup logging
     with _LogWriter(log) as log:
@@ -682,10 +651,7 @@ def copy_store(
                 if not source_key.startswith(source_path):
                     continue
             elif source_store_version == 3:
-                # skip 'meta/root/' or 'data/root/' at start of source_key
-                if not source_key[nchar_root:].startswith(source_path):
-                    continue
-
+                raise NotImplementedError("This function only supports Zarr version 2.")
             # process excludes and includes
             exclude = False
             for prog in excludes:
@@ -705,10 +671,7 @@ def copy_store(
                 key_suffix = source_key[len(source_path) :]
                 dest_key = dest_path + key_suffix
             elif source_store_version == 3:
-                # nchar_root is length of 'meta/root/' or 'data/root/'
-                key_suffix = source_key[nchar_root + len(source_path) :]
-                dest_key = source_key[:nchar_root] + dest_path + key_suffix
-
+                raise NotImplementedError("This function only supports Zarr version 2.")
             # create a descriptive label for this operation
             descr = source_key
             if dest_key != source_key:
@@ -1177,8 +1140,6 @@ def copy_all(
     # setup counting variables
     n_copied = n_skipped = n_bytes_copied = 0
 
-    zarr_version = getattr(source, "_version", 2)
-
     # setup logging
     with _LogWriter(log) as log:
         for k in source.keys():
@@ -1197,8 +1158,8 @@ def copy_all(
             n_copied += c
             n_skipped += s
             n_bytes_copied += b
-        if zarr_version == 2:
-            dest.attrs.update(**source.attrs)
+
+        dest.attrs.update(**source.attrs)
 
         # log a final message with a summary of what happened
         _log_copy_summary(log, dry_run, n_copied, n_skipped, n_bytes_copied)
@@ -1253,23 +1214,7 @@ def consolidate_metadata(store: BaseStore, metadata_key=".zmetadata", *, path=""
             return key.endswith(".zarray") or key.endswith(".zgroup") or key.endswith(".zattrs")
 
     else:
-        assert_zarr_v3_api_available()
-
-        sfx = _get_metadata_suffix(store)  # type: ignore
-
-        def is_zarr_key(key):
-            return (
-                key.endswith(".array" + sfx) or key.endswith(".group" + sfx) or key == "zarr.json"
-            )
-
-        # cannot create a group without a path in v3
-        # so create /meta/root/consolidated group to store the metadata
-        if "consolidated" not in store:
-            _create_group(store, path="consolidated")
-        if not metadata_key.startswith("meta/root/"):
-            metadata_key = "meta/root/consolidated/" + metadata_key
-        # path = 'consolidated'
-
+        raise NotImplementedError("This function only supports Zarr version 2.")
     out = {
         "zarr_consolidated_format": 1,
         "metadata": {key: json_loads(store[key]) for key in store if is_zarr_key(key)},
@@ -1321,10 +1266,7 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
     """
 
     # normalize parameters
-    zarr_version = kwargs.get("zarr_version")
-    store = normalize_store_arg(
-        store, storage_options=kwargs.get("storage_options"), mode=mode, zarr_version=zarr_version
-    )
+    store = normalize_store_arg(store, storage_options=kwargs.get("storage_options"), mode=mode)
     if mode not in {"r", "r+"}:
         raise ValueError("invalid mode, expected either 'r' or 'r+'; found {!r}".format(mode))
 
@@ -1332,11 +1274,7 @@ def open_consolidated(store: StoreLike, metadata_key=".zmetadata", mode="r+", **
     if store._store_version == 2:
         ConsolidatedStoreClass = ConsolidatedMetadataStore
     else:
-        assert_zarr_v3_api_available()
-        ConsolidatedStoreClass = ConsolidatedMetadataStoreV3
-        # default is to store within 'consolidated' group on v3
-        if not metadata_key.startswith("meta/root/"):
-            metadata_key = "meta/root/consolidated/" + metadata_key
+        raise NotImplementedError("This function only supports Zarr version 2.")
 
     # setup metadata store
     meta_store = ConsolidatedStoreClass(store, metadata_key=metadata_key)
