@@ -52,6 +52,10 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
+    "msgpack",
+    "lmdb",
+    "zstandard",
+    "crc32c",
 ]
 extra = [
     'attrs',
