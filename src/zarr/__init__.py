@@ -13,6 +13,10 @@ from zarr.store import (  # noqa: F401
     make_store_path,
 )
 from zarr.sync import sync as _sync
+from zarr._version import version as __version__
+
+# in case setuptools scm screw up and find version to be 0.0.0
+assert not __version__.startswith("0.0.0")
 
 
 async def open_auto_async(
