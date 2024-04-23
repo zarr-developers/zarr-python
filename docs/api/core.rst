@@ -1,5 +1,5 @@
-The Array class (``zarr.core``)
-===============================
+The Array class (``zarr.v2.core``)
+==================================
 
-.. automodapi:: zarr.core
+.. automodapi:: zarr.v2.core
    :no-heading:
