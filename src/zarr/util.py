@@ -518,7 +518,7 @@ class TreeViewer:
             UP_AND_RIGHT="\u2514",
             HORIZONTAL="\u2500",
             VERTICAL="\u2502",
-            VERTICAL_AND_RIGHT="\u251C",
+            VERTICAL_AND_RIGHT="\u251c",
         )
 
     def __bytes__(self):
