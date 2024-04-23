@@ -4,17 +4,17 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING, Optional
 
 import numpy as np
-from zarr.v3.abc.metadata import Metadata
+from zarr.abc.metadata import Metadata
 
-from zarr.v3.common import ArraySpec
-from zarr.v3.store import StorePath
+from zarr.common import ArraySpec
+from zarr.store import StorePath
 
 
 if TYPE_CHECKING:
     from typing_extensions import Self
-    from zarr.v3.common import BytesLike, SliceSelection
-    from zarr.v3.metadata import ArrayMetadata
-    from zarr.v3.config import RuntimeConfiguration
+    from zarr.common import BytesLike, SliceSelection
+    from zarr.metadata import ArrayMetadata
+    from zarr.config import RuntimeConfiguration
 
 
 class Codec(Metadata):

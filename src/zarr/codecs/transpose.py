@@ -3,17 +3,17 @@ from typing import TYPE_CHECKING, Dict, Iterable, Union, cast
 
 from dataclasses import dataclass, replace
 
-from zarr.v3.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
+from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
 
 if TYPE_CHECKING:
-    from zarr.v3.config import RuntimeConfiguration
+    from zarr.config import RuntimeConfiguration
     from typing import TYPE_CHECKING, Optional, Tuple
     from typing_extensions import Self
 
 import numpy as np
 
-from zarr.v3.abc.codec import ArrayArrayCodec
-from zarr.v3.codecs.registry import register_codec
+from zarr.abc.codec import ArrayArrayCodec
+from zarr.codecs.registry import register_codec
 
 
 def parse_transpose_order(data: Union[JSON, Iterable[int]]) -> Tuple[int, ...]:
@@ -65,7 +65,7 @@ class TransposeCodec(ArrayArrayCodec):
         return self
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
-        from zarr.v3.common import ArraySpec
+        from zarr.common import ArraySpec
 
         return ArraySpec(
             shape=tuple(chunk_spec.shape[self.order[i]] for i in range(chunk_spec.ndim)),

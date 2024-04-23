@@ -5,7 +5,7 @@ import numpy as np
 from dataclasses import dataclass
 from warnings import warn
 
-from zarr.v3.abc.codec import (
+from zarr.abc.codec import (
     ArrayArrayCodec,
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
@@ -13,16 +13,16 @@ from zarr.v3.abc.codec import (
     BytesBytesCodec,
     Codec,
 )
-from zarr.v3.abc.metadata import Metadata
-from zarr.v3.codecs.registry import get_codec_class
-from zarr.v3.common import parse_named_configuration
+from zarr.abc.metadata import Metadata
+from zarr.codecs.registry import get_codec_class
+from zarr.common import parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import Iterator, List, Optional, Tuple, Union
-    from zarr.v3.store import StorePath
-    from zarr.v3.metadata import ArrayMetadata
-    from zarr.v3.config import RuntimeConfiguration
-    from zarr.v3.common import JSON, ArraySpec, BytesLike, SliceSelection
+    from zarr.store import StorePath
+    from zarr.metadata import ArrayMetadata
+    from zarr.config import RuntimeConfiguration
+    from zarr.common import JSON, ArraySpec, BytesLike, SliceSelection
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,7 @@ class CodecPipeline(Metadata):
 
     @classmethod
     def from_list(cls, codecs: List[Codec]) -> CodecPipeline:
-        from zarr.v3.codecs.sharding import ShardingCodec
+        from zarr.codecs.sharding import ShardingCodec
 
         if not any(isinstance(codec, ArrayBytesCodec) for codec in codecs):
             raise ValueError("Exactly one array-to-bytes codec is required.")

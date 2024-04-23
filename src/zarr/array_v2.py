@@ -10,7 +10,7 @@ import numpy as np
 
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
-from zarr.v3.common import (
+from zarr.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
     BytesLike,
@@ -20,14 +20,14 @@ from zarr.v3.common import (
     concurrent_map,
     to_thread,
 )
-from zarr.v3.config import RuntimeConfiguration
-from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
-from zarr.v3.metadata import ArrayV2Metadata
-from zarr.v3.store import StoreLike, StorePath, make_store_path
-from zarr.v3.sync import sync
+from zarr.config import RuntimeConfiguration
+from zarr.indexing import BasicIndexer, all_chunk_coords, is_total_slice
+from zarr.metadata import ArrayV2Metadata
+from zarr.store import StoreLike, StorePath, make_store_path
+from zarr.sync import sync
 
 if TYPE_CHECKING:
-    from zarr.v3.array import Array
+    from zarr.array import Array
 
 
 @dataclass(frozen=True)
@@ -441,14 +441,14 @@ class ArrayV2:
     async def convert_to_v3_async(self) -> Array:
         from sys import byteorder as sys_byteorder
 
-        from zarr.v3.abc.codec import Codec
-        from zarr.v3.array import Array
-        from zarr.v3.common import ZARR_JSON
-        from zarr.v3.chunk_grids import RegularChunkGrid
-        from zarr.v3.chunk_key_encodings import V2ChunkKeyEncoding
-        from zarr.v3.metadata import ArrayMetadata, DataType
+        from zarr.abc.codec import Codec
+        from zarr.array import Array
+        from zarr.common import ZARR_JSON
+        from zarr.chunk_grids import RegularChunkGrid
+        from zarr.chunk_key_encodings import V2ChunkKeyEncoding
+        from zarr.metadata import ArrayMetadata, DataType
 
-        from zarr.v3.codecs import (
+        from zarr.codecs import (
             BloscCodec,
             BloscShuffle,
             BytesCodec,

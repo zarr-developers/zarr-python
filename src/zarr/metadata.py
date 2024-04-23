@@ -6,19 +6,19 @@ import json
 import numpy as np
 import numpy.typing as npt
 
-from zarr.v3.chunk_grids import ChunkGrid, RegularChunkGrid
-from zarr.v3.chunk_key_encodings import ChunkKeyEncoding, parse_separator
+from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 
 
 if TYPE_CHECKING:
     from typing import Literal, Union, List, Optional, Tuple
-    from zarr.v3.codecs.pipeline import CodecPipeline
+    from zarr.codecs.pipeline import CodecPipeline
 
 
-from zarr.v3.abc.codec import Codec
-from zarr.v3.abc.metadata import Metadata
+from zarr.abc.codec import Codec
+from zarr.abc.metadata import Metadata
 
-from zarr.v3.common import (
+from zarr.common import (
     JSON,
     ArraySpec,
     ChunkCoords,
@@ -26,7 +26,7 @@ from zarr.v3.common import (
     parse_fill_value,
     parse_shapelike,
 )
-from zarr.v3.config import RuntimeConfiguration, parse_indexing_order
+from zarr.config import RuntimeConfiguration, parse_indexing_order
 
 
 def runtime_configuration(
@@ -370,7 +370,7 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
 
 
 def parse_codecs(data: Iterable[Union[Codec, JSON]]) -> CodecPipeline:
-    from zarr.v3.codecs.pipeline import CodecPipeline
+    from zarr.codecs.pipeline import CodecPipeline
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")

@@ -5,15 +5,15 @@ from dataclasses import dataclass
 
 from zstandard import ZstdCompressor, ZstdDecompressor
 
-from zarr.v3.abc.codec import BytesBytesCodec
-from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import parse_named_configuration, to_thread
+from zarr.abc.codec import BytesBytesCodec
+from zarr.codecs.registry import register_codec
+from zarr.common import parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.v3.config import RuntimeConfiguration
-    from zarr.v3.common import BytesLike, JSON, ArraySpec
+    from zarr.config import RuntimeConfiguration
+    from zarr.common import BytesLike, JSON, ArraySpec
 
 
 def parse_zstd_level(data: JSON) -> int:

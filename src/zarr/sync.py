@@ -12,7 +12,7 @@ from typing import (
 )
 from typing_extensions import ParamSpec
 
-from zarr.v3.config import SyncConfiguration
+from zarr.config import SyncConfiguration
 
 
 # From https://github.com/fsspec/filesystem_spec/blob/master/fsspec/asyn.py

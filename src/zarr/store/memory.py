@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Optional, MutableMapping, List, Tuple
 
-from zarr.v3.common import BytesLike
-from zarr.v3.abc.store import Store
+from zarr.common import BytesLike
+from zarr.abc.store import Store
 
 
 # TODO: this store could easily be extended to wrap any MutuableMapping store from v2

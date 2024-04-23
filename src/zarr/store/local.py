@@ -5,8 +5,8 @@ import shutil
 from pathlib import Path
 from typing import Union, Optional, List, Tuple
 
-from zarr.v3.abc.store import Store
-from zarr.v3.common import BytesLike, concurrent_map, to_thread
+from zarr.abc.store import Store
+from zarr.common import BytesLike, concurrent_map, to_thread
 
 
 def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> bytes:

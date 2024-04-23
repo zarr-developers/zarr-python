@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
-from zarr.v3.abc.store import Store
-from zarr.v3.store.core import _dereference_path
-from zarr.v3.common import BytesLike
+from zarr.abc.store import Store
+from zarr.store.core import _dereference_path
+from zarr.common import BytesLike
 
 
 if TYPE_CHECKING:

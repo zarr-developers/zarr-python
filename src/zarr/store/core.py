@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional, Tuple, Union
 
-from zarr.v3.common import BytesLike
-from zarr.v3.abc.store import Store
-from zarr.v3.store.local import LocalStore
+from zarr.common import BytesLike
+from zarr.abc.store import Store
+from zarr.store.local import LocalStore
 
 
 def _dereference_path(root: str, path: str) -> str:

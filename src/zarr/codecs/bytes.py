@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import numpy as np
 
-from zarr.v3.abc.codec import ArrayBytesCodec
-from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import parse_enum, parse_named_configuration
+from zarr.abc.codec import ArrayBytesCodec
+from zarr.codecs.registry import register_codec
+from zarr.common import parse_enum, parse_named_configuration
 
 if TYPE_CHECKING:
-    from zarr.v3.common import JSON, ArraySpec, BytesLike
-    from zarr.v3.config import RuntimeConfiguration
+    from zarr.common import JSON, ArraySpec, BytesLike
+    from zarr.config import RuntimeConfiguration
     from typing_extensions import Self
 
 

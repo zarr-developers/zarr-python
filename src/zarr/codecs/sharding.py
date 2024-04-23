@@ -6,17 +6,17 @@ from functools import lru_cache
 
 
 import numpy as np
-from zarr.v3.abc.codec import (
+from zarr.abc.codec import (
     Codec,
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
 )
-from zarr.v3.codecs.bytes import BytesCodec
-from zarr.v3.codecs.crc32c_ import Crc32cCodec
-from zarr.v3.codecs.pipeline import CodecPipeline
-from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import (
+from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.crc32c_ import Crc32cCodec
+from zarr.codecs.pipeline import CodecPipeline
+from zarr.codecs.registry import register_codec
+from zarr.common import (
     ArraySpec,
     ChunkCoordsLike,
     concurrent_map,
@@ -25,14 +25,14 @@ from zarr.v3.common import (
     parse_shapelike,
     product,
 )
-from zarr.v3.chunk_grids import RegularChunkGrid
-from zarr.v3.indexing import (
+from zarr.chunk_grids import RegularChunkGrid
+from zarr.indexing import (
     BasicIndexer,
     c_order_iter,
     is_total_slice,
     morton_order_iter,
 )
-from zarr.v3.metadata import (
+from zarr.metadata import (
     ArrayMetadata,
     runtime_configuration as make_runtime_configuration,
     parse_codecs,
@@ -42,14 +42,14 @@ if TYPE_CHECKING:
     from typing import Awaitable, Callable, Dict, Iterator, List, Optional, Set, Tuple
     from typing_extensions import Self
 
-    from zarr.v3.store import StorePath
-    from zarr.v3.common import (
+    from zarr.store import StorePath
+    from zarr.common import (
         JSON,
         ChunkCoords,
         BytesLike,
         SliceSelection,
     )
-    from zarr.v3.config import RuntimeConfiguration
+    from zarr.config import RuntimeConfiguration
 
 MAX_UINT_64 = 2**64 - 1
 

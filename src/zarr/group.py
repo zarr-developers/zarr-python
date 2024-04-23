@@ -5,14 +5,14 @@ import asyncio
 import json
 import logging
 from typing import Any, Dict, Literal, Optional, Union, AsyncIterator, List
-from zarr.v3.abc.metadata import Metadata
+from zarr.abc.metadata import Metadata
 
-from zarr.v3.array import AsyncArray, Array
-from zarr.v3.attributes import Attributes
-from zarr.v3.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
-from zarr.v3.config import RuntimeConfiguration, SyncConfiguration
-from zarr.v3.store import StoreLike, StorePath, make_store_path
-from zarr.v3.sync import SyncMixin, sync
+from zarr.array import AsyncArray, Array
+from zarr.attributes import Attributes
+from zarr.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
+from zarr.config import RuntimeConfiguration, SyncConfiguration
+from zarr.store import StoreLike, StorePath, make_store_path
+from zarr.sync import SyncMixin, sync
 
 logger = logging.getLogger("zarr.group")
 

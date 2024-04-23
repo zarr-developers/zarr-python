@@ -164,31 +164,31 @@ disallow_any_generics = true
 
 [[tool.mypy.overrides]]
 module = [
-    "zarr._storage.store",
-    "zarr._storage.v3_storage_transformers",
-    "zarr.v3.group",
-    "zarr.core",
-    "zarr.hierarchy",
-    "zarr.indexing",
-    "zarr.storage",
-    "zarr.sync",
-    "zarr.util",
+    "zarr.v2._storage.store",
+    "zarr.v2._storage.v3_storage_transformers",
+    "zarr.group",
+    "zarr.v2.core",
+    "zarr.v2.hierarchy",
+    "zarr.v2.indexing",
+    "zarr.v2.storage",
+    "zarr.v2.sync",
+    "zarr.v2.util",
     "tests.*",
 ]
 check_untyped_defs = false
 
 [[tool.mypy.overrides]]
 module = [
-    "zarr.v3.abc.codec",
-    "zarr.v3.codecs.bytes",
-    "zarr.v3.codecs.pipeline",
-    "zarr.v3.codecs.sharding",
-    "zarr.v3.codecs.transpose",
-    "zarr.v3.array_v2",
-    "zarr.v3.array",
-    "zarr.v3.sync",
-    "zarr.convenience",
-    "zarr.meta",
+    "zarr.abc.codec",
+    "zarr.codecs.bytes",
+    "zarr.codecs.pipeline",
+    "zarr.codecs.sharding",
+    "zarr.codecs.transpose",
+    "zarr.array_v2",
+    "zarr.array",
+    "zarr.sync",
+    "zarr.v2.convenience",
+    "zarr.v2.meta",
 ]
 disallow_any_generics = false
 

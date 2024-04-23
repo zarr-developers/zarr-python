@@ -68,8 +68,8 @@ from zarr.v2.storage import (
 # from zarr.tests.util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
 # from zarr.util import ConstantMap, json_dumps
 
-from zarr.v3.abc.store import Store
-from zarr.v3.store import MemoryStore as KVStore, LocalStore
+from zarr.abc.store import Store
+from zarr.store import MemoryStore as KVStore, LocalStore
 
 
 # @contextmanager

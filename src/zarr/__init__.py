@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from typing import Union
 
-import zarr.v3.codecs  # noqa: F401
-from zarr.v3.array import Array, AsyncArray  # noqa: F401
-from zarr.v3.array_v2 import ArrayV2
-from zarr.v3.config import RuntimeConfiguration  # noqa: F401
-from zarr.v3.group import AsyncGroup, Group  # noqa: F401
-from zarr.v3.metadata import runtime_configuration  # noqa: F401
-from zarr.v3.store import (  # noqa: F401
+import zarr.codecs  # noqa: F401
+from zarr.array import Array, AsyncArray  # noqa: F401
+from zarr.array_v2 import ArrayV2
+from zarr.config import RuntimeConfiguration  # noqa: F401
+from zarr.group import AsyncGroup, Group  # noqa: F401
+from zarr.metadata import runtime_configuration  # noqa: F401
+from zarr.store import (  # noqa: F401
     StoreLike,
     make_store_path,
 )
-from zarr.v3.sync import sync as _sync
+from zarr.sync import sync as _sync
 
 
 async def open_auto_async(

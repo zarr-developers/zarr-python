@@ -7,15 +7,15 @@ import numpy as np
 
 from crc32c import crc32c
 
-from zarr.v3.abc.codec import BytesBytesCodec
-from zarr.v3.codecs.registry import register_codec
-from zarr.v3.common import parse_named_configuration
+from zarr.abc.codec import BytesBytesCodec
+from zarr.codecs.registry import register_codec
+from zarr.common import parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.v3.common import JSON, BytesLike, ArraySpec
-    from zarr.v3.config import RuntimeConfiguration
+    from zarr.common import JSON, BytesLike, ArraySpec
+    from zarr.config import RuntimeConfiguration
 
 
 @dataclass(frozen=True)

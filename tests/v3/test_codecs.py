@@ -8,11 +8,11 @@ from typing import Iterator, List, Literal, Optional, Tuple
 import numpy as np
 import pytest
 import zarr.v2
-from zarr.v3.abc.codec import Codec
-from zarr.v3.array import Array, AsyncArray
-from zarr.v3.common import Selection
-from zarr.v3.indexing import morton_order_iter
-from zarr.v3.codecs import (
+from zarr.abc.codec import Codec
+from zarr.array import Array, AsyncArray
+from zarr.common import Selection
+from zarr.indexing import morton_order_iter
+from zarr.codecs import (
     ShardingCodec,
     ShardingCodecIndexLocation,
     BloscCodec,
@@ -21,10 +21,10 @@ from zarr.v3.codecs import (
     TransposeCodec,
     ZstdCodec,
 )
-from zarr.v3.metadata import runtime_configuration
+from zarr.metadata import runtime_configuration
 
-from zarr.v3.abc.store import Store
-from zarr.v3.store import MemoryStore, StorePath
+from zarr.abc.store import Store
+from zarr.store import MemoryStore, StorePath
 
 
 @dataclass(frozen=True)

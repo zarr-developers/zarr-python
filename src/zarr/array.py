@@ -16,12 +16,12 @@ import json
 from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
 
 import numpy as np
-from zarr.v3.abc.codec import Codec
+from zarr.abc.codec import Codec
 
 
-# from zarr.v3.array_v2 import ArrayV2
-from zarr.v3.codecs import BytesCodec
-from zarr.v3.common import (
+# from zarr.array_v2 import ArrayV2
+from zarr.codecs import BytesCodec
+from zarr.common import (
     ZARR_JSON,
     ArraySpec,
     ChunkCoords,
@@ -29,14 +29,14 @@ from zarr.v3.common import (
     SliceSelection,
     concurrent_map,
 )
-from zarr.v3.config import RuntimeConfiguration
+from zarr.config import RuntimeConfiguration
 
-from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
-from zarr.v3.chunk_grids import RegularChunkGrid
-from zarr.v3.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-from zarr.v3.metadata import ArrayMetadata
-from zarr.v3.store import StoreLike, StorePath, make_store_path
-from zarr.v3.sync import sync
+from zarr.indexing import BasicIndexer, all_chunk_coords, is_total_slice
+from zarr.chunk_grids import RegularChunkGrid
+from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.metadata import ArrayMetadata
+from zarr.store import StoreLike, StorePath, make_store_path
+from zarr.sync import sync
 
 
 def parse_array_metadata(data: Any):

@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
 from dataclasses import fields, dataclass
 
-from zarr.v3.common import JSON
+from zarr.common import JSON
 
 
 @dataclass(frozen=True)

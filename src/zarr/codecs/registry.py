@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from typing import Dict, Type
-    from zarr.v3.abc.codec import Codec
+    from zarr.abc.codec import Codec
 
 from importlib.metadata import EntryPoint, entry_points as get_entry_points
 
