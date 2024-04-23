@@ -1,6 +1,6 @@
-Groups (``zarr.hierarchy``)
-===========================
-.. module:: zarr.hierarchy
+Groups (``zarr.v2.hierarchy``)
+==============================
+.. module:: zarr.v2.hierarchy
 
 .. autofunction:: group
 .. autofunction:: open_group

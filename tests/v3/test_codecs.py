@@ -7,7 +7,7 @@ from typing import Iterator, List, Literal, Optional, Tuple
 
 import numpy as np
 import pytest
-import zarr
+import zarr.v2
 from zarr.v3.abc.codec import Codec
 from zarr.v3.array import Array, AsyncArray
 from zarr.v3.common import Selection
@@ -286,7 +286,7 @@ async def test_order(
 
     if not with_sharding:
         # Compare with zarr-python
-        z = zarr.create(
+        z = zarr.v2.create(
             shape=data.shape,
             chunks=(32, 8),
             dtype="<u2",
@@ -396,7 +396,7 @@ async def test_transpose(
 
     if not with_sharding:
         # Compare with zarr-python
-        z = zarr.create(
+        z = zarr.v2.create(
             shape=data.shape,
             chunks=(1, 32, 8),
             dtype="<u2",
@@ -658,7 +658,7 @@ async def test_zarr_compat(store: Store):
         fill_value=1,
     )
 
-    z2 = zarr.create(
+    z2 = zarr.v2.create(
         shape=data.shape,
         chunks=(10, 10),
         dtype=data.dtype,
@@ -691,7 +691,7 @@ async def test_zarr_compat_F(store: Store):
         codecs=[TransposeCodec(order=order_from_dim("F", data.ndim)), BytesCodec()],
     )
 
-    z2 = zarr.create(
+    z2 = zarr.v2.create(
         shape=data.shape,
         chunks=(10, 10),
         dtype=data.dtype,
@@ -796,7 +796,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]):
     assert np.array_equal(data, readback_data)
 
     # Compare with zarr-python
-    z = zarr.create(
+    z = zarr.v2.create(
         shape=data.shape,
         chunks=(16, 16),
         dtype=">u2" if endian == "big" else "<u2",
@@ -832,7 +832,7 @@ async def test_endian_write(
     assert np.array_equal(data, readback_data)
 
     # Compare with zarr-python
-    z = zarr.create(
+    z = zarr.v2.create(
         shape=data.shape,
         chunks=(16, 16),
         dtype=">u2" if dtype_store_endian == "big" else "<u2",
