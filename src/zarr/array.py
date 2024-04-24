@@ -39,7 +39,7 @@ from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
 
-def parse_array_metadata(data: Any):
+def parse_array_metadata(data: Any) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
@@ -192,7 +192,7 @@ class AsyncArray:
     def attrs(self) -> dict:
         return self.metadata.attributes
 
-    async def getitem(self, selection: Selection):
+    async def getitem(self, selection: Selection) -> np.ndarray:
         assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
         indexer = BasicIndexer(
             selection,
@@ -231,7 +231,7 @@ class AsyncArray:
         chunk_selection: SliceSelection,
         out_selection: SliceSelection,
         out: np.ndarray,
-    ):
+    ) -> None:
         chunk_spec = self.metadata.get_chunk_spec(chunk_coords)
         chunk_key_encoding = self.metadata.chunk_key_encoding
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
@@ -301,7 +301,7 @@ class AsyncArray:
         chunk_coords: ChunkCoords,
         chunk_selection: SliceSelection,
         out_selection: SliceSelection,
-    ):
+    ) -> None:
         chunk_spec = self.metadata.get_chunk_spec(chunk_coords)
         chunk_key_encoding = self.metadata.chunk_key_encoding
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
@@ -350,7 +350,7 @@ class AsyncArray:
 
     async def _write_chunk_to_store(
         self, store_path: StorePath, chunk_array: np.ndarray, chunk_spec: ArraySpec
-    ):
+    ) -> None:
         if np.all(chunk_array == self.metadata.fill_value):
             # chunks that only contain fill_value will be removed
             await store_path.delete()
@@ -514,7 +514,7 @@ class Array:
     def store_path(self) -> StorePath:
         return self._async_array.store_path
 
-    def __getitem__(self, selection: Selection):
+    def __getitem__(self, selection: Selection) -> np.ndarray:
         return sync(
             self._async_array.getitem(selection),
             self._async_array.runtime_configuration.asyncio_loop,

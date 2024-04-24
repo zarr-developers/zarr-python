@@ -13,7 +13,7 @@ def _ensure_tuple(v: Selection) -> SliceSelection:
     return v
 
 
-def _err_too_many_indices(selection: SliceSelection, shape: ChunkCoords):
+def _err_too_many_indices(selection: SliceSelection, shape: ChunkCoords) -> None:
     raise IndexError(
         "too many indices for array; expected {}, got {}".format(len(shape), len(selection))
     )
@@ -23,7 +23,7 @@ def _err_negative_step():
     raise IndexError("only slices with step >= 1 are supported")
 
 
-def _check_selection_length(selection: SliceSelection, shape: ChunkCoords):
+def _check_selection_length(selection: SliceSelection, shape: ChunkCoords) -> None:
     if len(selection) > len(shape):
         _err_too_many_indices(selection, shape)
 
@@ -179,7 +179,7 @@ def c_order_iter(chunks_per_shard: ChunkCoords) -> Iterator[ChunkCoords]:
     return itertools.product(*(range(x) for x in chunks_per_shard))
 
 
-def is_total_slice(item: Selection, shape: ChunkCoords):
+def is_total_slice(item: Selection, shape: ChunkCoords) -> bool:
     """Determine whether `item` specifies a complete slice of array with the
     given `shape`. Used to optimize __setitem__ operations on the Chunk
     class."""

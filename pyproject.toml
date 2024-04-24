@@ -166,6 +166,8 @@ check_untyped_defs = true
 disallow_untyped_decorators = true
 disallow_any_generics = true
 
+disallow_incomplete_defs = true
+
 [[tool.mypy.overrides]]
 module = [
     "zarr.v2._storage.store",
@@ -196,6 +198,13 @@ module = [
 ]
 disallow_any_generics = false
 
+[[tool.mypy.overrides]]
+module = [
+    "zarr.v2.*",
+    "zarr.array_v2",
+    "zarr.group"
+]
+disallow_incomplete_defs = false
 
 [tool.pytest.ini_options]
 doctest_optionflags = [
