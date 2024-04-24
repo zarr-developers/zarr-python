@@ -3,8 +3,8 @@ import asyncio
 import time
 from unittest.mock import patch
 
-from zarr.v3.sync import sync, _get_loop, _get_lock, SyncError, SyncMixin
-from zarr.v3.config import SyncConfiguration
+from zarr.sync import sync, _get_loop, _get_lock, SyncError, SyncMixin
+from zarr.config import SyncConfiguration
 
 import pytest
 
