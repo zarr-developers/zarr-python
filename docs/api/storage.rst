@@ -1,6 +1,6 @@
-Storage (``zarr.storage``)
-==========================
-.. automodule:: zarr.storage
+Storage (``zarr.v2.storage``)
+=============================
+.. automodule:: zarr.v2.storage
 
 .. autoclass:: MemoryStore
 .. autoclass:: DirectoryStore

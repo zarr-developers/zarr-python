@@ -1,6 +1,6 @@
-Array creation (``zarr.creation``)
-==================================
-.. module:: zarr.creation
+Array creation (``zarr.v2.creation``)
+=====================================
+.. module:: zarr.v2.creation
 .. autofunction:: create
 .. autofunction:: empty
 .. autofunction:: zeros
