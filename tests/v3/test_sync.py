@@ -1,7 +1,7 @@
 from collections.abc import AsyncGenerator
 import asyncio
 import time
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 from zarr.sync import sync, _get_loop, _get_lock, SyncError, SyncMixin
 from zarr.config import SyncConfiguration
@@ -33,18 +33,16 @@ def test_get_lock() -> None:
 
 
 def test_sync(sync_loop: asyncio.AbstractEventLoop | None) -> None:
-    async def foo() -> str:
-        return "foo"
-
+    foo = AsyncMock(return_value="foo")
     assert sync(foo(), loop=sync_loop) == "foo"
+    foo.assert_awaited_once()
 
 
 def test_sync_raises(sync_loop: asyncio.AbstractEventLoop | None) -> None:
-    async def foo() -> str:
-        raise ValueError("foo")
-
-    with pytest.raises(ValueError):
+    foo = AsyncMock(side_effect=ValueError("foo-bar"))
+    with pytest.raises(ValueError, match="foo-bar"):
         sync(foo(), loop=sync_loop)
+    foo.assert_awaited_once()
 
 
 def test_sync_timeout() -> None:
@@ -69,23 +67,24 @@ def test_sync_raises_if_no_coroutine(sync_loop: asyncio.AbstractEventLoop | None
 def test_sync_raises_if_loop_is_closed() -> None:
     loop = _get_loop()
 
-    async def foo() -> str:
-        return "foo"
-
+    foo = AsyncMock(return_value="foo")
     with patch.object(loop, "is_closed", return_value=True):
         with pytest.raises(RuntimeError):
             sync(foo(), loop=loop)
+    foo.assert_not_awaited()
 
 
 @pytest.mark.filterwarnings("ignore:coroutine.*was never awaited")
 def test_sync_raises_if_calling_sync_from_within_a_running_loop(
     sync_loop: asyncio.AbstractEventLoop | None,
 ) -> None:
-    async def foo() -> str:
+    def foo() -> str:
+        # technically, this should be an async function but doing that
+        # yields a warning because it is never awaited by the inner function
         return "foo"
 
     async def bar() -> str:
-        return sync(foo())
+        return sync(foo(), loop=sync_loop)
 
     with pytest.raises(SyncError):
         sync(bar(), loop=sync_loop)
@@ -93,11 +92,10 @@ def test_sync_raises_if_calling_sync_from_within_a_running_loop(
 
 @pytest.mark.filterwarnings("ignore:coroutine.*was never awaited")
 def test_sync_raises_if_loop_is_invalid_type() -> None:
-    async def foo() -> str:
-        return "foo"
-
+    foo = AsyncMock(return_value="foo")
     with pytest.raises(TypeError):
         sync(foo(), loop=1)
+    foo.assert_not_awaited()
 
 
 def test_sync_mixin(sync_loop) -> None:
