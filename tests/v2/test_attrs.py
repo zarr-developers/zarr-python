@@ -1,4 +1,5 @@
 import json
+import pathlib
 
 import pytest
 
@@ -34,16 +35,9 @@ class TestAttributes:
         d = json.loads(str(store[attrs_key], "utf-8"))
         assert dict(foo="bar", baz=42) == d
 
-    def test_utf8_encoding(self, project_root):
-        fixdir = project_root / "fixture"
-        testdir = fixdir / "utf8attrs"
-        if not testdir.exists():  # pragma: no cover
-            # store the data - should be one-time operation
-            testdir.mkdir(parents=True, exist_ok=True)
-            with (testdir / ".zattrs").open("w", encoding="utf-8") as f:
-                f.write('{"foo": "た"}')
-            with (testdir / ".zgroup").open("w", encoding="utf-8") as f:
-                f.write("""{\n    "zarr_format": 2\n}""")
+    def test_utf8_encoding(self):
+        test_root = pathlib.Path(__file__).parent.parent
+        fixdir = test_root / "fixture"
 
         # fixture data
         fixture = group(store=DirectoryStore(str(fixdir)))
