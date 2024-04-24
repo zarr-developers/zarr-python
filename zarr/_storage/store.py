@@ -1,5 +1,6 @@
 import abc
 import os
+import warnings
 from collections import defaultdict
 from collections.abc import MutableMapping
 from copy import copy
@@ -23,6 +24,7 @@ data_root = "data/root/"
 DEFAULT_ZARR_VERSION: ZARR_VERSION = 2
 
 v3_api_available = os.environ.get("ZARR_V3_EXPERIMENTAL_API", "0").lower() not in ["0", "false"]
+_has_warned_about_v3 = False  # to avoid printing the warning multiple times
 
 V3_DEPRECATION_MESSAGE = (
     "The {store} is deprecated and will be removed in a Zarr-Python version 3, see "
@@ -31,6 +33,17 @@ V3_DEPRECATION_MESSAGE = (
 
 
 def assert_zarr_v3_api_available():
+    # we issue a warning about the experimental v3 implementation when it is first used
+    global _has_warned_about_v3
+    if v3_api_available and not _has_warned_about_v3:
+        warnings.warn(
+            "The experimental Zarr V3 implementation in this version of Zarr-Python is not "
+            "in alignment with the final V3 specification. This version will be removed in "
+            "Zarr-Python 3 in favor of a spec compliant version.",
+            FutureWarning,
+            stacklevel=1,
+        )
+        _has_warned_about_v3 = True
     if not v3_api_available:
         raise NotImplementedError(
             "# V3 reading and writing is experimental! To enable support, set:\n"
