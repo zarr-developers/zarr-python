@@ -326,17 +326,29 @@ class AsyncGroup:
     async def contains(self, member: str) -> bool:
         raise NotImplementedError
 
-    async def group_keys(self) -> AsyncIterator[str]:
-        raise NotImplementedError
+    # todo: decide if this method should be separate from `groups`
+    async def group_keys(self) -> AsyncGenerator[str, None]:
+        async for key, value in self.members():
+            if isinstance(value, AsyncGroup):
+                yield key
 
-    async def groups(self) -> AsyncIterator[AsyncGroup]:
-        raise NotImplementedError
+    # todo: decide if this method should be separate from `group_keys`
+    async def groups(self) -> AsyncGenerator[AsyncGroup, None]:
+        async for key, value in self.members():
+            if isinstance(value, AsyncGroup):
+                yield value
 
-    async def array_keys(self) -> AsyncIterator[str]:
-        raise NotImplementedError
+    # todo: decide if this method should be separate from `arrays`
+    async def array_keys(self) -> AsyncGenerator[str, None]:
+        async for key, value in self.members():
+            if isinstance(value, AsyncArray):
+                yield key
 
+    # todo: decide if this method should be separate from `array_keys`
     async def arrays(self) -> AsyncIterator[AsyncArray]:
-        raise NotImplementedError
+        async for key, value in self.members():
+            if isinstance(value, AsyncArray):
+                yield value
 
     async def tree(self, expand=False, level=None) -> Any:
         raise NotImplementedError
