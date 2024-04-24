@@ -171,21 +171,15 @@ disallow_incomplete_defs = true
 
 [[tool.mypy.overrides]]
 module = [
-    "zarr.v2._storage.store",
-    "zarr.v2._storage.v3_storage_transformers",
+    "zarr.v2.*",
     "zarr.group",
-    "zarr.v2.core",
-    "zarr.v2.hierarchy",
-    "zarr.v2.indexing",
-    "zarr.v2.storage",
-    "zarr.v2.sync",
-    "zarr.v2.util",
     "tests.*",
 ]
 check_untyped_defs = false
 
 [[tool.mypy.overrides]]
 module = [
+    "zarr.v2.*",
     "zarr.abc.codec",
     "zarr.codecs.bytes",
     "zarr.codecs.pipeline",
@@ -194,8 +188,6 @@ module = [
     "zarr.array_v2",
     "zarr.array",
     "zarr.sync",
-    "zarr.v2.convenience",
-    "zarr.v2.meta",
 ]
 disallow_any_generics = false
 
