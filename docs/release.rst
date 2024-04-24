@@ -28,6 +28,8 @@ Enhancements
 
 Maintenance
 ~~~~~~~~~~~
+* ``getsize`` now returns the total size of all nested arrays. 
+  By :user:`Ben Jeffery <benjeffery>` :issue:`253`.
 
 Deprecations
 ~~~~~~~~~~~~
