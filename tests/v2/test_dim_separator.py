@@ -2,7 +2,6 @@ import pathlib
 
 import pytest
 from numpy.testing import assert_array_equal
-from functools import partial
 
 import zarr.v2
 from zarr.v2.core import Array
@@ -41,27 +40,9 @@ def dataset(tmpdir, request):
     kwargs = {}
 
     if which.startswith("static"):
-        project_root = pathlib.Path(zarr.v2.__file__).resolve().parent.parent
+        test_root = pathlib.Path(__file__).parent.parent
         suffix = which[len("static_") :]
-        static = project_root / "fixture" / suffix
-
-        if not static.exists():  # pragma: no cover
-            if "nested" in which:
-                # No way to reproduce the nested_legacy file via code
-                generator = NestedDirectoryStore
-            else:
-                if "legacy" in suffix:
-                    # No dimension_separator metadata included
-                    generator = DirectoryStore
-                else:
-                    # Explicit dimension_separator metadata included
-                    generator = partial(DirectoryStore, dimension_separator=".")
-
-            # store the data - should be one-time operation
-            s = generator(str(static))
-            a = zarr.v2.open(store=s, mode="w", shape=(2, 2), dtype="<i8")
-            a[:] = [[1, 2], [3, 4]]
-
+        static = test_root / "fixture" / suffix
         return str(static)
 
     if which.startswith("directory"):
