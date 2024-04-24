@@ -24,6 +24,13 @@ Enhancements
   By :user:`Deepak Cherian <dcherian>`.
 
 
+Bug fixes
+~~~~~~~~~
+
+* ``getsize`` now returns the total size of all nested arrays. 
+  By :user:`Ben Jeffery <benjeffery>` :issue:`253`.
+
+
 Docs
 ~~~~
 
