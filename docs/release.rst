@@ -15,7 +15,7 @@ Release notes
 
 .. note::
    Zarr-Python 2.18.* is expected be the final release in the 2.* series. Work on Zarr-Python 3.0 is underway.
-   See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>` for more details on the upcoming
+   See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
    3.0 release.
 
 .. _unreleased:
