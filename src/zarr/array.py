@@ -527,15 +527,19 @@ class Array:
         )
 
     def resize(self, new_shape: ChunkCoords) -> Array:
-        return sync(
-            self._async_array.resize(new_shape),
-            self._async_array.runtime_configuration.asyncio_loop,
+        return type(self)(
+            sync(
+                self._async_array.resize(new_shape),
+                self._async_array.runtime_configuration.asyncio_loop,
+            )
         )
 
     def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
-        return sync(
-            self._async_array.update_attributes(new_attributes),
-            self._async_array.runtime_configuration.asyncio_loop,
+        return type(self)(
+            sync(
+                self._async_array.update_attributes(new_attributes),
+                self._async_array.runtime_configuration.asyncio_loop,
+            )
         )
 
     def __repr__(self):

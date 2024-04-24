@@ -9,6 +9,7 @@ from typing import Any, Literal, Optional
 class SyncConfiguration:
     concurrency: Optional[int] = None
     asyncio_loop: Optional[AbstractEventLoop] = None
+    timeout: float | None = None
 
 
 def parse_indexing_order(data: Any) -> Literal["C", "F"]:

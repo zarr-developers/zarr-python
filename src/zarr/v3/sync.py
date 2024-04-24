@@ -10,7 +10,7 @@ import threading
 
 from typing_extensions import ParamSpec
 
-from zarr.config import SyncConfiguration
+from zarr.v3.config import SyncConfiguration
 
 P = ParamSpec("P")
 T = TypeVar("T")
