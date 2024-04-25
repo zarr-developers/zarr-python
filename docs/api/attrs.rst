@@ -1,6 +1,6 @@
-The Attributes class (``zarr.attrs``)
-=====================================
-.. module:: zarr.attrs
+The Attributes class (``zarr.v2.attrs``)
+========================================
+.. module:: zarr.v2.attrs
 
 .. autoclass:: Attributes
 
