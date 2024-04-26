@@ -109,37 +109,52 @@ class AsyncGroup:
         cls,
         store: StoreLike,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-        zarr_format: Literal[2, 3] = 3,
+        zarr_format: Literal[2, 3, None] = 3,
     ) -> AsyncGroup:
         store_path = make_store_path(store)
-        zarr_json_bytes = await (store_path / ZARR_JSON).get()
-        assert zarr_json_bytes is not None
 
-        # TODO: consider trying to autodiscover the zarr-format here
-        if zarr_format == 3:
-            # V3 groups are comprised of a zarr.json object
-            # (it is optional in the case of implicit groups)
-            zarr_json_bytes = await (store_path / ZARR_JSON).get()
-            zarr_json = (
-                json.loads(zarr_json_bytes) if zarr_json_bytes is not None else {"zarr_format": 3}
-            )
-
-        elif zarr_format == 2:
-            # V2 groups are comprised of a .zgroup and .zattrs objects
-            # (both are optional in the case of implicit groups)
+        if zarr_format == 2:
             zgroup_bytes, zattrs_bytes = await asyncio.gather(
                 (store_path / ZGROUP_JSON).get(), (store_path / ZATTRS_JSON).get()
             )
-            zgroup = (
-                json.loads(json.loads(zgroup_bytes))
-                if zgroup_bytes is not None
-                else {"zarr_format": 2}
+            if zgroup_bytes is None:
+                raise KeyError(store_path)  # filenotfounderror?
+        elif zarr_format == 3:
+            zarr_json_bytes = await (store_path / ZARR_JSON).get()
+            if zarr_json_bytes is None:
+                raise KeyError(store_path)  # filenotfounderror?
+        elif zarr_format is None:
+            zarr_json_bytes, zgroup_bytes, zattrs_bytes = await asyncio.gather(
+                (store_path / ZARR_JSON).get(),
+                (store_path / ZGROUP_JSON).get(),
+                (store_path / ZATTRS_JSON).get(),
             )
-            zattrs = json.loads(json.loads(zattrs_bytes)) if zattrs_bytes is not None else {}
-            zarr_json = {**zgroup, "attributes": zattrs}
+            if zarr_json_bytes is not None and zgroup_bytes is not None:
+                # TODO: revisit this exception type
+                # alternatively, we could warn and favor v3
+                raise ValueError("Both zarr.json and .zgroup objects exist")
+            if zarr_json_bytes is None and zgroup_bytes is None:
+                raise KeyError(store_path)  # filenotfounderror?
+            # set zarr_format based on which keys were found
+            if zarr_json_bytes is not None:
+                zarr_format = 3
+            else:
+                zarr_format = 2
         else:
             raise ValueError(f"unexpected zarr_format: {zarr_format}")
-        return cls.from_dict(store_path, zarr_json, runtime_configuration)
+
+        if zarr_format == 2:
+            # V2 groups are comprised of a .zgroup and .zattrs objects
+            assert zgroup_bytes is not None
+            zgroup = json.loads(zgroup_bytes)
+            zattrs = json.loads(zattrs_bytes) if zattrs_bytes is not None else {}
+            group_metadata = {**zgroup, "attributes": zattrs}
+        else:
+            # V3 groups are comprised of a zarr.json object
+            assert zarr_json_bytes is not None
+            group_metadata = json.loads(zarr_json_bytes)
+
+        return cls.from_dict(store_path, group_metadata, runtime_configuration)
 
     @classmethod
     def from_dict(
@@ -168,19 +183,14 @@ class AsyncGroup:
         # Not clear how much of that strategy we want to keep here.
 
         # if `key` names an object in storage, it cannot be an array or group
+        print(key, store_path)
         if await store_path.exists():
             raise KeyError(key)
 
         if self.metadata.zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
-                # implicit group?
-                logger.warning("group at %s is an implicit group", store_path)
-                zarr_json = {
-                    "zarr_format": self.metadata.zarr_format,
-                    "node_type": "group",
-                    "attributes": {},
-                }
+                raise KeyError(key)
             else:
                 zarr_json = json.loads(zarr_json_bytes)
             if zarr_json["node_type"] == "group":
@@ -200,6 +210,9 @@ class AsyncGroup:
                 (store_path / ZATTRS_JSON).get(),
             )
 
+            if zgroup_bytes is None and zarray_bytes is None:
+                raise KeyError(key)
+
             # unpack the zarray, if this is None then we must be opening a group
             zarray = json.loads(zarray_bytes) if zarray_bytes else None
             # unpack the zattrs, this can be None if no attrs were written
@@ -212,9 +225,6 @@ class AsyncGroup:
                     store_path, zarray, runtime_configuration=self.runtime_configuration
                 )
             else:
-                if zgroup_bytes is None:
-                    # implicit group?
-                    logger.warning("group at %s is an implicit group", store_path)
                 zgroup = (
                     json.loads(zgroup_bytes)
                     if zgroup_bytes is not None
@@ -317,6 +327,7 @@ class AsyncGroup:
         subkeys_filtered = filter(lambda v: v not in ("zarr.json", ".zgroup", ".zattrs"), subkeys)
         # is there a better way to schedule this?
         for subkey in subkeys_filtered:
+            print(subkey)
             try:
                 yield (subkey, await self.getitem(subkey))
             except KeyError:
@@ -326,7 +337,6 @@ class AsyncGroup:
                 logger.warning(
                     "Object at %s is not recognized as a component of a Zarr hierarchy.", subkey
                 )
-                pass
 
     async def contains(self, member: str) -> bool:
         # TODO: this can be made more efficient.
