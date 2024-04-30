@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Optional, MutableMapping, List, Tuple
 
-from zarr.v3.common import BytesLike
 from zarr.v3.abc.store import Store
+from zarr.v3.buffer import Buffer
 
 
 # TODO: this store could easily be extended to wrap any MutuableMapping store from v2
@@ -13,9 +13,9 @@ class MemoryStore(Store):
     supports_partial_writes: bool = True
     supports_listing: bool = True
 
-    _store_dict: MutableMapping[str, bytes]
+    _store_dict: MutableMapping[str, Buffer]
 
-    def __init__(self, store_dict: Optional[MutableMapping[str, bytes]] = None):
+    def __init__(self, store_dict: Optional[MutableMapping[str, Buffer]] = None):
         self._store_dict = store_dict or {}
 
     def __str__(self) -> str:
@@ -26,7 +26,7 @@ class MemoryStore(Store):
 
     async def get(
         self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]:
+    ) -> Optional[Buffer]:
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
@@ -38,21 +38,21 @@ class MemoryStore(Store):
 
     async def get_partial_values(
         self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[bytes]:
+    ) -> List[Buffer]:
         raise NotImplementedError
 
     async def exists(self, key: str) -> bool:
         return key in self._store_dict
 
     async def set(
-        self, key: str, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None
+        self, key: str, value: Buffer, byte_range: Optional[Tuple[int, int]] = None
     ) -> None:
         assert isinstance(key, str)
-        if not isinstance(value, (bytes, bytearray, memoryview)):
-            raise TypeError(f"Expected BytesLike. Got {type(value)}.")
+        if not isinstance(value, Buffer):
+            raise TypeError(f"Expected Buffer. Got {type(value)}.")
 
         if byte_range is not None:
-            buf = bytearray(self._store_dict[key])
+            buf = self._store_dict[key]
             buf[byte_range[0] : byte_range[1]] = value
             self._store_dict[key] = buf
         else:

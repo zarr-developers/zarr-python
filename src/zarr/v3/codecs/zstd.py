@@ -8,12 +8,13 @@ from zstandard import ZstdCompressor, ZstdDecompressor
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import parse_named_configuration, to_thread
+from zarr.v3.buffer import Buffer, as_bytes_wrapper
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
     from zarr.v3.config import RuntimeConfiguration
-    from zarr.v3.common import BytesLike, JSON, ArraySpec
+    from zarr.v3.common import JSON, ArraySpec
 
 
 def parse_zstd_level(data: JSON) -> int:
@@ -62,19 +63,19 @@ class ZstdCodec(BytesBytesCodec):
 
     async def decode(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> BytesLike:
-        return await to_thread(self._decompress, chunk_bytes)
+    ) -> Buffer:
+        return await to_thread(as_bytes_wrapper, self._decompress, chunk_bytes)
 
     async def encode(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[BytesLike]:
-        return await to_thread(self._compress, chunk_bytes)
+    ) -> Optional[Buffer]:
+        return await to_thread(as_bytes_wrapper, self._compress, chunk_bytes)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

@@ -35,6 +35,7 @@ from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.chunk_grids import RegularChunkGrid
 from zarr.v3.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.v3.metadata import ArrayMetadata
+from zarr.v3.buffer import as_buffer
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -150,7 +151,7 @@ class AsyncArray:
         assert zarr_json_bytes is not None
         return cls.from_dict(
             store_path,
-            json.loads(zarr_json_bytes),
+            json.loads(zarr_json_bytes.as_bytearray()),
             runtime_configuration=runtime_configuration,
         )
 
@@ -165,7 +166,7 @@ class AsyncArray:
         if v3_metadata_bytes is not None:
             return cls.from_dict(
                 store_path,
-                json.loads(v3_metadata_bytes),
+                json.loads(v3_metadata_bytes.as_bytearray()),
                 runtime_configuration=runtime_configuration or RuntimeConfiguration(),
             )
         else:
@@ -223,7 +224,7 @@ class AsyncArray:
             return out[()]
 
     async def _save_metadata(self) -> None:
-        await (self.store_path / ZARR_JSON).set(self.metadata.to_bytes())
+        await (self.store_path / ZARR_JSON).set(as_buffer(self.metadata.to_bytes()))
 
     async def _read_chunk(
         self,
@@ -392,14 +393,14 @@ class AsyncArray:
         )
 
         # Write new metadata
-        await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
+        await (self.store_path / ZARR_JSON).set(as_buffer(new_metadata))
         return replace(self, metadata=new_metadata)
 
     async def update_attributes(self, new_attributes: Dict[str, Any]) -> AsyncArray:
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
+        await (self.store_path / ZARR_JSON).set(as_buffer(new_metadata))
         return replace(self, metadata=new_metadata)
 
     def __repr__(self):

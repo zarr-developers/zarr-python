@@ -6,15 +6,16 @@ from pathlib import Path
 from typing import Union, Optional, List, Tuple
 
 from zarr.v3.abc.store import Store
-from zarr.v3.common import BytesLike, concurrent_map, to_thread
+from zarr.v3.common import concurrent_map, to_thread
+from zarr.v3.buffer import Buffer, as_buffer
 
 
-def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> bytes:
+def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> Buffer:
     if byte_range is not None:
         start = byte_range[0]
         end = (start + byte_range[1]) if byte_range[1] is not None else None
     else:
-        return path.read_bytes()
+        return as_buffer(path.read_bytes())
     with path.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
         if start is not None:
@@ -25,13 +26,13 @@ def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> 
         if end is not None:
             if end < 0:
                 end = size + end
-            return f.read(end - f.tell())
-        return f.read()
+            return as_buffer(f.read(end - f.tell()))
+        return as_buffer(f.read())
 
 
 def _put(
     path: Path,
-    value: BytesLike,
+    value: Buffer,
     start: Optional[int] = None,
     auto_mkdir: bool = True,
 ):
@@ -40,9 +41,9 @@ def _put(
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
-            f.write(value)
+            f.write(value.as_bytearray())
     else:
-        return path.write_bytes(value)
+        return path.write_bytes(value.as_bytearray())
 
 
 class LocalStore(Store):
@@ -72,7 +73,7 @@ class LocalStore(Store):
 
     async def get(
         self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[bytes]:
+    ) -> Optional[Buffer]:
         assert isinstance(key, str)
         path = self.root / key
 
@@ -83,7 +84,7 @@ class LocalStore(Store):
 
     async def get_partial_values(
         self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[bytes]:
+    ) -> List[Buffer]:
         args = []
         for key, byte_range in key_ranges:
             assert isinstance(key, str)
@@ -94,7 +95,7 @@ class LocalStore(Store):
                 args.append((_get, path))
         return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
-    async def set(self, key: str, value: BytesLike) -> None:
+    async def set(self, key: str, value: Buffer) -> None:
         assert isinstance(key, str)
         path = self.root / key
         await to_thread(_put, path, value)

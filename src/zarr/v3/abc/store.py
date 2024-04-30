@@ -2,12 +2,14 @@ from abc import abstractmethod, ABC
 
 from typing import List, Tuple, Optional
 
+from zarr.v3.buffer import Buffer
+
 
 class Store(ABC):
     @abstractmethod
     async def get(
         self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[bytes]:
+    ) -> Optional[Buffer]:
         """Retrieve the value associated with a given key.
 
         Parameters
@@ -17,14 +19,14 @@ class Store(ABC):
 
         Returns
         -------
-        bytes
+        Buffer
         """
         ...
 
     @abstractmethod
     async def get_partial_values(
         self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[bytes]:
+    ) -> List[Buffer]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
@@ -34,8 +36,7 @@ class Store(ABC):
 
         Returns
         -------
-        list[bytes]
-            list of values, in the order of the key_ranges, may contain null/none for missing keys
+        list of values, in the order of the key_ranges, may contain null/none for missing keys
         """
         ...
 
@@ -60,7 +61,7 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def set(self, key: str, value: bytes) -> None:
+    async def set(self, key: str, value: Buffer) -> None:
         """Store a (key, value) pair.
 
         Parameters

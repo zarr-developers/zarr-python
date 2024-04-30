@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional, Tuple, Union
 
-from zarr.v3.common import BytesLike
 from zarr.v3.abc.store import Store
+from zarr.v3.buffer import Buffer
 from zarr.v3.store.local import LocalStore
 
 
@@ -25,12 +25,10 @@ class StorePath:
         self.store = store
         self.path = path or ""
 
-    async def get(
-        self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]:
+    async def get(self, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> Optional[Buffer]:
         return await self.store.get(self.path, byte_range)
 
-    async def set(self, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None) -> None:
+    async def set(self, value: Buffer, byte_range: Optional[Tuple[int, int]] = None) -> None:
         if byte_range is not None:
             raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)

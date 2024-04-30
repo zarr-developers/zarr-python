@@ -7,11 +7,12 @@ from numcodecs.gzip import GZip
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import parse_named_configuration, to_thread
+from zarr.v3.buffer import Buffer, as_bytes_wrapper
 
 if TYPE_CHECKING:
     from typing import Optional, Dict
     from typing_extensions import Self
-    from zarr.v3.common import JSON, ArraySpec, BytesLike
+    from zarr.v3.common import JSON, ArraySpec
     from zarr.v3.config import RuntimeConfiguration
 
 
@@ -46,19 +47,19 @@ class GzipCodec(BytesBytesCodec):
 
     async def decode(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> BytesLike:
-        return await to_thread(GZip(self.level).decode, chunk_bytes)
+    ) -> Buffer:
+        return await to_thread(as_bytes_wrapper, GZip(self.level).decode, chunk_bytes)
 
     async def encode(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[BytesLike]:
-        return await to_thread(GZip(self.level).encode, chunk_bytes)
+    ) -> Optional[Buffer]:
+        return await to_thread(as_bytes_wrapper, GZip(self.level).encode, chunk_bytes)
 
     def compute_encoded_size(
         self,

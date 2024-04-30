@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Union
 
+
 import zarr.v3.codecs  # noqa: F401
 from zarr.v3.array import Array, AsyncArray  # noqa: F401
 from zarr.v3.array_v2 import ArrayV2

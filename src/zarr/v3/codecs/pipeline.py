@@ -16,13 +16,14 @@ from zarr.v3.abc.codec import (
 from zarr.v3.abc.metadata import Metadata
 from zarr.v3.codecs.registry import get_codec_class
 from zarr.v3.common import parse_named_configuration
+from zarr.v3.buffer import Buffer
 
 if TYPE_CHECKING:
     from typing import Iterator, List, Optional, Tuple, Union
     from zarr.v3.store import StorePath
     from zarr.v3.metadata import ArrayMetadata
     from zarr.v3.config import RuntimeConfiguration
-    from zarr.v3.common import JSON, ArraySpec, BytesLike, SliceSelection
+    from zarr.v3.common import JSON, ArraySpec, SliceSelection
 
 
 @dataclass(frozen=True)
@@ -149,7 +150,7 @@ class CodecPipeline(Metadata):
 
     async def decode(
         self,
-        chunk_bytes: BytesLike,
+        chunk_bytes: Buffer,
         array_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
@@ -188,7 +189,7 @@ class CodecPipeline(Metadata):
         chunk_array: np.ndarray,
         array_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[BytesLike]:
+    ) -> Optional[Buffer]:
         (
             aa_codecs_with_spec,
             ab_codec_with_spec,
@@ -217,6 +218,7 @@ class CodecPipeline(Metadata):
                 return None
             chunk_bytes = chunk_bytes_maybe
 
+        assert isinstance(chunk_bytes, Buffer)
         return chunk_bytes
 
     async def encode_partial(

@@ -23,6 +23,7 @@ from zarr.v3.common import (
 from zarr.v3.config import RuntimeConfiguration
 from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.metadata import ArrayV2Metadata
+from zarr.v3.buffer import as_buffer, as_bytearray
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -152,8 +153,10 @@ class ArrayV2:
         assert zarray_bytes is not None
         return cls.from_dict(
             store_path,
-            zarray_json=json.loads(zarray_bytes),
-            zattrs_json=json.loads(zattrs_bytes) if zattrs_bytes is not None else None,
+            zarray_json=json.loads(zarray_bytes.as_bytearray()),
+            zattrs_json=json.loads(zattrs_bytes.as_bytearray())
+            if zattrs_bytes is not None
+            else None,
             runtime_configuration=runtime_configuration,
         )
 
@@ -192,7 +195,7 @@ class ArrayV2:
         await (self.store_path / ZARRAY_JSON).set(self.metadata.to_bytes())
         if self.attributes is not None and len(self.attributes) > 0:
             await (self.store_path / ZATTRS_JSON).set(
-                json.dumps(self.attributes).encode(),
+                as_buffer(json.dumps(self.attributes).encode()),
             )
         else:
             await (self.store_path / ZATTRS_JSON).delete()
@@ -258,7 +261,7 @@ class ArrayV2:
     ):
         store_path = self.store_path / self._encode_chunk_key(chunk_coords)
 
-        chunk_array = await self._decode_chunk(await store_path.get())
+        chunk_array = await self._decode_chunk(as_bytearray(await store_path.get()))
         if chunk_array is not None:
             tmp = chunk_array[chunk_selection]
             out[out_selection] = tmp
@@ -359,7 +362,7 @@ class ArrayV2:
         else:
             # writing partial chunks
             # read chunk first
-            tmp = await self._decode_chunk(await store_path.get())
+            tmp = await self._decode_chunk(as_bytearray(await store_path.get()))
 
             # merge new value
             if tmp is None:
@@ -387,7 +390,7 @@ class ArrayV2:
             if chunk_bytes is None:
                 await store_path.delete()
             else:
-                await store_path.set(chunk_bytes)
+                await store_path.set(as_buffer(chunk_bytes))
 
     async def _encode_chunk(self, chunk_array: np.ndarray) -> Optional[BytesLike]:
         chunk_array = chunk_array.ravel(order=self.metadata.order)
@@ -506,7 +509,7 @@ class ArrayV2:
         )
 
         new_metadata_bytes = new_metadata.to_bytes()
-        await (self.store_path / ZARR_JSON).set(new_metadata_bytes)
+        await (self.store_path / ZARR_JSON).set(as_buffer(new_metadata_bytes))
 
         return Array.from_dict(
             store_path=self.store_path,
@@ -515,7 +518,7 @@ class ArrayV2:
         )
 
     async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> ArrayV2:
-        await (self.store_path / ZATTRS_JSON).set(json.dumps(new_attributes).encode())
+        await (self.store_path / ZATTRS_JSON).set(as_buffer(json.dumps(new_attributes).encode()))
         return replace(self, attributes=new_attributes)
 
     def update_attributes(self, new_attributes: Dict[str, Any]) -> ArrayV2:

@@ -24,6 +24,7 @@ from zarr.v3.codecs import (
 from zarr.v3.metadata import runtime_configuration
 
 from zarr.v3.abc.store import Store
+from zarr.v3.buffer import as_bytearray
 from zarr.v3.store import MemoryStore, StorePath
 
 
@@ -295,7 +296,7 @@ async def test_order(
             fill_value=1,
         )
         z[:, :] = data
-        assert await (store / "order/0.0").get() == z._store["0.0"]
+        assert as_bytearray(await (store / "order/0.0").get()) == z._store["0.0"]
 
 
 @pytest.mark.parametrize("input_order", ["F", "C"])
@@ -671,10 +672,10 @@ async def test_zarr_compat(store: Store):
     assert np.array_equal(data, await _AsyncArrayProxy(a)[:16, :18].get())
     assert np.array_equal(data, z2[:16, :18])
 
-    assert z2._store["0.0"] == await (store / "zarr_compat3/0.0").get()
-    assert z2._store["0.1"] == await (store / "zarr_compat3/0.1").get()
-    assert z2._store["1.0"] == await (store / "zarr_compat3/1.0").get()
-    assert z2._store["1.1"] == await (store / "zarr_compat3/1.1").get()
+    assert z2._store["0.0"] == as_bytearray(await (store / "zarr_compat3/0.0").get())
+    assert z2._store["0.1"] == as_bytearray(await (store / "zarr_compat3/0.1").get())
+    assert z2._store["1.0"] == as_bytearray(await (store / "zarr_compat3/1.0").get())
+    assert z2._store["1.1"] == as_bytearray(await (store / "zarr_compat3/1.1").get())
 
 
 @pytest.mark.asyncio
@@ -705,10 +706,10 @@ async def test_zarr_compat_F(store: Store):
     assert np.array_equal(data, await _AsyncArrayProxy(a)[:16, :18].get())
     assert np.array_equal(data, z2[:16, :18])
 
-    assert z2._store["0.0"] == await (store / "zarr_compatF3/0.0").get()
-    assert z2._store["0.1"] == await (store / "zarr_compatF3/0.1").get()
-    assert z2._store["1.0"] == await (store / "zarr_compatF3/1.0").get()
-    assert z2._store["1.1"] == await (store / "zarr_compatF3/1.1").get()
+    assert z2._store["0.0"] == as_bytearray(await (store / "zarr_compatF3/0.0").get())
+    assert z2._store["0.1"] == as_bytearray(await (store / "zarr_compatF3/0.1").get())
+    assert z2._store["1.0"] == as_bytearray(await (store / "zarr_compatF3/1.0").get())
+    assert z2._store["1.1"] == as_bytearray(await (store / "zarr_compatF3/1.1").get())
 
 
 @pytest.mark.asyncio
@@ -738,7 +739,7 @@ async def test_dimension_names(store: Store):
     )
 
     assert (await AsyncArray.open(store / "dimension_names2")).metadata.dimension_names is None
-    zarr_json_bytes = await (store / "dimension_names2" / "zarr.json").get()
+    zarr_json_bytes = as_bytearray(await (store / "dimension_names2" / "zarr.json").get())
     assert zarr_json_bytes is not None
     assert "dimension_names" not in json.loads(zarr_json_bytes)
 
@@ -804,7 +805,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]):
         fill_value=1,
     )
     z[:, :] = data
-    assert await (store / "endian/0.0").get() == z._store["0.0"]
+    assert as_bytearray(await (store / "endian/0.0").get()) == z._store["0.0"]
 
 
 @pytest.mark.parametrize("dtype_input_endian", [">u2", "<u2"])
@@ -840,7 +841,7 @@ async def test_endian_write(
         fill_value=1,
     )
     z[:, :] = data
-    assert await (store / "endian/0.0").get() == z._store["0.0"]
+    assert as_bytearray(await (store / "endian/0.0").get()) == z._store["0.0"]
 
 
 def test_invalid_metadata(store: Store):
@@ -966,7 +967,7 @@ async def test_blosc_evolve(store: Store):
         codecs=[BytesCodec(), BloscCodec()],
     )
 
-    zarr_json = json.loads(await (store / "blosc_evolve_u1" / "zarr.json").get())
+    zarr_json = json.loads(as_bytearray(await (store / "blosc_evolve_u1" / "zarr.json").get()))
     blosc_configuration_json = zarr_json["codecs"][1]["configuration"]
     assert blosc_configuration_json["typesize"] == 1
     assert blosc_configuration_json["shuffle"] == "bitshuffle"
@@ -980,7 +981,7 @@ async def test_blosc_evolve(store: Store):
         codecs=[BytesCodec(), BloscCodec()],
     )
 
-    zarr_json = json.loads(await (store / "blosc_evolve_u2" / "zarr.json").get())
+    zarr_json = json.loads(as_bytearray(await (store / "blosc_evolve_u2" / "zarr.json").get()))
     blosc_configuration_json = zarr_json["codecs"][1]["configuration"]
     assert blosc_configuration_json["typesize"] == 2
     assert blosc_configuration_json["shuffle"] == "shuffle"
@@ -994,7 +995,9 @@ async def test_blosc_evolve(store: Store):
         codecs=[ShardingCodec(chunk_shape=(16, 16), codecs=[BytesCodec(), BloscCodec()])],
     )
 
-    zarr_json = json.loads(await (store / "sharding_blosc_evolve" / "zarr.json").get())
+    zarr_json = json.loads(
+        as_bytearray(await (store / "sharding_blosc_evolve" / "zarr.json").get())
+    )
     blosc_configuration_json = zarr_json["codecs"][0]["configuration"]["codecs"][1]["configuration"]
     assert blosc_configuration_json["typesize"] == 2
     assert blosc_configuration_json["shuffle"] == "shuffle"

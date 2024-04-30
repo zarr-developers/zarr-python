@@ -10,9 +10,10 @@ import numpy as np
 from zarr.v3.abc.codec import ArrayBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import parse_enum, parse_named_configuration
+from zarr.v3.buffer import Buffer, as_buffer
 
 if TYPE_CHECKING:
-    from zarr.v3.common import JSON, ArraySpec, BytesLike
+    from zarr.v3.common import JSON, ArraySpec
     from zarr.v3.config import RuntimeConfiguration
     from typing_extensions import Self
 
@@ -70,10 +71,11 @@ class BytesCodec(ArrayBytesCodec):
 
     async def decode(
         self,
-        chunk_bytes: BytesLike,
+        chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
+        assert isinstance(chunk_bytes, Buffer)
         if chunk_spec.dtype.itemsize > 0:
             if self.endian == Endian.little:
                 prefix = "<"
@@ -82,8 +84,7 @@ class BytesCodec(ArrayBytesCodec):
             dtype = np.dtype(f"{prefix}{chunk_spec.dtype.str[1:]}")
         else:
             dtype = np.dtype(f"|{chunk_spec.dtype.str[1:]}")
-        print(dtype)
-        chunk_array = np.frombuffer(chunk_bytes, dtype)
+        chunk_array = chunk_bytes.as_numpy_array(dtype)
 
         # ensure correct chunk shape
         if chunk_array.shape != chunk_spec.shape:
@@ -97,13 +98,13 @@ class BytesCodec(ArrayBytesCodec):
         chunk_array: np.ndarray,
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[BytesLike]:
+    ) -> Optional[Buffer]:
         if chunk_array.dtype.itemsize > 1:
             byteorder = self._get_byteorder(chunk_array)
             if self.endian is not None and self.endian != byteorder:
                 new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)
                 chunk_array = chunk_array.astype(new_dtype)
-        return chunk_array.tobytes()
+        return as_buffer(chunk_array)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length

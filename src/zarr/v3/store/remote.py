@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 from zarr.v3.abc.store import Store
+from zarr.v3.buffer import Buffer
 from zarr.v3.store.core import _dereference_path
-from zarr.v3.common import BytesLike
 
 
 if TYPE_CHECKING:
@@ -52,7 +52,7 @@ class RemoteStore(Store):
 
     async def get(
         self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]:
+    ) -> Optional[Buffer]:
         assert isinstance(key, str)
         fs, root = self._make_fs()
         path = _dereference_path(root, key)
@@ -69,7 +69,7 @@ class RemoteStore(Store):
         return value
 
     async def set(
-        self, key: str, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None
+        self, key: str, value: Buffer, byte_range: Optional[Tuple[int, int]] = None
     ) -> None:
         assert isinstance(key, str)
         fs, root = self._make_fs()

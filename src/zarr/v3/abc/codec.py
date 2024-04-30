@@ -7,12 +7,13 @@ import numpy as np
 from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.common import ArraySpec
+from zarr.v3.buffer import Buffer
 from zarr.v3.store import StorePath
 
 
 if TYPE_CHECKING:
     from typing_extensions import Self
-    from zarr.v3.common import BytesLike, SliceSelection
+    from zarr.v3.common import SliceSelection
     from zarr.v3.metadata import ArrayMetadata
     from zarr.v3.config import RuntimeConfiguration
 
@@ -58,7 +59,7 @@ class ArrayBytesCodec(Codec):
     @abstractmethod
     async def decode(
         self,
-        chunk_array: BytesLike,
+        chunk_array: Buffer,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
@@ -70,7 +71,7 @@ class ArrayBytesCodec(Codec):
         chunk_array: np.ndarray,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[BytesLike]:
+    ) -> Optional[Buffer]:
         pass
 
 
@@ -103,17 +104,17 @@ class BytesBytesCodec(Codec):
     @abstractmethod
     async def decode(
         self,
-        chunk_array: BytesLike,
+        chunk_array: Buffer,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> BytesLike:
+    ) -> Buffer:
         pass
 
     @abstractmethod
     async def encode(
         self,
-        chunk_array: BytesLike,
+        chunk_array: Buffer,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[BytesLike]:
+    ) -> Optional[Buffer]:
         pass

@@ -6,17 +6,17 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Union
 
 import numcodecs
-import numpy as np
 from numcodecs.blosc import Blosc
 
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import parse_enum, parse_named_configuration, to_thread
+from zarr.v3.buffer import Buffer, as_bytes_wrapper, return_as_bytes_wrapper
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.v3.common import JSON, ArraySpec, BytesLike
+    from zarr.v3.common import JSON, ArraySpec
     from zarr.v3.config import RuntimeConfiguration
 
 
@@ -161,20 +161,20 @@ class BloscCodec(BytesBytesCodec):
 
     async def decode(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> BytesLike:
-        return await to_thread(self._blosc_codec.decode, chunk_bytes)
+    ) -> Buffer:
+        return await to_thread(as_bytes_wrapper, self._blosc_codec.decode, chunk_bytes)
 
     async def encode(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[BytesLike]:
-        chunk_array = np.frombuffer(chunk_bytes, dtype=chunk_spec.dtype)
-        return await to_thread(self._blosc_codec.encode, chunk_array)
+    ) -> Optional[Buffer]:
+        chunk_array = chunk_bytes.as_numpy_array(chunk_spec.dtype)
+        return await to_thread(return_as_bytes_wrapper, self._blosc_codec.encode, chunk_array)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

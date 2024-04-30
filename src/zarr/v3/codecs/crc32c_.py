@@ -10,11 +10,12 @@ from crc32c import crc32c
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import parse_named_configuration
+from zarr.v3.buffer import Buffer
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.v3.common import JSON, BytesLike, ArraySpec
+    from zarr.v3.common import JSON, ArraySpec
     from zarr.v3.config import RuntimeConfiguration
 
 
@@ -32,12 +33,13 @@ class Crc32cCodec(BytesBytesCodec):
 
     async def decode(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> BytesLike:
-        crc32_bytes = chunk_bytes[-4:]
-        inner_bytes = chunk_bytes[:-4]
+    ) -> Buffer:
+        data = chunk_bytes.as_bytearray()
+        crc32_bytes = data[-4:]
+        inner_bytes = data[:-4]
 
         computed_checksum = np.uint32(crc32c(inner_bytes)).tobytes()
         stored_checksum = bytes(crc32_bytes)
@@ -46,15 +48,16 @@ class Crc32cCodec(BytesBytesCodec):
                 "Stored and computed checksum do not match. "
                 + f"Stored: {stored_checksum!r}. Computed: {computed_checksum!r}."
             )
-        return inner_bytes
+        return Buffer(inner_bytes)
 
     async def encode(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[BytesLike]:
-        return chunk_bytes + np.uint32(crc32c(chunk_bytes)).tobytes()
+    ) -> Optional[Buffer]:
+        bytes = chunk_bytes.as_bytearray()
+        return Buffer(bytes + np.uint32(crc32c(bytes)).tobytes())
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length + 4
