@@ -21,50 +21,54 @@ class Buffer(NDBuffer):
     of memory such as CUDA device memory.
     """
 
-    def __init__(self, data: bytearray):
-        assert isinstance(data, bytearray)
+    def __init__(self, data: memoryview):
+        assert isinstance(data, memoryview)
+        assert data.ndim == 1
+        assert data.contiguous
+        assert data.itemsize == 1
         self._data = data
 
-    def as_bytearray(self) -> bytearray:
+    def memoryview(self) -> memoryview:
         return self._data
 
+    def to_bytes(self) -> bytes:
+        return bytes(self.memoryview())
+
     def as_numpy_array(self, dtype: np.DTypeLike) -> np.ndarray:
-        return np.frombuffer(self._data, dtype=dtype)
+        return np.frombuffer(self.memoryview(), dtype=dtype)
 
     def __getitem__(self, key) -> Self:
-        return self.__class__(self.as_bytearray().__getitem__(key))
+        return self.__class__(self.memoryview().__getitem__(key))
 
     def __setitem__(self, key, value) -> None:
-        self.as_bytearray().__setitem__(key, value)
+        self.memoryview().__setitem__(key, value)
 
     def __len__(self) -> int:
-        return len(self.as_bytearray())
+        return len(self.memoryview())
 
     def __add__(self, other: Buffer) -> Self:
-        return self.__class__(self.as_bytearray() + other.as_bytearray())
+        return self.__class__(memoryview(self.to_bytes() + other.to_bytes()))
 
 
 def as_buffer(data: Any) -> Buffer:
     if isinstance(data, Buffer):
         return data
-    if isinstance(data, bytearray):
-        return Buffer(data)
-    if isinstance(data, bytes):
-        return Buffer(bytearray(data))
+    if isinstance(data, bytearray | bytes):
+        return Buffer(memoryview(data))
     if hasattr(data, "to_bytes"):
-        return as_buffer(data.to_bytes())
-    return Buffer(bytearray(np.asarray(data)))
+        return as_buffer(memoryview(data.to_bytes()))
+    return Buffer(memoryview(np.asanyarray(data).reshape(-1).view(dtype="int8")))
 
 
 def as_bytes_wrapper(func, buf: Buffer) -> Buffer:
-    return as_buffer(func(buf.as_bytearray()))
+    return as_buffer(func(buf.to_bytes()))
 
 
 def return_as_bytes_wrapper(func, *arg, **kwargs) -> Buffer:
     return as_buffer(func(*arg, **kwargs))
 
 
-def as_bytearray(data: Optional[Buffer]):
+def as_bytearray(data: Optional[Buffer]) -> Optional[bytes]:
     if data is None:
         return data
-    return data.as_bytearray()
+    return data.to_bytes()

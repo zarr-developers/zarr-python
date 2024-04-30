@@ -151,7 +151,7 @@ class AsyncArray:
         assert zarr_json_bytes is not None
         return cls.from_dict(
             store_path,
-            json.loads(zarr_json_bytes.as_bytearray()),
+            json.loads(zarr_json_bytes.to_bytes()),
             runtime_configuration=runtime_configuration,
         )
 
@@ -166,7 +166,7 @@ class AsyncArray:
         if v3_metadata_bytes is not None:
             return cls.from_dict(
                 store_path,
-                json.loads(v3_metadata_bytes.as_bytearray()),
+                json.loads(v3_metadata_bytes.to_bytes()),
                 runtime_configuration=runtime_configuration or RuntimeConfiguration(),
             )
         else:

@@ -153,10 +153,8 @@ class ArrayV2:
         assert zarray_bytes is not None
         return cls.from_dict(
             store_path,
-            zarray_json=json.loads(zarray_bytes.as_bytearray()),
-            zattrs_json=json.loads(zattrs_bytes.as_bytearray())
-            if zattrs_bytes is not None
-            else None,
+            zarray_json=json.loads(zarray_bytes.to_bytes()),
+            zattrs_json=json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else None,
             runtime_configuration=runtime_configuration,
         )
 

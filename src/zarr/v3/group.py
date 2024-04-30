@@ -114,7 +114,7 @@ class AsyncGroup:
             # (it is optional in the case of implicit groups)
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             zarr_json = (
-                json.loads(zarr_json_bytes.as_bytearray())
+                json.loads(zarr_json_bytes.to_bytes())
                 if zarr_json_bytes is not None
                 else {"zarr_format": 3}
             )
@@ -126,14 +126,12 @@ class AsyncGroup:
                 (store_path / ZGROUP_JSON).get(), (store_path / ZATTRS_JSON).get()
             )
             zgroup = (
-                json.loads(json.loads(zgroup_bytes.as_bytearray()))
+                json.loads(json.loads(zgroup_bytes.to_bytes()))
                 if zgroup_bytes is not None
                 else {"zarr_format": 2}
             )
             zattrs = (
-                json.loads(json.loads(zattrs_bytes.as_bytearray()))
-                if zattrs_bytes is not None
-                else {}
+                json.loads(json.loads(zattrs_bytes.to_bytes())) if zattrs_bytes is not None else {}
             )
             zarr_json = {**zgroup, "attributes": zattrs}
         else:
@@ -171,7 +169,7 @@ class AsyncGroup:
                     "attributes": {},
                 }
             else:
-                zarr_json = json.loads(zarr_json_bytes.as_bytearray())
+                zarr_json = json.loads(zarr_json_bytes.to_bytes())
             if zarr_json["node_type"] == "group":
                 return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
             elif zarr_json["node_type"] == "array":
@@ -190,9 +188,9 @@ class AsyncGroup:
             )
 
             # unpack the zarray, if this is None then we must be opening a group
-            zarray = json.loads(zarray_bytes.as_bytearray()) if zarray_bytes else None
+            zarray = json.loads(zarray_bytes.to_bytes()) if zarray_bytes else None
             # unpack the zattrs, this can be None if no attrs were written
-            zattrs = json.loads(zattrs_bytes.as_bytearray()) if zattrs_bytes is not None else {}
+            zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
 
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
@@ -205,7 +203,7 @@ class AsyncGroup:
                     # implicit group?
                     logger.warning("group at {} is an implicit group", store_path)
                 zgroup = (
-                    json.loads(zgroup_bytes.as_bytearray())
+                    json.loads(zgroup_bytes.to_bytes())
                     if zgroup_bytes is not None
                     else {"zarr_format": self.metadata.zarr_format}
                 )

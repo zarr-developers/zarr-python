@@ -191,7 +191,7 @@ class _ShardBuilder(_ShardProxy):
     @classmethod
     def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardBuilder:
         obj = cls()
-        obj.buf = Buffer(bytearray(0))
+        obj.buf = Buffer(memoryview(b""))
         obj.index = _ShardIndex.create_empty(chunks_per_shard)
         return obj
 

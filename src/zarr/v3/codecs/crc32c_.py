@@ -10,7 +10,7 @@ from crc32c import crc32c
 from zarr.v3.abc.codec import BytesBytesCodec
 from zarr.v3.codecs.registry import register_codec
 from zarr.v3.common import parse_named_configuration
-from zarr.v3.buffer import Buffer
+from zarr.v3.buffer import Buffer, as_buffer
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
@@ -37,7 +37,7 @@ class Crc32cCodec(BytesBytesCodec):
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> Buffer:
-        data = chunk_bytes.as_bytearray()
+        data = chunk_bytes.memoryview()
         crc32_bytes = data[-4:]
         inner_bytes = data[:-4]
 
@@ -56,8 +56,8 @@ class Crc32cCodec(BytesBytesCodec):
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[Buffer]:
-        bytes = chunk_bytes.as_bytearray()
-        return Buffer(bytes + np.uint32(crc32c(bytes)).tobytes())
+        checksum = crc32c(chunk_bytes.memoryview())
+        return as_buffer(chunk_bytes.to_bytes() + np.uint32(checksum).tobytes())
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length + 4
