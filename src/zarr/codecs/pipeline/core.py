@@ -54,8 +54,10 @@ class CodecPipeline(Metadata, ABC):
     def evolve(self, array_spec: ArraySpec) -> Self:
         return type(self).from_list([c.evolve(array_spec) for c in self])
 
-    @classmethod
-    def from_list(cls, codecs: List[Codec]) -> Self:
+    @staticmethod
+    def codecs_from_list(
+        codecs: List[Codec],
+    ) -> Tuple[Tuple[ArrayArrayCodec, ...], ArrayBytesCodec, Tuple[BytesBytesCodec, ...]]:
         from zarr.codecs.sharding import ShardingCodec
 
         if not any(isinstance(codec, ArrayBytesCodec) for codec in codecs):
@@ -93,14 +95,20 @@ class CodecPipeline(Metadata, ABC):
                 + "writes, which may lead to inefficient performance."
             )
 
+        return (
+            tuple(codec for codec in codecs if isinstance(codec, ArrayArrayCodec)),
+            [codec for codec in codecs if isinstance(codec, ArrayBytesCodec)][0],
+            tuple(codec for codec in codecs if isinstance(codec, BytesBytesCodec)),
+        )
+
+    @classmethod
+    def from_list(cls, codecs: List[Codec]) -> Self:
+        array_array_codecs, array_bytes_codec, bytes_bytes_codecs = cls.codecs_from_list(codecs)
+
         return cls(
-            array_array_codecs=tuple(
-                codec for codec in codecs if isinstance(codec, ArrayArrayCodec)
-            ),
-            array_bytes_codec=[codec for codec in codecs if isinstance(codec, ArrayBytesCodec)][0],
-            bytes_bytes_codecs=tuple(
-                codec for codec in codecs if isinstance(codec, BytesBytesCodec)
-            ),
+            array_array_codecs=array_array_codecs,
+            array_bytes_codec=array_bytes_codec,
+            bytes_bytes_codecs=bytes_bytes_codecs,
         )
 
     @property
