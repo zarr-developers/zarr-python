@@ -1,13 +1,12 @@
 V3 Specification Implementation(``zarr._storage.v3``)
 =====================================================
 
-This module contains the implementation of the `Zarr V3 Specification <https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html>`_.
+This module contains an experimental implementation of the `Zarr V3 Specification <https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html>`_.
 
 .. warning::
-    Since Zarr Python 2.12 release, this module provides experimental infrastructure for reading and
-    writing the upcoming V3 spec of the Zarr format. Users wishing to prepare for the migration can set
-    the environment variable ``ZARR_V3_EXPERIMENTAL_API=1`` to begin experimenting, however data
-    written with this API should be expected to become stale, as the implementation will still change.
+    The experimental v3 implementation included in Zarr Python >2.12,<3 is not aligned with the final
+    V3 specification. This version is deprecated and will be removed in Zarr Python 3.0 in favor of a
+    spec compliant version.
 
 The new ``zarr._store.v3`` package has the necessary classes and functions for evaluating Zarr V3.
 Since the design is not finalised, the classes and functions are not automatically imported into
