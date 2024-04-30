@@ -369,18 +369,8 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-<<<<<<< HEAD:src/zarr/metadata.py
-<<<<<<< HEAD:src/zarr/metadata.py
 def parse_codecs(data: Iterable[Union[Codec, JSON]]) -> CodecPipeline:
-    from zarr.codecs.pipeline import CodecPipeline
-=======
-def parse_codecs(data: Iterable[Union[Codec, JSON]]) -> BatchedCodecPipeline:
-    from zarr.v3.codecs.batched_pipeline import BatchedCodecPipeline
->>>>>>> 450bcc64 (merge):src/zarr/v3/metadata.py
-=======
-def parse_codecs(data: Iterable[Union[Codec, JSON]]) -> CodecPipeline:
-    from zarr.v3.codecs.pipeline.batched import BatchedCodecPipeline
->>>>>>> 51d3c921 (refactors CodecPipelines):src/zarr/v3/metadata.py
+    from zarr.codecs.pipeline.batched import BatchedCodecPipeline
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")

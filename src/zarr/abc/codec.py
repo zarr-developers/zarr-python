@@ -30,13 +30,8 @@ U = TypeVar("U")
 
 
 def noop_for_none(
-<<<<<<< HEAD:src/zarr/abc/codec.py
-    func: Callable[[Optional[T], ArraySpec, RuntimeConfiguration], Awaitable[U]],
-) -> Callable[[T, ArraySpec, RuntimeConfiguration], Awaitable[U]]:
-=======
     func: Callable[[T, ArraySpec, RuntimeConfiguration], Awaitable[Optional[U]]],
 ) -> Callable[[Optional[T], ArraySpec, RuntimeConfiguration], Awaitable[Optional[U]]]:
->>>>>>> 51d3c921 (refactors CodecPipelines):src/zarr/v3/abc/codec.py
     async def wrap(
         chunk: Optional[T], chunk_spec: ArraySpec, runtime_configuration: RuntimeConfiguration
     ) -> Optional[U]:
