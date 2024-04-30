@@ -36,7 +36,7 @@ Deprecations
 
 * Deprecate experimental v3 support by issuing a `FutureWarning`.
   Also updated docs to warn about using the experimental v3 version.
-  By :user:`Joe Hamman <jhamman>` :issue:`1802` and :issue `1807`.
+  By :user:`Joe Hamman <jhamman>` :issue:`1802` and :issue: `1807`.
 
 .. _release_2.17.2:
 

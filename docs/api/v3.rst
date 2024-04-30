@@ -4,7 +4,7 @@ V3 Specification Implementation(``zarr._storage.v3``)
 This module contains an experimental implementation of the `Zarr V3 Specification <https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html>`_.
 
 .. warning::
-    The experimental v3 implementation included in Zarr Python >2.12,<3 is not alignment with the final
+    The experimental v3 implementation included in Zarr Python >2.12,<3 is not aligned with the final
     V3 specification. This version is deprecated and will be removed in Zarr Python 3.0 in favor of a
     spec compliant version.
 
