@@ -46,22 +46,18 @@ def noop_for_none(
 class ByteGetter(Protocol):
     async def get(
         self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]:
-        ...
+    ) -> Optional[BytesLike]: ...
 
 
 @runtime_checkable
 class ByteSetter(Protocol):
     async def get(
         self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]:
-        ...
+    ) -> Optional[BytesLike]: ...
 
-    async def set(self, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None) -> None:
-        ...
+    async def set(self, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None) -> None: ...
 
-    async def delete(self) -> None:
-        ...
+    async def delete(self) -> None: ...
 
 
 class Codec(Metadata):
