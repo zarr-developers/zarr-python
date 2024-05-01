@@ -195,7 +195,7 @@ class _ShardBuilder(_ShardProxy):
         obj.index = _ShardIndex.create_empty(chunks_per_shard)
         return obj
 
-    def append(self, chunk_coords: ChunkCoords, value: BytesLike):
+    def append(self, chunk_coords: ChunkCoords, value: BytesLike) -> None:
         chunk_start = len(self.buf)
         chunk_length = len(value)
         self.buf.extend(value)
@@ -424,7 +424,7 @@ class ShardingCodec(
         shard_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
         out: np.ndarray,
-    ):
+    ) -> None:
         chunk_spec = self._get_chunk_spec(shard_spec)
         chunk_bytes = shard_dict.get(chunk_coords, None)
         if chunk_bytes is not None:

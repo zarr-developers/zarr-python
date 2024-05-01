@@ -34,13 +34,14 @@ def _put(
     value: BytesLike,
     start: Optional[int] = None,
     auto_mkdir: bool = True,
-):
+) -> int | None:
     if auto_mkdir:
         path.parent.mkdir(parents=True, exist_ok=True)
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
             f.write(value)
+        return None
     else:
         return path.write_bytes(value)
 
