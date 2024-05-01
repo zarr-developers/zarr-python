@@ -3,11 +3,10 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Optional
 
-import numpy as np
 from zarr.v3.abc.metadata import Metadata
 
 from zarr.v3.common import ArraySpec
-from zarr.v3.buffer import Buffer
+from zarr.v3.buffer import Buffer, NDBuffer
 from zarr.v3.store import StorePath
 
 
@@ -39,19 +38,19 @@ class ArrayArrayCodec(Codec):
     @abstractmethod
     async def decode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
         pass
 
     @abstractmethod
     async def encode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[NDBuffer]:
         pass
 
 
@@ -62,13 +61,13 @@ class ArrayBytesCodec(Codec):
         chunk_array: Buffer,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
         pass
 
     @abstractmethod
     async def encode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[Buffer]:
@@ -83,7 +82,7 @@ class ArrayBytesCodecPartialDecodeMixin:
         selection: SliceSelection,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[NDBuffer]:
         pass
 
 
@@ -92,7 +91,7 @@ class ArrayBytesCodecPartialEncodeMixin:
     async def encode_partial(
         self,
         store_path: StorePath,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,

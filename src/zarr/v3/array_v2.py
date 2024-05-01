@@ -23,7 +23,7 @@ from zarr.v3.common import (
 from zarr.v3.config import RuntimeConfiguration
 from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.metadata import ArrayV2Metadata
-from zarr.v3.buffer import as_buffer, as_bytearray
+from zarr.v3.buffer import NDBuffer, as_buffer, as_bytearray
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -230,8 +230,8 @@ class ArrayV2:
         )
 
         # setup output array
-        out = np.zeros(
-            indexer.shape,
+        out = NDBuffer.create_zeros(
+            shape=indexer.shape,
             dtype=self.metadata.dtype,
             order=self.metadata.order,
         )
@@ -347,8 +347,8 @@ class ArrayV2:
         if is_total_slice(chunk_selection, chunk_shape):
             # write entire chunks
             if np.isscalar(value):
-                chunk_array = np.empty(
-                    chunk_shape,
+                chunk_array = NDBuffer.create_empty(
+                    shape=chunk_shape,
                     dtype=self.metadata.dtype,
                     order=self.metadata.order,
                 )
@@ -364,8 +364,8 @@ class ArrayV2:
 
             # merge new value
             if tmp is None:
-                chunk_array = np.empty(
-                    chunk_shape,
+                chunk_array = NDBuffer.create_empty(
+                    shape=chunk_shape,
                     dtype=self.metadata.dtype,
                     order=self.metadata.order,
                 )

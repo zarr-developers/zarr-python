@@ -48,7 +48,7 @@ class Crc32cCodec(BytesBytesCodec):
                 "Stored and computed checksum do not match. "
                 + f"Stored: {stored_checksum!r}. Computed: {computed_checksum!r}."
             )
-        return Buffer(inner_bytes)
+        return as_buffer(inner_bytes)
 
     async def encode(
         self,

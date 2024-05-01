@@ -35,7 +35,7 @@ from zarr.v3.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.v3.chunk_grids import RegularChunkGrid
 from zarr.v3.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.v3.metadata import ArrayMetadata
-from zarr.v3.buffer import as_buffer
+from zarr.v3.buffer import NDBuffer, as_buffer, as_nd_buffer
 from zarr.v3.store import StoreLike, StorePath, make_store_path
 from zarr.v3.sync import sync
 
@@ -202,8 +202,8 @@ class AsyncArray:
         )
 
         # setup output array
-        out = np.zeros(
-            indexer.shape,
+        out = NDBuffer.create_zeros(
+            shape=indexer.shape,
             dtype=self.metadata.dtype,
             order=self.runtime_configuration.order,
         )
@@ -218,10 +218,11 @@ class AsyncArray:
             self.runtime_configuration.concurrency,
         )
 
+        # We always return a numpy array to the user
         if out.shape:
-            return out
+            return out.as_numpy_array()
         else:
-            return out[()]
+            return out.as_numpy_array()[()]
 
     async def _save_metadata(self) -> None:
         await (self.store_path / ZARR_JSON).set(as_buffer(self.metadata.to_bytes()))
@@ -231,7 +232,7 @@ class AsyncArray:
         chunk_coords: ChunkCoords,
         chunk_selection: SliceSelection,
         out_selection: SliceSelection,
-        out: np.ndarray,
+        out: NDBuffer,
     ):
         chunk_spec = self.metadata.get_chunk_spec(chunk_coords)
         chunk_key_encoding = self.metadata.chunk_key_encoding
@@ -258,6 +259,7 @@ class AsyncArray:
                 out[out_selection] = self.metadata.fill_value
 
     async def setitem(self, selection: Selection, value: np.ndarray) -> None:
+        assert isinstance(value, np.ndarray)
         assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
         chunk_shape = self.metadata.chunk_grid.chunk_shape
         indexer = BasicIndexer(
@@ -279,6 +281,10 @@ class AsyncArray:
             if value.dtype.name != self.metadata.dtype.name:
                 value = value.astype(self.metadata.dtype, order="A")
 
+        # We accept a numpy array as input from the user and convert it to a NDBuffer.
+        # From this point onwards, we only pass Buffer and NDBuffer between components.
+        value = as_nd_buffer(value)
+
         # merging with existing data and encoding chunks
         await concurrent_map(
             [
@@ -297,12 +303,13 @@ class AsyncArray:
 
     async def _write_chunk(
         self,
-        value: np.ndarray,
+        value: NDBuffer,
         chunk_shape: ChunkCoords,
         chunk_coords: ChunkCoords,
         chunk_selection: SliceSelection,
         out_selection: SliceSelection,
     ):
+        assert isinstance(value, NDBuffer)
         chunk_spec = self.metadata.get_chunk_spec(chunk_coords)
         chunk_key_encoding = self.metadata.chunk_key_encoding
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
@@ -311,8 +318,8 @@ class AsyncArray:
         if is_total_slice(chunk_selection, chunk_shape):
             # write entire chunks
             if np.isscalar(value):
-                chunk_array = np.empty(
-                    chunk_shape,
+                chunk_array = NDBuffer.create_empty(
+                    shape=chunk_shape,
                     dtype=self.metadata.dtype,
                 )
                 chunk_array.fill(value)
@@ -336,8 +343,8 @@ class AsyncArray:
 
             # merge new value
             if chunk_bytes is None:
-                chunk_array = np.empty(
-                    chunk_shape,
+                chunk_array = NDBuffer.create_empty(
+                    shape=chunk_shape,
                     dtype=self.metadata.dtype,
                 )
                 chunk_array.fill(self.metadata.fill_value)
@@ -350,9 +357,9 @@ class AsyncArray:
             await self._write_chunk_to_store(store_path, chunk_array, chunk_spec)
 
     async def _write_chunk_to_store(
-        self, store_path: StorePath, chunk_array: np.ndarray, chunk_spec: ArraySpec
+        self, store_path: StorePath, chunk_array: NDBuffer, chunk_spec: ArraySpec
     ):
-        if np.all(chunk_array == self.metadata.fill_value):
+        if np.all(chunk_array.as_numpy_array() == self.metadata.fill_value):
             # chunks that only contain fill_value will be removed
             await store_path.delete()
         else:
@@ -393,14 +400,14 @@ class AsyncArray:
         )
 
         # Write new metadata
-        await (self.store_path / ZARR_JSON).set(as_buffer(new_metadata))
+        await (self.store_path / ZARR_JSON).set(as_buffer(new_metadata.to_bytes()))
         return replace(self, metadata=new_metadata)
 
     async def update_attributes(self, new_attributes: Dict[str, Any]) -> AsyncArray:
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        await (self.store_path / ZARR_JSON).set(as_buffer(new_metadata))
+        await (self.store_path / ZARR_JSON).set(as_buffer(new_metadata.to_bytes()))
         return replace(self, metadata=new_metadata)
 
     def __repr__(self):

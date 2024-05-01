@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Iterable
-import numpy as np
 from dataclasses import dataclass
 from warnings import warn
 
@@ -16,7 +15,7 @@ from zarr.v3.abc.codec import (
 from zarr.v3.abc.metadata import Metadata
 from zarr.v3.codecs.registry import get_codec_class
 from zarr.v3.common import parse_named_configuration
-from zarr.v3.buffer import Buffer
+from zarr.v3.buffer import Buffer, NDBuffer
 
 if TYPE_CHECKING:
     from typing import Iterator, List, Optional, Tuple, Union
@@ -153,7 +152,7 @@ class CodecPipeline(Metadata):
         chunk_bytes: Buffer,
         array_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
         (
             aa_codecs_with_spec,
             ab_codec_with_spec,
@@ -177,7 +176,7 @@ class CodecPipeline(Metadata):
         selection: SliceSelection,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[NDBuffer]:
         assert self.supports_partial_decode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
         return await self.array_bytes_codec.decode_partial(
@@ -186,7 +185,7 @@ class CodecPipeline(Metadata):
 
     async def encode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         array_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[Buffer]:
@@ -224,7 +223,7 @@ class CodecPipeline(Metadata):
     async def encode_partial(
         self,
         store_path: StorePath,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
