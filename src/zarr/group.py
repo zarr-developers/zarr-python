@@ -183,7 +183,6 @@ class AsyncGroup:
         # Not clear how much of that strategy we want to keep here.
 
         # if `key` names an object in storage, it cannot be an array or group
-        print(key, store_path)
         if await store_path.exists():
             raise KeyError(key)
 
@@ -327,7 +326,6 @@ class AsyncGroup:
         subkeys_filtered = filter(lambda v: v not in ("zarr.json", ".zgroup", ".zattrs"), subkeys)
         # is there a better way to schedule this?
         for subkey in subkeys_filtered:
-            print(subkey)
             try:
                 yield (subkey, await self.getitem(subkey))
             except KeyError:
