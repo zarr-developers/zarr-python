@@ -92,6 +92,9 @@ version.source = "vcs"
 build.hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
+dependencies = [
+    "numpy~={matrix:numpy}",
+]
 extra-dependencies = [
     "coverage",
     "pytest",
