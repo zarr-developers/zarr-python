@@ -1,28 +1,32 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING, TypeVar
+
+if TYPE_CHECKING:
+    from typing import Any, AsyncIterator, Coroutine
 
 import asyncio
+from concurrent.futures import wait
 import threading
-from typing import (
-    Any,
-    AsyncIterator,
-    Coroutine,
-    List,
-    Optional,
-    TypeVar,
-)
+
 from typing_extensions import ParamSpec
 
-from zarr.v3.config import SyncConfiguration
+from zarr.config import SyncConfiguration
 
+P = ParamSpec("P")
+T = TypeVar("T")
 
 # From https://github.com/fsspec/filesystem_spec/blob/master/fsspec/asyn.py
 
-iothread: List[Optional[threading.Thread]] = [None]  # dedicated IO thread
-loop: List[Optional[asyncio.AbstractEventLoop]] = [
+iothread: list[threading.Thread | None] = [None]  # dedicated IO thread
+loop: list[asyncio.AbstractEventLoop | None] = [
     None
 ]  # global event loop for any non-async instance
-_lock: Optional[threading.Lock] = None  # global lock placeholder
+_lock: threading.Lock | None = None  # global lock placeholder
 get_running_loop = asyncio.get_running_loop
+
+
+class SyncError(Exception):
+    pass
 
 
 def _get_lock() -> threading.Lock:
@@ -36,16 +40,22 @@ def _get_lock() -> threading.Lock:
     return _lock
 
 
-async def _runner(event: threading.Event, coro: Coroutine, result_box: List[Optional[Any]]):
+async def _runner(coro: Coroutine[Any, Any, T]) -> T | BaseException:
+    """
+    Await a coroutine and return the result of running it. If awaiting the coroutine raises an
+    exception, the exception will be returned.
+    """
     try:
-        result_box[0] = await coro
+        return await coro
     except Exception as ex:
-        result_box[0] = ex
-    finally:
-        event.set()
+        return ex
 
 
-def sync(coro: Coroutine, loop: Optional[asyncio.AbstractEventLoop] = None):
+def sync(
+    coro: Coroutine[Any, Any, T],
+    loop: asyncio.AbstractEventLoop | None = None,
+    timeout: float | None = None,
+) -> T:
     """
     Make loop run coroutine until it returns. Runs in other thread
 
@@ -57,30 +67,32 @@ def sync(coro: Coroutine, loop: Optional[asyncio.AbstractEventLoop] = None):
         # NB: if the loop is not running *yet*, it is OK to submit work
         # and we will wait for it
         loop = _get_loop()
-    if loop is None or loop.is_closed():
+    if not isinstance(loop, asyncio.AbstractEventLoop):
+        raise TypeError(f"loop cannot be of type {type(loop)}")
+    if loop.is_closed():
         raise RuntimeError("Loop is not running")
     try:
         loop0 = asyncio.events.get_running_loop()
         if loop0 is loop:
-            raise NotImplementedError("Calling sync() from within a running loop")
+            raise SyncError("Calling sync() from within a running loop")
     except RuntimeError:
         pass
-    result_box: List[Optional[Any]] = [None]
-    event = threading.Event()
-    asyncio.run_coroutine_threadsafe(_runner(event, coro, result_box), loop)
-    while True:
-        # this loops allows thread to get interrupted
-        if event.wait(1):
-            break
 
-    return_result = result_box[0]
+    future = asyncio.run_coroutine_threadsafe(_runner(coro), loop)
+
+    finished, unfinished = wait([future], return_when=asyncio.ALL_COMPLETED, timeout=timeout)
+    if len(unfinished) > 0:
+        raise asyncio.TimeoutError(f"Coroutine {coro} failed to finish in within {timeout}s")
+    assert len(finished) == 1
+    return_result = list(finished)[0].result()
+
     if isinstance(return_result, BaseException):
         raise return_result
     else:
         return return_result
 
 
-def _get_loop():
+def _get_loop() -> asyncio.AbstractEventLoop:
     """Create or return the default fsspec IO loop
 
     The loop will be running on a separate thread.
@@ -96,11 +108,8 @@ def _get_loop():
                 th.daemon = True
                 th.start()
                 iothread[0] = th
+    assert loop[0] is not None
     return loop[0]
-
-
-P = ParamSpec("P")
-T = TypeVar("T")
 
 
 class SyncMixin:
@@ -109,12 +118,14 @@ class SyncMixin:
     def _sync(self, coroutine: Coroutine[Any, Any, T]) -> T:
         # TODO: refactor this to to take *args and **kwargs and pass those to the method
         # this should allow us to better type the sync wrapper
-        return sync(coroutine, loop=self._sync_configuration.asyncio_loop)
+        return sync(
+            coroutine,
+            loop=self._sync_configuration.asyncio_loop,
+            timeout=self._sync_configuration.timeout,
+        )
 
-    def _sync_iter(self, coroutine: Coroutine[Any, Any, AsyncIterator[T]]) -> List[T]:
-        async def iter_to_list() -> List[T]:
-            # TODO: replace with generators so we don't materialize the entire iterator at once
-            async_iterator = await coroutine
+    def _sync_iter(self, async_iterator: AsyncIterator[T]) -> list[T]:
+        async def iter_to_list() -> list[T]:
             return [item async for item in async_iterator]
 
         return self._sync(iter_to_list())

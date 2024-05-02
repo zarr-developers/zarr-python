@@ -5,9 +5,9 @@ if TYPE_CHECKING:
     from typing import Literal, Any, Tuple
 
 import numpy as np
-from src.zarr.v3.config import parse_indexing_order
-from src.zarr.v3.common import parse_shapelike
-from zarr.v3.common import parse_name, product
+from zarr.config import parse_indexing_order
+from zarr.common import parse_shapelike
+from zarr.common import parse_name, product
 import pytest
 
 

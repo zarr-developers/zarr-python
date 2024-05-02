@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Sequence, Any
 
-from zarr.v3.metadata import parse_dimension_names, parse_zarr_format_v2, parse_zarr_format_v3
+from zarr.metadata import parse_dimension_names, parse_zarr_format_v2, parse_zarr_format_v3
 
 
 # todo: test

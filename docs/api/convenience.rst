@@ -1,6 +1,6 @@
-Convenience functions (``zarr.convenience``)
-============================================
-.. automodule:: zarr.convenience
+Convenience functions (``zarr.v2.convenience``)
+===============================================
+.. automodule:: zarr.v2.convenience
 .. autofunction:: open
 .. autofunction:: save
 .. autofunction:: load
