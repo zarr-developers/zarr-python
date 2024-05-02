@@ -115,6 +115,13 @@ class Buffer(NDBuffer):
     def __add__(self, other: Buffer) -> Self:
         return self.__class__(np.frombuffer(self.to_bytes() + other.to_bytes(), dtype="b"))
 
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, (bytes, bytearray)):
+            return self.to_bytes() == other
+        raise ValueError(
+            f"equal operator not supported between {self.__class__} and {other.__class__}"
+        )
+
 
 def as_nd_buffer(data: Any) -> NDBuffer:
     if isinstance(data, NDBuffer):

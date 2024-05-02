@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Optional, MutableMapping, List, Tuple
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, as_buffer
 
 
 # TODO: this store could easily be extended to wrap any MutuableMapping store from v2
@@ -48,6 +48,9 @@ class MemoryStore(Store):
         self, key: str, value: Buffer, byte_range: Optional[Tuple[int, int]] = None
     ) -> None:
         assert isinstance(key, str)
+        if isinstance(value, (bytes, bytearray)):
+            # TODO: to support the v2 tests, we convert bytes to Buffer here
+            value = as_buffer(value)
         if not isinstance(value, Buffer):
             raise TypeError(f"Expected Buffer. Got {type(value)}.")
 
