@@ -13,6 +13,11 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
+.. note::
+   Zarr-Python 2.18.* is expected be the final release in the 2.* series. Work on Zarr-Python 3.0 is underway.
+   See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
+   3.0 release.
+
 .. _unreleased:
 
 Unreleased
@@ -20,6 +25,8 @@ Unreleased
 
 Enhancements
 ~~~~~~~~~~~~
+* Performance improvement for reading and writing chunks if any of the dimensions is size 1. :issue:`1730`
+  By :user:`Deepak Cherian <dcherian>`.
 
 
 Docs
@@ -29,6 +36,12 @@ Docs
 Maintenance
 ~~~~~~~~~~~
 
+Deprecations
+~~~~~~~~~~~~
+
+* Deprecate experimental v3 support by issuing a `FutureWarning`.
+  Also updated docs to warn about using the experimental v3 version.
+  By :user:`Joe Hamman <jhamman>` :issue:`1802` and :issue: `1807`.
 
 .. _release_2.17.2:
 
@@ -37,21 +50,37 @@ Maintenance
 
 Enhancements
 ~~~~~~~~~~~~
+
 * [v3] Dramatically reduce number of ``__contains__`` requests in favor of optimistically calling `__getitem__`
   and handling any error that may arise.
-  By :user:`Deepak Cherian <dcherian>`.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1741`.
 
 * [v3] Reuse the downloaded array metadata when creating an ``Array``.
-  By :user:`Deepak Cherian <dcherian>`.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1734`.
 
 * Optimize ``Array.info`` so that it calls `getsize` only once.
-  By :user:`Deepak Cherian <dcherian>`.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1733`.
 
 * Override IPython ``_repr_*_`` methods to avoid expensive lookups against object stores.
   By :user:`Deepak Cherian <dcherian>` :issue:`1716`.
 
 * FSStore now raises rather than return bad data.
   By :user:`Martin Durant <martindurant>` and :user:`Ian Carroll <itcarroll>` :issue:`1604`.
+
+* Avoid redundant ``__contains__``.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1739`.
+
+Docs
+~~~~
+
+* Fix link to GCSMap in ``tutorial.rst``.
+  By :user:`Daniel Jahn <dahnj>` :issue:`1689`.
+
+* Endorse `SPEC0000 <https://scientific-python.org/specs/spec-0000/>`_ and state version support policy in ``installation.rst``.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1665`.
+
+* Migrate v1 and v2 specification to `Zarr-Specs <https://zarr-specs.readthedocs.io/en/latest/specs.html>`_.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1582`.
 
 Maintenance
 ~~~~~~~~~~~
@@ -61,7 +90,12 @@ Maintenance
 
 * Bump minimum supported NumPy version to 1.23 (per spec 0000)
   By :user:`Joe Hamman <jhamman>` :issue:`1719`.
-  
+
+* Minor fixes: Using ``is`` instead of ``type`` and removing unnecessary ``None``.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1737`.
+
+* Fix tests failure related to Pytest 8.
+  By :user:`David Stansby <dstansby>` :issue:`1714`.
 
 .. _release_2.17.1:
 
