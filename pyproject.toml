@@ -101,7 +101,8 @@ extra-dependencies = [
     "zstandard",
     "crc32c",
     "pytest-asyncio",
-    "typing_extensions"
+    "typing_extensions",
+    "mypy"
 ]
 features = ["extra"]
 
