@@ -13,7 +13,7 @@ maintainers = [
 requires-python = ">=3.9"
 dependencies = [
     'asciitree',
-    'numpy>=1.21.1',
+    'numpy>=1.23',
     'fasteners; sys_platform != "emscripten"',
     'numcodecs>=0.10.0',
 ]
@@ -137,6 +137,7 @@ filterwarnings = [
     "error:::zarr.*",
     "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
+    "ignore:The experimental Zarr V3 implementation in this version .*:FutureWarning",
 ]
 
 

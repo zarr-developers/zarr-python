@@ -234,8 +234,17 @@ def is_total_slice(item, shape: Tuple[int]) -> bool:
     if isinstance(item, tuple):
         return all(
             (
-                isinstance(it, slice)
-                and ((it == slice(None)) or ((it.stop - it.start == sh) and (it.step in [1, None])))
+                (
+                    isinstance(it, slice)
+                    and (
+                        (it == slice(None))
+                        or ((it.stop - it.start == sh) and (it.step in [1, None]))
+                    )
+                )
+                # The only scalar edge case, indexing with int 0 along a size-1 dimension
+                # is identical to a total slice
+                # https://github.com/zarr-developers/zarr-python/issues/1730
+                or (isinstance(it, int) and it == 0 and sh == 1)
             )
             for it, sh in zip(item, shape)
         )
@@ -408,14 +417,13 @@ def info_html_report(items) -> str:
 class InfoReporter:
     def __init__(self, obj):
         self.obj = obj
+        self.items = self.obj.info_items()
 
     def __repr__(self):
-        items = self.obj.info_items()
-        return info_text_report(items)
+        return info_text_report(self.items)
 
     def _repr_html_(self):
-        items = self.obj.info_items()
-        return info_html_report(items)
+        return info_html_report(self.items)
 
 
 class TreeNode:
