@@ -120,6 +120,7 @@ run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
+list-env = "pip list"
 
 [tool.hatch.envs.docs]
 features = ['docs']
