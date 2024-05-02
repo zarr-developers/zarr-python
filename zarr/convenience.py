@@ -55,6 +55,11 @@ def open(store: StoreLike = None, mode: str = "a", *, zarr_version=None, path=No
         The zarr protocol version to use. The default value of None will attempt
         to infer the version from `store` if possible, otherwise it will fall
         back to 2.
+
+        .. warning:: `zarr_version=3` is currently using the experimental Zarr V3
+          implementation. This implementation is not in sync with the final specification
+          and will be replaced with a spec compliant version in the version 3.0.
+
     path : str or None, optional
         The path within the store to open.
     **kwargs
@@ -150,6 +155,11 @@ def save_array(store: StoreLike, arr, *, zarr_version=None, path=None, **kwargs)
         The zarr protocol version to use when saving. The default value of None
         will attempt to infer the version from `store` if possible, otherwise
         it will fall back to 2.
+
+        .. warning:: `zarr_version=3` is currently using the experimental Zarr V3
+          implementation. This implementation is not in sync with the final specification
+          and will be replaced with a spec compliant version in the version 3.0.
+
     path : str or None, optional
         The path within the store where the array will be saved.
     kwargs
@@ -200,6 +210,11 @@ def save_group(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         The zarr protocol version to use when saving. The default value of None
         will attempt to infer the version from `store` if possible, otherwise
         it will fall back to 2.
+
+        .. warning:: `zarr_version=3` is currently using the experimental Zarr V3
+          implementation. This implementation is not in sync with the final specification
+          and will be replaced with a spec compliant version in the version 3.0.
+
     path : str or None, optional
         Path within the store where the group will be saved.
     kwargs
@@ -282,6 +297,11 @@ def save(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         The zarr protocol version to use when saving. The default value of None
         will attempt to infer the version from `store` if possible, otherwise
         it will fall back to 2.
+
+        .. warning:: `zarr_version=3` is currently using the experimental Zarr V3
+          implementation. This implementation is not in sync with the final specification
+          and will be replaced with a spec compliant version in the version 3.0.
+
     path : str or None, optional
         The path within the group where the arrays will be saved.
     kwargs
@@ -395,6 +415,11 @@ def load(store: StoreLike, zarr_version=None, path=None):
         The zarr protocol version to use when loading. The default value of
         None will attempt to infer the version from `store` if possible,
         otherwise it will fall back to 2.
+
+        .. warning:: `zarr_version=3` is currently using the experimental Zarr V3
+          implementation. This implementation is not in sync with the final specification
+          and will be replaced with a spec compliant version in the version 3.0.
+
     path : str or None, optional
         The path within the store from which to load.
 

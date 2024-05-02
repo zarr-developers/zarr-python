@@ -13,6 +13,11 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
+.. note::
+   Zarr-Python 2.18.* is expected be the final release in the 2.* series. Work on Zarr-Python 3.0 is underway.
+   See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
+   3.0 release.
+
 .. _unreleased:
 
 Unreleased
@@ -31,6 +36,12 @@ Docs
 Maintenance
 ~~~~~~~~~~~
 
+Deprecations
+~~~~~~~~~~~~
+
+* Deprecate experimental v3 support by issuing a `FutureWarning`.
+  Also updated docs to warn about using the experimental v3 version.
+  By :user:`Joe Hamman <jhamman>` :issue:`1802` and :issue: `1807`.
 
 .. _release_2.17.2:
 
