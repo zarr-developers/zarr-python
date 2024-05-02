@@ -27,6 +27,7 @@ from zarr.creation import (
 from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,
+    ArrayNotFoundError,
     GroupNotFoundError,
     ReadOnlyError,
 )
@@ -207,7 +208,12 @@ class Group(MutableMapping):
             # object can still be created.
             akey = mkey
         self._attrs = Attributes(
-            store, key=akey, read_only=read_only, cache=cache_attrs, synchronizer=synchronizer
+            store,
+            key=akey,
+            read_only=read_only,
+            cache=cache_attrs,
+            synchronizer=synchronizer,
+            cached_dict=self._meta["attributes"] if self._version == 3 and self._meta else None,
         )
 
         # setup info
@@ -457,7 +463,7 @@ class Group(MutableMapping):
 
         """
         path = self._item_path(item)
-        if contains_array(self._store, path):
+        try:
             return Array(
                 self._store,
                 read_only=self._read_only,
@@ -468,7 +474,10 @@ class Group(MutableMapping):
                 zarr_version=self._version,
                 meta_array=self._meta_array,
             )
-        elif contains_group(self._store, path, explicit_only=True):
+        except ArrayNotFoundError:
+            pass
+
+        try:
             return Group(
                 self._store,
                 read_only=self._read_only,
@@ -479,7 +488,10 @@ class Group(MutableMapping):
                 zarr_version=self._version,
                 meta_array=self._meta_array,
             )
-        elif self._version == 3:
+        except GroupNotFoundError:
+            pass
+
+        if self._version == 3:
             implicit_group = meta_root + path + "/"
             # non-empty folder in the metadata path implies an implicit group
             if self._store.list_prefix(implicit_group):
