@@ -19,7 +19,7 @@ def _err_too_many_indices(selection: SliceSelection, shape: ChunkCoords) -> None
     )
 
 
-def _err_negative_step():
+def _err_negative_step() -> None:
     raise IndexError("only slices with step >= 1 are supported")
 
 
@@ -50,7 +50,7 @@ class _ChunkDimProjection(NamedTuple):
     dim_out_sel: Optional[slice]
 
 
-def _ceildiv(a, b):
+def _ceildiv(a: float, b: float) -> int:
     return math.ceil(a / b)
 
 
