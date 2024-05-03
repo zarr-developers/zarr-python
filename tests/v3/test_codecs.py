@@ -7,10 +7,11 @@ from typing import Iterator, List, Literal, Optional, Tuple
 
 import numpy as np
 import pytest
+from zarr.codecs.registry import get_codec_class
 import zarr.v2
 from zarr.abc.codec import Codec
 from zarr.array import Array, AsyncArray
-from zarr.common import Selection
+from zarr.common import JSON, Selection
 from zarr.indexing import morton_order_iter
 from zarr.codecs import (
     ShardingCodec,
@@ -1042,3 +1043,86 @@ def test_update_attributes_array(store: Store):
 
     a = Array.open(store / "update_attributes")
     assert a.attrs["hello"] == "zarrita"
+
+
+@pytest.mark.parametrize("codec_id", ["blosc", "lz4", "zstd", "zlib", "gzip", "bz2", "lzma"])
+def test_generic_codec(store: Store, codec_id: str):
+    data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
+
+    with pytest.warns(UserWarning, match="Numcodecs.*"):
+        a = Array.create(
+            store / "generic",
+            shape=data.shape,
+            chunk_shape=(16, 16),
+            dtype=data.dtype,
+            fill_value=0,
+            codecs=[
+                BytesCodec(),
+                get_codec_class(f"https://zarr.dev/numcodecs/{codec_id}")({"id": codec_id}),
+            ],
+        )
+
+    a[:, :] = data
+    assert np.array_equal(data, a[:, :])
+
+
+@pytest.mark.parametrize(
+    "codec_config",
+    [
+        {"id": "delta", "dtype": "float32"},
+        {"id": "fixedscaleoffset", "dtype": "float32", "offset": -2, "scale": 5.5},
+        {
+            "id": "fixedscaleoffset",
+            "dtype": "float32",
+            "offset": 0,
+            "scale": 25.6,
+            "astype": "uint32",
+        },
+        {"id": "quantize", "digits": 3, "dtype": "float32"},
+        {"id": "bitround", "keepbits": 10},
+        {"id": "astype", "encode_dtype": "float32", "decode_dtype": "float64"},
+    ],
+    ids=["delta", "fixedscaleoffset", "fixedscaleoffset2", "quantize", "bitround", "astype"],
+)
+def test_generic_filter(store: Store, codec_config: dict[str, JSON]):
+    data = np.linspace(0, 10, 256, dtype="float32").reshape((16, 16))
+
+    codec_id = codec_config["id"]
+    del codec_config["id"]
+
+    with pytest.warns(UserWarning, match="Numcodecs.*"):
+        a = Array.create(
+            store / "generic",
+            shape=data.shape,
+            chunk_shape=(16, 16),
+            dtype=data.dtype,
+            fill_value=0,
+            codecs=[
+                get_codec_class(f"https://zarr.dev/numcodecs/{codec_id}")(codec_config),
+                BytesCodec(),
+            ],
+        )
+
+    a[:, :] = data
+    assert np.array_equal(data, a[:, :])
+
+
+def test_generic_filter_packbits(store: Store):
+    data = np.zeros((16, 16), dtype="bool")
+    data[0:4, :] = True
+
+    with pytest.warns(UserWarning, match="Numcodecs.*"):
+        a = Array.create(
+            store / "generic",
+            shape=data.shape,
+            chunk_shape=(16, 16),
+            dtype=data.dtype,
+            fill_value=0,
+            codecs=[
+                get_codec_class("https://zarr.dev/numcodecs/packbits")(),
+                BytesCodec(),
+            ],
+        )
+
+    a[:, :] = data
+    assert np.array_equal(data, a[:, :])
