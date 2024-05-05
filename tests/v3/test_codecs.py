@@ -1062,7 +1062,7 @@ def test_generic_codec(store: Store, codec_id: str):
             ],
         )
 
-    a[:, :] = data
+    a[:, :] = data.copy()
     assert np.array_equal(data, a[:, :])
 
 
@@ -1070,19 +1070,16 @@ def test_generic_codec(store: Store, codec_id: str):
     "codec_config",
     [
         {"id": "delta", "dtype": "float32"},
-        {"id": "fixedscaleoffset", "dtype": "float32", "offset": -2, "scale": 5.5},
-        {
-            "id": "fixedscaleoffset",
-            "dtype": "float32",
-            "offset": 0,
-            "scale": 25.6,
-            "astype": "uint32",
-        },
-        {"id": "quantize", "digits": 3, "dtype": "float32"},
-        {"id": "bitround", "keepbits": 10},
+        {"id": "fixedscaleoffset", "offset": 0, "scale": 25.5},
+        {"id": "fixedscaleoffset", "offset": 0, "scale": 51, "astype": "uint16"},
         {"id": "astype", "encode_dtype": "float32", "decode_dtype": "float64"},
     ],
-    ids=["delta", "fixedscaleoffset", "fixedscaleoffset2", "quantize", "bitround", "astype"],
+    ids=[
+        "delta",
+        "fixedscaleoffset",
+        "fixedscaleoffset2",
+        "astype",
+    ],
 )
 def test_generic_filter(store: Store, codec_config: dict[str, JSON]):
     data = np.linspace(0, 10, 256, dtype="float32").reshape((16, 16))
@@ -1103,8 +1100,51 @@ def test_generic_filter(store: Store, codec_config: dict[str, JSON]):
             ],
         )
 
-    a[:, :] = data
+        a[:, :] = data.copy()
+        a = Array.open(store / "generic")
     assert np.array_equal(data, a[:, :])
+
+
+def test_generic_filter_bitround(store: Store):
+    data = np.linspace(0, 1, 256, dtype="float32").reshape((16, 16))
+
+    with pytest.warns(UserWarning, match="Numcodecs.*"):
+        a = Array.create(
+            store / "generic_bitround",
+            shape=data.shape,
+            chunk_shape=(16, 16),
+            dtype=data.dtype,
+            fill_value=0,
+            codecs=[
+                get_codec_class("https://zarr.dev/numcodecs/bitround")({"keepbits": 3}),
+                BytesCodec(),
+            ],
+        )
+
+        a[:, :] = data.copy()
+        a = Array.open(store / "generic_bitround")
+    assert np.allclose(data, a[:, :], atol=0.1)
+
+
+def test_generic_filter_quantize(store: Store):
+    data = np.linspace(0, 10, 256, dtype="float32").reshape((16, 16))
+
+    with pytest.warns(UserWarning, match="Numcodecs.*"):
+        a = Array.create(
+            store / "generic_quantize",
+            shape=data.shape,
+            chunk_shape=(16, 16),
+            dtype=data.dtype,
+            fill_value=0,
+            codecs=[
+                get_codec_class("https://zarr.dev/numcodecs/quantize")({"digits": 3}),
+                BytesCodec(),
+            ],
+        )
+
+        a[:, :] = data.copy()
+        a = Array.open(store / "generic_quantize")
+    assert np.allclose(data, a[:, :], atol=0.001)
 
 
 def test_generic_filter_packbits(store: Store):
@@ -1113,7 +1153,7 @@ def test_generic_filter_packbits(store: Store):
 
     with pytest.warns(UserWarning, match="Numcodecs.*"):
         a = Array.create(
-            store / "generic",
+            store / "generic_packbits",
             shape=data.shape,
             chunk_shape=(16, 16),
             dtype=data.dtype,
@@ -1124,5 +1164,28 @@ def test_generic_filter_packbits(store: Store):
             ],
         )
 
-    a[:, :] = data
+        a[:, :] = data.copy()
+        a = Array.open(store / "generic_packbits")
+    assert np.array_equal(data, a[:, :])
+
+
+@pytest.mark.parametrize("codec_id", ["crc32", "adler32", "fletcher32", "jenkins_lookup3"])
+def test_generic_checksum(store: Store, codec_id: str):
+    data = np.linspace(0, 10, 256, dtype="float32").reshape((16, 16))
+
+    with pytest.warns(UserWarning, match="Numcodecs.*"):
+        a = Array.create(
+            store / "generic_checksum",
+            shape=data.shape,
+            chunk_shape=(16, 16),
+            dtype=data.dtype,
+            fill_value=0,
+            codecs=[
+                BytesCodec(),
+                get_codec_class(f"https://zarr.dev/numcodecs/{codec_id}")(),
+            ],
+        )
+
+        a[:, :] = data.copy()
+        a = Array.open(store / "generic_checksum")
     assert np.array_equal(data, a[:, :])
