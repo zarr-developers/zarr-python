@@ -52,17 +52,15 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
-    "msgpack",
-    "lmdb",
-    "zstandard",
-    "crc32c",
+    'msgpack',
+    'lmdb',
+    'crc32c',
 ]
 extra = [
     'attrs',
     'cattrs',
     'msgpack',
     'crc32c',
-    'zstandard'
 ]
 optional = [
     'lmdb',
@@ -98,7 +96,6 @@ extra-dependencies = [
     "pytest-cov",
     "msgpack",
     "lmdb",
-    "zstandard",
     "crc32c",
     "pytest-asyncio",
     "typing_extensions",

@@ -1,9 +1,10 @@
 from __future__ import annotations
+from functools import cached_property
 from typing import TYPE_CHECKING
 from dataclasses import dataclass
 
 
-from zstandard import ZstdCompressor, ZstdDecompressor
+from numcodecs.zstd import Zstd
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.codecs.registry import register_codec
@@ -52,13 +53,10 @@ class ZstdCodec(BytesBytesCodec):
     def to_dict(self) -> Dict[str, JSON]:
         return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
 
-    def _compress(self, data: bytes) -> bytes:
-        ctx = ZstdCompressor(level=self.level, write_checksum=self.checksum)
-        return ctx.compress(data)
-
-    def _decompress(self, data: bytes) -> bytes:
-        ctx = ZstdDecompressor()
-        return ctx.decompress(data)
+    @cached_property
+    def _zstd_codec(self) -> Zstd:
+        config_dict = {"level": self.level, "checksum": self.checksum}
+        return Zstd.from_config(config_dict)
 
     async def decode(
         self,
@@ -66,7 +64,7 @@ class ZstdCodec(BytesBytesCodec):
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
-        return await to_thread(self._decompress, chunk_bytes)
+        return await to_thread(self._zstd_codec.decode, chunk_bytes)
 
     async def encode(
         self,
@@ -74,7 +72,7 @@ class ZstdCodec(BytesBytesCodec):
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
-        return await to_thread(self._compress, chunk_bytes)
+        return await to_thread(self._zstd_codec.encode, chunk_bytes)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
