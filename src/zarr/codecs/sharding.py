@@ -126,7 +126,10 @@ class _ShardIndex(NamedTuple):
         return cls(offsets_and_lengths)
 
 
-class _ShardProxy(Mapping):
+ShardMapping = Mapping[ChunkCoords, BytesLike | None]
+
+
+class _ShardProxy(ShardMapping):
     index: _ShardIndex
     buf: BytesLike
 
@@ -175,7 +178,7 @@ class _ShardBuilder(_ShardProxy):
         cls,
         chunks_per_shard: ChunkCoords,
         tombstones: Set[ChunkCoords],
-        *shard_dicts: Mapping[ChunkCoords, BytesLike],
+        *shard_dicts: ShardMapping,
     ) -> _ShardBuilder:
         obj = cls.create_empty(chunks_per_shard)
         for chunk_coords in morton_order_iter(chunks_per_shard):
@@ -375,7 +378,7 @@ class ShardingCodec(
         all_chunk_coords = set(chunk_coords for chunk_coords, _, _ in indexed_chunks)
 
         # reading bytes of all requested chunks
-        shard_dict: Mapping[ChunkCoords, BytesLike] = {}
+        shard_dict: ShardMapping = {}
         if self._is_total_shard(all_chunk_coords, chunks_per_shard):
             # read entire shard
             shard_dict_maybe = await self._load_full_shard_maybe(store_path, chunks_per_shard)
@@ -417,7 +420,7 @@ class ShardingCodec(
 
     async def _read_chunk(
         self,
-        shard_dict: Mapping[ChunkCoords, Optional[BytesLike]],
+        shard_dict: ShardMapping,
         chunk_coords: ChunkCoords,
         chunk_selection: SliceSelection,
         out_selection: SliceSelection,
