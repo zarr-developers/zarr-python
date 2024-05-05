@@ -66,6 +66,9 @@ class NumcodecsCodec(Codec):
             "configuration": codec_config,
         }
 
+    def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
+        return input_byte_length
+
 
 class NumcodecsBytesBytesCodec(NumcodecsCodec, BytesBytesCodec):
     def __init__(self, *, codec_id: str, codec_config: dict[str, JSON]) -> None:
@@ -226,9 +229,9 @@ register_codec(f"{CODEC_PREFIX}lzma", make_bytes_bytes_codec("lzma"))
 
 # array-to-array codecs ("filters")
 register_codec(f"{CODEC_PREFIX}delta", make_array_array_codec("delta"))
+register_codec(f"{CODEC_PREFIX}bitround", make_array_array_codec("bitround"))
 register_codec(f"{CODEC_PREFIX}fixedscaleoffset", FixedScaleOffsetCodec)
 register_codec(f"{CODEC_PREFIX}quantize", QuantizeCodec)
-register_codec(f"{CODEC_PREFIX}bitround", make_array_array_codec("bitround"))
 register_codec(f"{CODEC_PREFIX}packbits", PackbitsCodec)
 register_codec(f"{CODEC_PREFIX}astype", AsTypeCodec)
 

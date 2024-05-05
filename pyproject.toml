@@ -207,9 +207,6 @@ module = [
     "zarr.array",
     "zarr.common",
     "zarr.store.local",
-    "zarr.codecs.blosc",
-    "zarr.codecs.gzip",
-    "zarr.codecs.zstd",
 ]
 disallow_untyped_calls = false
 
