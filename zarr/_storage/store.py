@@ -581,7 +581,7 @@ def _path_to_prefix(path: Optional[str]) -> str:
 def _get_hierarchy_metadata(store: StoreV3) -> Mapping[str, Any]:
     version = getattr(store, "_store_version", 2)
     if version < 3:
-        raise ValueError("zarr.json hierarchy metadata not stored for " f"zarr v{version} stores")
+        raise ValueError(f"zarr.json hierarchy metadata not stored for zarr v{version} stores")
     if "zarr.json" not in store:
         raise ValueError("zarr.json metadata not found in store")
     return store._metadata_class.decode_hierarchy_metadata(store["zarr.json"])

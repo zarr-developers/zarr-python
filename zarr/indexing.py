@@ -364,7 +364,7 @@ class BoolArrayDimIndexer:
         # check number of dimensions
         if not is_bool_array(dim_sel, 1):
             raise IndexError(
-                "Boolean arrays in an orthogonal selection must " "be 1-dimensional only"
+                "Boolean arrays in an orthogonal selection must be 1-dimensional only"
             )
 
         # check shape
@@ -464,7 +464,7 @@ class IntArrayDimIndexer:
         dim_sel = np.asanyarray(dim_sel)
         if not is_integer_array(dim_sel, 1):
             raise IndexError(
-                "integer arrays in an orthogonal selection must be " "1-dimensional only"
+                "integer arrays in an orthogonal selection must be 1-dimensional only"
             )
 
         # handle wraparound
@@ -919,7 +919,7 @@ def check_fields(fields, dtype):
     # check type
     if not isinstance(fields, (str, list, tuple)):
         raise IndexError(
-            f"'fields' argument must be a string or list of strings; found " f"{type(fields)!r}"
+            f"'fields' argument must be a string or list of strings; found {type(fields)!r}"
         )
     if fields:
         if dtype.names is None:
