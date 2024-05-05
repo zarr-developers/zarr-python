@@ -1045,7 +1045,9 @@ def test_update_attributes_array(store: Store):
     assert a.attrs["hello"] == "zarrita"
 
 
-@pytest.mark.parametrize("codec_id", ["blosc", "lz4", "zstd", "zlib", "gzip", "bz2", "lzma"])
+@pytest.mark.parametrize(
+    "codec_id", ["blosc", "lz4", "zstd", "zlib", "gzip", "bz2", "lzma", "shuffle"]
+)
 def test_generic_codec(store: Store, codec_id: str):
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 

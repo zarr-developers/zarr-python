@@ -155,6 +155,16 @@ def make_checksum_codec(codec_id: str) -> type[NumcodecsBytesBytesCodec]:
     return _ChecksumCodec
 
 
+class ShuffleCodec(NumcodecsBytesBytesCodec):
+    def __init__(self, codec_config: dict[str, JSON] = {}) -> None:
+        super().__init__(codec_id="shuffle", codec_config=codec_config)
+
+    def evolve(self, array_spec: ArraySpec) -> Self:
+        if array_spec.dtype.itemsize != self.codec_config.get("elementsize"):
+            return self.__class__({**self.codec_config, "elementsize": array_spec.dtype.itemsize})
+        return self
+
+
 class FixedScaleOffsetCodec(NumcodecsArrayArrayCodec):
     def __init__(self, codec_config: dict[str, JSON] = {}) -> None:
         super().__init__(codec_id="fixedscaleoffset", codec_config=codec_config)
@@ -226,6 +236,7 @@ register_codec(f"{CODEC_PREFIX}zlib", make_bytes_bytes_codec("zlib"))
 register_codec(f"{CODEC_PREFIX}gzip", make_bytes_bytes_codec("gzip"))
 register_codec(f"{CODEC_PREFIX}bz2", make_bytes_bytes_codec("bz2"))
 register_codec(f"{CODEC_PREFIX}lzma", make_bytes_bytes_codec("lzma"))
+register_codec(f"{CODEC_PREFIX}shuffle", ShuffleCodec)
 
 # array-to-array codecs ("filters")
 register_codec(f"{CODEC_PREFIX}delta", make_array_array_codec("delta"))

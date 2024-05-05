@@ -18,6 +18,8 @@ from zarr.codecs.pipeline import CodecPipeline
 from zarr.codecs.registry import register_codec
 from zarr.common import (
     ArraySpec,
+    ChunkCoords,
+    BytesLike,
     ChunkCoordsLike,
     concurrent_map,
     parse_enum,
@@ -45,13 +47,12 @@ if TYPE_CHECKING:
     from zarr.store import StorePath
     from zarr.common import (
         JSON,
-        ChunkCoords,
-        BytesLike,
         SliceSelection,
     )
     from zarr.config import RuntimeConfiguration
 
 MAX_UINT_64 = 2**64 - 1
+ShardMapping = Mapping[ChunkCoords, BytesLike | None]
 
 
 class ShardingCodecIndexLocation(Enum):
@@ -124,9 +125,6 @@ class _ShardIndex(NamedTuple):
         offsets_and_lengths = np.zeros(chunks_per_shard + (2,), dtype="<u8", order="C")
         offsets_and_lengths.fill(MAX_UINT_64)
         return cls(offsets_and_lengths)
-
-
-ShardMapping = Mapping[ChunkCoords, BytesLike | None]
 
 
 class _ShardProxy(ShardMapping):
