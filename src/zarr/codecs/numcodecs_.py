@@ -22,7 +22,7 @@ def parse_codec_configuration(data: dict[str, JSON], expected_name_prefix: str) 
         raise ValueError(
             f"Expected name to start with '{expected_name_prefix}'. Got {parsed_name} instead."
         )
-    id = parsed_name[len(expected_name_prefix) :]
+    id = parsed_name[len(expected_name_prefix):]
     return {"id": id, **parsed_configuration}
 
 
