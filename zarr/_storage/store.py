@@ -365,8 +365,8 @@ class StoreV3(BaseStore):
                 if start > len(values[key]):  # pragma: no cover
                     raise ValueError(
                         f"Cannot set value at start {start}, "
-                        + f"since it is beyond the data at key {key}, "
-                        + f"having length {len(values[key])}."
+                        f"since it is beyond the data at key {key}, "
+                        f"having length {len(values[key])}."
                     )
                 if start < 0:
                     values[key][start:] = value
@@ -434,7 +434,7 @@ class StorageTransformer(MutableMapping, abc.ABC):
         if _type not in self.valid_types:  # pragma: no cover
             raise ValueError(
                 f"Storage transformer cannot be initialized with type {_type}, "
-                + f"must be one of {list(self.valid_types)}."
+                f"must be one of {list(self.valid_types)}."
             )
         self.type = _type
         self._inner_store = None
