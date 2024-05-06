@@ -66,7 +66,6 @@ class NDBuffer:
         return self.__class__(self.as_numpy_array().astype(dtype=dtype, order=order))
 
     def __getitem__(self, key: Any) -> Self:
-        # print("__getitem__: \n", np.asanyarray(self.as_numpy_array().__getitem__(key)))
         return self.__class__(np.asanyarray(self.as_numpy_array().__getitem__(key)))
 
     def __setitem__(self, key: Any, value: Any) -> None:
