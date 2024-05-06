@@ -11,6 +11,13 @@ if TYPE_CHECKING:
 
 
 class NDBuffer:
+    """A n-dimensional memory block
+
+    We use `NDBuffer` throughout Zarr to represent a block of memory.
+    For now, we only support host memory but the plan is to support other types
+    of memory such as CUDA device memory.
+    """
+
     def __init__(self, array: np.ndarray):
         assert isinstance(array, np.ndarray)
         assert array.dtype != object
@@ -81,12 +88,7 @@ class NDBuffer:
 
 
 class Buffer(NDBuffer):
-    """Contiguous memory block
-
-    We use `Buffer` throughout Zarr to represent a contiguous block of memory.
-    For now, we only support host memory but the plan is to support other types
-    of memory such as CUDA device memory.
-    """
+    """A flat contiguous version of `NDBuffer` with an item size of 1"""
 
     @classmethod
     def create_empty(
