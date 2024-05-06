@@ -147,10 +147,6 @@ def as_bytes_wrapper(func: Callable[[bytes], bytes], buf: Buffer) -> Buffer:
     return as_buffer(func(buf.to_bytes()))
 
 
-def return_as_bytes_wrapper(func: Callable[[Any], Any], *arg: Any, **kwargs: Any) -> Buffer:
-    return as_buffer(func(*arg, **kwargs))
-
-
 def as_bytearray(data: Optional[Buffer]) -> Optional[bytes]:
     if data is None:
         return data
