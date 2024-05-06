@@ -217,9 +217,9 @@ class Metadata2:
             if v == "NaN":
                 return np.nan
             elif v == "Infinity":
-                return np.PINF
+                return np.inf
             elif v == "-Infinity":
-                return np.NINF
+                return -np.inf
             else:
                 return np.array(v, dtype=dtype)[()]
         elif dtype.kind in "c":
