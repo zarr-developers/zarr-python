@@ -6,7 +6,7 @@ from zarr.abc.store import Store
 from zarr.buffer import Buffer, as_buffer
 
 
-# TODO: this store could easily be extended to wrap any MutuableMapping store from v2
+# TODO: this store could easily be extended to wrap any MutableMapping store from v2
 # When that is done, the `MemoryStore` will just be a store that wraps a dict.
 class MemoryStore(Store):
     supports_writes: bool = True
