@@ -248,6 +248,6 @@ register_codec(f"{CODEC_PREFIX}astype", AsTypeCodec)
 
 # bytes-to-bytes checksum codecs
 register_codec(f"{CODEC_PREFIX}crc32", make_checksum_codec("crc32"))
-register_codec(f"{CODEC_PREFIX}adler32", make_checksum_codec("crc32"))
-register_codec(f"{CODEC_PREFIX}fletcher32", make_checksum_codec("crc32"))
-register_codec(f"{CODEC_PREFIX}jenkins_lookup3", make_checksum_codec("crc32"))
+register_codec(f"{CODEC_PREFIX}adler32", make_checksum_codec("adler32"))
+register_codec(f"{CODEC_PREFIX}fletcher32", make_checksum_codec("fletcher32"))
+register_codec(f"{CODEC_PREFIX}jenkins_lookup3", make_checksum_codec("jenkins_lookup3"))
