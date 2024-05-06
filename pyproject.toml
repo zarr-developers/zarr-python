@@ -137,6 +137,7 @@ filterwarnings = [
     "error:::zarr.*",
     "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
+    "ignore:The .* is deprecated and will be removed in a Zarr-Python version 3*:FutureWarning",
     "ignore:The experimental Zarr V3 implementation in this version .*:FutureWarning",
 ]
 

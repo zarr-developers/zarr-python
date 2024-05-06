@@ -43,6 +43,13 @@ Deprecations
   Also updated docs to warn about using the experimental v3 version.
   By :user:`Joe Hamman <jhamman>` :issue:`1802` and :issue: `1807`.
 
+Deprecations
+~~~~~~~~~~~~
+* Deprecate the following stores: :class:`zarr.storage.DBMStore`, :class:`zarr.storage.LMDBStore`,
+  :class:`zarr.storage.SQLiteStore`, :class:`zarr.storage.MongoDBStore`, :class:`zarr.storage.RedisStore`,
+  and :class:`zarr.storage.ABSStore`. These stores are slated to be removed from Zarr-Python in version 3.0.
+  By :user:`Joe Hamman <jhamman>` :issue:`1801`.
+
 .. _release_2.17.2:
 
 2.17.2
