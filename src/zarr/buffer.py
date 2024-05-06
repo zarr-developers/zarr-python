@@ -129,12 +129,6 @@ def as_nd_buffer(data: Any) -> NDBuffer:
     return NDBuffer(np.asanyarray(data))
 
 
-def as_ndarray(data: Optional[NDBuffer]) -> Optional[np.ndarray]:
-    if data is None:
-        return data
-    return data.as_numpy_array()
-
-
 def as_buffer(data: Any) -> Buffer:
     if isinstance(data, Buffer):
         return data
