@@ -18,18 +18,15 @@ Release notes
    See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
    3.0 release.
 
-.. _unreleased:
+.. _release_2.18.0:
 
-Unreleased
-----------
+2.18.0
+------
 
 Enhancements
 ~~~~~~~~~~~~
 * Performance improvement for reading and writing chunks if any of the dimensions is size 1.
   By :user:`Deepak Cherian <dcherian>` :issue:`1730`.
-
-Docs
-~~~~
 
 
 Maintenance
