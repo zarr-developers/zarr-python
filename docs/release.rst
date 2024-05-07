@@ -30,6 +30,9 @@ Enhancements
 
 Maintenance
 ~~~~~~~~~~~
+* Enable ruff/bugbear rules (B) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1702`.
+
 * Minor updates to use `np.inf` instead of `np.PINF` / `np.NINF` in preparation for NumPy 2.0.0 release. 
   By :user:`Joe Hamman <jhamman>` :issue:`1842`.
 

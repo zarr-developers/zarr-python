@@ -1353,13 +1353,13 @@ class TestFSStore(StoreTests):
         # no exception from FSStore.getitems getting KeyError
         assert group.store.getitems(["foo"], contexts={}) == {}
         # exception from FSStore.getitems getting AttributeError
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             group.store.getitems(["x/0"], contexts={})
         # exception from FSStore.getitems getting AttributeError
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             x[...]
         # exception from FSStore.__getitem__ getting AttributeError
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             y[...]
 
 

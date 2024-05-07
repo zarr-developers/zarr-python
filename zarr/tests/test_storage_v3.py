@@ -286,7 +286,7 @@ class StoreV3Tests(_StoreTests):
 
     def test_get_partial_values(self):
         store = self.create_store()
-        store.supports_efficient_get_partial_values in [True, False]
+        assert store.supports_efficient_get_partial_values in [True, False]
         store[data_root + "foo"] = b"abcdefg"
         store[data_root + "baz"] = b"z"
         assert [b"a"] == store.get_partial_values([(data_root + "foo", (0, 1))])

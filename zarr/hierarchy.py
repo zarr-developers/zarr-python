@@ -187,16 +187,16 @@ class Group(MutableMapping):
             mkey = _prefix_to_group_key(self._store, self._key_prefix)
             assert not mkey.endswith("root/.group")
             meta_bytes = store[mkey]
-        except KeyError:
+        except KeyError as e:
             if self._version == 2:
-                raise GroupNotFoundError(path)
+                raise GroupNotFoundError(path) from e
             else:
                 implicit_prefix = meta_root + self._key_prefix
                 if self._store.list_prefix(implicit_prefix):
                     # implicit group does not have any metadata
                     self._meta = None
                 else:
-                    raise GroupNotFoundError(path)
+                    raise GroupNotFoundError(path) from e
         else:
             self._meta = self._store._metadata_class.decode_group_metadata(meta_bytes)
 
@@ -536,8 +536,8 @@ class Group(MutableMapping):
         # allow access to group members via dot notation
         try:
             return self.__getitem__(item)
-        except KeyError:
-            raise AttributeError
+        except KeyError as e:
+            raise AttributeError from e
 
     def __dir__(self):
         # noinspection PyUnresolvedReferences

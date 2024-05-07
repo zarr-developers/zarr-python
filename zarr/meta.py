@@ -310,8 +310,8 @@ class Metadata3(Metadata2):
             # extract the type from the extension info
             try:
                 d = d["type"]
-            except KeyError:
-                raise KeyError("Extended dtype info must provide a key named 'type'.")
+            except KeyError as e:
+                raise KeyError("Extended dtype info must provide a key named 'type'.") from e
         d = cls._decode_dtype_descr(d)
         dtype = np.dtype(d)
         if validate:
@@ -518,7 +518,7 @@ class Metadata3(Metadata2):
                 meta["storage_transformers"] = storage_transformers
 
         except Exception as e:
-            raise MetadataError(f"error decoding metadata: {e}")
+            raise MetadataError(f"error decoding metadata: {e}") from e
         else:
             return meta
 
