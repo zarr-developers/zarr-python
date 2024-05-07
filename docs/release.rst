@@ -18,19 +18,15 @@ Release notes
    See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
    3.0 release.
 
-.. _unreleased:
+.. _release_2.18.0:
 
-Unreleased
-----------
+2.18.0
+------
 
 Enhancements
 ~~~~~~~~~~~~
 * Performance improvement for reading and writing chunks if any of the dimensions is size 1.
   By :user:`Deepak Cherian <dcherian>` :issue:`1730`.
-
-Docs
-~~~~
-
 
 Maintenance
 ~~~~~~~~~~~
@@ -46,6 +42,7 @@ Deprecations
 * Deprecate experimental v3 support by issuing a `FutureWarning`.
   Also updated docs to warn about using the experimental v3 version.
   By :user:`Joe Hamman <jhamman>` :issue:`1802` and :issue:`1807`.
+
 * Deprecate the following stores: :class:`zarr.storage.DBMStore`, :class:`zarr.storage.LMDBStore`,
   :class:`zarr.storage.SQLiteStore`, :class:`zarr.storage.MongoDBStore`, :class:`zarr.storage.RedisStore`,
   and :class:`zarr.storage.ABSStore`. These stores are slated to be removed from Zarr-Python in version 3.0.
