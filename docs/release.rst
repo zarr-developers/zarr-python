@@ -28,7 +28,6 @@ Enhancements
 * Performance improvement for reading and writing chunks if any of the dimensions is size 1.
   By :user:`Deepak Cherian <dcherian>` :issue:`1730`.
 
-
 Maintenance
 ~~~~~~~~~~~
 * Minor updates to use `np.inf` instead of `np.PINF` / `np.NINF` in preparation for NumPy 2.0.0 release. 
@@ -40,6 +39,7 @@ Deprecations
 * Deprecate experimental v3 support by issuing a `FutureWarning`.
   Also updated docs to warn about using the experimental v3 version.
   By :user:`Joe Hamman <jhamman>` :issue:`1802` and :issue:`1807`.
+
 * Deprecate the following stores: :class:`zarr.storage.DBMStore`, :class:`zarr.storage.LMDBStore`,
   :class:`zarr.storage.SQLiteStore`, :class:`zarr.storage.MongoDBStore`, :class:`zarr.storage.RedisStore`,
   and :class:`zarr.storage.ABSStore`. These stores are slated to be removed from Zarr-Python in version 3.0.
