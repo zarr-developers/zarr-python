@@ -30,10 +30,16 @@ class StorePath:
     ) -> Optional[BytesLike]:
         return await self.store.get(self.path, byte_range)
 
+    async def get_metadata(self) -> Optional[dict[str, Any]]:
+        return await self.store.get_metadata(self.path)
+
     async def set(self, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None) -> None:
         if byte_range is not None:
             raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)
+
+    async def set_metadata(self, metadata: dict[str, Any]) -> None:
+        await self.store.set_metadata(self.path, metadata)
 
     async def delete(self) -> None:
         await self.store.delete(self.path)

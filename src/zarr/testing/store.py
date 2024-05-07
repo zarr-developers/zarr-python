@@ -28,6 +28,16 @@ class StoreTests:
         await store.set(key, data)
         assert await store.get(key) == data
 
+    async def test_set_get_metadata_roundtrip(self, store: Store) -> None:
+        meta = {
+            "zarr_version": "17",
+            "bar": 1,
+            "baz": [1, 2, 3],
+            "qux": {"a": 1, "b": 2, "c": [3, 4, 5]},
+        }
+        await store.set_metadata("foo/zarr.json", meta)
+        assert await store.get_metadata("foo/zarr.json") == meta
+
     @pytest.mark.parametrize("key", ["foo/c/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     async def test_get_partial_values(self, store: Store, key: str, data: bytes) -> None:
