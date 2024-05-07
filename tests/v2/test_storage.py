@@ -17,7 +17,7 @@ from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 from numcodecs.compat import ensure_bytes
 
-import zarr
+import zarr.v2
 from zarr.v2 import meta_v1
 from zarr.v2.codecs import BZ2, AsType, Blosc, Zlib
 from zarr.v2.context import Context
@@ -1069,7 +1069,7 @@ class TestFSStore(StoreTests):
         assert "foo" in os.listdir(str(path2))
 
     def test_deep_ndim(self):
-        import zarr
+        import zarr.v2
 
         store = self.create_store()
         path = None if self.version == 2 else "group1"
@@ -1086,8 +1086,6 @@ class TestFSStore(StoreTests):
         assert foo["bar"]["baz"][(0, 0, 0)] == 1
 
     def test_not_fsspec(self):
-        import zarr
-
         path = tempfile.mkdtemp()
         with pytest.raises(ValueError, match="storage_options"):
             zarr.v2.open_array(path, mode="w", storage_options={"some": "kwargs"})
@@ -1096,8 +1094,6 @@ class TestFSStore(StoreTests):
         zarr.v2.open_array("file://" + path, mode="w", shape=(1,), dtype="f8")
 
     def test_create(self):
-        import zarr
-
         path1 = tempfile.mkdtemp()
         path2 = tempfile.mkdtemp()
         g = zarr.v2.open_group("file://" + path1, mode="w", storage_options={"auto_mkdir": True})
@@ -1121,8 +1117,6 @@ class TestFSStore(StoreTests):
 
     @pytest.mark.parametrize("mode,allowed", [("r", False), ("r+", True)])
     def test_modify_consolidated(self, mode, allowed):
-        import zarr
-
         url = "file://" + tempfile.mkdtemp()
 
         # create
@@ -1143,8 +1137,6 @@ class TestFSStore(StoreTests):
 
     @pytest.mark.parametrize("mode", ["r", "r+"])
     def test_modify_consolidated_metadata_raises(self, mode):
-        import zarr
-
         url = "file://" + tempfile.mkdtemp()
 
         # create
@@ -1192,8 +1184,6 @@ class TestFSStore(StoreTests):
 
     @pytest.mark.usefixtures("s3")
     def test_s3(self):
-        import zarr
-
         g = zarr.v2.open_group("s3://test/out.zarr", mode="w", storage_options=self.s3so)
         a = g.create_dataset("data", shape=(8,))
         a[:4] = [0, 1, 2, 3]
@@ -1208,8 +1198,6 @@ class TestFSStore(StoreTests):
 
     @pytest.mark.usefixtures("s3")
     def test_s3_complex(self):
-        import zarr
-
         g = zarr.v2.open_group("s3://test/out.zarr", mode="w", storage_options=self.s3so)
         expected = np.empty((8, 8, 8), dtype="int64")
         expected[:] = -1
@@ -1674,8 +1662,6 @@ class TestNestedFSStore(TestNestedDirectoryStore):
         return store
 
     def test_numbered_groups(self):
-        import zarr
-
         # Create an array
         store = self.create_store()
         group = zarr.v2.group(store=store)
