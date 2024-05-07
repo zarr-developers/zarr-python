@@ -213,6 +213,7 @@ disallow_untyped_calls = false
 
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
     "ELLIPSIS",

@@ -1,5 +1,6 @@
 from abc import abstractmethod, ABC
 
+from collections.abc import AsyncGenerator
 from typing import List, Tuple, Optional
 
 
@@ -24,7 +25,7 @@ class Store(ABC):
     @abstractmethod
     async def get_partial_values(
         self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[bytes]:
+    ) -> List[Optional[bytes]]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
@@ -106,17 +107,17 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def list(self) -> List[str]:
+    def list(self) -> AsyncGenerator[str, None]:
         """Retrieve all keys in the store.
 
         Returns
         -------
-        list[str]
+        AsyncGenerator[str, None]
         """
         ...
 
     @abstractmethod
-    async def list_prefix(self, prefix: str) -> List[str]:
+    def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         """Retrieve all keys in the store with a given prefix.
 
         Parameters
@@ -125,12 +126,12 @@ class Store(ABC):
 
         Returns
         -------
-        list[str]
+        AsyncGenerator[str, None]
         """
         ...
 
     @abstractmethod
-    async def list_dir(self, prefix: str) -> List[str]:
+    def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         """
         Retrieve all keys and prefixes with a given prefix and which do not contain the character
         “/” after the given prefix.
@@ -141,6 +142,6 @@ class Store(ABC):
 
         Returns
         -------
-        list[str]
+        AsyncGenerator[str, None]
         """
         ...

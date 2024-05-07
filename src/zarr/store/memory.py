@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from typing import Optional, MutableMapping, List, Tuple
 
-from zarr.common import BytesLike
+from zarr.common import BytesLike, concurrent_map
 from zarr.abc.store import Store
 
 
@@ -38,8 +39,9 @@ class MemoryStore(Store):
 
     async def get_partial_values(
         self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[bytes]:
-        raise NotImplementedError
+    ) -> List[Optional[BytesLike]]:
+        vals = await concurrent_map(key_ranges, self.get, limit=None)
+        return vals
 
     async def exists(self, key: str) -> bool:
         return key in self._store_dict
@@ -67,20 +69,23 @@ class MemoryStore(Store):
     async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
         raise NotImplementedError
 
-    async def list(self) -> List[str]:
-        return list(self._store_dict.keys())
+    async def list(self) -> AsyncGenerator[str, None]:
+        for key in self._store_dict:
+            yield key
 
-    async def list_prefix(self, prefix: str) -> List[str]:
-        return [key for key in self._store_dict if key.startswith(prefix)]
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+        for key in self._store_dict:
+            if key.startswith(prefix):
+                yield key
 
-    async def list_dir(self, prefix: str) -> List[str]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+        if prefix.endswith("/"):
+            prefix = prefix[:-1]
+
         if prefix == "":
-            return list({key.split("/", maxsplit=1)[0] for key in self._store_dict})
+            for key in self._store_dict:
+                yield key.split("/", maxsplit=1)[0]
         else:
-            return list(
-                {
-                    key.strip(prefix + "/").split("/")[0]
-                    for key in self._store_dict
-                    if (key.startswith(prefix + "/") and key != prefix)
-                }
-            )
+            for key in self._store_dict:
+                if key.startswith(prefix + "/") and key != prefix:
+                    yield key.strip(prefix + "/").split("/")[0]
