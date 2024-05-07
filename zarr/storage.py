@@ -88,6 +88,7 @@ from zarr._storage.store import (  # noqa: F401
     DEFAULT_ZARR_VERSION,
     BaseStore,
     Store,
+    V3_DEPRECATION_MESSAGE,
 )
 
 __doctest_requires__ = {
@@ -1608,6 +1609,12 @@ class NestedDirectoryStore(DirectoryStore):
     special handling for chunk keys so that chunk files for multidimensional
     arrays are stored in a nested directory tree.
 
+    .. deprecated:: 2.18.0
+            NestedDirectoryStore will be removed in Zarr-Python 3.0 where controlling
+            the chunk key encoding will be supported as part of the array metadata. See
+            `GH1274 <https://github.com/zarr-developers/zarr-python/issues/1274>`_
+            for more information.
+
     Parameters
     ----------
     path : string
@@ -1679,6 +1686,13 @@ class NestedDirectoryStore(DirectoryStore):
     def __init__(
         self, path, normalize_keys=False, dimension_separator: Optional[DIMENSION_SEPARATOR] = "/"
     ):
+
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=2,
+        )
+
         super().__init__(path, normalize_keys=normalize_keys)
         if dimension_separator is None:
             dimension_separator = "/"
@@ -1999,6 +2013,11 @@ def migrate_1to2(store):
 class DBMStore(Store):
     """Storage class using a DBM-style database.
 
+    .. deprecated:: 2.18.0
+            DBMStore will be removed in Zarr-Python 3.0. See
+            `GH1274 <https://github.com/zarr-developers/zarr-python/issues/1274>`_
+            for more information.
+
     Parameters
     ----------
     path : string
@@ -2087,6 +2106,12 @@ class DBMStore(Store):
         dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
         **open_kwargs,
     ):
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=2,
+        )
+
         if open is None:
             import dbm
 
@@ -2204,6 +2229,10 @@ class LMDBStore(Store):
     """Storage class using LMDB. Requires the `lmdb <https://lmdb.readthedocs.io/>`_
     package to be installed.
 
+    .. deprecated:: 2.18.0
+        LMDBStore will be removed in Zarr-Python 3.0. See
+        `GH1274 <https://github.com/zarr-developers/zarr-python/issues/1274>`_
+        for more information.
 
     Parameters
     ----------
@@ -2264,6 +2293,12 @@ class LMDBStore(Store):
         **kwargs,
     ):
         import lmdb
+
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=2,
+        )
 
         # set default memory map size to something larger than the lmdb default, which is
         # very likely to be too small for any moderate array (logic copied from zict)
@@ -2584,6 +2619,11 @@ class LRUStoreCache(Store):
 class SQLiteStore(Store):
     """Storage class using SQLite.
 
+    .. deprecated:: 2.18.0
+            SQLiteStore will be removed in Zarr-Python 3.0. See
+            `GH1274 <https://github.com/zarr-developers/zarr-python/issues/1274>`_
+            for more information.
+
     Parameters
     ----------
     path : string
@@ -2615,6 +2655,12 @@ class SQLiteStore(Store):
 
     def __init__(self, path, dimension_separator: Optional[DIMENSION_SEPARATOR] = None, **kwargs):
         import sqlite3
+
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=2,
+        )
 
         self._dimension_separator = dimension_separator
 
@@ -2782,6 +2828,11 @@ class MongoDBStore(Store):
 
     .. note:: This is an experimental feature.
 
+    .. deprecated:: 2.18.0
+            MongoDBStore will be removed in Zarr-Python 3.0. See
+            `GH1274 <https://github.com/zarr-developers/zarr-python/issues/1274>`_
+            for more information.
+
     Requires the `pymongo <https://pymongo.readthedocs.io/en/stable/>`_
     package to be installed.
 
@@ -2813,6 +2864,12 @@ class MongoDBStore(Store):
         **kwargs,
     ):
         import pymongo
+
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=2,
+        )
 
         self._database = database
         self._collection = collection
@@ -2870,6 +2927,11 @@ class RedisStore(Store):
 
     .. note:: This is an experimental feature.
 
+    .. deprecated:: 2.18.0
+            RedisStore will be removed in Zarr-Python 3.0. See
+            `GH1274 <https://github.com/zarr-developers/zarr-python/issues/1274>`_
+            for more information.
+
     Requires the `redis <https://redis-py.readthedocs.io/>`_
     package to be installed.
 
@@ -2888,6 +2950,12 @@ class RedisStore(Store):
         self, prefix="zarr", dimension_separator: Optional[DIMENSION_SEPARATOR] = None, **kwargs
     ):
         import redis
+
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=2,
+        )
 
         self._prefix = prefix
         self._kwargs = kwargs

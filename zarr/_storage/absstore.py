@@ -5,7 +5,14 @@ import warnings
 
 from numcodecs.compat import ensure_bytes
 from zarr.util import normalize_storage_path
-from zarr._storage.store import _get_metadata_suffix, data_root, meta_root, Store, StoreV3
+from zarr._storage.store import (
+    _get_metadata_suffix,
+    data_root,
+    meta_root,
+    Store,
+    StoreV3,
+    V3_DEPRECATION_MESSAGE,
+)
 from zarr.types import DIMENSION_SEPARATOR
 
 __doctest_requires__ = {
@@ -73,6 +80,12 @@ class ABSStore(Store):
         dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
         client=None,
     ):
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=3,
+        )
+
         self._dimension_separator = dimension_separator
         self.prefix = normalize_storage_path(prefix)
         if client is None:
