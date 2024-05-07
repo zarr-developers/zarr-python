@@ -156,8 +156,8 @@ class ABSStore(Store):
         blob_name = self._append_path_to_prefix(key)
         try:
             return self.client.download_blob(blob_name).readall()
-        except ResourceNotFoundError:
-            raise KeyError(f"Blob {blob_name} not found")
+        except ResourceNotFoundError as e:
+            raise KeyError(f"Blob {blob_name} not found") from e
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
@@ -169,8 +169,8 @@ class ABSStore(Store):
 
         try:
             self.client.delete_blob(self._append_path_to_prefix(key))
-        except ResourceNotFoundError:
-            raise KeyError(f"Blob {key} not found")
+        except ResourceNotFoundError as e:
+            raise KeyError(f"Blob {key} not found") from e
 
     def __eq__(self, other):
         return (

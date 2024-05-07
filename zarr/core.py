@@ -200,8 +200,8 @@ class Array:
         try:
             mkey = _prefix_to_array_key(self._store, self._key_prefix)
             meta_bytes = self._store[mkey]
-        except KeyError:
-            raise ArrayNotFoundError(self._path)
+        except KeyError as e:
+            raise ArrayNotFoundError(self._path) from e
         else:
             # decode and store metadata as instance members
             meta = self._store._metadata_class.decode_array_metadata(meta_bytes)

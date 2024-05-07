@@ -23,7 +23,7 @@ def decode_metadata(b):
             order=meta["order"],
         )
     except Exception as e:
-        raise MetadataError(f"error decoding metadata: {e}")
+        raise MetadataError(f"error decoding metadata: {e}") from e
     else:
         return meta
 
