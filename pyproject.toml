@@ -114,7 +114,7 @@ numpy = ["1.24", "1.26", "2.0.0rc1"]
 features = ["optional"]
 
 [tool.hatch.envs.test.scripts]
-test-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests/v3 tests/v3"
+test-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests/v3 --ignore=tests/v2"
 test = "test-coverage --no-cov"
 test-verbose = "test-coverage --verbose"
 test-mypy = "mypy src"
