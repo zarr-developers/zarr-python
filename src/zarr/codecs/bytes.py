@@ -82,7 +82,6 @@ class BytesCodec(ArrayBytesCodec):
             dtype = np.dtype(f"{prefix}{chunk_spec.dtype.str[1:]}")
         else:
             dtype = np.dtype(f"|{chunk_spec.dtype.str[1:]}")
-        print(dtype)
         chunk_array = np.frombuffer(chunk_bytes, dtype)
 
         # ensure correct chunk shape
