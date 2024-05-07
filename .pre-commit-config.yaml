@@ -31,3 +31,4 @@ repos:
           - types-redis
           - types-setuptools
           - attrs
+          - pytest
