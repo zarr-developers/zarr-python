@@ -1337,11 +1337,11 @@ class Group(MutableMapping):
             contains_array(self._store, source)
             or contains_group(self._store, source, explicit_only=False)
         ):
-            raise ValueError('The source, "%s", does not exist.' % source)
+            raise ValueError(f'The source, "{source}", does not exist.')
         if contains_array(self._store, dest) or contains_group(
             self._store, dest, explicit_only=False
         ):
-            raise ValueError('The dest, "%s", already exists.' % dest)
+            raise ValueError(f'The dest, "{dest}", already exists.')
 
         # Ensure groups needed for `dest` exist.
         if "/" in dest:
