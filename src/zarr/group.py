@@ -306,20 +306,20 @@ class AsyncGroup:
             )
 
             raise ValueError(msg)
-        subkeys = await self.store_path.store.list_dir(self.store_path.path)
         # would be nice to make these special keys accessible programmatically,
         # and scoped to specific zarr versions
-        subkeys_filtered = filter(lambda v: v not in ("zarr.json", ".zgroup", ".zattrs"), subkeys)
-        # is there a better way to schedule this?
-        for subkey in subkeys_filtered:
+        _skip_keys = ("zarr.json", ".zgroup", ".zattrs")
+        async for key in self.store_path.store.list_dir(self.store_path.path):
+            if key in _skip_keys:
+                continue
             try:
-                yield (subkey, await self.getitem(subkey))
+                yield (key, await self.getitem(key))
             except KeyError:
-                # keyerror is raised when `subkey` names an object (in the object storage sense),
+                # keyerror is raised when `key` names an object (in the object storage sense),
                 # as opposed to a prefix, in the store under the prefix associated with this group
-                # in which case `subkey` cannot be the name of a sub-array or sub-group.
+                # in which case `key` cannot be the name of a sub-array or sub-group.
                 logger.warning(
-                    "Object at %s is not recognized as a component of a Zarr hierarchy.", subkey
+                    "Object at %s is not recognized as a component of a Zarr hierarchy.", key
                 )
                 pass
 
