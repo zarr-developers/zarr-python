@@ -184,7 +184,7 @@ class ArrayBytesCodecPartialDecodeMixin:
     ) -> Optional[np.ndarray]:
         pass
 
-    async def decode_partial_batched(
+    async def decode_partial_batch(
         self,
         batch_info: Iterable[Tuple[ByteGetter, SliceSelection, ArraySpec]],
         runtime_configuration: RuntimeConfiguration,
@@ -211,7 +211,7 @@ class ArrayBytesCodecPartialEncodeMixin:
     ) -> None:
         pass
 
-    async def encode_partial_batched(
+    async def encode_partial_batch(
         self,
         batch_info: Iterable[Tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]],
         runtime_configuration: RuntimeConfiguration,

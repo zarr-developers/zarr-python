@@ -105,9 +105,7 @@ class BatchedCodecPipeline(CodecPipeline):
     ) -> Iterable[Optional[np.ndarray]]:
         assert self.supports_partial_decode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
-        return await self.array_bytes_codec.decode_partial_batched(
-            batch_info, runtime_configuration
-        )
+        return await self.array_bytes_codec.decode_partial_batch(batch_info, runtime_configuration)
 
     async def encode(
         self,
@@ -144,7 +142,7 @@ class BatchedCodecPipeline(CodecPipeline):
     ) -> None:
         assert self.supports_partial_encode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
-        await self.array_bytes_codec.encode_partial_batched(batch_info, runtime_configuration)
+        await self.array_bytes_codec.encode_partial_batch(batch_info, runtime_configuration)
 
     async def read_batch(
         self,
