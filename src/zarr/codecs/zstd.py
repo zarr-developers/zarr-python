@@ -16,8 +16,6 @@ if TYPE_CHECKING:
     from zarr.config import RuntimeConfiguration
     from zarr.common import BytesLike, JSON, ArraySpec
 
-DEFAULT_ZSTD_LEVEL = 3
-
 
 def parse_zstd_level(data: JSON) -> int:
     if isinstance(data, int):
@@ -37,10 +35,10 @@ def parse_checksum(data: JSON) -> bool:
 class ZstdCodec(BytesBytesCodec):
     is_fixed_size = True
 
-    level: int = DEFAULT_ZSTD_LEVEL
+    level: int = 0
     checksum: bool = False
 
-    def __init__(self, *, level: int = DEFAULT_ZSTD_LEVEL, checksum: bool = False) -> None:
+    def __init__(self, *, level: int = 0, checksum: bool = False) -> None:
         level_parsed = parse_zstd_level(level)
         checksum_parsed = parse_checksum(checksum)
 
