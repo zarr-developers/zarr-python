@@ -17,7 +17,6 @@ dependencies = [
     'fasteners',
     'numcodecs>=0.10.0',
     'crc32c',
-    'zstandard',
     'typing_extensions',
 ]
 dynamic = [
@@ -55,8 +54,8 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
-    "msgpack",
-    "lmdb",
+    'msgpack',
+    'lmdb',
 ]
 extra = [
     'msgpack',
