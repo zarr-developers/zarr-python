@@ -38,7 +38,7 @@ from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
 
-def parse_array_metadata(data: Any):
+def parse_array_metadata(data: Any) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
@@ -191,7 +191,7 @@ class AsyncArray:
     def attrs(self) -> dict:
         return self.metadata.attributes
 
-    async def getitem(self, selection: Selection):
+    async def getitem(self, selection: Selection) -> np.ndarray:
         assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
         indexer = BasicIndexer(
             selection,
@@ -418,7 +418,7 @@ class Array:
     def store_path(self) -> StorePath:
         return self._async_array.store_path
 
-    def __getitem__(self, selection: Selection):
+    def __getitem__(self, selection: Selection) -> np.ndarray:
         return sync(
             self._async_array.getitem(selection),
             self._async_array.runtime_configuration.asyncio_loop,

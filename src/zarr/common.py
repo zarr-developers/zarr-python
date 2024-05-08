@@ -94,7 +94,7 @@ class ArraySpec:
     dtype: np.dtype[Any]
     fill_value: Any
 
-    def __init__(self, shape, dtype, fill_value):
+    def __init__(self, shape: ChunkCoords, dtype: np.dtype[Any], fill_value: Any) -> None:
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
         fill_value_parsed = parse_fill_value(fill_value)

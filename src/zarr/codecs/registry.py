@@ -12,16 +12,11 @@ __codec_registry: Dict[str, Type[Codec]] = {}
 __lazy_load_codecs: Dict[str, EntryPoint] = {}
 
 
-def _collect_entrypoints() -> None:
+def _collect_entrypoints() -> Dict[str, EntryPoint]:
     entry_points = get_entry_points()
-    if hasattr(entry_points, "select"):
-        # If entry_points() has a select method, use that. Python 3.10+
-        for e in entry_points.select(group="zarr.codecs"):
-            __lazy_load_codecs[e.name] = e
-    else:
-        # Otherwise, fallback to using get
-        for e in entry_points.get("zarr.codecs", []):
-            __lazy_load_codecs[e.name] = e
+    for e in entry_points.select(group="zarr.codecs"):
+        __lazy_load_codecs[e.name] = e
+    return __lazy_load_codecs
 
 
 def register_codec(key: str, codec_cls: Type[Codec]) -> None:
