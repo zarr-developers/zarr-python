@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import shutil
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Union, Optional, List, Tuple
 
@@ -11,8 +12,24 @@ from zarr.common import concurrent_map, to_thread
 
 
 def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> Buffer:
+    """
+    Fetch a contiguous region of bytes from a file.
+    Parameters
+    ----------
+    path: Path
+        The file to read bytes from.
+    byte_range: Optional[Tuple[int, Optional[int]]] = None
+        The range of bytes to read. If `byte_range` is `None`, then the entire file will be read.
+        If `byte_range` is a tuple, the first value specifies the index of the first byte to read,
+        and the second value specifies the total number of bytes to read. If the total value is
+        `None`, then the entire file after the first byte will be read.
+    """
     if byte_range is not None:
-        start = byte_range[0]
+        if byte_range[0] is None:
+            start = 0
+        else:
+            start = byte_range[0]
+
         end = (start + byte_range[1]) if byte_range[1] is not None else None
     else:
         return as_buffer(path.read_bytes())
@@ -85,15 +102,22 @@ class LocalStore(Store):
 
     async def get_partial_values(
         self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[Buffer]:
+    ) -> List[Optional[Buffer]]:
+        """
+        Read byte ranges from multiple keys.
+        Parameters
+        ----------
+        key_ranges: List[Tuple[str, Tuple[int, int]]]
+            A list of (key, (start, length)) tuples. The first element of the tuple is the name of
+            the key in storage to fetch bytes from. The second element the tuple defines the byte
+            range to retrieve. These values are arguments to `get`, as this method wraps
+            concurrent invocation of `get`.
+        """
         args = []
         for key, byte_range in key_ranges:
             assert isinstance(key, str)
             path = self.root / key
-            if byte_range is not None:
-                args.append((_get, path, byte_range[0], byte_range[1]))
-            else:
-                args.append((_get, path))
+            args.append((_get, path, byte_range))
         return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: Buffer) -> None:
@@ -104,7 +128,7 @@ class LocalStore(Store):
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
         path = self.root / key
-        await to_thread(_put, path, value)
+        await to_thread(_put, path, value, auto_mkdir=self.auto_mkdir)
 
     async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
         args = []
@@ -128,22 +152,19 @@ class LocalStore(Store):
         path = self.root / key
         return await to_thread(path.is_file)
 
-    async def list(self) -> List[str]:
+    async def list(self) -> AsyncGenerator[str, None]:
         """Retrieve all keys in the store.
 
         Returns
         -------
-        list[str]
+        AsyncGenerator[str, None]
         """
+        to_strip = str(self.root) + "/"
+        for p in list(self.root.rglob("*")):
+            if p.is_file():
+                yield str(p).replace(to_strip, "")
 
-        # Q: do we want to return strings or Paths?
-        def _list(root: Path) -> List[str]:
-            files = [str(p) for p in root.rglob("") if p.is_file()]
-            return files
-
-        return await to_thread(_list, self.root)
-
-    async def list_prefix(self, prefix: str) -> List[str]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         """Retrieve all keys in the store with a given prefix.
 
         Parameters
@@ -152,16 +173,15 @@ class LocalStore(Store):
 
         Returns
         -------
-        list[str]
+        AsyncGenerator[str, None]
         """
 
-        def _list_prefix(root: Path, prefix: str) -> List[str]:
-            files = [str(p) for p in (root / prefix).rglob("*") if p.is_file()]
-            return files
+        to_strip = str(self.root) + "/"
+        for p in (self.root / prefix).rglob("*"):
+            if p.is_file():
+                yield str(p).replace(to_strip, "")
 
-        return await to_thread(_list_prefix, self.root, prefix)
-
-    async def list_dir(self, prefix: str) -> List[str]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         """
         Retrieve all keys and prefixes with a given prefix and which do not contain the character
         “/” after the given prefix.
@@ -172,15 +192,15 @@ class LocalStore(Store):
 
         Returns
         -------
-        list[str]
+        AsyncGenerator[str, None]
         """
 
-        def _list_dir(root: Path, prefix: str) -> List[str]:
-            base = root / prefix
-            to_strip = str(base) + "/"
-            try:
-                return [str(key).replace(to_strip, "") for key in base.iterdir()]
-            except (FileNotFoundError, NotADirectoryError):
-                return []
+        base = self.root / prefix
+        to_strip = str(base) + "/"
 
-        return await to_thread(_list_dir, self.root, prefix)
+        try:
+            key_iter = base.iterdir()
+            for key in key_iter:
+                yield str(key).replace(to_strip, "")
+        except (FileNotFoundError, NotADirectoryError):
+            pass

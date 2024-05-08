@@ -1779,7 +1779,7 @@ def migrate_1to2(store):
     """
 
     # migrate metadata
-    from zarr import meta_v1
+    from zarr.v2 import meta_v1
 
     meta = meta_v1.decode_metadata(store["meta"])
     del store["meta"]
