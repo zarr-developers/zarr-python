@@ -16,6 +16,9 @@ dependencies = [
     'numpy>=1.24',
     'fasteners',
     'numcodecs>=0.10.0',
+    'crc32c',
+    'zstandard',
+    'typing_extensions',
 ]
 dynamic = [
   "version",
@@ -54,15 +57,9 @@ docs = [
     'numcodecs[msgpack]',
     "msgpack",
     "lmdb",
-    "zstandard",
-    "crc32c",
 ]
 extra = [
-    'attrs',
-    'cattrs',
     'msgpack',
-    'crc32c',
-    'zstandard'
 ]
 optional = [
     'lmdb',
@@ -92,28 +89,28 @@ version.source = "vcs"
 build.hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
+dependencies = [
+    "numpy~={matrix:numpy}",
+]
 extra-dependencies = [
     "coverage",
     "pytest",
     "pytest-cov",
     "msgpack",
     "lmdb",
-    "zstandard",
-    "crc32c",
     "pytest-asyncio",
-    "typing_extensions",
     "mypy"
 ]
 features = ["extra"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.11"]
-numpy = ["1.24", "1.26"]
+numpy = ["1.24", "1.26", "2.0.0rc1"]
 version = ["minimal"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.11"]
-numpy = ["1.24", "1.26"]
+numpy = ["1.24", "1.26", "2.0.0rc1"]
 features = ["optional"]
 
 [tool.hatch.envs.test.scripts]
@@ -121,6 +118,7 @@ run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
+list-env = "pip list"
 
 [tool.hatch.envs.docs]
 features = ['docs']
@@ -215,6 +213,7 @@ disallow_untyped_calls = false
 
 
 [tool.pytest.ini_options]
+asyncio_mode = "auto"
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
     "ELLIPSIS",

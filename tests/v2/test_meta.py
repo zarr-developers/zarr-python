@@ -325,8 +325,8 @@ def test_encode_decode_array_structured():
 def test_encode_decode_fill_values_nan():
     fills = (
         (np.nan, "NaN", np.isnan),
-        (np.NINF, "-Infinity", np.isneginf),
-        (np.PINF, "Infinity", np.isposinf),
+        (-np.inf, "-Infinity", np.isneginf),
+        (np.inf, "Infinity", np.isposinf),
     )
 
     for v, s, f in fills:
