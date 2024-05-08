@@ -8,6 +8,7 @@ import numpy.typing as npt
 
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
+from zarr.codecs._v2 import V2Compressor, V2Filters
 
 
 if TYPE_CHECKING:
@@ -269,7 +270,7 @@ class ArrayV2Metadata(Metadata):
         chunks_parsed = parse_shapelike(chunks)
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
-        dimension_separator_parsed = parse_separator(order)
+        dimension_separator_parsed = parse_separator(dimension_separator)
         filters_parsed = parse_filters(filters)
         fill_value_parsed = parse_fill_value(fill_value)
         attributes_parsed = parse_attributes(attributes)
@@ -291,6 +292,14 @@ class ArrayV2Metadata(Metadata):
     def ndim(self) -> int:
         return len(self.shape)
 
+    @property
+    def codecs(self) -> CodecPipeline:
+        from zarr.codecs.pipeline.hybrid import HybridCodecPipeline
+
+        return HybridCodecPipeline.from_list(
+            [V2Filters(self.filters or [], self.order), V2Compressor(self.compressor)]
+        )
+
     def to_bytes(self) -> bytes:
         def _json_convert(o):
             if isinstance(o, np.dtype):
@@ -307,6 +316,13 @@ class ArrayV2Metadata(Metadata):
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format_v2(data.pop("zarr_format"))
         return cls(**data)
+
+    def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
+        return ArraySpec(
+            shape=self.chunks,
+            dtype=self.dtype,
+            fill_value=self.fill_value,
+        )
 
 
 def parse_dimension_names(data: Any) -> Tuple[str, ...] | None:
