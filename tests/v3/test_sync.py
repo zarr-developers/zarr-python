@@ -4,7 +4,6 @@ import time
 from unittest.mock import patch, AsyncMock
 
 from zarr.sync import sync, _get_loop, _get_lock, SyncError, SyncMixin
-from zarr.config import SyncConfiguration
 
 import pytest
 
@@ -113,7 +112,6 @@ def test_sync_mixin(sync_loop) -> None:
     class SyncFoo(SyncMixin):
         def __init__(self, async_foo: AsyncFoo) -> None:
             self._async_foo = async_foo
-            self._sync_configuration = SyncConfiguration(asyncio_loop=sync_loop)
 
         def foo(self) -> str:
             return self._sync(self._async_foo.foo())

@@ -4,12 +4,12 @@ from asyncio import AbstractEventLoop
 from dataclasses import dataclass
 from typing import Any, Literal, Optional
 
+from donfig import Config
 
-@dataclass(frozen=True)
-class SyncConfiguration:
-    concurrency: Optional[int] = None
-    asyncio_loop: Optional[AbstractEventLoop] = None
-    timeout: float | None = None
+config = Config(
+    "zarr",
+    defaults=[{"async": {"concurrency": None, "timeout": None}}],
+)
 
 
 def parse_indexing_order(data: Any) -> Literal["C", "F"]:

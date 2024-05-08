@@ -18,7 +18,7 @@ from zarr.abc.metadata import Metadata
 from zarr.array import AsyncArray, Array
 from zarr.attributes import Attributes
 from zarr.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
-from zarr.config import RuntimeConfiguration, SyncConfiguration
+from zarr.config import RuntimeConfiguration
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import SyncMixin, sync
 
@@ -402,7 +402,6 @@ class AsyncGroup:
 @dataclass(frozen=True)
 class Group(SyncMixin):
     _async_group: AsyncGroup
-    _sync_configuration: SyncConfiguration = field(init=True, default=SyncConfiguration())
 
     @classmethod
     def create(

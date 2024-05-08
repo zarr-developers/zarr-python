@@ -5,7 +5,7 @@ from typing import Union
 import zarr.codecs  # noqa: F401
 from zarr.array import Array, AsyncArray  # noqa: F401
 from zarr.array_v2 import ArrayV2
-from zarr.config import RuntimeConfiguration  # noqa: F401
+from zarr.config import config, RuntimeConfiguration  # noqa: F401
 from zarr.group import AsyncGroup, Group  # noqa: F401
 from zarr.metadata import runtime_configuration  # noqa: F401
 from zarr.store import (  # noqa: F401
