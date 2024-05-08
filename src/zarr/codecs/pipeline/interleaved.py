@@ -252,7 +252,7 @@ class InterleavedCodecPipeline(CodecPipeline):
         value: np.ndarray,
         runtime_configuration: RuntimeConfiguration,
     ) -> None:
-        async def _write_chunk_to_store(chunk_array: np.ndarray):
+        async def _write_chunk_to_store(chunk_array: np.ndarray) -> None:
             if np.all(chunk_array == chunk_spec.fill_value):
                 # chunks that only contain fill_value will be removed
                 await byte_setter.delete()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import islice
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 import numpy as np
 from dataclasses import dataclass
 
@@ -22,8 +22,10 @@ if TYPE_CHECKING:
 
 DEFAULT_BATCH_SIZE = 1000
 
+T = TypeVar("T")
 
-def batched(iterable, n):
+
+def batched(iterable: Iterable[T], n: int) -> Iterable[Tuple[T, ...]]:
     if n < 1:
         raise ValueError("n must be at least one")
     it = iter(iterable)
