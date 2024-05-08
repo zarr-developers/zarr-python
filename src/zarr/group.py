@@ -148,13 +148,13 @@ class AsyncGroup:
         if zarr_format == 2:
             # V2 groups are comprised of a .zgroup and .zattrs objects
             assert zgroup_bytes is not None
-            zgroup = json.loads(zgroup_bytes)
-            zattrs = json.loads(zattrs_bytes) if zattrs_bytes is not None else {}
+            zgroup = json.loads(zgroup_bytes.to_bytes())
+            zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
             group_metadata = {**zgroup, "attributes": zattrs}
         else:
             # V3 groups are comprised of a zarr.json object
             assert zarr_json_bytes is not None
-            group_metadata = json.loads(zarr_json_bytes)
+            group_metadata = json.loads(zarr_json_bytes.to_bytes())
 
         return cls.from_dict(store_path, group_metadata, runtime_configuration)
 

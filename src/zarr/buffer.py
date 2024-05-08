@@ -41,7 +41,7 @@ class NDBuffer:
         return self._data.astype(dtype=dtype, copy=False)
 
     @property
-    def dtype(self) -> np.DTypeLike:
+    def dtype(self) -> np.dtype[Any]:
         return self.as_numpy_array().dtype
 
     @property
@@ -135,6 +135,8 @@ def as_buffer(data: Any) -> Buffer:
         return data
     if isinstance(data, NDBuffer):
         return Buffer(data.as_numpy_array())
+    if isinstance(data, (bytes, bytearray, memoryview)):
+        return Buffer(np.frombuffer(data, dtype="b"))
     return Buffer(np.asanyarray(data))
 
 
