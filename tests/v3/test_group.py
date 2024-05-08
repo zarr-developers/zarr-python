@@ -1,20 +1,20 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
-from zarr.v3.array import AsyncArray
-from zarr.v3.store.core import make_store_path
+from zarr.array import AsyncArray
+from zarr.store.core import make_store_path
 
 if TYPE_CHECKING:
-    from zarr.v3.store import MemoryStore, LocalStore
-    from zarr.v3.common import ZarrFormat
+    from zarr.store import MemoryStore, LocalStore
+    from zarr.common import ZarrFormat
 
 import pytest
 import numpy as np
 
-from zarr.v3.group import AsyncGroup, Group, GroupMetadata
-from zarr.v3.store import StorePath
-from zarr.v3.config import RuntimeConfiguration, SyncConfiguration
-from zarr.v3.sync import sync
+from zarr.group import AsyncGroup, Group, GroupMetadata
+from zarr.store import StorePath
+from zarr.config import RuntimeConfiguration, SyncConfiguration
+from zarr.sync import sync
 
 
 # todo: put RemoteStore in here

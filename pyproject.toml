@@ -16,6 +16,9 @@ dependencies = [
     'numpy>=1.24',
     'fasteners',
     'numcodecs>=0.10.0',
+    'crc32c',
+    'zstandard',
+    'typing_extensions',
 ]
 dynamic = [
   "version",
@@ -52,13 +55,11 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
+    "msgpack",
+    "lmdb",
 ]
 extra = [
-    'attrs',
-    'cattrs',
     'msgpack',
-    'crc32c',
-    'zstandard'
 ]
 optional = [
     'lmdb',
@@ -88,27 +89,28 @@ version.source = "vcs"
 build.hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
+dependencies = [
+    "numpy~={matrix:numpy}",
+]
 extra-dependencies = [
     "coverage",
     "pytest",
     "pytest-cov",
     "msgpack",
     "lmdb",
-    "zstandard",
-    "crc32c",
     "pytest-asyncio",
-    "typing_extensions"
+    "mypy"
 ]
 features = ["extra"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.11"]
-numpy = ["1.24", "1.26"]
+numpy = ["1.24", "1.26", "2.0.0rc1"]
 version = ["minimal"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.11"]
-numpy = ["1.24", "1.26"]
+numpy = ["1.24", "1.26", "2.0.0rc1"]
 features = ["optional"]
 
 [tool.hatch.envs.test.scripts]
@@ -116,6 +118,7 @@ run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
+list-env = "pip list"
 
 [tool.hatch.envs.docs]
 features = ['docs']
@@ -155,24 +158,58 @@ namespace_packages = false
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-
+strict_equality = true
+strict_concatenate = true
 
 check_untyped_defs = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
 
 [[tool.mypy.overrides]]
 module = [
-    "zarr._storage.store",
-    "zarr._storage.v3_storage_transformers",
-    "zarr.v3.group",
-    "zarr.core",
-    "zarr.hierarchy",
-    "zarr.indexing",
-    "zarr.storage",
-    "zarr.sync",
-    "zarr.util",
+    "zarr.v2.*",
+    "zarr.group",
     "tests.*",
 ]
 check_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr.v2.*",
+    "zarr.abc.codec",
+    "zarr.codecs.bytes",
+    "zarr.codecs.pipeline",
+    "zarr.codecs.sharding",
+    "zarr.codecs.transpose",
+    "zarr.array_v2",
+    "zarr.array",
+    "zarr.sync",
+]
+disallow_any_generics = false
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr.v2.*",
+    "zarr.array_v2",
+    "zarr.group"
+]
+disallow_incomplete_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr.v2.*",
+    "zarr.array_v2",
+    "zarr.array",
+    "zarr.common",
+    "zarr.store.local",
+    "zarr.codecs.blosc",
+    "zarr.codecs.gzip",
+    "zarr.codecs.zstd",
+]
+disallow_untyped_calls = false
 
 
 [tool.pytest.ini_options]

@@ -1,5 +1,5 @@
-Compressors and filters (``zarr.codecs``)
-=========================================
+Compressors and filters (``zarr.v2.codecs``)
+============================================
 .. module:: zarr.codecs
 
 This module contains compressor and filter classes for use with Zarr. Please note that this module
@@ -8,9 +8,9 @@ onwards, all codec classes have been moved to a separate package called Numcodec
 packages (Zarr and Numcodecs_) are designed to be used together. For example, a Numcodecs_ codec
 class can be used as a compressor for a Zarr array::
 
-    >>> import zarr
+    >>> import zarr.v2
     >>> from numcodecs import Blosc
-    >>> z = zarr.zeros(1000000, compressor=Blosc(cname='zstd', clevel=1, shuffle=Blosc.SHUFFLE))
+    >>> z = zarr.v2.zeros(1000000, compressor=Blosc(cname='zstd', clevel=1, shuffle=Blosc.SHUFFLE))
 
 Codec classes can also be used as filters. See the tutorial section on :ref:`tutorial_filters`
 for more information.

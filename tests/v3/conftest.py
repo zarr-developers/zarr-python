@@ -1,8 +1,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from zarr.v3.common import ZarrFormat
-from zarr.v3.group import AsyncGroup
+from zarr.common import ZarrFormat
+from zarr.group import AsyncGroup
 
 if TYPE_CHECKING:
     from typing import Any, Literal
@@ -11,9 +11,9 @@ import pathlib
 
 import pytest
 
-from zarr.v3.config import RuntimeConfiguration
-from zarr.v3.store import LocalStore, StorePath, MemoryStore
-from zarr.v3.store.remote import RemoteStore
+from zarr.config import RuntimeConfiguration
+from zarr.store import LocalStore, StorePath, MemoryStore
+from zarr.store.remote import RemoteStore
 
 
 def parse_store(
@@ -65,13 +65,13 @@ def store(request: str, tmpdir):
 @dataclass
 class AsyncGroupRequest:
     zarr_format: ZarrFormat
-    store: str
+    store: Literal["local", "remote", "memory"]
     attributes: dict[str, Any] = field(default_factory=dict)
     runtime_configuration: RuntimeConfiguration = RuntimeConfiguration()
 
 
 @pytest.fixture(scope="function")
-async def async_group(request: AsyncGroupRequest, tmpdir) -> AsyncGroup:
+async def async_group(request: pytest.FixtureRequest, tmpdir) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
     store = parse_store(param.store, str(tmpdir))

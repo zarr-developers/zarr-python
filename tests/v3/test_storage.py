@@ -7,7 +7,7 @@
 
 # import numpy as np
 from __future__ import annotations
-from zarr.v3.store.local import LocalStore
+from zarr.store.local import LocalStore
 from pathlib import Path
 import pytest
 
