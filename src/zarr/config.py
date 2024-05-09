@@ -33,7 +33,6 @@ class RuntimeConfiguration:
     def __init__(
         self,
         order: Literal["C", "F"] = "C",
-        concurrency: Optional[int] = None,
         asyncio_loop: Optional[AbstractEventLoop] = None,
     ):
         order_parsed = parse_indexing_order(order)
