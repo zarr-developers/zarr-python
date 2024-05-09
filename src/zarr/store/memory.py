@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from typing import Optional, MutableMapping, List, Tuple
+from typing import Any, Optional, MutableMapping, List, Tuple
 
 from zarr.common import BytesLike, concurrent_map
 from zarr.abc.store import Store
@@ -14,9 +14,9 @@ class MemoryStore(Store):
     supports_partial_writes: bool = True
     supports_listing: bool = True
 
-    _store_dict: MutableMapping[str, bytes]
+    _store_dict: MutableMapping[str, bytes | dict[str, Any]]
 
-    def __init__(self, store_dict: Optional[MutableMapping[str, bytes]] = None):
+    def __init__(self, store_dict: Optional[MutableMapping[str, bytes | dict[str, Any]]] = None):
         self._store_dict = store_dict or {}
 
     def __str__(self) -> str:
@@ -31,8 +31,17 @@ class MemoryStore(Store):
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
+            assert isinstance(value, (bytes, bytearray, memoryview))
             if byte_range is not None:
                 value = value[byte_range[0] : byte_range[1]]
+            return value
+        except KeyError:
+            return None
+
+    async def get_metadata(self, key: str) -> Optional[dict[str, Any]]:
+        try:
+            value = self._store_dict[key]
+            assert isinstance(value, dict)
             return value
         except KeyError:
             return None
@@ -54,11 +63,16 @@ class MemoryStore(Store):
             raise TypeError(f"Expected BytesLike. Got {type(value)}.")
 
         if byte_range is not None:
-            buf = bytearray(self._store_dict[key])
+            val = self._store_dict[key]
+            assert isinstance(val, (bytes, bytearray, memoryview))
+            buf = bytearray(val)
             buf[byte_range[0] : byte_range[1]] = value
             self._store_dict[key] = buf
         else:
             self._store_dict[key] = value
+
+    async def set_metadata(self, key: str, metadata: dict[str, Any]) -> None:
+        self._store_dict[key] = metadata
 
     async def delete(self, key: str) -> None:
         try:

@@ -2,7 +2,6 @@ from __future__ import annotations
 from enum import Enum
 from typing import TYPE_CHECKING, cast, Dict, Iterable, Any
 from dataclasses import dataclass, field
-import json
 import numpy as np
 import numpy.typing as npt
 
@@ -194,23 +193,6 @@ class ArrayMetadata(Metadata):
             fill_value=self.fill_value,
         )
 
-    def to_bytes(self) -> bytes:
-        def _json_convert(o):
-            if isinstance(o, np.dtype):
-                return str(o)
-            if isinstance(o, Enum):
-                return o.name
-            # this serializes numcodecs compressors
-            # todo: implement to_dict for codecs
-            elif hasattr(o, "get_config"):
-                return o.get_config()
-            raise TypeError
-
-        return json.dumps(
-            self.to_dict(),
-            default=_json_convert,
-        ).encode()
-
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ArrayMetadata:
         # check that the zarr_format attribute is correct
@@ -290,17 +272,6 @@ class ArrayV2Metadata(Metadata):
     @property
     def ndim(self) -> int:
         return len(self.shape)
-
-    def to_bytes(self) -> bytes:
-        def _json_convert(o):
-            if isinstance(o, np.dtype):
-                if o.fields is None:
-                    return o.str
-                else:
-                    return o.descr
-            raise TypeError
-
-        return json.dumps(self.to_dict(), default=_json_convert).encode()
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ArrayV2Metadata:

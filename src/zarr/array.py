@@ -12,7 +12,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-import json
 from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -146,11 +145,11 @@ class AsyncArray:
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> AsyncArray:
         store_path = make_store_path(store)
-        zarr_json_bytes = await (store_path / ZARR_JSON).get()
-        assert zarr_json_bytes is not None
+        zarr_json = await (store_path / ZARR_JSON).get_metadata()
+        assert zarr_json is not None
         return cls.from_dict(
             store_path,
-            json.loads(zarr_json_bytes),
+            zarr_json,
             runtime_configuration=runtime_configuration,
         )
 
@@ -161,11 +160,11 @@ class AsyncArray:
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> AsyncArray:  # TODO: Union[AsyncArray, ArrayV2]
         store_path = make_store_path(store)
-        v3_metadata_bytes = await (store_path / ZARR_JSON).get()
-        if v3_metadata_bytes is not None:
+        v3_metadata = await (store_path / ZARR_JSON).get_metadata()
+        if v3_metadata is not None:
             return cls.from_dict(
                 store_path,
-                json.loads(v3_metadata_bytes),
+                v3_metadata,
                 runtime_configuration=runtime_configuration or RuntimeConfiguration(),
             )
         else:
@@ -223,7 +222,7 @@ class AsyncArray:
             return out[()]
 
     async def _save_metadata(self) -> None:
-        await (self.store_path / ZARR_JSON).set(self.metadata.to_bytes())
+        await (self.store_path / ZARR_JSON).set_metadata(self.metadata.to_dict())
 
     async def _read_chunk(
         self,
@@ -392,14 +391,14 @@ class AsyncArray:
         )
 
         # Write new metadata
-        await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
+        await (self.store_path / ZARR_JSON).set_metadata(new_metadata.to_dict())
         return replace(self, metadata=new_metadata)
 
     async def update_attributes(self, new_attributes: Dict[str, Any]) -> AsyncArray:
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
+        await (self.store_path / ZARR_JSON).set_metadata(new_metadata.to_dict())
         return replace(self, metadata=new_metadata)
 
     def __repr__(self):

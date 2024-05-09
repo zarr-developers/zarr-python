@@ -1,7 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
 
-import json
 from typing import Iterator, List, Literal, Optional, Tuple
 
 
@@ -21,6 +20,7 @@ from zarr.codecs import (
     TransposeCodec,
     ZstdCodec,
 )
+from zarr.codecs.blosc import BloscShuffle
 from zarr.metadata import runtime_configuration
 
 from zarr.abc.store import Store
@@ -738,9 +738,9 @@ async def test_dimension_names(store: Store):
     )
 
     assert (await AsyncArray.open(store / "dimension_names2")).metadata.dimension_names is None
-    zarr_json_bytes = await (store / "dimension_names2" / "zarr.json").get()
-    assert zarr_json_bytes is not None
-    assert "dimension_names" not in json.loads(zarr_json_bytes)
+    zarr_json = await (store / "dimension_names2" / "zarr.json").get_metadata()
+    assert zarr_json is not None
+    assert "dimension_names" not in zarr_json
 
 
 def test_gzip(store: Store):
@@ -966,10 +966,10 @@ async def test_blosc_evolve(store: Store):
         codecs=[BytesCodec(), BloscCodec()],
     )
 
-    zarr_json = json.loads(await (store / "blosc_evolve_u1" / "zarr.json").get())
+    zarr_json = await (store / "blosc_evolve_u1" / "zarr.json").get_metadata()
     blosc_configuration_json = zarr_json["codecs"][1]["configuration"]
     assert blosc_configuration_json["typesize"] == 1
-    assert blosc_configuration_json["shuffle"] == "bitshuffle"
+    assert blosc_configuration_json["shuffle"] == BloscShuffle.bitshuffle
 
     await AsyncArray.create(
         store / "blosc_evolve_u2",
@@ -980,10 +980,10 @@ async def test_blosc_evolve(store: Store):
         codecs=[BytesCodec(), BloscCodec()],
     )
 
-    zarr_json = json.loads(await (store / "blosc_evolve_u2" / "zarr.json").get())
+    zarr_json = await (store / "blosc_evolve_u2" / "zarr.json").get_metadata()
     blosc_configuration_json = zarr_json["codecs"][1]["configuration"]
     assert blosc_configuration_json["typesize"] == 2
-    assert blosc_configuration_json["shuffle"] == "shuffle"
+    assert blosc_configuration_json["shuffle"] == BloscShuffle.shuffle
 
     await AsyncArray.create(
         store / "sharding_blosc_evolve",
@@ -994,10 +994,10 @@ async def test_blosc_evolve(store: Store):
         codecs=[ShardingCodec(chunk_shape=(16, 16), codecs=[BytesCodec(), BloscCodec()])],
     )
 
-    zarr_json = json.loads(await (store / "sharding_blosc_evolve" / "zarr.json").get())
+    zarr_json = await (store / "sharding_blosc_evolve" / "zarr.json").get_metadata()
     blosc_configuration_json = zarr_json["codecs"][0]["configuration"]["codecs"][1]["configuration"]
     assert blosc_configuration_json["typesize"] == 2
-    assert blosc_configuration_json["shuffle"] == "shuffle"
+    assert blosc_configuration_json["shuffle"] == BloscShuffle.shuffle
 
 
 def test_exists_ok(store: Store):

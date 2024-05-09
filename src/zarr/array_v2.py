@@ -189,11 +189,11 @@ class ArrayV2:
     async def _save_metadata(self) -> None:
         self._validate_metadata()
 
-        await (self.store_path / ZARRAY_JSON).set(self.metadata.to_bytes())
+        meta = self.metadata.to_dict()
+        assert isinstance(meta, dict)  # for mypy
+        await (self.store_path / ZARRAY_JSON).set_metadata(meta)
         if self.attributes is not None and len(self.attributes) > 0:
-            await (self.store_path / ZATTRS_JSON).set(
-                json.dumps(self.attributes).encode(),
-            )
+            await (self.store_path / ZATTRS_JSON).set_metadata(self.attributes)
         else:
             await (self.store_path / ZATTRS_JSON).delete()
 
@@ -432,7 +432,9 @@ class ArrayV2:
         )
 
         # Write new metadata
-        await (self.store_path / ZARRAY_JSON).set(new_metadata.to_bytes())
+        meta = new_metadata.to_dict()
+        assert isinstance(meta, dict)  # for mypy
+        await (self.store_path / ZARRAY_JSON).set_metadata(meta)
         return replace(self, metadata=new_metadata)
 
     def resize(self, new_shape: ChunkCoords) -> ArrayV2:
@@ -505,17 +507,17 @@ class ArrayV2:
             dimension_names=None,
         )
 
-        new_metadata_bytes = new_metadata.to_bytes()
-        await (self.store_path / ZARR_JSON).set(new_metadata_bytes)
+        _new_metadata = new_metadata.to_dict()
+        await (self.store_path / ZARR_JSON).set_metadata(_new_metadata)
 
         return Array.from_dict(
             store_path=self.store_path,
-            data=json.loads(new_metadata_bytes),
+            data=_new_metadata,
             runtime_configuration=self.runtime_configuration,
         )
 
     async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> ArrayV2:
-        await (self.store_path / ZATTRS_JSON).set(json.dumps(new_attributes).encode())
+        await (self.store_path / ZATTRS_JSON).set_metadata(new_attributes)
         return replace(self, attributes=new_attributes)
 
     def update_attributes(self, new_attributes: Dict[str, Any]) -> ArrayV2:
