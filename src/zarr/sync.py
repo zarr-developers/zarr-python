@@ -118,7 +118,6 @@ class SyncMixin:
         # this should allow us to better type the sync wrapper
         return sync(
             coroutine,
-            loop=_get_loop(),
             timeout=config.get("async.timeout"),
         )
 

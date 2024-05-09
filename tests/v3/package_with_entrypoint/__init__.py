@@ -1,7 +1,6 @@
 from numpy import ndarray
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.common import ArraySpec, BytesLike
-from zarr.config import RuntimeConfiguration
 
 
 class TestCodec(ArrayBytesCodec):
@@ -11,7 +10,6 @@ class TestCodec(ArrayBytesCodec):
         self,
         chunk_array: ndarray,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike | None:
         pass
 
@@ -19,7 +17,6 @@ class TestCodec(ArrayBytesCodec):
         self,
         chunk_bytes: BytesLike,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> ndarray:
         pass
 

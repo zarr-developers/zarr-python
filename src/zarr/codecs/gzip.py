@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from typing import Optional, Dict
     from typing_extensions import Self
     from zarr.common import JSON, ArraySpec, BytesLike
-    from zarr.config import RuntimeConfiguration
 
 
 def parse_gzip_level(data: JSON) -> int:
@@ -48,7 +47,6 @@ class GzipCodec(BytesBytesCodec):
         self,
         chunk_bytes: bytes,
         _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         return await to_thread(GZip(self.level).decode, chunk_bytes)
 
@@ -56,7 +54,6 @@ class GzipCodec(BytesBytesCodec):
         self,
         chunk_bytes: bytes,
         _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         return await to_thread(GZip(self.level).encode, chunk_bytes)
 
