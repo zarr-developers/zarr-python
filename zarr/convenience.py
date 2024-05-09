@@ -127,10 +127,14 @@ def open(store: StoreLike = None, mode: str = "a", *, zarr_version=None, path=No
             return open_array(_store, mode=mode, **kwargs)
         else:
             return open_group(_store, mode=mode, **kwargs)
-
     else:
         if contains_array(_store, path):
-            return open_array(_store, mode=mode, **kwargs)
+            zarr_image = open_array(_store, mode=mode, **kwargs)
+            scaling_factor = zarr_image.attrs.get("scaling-metadata")
+            if scaling_factor is not None:
+                return zarr_image['0'][:] / scaling_factor
+            else:
+                return zarr_image
         elif contains_group(_store, path):
             return open_group(_store, mode=mode, **kwargs)
         else:
