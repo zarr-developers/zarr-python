@@ -25,6 +25,7 @@ from zarr.common import (
     parse_shapelike,
     product,
 )
+from zarr.config import config
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.indexing import (
     BasicIndexer,
@@ -342,7 +343,7 @@ class ShardingCodec(
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             self._read_chunk,
-            runtime_configuration.concurrency,
+            config.get("async.concurrency"),
         )
 
         return out
@@ -410,7 +411,7 @@ class ShardingCodec(
                 for chunk_coords, chunk_selection, out_selection in indexed_chunks
             ],
             self._read_chunk,
-            runtime_configuration.concurrency,
+            config.get("async.concurrency"),
         )
 
         return out
@@ -483,7 +484,7 @@ class ShardingCodec(
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             _write_chunk,
-            runtime_configuration.concurrency,
+            config.get("async.concurrency"),
         )
         if len(encoded_chunks) == 0:
             return None
@@ -567,7 +568,7 @@ class ShardingCodec(
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             _write_chunk,
-            runtime_configuration.concurrency,
+            config.get("async.concurrency"),
         )
 
         for chunk_coords, chunk_bytes in encoded_chunks:

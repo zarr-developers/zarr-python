@@ -29,7 +29,7 @@ from zarr.common import (
     SliceSelection,
     concurrent_map,
 )
-from zarr.config import RuntimeConfiguration
+from zarr.config import RuntimeConfiguration, config
 
 from zarr.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.chunk_grids import RegularChunkGrid
@@ -214,7 +214,7 @@ class AsyncArray:
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             self._read_chunk,
-            self.runtime_configuration.concurrency,
+            config.get("async.concurrency"),
         )
 
         if out.shape:
@@ -291,7 +291,7 @@ class AsyncArray:
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             self._write_chunk,
-            self.runtime_configuration.concurrency,
+            config.get("async.concurrency"),
         )
 
     async def _write_chunk(
@@ -388,7 +388,7 @@ class AsyncArray:
                 for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
             ],
             _delete_key,
-            self.runtime_configuration.concurrency,
+            config.get("async.concurrency"),
         )
 
         # Write new metadata

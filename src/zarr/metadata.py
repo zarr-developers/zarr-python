@@ -29,10 +29,8 @@ from zarr.common import (
 from zarr.config import RuntimeConfiguration, parse_indexing_order
 
 
-def runtime_configuration(
-    order: Literal["C", "F"], concurrency: Optional[int] = None
-) -> RuntimeConfiguration:
-    return RuntimeConfiguration(order=order, concurrency=concurrency)
+def runtime_configuration(order: Literal["C", "F"]) -> RuntimeConfiguration:
+    return RuntimeConfiguration(order=order)
 
 
 # For type checking
