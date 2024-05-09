@@ -90,7 +90,7 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def set_partial_values(self, key_start_values: List[Tuple[str, int, BytesLike]]) -> None:
+    async def set_partial_values(self, key_start_values: list[tuple[str, int, BytesLike]]) -> None:
         """Store values at a given key, starting at byte range_start.
 
         Parameters

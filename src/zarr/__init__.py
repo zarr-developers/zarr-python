@@ -32,7 +32,7 @@ async def open_auto_async(
 def open_auto(
     store: StoreLike,
     runtime_configuration_: RuntimeConfiguration = RuntimeConfiguration(),
-) -> Union[Array, Group]:
+) -> Array | Group:
     object = _sync(
         open_auto_async(store, runtime_configuration_),
         runtime_configuration_.asyncio_loop,
