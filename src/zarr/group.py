@@ -50,15 +50,13 @@ class GroupMetadata(Metadata):
     node_type: Literal["group"] = field(default="group", init=False)
 
     # todo: rename this, since it doesn't return bytes
-    def to_bytes(self) -> dict[str, bytes | None]:
+    def to_bytes(self) -> dict[str, bytes]:
         if self.zarr_format == 3:
             return {ZARR_JSON: json.dumps(self.to_dict()).encode()}
         else:
             return {
                 ZGROUP_JSON: json.dumps({"zarr_format": 2}).encode(),
-                ZATTRS_JSON: json.dumps(self.attributes).encode()
-                if len(self.attributes) > 0
-                else None,
+                ZATTRS_JSON: json.dumps(self.attributes).encode(),
             }
 
     def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: Literal[2, 3] = 3):

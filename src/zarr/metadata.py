@@ -307,7 +307,7 @@ class ArrayV2Metadata(Metadata):
             [V2Filters(self.filters or [], self.order), V2Compressor(self.compressor)]
         )
 
-    def to_bytes(self) -> dict[str, bytes | None]:
+    def to_bytes(self) -> dict[str, bytes]:
         def _json_convert(o):
             if isinstance(o, np.dtype):
                 if o.fields is None:
@@ -322,7 +322,7 @@ class ArrayV2Metadata(Metadata):
         assert isinstance(zattrs_dict, dict)
         return {
             ZARRAY_JSON: json.dumps(zarray_dict, default=_json_convert).encode(),
-            ZATTRS_JSON: json.dumps(zattrs_dict).encode() if len(zattrs_dict) > 0 else None,
+            ZATTRS_JSON: json.dumps(zattrs_dict).encode(),
         }
 
     @classmethod
