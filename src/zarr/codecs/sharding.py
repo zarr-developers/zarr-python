@@ -7,13 +7,12 @@ from functools import lru_cache
 
 import numpy as np
 from zarr.abc.codec import (
-    ByteGetter,
-    ByteSetter,
     Codec,
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
 )
+from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.pipeline import CodecPipeline, InterleavedCodecPipeline
@@ -392,7 +391,7 @@ class ShardingCodec(
         indexer = BasicIndexer(
             tuple(slice(0, s) for s in shard_shape),
             shape=shard_shape,
-            chunk_shape=chunk_shape,
+            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
         )
 
         # setup output array
@@ -439,7 +438,7 @@ class ShardingCodec(
         indexer = BasicIndexer(
             selection,
             shape=shard_shape,
-            chunk_shape=chunk_shape,
+            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
         )
 
         # setup output array
@@ -505,7 +504,7 @@ class ShardingCodec(
             BasicIndexer(
                 tuple(slice(0, s) for s in shard_shape),
                 shape=shard_shape,
-                chunk_shape=chunk_shape,
+                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             )
         )
 
@@ -550,7 +549,7 @@ class ShardingCodec(
             BasicIndexer(
                 selection,
                 shape=shard_shape,
-                chunk_shape=chunk_shape,
+                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             )
         )
 

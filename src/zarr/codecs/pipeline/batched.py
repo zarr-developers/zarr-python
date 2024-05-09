@@ -5,8 +5,6 @@ import numpy as np
 from dataclasses import dataclass
 
 from zarr.abc.codec import (
-    ByteGetter,
-    ByteSetter,
     Codec,
     ArrayArrayCodec,
     ArrayBytesCodec,
@@ -14,6 +12,7 @@ from zarr.abc.codec import (
     ArrayBytesCodecPartialEncodeMixin,
     BytesBytesCodec,
 )
+from zarr.abc.store import ByteGetter, ByteSetter, set_or_delete
 from zarr.codecs.pipeline.core import CodecPipeline
 from zarr.common import concurrent_map
 from zarr.indexing import is_total_slice
@@ -267,17 +266,11 @@ class BatchedCodecPipeline(CodecPipeline):
                 runtime_configuration,
             )
 
-            async def _write_key(byte_setter: ByteSetter, chunk_bytes: Optional[BytesLike]) -> None:
-                if chunk_bytes is None:
-                    await byte_setter.delete()
-                else:
-                    await byte_setter.set(chunk_bytes)
-
             await concurrent_map(
                 [
                     (byte_setter, chunk_bytes)
                     for chunk_bytes, (byte_setter, _, _, _) in zip(chunk_bytes_batch, batch_info)
                 ],
-                _write_key,
+                set_or_delete,
                 runtime_configuration.concurrency,
             )

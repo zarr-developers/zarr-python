@@ -7,14 +7,13 @@ from typing import (
     Callable,
     Iterable,
     Optional,
-    Protocol,
     Tuple,
     TypeVar,
-    runtime_checkable,
 )
 
 import numpy as np
 from zarr.abc.metadata import Metadata
+from zarr.abc.store import ByteGetter, ByteSetter
 
 from zarr.common import ArraySpec, concurrent_map
 
@@ -40,24 +39,6 @@ def noop_for_none(
         return await func(chunk, chunk_spec, runtime_configuration)
 
     return wrap
-
-
-@runtime_checkable
-class ByteGetter(Protocol):
-    async def get(
-        self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]: ...
-
-
-@runtime_checkable
-class ByteSetter(Protocol):
-    async def get(
-        self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]: ...
-
-    async def set(self, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None) -> None: ...
-
-    async def delete(self) -> None: ...
 
 
 class Codec(Metadata):

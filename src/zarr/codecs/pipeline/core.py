@@ -11,11 +11,10 @@ from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
-    ByteGetter,
-    ByteSetter,
     BytesBytesCodec,
     Codec,
 )
+from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.abc.metadata import Metadata
 from zarr.codecs.registry import get_codec_class
 from zarr.common import parse_named_configuration

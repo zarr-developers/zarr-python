@@ -13,6 +13,7 @@ if TYPE_CHECKING:
         Literal,
         AsyncIterator,
     )
+from zarr.abc.store import set_or_delete
 from zarr.abc.metadata import Metadata
 
 from zarr.array import AsyncArray, Array
@@ -49,13 +50,15 @@ class GroupMetadata(Metadata):
     node_type: Literal["group"] = field(default="group", init=False)
 
     # todo: rename this, since it doesn't return bytes
-    def to_bytes(self) -> dict[str, bytes]:
+    def to_bytes(self) -> dict[str, bytes | None]:
         if self.zarr_format == 3:
             return {ZARR_JSON: json.dumps(self.to_dict()).encode()}
         else:
             return {
                 ZGROUP_JSON: json.dumps({"zarr_format": 2}).encode(),
-                ZATTRS_JSON: json.dumps(self.attributes).encode(),
+                ZATTRS_JSON: json.dumps(self.attributes).encode()
+                if len(self.attributes) > 0
+                else None,
             }
 
     def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: Literal[2, 3] = 3):
@@ -248,7 +251,7 @@ class AsyncGroup:
 
     async def _save_metadata(self) -> None:
         to_save = self.metadata.to_bytes()
-        awaitables = [(self.store_path / key).set(value) for key, value in to_save.items()]
+        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 
     @property
@@ -281,15 +284,7 @@ class AsyncGroup:
         self.metadata.attributes.update(new_attributes)
 
         # Write new metadata
-        to_save = self.metadata.to_bytes()
-        if self.metadata.zarr_format == 2:
-            # only save the .zattrs object
-            await (self.store_path / ZATTRS_JSON).set(to_save[ZATTRS_JSON])
-        else:
-            await (self.store_path / ZARR_JSON).set(to_save[ZARR_JSON])
-
-        self.metadata.attributes.clear()
-        self.metadata.attributes.update(new_attributes)
+        await self._save_metadata()
 
         return self
 
@@ -461,7 +456,7 @@ class Group(SyncMixin):
 
         # Write new metadata
         to_save = new_metadata.to_bytes()
-        awaitables = [(self.store_path / key).set(value) for key, value in to_save.items()]
+        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 
         async_group = replace(self._async_group, metadata=new_metadata)

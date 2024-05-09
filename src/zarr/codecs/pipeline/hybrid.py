@@ -5,11 +5,8 @@ from typing import TYPE_CHECKING, TypeVar
 import numpy as np
 from dataclasses import dataclass
 
-from zarr.abc.codec import (
-    ByteGetter,
-    ByteSetter,
-    Codec,
-)
+from zarr.abc.codec import Codec
+from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.codecs.pipeline.batched import BatchedCodecPipeline
 from zarr.codecs.pipeline.core import CodecPipeline
 from zarr.common import concurrent_map

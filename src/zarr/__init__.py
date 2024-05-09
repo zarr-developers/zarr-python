@@ -4,7 +4,6 @@ from typing import Union
 
 import zarr.codecs  # noqa: F401
 from zarr.array import Array, AsyncArray  # noqa: F401
-from zarr.array_v2 import ArrayV2
 from zarr.config import RuntimeConfiguration  # noqa: F401
 from zarr.group import AsyncGroup, Group  # noqa: F401
 from zarr.metadata import runtime_configuration  # noqa: F401
@@ -33,7 +32,7 @@ async def open_auto_async(
 def open_auto(
     store: StoreLike,
     runtime_configuration_: RuntimeConfiguration = RuntimeConfiguration(),
-) -> Union[Array, ArrayV2, Group]:
+) -> Union[Array, Group]:
     object = _sync(
         open_auto_async(store, runtime_configuration_),
         runtime_configuration_.asyncio_loop,

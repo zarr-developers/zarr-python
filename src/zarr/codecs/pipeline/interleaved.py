@@ -5,14 +5,13 @@ import numpy as np
 from dataclasses import dataclass
 
 from zarr.abc.codec import (
-    ByteGetter,
-    ByteSetter,
     ArrayArrayCodec,
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
     BytesBytesCodec,
 )
+from zarr.abc.store import ByteGetter, ByteSetter, set_or_delete
 from zarr.codecs.pipeline.core import CodecPipeline
 from zarr.common import concurrent_map
 from zarr.indexing import is_total_slice
@@ -260,10 +259,7 @@ class InterleavedCodecPipeline(CodecPipeline):
                 chunk_bytes = await self.encode_single(
                     chunk_array, chunk_spec, runtime_configuration
                 )
-                if chunk_bytes is None:
-                    await byte_setter.delete()
-                else:
-                    await byte_setter.set(chunk_bytes)
+                await set_or_delete(byte_setter, chunk_bytes)
 
         if is_total_slice(chunk_selection, chunk_spec.shape):
             # write entire chunks

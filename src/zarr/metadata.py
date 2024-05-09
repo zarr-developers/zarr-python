@@ -21,6 +21,9 @@ from zarr.abc.metadata import Metadata
 
 from zarr.common import (
     JSON,
+    ZARR_JSON,
+    ZARRAY_JSON,
+    ZATTRS_JSON,
     ArraySpec,
     ChunkCoords,
     parse_dtype,
@@ -198,7 +201,7 @@ class ArrayMetadata(Metadata):
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
-    def to_bytes(self) -> bytes:
+    def to_bytes(self) -> dict[str, bytes]:
         def _json_convert(o):
             if isinstance(o, np.dtype):
                 return str(o)
@@ -210,10 +213,7 @@ class ArrayMetadata(Metadata):
                 return o.get_config()
             raise TypeError
 
-        return json.dumps(
-            self.to_dict(),
-            default=_json_convert,
-        ).encode()
+        return {ZARR_JSON: json.dumps(self.to_dict(), default=_json_convert).encode()}
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ArrayMetadata:
@@ -242,14 +242,14 @@ class ArrayMetadata(Metadata):
 @dataclass(frozen=True)
 class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
-    chunks: ChunkCoords
+    chunk_grid: RegularChunkGrid
     dtype: np.dtype[Any]
     fill_value: Union[None, int, float] = 0
     order: Literal["C", "F"] = "C"
     filters: Optional[List[Dict[str, Any]]] = None
     dimension_separator: Literal[".", "/"] = "."
     compressor: Optional[Dict[str, Any]] = None
-    attributes: Optional[Dict[str, Any]] = cast(Dict[str, Any], field(default_factory=dict))
+    attributes: Dict[str, Any] = cast(Dict[str, Any], field(default_factory=dict))
     zarr_format: Literal[2] = field(init=False, default=2)
 
     def __init__(
@@ -280,7 +280,7 @@ class ArrayV2Metadata(Metadata):
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type_parsed)
-        object.__setattr__(self, "chunks", chunks_parsed)
+        object.__setattr__(self, "chunks", RegularChunkGrid(chunk_shape=chunks_parsed))
         object.__setattr__(self, "compressor", compressor_parsed)
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "dimension_separator", dimension_separator_parsed)
@@ -296,6 +296,10 @@ class ArrayV2Metadata(Metadata):
         return len(self.shape)
 
     @property
+    def chunks(self) -> ChunkCoords:
+        return self.chunk_grid.chunk_shape
+
+    @property
     def codecs(self) -> CodecPipeline:
         from zarr.codecs.pipeline.hybrid import HybridCodecPipeline
 
@@ -303,7 +307,7 @@ class ArrayV2Metadata(Metadata):
             [V2Filters(self.filters or [], self.order), V2Compressor(self.compressor)]
         )
 
-    def to_bytes(self) -> bytes:
+    def to_bytes(self) -> dict[str, bytes | None]:
         def _json_convert(o):
             if isinstance(o, np.dtype):
                 if o.fields is None:
@@ -312,7 +316,14 @@ class ArrayV2Metadata(Metadata):
                     return o.descr
             raise TypeError
 
-        return json.dumps(self.to_dict(), default=_json_convert).encode()
+        zarray_dict = self.to_dict()
+        assert isinstance(zarray_dict, dict)
+        zattrs_dict = zarray_dict.pop("attributes", {})
+        assert isinstance(zattrs_dict, dict)
+        return {
+            ZARRAY_JSON: json.dumps(zarray_dict, default=_json_convert).encode(),
+            ZATTRS_JSON: json.dumps(zattrs_dict).encode() if len(zattrs_dict) > 0 else None,
+        }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ArrayV2Metadata:
@@ -322,7 +333,7 @@ class ArrayV2Metadata(Metadata):
 
     def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
         return ArraySpec(
-            shape=self.chunks,
+            shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
         )
