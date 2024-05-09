@@ -210,8 +210,7 @@ class AsyncArray:
         await self.codecs.read_batch(
             [
                 (
-                    self.store_path
-                    / self.metadata.chunk_key_encoding.encode_chunk_key(chunk_coords),
+                    self.store_path / self.metadata.encode_chunk_key(chunk_coords),
                     self.metadata.get_chunk_spec(chunk_coords),
                     chunk_selection,
                     out_selection,
@@ -256,8 +255,7 @@ class AsyncArray:
         await self.codecs.write_batch(
             [
                 (
-                    self.store_path
-                    / self.metadata.chunk_key_encoding.encode_chunk_key(chunk_coords),
+                    self.store_path / self.metadata.encode_chunk_key(chunk_coords),
                     self.metadata.get_chunk_spec(chunk_coords),
                     chunk_selection,
                     out_selection,
@@ -277,7 +275,6 @@ class AsyncArray:
         # Remove all chunks outside of the new shape
         assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
         chunk_shape = self.metadata.chunk_grid.chunk_shape
-        chunk_key_encoding = self.metadata.chunk_key_encoding
         old_chunk_coords = set(all_chunk_coords(self.metadata.shape, chunk_shape))
         new_chunk_coords = set(all_chunk_coords(new_shape, chunk_shape))
 
@@ -288,7 +285,7 @@ class AsyncArray:
 
             await concurrent_map(
                 [
-                    (chunk_key_encoding.encode_chunk_key(chunk_coords),)
+                    (self.metadata.encode_chunk_key(chunk_coords),)
                     for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
                 ],
                 _delete_key,

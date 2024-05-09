@@ -195,6 +195,9 @@ class ArrayMetadata(Metadata):
             fill_value=self.fill_value,
         )
 
+    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+        return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
+
     def to_bytes(self) -> bytes:
         def _json_convert(o):
             if isinstance(o, np.dtype):
@@ -323,6 +326,10 @@ class ArrayV2Metadata(Metadata):
             dtype=self.dtype,
             fill_value=self.fill_value,
         )
+
+    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+        chunk_identifier = self.dimension_separator.join(map(str, chunk_coords))
+        return "0" if chunk_identifier == "" else chunk_identifier
 
 
 def parse_dimension_names(data: Any) -> Tuple[str, ...] | None:

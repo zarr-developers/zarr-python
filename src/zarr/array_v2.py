@@ -229,7 +229,7 @@ class ArrayV2:
         await self.metadata.codecs.read_batch(
             [
                 (
-                    self.store_path / self._encode_chunk_key(chunk_coords),
+                    self.store_path / self.metadata.encode_chunk_key(chunk_coords),
                     self.metadata.get_chunk_spec(chunk_coords),
                     chunk_selection,
                     out_selection,
@@ -273,7 +273,7 @@ class ArrayV2:
         await self.metadata.codecs.write_batch(
             [
                 (
-                    self.store_path / self._encode_chunk_key(chunk_coords),
+                    self.store_path / self.metadata.encode_chunk_key(chunk_coords),
                     self.metadata.get_chunk_spec(chunk_coords),
                     chunk_selection,
                     out_selection,
@@ -283,10 +283,6 @@ class ArrayV2:
             value,
             self.runtime_configuration,
         )
-
-    def _encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        chunk_identifier = self.metadata.dimension_separator.join(map(str, chunk_coords))
-        return "0" if chunk_identifier == "" else chunk_identifier
 
     async def resize_async(self, new_shape: ChunkCoords) -> ArrayV2:
         assert len(new_shape) == len(self.metadata.shape)
@@ -302,7 +298,7 @@ class ArrayV2:
 
         await concurrent_map(
             [
-                (self._encode_chunk_key(chunk_coords),)
+                (self.metadata.encode_chunk_key(chunk_coords),)
                 for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
             ],
             _delete_key,
