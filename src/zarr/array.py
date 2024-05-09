@@ -33,7 +33,7 @@ from zarr.config import config
 from zarr.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-from zarr.metadata import ArrayMetadata
+from zarr.metadata import ArrayMetadata, parse_indexing_order
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
@@ -51,7 +51,7 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
 class AsyncArray:
     metadata: ArrayMetadata
     store_path: StorePath
-    _order: Literal["C", "F"]
+    order: Literal["C", "F"]
 
     @property
     def codecs(self):
@@ -61,12 +61,14 @@ class AsyncArray:
         self,
         metadata: ArrayMetadata,
         store_path: StorePath,
+        order: Literal["C", "F"] | None = None,
     ):
         metadata_parsed = parse_array_metadata(metadata)
+        order_parsed = parse_indexing_order(order or config.get("array.order"))
 
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
-        object.__setattr__(self, "_order", config.get("order", "C"))
+        object.__setattr__(self, "order", order_parsed)
 
     @classmethod
     async def create(
@@ -192,7 +194,7 @@ class AsyncArray:
         out = np.zeros(
             indexer.shape,
             dtype=self.metadata.dtype,
-            order=self._order,
+            order=self.order,
         )
 
         # reading chunks and decoding them
@@ -220,7 +222,7 @@ class AsyncArray:
         out_selection: SliceSelection,
         out: np.ndarray,
     ) -> None:
-        chunk_spec = self.metadata.get_chunk_spec(chunk_coords, self._order)
+        chunk_spec = self.metadata.get_chunk_spec(chunk_coords, self.order)
         chunk_key_encoding = self.metadata.chunk_key_encoding
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
         store_path = self.store_path / chunk_key
@@ -286,7 +288,7 @@ class AsyncArray:
         chunk_selection: SliceSelection,
         out_selection: SliceSelection,
     ) -> None:
-        chunk_spec = self.metadata.get_chunk_spec(chunk_coords, self._order)
+        chunk_spec = self.metadata.get_chunk_spec(chunk_coords, self.order)
         chunk_key_encoding = self.metadata.chunk_key_encoding
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
         store_path = self.store_path / chunk_key

@@ -6,7 +6,7 @@ from donfig import Config
 
 config = Config(
     "zarr",
-    defaults=[{"async": {"concurrency": None, "timeout": None}}],
+    defaults=[{"array": {"order": "C"}, "async": {"concurrency": None, "timeout": None}}],
 )
 
 

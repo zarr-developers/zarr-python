@@ -255,7 +255,7 @@ async def test_order(
         else [TransposeCodec(order=order_from_dim(store_order, data.ndim)), BytesCodec()]
     )
 
-    with config.set({"order": runtime_write_order}):
+    with config.set({"array.order": runtime_write_order}):
         a = await AsyncArray.create(
             store / "order",
             shape=data.shape,
@@ -270,7 +270,7 @@ async def test_order(
     read_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, read_data)
 
-    with config.set({"order": runtime_read_order}):
+    with config.set({"array.order": runtime_read_order}):
         a = await AsyncArray.open(
             store / "order",
         )
@@ -313,7 +313,7 @@ def test_order_implicit(
 
     codecs_: Optional[List[Codec]] = [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
 
-    with config.set({"order": runtime_write_order}):
+    with config.set({"array.order": runtime_write_order}):
         a = Array.create(
             store / "order_implicit",
             shape=data.shape,
@@ -325,7 +325,7 @@ def test_order_implicit(
 
     a[:, :] = data
 
-    with config.set({"order": runtime_read_order}):
+    with config.set({"array.order": runtime_read_order}):
         a = Array.open(
             store / "order_implicit",
         )
@@ -364,7 +364,7 @@ async def test_transpose(
         if with_sharding
         else [TransposeCodec(order=(2, 1, 0)), BytesCodec()]
     )
-    with config.set({"order": runtime_write_order}):
+    with config.set({"array.order": runtime_write_order}):
         a = await AsyncArray.create(
             store / "transpose",
             shape=data.shape,
@@ -379,7 +379,7 @@ async def test_transpose(
     read_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, read_data)
 
-    with config.set({"order": runtime_read_order}):
+    with config.set({"array.order": runtime_read_order}):
         a = await AsyncArray.open(
             store / "transpose",
         )
