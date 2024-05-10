@@ -27,9 +27,9 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
-def _unzip2(iterable: Iterable[Tuple[T, U]]) -> Tuple[List[T], List[U]]:
-    out0: List[T] = []
-    out1: List[U] = []
+def _unzip2(iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
+    out0: list[T] = []
+    out1: list[U] = []
     for item0, item1 in iterable:
         out0.append(item0)
         out1.append(item1)

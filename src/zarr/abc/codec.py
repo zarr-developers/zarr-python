@@ -30,11 +30,11 @@ U = TypeVar("U")
 
 
 def noop_for_none(
-    func: Callable[[T, ArraySpec, RuntimeConfiguration], Awaitable[Optional[U]]],
-) -> Callable[[Optional[T], ArraySpec, RuntimeConfiguration], Awaitable[Optional[U]]]:
+    func: Callable[[T, ArraySpec, RuntimeConfiguration], Awaitable[U | None]],
+) -> Callable[[T | None, ArraySpec, RuntimeConfiguration], Awaitable[U | None]]:
     async def wrap(
-        chunk: Optional[T], chunk_spec: ArraySpec, runtime_configuration: RuntimeConfiguration
-    ) -> Optional[U]:
+        chunk: T | None, chunk_spec: ArraySpec, runtime_configuration: RuntimeConfiguration
+    ) -> U | None:
         if chunk is None:
             return None
         return await func(chunk, chunk_spec, runtime_configuration)
@@ -45,17 +45,17 @@ def noop_for_none(
 @runtime_checkable
 class ByteGetter(Protocol):
     async def get(
-        self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]: ...
+        self, byte_range: tuple[int, int | None] | None = None
+    ) -> BytesLike | None: ...
 
 
 @runtime_checkable
 class ByteSetter(Protocol):
     async def get(
-        self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]: ...
+        self, byte_range: tuple[int, int | None] | None = None
+    ) -> BytesLike | None: ...
 
-    async def set(self, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None) -> None: ...
+    async def set(self, value: BytesLike, byte_range: tuple[int, int] | None = None) -> None: ...
 
     async def delete(self) -> None: ...
 
@@ -89,9 +89,9 @@ class ArrayArrayCodec(Codec):
 
     async def decode_batch(
         self,
-        chunk_arrays_and_specs: Iterable[Tuple[Optional[np.ndarray], ArraySpec]],
+        chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
         runtime_configuration: RuntimeConfiguration,
-    ) -> Iterable[Optional[np.ndarray]]:
+    ) -> Iterable[np.ndarray | None]:
         return await concurrent_map(
             [
                 (chunk_array, chunk_spec, runtime_configuration)
@@ -112,9 +112,9 @@ class ArrayArrayCodec(Codec):
 
     async def encode_batch(
         self,
-        chunk_arrays_and_specs: Iterable[Tuple[Optional[np.ndarray], ArraySpec]],
+        chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
         runtime_configuration: RuntimeConfiguration,
-    ) -> Iterable[Optional[np.ndarray]]:
+    ) -> Iterable[np.ndarray | None]:
         return await concurrent_map(
             [
                 (chunk_array, chunk_spec, runtime_configuration)
@@ -137,9 +137,9 @@ class ArrayBytesCodec(Codec):
 
     async def decode_batch(
         self,
-        chunk_bytes_and_specs: Iterable[Tuple[Optional[BytesLike], ArraySpec]],
+        chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
         runtime_configuration: RuntimeConfiguration,
-    ) -> Iterable[Optional[np.ndarray]]:
+    ) -> Iterable[np.ndarray | None]:
         return await concurrent_map(
             [
                 (chunk_bytes, chunk_spec, runtime_configuration)
@@ -160,9 +160,9 @@ class ArrayBytesCodec(Codec):
 
     async def encode_batch(
         self,
-        chunk_arrays_and_specs: Iterable[Tuple[Optional[np.ndarray], ArraySpec]],
+        chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
         runtime_configuration: RuntimeConfiguration,
-    ) -> Iterable[Optional[BytesLike]]:
+    ) -> Iterable[BytesLike | None]:
         return await concurrent_map(
             [
                 (chunk_array, chunk_spec, runtime_configuration)
@@ -186,9 +186,9 @@ class ArrayBytesCodecPartialDecodeMixin:
 
     async def decode_partial_batch(
         self,
-        batch_info: Iterable[Tuple[ByteGetter, SliceSelection, ArraySpec]],
+        batch_info: Iterable[tuple[ByteGetter, SliceSelection, ArraySpec]],
         runtime_configuration: RuntimeConfiguration,
-    ) -> Iterable[Optional[np.ndarray]]:
+    ) -> Iterable[np.ndarray | None]:
         return await concurrent_map(
             [
                 (byte_getter, selection, chunk_spec, runtime_configuration)
@@ -213,7 +213,7 @@ class ArrayBytesCodecPartialEncodeMixin:
 
     async def encode_partial_batch(
         self,
-        batch_info: Iterable[Tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]],
+        batch_info: Iterable[tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]],
         runtime_configuration: RuntimeConfiguration,
     ) -> None:
         await concurrent_map(
@@ -238,9 +238,9 @@ class BytesBytesCodec(Codec):
 
     async def decode_batch(
         self,
-        chunk_bytes_and_specs: Iterable[Tuple[Optional[BytesLike], ArraySpec]],
+        chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
         runtime_configuration: RuntimeConfiguration,
-    ) -> Iterable[Optional[BytesLike]]:
+    ) -> Iterable[BytesLike | None]:
         return await concurrent_map(
             [
                 (chunk_bytes, chunk_spec, runtime_configuration)
@@ -261,9 +261,9 @@ class BytesBytesCodec(Codec):
 
     async def encode_batch(
         self,
-        chunk_bytes_and_specs: Iterable[Tuple[Optional[BytesLike], ArraySpec]],
+        chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
         runtime_configuration: RuntimeConfiguration,
-    ) -> Iterable[Optional[BytesLike]]:
+    ) -> Iterable[BytesLike | None]:
         return await concurrent_map(
             [
                 (chunk_bytes, chunk_spec, runtime_configuration)
