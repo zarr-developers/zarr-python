@@ -56,7 +56,7 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
     """
     if isinstance(node, AsyncArray):
         return Array(node)
-    elif isinstance(node, Group):
+    elif isinstance(node, AsyncGroup):
         return Group(node)
     else:
         assert False
@@ -197,25 +197,11 @@ class AsyncGroup:
         store_path = self.store_path / key
         logger.warning("key=%s, store_path=%s", key, store_path)
 
-        # if `key` names an object in storage, it cannot be an array or group
-        if await store_path.exists():
-            raise KeyError(key)
-
-        # calling list_dir here is a big performance loss. We should try to find a way around
-        # this.
-        # see https://github.com/zarr-developers/zarr-python/pull/1743#issuecomment-2058681807
-        if key not in [item async for item in store_path.store.list_dir(self.store_path.path)]:
-            raise KeyError(key)
-
         # Note:
         # in zarr-python v2, we first check if `key` references an Array, else if `key` references
         # a group,using standalone `contains_array` and `contains_group` functions. These functions
         # are reusable, but for v3 they would perform redundant I/O operations.
         # Not clear how much of that strategy we want to keep here.
-
-        # if `key` names an object in storage, it cannot be an array or group
-        if await store_path.exists():
-            raise KeyError(key)
 
         if self.metadata.zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
