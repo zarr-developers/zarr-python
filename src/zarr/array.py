@@ -485,6 +485,10 @@ class Array:
     def store_path(self) -> StorePath:
         return self._async_array.store_path
 
+    @property
+    def order(self) -> Literal["C", "F"]:
+        return self._async_array.order
+
     def __getitem__(self, selection: Selection) -> np.ndarray:
         return sync(
             self._async_array.getitem(selection),
