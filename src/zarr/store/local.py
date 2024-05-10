@@ -12,18 +12,23 @@ from zarr.common import BytesLike, concurrent_map, to_thread
 
 def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> bytes:
     """
-    Fetch a contiguous region of bytes from a file.
+        Fetch a contiguous region of bytes from a file.
+    <<<<<<< HEAD
 
-    Parameters
-    ----------
+        Parameters
+        ----------
 
-    path: Path
-        The file to read bytes from.
-    byte_range: Optional[Tuple[int, Optional[int]]] = None
-        The range of bytes to read. If `byte_range` is `None`, then the entire file will be read.
-        If `byte_range` is a tuple, the first value specifies the index of the first byte to read,
-        and the second value specifies the total number of bytes to read. If the total value is
-        `None`, then the entire file after the first byte will be read.
+    =======
+        Parameters
+        ----------
+    >>>>>>> fcab6505eaf15c959a0093cefe1b5b1a31f6c3ed
+        path: Path
+            The file to read bytes from.
+        byte_range: Optional[Tuple[int, Optional[int]]] = None
+            The range of bytes to read. If `byte_range` is `None`, then the entire file will be read.
+            If `byte_range` is a tuple, the first value specifies the index of the first byte to read,
+            and the second value specifies the total number of bytes to read. If the total value is
+            `None`, then the entire file after the first byte will be read.
     """
     if byte_range is not None:
         if byte_range[0] is None:
@@ -103,13 +108,11 @@ class LocalStore(Store):
 
     async def get_partial_values(
         self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[bytes]:
+    ) -> List[Optional[bytes]]:
         """
         Read byte ranges from multiple keys.
-
         Parameters
         ----------
-
         key_ranges: List[Tuple[str, Tuple[int, int]]]
             A list of (key, (start, length)) tuples. The first element of the tuple is the name of
             the key in storage to fetch bytes from. The second element the tuple defines the byte
@@ -157,9 +160,10 @@ class LocalStore(Store):
         -------
         AsyncGenerator[str, None]
         """
-        for p in self.root.rglob(""):
+        to_strip = str(self.root) + "/"
+        for p in list(self.root.rglob("*")):
             if p.is_file():
-                yield str(p)
+                yield str(p).replace(to_strip, "")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         """Retrieve all keys in the store with a given prefix.
@@ -175,6 +179,11 @@ class LocalStore(Store):
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
                 yield str(p)
+
+        to_strip = str(self.root) + "/"
+        for p in (self.root / prefix).rglob("*"):
+            if p.is_file():
+                yield str(p).replace(to_strip, "")
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         """

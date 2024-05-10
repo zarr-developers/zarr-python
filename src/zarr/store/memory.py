@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from typing import Optional, MutableMapping, List, Tuple
 
-from zarr.common import BytesLike
+from zarr.common import BytesLike, concurrent_map
 from zarr.abc.store import Store
 
 
@@ -39,8 +39,9 @@ class MemoryStore(Store):
 
     async def get_partial_values(
         self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[bytes]:
-        raise NotImplementedError
+    ) -> List[Optional[BytesLike]]:
+        vals = await concurrent_map(key_ranges, self.get, limit=None)
+        return vals
 
     async def exists(self, key: str) -> bool:
         return key in self._store_dict
@@ -83,7 +84,7 @@ class MemoryStore(Store):
 
         if prefix == "":
             for key in self._store_dict:
-                yield key.split("/")[0]
+                yield key.split("/", maxsplit=1)[0]
         else:
             for key in self._store_dict:
                 if key.startswith(prefix + "/") and key != prefix:

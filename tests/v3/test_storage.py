@@ -792,3 +792,20 @@ async def test_local_store_set(tmpdir, path: str, auto_mkdir: bool) -> None:
 #     storage_transformer_methods.discard("__init__")
 #     storage_transformer_methods.discard("get_config")
 #     assert storage_transformer_methods == store_v3_methods
+import pytest
+
+from zarr.testing.store import StoreTests
+from zarr.store.memory import MemoryStore
+
+
+class TestMemoryStore(StoreTests):
+    store_cls = MemoryStore
+
+
+class TestLocalStore(StoreTests):
+    store_cls = LocalStore
+
+    @pytest.fixture(scope="function")
+    @pytest.mark.parametrize("auto_mkdir", (True, False))
+    def store(self, tmpdir) -> LocalStore:
+        return self.store_cls(str(tmpdir))
