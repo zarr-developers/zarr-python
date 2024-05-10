@@ -20,6 +20,7 @@ from zarr.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
 from zarr.config import RuntimeConfiguration, SyncConfiguration
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import SyncMixin, sync
+from typing import overload
 
 logger = logging.getLogger("zarr.group")
 
@@ -39,6 +40,26 @@ def parse_attributes(data: Any) -> dict[str, Any]:
         return data
     msg = f"Expected dict with string keys. Got {type(data)} instead."
     raise TypeError(msg)
+
+
+@overload
+def _parse_async_node(node: AsyncArray) -> Array: ...
+
+
+@overload
+def _parse_async_node(node: AsyncGroup) -> Group: ...
+
+
+def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
+    """
+    Wrap an AsyncArray in an Array, or an AsyncGroup in a Group.
+    """
+    if isinstance(node, AsyncArray):
+        return Array(node)
+    elif isinstance(node, Group):
+        return Group(node)
+    else:
+        assert False
 
 
 @dataclass(frozen=True)
@@ -509,11 +530,10 @@ class Group(SyncMixin):
         Return the sub-arrays and sub-groups of this group as a tuple of (name, array | group)
         pairs
         """
-        _members: list[AsyncArray | AsyncGroup] = self._sync_iter(self._async_group.members())
-        return tuple(
-            (key, Array(value)) if isinstance(value, AsyncArray) else (key, Group(value))
-            for key, value in _members
-        )
+        _members = self._sync_iter(self._async_group.members())
+
+        result = tuple(map(lambda kv: (kv[0], _parse_async_node(kv[1])), _members))
+        return result
 
     def __contains__(self, member) -> bool:
         return self._sync(self._async_group.contains(member))
