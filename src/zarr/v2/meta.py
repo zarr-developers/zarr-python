@@ -1,13 +1,13 @@
 import base64
 import itertools
 from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, List, Union, cast
+from typing import Mapping as MappingType
 
 import numpy as np
 
 from zarr.v2.errors import MetadataError
 from zarr.v2.util import json_dumps, json_loads
-
-from typing import cast, Union, Any, List, Mapping as MappingType, TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
     pass

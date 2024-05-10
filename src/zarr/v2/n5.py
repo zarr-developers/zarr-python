@@ -3,8 +3,8 @@
 import os
 import struct
 import sys
-from typing import Any, Dict, Optional, cast
 import warnings
+from typing import Any, Dict, Optional, cast
 
 import numpy as np
 from numcodecs.abc import Codec
@@ -12,8 +12,13 @@ from numcodecs.compat import ndarray_copy
 from numcodecs.registry import get_codec, register_codec
 
 from zarr.v2.meta import ZARR_FORMAT, json_dumps, json_loads
-from zarr.v2.storage import FSStore
-from zarr.v2.storage import NestedDirectoryStore, _prog_ckey, _prog_number, normalize_storage_path
+from zarr.v2.storage import (
+    FSStore,
+    NestedDirectoryStore,
+    _prog_ckey,
+    _prog_number,
+    normalize_storage_path,
+)
 from zarr.v2.storage import array_meta_key as zarr_array_meta_key
 from zarr.v2.storage import attrs_key as zarr_attrs_key
 from zarr.v2.storage import group_meta_key as zarr_group_meta_key

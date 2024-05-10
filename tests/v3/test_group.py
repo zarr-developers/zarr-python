@@ -1,13 +1,13 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from zarr.sync import sync
 
 if TYPE_CHECKING:
-    from zarr.store import MemoryStore, LocalStore
-import pytest
+    from zarr.store import LocalStore, MemoryStore
 import numpy as np
-
+import pytest
 from zarr.group import AsyncGroup, Group, GroupMetadata
 from zarr.store import LocalStore, StorePath
 

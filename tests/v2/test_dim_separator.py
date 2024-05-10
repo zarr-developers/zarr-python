@@ -1,14 +1,13 @@
 import pathlib
-
-import pytest
-from numpy.testing import assert_array_equal
 from functools import partial
 
+import pytest
 import zarr.v2
+from numpy.testing import assert_array_equal
 from zarr.v2.core import Array
-from zarr.v2.storage import DirectoryStore, NestedDirectoryStore, FSStore
-from .util import have_fsspec
+from zarr.v2.storage import DirectoryStore, FSStore, NestedDirectoryStore
 
+from .util import have_fsspec
 
 needs_fsspec = pytest.mark.skipif(not have_fsspec, reason="needs fsspec")
 

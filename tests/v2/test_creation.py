@@ -6,7 +6,6 @@ import warnings
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
-
 from zarr.v2.codecs import Zlib
 from zarr.v2.core import Array
 from zarr.v2.creation import (
@@ -27,8 +26,8 @@ from zarr.v2.hierarchy import open_group
 from zarr.v2.n5 import N5Store
 from zarr.v2.storage import DirectoryStore, KVStore
 from zarr.v2.sync import ThreadSynchronizer
-from .util import mktemp, have_fsspec
 
+from .util import have_fsspec, mktemp
 
 _VERSIONS = (None, 2)
 _VERSIONS2 = (2,)

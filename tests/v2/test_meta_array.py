@@ -1,15 +1,14 @@
 from typing import Optional
+
 import numpy as np
 import pytest
-
+import zarr.v2.codecs
 from numcodecs.abc import Codec
 from numcodecs.compat import ensure_contiguous_ndarray_like
 from numcodecs.registry import get_codec, register_codec
-
-import zarr.v2.codecs
 from zarr.v2.core import Array
 from zarr.v2.creation import array, empty, full, ones, open_array, zeros
-from zarr.v2.hierarchy import open_group, group
+from zarr.v2.hierarchy import group, open_group
 from zarr.v2.storage import DirectoryStore, MemoryStore, Store, ZipStore
 
 

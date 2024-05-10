@@ -1,7 +1,6 @@
-from abc import abstractmethod, ABC
-
+from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
 
 class Store(ABC):

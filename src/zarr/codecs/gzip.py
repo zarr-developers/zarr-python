@@ -1,16 +1,19 @@
 from __future__ import annotations
-from dataclasses import dataclass
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from numcodecs.gzip import GZip
+
 from zarr.abc.codec import BytesBytesCodec
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
-    from typing import Optional, Dict
+    from typing import Dict, Optional
+
     from typing_extensions import Self
+
     from zarr.common import JSON, ArraySpec, BytesLike
 
 

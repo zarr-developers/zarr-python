@@ -1,23 +1,24 @@
 from __future__ import annotations
-from enum import Enum
-from typing import TYPE_CHECKING, cast, Dict, Iterable, Any
-from dataclasses import dataclass, field
+
 import json
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Dict, Iterable, cast
+
 import numpy as np
 import numpy.typing as npt
 
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 
-
 if TYPE_CHECKING:
-    from typing import Literal, Union, List, Optional, Tuple
+    from typing import List, Literal, Optional, Tuple, Union
+
     from zarr.codecs.pipeline import CodecPipeline
 
 
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
-
 from zarr.common import (
     JSON,
     ArraySpec,
@@ -27,7 +28,6 @@ from zarr.common import (
     parse_shapelike,
 )
 from zarr.config import parse_indexing_order
-
 
 # For type checking
 _bool = bool

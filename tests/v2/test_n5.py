@@ -1,13 +1,13 @@
-import pytest
-
-from zarr.v2.n5 import N5ChunkWrapper, N5FSStore
-from zarr.v2.creation import create
-from zarr.v2.storage import atexit_rmtree
-from numcodecs import GZip
-import numpy as np
-from typing import Tuple
-import json
 import atexit
+import json
+from typing import Tuple
+
+import numpy as np
+import pytest
+from numcodecs import GZip
+from zarr.v2.creation import create
+from zarr.v2.n5 import N5ChunkWrapper, N5FSStore
+from zarr.v2.storage import atexit_rmtree
 
 from .util import have_fsspec
 

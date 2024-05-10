@@ -1,12 +1,14 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from typing import Dict, Type
+
     from zarr.abc.codec import Codec
 
-from importlib.metadata import EntryPoint, entry_points as get_entry_points
-
+from importlib.metadata import EntryPoint
+from importlib.metadata import entry_points as get_entry_points
 
 __codec_registry: Dict[str, Type[Codec]] = {}
 __lazy_load_codecs: Dict[str, EntryPoint] = {}

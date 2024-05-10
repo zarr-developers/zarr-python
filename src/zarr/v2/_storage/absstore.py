@@ -1,9 +1,11 @@
 """This module contains storage classes related to Azure Blob Storage (ABS)"""
 
 import warnings
+
 from numcodecs.compat import ensure_bytes
-from zarr.v2.util import normalize_storage_path
+
 from zarr.v2._storage.store import Store
+from zarr.v2.util import normalize_storage_path
 
 __doctest_requires__ = {
     ("ABSStore", "ABSStore.*"): ["azure.storage.blob"],

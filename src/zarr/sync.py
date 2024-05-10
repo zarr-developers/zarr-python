@@ -1,12 +1,13 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, TypeVar
 
 if TYPE_CHECKING:
     from typing import Any, AsyncIterator, Coroutine
 
 import asyncio
-from concurrent.futures import wait
 import threading
+from concurrent.futures import wait
 
 from typing_extensions import ParamSpec
 

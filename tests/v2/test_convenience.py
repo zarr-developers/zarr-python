@@ -5,21 +5,20 @@ from numbers import Integral
 
 import numpy as np
 import pytest
+import zarr.v2 as zarr
 from numcodecs import Adler32, Zlib
 from numpy.testing import assert_array_equal
-
-import zarr.v2 as zarr
 from zarr.v2.convenience import (
     consolidate_metadata,
     copy,
+    copy_all,
     copy_store,
     load,
     open,
     open_consolidated,
     save,
-    save_group,
     save_array,
-    copy_all,
+    save_group,
 )
 from zarr.v2.core import Array
 from zarr.v2.errors import CopyError

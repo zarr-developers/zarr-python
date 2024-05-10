@@ -1,16 +1,15 @@
 import numpy
 import numpy as np
 import pytest
-from numpy.testing import assert_array_equal
-
 import zarr.v2
+from numpy.testing import assert_array_equal
 from zarr.v2.indexing import (
+    PartialChunkIterator,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
     oindex_set,
     replace_ellipsis,
-    PartialChunkIterator,
 )
 
 from .util import CountingDict

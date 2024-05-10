@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import cached_property
-
 from typing import TYPE_CHECKING, Union
 
 import numcodecs
@@ -15,7 +15,9 @@ from zarr.common import parse_enum, parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
+
     from typing_extensions import Self
+
     from zarr.common import JSON, ArraySpec, BytesLike
 
 

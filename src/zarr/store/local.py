@@ -4,7 +4,7 @@ import io
 import shutil
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Union, Optional, List, Tuple
+from typing import List, Optional, Tuple, Union
 
 from zarr.abc.store import Store
 from zarr.common import BytesLike, concurrent_map, to_thread

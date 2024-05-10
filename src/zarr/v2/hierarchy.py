@@ -25,20 +25,19 @@ from zarr.v2.errors import (
     ReadOnlyError,
 )
 from zarr.v2.storage import (
-    _prefix_to_group_key,
     BaseStore,
     MemoryStore,
-    group_meta_key,
+    _prefix_to_group_key,
     attrs_key,
     contains_array,
     contains_group,
+    group_meta_key,
     init_group,
     listdir,
     normalize_store_arg,
     rename,
     rmdir,
 )
-
 from zarr.v2.util import (
     InfoReporter,
     TreeViewer,

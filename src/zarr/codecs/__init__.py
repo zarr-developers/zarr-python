@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from zarr.codecs.blosc import BloscCodec, BloscCname, BloscShuffle  # noqa: F401
+from zarr.codecs.blosc import BloscCname, BloscCodec, BloscShuffle  # noqa: F401
 from zarr.codecs.bytes import BytesCodec, Endian  # noqa: F401
 from zarr.codecs.crc32c_ import Crc32cCodec  # noqa: F401
 from zarr.codecs.gzip import GzipCodec  # noqa: F401

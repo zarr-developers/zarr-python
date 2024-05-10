@@ -25,6 +25,8 @@ import re
 import shutil
 import sys
 import tempfile
+import time
+import uuid
 import warnings
 import zipfile
 from collections import OrderedDict
@@ -32,25 +34,39 @@ from collections.abc import MutableMapping
 from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
-from typing import Sequence, Mapping, Optional, Union, List, Tuple, Dict, Any
-import uuid
-import time
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
-from numcodecs.compat import ensure_bytes, ensure_text, ensure_contiguous_ndarray_like
+from numcodecs.compat import ensure_bytes, ensure_contiguous_ndarray_like, ensure_text
 from numcodecs.registry import codec_registry
-from zarr.v2.context import Context
 
+from zarr.v2._storage.absstore import ABSStore  # noqa: F401
+from zarr.v2._storage.store import (  # noqa: F401
+    DEFAULT_ZARR_VERSION,
+    BaseStore,
+    Store,
+    _listdir_from_keys,
+    _path_to_prefix,
+    _prefix_to_array_key,
+    _prefix_to_group_key,
+    _rename_from_keys,
+    _rmdir_from_keys,
+    array_meta_key,
+    attrs_key,
+    group_meta_key,
+)
+from zarr.v2.context import Context
 from zarr.v2.errors import (
-    MetadataError,
     BadCompressorError,
     ContainsArrayError,
     ContainsGroupError,
     FSPathExistNotDir,
+    MetadataError,
     ReadOnlyError,
 )
 from zarr.v2.meta import encode_array_metadata, encode_group_metadata
 from zarr.v2.util import (
     buffer_size,
+    ensure_contiguous_ndarray_or_bytes,
     json_loads,
     nolock,
     normalize_chunks,
@@ -61,23 +77,6 @@ from zarr.v2.util import (
     normalize_shape,
     normalize_storage_path,
     retry_call,
-    ensure_contiguous_ndarray_or_bytes,
-)
-
-from zarr.v2._storage.absstore import ABSStore  # noqa: F401
-from zarr.v2._storage.store import (  # noqa: F401
-    _listdir_from_keys,
-    _rename_from_keys,
-    _rmdir_from_keys,
-    _path_to_prefix,
-    _prefix_to_array_key,
-    _prefix_to_group_key,
-    array_meta_key,
-    attrs_key,
-    group_meta_key,
-    DEFAULT_ZARR_VERSION,
-    BaseStore,
-    Store,
 )
 
 __doctest_requires__ = {

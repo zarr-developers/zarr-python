@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Optional, Tuple, Union
 
-from zarr.common import BytesLike
 from zarr.abc.store import Store
+from zarr.common import BytesLike
 from zarr.store.local import LocalStore
 
 

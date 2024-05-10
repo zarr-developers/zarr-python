@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, replace
 import json
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import numcodecs
 import numpy as np
-
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from zarr.common import (
@@ -430,11 +429,8 @@ class ArrayV2:
 
         from zarr.abc.codec import Codec
         from zarr.array import Array
-        from zarr.common import ZARR_JSON
         from zarr.chunk_grids import RegularChunkGrid
         from zarr.chunk_key_encodings import V2ChunkKeyEncoding
-        from zarr.metadata import ArrayMetadata, DataType
-
         from zarr.codecs import (
             BloscCodec,
             BloscShuffle,
@@ -442,6 +438,8 @@ class ArrayV2:
             GzipCodec,
             TransposeCodec,
         )
+        from zarr.common import ZARR_JSON
+        from zarr.metadata import ArrayMetadata, DataType
 
         data_type = DataType.from_dtype(self.metadata.dtype)
         endian: Literal["little", "big"]

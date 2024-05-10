@@ -1,21 +1,21 @@
 import inspect
 import json
 import math
-import numbers
-from textwrap import TextWrapper
 import mmap
+import numbers
 import time
+from textwrap import TextWrapper
 from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     Iterator,
     Mapping,
     Optional,
     Tuple,
     TypeVar,
     Union,
-    Iterable,
     cast,
 )
 
@@ -23,15 +23,15 @@ import numpy as np
 import numpy.typing as npt
 from asciitree import BoxStyle, LeftAligned
 from asciitree.traversal import Traversal
+from numcodecs.blosc import cbuffer_metainfo, cbuffer_sizes
 from numcodecs.compat import (
-    ensure_text,
-    ensure_ndarray_like,
     ensure_bytes,
     ensure_contiguous_ndarray_like,
+    ensure_ndarray_like,
+    ensure_text,
 )
 from numcodecs.ndarray_like import NDArrayLike
 from numcodecs.registry import codec_registry
-from numcodecs.blosc import cbuffer_sizes, cbuffer_metainfo
 
 KeyType = TypeVar("KeyType")
 ValueType = TypeVar("ValueType")

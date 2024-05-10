@@ -1,6 +1,5 @@
 import numcodecs
 import pytest
-
 import zarr.v2
 from zarr.v2.util import InfoReporter
 

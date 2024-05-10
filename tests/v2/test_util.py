@@ -3,7 +3,6 @@ from unittest import mock
 
 import numpy as np
 import pytest
-
 from zarr.v2.core import Array
 from zarr.v2.util import (
     ConstantMap,
@@ -23,8 +22,8 @@ from zarr.v2.util import (
     normalize_shape,
     retry_call,
     tree_array_icon,
-    tree_group_icon,
     tree_get_icon,
+    tree_group_icon,
     tree_widget,
 )
 

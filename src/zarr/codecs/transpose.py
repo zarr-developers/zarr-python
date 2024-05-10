@@ -1,12 +1,13 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Dict, Iterable, Union, cast
 
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Dict, Iterable, Union, cast
 
 from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import TYPE_CHECKING, Optional, Tuple
+
     from typing_extensions import Self
 
 import numpy as np

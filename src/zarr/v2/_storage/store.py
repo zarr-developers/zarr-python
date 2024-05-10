@@ -1,10 +1,9 @@
 from collections.abc import MutableMapping
 from typing import Any, List, Mapping, Optional, Sequence, Union
 
+from zarr.v2.context import Context
 from zarr.v2.meta import Metadata2
 from zarr.v2.util import normalize_storage_path
-from zarr.v2.context import Context
-
 
 # v2 store keys
 array_meta_key = ".zarray"

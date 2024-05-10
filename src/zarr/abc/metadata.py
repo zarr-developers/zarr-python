@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Sequence
 
 if TYPE_CHECKING:
     from typing import Dict
+
     from typing_extensions import Self
 
-from dataclasses import fields, dataclass
+from dataclasses import dataclass, fields
 
 from zarr.common import JSON
 

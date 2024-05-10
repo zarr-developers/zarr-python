@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
-import numpy as np
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Iterable
 from warnings import warn
+
+import numpy as np
 
 from zarr.abc.codec import (
     ArrayArrayCodec,
@@ -19,9 +20,10 @@ from zarr.common import parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import Iterator, List, Optional, Tuple, Union
-    from zarr.store import StorePath
-    from zarr.metadata import ArrayMetadata
+
     from zarr.common import JSON, ArraySpec, BytesLike, SliceSelection
+    from zarr.metadata import ArrayMetadata
+    from zarr.store import StorePath
 
 
 @dataclass(frozen=True)

@@ -2,11 +2,10 @@ import collections
 import os
 import tempfile
 from typing import Any, Mapping, Sequence
-from zarr.v2.context import Context
-
-from zarr.v2.storage import Store
 
 import pytest
+from zarr.v2.context import Context
+from zarr.v2.storage import Store
 
 
 class CountingDict(Store):
@@ -65,8 +64,8 @@ except ImportError:  # pragma: no cover
 
 
 def abs_container():
-    from azure.core.exceptions import ResourceExistsError
     import azure.storage.blob as asb
+    from azure.core.exceptions import ResourceExistsError
 
     URL = "http://127.0.0.1:10000"
     ACCOUNT_NAME = "devstoreaccount1"

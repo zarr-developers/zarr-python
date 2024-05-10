@@ -4,24 +4,23 @@ import itertools
 import os
 import re
 from collections.abc import Mapping, MutableMapping
+from typing import Any, Union
+
 from zarr.v2.core import Array
 from zarr.v2.creation import array as _create_array
 from zarr.v2.creation import open_array
 from zarr.v2.errors import CopyError, PathNotFoundError
-from zarr.v2.hierarchy import Group
+from zarr.v2.hierarchy import Group, open_group
 from zarr.v2.hierarchy import group as _create_group
-from zarr.v2.hierarchy import open_group
 from zarr.v2.meta import json_dumps, json_loads
 from zarr.v2.storage import (
+    BaseStore,
+    ConsolidatedMetadataStore,
     contains_array,
     contains_group,
     normalize_store_arg,
-    BaseStore,
-    ConsolidatedMetadataStore,
 )
 from zarr.v2.util import TreeViewer, buffer_size, normalize_storage_path
-
-from typing import Any, Union
 
 StoreLike = Union[BaseStore, MutableMapping[str, Any], str, None]
 

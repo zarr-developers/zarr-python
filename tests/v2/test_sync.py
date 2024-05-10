@@ -8,7 +8,6 @@ from tempfile import mkdtemp
 
 import numpy as np
 from numpy.testing import assert_array_equal
-
 from zarr.v2.attrs import Attributes
 from zarr.v2.core import Array
 from zarr.v2.hierarchy import Group

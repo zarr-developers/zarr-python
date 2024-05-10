@@ -1,8 +1,9 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Dict
-from dataclasses import dataclass
-from zarr.abc.metadata import Metadata
 
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Dict
+
+from zarr.abc.metadata import Metadata
 from zarr.common import (
     JSON,
     ChunkCoords,

@@ -1,17 +1,19 @@
 from __future__ import annotations
-from enum import Enum
-from typing import TYPE_CHECKING, Iterable, Mapping, NamedTuple, Union
-from dataclasses import dataclass, replace
-from functools import lru_cache
 
+from dataclasses import dataclass, replace
+from enum import Enum
+from functools import lru_cache
+from typing import TYPE_CHECKING, Iterable, Mapping, NamedTuple, Union
 
 import numpy as np
+
 from zarr.abc.codec import (
-    Codec,
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
+    Codec,
 )
+from zarr.chunk_grids import RegularChunkGrid
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.pipeline import CodecPipeline
@@ -26,7 +28,6 @@ from zarr.common import (
     product,
 )
 from zarr.config import config
-from zarr.chunk_grids import RegularChunkGrid
 from zarr.indexing import (
     BasicIndexer,
     c_order_iter,
@@ -40,15 +41,16 @@ from zarr.metadata import (
 
 if TYPE_CHECKING:
     from typing import Awaitable, Callable, Dict, Iterator, List, Optional, Set, Tuple
+
     from typing_extensions import Self
 
-    from zarr.store import StorePath
     from zarr.common import (
         JSON,
-        ChunkCoords,
         BytesLike,
+        ChunkCoords,
         SliceSelection,
     )
+    from zarr.store import StorePath
 
 MAX_UINT_64 = 2**64 - 1
 

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from typing import Optional, MutableMapping, List, Tuple
+from typing import List, MutableMapping, Optional, Tuple
 
-from zarr.common import BytesLike, concurrent_map
 from zarr.abc.store import Store
+from zarr.common import BytesLike, concurrent_map
 
 
 # TODO: this store could easily be extended to wrap any MutuableMapping store from v2

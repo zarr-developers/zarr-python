@@ -1,15 +1,17 @@
 import atexit
 import os
-import sys
 import pickle
 import shutil
-from typing import Any, Literal, Optional, Tuple, Union
+import sys
 import unittest
 from itertools import zip_longest
 from tempfile import mkdtemp
+from typing import Any, Literal, Optional, Tuple, Union
+
 import numpy as np
 import packaging.version
 import pytest
+import zarr.v2
 from numcodecs import (
     BZ2,
     JSON,
@@ -29,15 +31,12 @@ from numcodecs import (
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 from numpy.testing import assert_array_almost_equal, assert_array_equal
-
-import zarr.v2
 from zarr.v2._storage.store import (
     BaseStore,
 )
-
 from zarr.v2.core import Array
 from zarr.v2.meta import json_loads
-from zarr.v2.n5 import N5Store, N5FSStore, n5_keywords
+from zarr.v2.n5 import N5FSStore, N5Store, n5_keywords
 from zarr.v2.storage import (
     ABSStore,
     DBMStore,
@@ -54,9 +53,9 @@ from zarr.v2.storage import (
     init_group,
     normalize_store_arg,
 )
-
 from zarr.v2.util import buffer_size
-from .util import abs_container, skip_test_env_var, have_fsspec, mktemp
+
+from .util import abs_container, have_fsspec, mktemp, skip_test_env_var
 
 # noinspection PyMethodMayBeStatic
 

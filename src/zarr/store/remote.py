@@ -3,13 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple, Union
 
 from zarr.abc.store import Store
-from zarr.store.core import _dereference_path
 from zarr.common import BytesLike
-
+from zarr.store.core import _dereference_path
 
 if TYPE_CHECKING:
-    from upath import UPath
     from fsspec.asyn import AsyncFileSystem
+    from upath import UPath
 
 
 class RemoteStore(Store):
@@ -20,8 +19,8 @@ class RemoteStore(Store):
     root: UPath
 
     def __init__(self, url: Union[UPath, str], **storage_options: Dict[str, Any]):
-        from upath import UPath
         import fsspec
+        from upath import UPath
 
         if isinstance(url, str):
             self.root = UPath(url, **storage_options)

@@ -14,17 +14,17 @@ from zarr.v2._storage.store import _prefix_to_attrs_key
 from zarr.v2.attrs import Attributes
 from zarr.v2.codecs import AsType, get_codec
 from zarr.v2.context import Context
-from zarr.v2.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
+from zarr.v2.errors import ArrayIndexError, ArrayNotFoundError, ReadOnlyError
 from zarr.v2.indexing import (
     BasicIndexer,
+    BlockIndex,
+    BlockIndexer,
     CoordinateIndexer,
     MaskIndexer,
     OIndex,
     OrthogonalIndexer,
-    VIndex,
-    BlockIndex,
-    BlockIndexer,
     PartialChunkIterator,
+    VIndex,
     check_fields,
     check_no_multi_fields,
     ensure_tuple,
@@ -36,18 +36,20 @@ from zarr.v2.indexing import (
     pop_fields,
 )
 from zarr.v2.storage import (
-    _prefix_to_array_key,
     KVStore,
+    _prefix_to_array_key,
     getsize,
     listdir,
     normalize_store_arg,
 )
 from zarr.v2.util import (
     ConstantMap,
+    InfoReporter,
+    PartialReadBuffer,
     UncompressedPartialReadBufferV3,
     all_equal,
-    InfoReporter,
     check_array_shape,
+    ensure_ndarray_like,
     human_readable_size,
     is_total_slice,
     nolock,
@@ -55,8 +57,6 @@ from zarr.v2.util import (
     normalize_resize_args,
     normalize_shape,
     normalize_storage_path,
-    PartialReadBuffer,
-    ensure_ndarray_like,
 )
 
 __all__ = ["Array"]

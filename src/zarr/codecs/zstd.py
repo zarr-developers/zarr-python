@@ -1,7 +1,7 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
-from dataclasses import dataclass
 
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from zstandard import ZstdCompressor, ZstdDecompressor
 
@@ -11,8 +11,10 @@ from zarr.common import parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
+
     from typing_extensions import Self
-    from zarr.common import BytesLike, JSON, ArraySpec
+
+    from zarr.common import JSON, ArraySpec, BytesLike
 
 
 def parse_zstd_level(data: JSON) -> int:

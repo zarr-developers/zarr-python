@@ -1,8 +1,8 @@
 from __future__ import annotations
+
+import sys
 from dataclasses import dataclass, replace
 from enum import Enum
-import sys
-
 from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import numpy as np
@@ -12,8 +12,9 @@ from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration
 
 if TYPE_CHECKING:
-    from zarr.common import JSON, ArraySpec, BytesLike
     from typing_extensions import Self
+
+    from zarr.common import JSON, ArraySpec, BytesLike
 
 
 class Endian(Enum):

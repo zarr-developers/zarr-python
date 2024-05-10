@@ -1,8 +1,8 @@
 import atexit
 import os
-import sys
 import pickle
 import shutil
+import sys
 import tempfile
 import textwrap
 import unittest
@@ -17,7 +17,6 @@ except ImportError:  # pragma: no cover
 
 from numcodecs import Zlib
 from numpy.testing import assert_array_equal
-
 from zarr.v2.attrs import Attributes
 from zarr.v2.core import Array
 from zarr.v2.creation import open_array
@@ -25,9 +24,9 @@ from zarr.v2.hierarchy import Group, group, open_group
 from zarr.v2.storage import (
     ABSStore,
     DBMStore,
-    KVStore,
     DirectoryStore,
     FSStore,
+    KVStore,
     LMDBStore,
     LRUStoreCache,
     MemoryStore,
@@ -41,9 +40,9 @@ from zarr.v2.storage import (
     init_array,
     init_group,
 )
-
 from zarr.v2.util import InfoReporter
-from .util import skip_test_env_var, have_fsspec, abs_container, mktemp
+
+from .util import abs_container, have_fsspec, mktemp, skip_test_env_var
 
 # noinspection PyStatementEffect
 

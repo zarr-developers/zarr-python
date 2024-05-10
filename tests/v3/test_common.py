@@ -1,14 +1,14 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Iterable
 
 if TYPE_CHECKING:
-    from typing import Literal, Any, Tuple
+    from typing import Any, Literal, Tuple
 
 import numpy as np
-from zarr.config import parse_indexing_order
-from zarr.common import parse_shapelike
-from zarr.common import parse_name, product
 import pytest
+from zarr.common import parse_name, parse_shapelike, product
+from zarr.config import parse_indexing_order
 
 
 @pytest.mark.parametrize("data", [(0, 0, 0, 0), (1, 3, 4, 5, 6), (2, 4)])
