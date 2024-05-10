@@ -3,7 +3,9 @@ from typing import TYPE_CHECKING, Dict, Iterable, Union, cast
 
 from dataclasses import dataclass, replace
 
+from zarr.codecs.mixins import ArrayArrayCodecBatchMixin
 from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
+from zarr.codecs.registry import register_codec
 
 if TYPE_CHECKING:
     from zarr.config import RuntimeConfiguration
@@ -11,9 +13,6 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
 import numpy as np
-
-from zarr.abc.codec import ArrayArrayCodec
-from zarr.codecs.registry import register_codec
 
 
 def parse_transpose_order(data: Union[JSON, Iterable[int]]) -> Tuple[int, ...]:
@@ -25,7 +24,7 @@ def parse_transpose_order(data: Union[JSON, Iterable[int]]) -> Tuple[int, ...]:
 
 
 @dataclass(frozen=True)
-class TransposeCodec(ArrayArrayCodec):
+class TransposeCodec(ArrayArrayCodecBatchMixin):
     is_fixed_size = True
 
     order: Tuple[int, ...]
@@ -73,7 +72,7 @@ class TransposeCodec(ArrayArrayCodec):
             fill_value=chunk_spec.fill_value,
         )
 
-    async def decode(
+    async def decode_single(
         self,
         chunk_array: np.ndarray,
         chunk_spec: ArraySpec,
@@ -85,7 +84,7 @@ class TransposeCodec(ArrayArrayCodec):
         chunk_array = chunk_array.transpose(inverse_order)
         return chunk_array
 
-    async def encode(
+    async def encode_single(
         self,
         chunk_array: np.ndarray,
         chunk_spec: ArraySpec,
