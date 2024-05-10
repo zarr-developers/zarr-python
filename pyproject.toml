@@ -180,10 +180,6 @@ check_untyped_defs = false
 module = [
     "zarr.v2.*",
     "zarr.abc.codec",
-    "zarr.codecs.bytes",
-    "zarr.codecs.pipeline",
-    "zarr.codecs.sharding",
-    "zarr.codecs.transpose",
     "zarr.array_v2",
     "zarr.array",
     "zarr.sync",

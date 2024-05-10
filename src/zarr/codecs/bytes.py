@@ -3,9 +3,10 @@ from dataclasses import dataclass, replace
 from enum import Enum
 import sys
 
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import numpy as np
+import numpy.typing as npt
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.codecs.registry import register_codec
@@ -60,7 +61,7 @@ class BytesCodec(ArrayBytesCodec):
             )
         return self
 
-    def _get_byteorder(self, array: np.ndarray) -> Endian:
+    def _get_byteorder(self, array: npt.NDArray[Any]) -> Endian:
         if array.dtype.byteorder == "<":
             return Endian.little
         elif array.dtype.byteorder == ">":
@@ -73,7 +74,7 @@ class BytesCodec(ArrayBytesCodec):
         chunk_bytes: BytesLike,
         chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> np.ndarray:
+    ) -> npt.NDArray[Any]:
         if chunk_spec.dtype.itemsize > 0:
             if self.endian == Endian.little:
                 prefix = "<"
@@ -93,7 +94,7 @@ class BytesCodec(ArrayBytesCodec):
 
     async def encode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: npt.NDArray[Any],
         _chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:

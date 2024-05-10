@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Dict, Iterable, Union, cast
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Union, cast
 
 from dataclasses import dataclass, replace
 
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from typing import TYPE_CHECKING, Optional, Tuple
     from typing_extensions import Self
 
-import numpy as np
+import numpy.typing as npt
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.codecs.registry import register_codec
@@ -75,10 +75,10 @@ class TransposeCodec(ArrayArrayCodec):
 
     async def decode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: npt.NDArray[Any],
         chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> np.ndarray:
+    ) -> npt.NDArray[Any]:
         inverse_order = [0] * chunk_spec.ndim
         for x, i in enumerate(self.order):
             inverse_order[x] = i
@@ -87,10 +87,10 @@ class TransposeCodec(ArrayArrayCodec):
 
     async def encode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: npt.NDArray[Any],
         chunk_spec: ArraySpec,
         _runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[npt.NDArray[Any]]:
         chunk_array = chunk_array.transpose(self.order)
         return chunk_array
 

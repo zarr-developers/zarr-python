@@ -1,11 +1,12 @@
 from __future__ import annotations
 from enum import Enum
-from typing import TYPE_CHECKING, Iterable, Mapping, NamedTuple, Union
+from typing import TYPE_CHECKING, Any, Iterable, Mapping, NamedTuple, Union, Optional
 from dataclasses import dataclass, replace
 from functools import lru_cache
 
 
 import numpy as np
+import numpy.typing as npt
 from zarr.abc.codec import (
     Codec,
     ArrayBytesCodec,
@@ -18,7 +19,9 @@ from zarr.codecs.pipeline import CodecPipeline
 from zarr.codecs.registry import register_codec
 from zarr.common import (
     ArraySpec,
+    BytesLike,
     ChunkCoordsLike,
+    ChunkCoords,
     concurrent_map,
     parse_enum,
     parse_named_configuration,
@@ -39,14 +42,12 @@ from zarr.metadata import (
 )
 
 if TYPE_CHECKING:
-    from typing import Awaitable, Callable, Dict, Iterator, List, Optional, Set, Tuple
+    from typing import Awaitable, Callable, Dict, Iterator, List, Set, Tuple
     from typing_extensions import Self
 
     from zarr.store import StorePath
     from zarr.common import (
         JSON,
-        ChunkCoords,
-        BytesLike,
         SliceSelection,
     )
     from zarr.config import RuntimeConfiguration
@@ -65,7 +66,7 @@ def parse_index_location(data: JSON) -> ShardingCodecIndexLocation:
 
 class _ShardIndex(NamedTuple):
     # dtype uint64, shape (chunks_per_shard_0, chunks_per_shard_1, ..., 2)
-    offsets_and_lengths: np.ndarray
+    offsets_and_lengths: npt.NDArray[np.uint64]
 
     @property
     def chunks_per_shard(self) -> ChunkCoords:
@@ -126,7 +127,10 @@ class _ShardIndex(NamedTuple):
         return cls(offsets_and_lengths)
 
 
-class _ShardProxy(Mapping):
+_ShardMapping = Mapping[ChunkCoords, Optional[BytesLike]]
+
+
+class _ShardProxy(_ShardMapping):
     index: _ShardIndex
     buf: BytesLike
 
@@ -175,7 +179,7 @@ class _ShardBuilder(_ShardProxy):
         cls,
         chunks_per_shard: ChunkCoords,
         tombstones: Set[ChunkCoords],
-        *shard_dicts: Mapping[ChunkCoords, BytesLike],
+        *shard_dicts: _ShardMapping,
     ) -> _ShardBuilder:
         obj = cls.create_empty(chunks_per_shard)
         for chunk_coords in morton_order_iter(chunks_per_shard):
@@ -303,7 +307,7 @@ class ShardingCodec(
         shard_bytes: BytesLike,
         shard_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> np.ndarray:
+    ) -> npt.NDArray[Any]:
         # print("decode")
         shard_shape = shard_spec.shape
         chunk_shape = self.chunk_shape
@@ -353,7 +357,7 @@ class ShardingCodec(
         selection: SliceSelection,
         shard_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[npt.NDArray[Any]]:
         shard_shape = shard_spec.shape
         chunk_shape = self.chunk_shape
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
@@ -375,7 +379,7 @@ class ShardingCodec(
         all_chunk_coords = set(chunk_coords for chunk_coords, _, _ in indexed_chunks)
 
         # reading bytes of all requested chunks
-        shard_dict: Mapping[ChunkCoords, BytesLike] = {}
+        shard_dict: _ShardMapping = {}
         if self._is_total_shard(all_chunk_coords, chunks_per_shard):
             # read entire shard
             shard_dict_maybe = await self._load_full_shard_maybe(store_path, chunks_per_shard)
@@ -423,7 +427,7 @@ class ShardingCodec(
         out_selection: SliceSelection,
         shard_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-        out: np.ndarray,
+        out: npt.NDArray[Any],
     ) -> None:
         chunk_spec = self._get_chunk_spec(shard_spec)
         chunk_bytes = shard_dict.get(chunk_coords, None)
@@ -436,7 +440,7 @@ class ShardingCodec(
 
     async def encode(
         self,
-        shard_array: np.ndarray,
+        shard_array: npt.NDArray[Any],
         shard_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
@@ -453,7 +457,7 @@ class ShardingCodec(
         )
 
         async def _write_chunk(
-            shard_array: np.ndarray,
+            shard_array: npt.NDArray[Any],
             chunk_coords: ChunkCoords,
             chunk_selection: SliceSelection,
             out_selection: SliceSelection,
@@ -498,7 +502,7 @@ class ShardingCodec(
     async def encode_partial(
         self,
         store_path: StorePath,
-        shard_array: np.ndarray,
+        shard_array: npt.NDArray[Any],
         selection: SliceSelection,
         shard_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,

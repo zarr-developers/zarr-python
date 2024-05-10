@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
-import numpy as np
+from typing import TYPE_CHECKING, Any, Iterable
+import numpy.typing as npt
 from dataclasses import dataclass
 from warnings import warn
 
@@ -152,7 +152,7 @@ class CodecPipeline(Metadata):
         chunk_bytes: BytesLike,
         array_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> np.ndarray:
+    ) -> npt.NDArray[Any]:
         (
             aa_codecs_with_spec,
             ab_codec_with_spec,
@@ -176,7 +176,7 @@ class CodecPipeline(Metadata):
         selection: SliceSelection,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[npt.NDArray[Any]]:
         assert self.supports_partial_decode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
         return await self.array_bytes_codec.decode_partial(
@@ -185,7 +185,7 @@ class CodecPipeline(Metadata):
 
     async def encode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: npt.NDArray[Any],
         array_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
@@ -222,7 +222,7 @@ class CodecPipeline(Metadata):
     async def encode_partial(
         self,
         store_path: StorePath,
-        chunk_array: np.ndarray,
+        chunk_array: npt.NDArray[Any],
         selection: SliceSelection,
         chunk_spec: ArraySpec,
         runtime_configuration: RuntimeConfiguration,
