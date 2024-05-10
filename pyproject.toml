@@ -19,6 +19,7 @@ dependencies = [
     'crc32c',
     'zstandard',
     'typing_extensions',
+    'donfig'
 ]
 dynamic = [
   "version",
