@@ -10,25 +10,19 @@ from zarr.abc.store import Store
 from zarr.common import BytesLike, concurrent_map, to_thread
 
 
-def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> bytes:
+def _get(path: Path, byte_range: tuple[int, int | None] | None) -> bytes:
     """
-        Fetch a contiguous region of bytes from a file.
-    <<<<<<< HEAD
+    Fetch a contiguous region of bytes from a file.
 
-        Parameters
-        ----------
-
-    =======
-        Parameters
-        ----------
-    >>>>>>> fcab6505eaf15c959a0093cefe1b5b1a31f6c3ed
-        path: Path
-            The file to read bytes from.
-        byte_range: Optional[Tuple[int, Optional[int]]] = None
-            The range of bytes to read. If `byte_range` is `None`, then the entire file will be read.
-            If `byte_range` is a tuple, the first value specifies the index of the first byte to read,
-            and the second value specifies the total number of bytes to read. If the total value is
-            `None`, then the entire file after the first byte will be read.
+    Parameters
+    ----------
+    path: Path
+        The file to read bytes from.
+    byte_range: tuple[int, int | None] | None = None
+        The range of bytes to read. If `byte_range` is `None`, then the entire file will be read.
+        If `byte_range` is a tuple, the first value specifies the index of the first byte to read,
+        and the second value specifies the total number of bytes to read. If the total value is
+        `None`, then the entire file after the first byte will be read.
     """
     if byte_range is not None:
         if byte_range[0] is None:
