@@ -6,7 +6,6 @@
 
 # Questions to consider:
 # 1. Was splitting the array into two classes really necessary?
-# 2. Do we really need runtime_configuration? Specifically, the asyncio_loop seems problematic
 
 from __future__ import annotations
 
@@ -29,12 +28,12 @@ from zarr.common import (
     SliceSelection,
     concurrent_map,
 )
-from zarr.config import RuntimeConfiguration
+from zarr.config import config
 
 from zarr.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-from zarr.metadata import ArrayMetadata
+from zarr.metadata import ArrayMetadata, parse_indexing_order
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
@@ -52,7 +51,7 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
 class AsyncArray:
     metadata: ArrayMetadata
     store_path: StorePath
-    runtime_configuration: RuntimeConfiguration
+    order: Literal["C", "F"]
 
     @property
     def codecs(self):
@@ -62,13 +61,14 @@ class AsyncArray:
         self,
         metadata: ArrayMetadata,
         store_path: StorePath,
-        runtime_configuration: RuntimeConfiguration,
+        order: Literal["C", "F"] | None = None,
     ):
         metadata_parsed = parse_array_metadata(metadata)
+        order_parsed = parse_indexing_order(order or config.get("array.order"))
 
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
-        object.__setattr__(self, "runtime_configuration", runtime_configuration)
+        object.__setattr__(self, "order", order_parsed)
 
     @classmethod
     async def create(
@@ -86,7 +86,6 @@ class AsyncArray:
         codecs: Optional[Iterable[Union[Codec, Dict[str, Any]]]] = None,
         dimension_names: Optional[Iterable[str]] = None,
         attributes: Optional[Dict[str, Any]] = None,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         exists_ok: bool = False,
     ) -> AsyncArray:
         store_path = make_store_path(store)
@@ -115,12 +114,10 @@ class AsyncArray:
             dimension_names=tuple(dimension_names) if dimension_names else None,
             attributes=attributes or {},
         )
-        runtime_configuration = runtime_configuration or RuntimeConfiguration()
 
         array = cls(
             metadata=metadata,
             store_path=store_path,
-            runtime_configuration=runtime_configuration,
         )
 
         await array._save_metadata()
@@ -131,19 +128,15 @@ class AsyncArray:
         cls,
         store_path: StorePath,
         data: Dict[str, Any],
-        runtime_configuration: RuntimeConfiguration,
     ) -> AsyncArray:
         metadata = ArrayMetadata.from_dict(data)
-        async_array = cls(
-            metadata=metadata, store_path=store_path, runtime_configuration=runtime_configuration
-        )
+        async_array = cls(metadata=metadata, store_path=store_path)
         return async_array
 
     @classmethod
     async def open(
         cls,
         store: StoreLike,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> AsyncArray:
         store_path = make_store_path(store)
         zarr_json_bytes = await (store_path / ZARR_JSON).get()
@@ -151,14 +144,12 @@ class AsyncArray:
         return cls.from_dict(
             store_path,
             json.loads(zarr_json_bytes),
-            runtime_configuration=runtime_configuration,
         )
 
     @classmethod
     async def open_auto(
         cls,
         store: StoreLike,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> AsyncArray:  # TODO: Union[AsyncArray, ArrayV2]
         store_path = make_store_path(store)
         v3_metadata_bytes = await (store_path / ZARR_JSON).get()
@@ -166,7 +157,6 @@ class AsyncArray:
             return cls.from_dict(
                 store_path,
                 json.loads(v3_metadata_bytes),
-                runtime_configuration=runtime_configuration or RuntimeConfiguration(),
             )
         else:
             raise ValueError("no v2 support yet")
@@ -204,7 +194,7 @@ class AsyncArray:
         out = np.zeros(
             indexer.shape,
             dtype=self.metadata.dtype,
-            order=self.runtime_configuration.order,
+            order=self.order,
         )
 
         # reading chunks and decoding them
@@ -214,7 +204,7 @@ class AsyncArray:
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             self._read_chunk,
-            self.runtime_configuration.concurrency,
+            config.get("async.concurrency"),
         )
 
         if out.shape:
@@ -232,15 +222,13 @@ class AsyncArray:
         out_selection: SliceSelection,
         out: np.ndarray,
     ) -> None:
-        chunk_spec = self.metadata.get_chunk_spec(chunk_coords)
+        chunk_spec = self.metadata.get_chunk_spec(chunk_coords, self.order)
         chunk_key_encoding = self.metadata.chunk_key_encoding
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
         store_path = self.store_path / chunk_key
 
         if self.codecs.supports_partial_decode:
-            chunk_array = await self.codecs.decode_partial(
-                store_path, chunk_selection, chunk_spec, self.runtime_configuration
-            )
+            chunk_array = await self.codecs.decode_partial(store_path, chunk_selection, chunk_spec)
             if chunk_array is not None:
                 out[out_selection] = chunk_array
             else:
@@ -248,9 +236,7 @@ class AsyncArray:
         else:
             chunk_bytes = await store_path.get()
             if chunk_bytes is not None:
-                chunk_array = await self.codecs.decode(
-                    chunk_bytes, chunk_spec, self.runtime_configuration
-                )
+                chunk_array = await self.codecs.decode(chunk_bytes, chunk_spec)
                 tmp = chunk_array[chunk_selection]
                 out[out_selection] = tmp
             else:
@@ -291,7 +277,7 @@ class AsyncArray:
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             self._write_chunk,
-            self.runtime_configuration.concurrency,
+            config.get("async.concurrency"),
         )
 
     async def _write_chunk(
@@ -302,7 +288,7 @@ class AsyncArray:
         chunk_selection: SliceSelection,
         out_selection: SliceSelection,
     ) -> None:
-        chunk_spec = self.metadata.get_chunk_spec(chunk_coords)
+        chunk_spec = self.metadata.get_chunk_spec(chunk_coords, self.order)
         chunk_key_encoding = self.metadata.chunk_key_encoding
         chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
         store_path = self.store_path / chunk_key
@@ -326,7 +312,6 @@ class AsyncArray:
                 value[out_selection],
                 chunk_selection,
                 chunk_spec,
-                self.runtime_configuration,
             )
         else:
             # writing partial chunks
@@ -342,7 +327,7 @@ class AsyncArray:
                 chunk_array.fill(self.metadata.fill_value)
             else:
                 chunk_array = (
-                    await self.codecs.decode(chunk_bytes, chunk_spec, self.runtime_configuration)
+                    await self.codecs.decode(chunk_bytes, chunk_spec)
                 ).copy()  # make a writable copy
             chunk_array[chunk_selection] = value[out_selection]
 
@@ -355,9 +340,7 @@ class AsyncArray:
             # chunks that only contain fill_value will be removed
             await store_path.delete()
         else:
-            chunk_bytes = await self.codecs.encode(
-                chunk_array, chunk_spec, self.runtime_configuration
-            )
+            chunk_bytes = await self.codecs.encode(chunk_array, chunk_spec)
             if chunk_bytes is None:
                 await store_path.delete()
             else:
@@ -388,7 +371,7 @@ class AsyncArray:
                 for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
             ],
             _delete_key,
-            self.runtime_configuration.concurrency,
+            config.get("async.concurrency"),
         )
 
         # Write new metadata
@@ -429,7 +412,6 @@ class Array:
         codecs: Optional[Iterable[Union[Codec, Dict[str, Any]]]] = None,
         dimension_names: Optional[Iterable[str]] = None,
         attributes: Optional[Dict[str, Any]] = None,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         exists_ok: bool = False,
     ) -> Array:
         async_array = sync(
@@ -443,10 +425,8 @@ class Array:
                 codecs=codecs,
                 dimension_names=dimension_names,
                 attributes=attributes,
-                runtime_configuration=runtime_configuration,
                 exists_ok=exists_ok,
             ),
-            runtime_configuration.asyncio_loop,
         )
         return cls(async_array)
 
@@ -455,34 +435,25 @@ class Array:
         cls,
         store_path: StorePath,
         data: Dict[str, Any],
-        runtime_configuration: RuntimeConfiguration,
     ) -> Array:
-        async_array = AsyncArray.from_dict(
-            store_path=store_path, data=data, runtime_configuration=runtime_configuration
-        )
+        async_array = AsyncArray.from_dict(store_path=store_path, data=data)
         return cls(async_array)
 
     @classmethod
     def open(
         cls,
         store: StoreLike,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Array:
-        async_array = sync(
-            AsyncArray.open(store, runtime_configuration=runtime_configuration),
-            runtime_configuration.asyncio_loop,
-        )
+        async_array = sync(AsyncArray.open(store))
         return cls(async_array)
 
     @classmethod
     def open_auto(
         cls,
         store: StoreLike,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Array:  # TODO: Union[Array, ArrayV2]:
         async_array = sync(
-            AsyncArray.open_auto(store, runtime_configuration),
-            runtime_configuration.asyncio_loop,
+            AsyncArray.open_auto(store),
         )
         return cls(async_array)
 
@@ -514,23 +485,24 @@ class Array:
     def store_path(self) -> StorePath:
         return self._async_array.store_path
 
+    @property
+    def order(self) -> Literal["C", "F"]:
+        return self._async_array.order
+
     def __getitem__(self, selection: Selection) -> np.ndarray:
         return sync(
             self._async_array.getitem(selection),
-            self._async_array.runtime_configuration.asyncio_loop,
         )
 
     def __setitem__(self, selection: Selection, value: np.ndarray) -> None:
         sync(
             self._async_array.setitem(selection, value),
-            self._async_array.runtime_configuration.asyncio_loop,
         )
 
     def resize(self, new_shape: ChunkCoords) -> Array:
         return type(self)(
             sync(
                 self._async_array.resize(new_shape),
-                self._async_array.runtime_configuration.asyncio_loop,
             )
         )
 
@@ -538,7 +510,6 @@ class Array:
         return type(self)(
             sync(
                 self._async_array.update_attributes(new_attributes),
-                self._async_array.runtime_configuration.asyncio_loop,
             )
         )
 
@@ -548,5 +519,4 @@ class Array:
     def info(self):
         return sync(
             self._async_array.info(),
-            self._async_array.runtime_configuration.asyncio_loop,
         )

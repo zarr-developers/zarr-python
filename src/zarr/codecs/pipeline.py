@@ -21,7 +21,6 @@ if TYPE_CHECKING:
     from typing import Iterator, List, Optional, Tuple, Union
     from zarr.store import StorePath
     from zarr.metadata import ArrayMetadata
-    from zarr.config import RuntimeConfiguration
     from zarr.common import JSON, ArraySpec, BytesLike, SliceSelection
 
 
@@ -151,7 +150,6 @@ class CodecPipeline(Metadata):
         self,
         chunk_bytes: BytesLike,
         array_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         (
             aa_codecs_with_spec,
@@ -160,13 +158,13 @@ class CodecPipeline(Metadata):
         ) = self._codecs_with_resolved_metadata(array_spec)
 
         for bb_codec, array_spec in bb_codecs_with_spec[::-1]:
-            chunk_bytes = await bb_codec.decode(chunk_bytes, array_spec, runtime_configuration)
+            chunk_bytes = await bb_codec.decode(chunk_bytes, array_spec)
 
         ab_codec, array_spec = ab_codec_with_spec
-        chunk_array = await ab_codec.decode(chunk_bytes, array_spec, runtime_configuration)
+        chunk_array = await ab_codec.decode(chunk_bytes, array_spec)
 
         for aa_codec, array_spec in aa_codecs_with_spec[::-1]:
-            chunk_array = await aa_codec.decode(chunk_array, array_spec, runtime_configuration)
+            chunk_array = await aa_codec.decode(chunk_array, array_spec)
 
         return chunk_array
 
@@ -175,19 +173,15 @@ class CodecPipeline(Metadata):
         store_path: StorePath,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         assert self.supports_partial_decode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
-        return await self.array_bytes_codec.decode_partial(
-            store_path, selection, chunk_spec, runtime_configuration
-        )
+        return await self.array_bytes_codec.decode_partial(store_path, selection, chunk_spec)
 
     async def encode(
         self,
         chunk_array: np.ndarray,
         array_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         (
             aa_codecs_with_spec,
@@ -196,23 +190,19 @@ class CodecPipeline(Metadata):
         ) = self._codecs_with_resolved_metadata(array_spec)
 
         for aa_codec, array_spec in aa_codecs_with_spec:
-            chunk_array_maybe = await aa_codec.encode(
-                chunk_array, array_spec, runtime_configuration
-            )
+            chunk_array_maybe = await aa_codec.encode(chunk_array, array_spec)
             if chunk_array_maybe is None:
                 return None
             chunk_array = chunk_array_maybe
 
         ab_codec, array_spec = ab_codec_with_spec
-        chunk_bytes_maybe = await ab_codec.encode(chunk_array, array_spec, runtime_configuration)
+        chunk_bytes_maybe = await ab_codec.encode(chunk_array, array_spec)
         if chunk_bytes_maybe is None:
             return None
         chunk_bytes = chunk_bytes_maybe
 
         for bb_codec, array_spec in bb_codecs_with_spec:
-            chunk_bytes_maybe = await bb_codec.encode(
-                chunk_bytes, array_spec, runtime_configuration
-            )
+            chunk_bytes_maybe = await bb_codec.encode(chunk_bytes, array_spec)
             if chunk_bytes_maybe is None:
                 return None
             chunk_bytes = chunk_bytes_maybe
@@ -225,13 +215,10 @@ class CodecPipeline(Metadata):
         chunk_array: np.ndarray,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> None:
         assert self.supports_partial_encode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
-        await self.array_bytes_codec.encode_partial(
-            store_path, chunk_array, selection, chunk_spec, runtime_configuration
-        )
+        await self.array_bytes_codec.encode_partial(store_path, chunk_array, selection, chunk_spec)
 
     def compute_encoded_size(self, byte_length: int, array_spec: ArraySpec) -> int:
         for codec in self:
