@@ -621,7 +621,7 @@ class ShardingCodec(
             shape=chunks_per_shard + (2,),
             dtype=np.dtype("<u8"),
             fill_value=MAX_UINT_64,
-            order="C",  # TODO!!!!
+            order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
         )
 
     @lru_cache
