@@ -186,8 +186,6 @@ module = [
     "zarr.codecs.sharding",
     "zarr.codecs.transpose",
     "zarr.array_v2",
-    "zarr.array",
-    "zarr.sync",
 ]
 disallow_any_generics = false
 

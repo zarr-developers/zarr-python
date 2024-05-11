@@ -15,6 +15,7 @@ import json
 from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
 
 import numpy as np
+import numpy.typing as npt
 from zarr.abc.codec import Codec
 
 
@@ -76,7 +77,7 @@ class AsyncArray:
         store: StoreLike,
         *,
         shape: ChunkCoords,
-        dtype: Union[str, np.dtype],
+        dtype: npt.DTypeLike,
         chunk_shape: ChunkCoords,
         fill_value: Optional[Any] = None,
         chunk_key_encoding: Union[
@@ -175,14 +176,14 @@ class AsyncArray:
         return np.prod(self.metadata.shape).item()
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> np.dtype[Any]:
         return self.metadata.dtype
 
     @property
-    def attrs(self) -> dict:
+    def attrs(self) -> dict[str, Any]:
         return self.metadata.attributes
 
-    async def getitem(self, selection: Selection) -> np.ndarray:
+    async def getitem(self, selection: Selection) -> npt.NDArray[Any]:
         assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
         indexer = BasicIndexer(
             selection,
@@ -220,7 +221,7 @@ class AsyncArray:
         chunk_coords: ChunkCoords,
         chunk_selection: SliceSelection,
         out_selection: SliceSelection,
-        out: np.ndarray,
+        out: npt.NDArray[Any],
     ) -> None:
         chunk_spec = self.metadata.get_chunk_spec(chunk_coords, self.order)
         chunk_key_encoding = self.metadata.chunk_key_encoding
@@ -242,7 +243,7 @@ class AsyncArray:
             else:
                 out[out_selection] = self.metadata.fill_value
 
-    async def setitem(self, selection: Selection, value: np.ndarray) -> None:
+    async def setitem(self, selection: Selection, value: npt.NDArray[Any]) -> None:
         assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
         chunk_shape = self.metadata.chunk_grid.chunk_shape
         indexer = BasicIndexer(
@@ -282,7 +283,7 @@ class AsyncArray:
 
     async def _write_chunk(
         self,
-        value: np.ndarray,
+        value: npt.NDArray[Any],
         chunk_shape: ChunkCoords,
         chunk_coords: ChunkCoords,
         chunk_selection: SliceSelection,
@@ -334,7 +335,7 @@ class AsyncArray:
             await self._write_chunk_to_store(store_path, chunk_array, chunk_spec)
 
     async def _write_chunk_to_store(
-        self, store_path: StorePath, chunk_array: np.ndarray, chunk_spec: ArraySpec
+        self, store_path: StorePath, chunk_array: npt.NDArray[Any], chunk_spec: ArraySpec
     ) -> None:
         if np.all(chunk_array == self.metadata.fill_value):
             # chunks that only contain fill_value will be removed
@@ -402,7 +403,7 @@ class Array:
         store: StoreLike,
         *,
         shape: ChunkCoords,
-        dtype: Union[str, np.dtype],
+        dtype: npt.DTypeLike,
         chunk_shape: ChunkCoords,
         fill_value: Optional[Any] = None,
         chunk_key_encoding: Union[
@@ -470,11 +471,11 @@ class Array:
         return self._async_array.size
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> np.dtype[Any]:
         return self._async_array.dtype
 
     @property
-    def attrs(self) -> dict:
+    def attrs(self) -> dict[str, Any]:
         return self._async_array.attrs
 
     @property
@@ -489,12 +490,12 @@ class Array:
     def order(self) -> Literal["C", "F"]:
         return self._async_array.order
 
-    def __getitem__(self, selection: Selection) -> np.ndarray:
+    def __getitem__(self, selection: Selection) -> npt.NDArray[Any]:
         return sync(
             self._async_array.getitem(selection),
         )
 
-    def __setitem__(self, selection: Selection, value: np.ndarray) -> None:
+    def __setitem__(self, selection: Selection, value: npt.NDArray[Any]) -> None:
         sync(
             self._async_array.setitem(selection, value),
         )
