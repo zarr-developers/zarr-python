@@ -33,7 +33,7 @@ from zarr.indexing import (
     morton_order_iter,
 )
 from zarr.metadata import (
-    ArrayMetadata,
+    ArrayV3Metadata,
     runtime_configuration as make_runtime_configuration,
     parse_codecs,
 )
@@ -358,7 +358,7 @@ class ShardingCodec(
             return replace(self, codecs=evolved_codecs)
         return self
 
-    def validate(self, array_metadata: ArrayMetadata) -> None:
+    def validate(self, array_metadata: ArrayV3Metadata) -> None:
         if len(self.chunk_shape) != array_metadata.ndim:
             raise ValueError(
                 "The shard's `chunk_shape` and array's `shape` need to have the "

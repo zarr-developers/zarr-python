@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 import numpy as np
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
+from zarr.codecs.mixins import ArrayArrayCodecBatchMixin, ArrayBytesCodecBatchMixin
 from zarr.common import JSON, ArraySpec, BytesLike, to_thread
 from zarr.config import RuntimeConfiguration
 
@@ -13,12 +13,12 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 
 @dataclass(frozen=True)
-class V2Compressor(ArrayBytesCodec):
+class V2Compressor(ArrayBytesCodecBatchMixin):
     compressor: dict[str, JSON] | None
 
     is_fixed_size = False
 
-    async def decode(
+    async def decode_single(
         self,
         chunk_bytes: BytesLike,
         chunk_spec: ArraySpec,
@@ -39,7 +39,7 @@ class V2Compressor(ArrayBytesCodec):
 
         return chunk_array
 
-    async def encode(
+    async def encode_single(
         self,
         chunk_array: np.ndarray,
         _chunk_spec: ArraySpec,
@@ -60,13 +60,13 @@ class V2Compressor(ArrayBytesCodec):
 
 
 @dataclass(frozen=True)
-class V2Filters(ArrayArrayCodec):
+class V2Filters(ArrayArrayCodecBatchMixin):
     filters: list[dict[str, JSON]]
     order: Literal["C", "F"]
 
     is_fixed_size = False
 
-    async def decode(
+    async def decode_single(
         self,
         chunk_array: np.ndarray,
         chunk_spec: ArraySpec,
@@ -87,7 +87,7 @@ class V2Filters(ArrayArrayCodec):
 
         return chunk_array
 
-    async def encode(
+    async def encode_single(
         self,
         chunk_array: np.ndarray,
         _chunk_spec: ArraySpec,

@@ -11,7 +11,7 @@ from zarr.abc.store import ByteGetter, ByteSetter
 if TYPE_CHECKING:
     from typing_extensions import Self
     from zarr.common import ArraySpec, BytesLike, SliceSelection
-    from zarr.metadata import ArrayMetadata
+    from zarr.metadata import ArrayV3Metadata
     from zarr.config import RuntimeConfiguration
 
 
@@ -28,7 +28,7 @@ class Codec(Metadata):
     def evolve(self, array_spec: ArraySpec) -> Self:
         return self
 
-    def validate(self, array_metadata: ArrayMetadata) -> None:
+    def validate(self, array_metadata: ArrayV3Metadata) -> None:
         pass
 
 

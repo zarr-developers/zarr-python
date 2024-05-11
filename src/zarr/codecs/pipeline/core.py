@@ -22,7 +22,7 @@ from zarr.common import parse_named_configuration
 if TYPE_CHECKING:
     from typing import Iterator, List, Optional, Tuple, Union
     from typing_extensions import Self
-    from zarr.metadata import ArrayMetadata
+    from zarr.metadata import ArrayV3Metadata
     from zarr.config import RuntimeConfiguration
     from zarr.common import JSON, ArraySpec, BytesLike, SliceSelection
 
@@ -131,7 +131,7 @@ class CodecPipeline(Metadata, ABC):
         for bb_codec in self.bytes_bytes_codecs:
             yield bb_codec
 
-    def validate(self, array_metadata: ArrayMetadata) -> None:
+    def validate(self, array_metadata: ArrayV3Metadata) -> None:
         for codec in self:
             codec.validate(array_metadata)
 

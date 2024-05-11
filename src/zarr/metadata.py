@@ -1,7 +1,8 @@
 from __future__ import annotations
+from abc import ABC, abstractmethod, abstractproperty
 from enum import Enum
-from typing import TYPE_CHECKING, cast, Dict, Iterable, Any
-from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, cast, Iterable
+from dataclasses import dataclass, field, replace
 import json
 import numpy as np
 import numpy.typing as npt
@@ -12,7 +13,8 @@ from zarr.codecs._v2 import V2Compressor, V2Filters
 
 
 if TYPE_CHECKING:
-    from typing import Any, Literal, Union, List, Optional, Tuple
+    from typing import Any, Literal
+    from typing_extensions import Self
     from zarr.codecs import CodecPipeline
 
 
@@ -34,7 +36,7 @@ from zarr.config import RuntimeConfiguration, parse_indexing_order
 
 
 def runtime_configuration(
-    order: Literal["C", "F"], concurrency: Optional[int] = None
+    order: Literal["C", "F"], concurrency: int | None = None
 ) -> RuntimeConfiguration:
     return RuntimeConfiguration(order=order, concurrency=concurrency)
 
@@ -113,16 +115,62 @@ class DataType(Enum):
         return DataType[dtype_to_data_type[dtype.str]]
 
 
+class ArrayMetadata(ABC, Metadata):
+    @abstractproperty
+    def dtype(self) -> np.dtype[Any]:
+        pass
+
+    @abstractproperty
+    def ndim(self) -> int:
+        pass
+
+    @abstractproperty
+    def shape(self) -> ChunkCoords:
+        pass
+
+    @abstractproperty
+    def chunk_grid(self) -> ChunkGrid:
+        pass
+
+    @abstractproperty
+    def codecs(self) -> CodecPipeline:
+        pass
+
+    @abstractproperty
+    def attributes(self) -> dict[str, JSON]:
+        pass
+
+    @abstractmethod
+    def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
+        pass
+
+    @abstractmethod
+    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+        pass
+
+    @abstractmethod
+    def to_bytes(self) -> dict[str, bytes]:
+        pass
+
+    @abstractmethod
+    def update_shape(self, shape: ChunkCoords) -> Self:
+        pass
+
+    @abstractmethod
+    def update_attributes(self, attributes: dict[str, JSON]) -> Self:
+        pass
+
+
 @dataclass(frozen=True)
-class ArrayMetadata(Metadata):
+class ArrayV3Metadata(ArrayMetadata):
     shape: ChunkCoords
     data_type: np.dtype[Any]
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
     codecs: CodecPipeline
-    attributes: Dict[str, Any] = field(default_factory=dict)
-    dimension_names: Optional[Tuple[str, ...]] = None
+    attributes: dict[str, Any] = field(default_factory=dict)
+    dimension_names: tuple[str, ...] | None = None
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["array"] = field(default="array", init=False)
 
@@ -216,7 +264,7 @@ class ArrayMetadata(Metadata):
         return {ZARR_JSON: json.dumps(self.to_dict(), default=_json_convert).encode()}
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> ArrayMetadata:
+    def from_dict(cls, data: dict[str, Any]) -> ArrayV3Metadata:
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format_v3(data.pop("zarr_format"))
         # check that the node_type attribute is correct
@@ -226,7 +274,7 @@ class ArrayMetadata(Metadata):
 
         return cls(**data, dimension_names=dimension_names)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         out_dict = super().to_dict()
 
         if not isinstance(out_dict, dict):
@@ -238,18 +286,24 @@ class ArrayMetadata(Metadata):
             out_dict.pop("dimension_names")
         return out_dict
 
+    def update_shape(self, shape: ChunkCoords) -> Self:
+        return replace(self, shape=shape)
+
+    def update_attributes(self, attributes: dict[str, JSON]) -> Self:
+        return replace(self, attributes=attributes)
+
 
 @dataclass(frozen=True)
-class ArrayV2Metadata(Metadata):
+class ArrayV2Metadata(ArrayMetadata):
     shape: ChunkCoords
     chunk_grid: RegularChunkGrid
     dtype: np.dtype[Any]
-    fill_value: Union[None, int, float] = 0
+    fill_value: None | int | float = 0
     order: Literal["C", "F"] = "C"
-    filters: Optional[List[Dict[str, Any]]] = None
+    filters: list[dict[str, Any]] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: Optional[Dict[str, Any]] = None
-    attributes: Dict[str, Any] = cast(Dict[str, Any], field(default_factory=dict))
+    compressor: dict[str, Any] | None = None
+    attributes: dict[str, Any] = cast(dict[str, Any], field(default_factory=dict))
     zarr_format: Literal[2] = field(init=False, default=2)
 
     def __init__(
@@ -261,9 +315,9 @@ class ArrayV2Metadata(Metadata):
         fill_value: Any,
         order: Literal["C", "F"],
         dimension_separator: Literal[".", "/"] = ".",
-        compressor: Optional[Dict[str, Any]] = None,
-        filters: Optional[List[Dict[str, Any]]] = None,
-        attributes: Optional[Dict[str, JSON]] = None,
+        compressor: dict[str, Any] | None = None,
+        filters: list[dict[str, Any]] | None = None,
+        attributes: dict[str, JSON] | None = None,
     ):
         """
         Metadata for a Zarr version 2 array.
@@ -326,7 +380,7 @@ class ArrayV2Metadata(Metadata):
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> ArrayV2Metadata:
+    def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format_v2(data.pop("zarr_format"))
         return cls(**data)
@@ -342,8 +396,14 @@ class ArrayV2Metadata(Metadata):
         chunk_identifier = self.dimension_separator.join(map(str, chunk_coords))
         return "0" if chunk_identifier == "" else chunk_identifier
 
+    def update_shape(self, shape: ChunkCoords) -> Self:
+        return replace(self, shape=shape)
 
-def parse_dimension_names(data: Any) -> Tuple[str, ...] | None:
+    def update_attributes(self, attributes: dict[str, JSON]) -> Self:
+        return replace(self, attributes=attributes)
+
+
+def parse_dimension_names(data: Any) -> tuple[str, ...] | None:
     if data is None:
         return data
     if isinstance(data, Iterable) and all([isinstance(x, str) for x in data]):
@@ -353,11 +413,11 @@ def parse_dimension_names(data: Any) -> Tuple[str, ...] | None:
 
 
 # todo: real validation
-def parse_attributes(data: Any) -> Dict[str, JSON]:
+def parse_attributes(data: Any) -> dict[str, JSON]:
     if data is None:
         return {}
 
-    data_json = cast(Dict[str, JSON], data)
+    data_json = cast(dict[str, JSON], data)
     return data_json
 
 
@@ -384,7 +444,7 @@ def parse_node_type_array(data: Any) -> Literal["array"]:
 
 
 # todo: real validation
-def parse_filters(data: Any) -> List[Codec]:
+def parse_filters(data: Any) -> list[Codec]:
     return data
 
 
@@ -403,7 +463,7 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def parse_codecs(data: Iterable[Union[Codec, JSON]]) -> CodecPipeline:
+def parse_codecs(data: Iterable[Codec | JSON]) -> CodecPipeline:
     from zarr.codecs.pipeline.hybrid import HybridCodecPipeline
 
     if not isinstance(data, Iterable):

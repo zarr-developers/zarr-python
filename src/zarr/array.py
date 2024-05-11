@@ -39,17 +39,17 @@ from zarr.config import RuntimeConfiguration
 from zarr.indexing import BasicIndexer
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-from zarr.metadata import ArrayMetadata, ArrayV2Metadata
+from zarr.metadata import ArrayMetadata, ArrayV3Metadata, ArrayV2Metadata
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
 
-def parse_array_metadata(data: Any) -> ArrayMetadata | ArrayV2Metadata:
-    if isinstance(data, ArrayMetadata | ArrayV2Metadata):
+def parse_array_metadata(data: Any) -> ArrayMetadata:
+    if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
         if data["zarr_format"] == 3:
-            return ArrayMetadata.from_dict(data)
+            return ArrayV3Metadata.from_dict(data)
         elif data["zarr_format"] == 2:
             return ArrayV2Metadata.from_dict(data)
     raise TypeError
@@ -57,7 +57,7 @@ def parse_array_metadata(data: Any) -> ArrayMetadata | ArrayV2Metadata:
 
 @dataclass(frozen=True)
 class AsyncArray:
-    metadata: ArrayMetadata | ArrayV2Metadata
+    metadata: ArrayMetadata
     store_path: StorePath
     runtime_configuration: RuntimeConfiguration
 
@@ -67,7 +67,7 @@ class AsyncArray:
 
     def __init__(
         self,
-        metadata: ArrayMetadata | ArrayV2Metadata,
+        metadata: ArrayMetadata,
         store_path: StorePath,
         runtime_configuration: RuntimeConfiguration,
     ):
@@ -107,7 +107,7 @@ class AsyncArray:
             else:
                 fill_value = 0
 
-        metadata = ArrayMetadata(
+        metadata = ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
             chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
@@ -183,7 +183,7 @@ class AsyncArray:
         data: dict[str, JSON],
         runtime_configuration: RuntimeConfiguration,
     ) -> AsyncArray:
-        metadata = ArrayMetadata.from_dict(data)
+        metadata = ArrayV3Metadata.from_dict(data)
         async_array = cls(
             metadata=metadata, store_path=store_path, runtime_configuration=runtime_configuration
         )
@@ -244,7 +244,7 @@ class AsyncArray:
             assert zarr_json_bytes is not None
             return cls(
                 store_path=store_path,
-                metadata=ArrayMetadata.from_dict(json.loads(zarr_json_bytes)),
+                metadata=ArrayV3Metadata.from_dict(json.loads(zarr_json_bytes)),
                 runtime_configuration=runtime_configuration,
             )
 
@@ -298,7 +298,7 @@ class AsyncArray:
         else:
             return out[()]
 
-    async def _save_metadata(self, metadata: ArrayMetadata | ArrayV2Metadata) -> None:
+    async def _save_metadata(self, metadata: ArrayMetadata) -> None:
         to_save = metadata.to_bytes()
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await gather(*awaitables)
@@ -342,7 +342,7 @@ class AsyncArray:
         self, new_shape: ChunkCoords, delete_outside_chunks: bool = True
     ) -> AsyncArray:
         assert len(new_shape) == len(self.metadata.shape)
-        new_metadata = replace(self.metadata, shape=new_shape)
+        new_metadata = self.metadata.update_shape(new_shape)
 
         # Remove all chunks outside of the new shape
         old_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(self.metadata.shape))
@@ -367,7 +367,7 @@ class AsyncArray:
         return replace(self, metadata=new_metadata)
 
     async def update_attributes(self, new_attributes: dict[str, JSON]) -> AsyncArray:
-        new_metadata = replace(self.metadata, attributes=new_attributes)
+        new_metadata = self.metadata.update_attributes(new_attributes)
 
         # Write new metadata
         await self._save_metadata(new_metadata)
@@ -501,7 +501,7 @@ class Array:
         return Attributes(self)
 
     @property
-    def metadata(self) -> ArrayMetadata | ArrayV2Metadata:
+    def metadata(self) -> ArrayMetadata:
         return self._async_array.metadata
 
     @property
