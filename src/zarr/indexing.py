@@ -200,7 +200,7 @@ def is_total_slice(item: Selection, shape: ChunkCoords) -> bool:
             for dim_sel, dim_len in zip(item, shape, strict=False)
         )
     else:
-        raise TypeError("expected slice or tuple of slices, found %r" % item)
+        raise TypeError("expected slice or tuple of slices, found {item!r}")
 
 
 def all_chunk_coords(shape: ChunkCoords, chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:

@@ -89,7 +89,8 @@ class CodecPipeline(Metadata):
         if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
             warn(
                 "Combining a `sharding_indexed` codec disables partial reads and "
-                + "writes, which may lead to inefficient performance."
+                + "writes, which may lead to inefficient performance.",
+                stacklevel=3,
             )
 
         return CodecPipeline(
@@ -115,13 +116,9 @@ class CodecPipeline(Metadata):
         )
 
     def __iter__(self) -> Iterator[Codec]:
-        for aa_codec in self.array_array_codecs:
-            yield aa_codec
-
+        yield from self.array_array_codecs
         yield self.array_bytes_codec
-
-        for bb_codec in self.bytes_bytes_codecs:
-            yield bb_codec
+        yield from self.bytes_bytes_codecs
 
     def validate(self, array_metadata: ArrayMetadata) -> None:
         for codec in self:

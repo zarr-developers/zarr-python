@@ -11,7 +11,6 @@ from typing import (
     Any,
     Literal,
     TypeVar,
-    Union,
     overload,
 )
 
@@ -26,12 +25,12 @@ ZARRAY_JSON = ".zarray"
 ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
 
-BytesLike = Union[bytes, bytearray, memoryview]
+BytesLike = bytes | bytearray | memoryview
 ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 SliceSelection = tuple[slice, ...]
-Selection = Union[slice, SliceSelection]
-JSON = Union[str, None, int, float, Enum, dict[str, "JSON"], list["JSON"], tuple["JSON", ...]]
+Selection = slice | SliceSelection
+JSON = str | None | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
 
 
 def product(tup: ChunkCoords) -> int:

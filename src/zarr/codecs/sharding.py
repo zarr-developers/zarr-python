@@ -619,7 +619,7 @@ class ShardingCodec(
             16 * product(chunks_per_shard), self._get_index_chunk_spec(chunks_per_shard)
         )
 
-    @lru_cache
+    @lru_cache  # noqa: B019
     def _get_index_chunk_spec(self, chunks_per_shard: ChunkCoords) -> ArraySpec:
         return ArraySpec(
             shape=chunks_per_shard + (2,),
@@ -628,7 +628,7 @@ class ShardingCodec(
             order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
         )
 
-    @lru_cache
+    @lru_cache  # noqa: B019
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:
         return ArraySpec(
             shape=self.chunk_shape,
@@ -637,7 +637,7 @@ class ShardingCodec(
             order=shard_spec.order,
         )
 
-    @lru_cache
+    @lru_cache  # noqa: B019
     def _get_chunks_per_shard(self, shard_spec: ArraySpec) -> ChunkCoords:
         return tuple(
             s // c

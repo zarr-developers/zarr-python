@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Union
-
 import zarr.codecs  # noqa: F401
 from zarr._version import version as __version__
 from zarr.array import Array, AsyncArray  # noqa: F401

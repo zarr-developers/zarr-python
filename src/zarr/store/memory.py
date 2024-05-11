@@ -49,7 +49,7 @@ class MemoryStore(Store):
         self, key: str, value: BytesLike, byte_range: tuple[int, int] | None = None
     ) -> None:
         assert isinstance(key, str)
-        if not isinstance(value, (bytes, bytearray, memoryview)):
+        if not isinstance(value, (bytes | bytearray | memoryview)):
             raise TypeError(f"Expected BytesLike. Got {type(value)}.")
 
         if byte_range is not None:

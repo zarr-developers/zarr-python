@@ -81,7 +81,7 @@ class AsyncGroup:
         cls,
         store: StoreLike,
         *,
-        attributes: dict[str, Any] = {},
+        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
         exists_ok: bool = False,
         zarr_format: Literal[2, 3] = 3,
     ) -> AsyncGroup:
@@ -335,7 +335,7 @@ class AsyncGroup:
 
     # todo: decide if this method should be separate from `group_keys`
     async def groups(self) -> AsyncGenerator[AsyncGroup, None]:
-        async for key, value in self.members():
+        async for _, value in self.members():
             if isinstance(value, AsyncGroup):
                 yield value
 
@@ -347,7 +347,7 @@ class AsyncGroup:
 
     # todo: decide if this method should be separate from `array_keys`
     async def arrays(self) -> AsyncIterator[AsyncArray]:
-        async for key, value in self.members():
+        async for _, value in self.members():
             if isinstance(value, AsyncArray):
                 yield value
 
@@ -391,7 +391,7 @@ class Group(SyncMixin):
         cls,
         store: StoreLike,
         *,
-        attributes: dict[str, Any] = {},
+        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
         exists_ok: bool = False,
     ) -> Group:
         obj = sync(
