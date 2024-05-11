@@ -1,11 +1,12 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Sequence
+
+from collections.abc import Sequence
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Dict
     from typing_extensions import Self
 
-from dataclasses import fields, dataclass
+from dataclasses import dataclass, fields
 
 from zarr.common import JSON
 
@@ -36,7 +37,7 @@ class Metadata:
         return out_dict
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         """
         Create an instance of the model from a dictionary
         """

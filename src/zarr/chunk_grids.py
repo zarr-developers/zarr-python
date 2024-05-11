@@ -1,8 +1,9 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Dict
-from dataclasses import dataclass
-from zarr.abc.metadata import Metadata
 
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from zarr.abc.metadata import Metadata
 from zarr.common import (
     JSON,
     ChunkCoords,
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class ChunkGrid(Metadata):
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> ChunkGrid:
+    def from_dict(cls, data: dict[str, JSON]) -> ChunkGrid:
         if isinstance(data, ChunkGrid):
             return data
 
@@ -38,10 +39,10 @@ class RegularChunkGrid(ChunkGrid):
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Self:
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "regular")
 
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         return {"name": "regular", "configuration": {"chunk_shape": list(self.chunk_shape)}}

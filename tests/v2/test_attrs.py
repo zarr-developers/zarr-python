@@ -1,11 +1,11 @@
 import json
 
 import pytest
-
 from zarr.v2.attrs import Attributes
-from zarr.v2.storage import KVStore, DirectoryStore
-from .util import CountingDict
 from zarr.v2.hierarchy import group
+from zarr.v2.storage import DirectoryStore, KVStore
+
+from .util import CountingDict
 
 
 def _init_store():

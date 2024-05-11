@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, replace
 import json
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, Any, Literal
 
 import numcodecs
 import numpy as np
-
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from zarr.common import (
@@ -52,7 +51,7 @@ class _AsyncArraySelectionProxy:
 @dataclass(frozen=True)
 class ArrayV2:
     metadata: ArrayV2Metadata
-    attributes: Optional[Dict[str, Any]]
+    attributes: dict[str, Any] | None
     store_path: StorePath
 
     @classmethod
@@ -64,11 +63,11 @@ class ArrayV2:
         dtype: np.dtype,
         chunks: ChunkCoords,
         dimension_separator: Literal[".", "/"] = ".",
-        fill_value: Optional[Union[None, int, float]] = None,
+        fill_value: None | int | float | None = None,
         order: Literal["C", "F"] = "C",
-        filters: Optional[List[Dict[str, Any]]] = None,
-        compressor: Optional[Dict[str, Any]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        filters: list[dict[str, Any]] | None = None,
+        compressor: dict[str, Any] | None = None,
+        attributes: dict[str, Any] | None = None,
         exists_ok: bool = False,
     ) -> ArrayV2:
         store_path = make_store_path(store)
@@ -108,11 +107,11 @@ class ArrayV2:
         dtype: np.dtype,
         chunks: ChunkCoords,
         dimension_separator: Literal[".", "/"] = ".",
-        fill_value: Optional[Union[None, int, float]] = None,
+        fill_value: None | int | float | None = None,
         order: Literal["C", "F"] = "C",
-        filters: Optional[List[Dict[str, Any]]] = None,
-        compressor: Optional[Dict[str, Any]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        filters: list[dict[str, Any]] | None = None,
+        compressor: dict[str, Any] | None = None,
+        attributes: dict[str, Any] | None = None,
         exists_ok: bool = False,
     ) -> ArrayV2:
         return sync(
@@ -162,7 +161,7 @@ class ArrayV2:
         cls,
         store_path: StorePath,
         zarray_json: Any,
-        zattrs_json: Optional[Any],
+        zattrs_json: Any | None,
     ) -> ArrayV2:
         metadata = ArrayV2Metadata.from_dict(zarray_json)
         out = cls(
@@ -252,7 +251,7 @@ class ArrayV2:
         else:
             out[out_selection] = self.metadata.fill_value
 
-    async def _decode_chunk(self, chunk_bytes: Optional[BytesLike]) -> Optional[np.ndarray]:
+    async def _decode_chunk(self, chunk_bytes: BytesLike | None) -> np.ndarray | None:
         if chunk_bytes is None:
             return None
 
@@ -365,7 +364,7 @@ class ArrayV2:
             await self._write_chunk_to_store(store_path, chunk_array)
 
     async def _write_chunk_to_store(self, store_path: StorePath, chunk_array: np.ndarray):
-        chunk_bytes: Optional[BytesLike]
+        chunk_bytes: BytesLike | None
         if np.all(chunk_array == self.metadata.fill_value):
             # chunks that only contain fill_value will be removed
             await store_path.delete()
@@ -376,7 +375,7 @@ class ArrayV2:
             else:
                 await store_path.set(chunk_bytes)
 
-    async def _encode_chunk(self, chunk_array: np.ndarray) -> Optional[BytesLike]:
+    async def _encode_chunk(self, chunk_array: np.ndarray) -> BytesLike | None:
         chunk_array = chunk_array.ravel(order=self.metadata.order)
 
         if self.metadata.filters is not None:
@@ -430,11 +429,8 @@ class ArrayV2:
 
         from zarr.abc.codec import Codec
         from zarr.array import Array
-        from zarr.common import ZARR_JSON
         from zarr.chunk_grids import RegularChunkGrid
         from zarr.chunk_key_encodings import V2ChunkKeyEncoding
-        from zarr.metadata import ArrayMetadata, DataType
-
         from zarr.codecs import (
             BloscCodec,
             BloscShuffle,
@@ -442,6 +438,8 @@ class ArrayV2:
             GzipCodec,
             TransposeCodec,
         )
+        from zarr.common import ZARR_JSON
+        from zarr.metadata import ArrayMetadata, DataType
 
         data_type = DataType.from_dtype(self.metadata.dtype)
         endian: Literal["little", "big"]
@@ -456,7 +454,7 @@ class ArrayV2:
             self.metadata.filters is None or len(self.metadata.filters) == 0
         ), "Filters are not supported by v3."
 
-        codecs: List[Codec] = []
+        codecs: list[Codec] = []
 
         if self.metadata.order == "F":
             codecs.append(TransposeCodec(order=tuple(reversed(range(self.metadata.ndim)))))
@@ -500,11 +498,11 @@ class ArrayV2:
             data=json.loads(new_metadata_bytes),
         )
 
-    async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> ArrayV2:
+    async def update_attributes_async(self, new_attributes: dict[str, Any]) -> ArrayV2:
         await (self.store_path / ZATTRS_JSON).set(json.dumps(new_attributes).encode())
         return replace(self, attributes=new_attributes)
 
-    def update_attributes(self, new_attributes: Dict[str, Any]) -> ArrayV2:
+    def update_attributes(self, new_attributes: dict[str, Any]) -> ArrayV2:
         return sync(
             self.update_attributes_async(new_attributes),
         )

@@ -1,16 +1,17 @@
 from __future__ import annotations
-from dataclasses import dataclass
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from numcodecs.gzip import GZip
+
 from zarr.abc.codec import BytesBytesCodec
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
-    from typing import Optional, Dict
     from typing_extensions import Self
+
     from zarr.common import JSON, ArraySpec, BytesLike
 
 
@@ -36,11 +37,11 @@ class GzipCodec(BytesBytesCodec):
         object.__setattr__(self, "level", level_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "gzip")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         return {"name": "gzip", "configuration": {"level": self.level}}
 
     async def decode(
@@ -54,7 +55,7 @@ class GzipCodec(BytesBytesCodec):
         self,
         chunk_bytes: bytes,
         _chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
+    ) -> BytesLike | None:
         return await to_thread(GZip(self.level).encode, chunk_bytes)
 
     def compute_encoded_size(

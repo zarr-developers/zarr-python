@@ -1,14 +1,15 @@
 from __future__ import annotations
+
 from collections.abc import MutableMapping
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from zarr.group import Group
     from zarr.array import Array
+    from zarr.group import Group
 
 
 class Attributes(MutableMapping[str, Any]):
-    def __init__(self, obj: Union[Array, Group]):
+    def __init__(self, obj: Array | Group):
         # key=".zattrs", read_only=False, cache=True, synchronizer=None
         self._obj = obj
 

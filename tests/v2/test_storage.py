@@ -3,9 +3,9 @@ import atexit
 import json
 import os
 import pathlib
-import sys
 import pickle
 import shutil
+import sys
 import tempfile
 from contextlib import contextmanager
 from pickle import PicklingError
@@ -13,11 +13,9 @@ from zipfile import ZipFile
 
 import numpy as np
 import pytest
-from numpy.testing import assert_array_almost_equal, assert_array_equal
-
-from numcodecs.compat import ensure_bytes
-
 import zarr.v2
+from numcodecs.compat import ensure_bytes
+from numpy.testing import assert_array_almost_equal, assert_array_equal
 from zarr.v2 import meta_v1
 from zarr.v2.codecs import BZ2, AsType, Blosc, Zlib
 from zarr.v2.context import Context
@@ -25,13 +23,14 @@ from zarr.v2.convenience import consolidate_metadata
 from zarr.v2.errors import ContainsArrayError, ContainsGroupError, MetadataError
 from zarr.v2.hierarchy import group
 from zarr.v2.meta import ZARR_FORMAT, decode_array_metadata
-from zarr.v2.n5 import N5Store, N5FSStore, N5_FORMAT, n5_attrs_key
+from zarr.v2.n5 import N5_FORMAT, N5FSStore, N5Store, n5_attrs_key
 from zarr.v2.storage import (
     ABSStore,
     ConsolidatedMetadataStore,
     DBMStore,
     DictStore,
     DirectoryStore,
+    FSStore,
     KVStore,
     LMDBStore,
     LRUStoreCache,
@@ -52,12 +51,14 @@ from zarr.v2.storage import (
     group_meta_key,
     init_array,
     init_group,
+    listdir,
     migrate_1to2,
     normalize_store_arg,
+    rename,
 )
-from zarr.v2.storage import FSStore, rename, listdir
-from .util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
 from zarr.v2.util import ConstantMap, json_dumps
+
+from .util import CountingDict, abs_container, have_fsspec, mktemp, skip_test_env_var
 
 
 @contextmanager
@@ -1503,9 +1504,10 @@ class TestN5Store(TestNestedDirectoryStore):
                 (None, does_not_raise()),
                 ([], does_not_raise()),
                 ([AsType("f4", "f8")], pytest.raises(ValueError)),
-            ]
+            ],
+            strict=False,
         )
-        for filters, error in zip(all_filters, all_errors):
+        for filters, error in zip(all_filters, all_errors, strict=False):
             store = self.create_store()
             with error:
                 init_array(store, shape=1000, chunks=100, filters=filters)
@@ -1642,9 +1644,10 @@ class TestN5FSStore(TestFSStore):
                 (None, does_not_raise()),
                 ([], does_not_raise()),
                 ([AsType("f4", "f8")], pytest.raises(ValueError)),
-            ]
+            ],
+            strict=False,
         )
-        for filters, error in zip(all_filters, all_errors):
+        for filters, error in zip(all_filters, all_errors, strict=False):
             store = self.create_store()
             with error:
                 init_array(store, shape=1000, chunks=100, filters=filters)
@@ -2274,7 +2277,7 @@ def test_format_compatibility():
             order = "C"
 
         for j, compressor in enumerate(compressors):
-            path = "{}/{}".format(i, j)
+            path = f"{i}/{j}"
 
             if path not in fixture:  # pragma: no cover
                 # store the data - should be one-time operation
@@ -2353,7 +2356,7 @@ class TestABSStore(StoreTests):
             assert 4 == len(store)
             keys = [prefix + "a", prefix + "b", prefix + "c/d", prefix + "c/e/f"]
             values = [b"aaa", b"bbb", b"ddd", b"fff"]
-            items = list(zip(keys, values))
+            items = list(zip(keys, values, strict=False))
             assert set(keys) == set(store)
             assert set(keys) == set(store.keys())
             assert set(values) == set(store.values())

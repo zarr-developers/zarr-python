@@ -1,16 +1,15 @@
 import numpy
 import numpy as np
 import pytest
-from numpy.testing import assert_array_equal
-
 import zarr.v2
+from numpy.testing import assert_array_equal
 from zarr.v2.indexing import (
+    PartialChunkIterator,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
     oindex_set,
     replace_ellipsis,
-    PartialChunkIterator,
 )
 
 from .util import CountingDict
@@ -1092,7 +1091,9 @@ def test_get_block_selection_1d():
     z = zarr.v2.create(shape=a.shape, chunks=100, dtype=a.dtype)
     z[:] = a
 
-    for selection, expected_idx in zip(block_selections_1d, block_selections_1d_array_projection):
+    for selection, expected_idx in zip(
+        block_selections_1d, block_selections_1d_array_projection, strict=False
+    ):
         _test_get_block_selection(a, z, selection, expected_idx)
 
     bad_selections = block_selections_1d_bad + [
@@ -1144,7 +1145,9 @@ def test_get_block_selection_2d():
     z = zarr.v2.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
     z[:] = a
 
-    for selection, expected_idx in zip(block_selections_2d, block_selections_2d_array_projection):
+    for selection, expected_idx in zip(
+        block_selections_2d, block_selections_2d_array_projection, strict=False
+    ):
         _test_get_block_selection(a, z, selection, expected_idx)
 
     with pytest.raises(IndexError):
@@ -1181,7 +1184,9 @@ def test_set_block_selection_1d():
     a = np.empty(v.shape, dtype=v.dtype)
     z = zarr.v2.create(shape=a.shape, chunks=100, dtype=a.dtype)
 
-    for selection, expected_idx in zip(block_selections_1d, block_selections_1d_array_projection):
+    for selection, expected_idx in zip(
+        block_selections_1d, block_selections_1d_array_projection, strict=False
+    ):
         _test_set_block_selection(v, a, z, selection, expected_idx)
 
     for selection in block_selections_1d_bad:
@@ -1197,7 +1202,9 @@ def test_set_block_selection_2d():
     a = np.empty(v.shape, dtype=v.dtype)
     z = zarr.v2.create(shape=a.shape, chunks=(300, 3), dtype=a.dtype)
 
-    for selection, expected_idx in zip(block_selections_2d, block_selections_2d_array_projection):
+    for selection, expected_idx in zip(
+        block_selections_2d, block_selections_2d_array_projection, strict=False
+    ):
         _test_set_block_selection(v, a, z, selection, expected_idx)
 
     with pytest.raises(IndexError):
@@ -1634,7 +1641,7 @@ def test_set_selections_with_fields():
         ),
         (
             (slice(0, 10, 1),),
-            np.arange(0, 10).reshape((10)),
+            np.arange(0, 10).reshape(10),
             [(0, 10, (slice(0, 10, 1),))],
         ),
         ((0,), np.arange(0, 100).reshape((10, 10)), [(0, 10, (slice(0, 1, 1),))]),
@@ -1646,7 +1653,7 @@ def test_set_selections_with_fields():
             np.arange(0, 100).reshape((10, 10)),
             [(0, 1, (slice(0, 1, 1), slice(0, 1, 1)))],
         ),
-        ((0,), np.arange(0, 10).reshape((10)), [(0, 1, (slice(0, 1, 1),))]),
+        ((0,), np.arange(0, 10).reshape(10), [(0, 1, (slice(0, 1, 1),))]),
         pytest.param(
             (slice(5, 8, 1), slice(2, 4, 1), slice(0, 5, 1)),
             np.arange(2, 100002).reshape((10, 1, 10000)),
@@ -1722,7 +1729,7 @@ def test_accessed_chunks(shape, chunks, ops):
     for ii, (optype, slices) in enumerate(ops):
         # Resolve the slices into the accessed chunks for each dimension
         chunks_per_dim = []
-        for N, C, sl in zip(shape, chunks, slices):
+        for N, C, sl in zip(shape, chunks, slices, strict=False):
             chunk_ind = np.arange(N, dtype=int)[sl] // C
             chunks_per_dim.append(np.unique(chunk_ind))
 

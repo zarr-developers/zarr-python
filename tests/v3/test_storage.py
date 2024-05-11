@@ -1,8 +1,7 @@
 import pytest
-
-from zarr.testing.store import StoreTests
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
+from zarr.testing.store import StoreTests
 
 
 class TestMemoryStore(StoreTests):

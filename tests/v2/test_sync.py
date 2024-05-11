@@ -8,7 +8,6 @@ from tempfile import mkdtemp
 
 import numpy as np
 from numpy.testing import assert_array_equal
-
 from zarr.v2.attrs import Attributes
 from zarr.v2.core import Array
 from zarr.v2.hierarchy import Group
@@ -70,7 +69,7 @@ class MixinArraySyncTests:
         pool = self.create_pool()
 
         # parallel setitem
-        results = pool.map(_set_arange, zip([arr] * n, range(n)), chunksize=1)
+        results = pool.map(_set_arange, zip([arr] * n, range(n), strict=False), chunksize=1)
         results = sorted(results)
 
         assert list(range(n)) == results
@@ -87,7 +86,7 @@ class MixinArraySyncTests:
         pool = self.create_pool()
 
         # parallel append
-        results = pool.map(_append, zip([arr] * n, range(n)), chunksize=1)
+        results = pool.map(_append, zip([arr] * n, range(n), strict=False), chunksize=1)
         results = sorted(results)
 
         assert [((i + 2) * 1000,) for i in range(n)] == results
@@ -230,7 +229,9 @@ class MixinGroupSyncTests:
         # parallel create group
         n = 100
         results = list(
-            pool.map(_create_group, zip([g] * n, [str(i) for i in range(n)]), chunksize=1)
+            pool.map(
+                _create_group, zip([g] * n, [str(i) for i in range(n)], strict=False), chunksize=1
+            )
         )
         assert n == len(results)
         pool.close()
@@ -248,7 +249,11 @@ class MixinGroupSyncTests:
         # parallel require group
         n = 100
         results = list(
-            pool.map(_require_group, zip([g] * n, [str(i // 10) for i in range(n)]), chunksize=1)
+            pool.map(
+                _require_group,
+                zip([g] * n, [str(i // 10) for i in range(n)], strict=False),
+                chunksize=1,
+            )
         )
         assert n == len(results)
         pool.close()

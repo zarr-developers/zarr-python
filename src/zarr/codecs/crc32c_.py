@@ -1,10 +1,9 @@
 from __future__ import annotations
-from dataclasses import dataclass
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-
 from crc32c import crc32c
 
 from zarr.abc.codec import BytesBytesCodec
@@ -12,9 +11,9 @@ from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration
 
 if TYPE_CHECKING:
-    from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.common import JSON, BytesLike, ArraySpec
+
+    from zarr.common import JSON, ArraySpec, BytesLike
 
 
 @dataclass(frozen=True)
@@ -22,11 +21,11 @@ class Crc32cCodec(BytesBytesCodec):
     is_fixed_size = True
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         parse_named_configuration(data, "crc32c", require_configuration=False)
         return cls()
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         return {"name": "crc32c"}
 
     async def decode(
@@ -50,7 +49,7 @@ class Crc32cCodec(BytesBytesCodec):
         self,
         chunk_bytes: bytes,
         _chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
+    ) -> BytesLike | None:
         return chunk_bytes + np.uint32(crc32c(chunk_bytes)).tobytes()
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:

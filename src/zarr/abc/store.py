@@ -1,14 +1,10 @@
-from abc import abstractmethod, ABC
-
+from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from typing import List, Tuple, Optional
 
 
 class Store(ABC):
     @abstractmethod
-    async def get(
-        self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[bytes]:
+    async def get(self, key: str, byte_range: tuple[int, int | None] | None = None) -> bytes | None:
         """Retrieve the value associated with a given key.
 
         Parameters
@@ -24,8 +20,8 @@ class Store(ABC):
 
     @abstractmethod
     async def get_partial_values(
-        self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[Optional[bytes]]:
+        self, key_ranges: list[tuple[str, tuple[int, int]]]
+    ) -> list[bytes | None]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
@@ -88,7 +84,7 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
         """Store values at a given key, starting at byte range_start.
 
         Parameters

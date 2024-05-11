@@ -1,17 +1,17 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import numpy as np
-from zarr.abc.metadata import Metadata
 
+from zarr.abc.metadata import Metadata
 from zarr.common import ArraySpec
 from zarr.store import StorePath
 
-
 if TYPE_CHECKING:
     from typing_extensions import Self
+
     from zarr.common import BytesLike, SliceSelection
     from zarr.metadata import ArrayMetadata
 
@@ -47,7 +47,7 @@ class ArrayArrayCodec(Codec):
         self,
         chunk_array: np.ndarray,
         chunk_spec: ArraySpec,
-    ) -> Optional[np.ndarray]:
+    ) -> np.ndarray | None:
         pass
 
 
@@ -65,7 +65,7 @@ class ArrayBytesCodec(Codec):
         self,
         chunk_array: np.ndarray,
         chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
+    ) -> BytesLike | None:
         pass
 
 
@@ -76,7 +76,7 @@ class ArrayBytesCodecPartialDecodeMixin:
         store_path: StorePath,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
-    ) -> Optional[np.ndarray]:
+    ) -> np.ndarray | None:
         pass
 
 
@@ -106,5 +106,5 @@ class BytesBytesCodec(Codec):
         self,
         chunk_array: BytesLike,
         chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
+    ) -> BytesLike | None:
         pass

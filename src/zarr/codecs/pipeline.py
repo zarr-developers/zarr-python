@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
-import numpy as np
+from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from warnings import warn
+
+import numpy as np
 
 from zarr.abc.codec import (
     ArrayArrayCodec,
@@ -18,21 +20,22 @@ from zarr.codecs.registry import get_codec_class
 from zarr.common import parse_named_configuration
 
 if TYPE_CHECKING:
-    from typing import Iterator, List, Optional, Tuple, Union
-    from zarr.store import StorePath
-    from zarr.metadata import ArrayMetadata
+    from collections.abc import Iterator
+
     from zarr.common import JSON, ArraySpec, BytesLike, SliceSelection
+    from zarr.metadata import ArrayMetadata
+    from zarr.store import StorePath
 
 
 @dataclass(frozen=True)
 class CodecPipeline(Metadata):
-    array_array_codecs: Tuple[ArrayArrayCodec, ...]
+    array_array_codecs: tuple[ArrayArrayCodec, ...]
     array_bytes_codec: ArrayBytesCodec
-    bytes_bytes_codecs: Tuple[BytesBytesCodec, ...]
+    bytes_bytes_codecs: tuple[BytesBytesCodec, ...]
 
     @classmethod
-    def from_dict(cls, data: Iterable[Union[JSON, Codec]]) -> CodecPipeline:
-        out: List[Codec] = []
+    def from_dict(cls, data: Iterable[JSON | Codec]) -> CodecPipeline:
+        out: list[Codec] = []
         if not isinstance(data, Iterable):
             raise TypeError(f"Expected iterable, got {type(data)}")
 
@@ -51,13 +54,13 @@ class CodecPipeline(Metadata):
         return CodecPipeline.from_list([c.evolve(array_spec) for c in self])
 
     @classmethod
-    def from_list(cls, codecs: List[Codec]) -> CodecPipeline:
+    def from_list(cls, codecs: list[Codec]) -> CodecPipeline:
         from zarr.codecs.sharding import ShardingCodec
 
         if not any(isinstance(codec, ArrayBytesCodec) for codec in codecs):
             raise ValueError("Exactly one array-to-bytes codec is required.")
 
-        prev_codec: Optional[Codec] = None
+        prev_codec: Codec | None = None
         for codec in codecs:
             if prev_codec is not None:
                 if isinstance(codec, ArrayBytesCodec) and isinstance(prev_codec, ArrayBytesCodec):
@@ -126,12 +129,12 @@ class CodecPipeline(Metadata):
 
     def _codecs_with_resolved_metadata(
         self, array_spec: ArraySpec
-    ) -> Tuple[
-        List[Tuple[ArrayArrayCodec, ArraySpec]],
-        Tuple[ArrayBytesCodec, ArraySpec],
-        List[Tuple[BytesBytesCodec, ArraySpec]],
+    ) -> tuple[
+        list[tuple[ArrayArrayCodec, ArraySpec]],
+        tuple[ArrayBytesCodec, ArraySpec],
+        list[tuple[BytesBytesCodec, ArraySpec]],
     ]:
-        aa_codecs_with_spec: List[Tuple[ArrayArrayCodec, ArraySpec]] = []
+        aa_codecs_with_spec: list[tuple[ArrayArrayCodec, ArraySpec]] = []
         for aa_codec in self.array_array_codecs:
             aa_codecs_with_spec.append((aa_codec, array_spec))
             array_spec = aa_codec.resolve_metadata(array_spec)
@@ -139,7 +142,7 @@ class CodecPipeline(Metadata):
         ab_codec_with_spec = (self.array_bytes_codec, array_spec)
         array_spec = self.array_bytes_codec.resolve_metadata(array_spec)
 
-        bb_codecs_with_spec: List[Tuple[BytesBytesCodec, ArraySpec]] = []
+        bb_codecs_with_spec: list[tuple[BytesBytesCodec, ArraySpec]] = []
         for bb_codec in self.bytes_bytes_codecs:
             bb_codecs_with_spec.append((bb_codec, array_spec))
             array_spec = bb_codec.resolve_metadata(array_spec)
@@ -173,7 +176,7 @@ class CodecPipeline(Metadata):
         store_path: StorePath,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
-    ) -> Optional[np.ndarray]:
+    ) -> np.ndarray | None:
         assert self.supports_partial_decode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
         return await self.array_bytes_codec.decode_partial(store_path, selection, chunk_spec)
@@ -182,7 +185,7 @@ class CodecPipeline(Metadata):
         self,
         chunk_array: np.ndarray,
         array_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
+    ) -> BytesLike | None:
         (
             aa_codecs_with_spec,
             ab_codec_with_spec,

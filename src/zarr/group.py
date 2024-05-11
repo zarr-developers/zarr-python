@@ -1,21 +1,19 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
-from dataclasses import asdict, dataclass, field, replace
 
 import asyncio
 import json
 import logging
+from dataclasses import asdict, dataclass, field, replace
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, AsyncIterator
     from typing import (
         Any,
-        AsyncGenerator,
         Literal,
-        AsyncIterator,
     )
 from zarr.abc.metadata import Metadata
-
-from zarr.array import AsyncArray, Array
+from zarr.array import Array, AsyncArray
 from zarr.attributes import Attributes
 from zarr.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
 from zarr.store import StoreLike, StorePath, make_store_path

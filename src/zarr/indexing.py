@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import itertools
 import math
-from typing import Iterator, List, NamedTuple, Optional, Tuple
+from collections.abc import Iterator
+from typing import NamedTuple
 
 from zarr.common import ChunkCoords, Selection, SliceSelection, product
 
@@ -14,9 +15,7 @@ def _ensure_tuple(v: Selection) -> SliceSelection:
 
 
 def _err_too_many_indices(selection: SliceSelection, shape: ChunkCoords) -> None:
-    raise IndexError(
-        "too many indices for array; expected {}, got {}".format(len(shape), len(selection))
-    )
+    raise IndexError(f"too many indices for array; expected {len(shape)}, got {len(selection)}")
 
 
 def _err_negative_step() -> None:
@@ -47,7 +46,7 @@ def _ensure_selection(
 class _ChunkDimProjection(NamedTuple):
     dim_chunk_ix: int
     dim_chunk_sel: slice
-    dim_out_sel: Optional[slice]
+    dim_out_sel: slice | None
 
 
 def _ceildiv(a: float, b: float) -> int:
@@ -124,20 +123,20 @@ class _ChunkProjection(NamedTuple):
 
 
 class BasicIndexer:
-    dim_indexers: List[_SliceDimIndexer]
+    dim_indexers: list[_SliceDimIndexer]
     shape: ChunkCoords
 
     def __init__(
         self,
         selection: Selection,
-        shape: Tuple[int, ...],
-        chunk_shape: Tuple[int, ...],
+        shape: tuple[int, ...],
+        chunk_shape: tuple[int, ...],
     ):
         # setup per-dimension indexers
         self.dim_indexers = [
             _SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
             for dim_sel, dim_len, dim_chunk_len in zip(
-                _ensure_selection(selection, shape), shape, chunk_shape
+                _ensure_selection(selection, shape), shape, chunk_shape, strict=False
             )
         ]
         self.shape = tuple(s.nitems for s in self.dim_indexers)
@@ -198,11 +197,13 @@ def is_total_slice(item: Selection, shape: ChunkCoords) -> bool:
                     or ((dim_sel.stop - dim_sel.start == dim_len) and (dim_sel.step in [1, None]))
                 )
             )
-            for dim_sel, dim_len in zip(item, shape)
+            for dim_sel, dim_len in zip(item, shape, strict=False)
         )
     else:
         raise TypeError("expected slice or tuple of slices, found %r" % item)
 
 
 def all_chunk_coords(shape: ChunkCoords, chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
-    return itertools.product(*(range(0, _ceildiv(s, c)) for s, c in zip(shape, chunk_shape)))
+    return itertools.product(
+        *(range(0, _ceildiv(s, c)) for s, c in zip(shape, chunk_shape, strict=False))
+    )

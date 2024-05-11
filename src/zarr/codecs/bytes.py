@@ -1,9 +1,9 @@
 from __future__ import annotations
+
+import sys
 from dataclasses import dataclass, replace
 from enum import Enum
-import sys
-
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -12,8 +12,9 @@ from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration
 
 if TYPE_CHECKING:
-    from zarr.common import JSON, ArraySpec, BytesLike
     from typing_extensions import Self
+
+    from zarr.common import JSON, ArraySpec, BytesLike
 
 
 class Endian(Enum):
@@ -28,22 +29,22 @@ default_system_endian = Endian(sys.byteorder)
 class BytesCodec(ArrayBytesCodec):
     is_fixed_size = True
 
-    endian: Optional[Endian]
+    endian: Endian | None
 
-    def __init__(self, *, endian: Union[Endian, str, None] = default_system_endian) -> None:
+    def __init__(self, *, endian: Endian | str | None = default_system_endian) -> None:
         endian_parsed = None if endian is None else parse_enum(endian, Endian)
 
         object.__setattr__(self, "endian", endian_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(
             data, "bytes", require_configuration=False
         )
         configuration_parsed = configuration_parsed or {}
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         if self.endian is None:
             return {"name": "bytes"}
         else:
@@ -93,7 +94,7 @@ class BytesCodec(ArrayBytesCodec):
         self,
         chunk_array: np.ndarray,
         _chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
+    ) -> BytesLike | None:
         if chunk_array.dtype.itemsize > 1:
             byteorder = self._get_byteorder(chunk_array)
             if self.endian is not None and self.endian != byteorder:

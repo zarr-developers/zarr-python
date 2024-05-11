@@ -9,14 +9,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-
 import json
-from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
+from typing import Any, Literal
 
 import numpy as np
-from zarr.abc.codec import Codec
 
+from zarr.abc.codec import Codec
+from zarr.chunk_grids import RegularChunkGrid
+from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 
 # from zarr.array_v2 import ArrayV2
 from zarr.codecs import BytesCodec
@@ -29,10 +31,7 @@ from zarr.common import (
     concurrent_map,
 )
 from zarr.config import config
-
 from zarr.indexing import BasicIndexer, all_chunk_coords, is_total_slice
-from zarr.chunk_grids import RegularChunkGrid
-from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.metadata import ArrayMetadata, parse_indexing_order
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
@@ -76,16 +75,14 @@ class AsyncArray:
         store: StoreLike,
         *,
         shape: ChunkCoords,
-        dtype: Union[str, np.dtype],
+        dtype: str | np.dtype,
         chunk_shape: ChunkCoords,
-        fill_value: Optional[Any] = None,
-        chunk_key_encoding: Union[
-            Tuple[Literal["default"], Literal[".", "/"]],
-            Tuple[Literal["v2"], Literal[".", "/"]],
-        ] = ("default", "/"),
-        codecs: Optional[Iterable[Union[Codec, Dict[str, Any]]]] = None,
-        dimension_names: Optional[Iterable[str]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        fill_value: Any | None = None,
+        chunk_key_encoding: tuple[Literal["default"], Literal[".", "/"]]
+        | tuple[Literal["v2"], Literal[".", "/"]] = ("default", "/"),
+        codecs: Iterable[Codec | dict[str, Any]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        attributes: dict[str, Any] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray:
         store_path = make_store_path(store)
@@ -127,7 +124,7 @@ class AsyncArray:
     def from_dict(
         cls,
         store_path: StorePath,
-        data: Dict[str, Any],
+        data: dict[str, Any],
     ) -> AsyncArray:
         metadata = ArrayMetadata.from_dict(data)
         async_array = cls(metadata=metadata, store_path=store_path)
@@ -378,7 +375,7 @@ class AsyncArray:
         await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
         return replace(self, metadata=new_metadata)
 
-    async def update_attributes(self, new_attributes: Dict[str, Any]) -> AsyncArray:
+    async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncArray:
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
@@ -402,16 +399,14 @@ class Array:
         store: StoreLike,
         *,
         shape: ChunkCoords,
-        dtype: Union[str, np.dtype],
+        dtype: str | np.dtype,
         chunk_shape: ChunkCoords,
-        fill_value: Optional[Any] = None,
-        chunk_key_encoding: Union[
-            Tuple[Literal["default"], Literal[".", "/"]],
-            Tuple[Literal["v2"], Literal[".", "/"]],
-        ] = ("default", "/"),
-        codecs: Optional[Iterable[Union[Codec, Dict[str, Any]]]] = None,
-        dimension_names: Optional[Iterable[str]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        fill_value: Any | None = None,
+        chunk_key_encoding: tuple[Literal["default"], Literal[".", "/"]]
+        | tuple[Literal["v2"], Literal[".", "/"]] = ("default", "/"),
+        codecs: Iterable[Codec | dict[str, Any]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        attributes: dict[str, Any] | None = None,
         exists_ok: bool = False,
     ) -> Array:
         async_array = sync(
@@ -434,7 +429,7 @@ class Array:
     def from_dict(
         cls,
         store_path: StorePath,
-        data: Dict[str, Any],
+        data: dict[str, Any],
     ) -> Array:
         async_array = AsyncArray.from_dict(store_path=store_path, data=data)
         return cls(async_array)
@@ -506,7 +501,7 @@ class Array:
             )
         )
 
-    def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
+    def update_attributes(self, new_attributes: dict[str, Any]) -> Array:
         return type(self)(
             sync(
                 self._async_array.update_attributes(new_attributes),

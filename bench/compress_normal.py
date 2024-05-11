@@ -1,9 +1,8 @@
 import sys
 import timeit
 
-import numpy as np
-
 import line_profiler
+import numpy as np
 import zarr
 from zarr import blosc
 

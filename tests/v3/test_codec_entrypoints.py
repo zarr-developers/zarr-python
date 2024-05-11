@@ -2,9 +2,7 @@ import os.path
 import sys
 
 import pytest
-
 import zarr.codecs.registry
-
 
 here = os.path.abspath(os.path.dirname(__file__))
 

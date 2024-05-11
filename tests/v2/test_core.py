@@ -1,15 +1,17 @@
 import atexit
 import os
-import sys
 import pickle
 import shutil
-from typing import Any, Literal, Optional, Tuple, Union
+import sys
 import unittest
 from itertools import zip_longest
 from tempfile import mkdtemp
+from typing import Any, Literal
+
 import numpy as np
 import packaging.version
 import pytest
+import zarr.v2
 from numcodecs import (
     BZ2,
     JSON,
@@ -29,15 +31,12 @@ from numcodecs import (
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 from numcodecs.tests.common import greetings
 from numpy.testing import assert_array_almost_equal, assert_array_equal
-
-import zarr.v2
 from zarr.v2._storage.store import (
     BaseStore,
 )
-
 from zarr.v2.core import Array
 from zarr.v2.meta import json_loads
-from zarr.v2.n5 import N5Store, N5FSStore, n5_keywords
+from zarr.v2.n5 import N5FSStore, N5Store, n5_keywords
 from zarr.v2.storage import (
     ABSStore,
     DBMStore,
@@ -54,9 +53,9 @@ from zarr.v2.storage import (
     init_group,
     normalize_store_arg,
 )
-
 from zarr.v2.util import buffer_size
-from .util import abs_container, skip_test_env_var, have_fsspec, mktemp
+
+from .util import abs_container, have_fsspec, mktemp, skip_test_env_var
 
 # noinspection PyMethodMayBeStatic
 
@@ -72,22 +71,22 @@ class TestArray:
     partial_decompress: bool = False
     write_empty_chunks = True
     read_only = False
-    storage_transformers: Tuple[Any, ...] = ()
+    storage_transformers: tuple[Any, ...] = ()
 
     def create_store(self) -> BaseStore:
         return KVStore(dict())
 
     # used by child classes
-    def create_chunk_store(self) -> Optional[BaseStore]:
+    def create_chunk_store(self) -> BaseStore | None:
         return None
 
-    def create_storage_transformers(self, shape: Union[int, Tuple[int, ...]]) -> Tuple[Any, ...]:
+    def create_storage_transformers(self, shape: int | tuple[int, ...]) -> tuple[Any, ...]:
         return ()
 
-    def create_filters(self, dtype: Optional[str]) -> Tuple[Any, ...]:
+    def create_filters(self, dtype: str | None) -> tuple[Any, ...]:
         return ()
 
-    def create_array(self, shape: Union[int, Tuple[int, ...]], **kwargs):
+    def create_array(self, shape: int | tuple[int, ...], **kwargs):
         store = self.create_store()
         chunk_store = self.create_chunk_store()
         # keyword arguments for array initialization
@@ -1170,7 +1169,7 @@ class TestArray:
         # datetime, timedelta
         for base_type in "Mm":
             for resolution in "D", "us", "ns":
-                dtype = "{}8[{}]".format(base_type, resolution)
+                dtype = f"{base_type}8[{resolution}]"
                 z = self.create_array(shape=100, dtype=dtype, fill_value=0)
                 assert z.dtype == np.dtype(dtype)
                 a = np.random.randint(
@@ -1342,7 +1341,7 @@ class TestArray:
             assert isinstance(actual, np.ndarray)
             assert actual.dtype == object
             assert actual.shape == expected.shape
-            for ev, av in zip(expected.flat, actual.flat):
+            for ev, av in zip(expected.flat, actual.flat, strict=False):
                 assert isinstance(av, np.ndarray)
                 assert_array_equal(ev, av)
                 assert av.dtype == item_dtype
@@ -1360,7 +1359,7 @@ class TestArray:
 
         # convenience API
         for item_type in "int", "<u4":
-            z = self.create_array(shape=data.shape, dtype="array:{}".format(item_type))
+            z = self.create_array(shape=data.shape, dtype=f"array:{item_type}")
             assert z.dtype == object
             assert isinstance(z.filters[0], VLenArray)
             assert z.filters[0].dtype == np.dtype(item_type)
@@ -1924,7 +1923,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
         # convenience API
         for item_type in "int", "<u4":
             with pytest.raises(ValueError):
-                self.create_array(shape=data.shape, dtype="array:{}".format(item_type))
+                self.create_array(shape=data.shape, dtype=f"array:{item_type}")
 
     def test_object_arrays_danger(self):
         # Cannot hacking out object codec as N5 doesn't allow object codecs
@@ -2112,7 +2111,7 @@ class TestArrayWithLZMACompressor(TestArray):
 class TestArrayWithFilters(TestArray):
     compressor = Zlib(1)
 
-    def create_filters(self, dtype: Optional[str]) -> Tuple[Any, ...]:
+    def create_filters(self, dtype: str | None) -> tuple[Any, ...]:
         return (
             Delta(dtype=dtype),
             FixedScaleOffset(dtype=dtype, scale=1, offset=0),

@@ -3,18 +3,17 @@ import json
 
 import numpy as np
 import pytest
-
 from zarr.v2.codecs import Blosc, Delta, Pickle, Zlib
 from zarr.v2.errors import MetadataError
 from zarr.v2.meta import (
     ZARR_FORMAT,
     decode_array_metadata,
     decode_dtype,
+    decode_fill_value,
     decode_group_metadata,
     encode_array_metadata,
     encode_dtype,
     encode_fill_value,
-    decode_fill_value,
 )
 from zarr.v2.util import normalize_dtype, normalize_fill_value
 

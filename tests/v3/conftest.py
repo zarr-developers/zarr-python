@@ -1,7 +1,7 @@
 import pathlib
-import pytest
 
-from zarr.store import LocalStore, StorePath, MemoryStore, RemoteStore
+import pytest
+from zarr.store import LocalStore, MemoryStore, RemoteStore, StorePath
 
 
 @pytest.fixture(params=[str, pathlib.Path])

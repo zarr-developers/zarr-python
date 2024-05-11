@@ -3,7 +3,6 @@ from unittest import mock
 
 import numpy as np
 import pytest
-
 from zarr.v2.core import Array
 from zarr.v2.util import (
     ConstantMap,
@@ -23,8 +22,8 @@ from zarr.v2.util import (
     normalize_shape,
     retry_call,
     tree_array_icon,
-    tree_group_icon,
     tree_get_icon,
+    tree_group_icon,
     tree_widget,
 )
 
@@ -161,7 +160,7 @@ def test_guess_chunks():
         assert isinstance(chunks, tuple)
         assert len(chunks) == len(shape)
         # doesn't make any sense to allow chunks to have zero length dimension
-        assert all(0 < c <= max(s, 1) for c, s in zip(chunks, shape))
+        assert all(0 < c <= max(s, 1) for c, s in zip(chunks, shape, strict=False))
 
     # ludicrous itemsize
     chunks = guess_chunks((1000000,), 40000000000)
