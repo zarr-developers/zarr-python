@@ -11,13 +11,14 @@ authors = [
     { name = "Alistair Miles", email = "alimanfoo@googlemail.com" },
 ]
 maintainers = [
-    { name = "Josh Moore", email = "josh@openmicroscopy.org" },
-    { name = "Juan Nunez-Iglesias", email = "juan.nunez-iglesias@monash.edu" },
-    { name = "Joe Hamman", email = "joe@earthmover.io" },
     { name = "Davis Bennett", email = "davis.v.bennett@gmail.com" },
-    { name = "jakirkham"},
+    { name = "jakirkham" },
+    { name = "Josh Moore", email = "josh@openmicroscopy.org" },
+    { name = "Joe Hamman", email = "joe@earthmover.io" },
+    { name = "Juan Nunez-Iglesias", email = "juan.nunez-iglesias@monash.edu" },
     { name = "Martin Durant", email = "mdurant@anaconda.com" },
-    { name = "Norman Rzepka"},
+    { name = "Norman Rzepka" },
+    { name = "Ryan Abernathey" }
 ]
 requires-python = ">=3.10"
 dependencies = [
