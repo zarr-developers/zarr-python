@@ -148,7 +148,14 @@ extend-exclude = [
     "build",
     "dist",
     "venv",
-    "docs"
+    "docs",
+    "src/zarr/v2/"
+]
+[tool.ruff.lint]
+extend-select = [
+  "B",  # flake8-bugbear
+  "I",  # isort
+  "UP",  # pyupgrade
 ]
 
 [tool.mypy]
