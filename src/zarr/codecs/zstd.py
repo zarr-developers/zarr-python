@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from zstandard import ZstdCompressor, ZstdDecompressor
 
-from zarr.abc.codec import BytesBytesCodec
+from zarr.codecs.mixins import BytesBytesCodecBatchMixin
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration, to_thread
 
@@ -31,7 +31,7 @@ def parse_checksum(data: JSON) -> bool:
 
 
 @dataclass(frozen=True)
-class ZstdCodec(BytesBytesCodec):
+class ZstdCodec(BytesBytesCodecBatchMixin):
     is_fixed_size = True
 
     level: int = 0
@@ -60,7 +60,7 @@ class ZstdCodec(BytesBytesCodec):
         ctx = ZstdDecompressor()
         return ctx.decompress(data)
 
-    async def decode(
+    async def decode_single(
         self,
         chunk_bytes: bytes,
         _chunk_spec: ArraySpec,
@@ -68,7 +68,7 @@ class ZstdCodec(BytesBytesCodec):
     ) -> BytesLike:
         return await to_thread(self._decompress, chunk_bytes)
 
-    async def encode(
+    async def encode_single(
         self,
         chunk_bytes: bytes,
         _chunk_spec: ArraySpec,

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from numcodecs.gzip import GZip
-from zarr.abc.codec import BytesBytesCodec
+from zarr.codecs.mixins import BytesBytesCodecBatchMixin
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration, to_thread
 
@@ -26,7 +26,7 @@ def parse_gzip_level(data: JSON) -> int:
 
 
 @dataclass(frozen=True)
-class GzipCodec(BytesBytesCodec):
+class GzipCodec(BytesBytesCodecBatchMixin):
     is_fixed_size = False
 
     level: int = 5
@@ -44,7 +44,7 @@ class GzipCodec(BytesBytesCodec):
     def to_dict(self) -> Dict[str, JSON]:
         return {"name": "gzip", "configuration": {"level": self.level}}
 
-    async def decode(
+    async def decode_single(
         self,
         chunk_bytes: bytes,
         _chunk_spec: ArraySpec,
@@ -52,7 +52,7 @@ class GzipCodec(BytesBytesCodec):
     ) -> BytesLike:
         return await to_thread(GZip(self.level).decode, chunk_bytes)
 
-    async def encode(
+    async def encode_single(
         self,
         chunk_bytes: bytes,
         _chunk_spec: ArraySpec,
