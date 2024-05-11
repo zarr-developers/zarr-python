@@ -149,7 +149,8 @@ extend-exclude = [
     "dist",
     "venv",
     "docs",
-    "src/zarr/v2/"
+    "src/zarr/v2/",
+    "tests/v2/"
 ]
 [tool.ruff.lint]
 extend-select = [
