@@ -1535,7 +1535,7 @@ class Array:
 
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1627,7 +1627,7 @@ class Array:
 
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1700,7 +1700,7 @@ class Array:
 
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1793,7 +1793,7 @@ class Array:
         """
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1869,7 +1869,7 @@ class Array:
 
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         # refresh metadata
         if not self._cache_metadata:
@@ -2586,7 +2586,7 @@ class Array:
     def _write_op(self, f, *args, **kwargs):
         # guard condition
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         return self._synchronized_op(f, *args, **kwargs)
 

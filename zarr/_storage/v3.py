@@ -159,7 +159,7 @@ class FSStoreV3(FSStore, StoreV3):
 
     def setitems(self, values):
         if self.mode == "r":
-            raise ReadOnlyError()
+            raise ReadOnlyError
         values = {self._normalize_key(key): val for key, val in values.items()}
 
         # initialize the /data/root/... folder corresponding to the array!
@@ -175,7 +175,7 @@ class FSStoreV3(FSStore, StoreV3):
 
     def rmdir(self, path=None):
         if self.mode == "r":
-            raise ReadOnlyError()
+            raise ReadOnlyError
         if path:
             for base in [meta_root, data_root]:
                 store_path = self.dir_path(base + path)
@@ -579,7 +579,7 @@ class ConsolidatedMetadataStoreV3(ConsolidatedMetadataStore, StoreV3):
         self.meta_store: Store = KVStoreV3(meta["metadata"])
 
     def rmdir(self, key):
-        raise ReadOnlyError()
+        raise ReadOnlyError
 
 
 def _normalize_store_arg_v3(store: Any, storage_options=None, mode="r") -> BaseStore:

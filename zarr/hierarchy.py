@@ -939,7 +939,7 @@ class Group(MutableMapping):
     def _write_op(self, f, *args, **kwargs):
         # guard condition
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         if self._synchronizer is None:
             # no synchronization
