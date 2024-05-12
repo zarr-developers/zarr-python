@@ -32,6 +32,9 @@ Docs
 Maintenance
 ~~~~~~~~~~~
 
+* Enable ruff/flake8-implicit-str-concat rules (ISC) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1837`.
+
 Deprecations
 ~~~~~~~~~~~~
 
