@@ -25,10 +25,9 @@ class RemoteStore(Store):
         if isinstance(url, str):
             self.root = UPath(url, **storage_options)
         else:
-            assert len(storage_options) == 0, (
-                "If constructed with a UPath object, no additional "
-                + "storage_options are allowed."
-            )
+            assert (
+                len(storage_options) == 0
+            ), "If constructed with a UPath object, no additional storage_options are allowed."
             self.root = url.rstrip("/")
         # test instantiate file system
         fs, _ = fsspec.core.url_to_fs(str(self.root), asynchronous=True, **self.root._kwargs)

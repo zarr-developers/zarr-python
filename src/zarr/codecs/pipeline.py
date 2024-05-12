@@ -104,31 +104,26 @@ class BatchedCodecPipeline(CodecPipeline):
             if prev_codec is not None:
                 if isinstance(codec, ArrayBytesCodec) and isinstance(prev_codec, ArrayBytesCodec):
                     raise ValueError(
-                        f"ArrayBytesCodec '{type(codec)}' cannot follow after "
-                        + f"ArrayBytesCodec '{type(prev_codec)}' because exactly "
-                        + "1 ArrayBytesCodec is allowed."
+                        f"ArrayBytesCodec '{type(codec)}' cannot follow after ArrayBytesCodec '{type(prev_codec)}' because exactly 1 ArrayBytesCodec is allowed."
                     )
                 if isinstance(codec, ArrayBytesCodec) and isinstance(prev_codec, BytesBytesCodec):
                     raise ValueError(
-                        f"ArrayBytesCodec '{type(codec)}' cannot follow after "
-                        + f"BytesBytesCodec '{type(prev_codec)}'."
+                        f"ArrayBytesCodec '{type(codec)}' cannot follow after BytesBytesCodec '{type(prev_codec)}'."
                     )
                 if isinstance(codec, ArrayArrayCodec) and isinstance(prev_codec, ArrayBytesCodec):
                     raise ValueError(
-                        f"ArrayArrayCodec '{type(codec)}' cannot follow after "
-                        + f"ArrayBytesCodec '{type(prev_codec)}'."
+                        f"ArrayArrayCodec '{type(codec)}' cannot follow after ArrayBytesCodec '{type(prev_codec)}'."
                     )
                 if isinstance(codec, ArrayArrayCodec) and isinstance(prev_codec, BytesBytesCodec):
                     raise ValueError(
-                        f"ArrayArrayCodec '{type(codec)}' cannot follow after "
-                        + f"BytesBytesCodec '{type(prev_codec)}'."
+                        f"ArrayArrayCodec '{type(codec)}' cannot follow after BytesBytesCodec '{type(prev_codec)}'."
                     )
             prev_codec = codec
 
         if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
             warn(
                 "Combining a `sharding_indexed` codec disables partial reads and "
-                + "writes, which may lead to inefficient performance.",
+                "writes, which may lead to inefficient performance.",
                 stacklevel=3,
             )
 
