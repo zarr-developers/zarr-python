@@ -169,6 +169,7 @@ extend-exclude = [
 extend-select = [
     "B",  # flake8-bugbear
     "I",  # isort
+    "ISC",
     "UP",  # pyupgrade
     "RUF",
 ]
