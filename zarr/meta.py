@@ -46,37 +46,37 @@ _v3_datetime_types = set(
 def get_extended_dtype_info(dtype) -> dict:
     if dtype.str in _v3_complex_types:
         return dict(
-            extension="https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/extensions/complex-dtypes/v1.0.html",  # noqa
+            extension="https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/extensions/complex-dtypes/v1.0.html",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str == "|O":
         return dict(
-            extension="TODO: object array protocol URL",  # noqa
+            extension="TODO: object array protocol URL",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str.startswith("|S"):
         return dict(
-            extension="TODO: bytestring array protocol URL",  # noqa
+            extension="TODO: bytestring array protocol URL",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str.startswith("<U") or dtype.str.startswith(">U"):
         return dict(
-            extension="TODO: unicode array protocol URL",  # noqa
+            extension="TODO: unicode array protocol URL",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str.startswith("|V"):
         return dict(
-            extension="TODO: structured array protocol URL",  # noqa
+            extension="TODO: structured array protocol URL",
             type=dtype.descr,
             fallback=None,
         )
     elif dtype.str in _v3_datetime_types:
         return dict(
-            extension="https://zarr-specs.readthedocs.io/en/latest/extensions/data-types/datetime/v1.0.html",  # noqa
+            extension="https://zarr-specs.readthedocs.io/en/latest/extensions/data-types/datetime/v1.0.html",
             type=dtype.str,
             fallback=None,
         )

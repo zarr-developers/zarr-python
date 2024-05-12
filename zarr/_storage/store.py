@@ -323,7 +323,7 @@ class StoreV3(BaseStore):
         from the end of the file.
         A key may occur multiple times with different ranges.
         Inserts None for missing keys into the returned list."""
-        results: List[Union[bytes, memoryview, bytearray]] = [None] * len(key_ranges)  # type: ignore[list-item] # noqa: E501
+        results: List[Union[bytes, memoryview, bytearray]] = [None] * len(key_ranges)  # type: ignore[list-item]
         indexed_ranges_by_key: Dict[str, List[Tuple[int, Tuple[int, Optional[int]]]]] = defaultdict(
             list
         )
