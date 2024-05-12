@@ -470,7 +470,7 @@ class _LogWriter:
             self.log_file = log
         else:
             raise TypeError(
-                "log must be a callable function, file path or " "file-like object, found %r" % log
+                "log must be a callable function, file path or file-like object, found %r" % log
             )
 
     def __enter__(self):
@@ -898,7 +898,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
         if exists:
             if if_exists == "raise":
                 raise CopyError(
-                    "an object {!r} already exists in destination " "{!r}".format(name, dest.name)
+                    "an object {!r} already exists in destination {!r}".format(name, dest.name)
                 )
             elif if_exists == "skip":
                 do_copy = False
@@ -990,7 +990,7 @@ def _copy(log, source, dest, name, root, shallow, without_attrs, if_exists, dry_
         if exists_array:
             if if_exists == "raise":
                 raise CopyError(
-                    "an array {!r} already exists in destination " "{!r}".format(name, dest.name)
+                    "an array {!r} already exists in destination {!r}".format(name, dest.name)
                 )
             elif if_exists == "skip":
                 do_copy = False
