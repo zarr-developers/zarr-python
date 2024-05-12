@@ -2403,7 +2403,7 @@ class Array:
         r = f"<{t.__module__}.{t.__name__}"
         if self.name:
             r += f" {self.name!r}"
-        r += f" {str(self.shape)}"
+        r += f" {self.shape!s}"
         r += f" {self.dtype}"
         if self._read_only:
             r += " read-only"
