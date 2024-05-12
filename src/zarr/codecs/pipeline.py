@@ -93,7 +93,7 @@ class CodecPipeline(Metadata):
             array_array_codecs=tuple(
                 codec for codec in codecs if isinstance(codec, ArrayArrayCodec)
             ),
-            array_bytes_codec=[codec for codec in codecs if isinstance(codec, ArrayBytesCodec)][0],
+            array_bytes_codec=next(codec for codec in codecs if isinstance(codec, ArrayBytesCodec)),
             bytes_bytes_codecs=tuple(
                 codec for codec in codecs if isinstance(codec, BytesBytesCodec)
             ),
