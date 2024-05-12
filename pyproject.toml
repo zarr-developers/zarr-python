@@ -151,6 +151,18 @@ extend-exclude = [
     "docs"
 ]
 
+[tool.ruff.lint]
+extend-select = [
+    "RUF"
+]
+ignore = [
+    "RUF003",
+    "RUF005",
+    "RUF009",
+    "RUF012",
+    "RUF015",
+]
+
 [tool.mypy]
 python_version = "3.10"
 ignore_missing_imports = true
