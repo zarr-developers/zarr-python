@@ -32,6 +32,9 @@ Docs
 Maintenance
 ~~~~~~~~~~~
 
+* Enable ruff/flake8-raise rules (RSE) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1704`.
+
 Deprecations
 ~~~~~~~~~~~~
 
