@@ -31,6 +31,8 @@ Docs
 
 Maintenance
 ~~~~~~~~~~~
+* Enable some ruff rules (RUF) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1867`.
 
 Deprecations
 ~~~~~~~~~~~~
