@@ -270,7 +270,7 @@ class AsyncArray:
 
         # We accept a numpy array as input from the user and convert it to a NDBuffer.
         # From this point onwards, we only pass Buffer and NDBuffer between components.
-        value = NDBuffer.from_numpy_array(value)
+        value = NDBuffer.from_numpy_array(factory=np.asanyarray, array_like=value)
 
         # merging with existing data and encoding chunks
         await concurrent_map(

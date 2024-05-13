@@ -607,7 +607,7 @@ class ShardingCodec(
 
     async def _encode_shard_index(self, index: _ShardIndex) -> Buffer:
         index_bytes = await self.index_codecs.encode(
-            NDBuffer.from_numpy_array(index.offsets_and_lengths),
+            NDBuffer.from_numpy_array(factory=np.asarray, array_like=index.offsets_and_lengths),
             self._get_index_chunk_spec(index.chunks_per_shard),
         )
         assert index_bytes is not None

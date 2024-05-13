@@ -20,6 +20,9 @@ class Factory:
             self, shape: Iterable[int], dtype: np.DTypeLike, order: Literal["C", "F"]
         ) -> NDArrayLike: ...
 
+    class FromNumpy(Protocol):
+        def __call__(self, array_like: np.ArrayLike) -> NDArrayLike: ...
+
 
 class Buffer:
     """A flat contiguous version of `NDBuffer` with an item size of 1"""
@@ -35,12 +38,12 @@ class Buffer:
         return cls(factory(shape=(nbytes,), dtype="b", order="C"))
 
     @classmethod
-    def from_numpy_array(cls, array: np.ArrayLike) -> Self:
-        return cls(np.asanyarray(array).reshape(-1).view(dtype="b"))
+    def from_numpy_array(cls, *, factory: Factory.FromNumpy, array_like: np.ArrayLike) -> Self:
+        return cls(factory(array_like).reshape(-1).view(dtype="b"))
 
     @classmethod
     def from_bytes(cls, data: BytesLike) -> Self:
-        return cls.from_numpy_array(np.frombuffer(data, dtype="b"))
+        return cls.from_numpy_array(factory=np.asarray, array_like=np.frombuffer(data, dtype="b"))
 
     def as_nd_buffer(self, *, dtype: np.DTypeLike) -> NDBuffer:
         return NDBuffer(self._data.view(dtype=dtype))
@@ -96,8 +99,8 @@ class NDBuffer:
         return cls(factory(shape=shape, dtype=dtype, order=order))
 
     @classmethod
-    def from_numpy_array(cls, array: np.ArrayLike) -> Self:
-        return cls(np.asanyarray(array))
+    def from_numpy_array(cls, *, factory: Factory.FromNumpy, array_like: np.ArrayLike) -> Self:
+        return cls(factory(array_like))
 
     def as_buffer(self) -> Buffer:
         return Buffer(self._data.reshape(-1).view(dtype="b"))
