@@ -3157,3 +3157,13 @@ def test_issue_1279(tmpdir):
 
     written_data = ds_reopened[:]
     assert_array_equal(data, written_data)
+
+
+def test_scalar_indexing():
+    store = zarr.KVStore({})
+
+    store["a"] = zarr.create((3,), chunks=(1,), store=store)
+    store["a"][:] = [1, 2, 3]
+
+    assert store["a"][1] == np.array(2.0)
+    assert store["a"][(1,)] == np.array(2.0)
