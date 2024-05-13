@@ -10,7 +10,7 @@ import numpy as np
 
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
-from zarr.buffer import Buffer, NDBuffer, as_bytearray
+from zarr.buffer import Buffer, NDBuffer
 from zarr.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
@@ -28,6 +28,13 @@ from zarr.sync import sync
 
 if TYPE_CHECKING:
     from zarr.array import Array
+
+
+def as_bytearray(data: Optional[Buffer]) -> Optional[bytes]:
+    """Help function to convert a Buffer into bytes if not None"""
+    if data is None:
+        return data
+    return data.to_bytes()
 
 
 @dataclass(frozen=True)

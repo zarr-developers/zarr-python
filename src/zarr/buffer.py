@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Tuple
 import numpy as np
 
 from zarr.common import BytesLike
@@ -155,9 +155,3 @@ class NDBuffer:
 
 def as_bytes_wrapper(func: Callable[[bytes], bytes], buf: Buffer) -> Buffer:
     return Buffer.from_bytes(func(buf.to_bytes()))
-
-
-def as_bytearray(data: Optional[Buffer]) -> Optional[bytes]:
-    if data is None:
-        return data
-    return data.to_bytes()
