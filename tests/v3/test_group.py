@@ -11,7 +11,6 @@ import numpy as np
 
 from zarr.group import AsyncGroup, Group, GroupMetadata
 from zarr.store import LocalStore, StorePath
-from zarr.config import RuntimeConfiguration
 
 
 # todo: put RemoteStore in here
@@ -59,7 +58,6 @@ def test_group(store_type, request) -> None:
     agroup = AsyncGroup(
         metadata=GroupMetadata(),
         store_path=store_path,
-        runtime_configuration=RuntimeConfiguration(),
     )
     group = Group(agroup)
     assert agroup.metadata is group.metadata
@@ -100,7 +98,6 @@ def test_group_sync_constructor(store_path) -> None:
     group = Group.create(
         store=store_path,
         attributes={"title": "test 123"},
-        runtime_configuration=RuntimeConfiguration(),
     )
 
     assert group._async_group.metadata.attributes["title"] == "test 123"

@@ -27,13 +27,7 @@ from zarr.common import (
     parse_fill_value,
     parse_shapelike,
 )
-from zarr.config import RuntimeConfiguration, parse_indexing_order
-
-
-def runtime_configuration(
-    order: Literal["C", "F"], concurrency: Optional[int] = None
-) -> RuntimeConfiguration:
-    return RuntimeConfiguration(order=order, concurrency=concurrency)
+from zarr.config import parse_indexing_order
 
 
 # For type checking
@@ -147,7 +141,10 @@ class ArrayMetadata(Metadata):
         attributes_parsed = parse_attributes(attributes)
 
         array_spec = ArraySpec(
-            shape=shape_parsed, dtype=data_type_parsed, fill_value=fill_value_parsed
+            shape=shape_parsed,
+            dtype=data_type_parsed,
+            fill_value=fill_value_parsed,
+            order="C",  # TODO: order is not needed here.
         )
         codecs_parsed = parse_codecs(codecs).evolve(array_spec)
 
@@ -185,7 +182,7 @@ class ArrayMetadata(Metadata):
     def ndim(self) -> int:
         return len(self.shape)
 
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
+    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
         ), "Currently, only regular chunk grid is supported"
@@ -193,6 +190,7 @@ class ArrayMetadata(Metadata):
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
+            order=order,
         )
 
     def to_bytes(self) -> bytes:

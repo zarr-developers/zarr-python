@@ -19,6 +19,7 @@ dependencies = [
     'crc32c',
     'zstandard',
     'typing_extensions',
+    'donfig'
 ]
 dynamic = [
   "version",
@@ -185,8 +186,6 @@ module = [
     "zarr.codecs.sharding",
     "zarr.codecs.transpose",
     "zarr.array_v2",
-    "zarr.array",
-    "zarr.sync",
 ]
 disallow_any_generics = false
 
@@ -203,11 +202,6 @@ module = [
     "zarr.v2.*",
     "zarr.array_v2",
     "zarr.array",
-    "zarr.common",
-    "zarr.store.local",
-    "zarr.codecs.blosc",
-    "zarr.codecs.gzip",
-    "zarr.codecs.zstd",
 ]
 disallow_untyped_calls = false
 

@@ -14,7 +14,6 @@ from zarr.common import parse_enum, parse_named_configuration
 
 if TYPE_CHECKING:
     from zarr.common import JSON, ArraySpec
-    from zarr.config import RuntimeConfiguration
     from typing_extensions import Self
 
 
@@ -65,7 +64,6 @@ class BytesCodec(ArrayBytesCodec):
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> NDBuffer:
         assert isinstance(chunk_bytes, Buffer)
         if chunk_spec.dtype.itemsize > 0:
@@ -89,7 +87,6 @@ class BytesCodec(ArrayBytesCodec):
         self,
         chunk_array: NDBuffer,
         _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[Buffer]:
         assert isinstance(chunk_array, NDBuffer)
         if chunk_array.dtype.itemsize > 1:

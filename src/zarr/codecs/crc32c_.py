@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
     from zarr.common import JSON, ArraySpec
-    from zarr.config import RuntimeConfiguration
 
 
 @dataclass(frozen=True)
@@ -35,7 +34,6 @@ class Crc32cCodec(BytesBytesCodec):
         self,
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> Buffer:
         data = chunk_bytes.memoryview()
         crc32_bytes = data[-4:]
@@ -54,7 +52,6 @@ class Crc32cCodec(BytesBytesCodec):
         self,
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[Buffer]:
         checksum = crc32c(chunk_bytes.memoryview())
         return as_buffer(chunk_bytes.to_bytes() + np.uint32(checksum).tobytes())

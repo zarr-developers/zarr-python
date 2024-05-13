@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from typing_extensions import Self
     from zarr.common import SliceSelection
     from zarr.metadata import ArrayMetadata
-    from zarr.config import RuntimeConfiguration
 
 
 class Codec(Metadata):
@@ -40,7 +39,6 @@ class ArrayArrayCodec(Codec):
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> NDBuffer:
         pass
 
@@ -49,7 +47,6 @@ class ArrayArrayCodec(Codec):
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[NDBuffer]:
         pass
 
@@ -60,7 +57,6 @@ class ArrayBytesCodec(Codec):
         self,
         chunk_array: Buffer,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> NDBuffer:
         pass
 
@@ -69,7 +65,6 @@ class ArrayBytesCodec(Codec):
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[Buffer]:
         pass
 
@@ -81,7 +76,6 @@ class ArrayBytesCodecPartialDecodeMixin:
         store_path: StorePath,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[NDBuffer]:
         pass
 
@@ -94,7 +88,6 @@ class ArrayBytesCodecPartialEncodeMixin:
         chunk_array: NDBuffer,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> None:
         pass
 
@@ -105,7 +98,6 @@ class BytesBytesCodec(Codec):
         self,
         chunk_array: Buffer,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> Buffer:
         pass
 
@@ -114,6 +106,5 @@ class BytesBytesCodec(Codec):
         self,
         chunk_array: Buffer,
         chunk_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[Buffer]:
         pass
