@@ -32,13 +32,7 @@ from zarr.common import (
     parse_fill_value,
     parse_shapelike,
 )
-from zarr.config import RuntimeConfiguration, parse_indexing_order
-
-
-def runtime_configuration(
-    order: Literal["C", "F"], concurrency: int | None = None
-) -> RuntimeConfiguration:
-    return RuntimeConfiguration(order=order, concurrency=concurrency)
+from zarr.config import parse_indexing_order
 
 
 # For type checking
@@ -137,7 +131,7 @@ class ArrayMetadata(Metadata, ABC):
         pass
 
     @abstractmethod
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
+    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
         pass
 
     @abstractmethod
@@ -194,7 +188,10 @@ class ArrayV3Metadata(ArrayMetadata):
         attributes_parsed = parse_attributes(attributes)
 
         array_spec = ArraySpec(
-            shape=shape_parsed, dtype=data_type_parsed, fill_value=fill_value_parsed
+            shape=shape_parsed,
+            dtype=data_type_parsed,
+            fill_value=fill_value_parsed,
+            order="C",  # TODO: order is not needed here.
         )
         codecs_parsed = parse_codecs(codecs).evolve(array_spec)
 
@@ -236,7 +233,7 @@ class ArrayV3Metadata(ArrayMetadata):
     def codec_pipeline(self) -> CodecPipeline:
         return self.codecs
 
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
+    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
         ), "Currently, only regular chunk grid is supported"
@@ -244,6 +241,7 @@ class ArrayV3Metadata(ArrayMetadata):
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
+            order=order,
         )
 
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
@@ -264,7 +262,7 @@ class ArrayV3Metadata(ArrayMetadata):
         return {ZARR_JSON: json.dumps(self.to_dict(), default=_json_convert).encode()}
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ArrayV3Metadata:
+    def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format_v3(data.pop("zarr_format"))
         # check that the node_type attribute is correct
@@ -389,11 +387,12 @@ class ArrayV2Metadata(ArrayMetadata):
         _ = parse_zarr_format_v2(data.pop("zarr_format"))
         return cls(**data)
 
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
+    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
         return ArraySpec(
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
+            order=order,
         )
 
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:

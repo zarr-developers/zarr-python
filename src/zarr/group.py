@@ -19,7 +19,6 @@ from zarr.abc.metadata import Metadata
 from zarr.array import AsyncArray, Array
 from zarr.attributes import Attributes
 from zarr.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
-from zarr.config import RuntimeConfiguration, SyncConfiguration
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import SyncMixin, sync
 
@@ -79,7 +78,6 @@ class GroupMetadata(Metadata):
 class AsyncGroup:
     metadata: GroupMetadata
     store_path: StorePath
-    runtime_configuration: RuntimeConfiguration = RuntimeConfiguration()
 
     @classmethod
     async def create(
@@ -89,7 +87,6 @@ class AsyncGroup:
         attributes: dict[str, Any] = {},
         exists_ok: bool = False,
         zarr_format: Literal[2, 3] = 3,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> AsyncGroup:
         store_path = make_store_path(store)
         if not exists_ok:
@@ -100,7 +97,6 @@ class AsyncGroup:
         group = cls(
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
-            runtime_configuration=runtime_configuration,
         )
         await group._save_metadata()
         return group
@@ -109,7 +105,6 @@ class AsyncGroup:
     async def open(
         cls,
         store: StoreLike,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         zarr_format: Literal[2, 3, None] = 3,
     ) -> AsyncGroup:
         store_path = make_store_path(store)
@@ -155,19 +150,17 @@ class AsyncGroup:
             assert zarr_json_bytes is not None
             group_metadata = json.loads(zarr_json_bytes)
 
-        return cls.from_dict(store_path, group_metadata, runtime_configuration)
+        return cls.from_dict(store_path, group_metadata)
 
     @classmethod
     def from_dict(
         cls,
         store_path: StorePath,
         data: dict[str, Any],
-        runtime_configuration: RuntimeConfiguration,
     ) -> AsyncGroup:
         group = cls(
             metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
-            runtime_configuration=runtime_configuration,
         )
         return group
 
@@ -194,11 +187,9 @@ class AsyncGroup:
             else:
                 zarr_json = json.loads(zarr_json_bytes)
             if zarr_json["node_type"] == "group":
-                return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
+                return type(self).from_dict(store_path, zarr_json)
             elif zarr_json["node_type"] == "array":
-                return AsyncArray.from_dict(
-                    store_path, zarr_json, runtime_configuration=self.runtime_configuration
-                )
+                return AsyncArray.from_dict(store_path, zarr_json)
             else:
                 raise ValueError(f"unexpected node_type: {zarr_json['node_type']}")
         elif self.metadata.zarr_format == 2:
@@ -221,9 +212,7 @@ class AsyncGroup:
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
                 zarr_json = {**zarray, "attributes": zattrs}
-                return AsyncArray.from_dict(
-                    store_path, zarray, runtime_configuration=self.runtime_configuration
-                )
+                return AsyncArray.from_dict(store_path, zarray)
             else:
                 zgroup = (
                     json.loads(zgroup_bytes)
@@ -231,7 +220,7 @@ class AsyncGroup:
                     else {"zarr_format": self.metadata.zarr_format}
                 )
                 zarr_json = {**zgroup, "attributes": zattrs}
-                return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
+                return type(self).from_dict(store_path, zarr_json)
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
@@ -261,18 +250,14 @@ class AsyncGroup:
         return self.metadata.info
 
     async def create_group(self, path: str, **kwargs) -> AsyncGroup:
-        runtime_configuration = kwargs.pop("runtime_configuration", self.runtime_configuration)
         return await type(self).create(
             self.store_path / path,
-            runtime_configuration=runtime_configuration,
             **kwargs,
         )
 
     async def create_array(self, path: str, **kwargs) -> AsyncArray:
-        runtime_configuration = kwargs.pop("runtime_configuration", self.runtime_configuration)
         return await AsyncArray.create(
             self.store_path / path,
-            runtime_configuration=runtime_configuration,
             **kwargs,
         )
 
@@ -395,7 +380,6 @@ class AsyncGroup:
 @dataclass(frozen=True)
 class Group(SyncMixin):
     _async_group: AsyncGroup
-    _sync_configuration: SyncConfiguration = field(init=True, default=SyncConfiguration())
 
     @classmethod
     def create(
@@ -404,16 +388,13 @@ class Group(SyncMixin):
         *,
         attributes: dict[str, Any] = {},
         exists_ok: bool = False,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Group:
         obj = sync(
             AsyncGroup.create(
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
-                runtime_configuration=runtime_configuration,
             ),
-            loop=runtime_configuration.asyncio_loop,
         )
 
         return cls(obj)
@@ -422,11 +403,8 @@ class Group(SyncMixin):
     def open(
         cls,
         store: StoreLike,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Group:
-        obj = sync(
-            AsyncGroup.open(store, runtime_configuration), loop=runtime_configuration.asyncio_loop
-        )
+        obj = sync(AsyncGroup.open(store))
         return cls(obj)
 
     def __getitem__(self, path: str) -> Array | Group:

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, TypeVar, Iterable
 import numpy as np
 from dataclasses import dataclass
 
+from zarr.config import config
 from zarr.abc.codec import (
     Codec,
     ArrayArrayCodec,
@@ -19,7 +20,6 @@ from zarr.indexing import is_total_slice
 
 if TYPE_CHECKING:
     from typing import List, Optional, Tuple
-    from zarr.metadata import RuntimeConfiguration
     from zarr.common import ArraySpec, BytesLike, SliceSelection
 
 T = TypeVar("T")
@@ -69,7 +69,6 @@ class BatchedCodecPipeline(CodecPipeline):
     async def decode(
         self,
         chunk_bytes_and_specs: Iterable[Tuple[Optional[BytesLike], ArraySpec]],
-        runtime_configuration: RuntimeConfiguration,
     ) -> Iterable[Optional[np.ndarray]]:
         chunk_bytes_batch: Iterable[Optional[BytesLike]]
         chunk_bytes_batch, chunk_specs = _unzip2(chunk_bytes_and_specs)
@@ -81,55 +80,41 @@ class BatchedCodecPipeline(CodecPipeline):
         ) = self._codecs_with_resolved_metadata_batched(chunk_specs)
 
         for bb_codec, chunk_spec_batch in bb_codecs_with_spec[::-1]:
-            chunk_bytes_batch = await bb_codec.decode(
-                zip(chunk_bytes_batch, chunk_spec_batch), runtime_configuration
-            )
+            chunk_bytes_batch = await bb_codec.decode(zip(chunk_bytes_batch, chunk_spec_batch))
 
         ab_codec, chunk_spec_batch = ab_codec_with_spec
-        chunk_array_batch = await ab_codec.decode(
-            zip(chunk_bytes_batch, chunk_spec_batch), runtime_configuration
-        )
+        chunk_array_batch = await ab_codec.decode(zip(chunk_bytes_batch, chunk_spec_batch))
 
         for aa_codec, chunk_spec_batch in aa_codecs_with_spec[::-1]:
-            chunk_array_batch = await aa_codec.decode(
-                zip(chunk_array_batch, chunk_spec_batch), runtime_configuration
-            )
+            chunk_array_batch = await aa_codec.decode(zip(chunk_array_batch, chunk_spec_batch))
 
         return chunk_array_batch
 
     async def decode_partial(
         self,
         batch_info: Iterable[Tuple[ByteGetter, SliceSelection, ArraySpec]],
-        runtime_configuration: RuntimeConfiguration,
     ) -> Iterable[Optional[np.ndarray]]:
         assert self.supports_partial_decode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
-        return await self.array_bytes_codec.decode_partial(batch_info, runtime_configuration)
+        return await self.array_bytes_codec.decode_partial(batch_info)
 
     async def encode(
         self,
         chunk_arrays_and_specs: Iterable[Tuple[Optional[np.ndarray], ArraySpec]],
-        runtime_configuration: RuntimeConfiguration,
     ) -> Iterable[Optional[BytesLike]]:
         chunk_array_batch: Iterable[Optional[np.ndarray]]
         chunk_specs: Iterable[ArraySpec]
         chunk_array_batch, chunk_specs = _unzip2(chunk_arrays_and_specs)
 
         for aa_codec in self.array_array_codecs:
-            chunk_array_batch = await aa_codec.encode(
-                zip(chunk_array_batch, chunk_specs), runtime_configuration
-            )
+            chunk_array_batch = await aa_codec.encode(zip(chunk_array_batch, chunk_specs))
             chunk_specs = resolve_batched(aa_codec, chunk_specs)
 
-        chunk_bytes_batch = await self.array_bytes_codec.encode(
-            zip(chunk_array_batch, chunk_specs), runtime_configuration
-        )
+        chunk_bytes_batch = await self.array_bytes_codec.encode(zip(chunk_array_batch, chunk_specs))
         chunk_specs = resolve_batched(self.array_bytes_codec, chunk_specs)
 
         for bb_codec in self.bytes_bytes_codecs:
-            chunk_bytes_batch = await bb_codec.encode(
-                zip(chunk_bytes_batch, chunk_specs), runtime_configuration
-            )
+            chunk_bytes_batch = await bb_codec.encode(zip(chunk_bytes_batch, chunk_specs))
             chunk_specs = resolve_batched(bb_codec, chunk_specs)
 
         return chunk_bytes_batch
@@ -137,25 +122,22 @@ class BatchedCodecPipeline(CodecPipeline):
     async def encode_partial(
         self,
         batch_info: Iterable[Tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]],
-        runtime_configuration: RuntimeConfiguration,
     ) -> None:
         assert self.supports_partial_encode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin)
-        await self.array_bytes_codec.encode_partial(batch_info, runtime_configuration)
+        await self.array_bytes_codec.encode_partial(batch_info)
 
     async def read_batch(
         self,
         batch_info: Iterable[Tuple[ByteGetter, ArraySpec, SliceSelection, SliceSelection]],
         out: np.ndarray,
-        runtime_configuration: RuntimeConfiguration,
     ) -> None:
         if self.supports_partial_decode:
             chunk_array_batch = await self.decode_partial(
                 [
                     (byte_getter, chunk_selection, chunk_spec)
                     for byte_getter, chunk_spec, chunk_selection, _ in batch_info
-                ],
-                runtime_configuration,
+                ]
             )
             for chunk_array, (_, chunk_spec, _, out_selection) in zip(
                 chunk_array_batch, batch_info
@@ -168,14 +150,13 @@ class BatchedCodecPipeline(CodecPipeline):
             chunk_bytes_batch = await concurrent_map(
                 [(byte_getter,) for byte_getter, _, _, _ in batch_info],
                 lambda byte_getter: byte_getter.get(),
-                runtime_configuration.concurrency,
+                config.get("async.concurrency"),
             )
             chunk_array_batch = await self.decode(
                 [
                     (chunk_bytes, chunk_spec)
                     for chunk_bytes, (_, chunk_spec, _, _) in zip(chunk_bytes_batch, batch_info)
                 ],
-                runtime_configuration,
             )
             for chunk_array, (_, chunk_spec, chunk_selection, out_selection) in zip(
                 chunk_array_batch, batch_info
@@ -190,7 +171,6 @@ class BatchedCodecPipeline(CodecPipeline):
         self,
         batch_info: Iterable[Tuple[ByteSetter, ArraySpec, SliceSelection, SliceSelection]],
         value: np.ndarray,
-        runtime_configuration: RuntimeConfiguration,
     ) -> None:
         if self.supports_partial_encode:
             await self.encode_partial(
@@ -198,7 +178,6 @@ class BatchedCodecPipeline(CodecPipeline):
                     (byte_setter, value[out_selection], chunk_selection, chunk_spec)
                     for byte_setter, chunk_spec, chunk_selection, out_selection in batch_info
                 ],
-                runtime_configuration,
             )
 
         else:
@@ -215,14 +194,13 @@ class BatchedCodecPipeline(CodecPipeline):
                     for byte_setter, chunk_spec, chunk_selection, _ in batch_info
                 ],
                 _read_key,
-                runtime_configuration.concurrency,
+                config.get("async.concurrency"),
             )
             chunk_array_batch = await self.decode(
                 [
                     (chunk_bytes, chunk_spec)
                     for chunk_bytes, (_, chunk_spec, _, _) in zip(chunk_bytes_batch, batch_info)
                 ],
-                runtime_configuration,
             )
 
             def _merge_chunk_array(
@@ -261,7 +239,6 @@ class BatchedCodecPipeline(CodecPipeline):
                     (chunk_array, chunk_spec)
                     for chunk_array, (_, chunk_spec, _, _) in zip(chunk_array_batch, batch_info)
                 ],
-                runtime_configuration,
             )
 
             await concurrent_map(
@@ -270,5 +247,5 @@ class BatchedCodecPipeline(CodecPipeline):
                     for chunk_bytes, (byte_setter, _, _, _) in zip(chunk_bytes_batch, batch_info)
                 ],
                 set_or_delete,
-                runtime_configuration.concurrency,
+                config.get("async.concurrency"),
             )

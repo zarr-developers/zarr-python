@@ -13,7 +13,6 @@ from zarr.common import parse_enum, parse_named_configuration
 
 if TYPE_CHECKING:
     from zarr.common import JSON, ArraySpec, BytesLike
-    from zarr.config import RuntimeConfiguration
     from typing_extensions import Self
 
 
@@ -72,7 +71,6 @@ class BytesCodec(ArrayBytesCodecBatchMixin):
         self,
         chunk_bytes: BytesLike,
         chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         if chunk_spec.dtype.itemsize > 0:
             if self.endian == Endian.little:
@@ -95,7 +93,6 @@ class BytesCodec(ArrayBytesCodecBatchMixin):
         self,
         chunk_array: np.ndarray,
         _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         if chunk_array.dtype.itemsize > 1:
             byteorder = self._get_byteorder(chunk_array)

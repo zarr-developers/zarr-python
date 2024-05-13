@@ -6,7 +6,6 @@ import numpy as np
 
 from zarr.codecs.mixins import ArrayArrayCodecBatchMixin, ArrayBytesCodecBatchMixin
 from zarr.common import JSON, ArraySpec, BytesLike, to_thread
-from zarr.config import RuntimeConfiguration
 
 import numcodecs
 from numcodecs.compat import ensure_bytes, ensure_ndarray
@@ -22,7 +21,6 @@ class V2Compressor(ArrayBytesCodecBatchMixin):
         self,
         chunk_bytes: BytesLike,
         chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         if chunk_bytes is None:
             return None
@@ -43,7 +41,6 @@ class V2Compressor(ArrayBytesCodecBatchMixin):
         self,
         chunk_array: np.ndarray,
         _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike | None:
         if self.compressor is not None:
             compressor = numcodecs.get_codec(self.compressor)
@@ -70,7 +67,6 @@ class V2Filters(ArrayArrayCodecBatchMixin):
         self,
         chunk_array: np.ndarray,
         chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         # apply filters in reverse order
         if self.filters is not None:
@@ -91,7 +87,6 @@ class V2Filters(ArrayArrayCodecBatchMixin):
         self,
         chunk_array: np.ndarray,
         _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray | None:
         chunk_array = chunk_array.ravel(order=self.order)
 

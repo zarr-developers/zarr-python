@@ -2,6 +2,7 @@ from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
     ParamSpec,
+    Literal,
     Union,
     Tuple,
     Iterable,
@@ -52,7 +53,7 @@ async def concurrent_map(
     else:
         sem = asyncio.Semaphore(limit)
 
-        async def run(item):
+        async def run(item: Tuple[Any]) -> V:
             async with sem:
                 return await func(*item)
 
@@ -93,15 +94,20 @@ class ArraySpec:
     shape: ChunkCoords
     dtype: np.dtype[Any]
     fill_value: Any
+    order: Literal["C", "F"]
 
-    def __init__(self, shape: ChunkCoords, dtype: np.dtype[Any], fill_value: Any) -> None:
+    def __init__(
+        self, shape: ChunkCoords, dtype: np.dtype[Any], fill_value: Any, order: Literal["C", "F"]
+    ) -> None:
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
         fill_value_parsed = parse_fill_value(fill_value)
+        order_parsed = parse_order(order)
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "dtype", dtype_parsed)
         object.__setattr__(self, "fill_value", fill_value_parsed)
+        object.__setattr__(self, "order", order_parsed)
 
     @property
     def ndim(self) -> int:
@@ -174,3 +180,9 @@ def parse_dtype(data: Any) -> np.dtype[Any]:
 def parse_fill_value(data: Any) -> Any:
     # todo: real validation
     return data
+
+
+def parse_order(data: Any) -> Literal["C", "F"]:
+    if data in ("C", "F"):
+        return data
+    raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
