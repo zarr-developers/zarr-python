@@ -11,7 +11,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
     from zarr.codecs.bytes import Endian
 
-# TODO: create a protocol for the attributes we need
+# TODO: create a protocol for the attributes we need, for now we just aliasing numpy
 NDArrayLike: TypeAlias = np.ndarray
 
 
