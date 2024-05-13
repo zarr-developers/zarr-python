@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Tuple, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Protocol, Tuple, TypeAlias
 import numpy as np
 
 from zarr.common import BytesLike
@@ -14,6 +14,13 @@ if TYPE_CHECKING:
 NDArrayLike: TypeAlias = np.ndarray
 
 
+class Factory:
+    class Create(Protocol):
+        def __call__(
+            self, shape: Iterable[int], dtype: np.DTypeLike, order: Literal["C", "F"]
+        ) -> NDArrayLike: ...
+
+
 class Buffer:
     """A flat contiguous version of `NDBuffer` with an item size of 1"""
 
@@ -24,8 +31,8 @@ class Buffer:
         self._data = array
 
     @classmethod
-    def create_empty(cls, *, nbytes: int) -> Self:
-        return cls(np.empty(shape=(nbytes,), dtype="b"))
+    def create(cls, *, factory: Factory.Create, nbytes: int) -> Self:
+        return cls(factory(shape=(nbytes,), dtype="b", order="C"))
 
     @classmethod
     def from_numpy_array(cls, array: np.ArrayLike) -> Self:
@@ -78,16 +85,15 @@ class NDBuffer:
         self._data = array
 
     @classmethod
-    def create_empty(
-        cls, *, shape: Iterable[int], dtype: np.DTypeLike, order: Literal["C", "F"] = "C"
+    def create(
+        cls,
+        *,
+        factory: Factory.Create,
+        shape: Iterable[int],
+        dtype: np.DTypeLike,
+        order: Literal["C", "F"] = "C",
     ) -> Self:
-        return cls(np.empty(shape=shape, dtype=dtype, order=order))
-
-    @classmethod
-    def create_zeros(
-        cls, *, shape: Iterable[int], dtype: np.DTypeLike, order: Literal["C", "F"] = "C"
-    ) -> Self:
-        return cls(np.zeros(shape=shape, dtype=dtype, order=order))
+        return cls(factory(shape=shape, dtype=dtype, order=order))
 
     @classmethod
     def from_numpy_array(cls, array: np.ArrayLike) -> Self:

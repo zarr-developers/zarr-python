@@ -224,7 +224,8 @@ class ArrayV2:
         )
 
         # setup output array
-        out = NDBuffer.create_zeros(
+        out = NDBuffer.create(
+            factory=np.zeros,
             shape=indexer.shape,
             dtype=self.metadata.dtype,
             order=self.metadata.order,
@@ -341,7 +342,8 @@ class ArrayV2:
         if is_total_slice(chunk_selection, chunk_shape):
             # write entire chunks
             if np.isscalar(value):
-                chunk_array = NDBuffer.create_empty(
+                chunk_array = NDBuffer.create(
+                    factory=np.empty,
                     shape=chunk_shape,
                     dtype=self.metadata.dtype,
                     order=self.metadata.order,
@@ -358,7 +360,8 @@ class ArrayV2:
 
             # merge new value
             if tmp is None:
-                chunk_array = NDBuffer.create_empty(
+                chunk_array = NDBuffer.create(
+                    factory=np.empty,
                     shape=chunk_shape,
                     dtype=self.metadata.dtype,
                     order=self.metadata.order,

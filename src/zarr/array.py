@@ -193,7 +193,8 @@ class AsyncArray:
         )
 
         # setup output array
-        out = NDBuffer.create_zeros(
+        out = NDBuffer.create(
+            factory=np.zeros,
             shape=indexer.shape,
             dtype=self.metadata.dtype,
             order=self.order,
@@ -303,7 +304,8 @@ class AsyncArray:
         if is_total_slice(chunk_selection, chunk_shape):
             # write entire chunks
             if np.isscalar(value):
-                chunk_array = NDBuffer.create_empty(
+                chunk_array = NDBuffer.create(
+                    factory=np.empty,
                     shape=chunk_shape,
                     dtype=self.metadata.dtype,
                 )
@@ -327,7 +329,8 @@ class AsyncArray:
 
             # merge new value
             if chunk_bytes is None:
-                chunk_array = NDBuffer.create_empty(
+                chunk_array = NDBuffer.create(
+                    factory=np.empty,
                     shape=chunk_shape,
                     dtype=self.metadata.dtype,
                 )

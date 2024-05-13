@@ -148,7 +148,7 @@ class _ShardProxy(Mapping):
     def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardProxy:
         index = _ShardIndex.create_empty(chunks_per_shard)
         obj = cls()
-        obj.buf = Buffer.create_empty(nbytes=0)
+        obj.buf = Buffer.create(factory=np.empty, nbytes=0)
         obj.index = index
         return obj
 
@@ -190,7 +190,7 @@ class _ShardBuilder(_ShardProxy):
     @classmethod
     def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardBuilder:
         obj = cls()
-        obj.buf = Buffer.create_empty(nbytes=0)
+        obj.buf = Buffer.create(factory=np.empty, nbytes=0)
         obj.index = _ShardIndex.create_empty(chunks_per_shard)
         return obj
 
@@ -312,7 +312,8 @@ class ShardingCodec(
         )
 
         # setup output array
-        out = NDBuffer.create_zeros(
+        out = NDBuffer.create(
+            factory=np.zeros,
             shape=shard_shape,
             dtype=shard_spec.dtype,
             order=shard_spec.order,
@@ -359,7 +360,8 @@ class ShardingCodec(
         )
 
         # setup output array
-        out = NDBuffer.create_zeros(
+        out = NDBuffer.create(
+            factory=np.zeros,
             shape=indexer.shape,
             dtype=shard_spec.dtype,
             order=shard_spec.order,
@@ -453,7 +455,8 @@ class ShardingCodec(
                 chunk_array = shard_array[out_selection]
             else:
                 # handling writing partial chunks
-                chunk_array = NDBuffer.create_empty(
+                chunk_array = NDBuffer.create(
+                    factory=np.empty,
                     shape=chunk_shape,
                     dtype=shard_spec.dtype,
                 )
@@ -527,7 +530,8 @@ class ShardingCodec(
 
                 # merge new value
                 if chunk_bytes is None:
-                    chunk_array = NDBuffer.create_empty(
+                    chunk_array = NDBuffer.create(
+                        factory=np.empty,
                         shape=self.chunk_shape,
                         dtype=shard_spec.dtype,
                     )
