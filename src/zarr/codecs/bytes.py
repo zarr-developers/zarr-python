@@ -93,7 +93,7 @@ class BytesCodec(ArrayBytesCodec):
             if self.endian is not None and self.endian != chunk_array.byteorder:
                 new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)
                 chunk_array = chunk_array.astype(new_dtype)
-        return Buffer.from_nd_buffer(chunk_array)
+        return chunk_array.as_buffer()
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
