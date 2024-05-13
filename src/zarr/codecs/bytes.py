@@ -74,7 +74,7 @@ class BytesCodec(ArrayBytesCodec):
             dtype = np.dtype(f"{prefix}{chunk_spec.dtype.str[1:]}")
         else:
             dtype = np.dtype(f"|{chunk_spec.dtype.str[1:]}")
-        chunk_array = NDBuffer(chunk_bytes.as_numpy_array(dtype))
+        chunk_array = chunk_bytes.as_nd_buffer(dtype=dtype)
 
         # ensure correct chunk shape
         if chunk_array.shape != chunk_spec.shape:

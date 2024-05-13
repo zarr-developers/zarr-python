@@ -17,7 +17,9 @@ class Buffer:
 
     def __init__(self, array: np.ndarray):
         assert isinstance(array, np.ndarray)
-
+        assert array.ndim == 1
+        assert array.itemsize == 1
+        assert array.dtype == np.dtype("b")
         self._data = array
 
     @classmethod
@@ -32,20 +34,20 @@ class Buffer:
     def from_nd_buffer(cls, nd_buffer: NDBuffer) -> Self:
         return cls(np.frombuffer(nd_buffer.as_numpy_array().reshape(-1), dtype="b"))
 
+    def as_nd_buffer(self, *, dtype: np.DTypeLike) -> NDBuffer:
+        return NDBuffer(self._data.view(dtype=dtype))
+
     def to_bytes(self) -> bytes:
         return bytes(self.memoryview())
 
     def memoryview(self) -> memoryview:
-        return memoryview(self._data.reshape(-1).view(dtype="b"))
-
-    def as_numpy_array(self, dtype: Optional[np.DTypeLike] = "b") -> np.ndarray:
-        return self._data.reshape(-1).view(dtype=dtype)
+        return memoryview(self._data)
 
     def __getitem__(self, key: Any) -> Self:
-        return self.__class__(self.as_numpy_array().__getitem__(key))
+        return self.__class__(self._data.__getitem__(key))
 
     def __setitem__(self, key: Any, value: Any) -> None:
-        self.as_numpy_array().__setitem__(key, value)
+        self._data.__setitem__(key, value)
 
     def __len__(self) -> int:
         return self._data.nbytes
@@ -75,10 +77,6 @@ class NDBuffer:
         self._data = array
 
     @classmethod
-    def from_numpy_array(cls, array: np.ArrayLike) -> Self:
-        return cls(np.asanyarray(array))
-
-    @classmethod
     def create_empty(
         cls, *, shape: Iterable[int], dtype: np.DTypeLike, order: Literal["C", "F"] = "C"
     ) -> Self:
@@ -89,6 +87,10 @@ class NDBuffer:
         cls, *, shape: Iterable[int], dtype: np.DTypeLike, order: Literal["C", "F"] = "C"
     ) -> Self:
         return cls(np.zeros(shape=shape, dtype=dtype, order=order))
+
+    @classmethod
+    def from_numpy_array(cls, array: np.ArrayLike) -> Self:
+        return cls(np.asanyarray(array))
 
     def as_numpy_array(self, dtype: Optional[np.DTypeLike] = None) -> np.ndarray:
         if dtype is None:
