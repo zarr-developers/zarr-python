@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
     from zarr.codecs.bytes import Endian
 
+# TODO: create a protocol for the attributes we need
 NDArrayLike: TypeAlias = np.ndarray
 
 
@@ -25,7 +26,12 @@ class Factory:
 
 
 class Buffer:
-    """A flat contiguous version of `NDBuffer` with an item size of 1"""
+    """A flat contiguous memory block
+
+    We use `Buffer` throughout Zarr to represent a contiguous block of memory.
+    For now, we only support host memory but the plan is to support other types
+    of memory such as CUDA device memory.
+    """
 
     def __init__(self, array: NDArrayLike):
         assert array.ndim == 1
