@@ -38,7 +38,7 @@ from zarr.config import RuntimeConfiguration
 
 from zarr.indexing import BasicIndexer
 from zarr.chunk_grids import RegularChunkGrid
-from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.metadata import ArrayMetadata, ArrayV3Metadata, ArrayV2Metadata
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
@@ -82,20 +82,120 @@ class AsyncArray:
         cls,
         store: StoreLike,
         *,
+        # v2 and v3
+        shape: ChunkCoords,
+        dtype: str | np.dtype,
+        zarr_format: Literal[2, 3] = 3,
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ChunkCoords | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
+        exists_ok: bool = False,
+    ) -> AsyncArray:
+        store_path = make_store_path(store)
+
+        if chunk_shape is None:
+            if chunks is None:
+                raise ValueError("Either chunk_shape or chunks needs to be provided.")
+            chunk_shape = chunks
+        elif chunks is not None:
+            raise ValueError("Only one of chunk_shape or chunks must be provided.")
+
+        if zarr_format == 3:
+            if dimension_separator is not None:
+                raise ValueError(
+                    "dimension_separator cannot be used for arrays with version 3. Use chunk_key_encoding instead."
+                )
+            if order is not None:
+                raise ValueError(
+                    "order cannot be used for arrays with version 3. Use a transpose codec instead."
+                )
+            if filters is not None:
+                raise ValueError(
+                    "filters cannot be used for arrays with version 3. Use array-to-array codecs instead."
+                )
+            if compressor is not None:
+                raise ValueError(
+                    "compressor cannot be used for arrays with version 3. Use bytes-to-bytes codecs instead."
+                )
+            return await cls._create_v3(
+                store_path,
+                shape=shape,
+                dtype=dtype,
+                chunk_shape=chunk_shape,
+                fill_value=fill_value,
+                chunk_key_encoding=chunk_key_encoding,
+                codecs=codecs,
+                dimension_names=dimension_names,
+                attributes=attributes,
+                runtime_configuration=runtime_configuration,
+                exists_ok=exists_ok,
+            )
+        elif zarr_format == 2:
+            if codecs is not None:
+                raise ValueError(
+                    "codecs cannot be used for arrays with version 2. Use filters and compressor instead."
+                )
+            if chunk_key_encoding is not None:
+                raise ValueError(
+                    "chunk_key_encoding cannot be used for arrays with version 2. Use dimension_separator instead."
+                )
+            if dimension_names is not None:
+                raise ValueError("dimension_names cannot be used for arrays with version 2.")
+            return await cls._create_v2(
+                store_path,
+                shape=shape,
+                dtype=dtype,
+                chunks=chunk_shape,
+                dimension_separator=dimension_separator,
+                fill_value=fill_value,
+                order=order,
+                filters=filters,
+                compressor=compressor,
+                attributes=attributes,
+                runtime_configuration=runtime_configuration,
+                exists_ok=exists_ok,
+            )
+        else:
+            raise ValueError(f"Insupported zarr_format. Got: {zarr_format}")
+
+    @classmethod
+    async def _create_v3(
+        cls,
+        store_path: StorePath,
+        *,
         shape: ChunkCoords,
         dtype: str | np.dtype,
         chunk_shape: ChunkCoords,
         fill_value: Any | None = None,
         chunk_key_encoding: (
-            tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]]
-        ) = ("default", "/"),
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         attributes: dict[str, JSON] | None = None,
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         exists_ok: bool = False,
     ) -> AsyncArray:
-        store_path = make_store_path(store)
         if not exists_ok:
             assert not await (store_path / ZARR_JSON).exists()
 
@@ -107,15 +207,20 @@ class AsyncArray:
             else:
                 fill_value = 0
 
+        if chunk_key_encoding is None:
+            chunk_key_encoding = ("default", "/")
+        if isinstance(chunk_key_encoding, tuple):
+            chunk_key_encoding = (
+                V2ChunkKeyEncoding(separator=chunk_key_encoding[1])
+                if chunk_key_encoding[0] == "v2"
+                else DefaultChunkKeyEncoding(separator=chunk_key_encoding[1])
+            )
+
         metadata = ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
             chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
-            chunk_key_encoding=(
-                V2ChunkKeyEncoding(separator=chunk_key_encoding[1])
-                if chunk_key_encoding[0] == "v2"
-                else DefaultChunkKeyEncoding(separator=chunk_key_encoding[1])
-            ),
+            chunk_key_encoding=chunk_key_encoding,
             fill_value=fill_value,
             codecs=codecs,
             dimension_names=tuple(dimension_names) if dimension_names else None,
@@ -131,16 +236,16 @@ class AsyncArray:
         return array
 
     @classmethod
-    async def create_v2(
+    async def _create_v2(
         cls,
-        store: StoreLike,
+        store_path: StorePath,
         *,
         shape: ChunkCoords,
         dtype: np.dtype,
         chunks: ChunkCoords,
-        dimension_separator: Literal[".", "/"] = ".",
+        dimension_separator: Literal[".", "/"] | None = None,
         fill_value: None | int | float = None,
-        order: Literal["C", "F"] = "C",
+        order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -149,9 +254,14 @@ class AsyncArray:
     ) -> AsyncArray:
         import numcodecs
 
-        store_path = make_store_path(store)
         if not exists_ok:
             assert not await (store_path / ZARRAY_JSON).exists()
+
+        if order is None:
+            order = "C"
+
+        if dimension_separator is None:
+            dimension_separator = "."
 
         metadata = ArrayV2Metadata(
             shape=shape,
@@ -389,16 +499,29 @@ class Array:
         cls,
         store: StoreLike,
         *,
+        # v2 and v3
         shape: ChunkCoords,
         dtype: str | np.dtype,
-        chunk_shape: ChunkCoords,
+        zarr_format: Literal[2, 3] = 3,
         fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
         chunk_key_encoding: (
-            tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]]
-        ) = ("default", "/"),
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
-        attributes: dict[str, JSON] | None = None,
+        # v2 only
+        chunks: ChunkCoords | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
         runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         exists_ok: bool = False,
     ) -> Array:
@@ -407,48 +530,18 @@ class Array:
                 store=store,
                 shape=shape,
                 dtype=dtype,
-                chunk_shape=chunk_shape,
+                zarr_format=zarr_format,
+                attributes=attributes,
                 fill_value=fill_value,
+                chunk_shape=chunk_shape,
                 chunk_key_encoding=chunk_key_encoding,
                 codecs=codecs,
                 dimension_names=dimension_names,
-                attributes=attributes,
-                runtime_configuration=runtime_configuration,
-                exists_ok=exists_ok,
-            ),
-            runtime_configuration.asyncio_loop,
-        )
-        return cls(async_array)
-
-    @classmethod
-    def create_v2(
-        cls,
-        store: StoreLike,
-        *,
-        shape: ChunkCoords,
-        dtype: np.dtype,
-        chunks: ChunkCoords,
-        dimension_separator: Literal[".", "/"] = ".",
-        fill_value: None | int | float = None,
-        order: Literal["C", "F"] = "C",
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
-        attributes: dict[str, JSON] | None = None,
-        exists_ok: bool = False,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
-    ) -> Array:
-        async_array = sync(
-            AsyncArray.create_v2(
-                store=store,
-                shape=shape,
-                dtype=dtype,
                 chunks=chunks,
                 dimension_separator=dimension_separator,
-                fill_value=fill_value,
                 order=order,
-                compressor=compressor,
                 filters=filters,
-                attributes=attributes,
+                compressor=compressor,
                 runtime_configuration=runtime_configuration,
                 exists_ok=exists_ok,
             ),

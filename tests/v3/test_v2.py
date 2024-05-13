@@ -15,8 +15,9 @@ def store() -> Iterator[Store]:
 def test_simple(store: Store):
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
-    a = Array.create_v2(
+    a = Array.create(
         store / "simple_v2",
+        zarr_format=2,
         shape=data.shape,
         chunks=(16, 16),
         dtype=data.dtype,
