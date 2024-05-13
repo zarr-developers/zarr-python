@@ -27,8 +27,12 @@ class Buffer:
         return cls(np.empty(shape=(nbytes,), dtype="b"))
 
     @classmethod
+    def from_numpy_array(cls, array: np.ArrayLike) -> Self:
+        return cls(np.asanyarray(array).reshape(-1).view(dtype="b"))
+
+    @classmethod
     def from_bytes(cls, data: BytesLike) -> Self:
-        return cls(np.frombuffer(data, dtype="b"))
+        return cls.from_numpy_array(np.frombuffer(data, dtype="b"))
 
     def as_nd_buffer(self, *, dtype: np.DTypeLike) -> NDBuffer:
         return NDBuffer(self._data.view(dtype=dtype))
