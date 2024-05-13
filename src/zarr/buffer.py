@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Protocol, Tuple, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Tuple, TypeAlias
 import numpy as np
 
 from zarr.common import BytesLike
@@ -13,16 +13,6 @@ if TYPE_CHECKING:
 
 # TODO: create a protocol for the attributes we need, for now we just aliasing numpy
 NDArrayLike: TypeAlias = np.ndarray
-
-
-class Factory:
-    class Create(Protocol):
-        def __call__(
-            self, shape: Iterable[int], dtype: np.DTypeLike, order: Literal["C", "F"]
-        ) -> NDArrayLike: ...
-
-    class FromNumpy(Protocol):
-        def __call__(self, array_like: np.ArrayLike) -> NDArrayLike: ...
 
 
 class Buffer:
@@ -40,16 +30,16 @@ class Buffer:
         self._data = array
 
     @classmethod
-    def create(cls, *, factory: Factory.Create, nbytes: int) -> Self:
-        return cls(factory(shape=(nbytes,), dtype="b", order="C"))
+    def create_empty(cls, *, nbytes: int) -> Self:
+        return cls(np.empty(shape=(nbytes,), dtype="b", order="C"))
 
     @classmethod
-    def from_numpy_array(cls, *, factory: Factory.FromNumpy, array_like: np.ArrayLike) -> Self:
-        return cls(factory(array_like).reshape(-1).view(dtype="b"))
+    def from_numpy_array(cls, array_like: np.ArrayLike) -> Self:
+        return cls(np.asarray(array_like).reshape(-1).view(dtype="b"))
 
     @classmethod
     def from_bytes(cls, data: BytesLike) -> Self:
-        return cls.from_numpy_array(factory=np.asarray, array_like=np.frombuffer(data, dtype="b"))
+        return cls.from_numpy_array(np.frombuffer(data, dtype="b"))
 
     def as_nd_buffer(self, *, dtype: np.DTypeLike) -> NDBuffer:
         return NDBuffer(self._data.view(dtype=dtype))
@@ -94,19 +84,30 @@ class NDBuffer:
         self._data = array
 
     @classmethod
-    def create(
+    def create_empty(
         cls,
         *,
-        factory: Factory.Create,
         shape: Iterable[int],
         dtype: np.DTypeLike,
         order: Literal["C", "F"] = "C",
     ) -> Self:
-        return cls(factory(shape=shape, dtype=dtype, order=order))
+        return cls(np.empty(shape=shape, dtype=dtype, order=order))
 
     @classmethod
-    def from_numpy_array(cls, *, factory: Factory.FromNumpy, array_like: np.ArrayLike) -> Self:
-        return cls(factory(array_like))
+    def create_zeros(
+        cls,
+        *,
+        shape: Iterable[int],
+        dtype: np.DTypeLike,
+        order: Literal["C", "F"] = "C",
+    ) -> Self:
+        ret = cls.create_empty(shape=shape, dtype=dtype, order=order)
+        ret[...] = 0
+        return ret
+
+    @classmethod
+    def from_numpy_array(cls, array_like: np.ArrayLike) -> Self:
+        return cls(np.asanyarray(array_like))
 
     def as_buffer(self) -> Buffer:
         return Buffer(self._data.reshape(-1).view(dtype="b"))

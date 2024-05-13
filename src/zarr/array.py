@@ -193,8 +193,7 @@ class AsyncArray:
         )
 
         # setup output array
-        out = NDBuffer.create(
-            factory=np.zeros,
+        out = NDBuffer.create_zeros(
             shape=indexer.shape,
             dtype=self.metadata.dtype,
             order=self.order,
@@ -270,7 +269,7 @@ class AsyncArray:
 
         # We accept a numpy array as input from the user and convert it to a NDBuffer.
         # From this point onwards, we only pass Buffer and NDBuffer between components.
-        value = NDBuffer.from_numpy_array(factory=np.asanyarray, array_like=value)
+        value = NDBuffer.from_numpy_array(value)
 
         # merging with existing data and encoding chunks
         await concurrent_map(
@@ -304,8 +303,7 @@ class AsyncArray:
         if is_total_slice(chunk_selection, chunk_shape):
             # write entire chunks
             if np.isscalar(value):
-                chunk_array = NDBuffer.create(
-                    factory=np.empty,
+                chunk_array = NDBuffer.create_empty(
                     shape=chunk_shape,
                     dtype=self.metadata.dtype,
                 )
@@ -329,8 +327,7 @@ class AsyncArray:
 
             # merge new value
             if chunk_bytes is None:
-                chunk_array = NDBuffer.create(
-                    factory=np.empty,
+                chunk_array = NDBuffer.create_empty(
                     shape=chunk_shape,
                     dtype=self.metadata.dtype,
                 )
