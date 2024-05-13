@@ -5,7 +5,7 @@ from typing import Optional, MutableMapping, List, Tuple
 
 from zarr.common import concurrent_map
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, as_buffer
+from zarr.buffer import Buffer
 
 
 # TODO: this store could easily be extended to wrap any MutableMapping store from v2
@@ -53,7 +53,7 @@ class MemoryStore(Store):
         assert isinstance(key, str)
         if isinstance(value, (bytes, bytearray)):
             # TODO: to support the v2 tests, we convert bytes to Buffer here
-            value = as_buffer(value)
+            value = Buffer.from_bytes(value)
         if not isinstance(value, Buffer):
             raise TypeError(f"Expected Buffer. Got {type(value)}.")
 

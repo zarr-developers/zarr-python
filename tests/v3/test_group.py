@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from zarr.buffer import as_buffer
+from zarr.buffer import Buffer
 from zarr.sync import sync
 
 if TYPE_CHECKING:
@@ -41,7 +41,7 @@ def test_group_members(store_type, request):
 
     # add an extra object to the domain of the group.
     # the list of children should ignore this object.
-    sync(store.set(f"{path}/extra_object-1", as_buffer(b"000000")))
+    sync(store.set(f"{path}/extra_object-1", Buffer.from_bytes(b"000000")))
     # add an extra object under a directory-like prefix in the domain of the group.
     # this creates a directory with a random key in it
     # this should not show up as a member

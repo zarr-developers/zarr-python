@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Union, Optional, List, Tuple
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, as_buffer
+from zarr.buffer import Buffer
 from zarr.common import concurrent_map, to_thread
 
 
@@ -32,7 +32,7 @@ def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> 
 
         end = (start + byte_range[1]) if byte_range[1] is not None else None
     else:
-        return as_buffer(path.read_bytes())
+        return Buffer.from_bytes(path.read_bytes())
     with path.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
         if start is not None:
@@ -43,8 +43,8 @@ def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> 
         if end is not None:
             if end < 0:
                 end = size + end
-            return as_buffer(f.read(end - f.tell()))
-        return as_buffer(f.read())
+            return Buffer.from_bytes(f.read(end - f.tell()))
+        return Buffer.from_bytes(f.read())
 
 
 def _put(
@@ -124,7 +124,7 @@ class LocalStore(Store):
         assert isinstance(key, str)
         if isinstance(value, (bytes, bytearray)):
             # TODO: to support the v2 tests, we convert bytes to Buffer here
-            value = as_buffer(value)
+            value = Buffer.from_bytes(value)
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
         path = self.root / key

@@ -4,6 +4,8 @@ import sys
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Optional, Tuple
 import numpy as np
 
+from zarr.common import BytesLike
+
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -15,17 +17,29 @@ class Buffer:
 
     def __init__(self, array: np.ndarray):
         assert isinstance(array, np.ndarray)
-        assert array.dtype != object
+
         self._data = array
+
+    @classmethod
+    def create_empty(cls, *, nbytes: int) -> Self:
+        return cls(np.empty(shape=(nbytes,), dtype="b"))
+
+    @classmethod
+    def from_bytes(cls, data: BytesLike) -> Self:
+        return cls(np.frombuffer(data, dtype="b"))
+
+    @classmethod
+    def from_nd_buffer(cls, nd_buffer: NDBuffer) -> Self:
+        return cls(np.frombuffer(nd_buffer.as_numpy_array().reshape(-1), dtype="b"))
+
+    def to_bytes(self) -> bytes:
+        return bytes(self.memoryview())
 
     def memoryview(self) -> memoryview:
         return memoryview(self._data.reshape(-1).view(dtype="b"))
 
     def as_numpy_array(self, dtype: Optional[np.DTypeLike] = "b") -> np.ndarray:
         return self._data.reshape(-1).view(dtype=dtype)
-
-    def to_bytes(self) -> bytes:
-        return bytes(self.memoryview())
 
     def __getitem__(self, key: Any) -> Self:
         return self.__class__(self.as_numpy_array().__getitem__(key))
@@ -127,18 +141,8 @@ class NDBuffer:
         return self.__class__(self.as_numpy_array().transpose(*axes))
 
 
-def as_buffer(data: Any) -> Buffer:
-    if isinstance(data, Buffer):
-        return data
-    if isinstance(data, NDBuffer):
-        return Buffer(data.as_numpy_array())
-    if isinstance(data, (bytes, bytearray, memoryview)):
-        return Buffer(np.frombuffer(data, dtype="b"))
-    return Buffer(np.asanyarray(data))
-
-
 def as_bytes_wrapper(func: Callable[[bytes], bytes], buf: Buffer) -> Buffer:
-    return as_buffer(func(buf.to_bytes()))
+    return Buffer.from_bytes(func(buf.to_bytes()))
 
 
 def as_bytearray(data: Optional[Buffer]) -> Optional[bytes]:

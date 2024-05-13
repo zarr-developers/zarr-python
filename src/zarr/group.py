@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 
-from zarr.buffer import as_buffer
+from zarr.buffer import Buffer
 
 if TYPE_CHECKING:
     from typing import (
@@ -240,7 +240,7 @@ class AsyncGroup:
     async def _save_metadata(self) -> None:
         to_save = self.metadata.to_bytes()
         awaitables = [
-            (self.store_path / key).set(as_buffer(value)) for key, value in to_save.items()
+            (self.store_path / key).set(Buffer.from_bytes(value)) for key, value in to_save.items()
         ]
         await asyncio.gather(*awaitables)
 
@@ -273,9 +273,9 @@ class AsyncGroup:
         to_save = self.metadata.to_bytes()
         if self.metadata.zarr_format == 2:
             # only save the .zattrs object
-            await (self.store_path / ZATTRS_JSON).set(as_buffer(to_save[ZATTRS_JSON]))
+            await (self.store_path / ZATTRS_JSON).set(Buffer.from_bytes(to_save[ZATTRS_JSON]))
         else:
-            await (self.store_path / ZARR_JSON).set(as_buffer(to_save[ZARR_JSON]))
+            await (self.store_path / ZARR_JSON).set(Buffer.from_bytes(to_save[ZARR_JSON]))
 
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -444,7 +444,7 @@ class Group(SyncMixin):
         # Write new metadata
         to_save = new_metadata.to_bytes()
         awaitables = [
-            (self.store_path / key).set(as_buffer(value)) for key, value in to_save.items()
+            (self.store_path / key).set(Buffer.from_bytes(value)) for key, value in to_save.items()
         ]
         await asyncio.gather(*awaitables)
 

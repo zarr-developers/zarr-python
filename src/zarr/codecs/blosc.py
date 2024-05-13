@@ -9,7 +9,7 @@ import numcodecs
 from numcodecs.blosc import Blosc
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.buffer import Buffer, as_buffer, as_bytes_wrapper
+from zarr.buffer import Buffer, as_bytes_wrapper
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration, to_thread
 
@@ -170,8 +170,12 @@ class BloscCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Optional[Buffer]:
-        chunk_array = chunk_bytes.as_numpy_array(chunk_spec.dtype)
-        return await to_thread(lambda: as_buffer(self._blosc_codec.encode(chunk_array)))
+        # Since blosc only takes bytes, we convert the input and output of the encoding
+        # between bytes and Buffer
+        return await to_thread(
+            lambda chunk: Buffer.from_bytes(self._blosc_codec.encode(chunk.memoryview())),
+            chunk_bytes,
+        )
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

@@ -20,7 +20,7 @@ from zarr.abc.codec import Codec
 
 
 # from zarr.array_v2 import ArrayV2
-from zarr.buffer import NDBuffer, as_buffer
+from zarr.buffer import Buffer, NDBuffer
 from zarr.codecs import BytesCodec
 from zarr.common import (
     ZARR_JSON,
@@ -216,7 +216,7 @@ class AsyncArray:
             return out.as_numpy_array()[()]
 
     async def _save_metadata(self) -> None:
-        await (self.store_path / ZARR_JSON).set(as_buffer(self.metadata.to_bytes()))
+        await (self.store_path / ZARR_JSON).set(Buffer.from_bytes(self.metadata.to_bytes()))
 
     async def _read_chunk(
         self,
@@ -382,14 +382,14 @@ class AsyncArray:
         )
 
         # Write new metadata
-        await (self.store_path / ZARR_JSON).set(as_buffer(new_metadata.to_bytes()))
+        await (self.store_path / ZARR_JSON).set(Buffer.from_bytes(new_metadata.to_bytes()))
         return replace(self, metadata=new_metadata)
 
     async def update_attributes(self, new_attributes: Dict[str, Any]) -> AsyncArray:
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        await (self.store_path / ZARR_JSON).set(as_buffer(new_metadata.to_bytes()))
+        await (self.store_path / ZARR_JSON).set(Buffer.from_bytes(new_metadata.to_bytes()))
         return replace(self, metadata=new_metadata)
 
     def __repr__(self):

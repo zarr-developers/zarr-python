@@ -10,7 +10,7 @@ import numpy as np
 
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
-from zarr.buffer import NDBuffer, as_buffer, as_bytearray
+from zarr.buffer import Buffer, NDBuffer, as_bytearray
 from zarr.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
@@ -180,7 +180,7 @@ class ArrayV2:
         await (self.store_path / ZARRAY_JSON).set(self.metadata.to_bytes())
         if self.attributes is not None and len(self.attributes) > 0:
             await (self.store_path / ZATTRS_JSON).set(
-                as_buffer(json.dumps(self.attributes).encode()),
+                Buffer.from_bytes(json.dumps(self.attributes).encode()),
             )
         else:
             await (self.store_path / ZATTRS_JSON).delete()
@@ -375,7 +375,7 @@ class ArrayV2:
             if chunk_bytes is None:
                 await store_path.delete()
             else:
-                await store_path.set(as_buffer(chunk_bytes))
+                await store_path.set(Buffer.from_bytes(chunk_bytes))
 
     async def _encode_chunk(self, chunk_array: np.ndarray) -> Optional[BytesLike]:
         chunk_array = chunk_array.ravel(order=self.metadata.order)
@@ -494,7 +494,7 @@ class ArrayV2:
         )
 
         new_metadata_bytes = new_metadata.to_bytes()
-        await (self.store_path / ZARR_JSON).set(as_buffer(new_metadata_bytes))
+        await (self.store_path / ZARR_JSON).set(Buffer.from_bytes(new_metadata_bytes))
 
         return Array.from_dict(
             store_path=self.store_path,
@@ -502,7 +502,9 @@ class ArrayV2:
         )
 
     async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> ArrayV2:
-        await (self.store_path / ZATTRS_JSON).set(as_buffer(json.dumps(new_attributes).encode()))
+        await (self.store_path / ZATTRS_JSON).set(
+            Buffer.from_bytes(json.dumps(new_attributes).encode())
+        )
         return replace(self, attributes=new_attributes)
 
     def update_attributes(self, new_attributes: Dict[str, Any]) -> ArrayV2:

@@ -8,7 +8,7 @@ import numpy as np
 from crc32c import crc32c
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.buffer import Buffer, as_buffer
+from zarr.buffer import Buffer
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration
 
@@ -46,7 +46,7 @@ class Crc32cCodec(BytesBytesCodec):
                 "Stored and computed checksum do not match. "
                 + f"Stored: {stored_checksum!r}. Computed: {computed_checksum!r}."
             )
-        return as_buffer(inner_bytes)
+        return Buffer.from_bytes(inner_bytes)
 
     async def encode(
         self,
@@ -54,7 +54,7 @@ class Crc32cCodec(BytesBytesCodec):
         _chunk_spec: ArraySpec,
     ) -> Optional[Buffer]:
         checksum = crc32c(chunk_bytes.memoryview())
-        return as_buffer(chunk_bytes.to_bytes() + np.uint32(checksum).tobytes())
+        return Buffer.from_bytes(chunk_bytes.to_bytes() + np.uint32(checksum).tobytes())
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length + 4

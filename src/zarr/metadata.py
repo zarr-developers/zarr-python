@@ -6,7 +6,7 @@ import json
 import numpy as np
 import numpy.typing as npt
 
-from zarr.buffer import Buffer, as_buffer
+from zarr.buffer import Buffer
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 
@@ -299,7 +299,7 @@ class ArrayV2Metadata(Metadata):
                     return o.descr
             raise TypeError
 
-        return as_buffer(json.dumps(self.to_dict(), default=_json_convert).encode())
+        return Buffer.from_bytes(json.dumps(self.to_dict(), default=_json_convert).encode())
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> ArrayV2Metadata:

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Dict, Optional, Union
 import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.buffer import Buffer, NDBuffer, as_buffer
+from zarr.buffer import Buffer, NDBuffer
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration
 
@@ -93,7 +93,7 @@ class BytesCodec(ArrayBytesCodec):
             if self.endian is not None and self.endian != chunk_array.byteorder:
                 new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)
                 chunk_array = chunk_array.astype(new_dtype)
-        return as_buffer(chunk_array)
+        return Buffer.from_nd_buffer(chunk_array)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length

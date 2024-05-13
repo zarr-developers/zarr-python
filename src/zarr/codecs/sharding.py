@@ -37,7 +37,7 @@ from zarr.metadata import (
     ArrayMetadata,
     parse_codecs,
 )
-from zarr.buffer import Buffer, NDBuffer, as_buffer
+from zarr.buffer import Buffer, NDBuffer
 
 if TYPE_CHECKING:
     from typing import Awaitable, Callable, Dict, Iterator, List, Optional, Set, Tuple
@@ -148,7 +148,7 @@ class _ShardProxy(Mapping):
     def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardProxy:
         index = _ShardIndex.create_empty(chunks_per_shard)
         obj = cls()
-        obj.buf = as_buffer(np.array([], dtype="b"))
+        obj.buf = Buffer.create_empty(nbytes=0)
         obj.index = index
         return obj
 
@@ -190,7 +190,7 @@ class _ShardBuilder(_ShardProxy):
     @classmethod
     def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardBuilder:
         obj = cls()
-        obj.buf = as_buffer(np.array([], dtype="b"))
+        obj.buf = Buffer.create_empty(nbytes=0)
         obj.index = _ShardIndex.create_empty(chunks_per_shard)
         return obj
 
