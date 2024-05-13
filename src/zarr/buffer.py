@@ -89,7 +89,7 @@ class NDBuffer:
         return cls(np.asanyarray(array))
 
     def as_buffer(self) -> Buffer:
-        return Buffer(np.frombuffer(self.as_numpy_array().reshape(-1), dtype="b"))
+        return Buffer(self._data.reshape(-1).view(dtype="b"))
 
     def as_numpy_array(self, dtype: Optional[np.DTypeLike] = None) -> np.ndarray:
         if dtype is None:
@@ -98,11 +98,11 @@ class NDBuffer:
 
     @property
     def dtype(self) -> np.dtype[Any]:
-        return self.as_numpy_array().dtype
+        return self._data.dtype
 
     @property
     def shape(self) -> Tuple[int, ...]:
-        return self.as_numpy_array().shape
+        return self._data.shape
 
     @property
     def byteorder(self) -> Endian:
@@ -116,30 +116,30 @@ class NDBuffer:
             return Endian(sys.byteorder)
 
     def reshape(self, newshape: Iterable[int]) -> Self:
-        return self.__class__(self.as_numpy_array().reshape(newshape))
+        return self.__class__(self._data.reshape(newshape))
 
     def astype(self, dtype: np.DTypeLike, order: Literal["K", "A", "C", "F"] = "K") -> Self:
-        return self.__class__(self.as_numpy_array().astype(dtype=dtype, order=order))
+        return self.__class__(self._data.astype(dtype=dtype, order=order))
 
     def __getitem__(self, key: Any) -> Self:
-        return self.__class__(np.asanyarray(self.as_numpy_array().__getitem__(key)))
+        return self.__class__(np.asanyarray(self._data.__getitem__(key)))
 
     def __setitem__(self, key: Any, value: Any) -> None:
         if isinstance(value, NDBuffer):
-            value = value.as_numpy_array()
-        self.as_numpy_array().__setitem__(key, value)
+            value = value._data
+        self._data.__setitem__(key, value)
 
     def __len__(self) -> int:
-        return self.as_numpy_array().__len__()
+        return self._data.__len__()
 
     def fill(self, value: Any) -> None:
-        self.as_numpy_array().fill(value)
+        self._data.fill(value)
 
     def copy(self) -> Self:
-        return self.__class__(self.as_numpy_array().copy())
+        return self.__class__(self._data.copy())
 
     def transpose(self, *axes: np.SupportsIndex) -> Self:
-        return self.__class__(self.as_numpy_array().transpose(*axes))
+        return self.__class__(self._data.transpose(*axes))
 
 
 def as_bytes_wrapper(func: Callable[[bytes], bytes], buf: Buffer) -> Buffer:
