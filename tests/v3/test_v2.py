@@ -1,0 +1,27 @@
+from typing import Iterator
+import numpy as np
+import pytest
+
+from zarr.abc.store import Store
+from zarr.array import Array
+from zarr.store import StorePath, MemoryStore
+
+
+@pytest.fixture
+def store() -> Iterator[Store]:
+    yield StorePath(MemoryStore())
+
+
+def test_simple(store: Store):
+    data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
+
+    a = Array.create_v2(
+        store / "simple_v2",
+        shape=data.shape,
+        chunks=(16, 16),
+        dtype=data.dtype,
+        fill_value=0,
+    )
+
+    a[:, :] = data
+    assert np.array_equal(data, a[:, :])

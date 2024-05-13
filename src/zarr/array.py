@@ -63,7 +63,7 @@ class AsyncArray:
 
     @property
     def codecs(self):
-        return self.metadata.codecs
+        return self.metadata.codec_pipeline
 
     def __init__(
         self,

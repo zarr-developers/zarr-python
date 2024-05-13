@@ -1,7 +1,7 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod, abstractproperty
+from abc import ABC, abstractmethod
 from enum import Enum
-from typing import TYPE_CHECKING, cast, Iterable
+from typing import TYPE_CHECKING, Any, cast, Iterable
 from dataclasses import dataclass, field, replace
 import json
 import numpy as np
@@ -13,7 +13,7 @@ from zarr.codecs._v2 import V2Compressor, V2Filters
 
 
 if TYPE_CHECKING:
-    from typing import Any, Literal
+    from typing import Literal
     from typing_extensions import Self
     from zarr.codecs import CodecPipeline
 
@@ -115,29 +115,25 @@ class DataType(Enum):
         return DataType[dtype_to_data_type[dtype.str]]
 
 
-class ArrayMetadata(ABC, Metadata):
-    @abstractproperty
+@dataclass(frozen=True, kw_only=True)
+class ArrayMetadata(Metadata, ABC):
+    shape: ChunkCoords
+    chunk_grid: ChunkGrid
+    attributes: dict[str, JSON]
+
+    @property
+    @abstractmethod
     def dtype(self) -> np.dtype[Any]:
         pass
 
-    @abstractproperty
+    @property
+    @abstractmethod
     def ndim(self) -> int:
         pass
 
-    @abstractproperty
-    def shape(self) -> ChunkCoords:
-        pass
-
-    @abstractproperty
-    def chunk_grid(self) -> ChunkGrid:
-        pass
-
-    @abstractproperty
-    def codecs(self) -> CodecPipeline:
-        pass
-
-    @abstractproperty
-    def attributes(self) -> dict[str, JSON]:
+    @property
+    @abstractmethod
+    def codec_pipeline(self) -> CodecPipeline:
         pass
 
     @abstractmethod
@@ -161,7 +157,7 @@ class ArrayMetadata(ABC, Metadata):
         pass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(ArrayMetadata):
     shape: ChunkCoords
     data_type: np.dtype[Any]
@@ -236,6 +232,10 @@ class ArrayV3Metadata(ArrayMetadata):
     def ndim(self) -> int:
         return len(self.shape)
 
+    @property
+    def codec_pipeline(self) -> CodecPipeline:
+        return self.codecs
+
     def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
@@ -293,17 +293,17 @@ class ArrayV3Metadata(ArrayMetadata):
         return replace(self, attributes=attributes)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(ArrayMetadata):
     shape: ChunkCoords
     chunk_grid: RegularChunkGrid
-    dtype: np.dtype[Any]
+    data_type: np.dtype[Any]
     fill_value: None | int | float = 0
     order: Literal["C", "F"] = "C"
-    filters: list[dict[str, Any]] | None = None
+    filters: list[dict[str, JSON]] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: dict[str, Any] | None = None
-    attributes: dict[str, Any] = cast(dict[str, Any], field(default_factory=dict))
+    compressor: dict[str, JSON] | None = None
+    attributes: dict[str, JSON] = cast(dict[str, JSON], field(default_factory=dict))
     zarr_format: Literal[2] = field(init=False, default=2)
 
     def __init__(
@@ -315,8 +315,8 @@ class ArrayV2Metadata(ArrayMetadata):
         fill_value: Any,
         order: Literal["C", "F"],
         dimension_separator: Literal[".", "/"] = ".",
-        compressor: dict[str, Any] | None = None,
-        filters: list[dict[str, Any]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
         attributes: dict[str, JSON] | None = None,
     ):
         """
@@ -334,7 +334,7 @@ class ArrayV2Metadata(ArrayMetadata):
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type_parsed)
-        object.__setattr__(self, "chunks", RegularChunkGrid(chunk_shape=chunks_parsed))
+        object.__setattr__(self, "chunk_grid", RegularChunkGrid(chunk_shape=chunks_parsed))
         object.__setattr__(self, "compressor", compressor_parsed)
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "dimension_separator", dimension_separator_parsed)
@@ -350,11 +350,15 @@ class ArrayV2Metadata(ArrayMetadata):
         return len(self.shape)
 
     @property
+    def dtype(self) -> np.dtype[Any]:
+        return self.data_type
+
+    @property
     def chunks(self) -> ChunkCoords:
         return self.chunk_grid.chunk_shape
 
     @property
-    def codecs(self) -> CodecPipeline:
+    def codec_pipeline(self) -> CodecPipeline:
         from zarr.codecs.pipeline.hybrid import HybridCodecPipeline
 
         return HybridCodecPipeline.from_list(
