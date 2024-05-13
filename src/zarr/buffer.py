@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Tuple, TypeAlias
 import numpy as np
 
 from zarr.common import BytesLike
@@ -11,12 +11,13 @@ if TYPE_CHECKING:
     from typing_extensions import Self
     from zarr.codecs.bytes import Endian
 
+NDArrayLike: TypeAlias = np.ndarray
+
 
 class Buffer:
     """A flat contiguous version of `NDBuffer` with an item size of 1"""
 
-    def __init__(self, array: np.ndarray):
-        assert isinstance(array, np.ndarray)
+    def __init__(self, array: NDArrayLike):
         assert array.ndim == 1
         assert array.itemsize == 1
         assert array.dtype == np.dtype("b")
@@ -71,8 +72,8 @@ class NDBuffer:
     of memory such as CUDA device memory.
     """
 
-    def __init__(self, array: np.ndarray):
-        assert isinstance(array, np.ndarray)
+    def __init__(self, array: NDArrayLike):
+        assert array.ndim > 0
         assert array.dtype != object
         self._data = array
 
