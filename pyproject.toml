@@ -7,8 +7,18 @@ build-backend = "hatchling.build"
 name = "zarr"
 description = "An implementation of chunked, compressed, N-dimensional arrays for Python"
 readme = { file = "README.md", content-type = "text/markdown" }
+authors = [
+    { name = "Alistair Miles", email = "alimanfoo@googlemail.com" },
+]
 maintainers = [
-    { name = "Alistair Miles", email = "alimanfoo@googlemail.com" }
+    { name = "Davis Bennett", email = "davis.v.bennett@gmail.com" },
+    { name = "jakirkham" },
+    { name = "Josh Moore", email = "josh@openmicroscopy.org" },
+    { name = "Joe Hamman", email = "joe@earthmover.io" },
+    { name = "Juan Nunez-Iglesias", email = "juan.nunez-iglesias@monash.edu" },
+    { name = "Martin Durant", email = "mdurant@anaconda.com" },
+    { name = "Norman Rzepka" },
+    { name = "Ryan Abernathey" }
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -38,7 +48,8 @@ classifiers = [
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
 ]
-license = "MIT"
+license = {text = "MIT License"}
+keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
 jupyter = [
@@ -131,6 +142,7 @@ serve = "sphinx-autobuild docs docs/_build --ignore 'docs/_autoapi/**/*' --host 
 
 [tool.ruff]
 line-length = 100
+src = ["src"]
 force-exclude = true
 extend-exclude = [
     ".bzr",
@@ -207,6 +219,10 @@ disallow_untyped_calls = false
 
 
 [tool.pytest.ini_options]
+minversion = "7"
+testpaths = ["tests"]
+log_cli_level = "INFO"
+xfail_strict = true
 asyncio_mode = "auto"
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
@@ -214,7 +230,7 @@ doctest_optionflags = [
     "IGNORE_EXCEPTION_DETAIL",
 ]
 addopts = [
-    "--durations=10",
+    "--durations=10", "-ra", "--strict-config", "--strict-markers",
 ]
 filterwarnings = [
     "error:::zarr.*",
