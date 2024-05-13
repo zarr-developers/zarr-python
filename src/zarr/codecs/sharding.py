@@ -459,7 +459,7 @@ class ShardingCodec(
                 )
                 chunk_array.fill(shard_spec.fill_value)
                 chunk_array[chunk_selection] = shard_array[out_selection]
-            if not np.array_equiv(chunk_array.as_numpy_array(), shard_spec.fill_value):
+            if not chunk_array.all_equal(shard_spec.fill_value):
                 chunk_spec = self._get_chunk_spec(shard_spec)
                 return (
                     chunk_coords,
@@ -538,7 +538,7 @@ class ShardingCodec(
                     ).copy()  # make a writable copy
                 chunk_array[chunk_selection] = shard_array[out_selection]
 
-            if not np.array_equiv(chunk_array.as_numpy_array(), shard_spec.fill_value):
+            if not chunk_array.all_equal(shard_spec.fill_value):
                 return (
                     chunk_coords,
                     await self.codecs.encode(chunk_array, chunk_spec),

@@ -343,7 +343,7 @@ class AsyncArray:
     async def _write_chunk_to_store(
         self, store_path: StorePath, chunk_array: NDBuffer, chunk_spec: ArraySpec
     ) -> None:
-        if np.all(chunk_array.as_numpy_array() == self.metadata.fill_value):
+        if chunk_array.all_equal(self.metadata.fill_value):
             # chunks that only contain fill_value will be removed
             await store_path.delete()
         else:

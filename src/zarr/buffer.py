@@ -132,6 +132,9 @@ class NDBuffer:
     def __len__(self) -> int:
         return self._data.__len__()
 
+    def all_equal(self, other: Any) -> bool:
+        return bool((self._data == other).all())
+
     def fill(self, value: Any) -> None:
         self._data.fill(value)
 
