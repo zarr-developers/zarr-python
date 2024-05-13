@@ -91,10 +91,18 @@ class NDBuffer:
     def as_buffer(self) -> Buffer:
         return Buffer(self._data.reshape(-1).view(dtype="b"))
 
-    def as_numpy_array(self, dtype: Optional[np.DTypeLike] = None) -> np.ndarray:
-        if dtype is None:
-            return self._data
-        return self._data.astype(dtype=dtype, copy=False)
+    def as_numpy_array(self) -> np.ndarray:
+        """Return the buffer as a NumPy array.
+
+        Warning
+        -------
+        Might have to copy data, only use this method for small buffers such as metadata
+
+        Return
+        ------
+            NumPy array of this buffer (might be a data copy)
+        """
+        return self._data
 
     @property
     def dtype(self) -> np.dtype[Any]:
