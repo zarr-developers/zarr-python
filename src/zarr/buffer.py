@@ -61,6 +61,10 @@ class NDBuffer:
         self._data = array
 
     @classmethod
+    def from_numpy_array(cls, array: np.ArrayLike) -> Self:
+        return cls(np.asanyarray(array))
+
+    @classmethod
     def create_empty(
         cls, *, shape: Iterable[int], dtype: np.DTypeLike, order: Literal["C", "F"] = "C"
     ) -> Self:
@@ -121,12 +125,6 @@ class NDBuffer:
 
     def transpose(self, *axes: np.SupportsIndex) -> Self:
         return self.__class__(self.as_numpy_array().transpose(*axes))
-
-
-def as_nd_buffer(data: Any) -> NDBuffer:
-    if isinstance(data, NDBuffer):
-        return data
-    return NDBuffer(np.asanyarray(data))
 
 
 def as_buffer(data: Any) -> Buffer:

@@ -37,7 +37,7 @@ from zarr.metadata import (
     ArrayMetadata,
     parse_codecs,
 )
-from zarr.buffer import Buffer, NDBuffer, as_buffer, as_nd_buffer
+from zarr.buffer import Buffer, NDBuffer, as_buffer
 
 if TYPE_CHECKING:
     from typing import Awaitable, Callable, Dict, Iterator, List, Optional, Set, Tuple
@@ -603,7 +603,7 @@ class ShardingCodec(
 
     async def _encode_shard_index(self, index: _ShardIndex) -> Buffer:
         index_bytes = await self.index_codecs.encode(
-            as_nd_buffer(index.offsets_and_lengths),
+            NDBuffer.from_numpy_array(index.offsets_and_lengths),
             self._get_index_chunk_spec(index.chunks_per_shard),
         )
         assert index_bytes is not None

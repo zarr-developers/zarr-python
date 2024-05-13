@@ -20,7 +20,7 @@ from zarr.abc.codec import Codec
 
 
 # from zarr.array_v2 import ArrayV2
-from zarr.buffer import NDBuffer, as_buffer, as_nd_buffer
+from zarr.buffer import NDBuffer, as_buffer
 from zarr.codecs import BytesCodec
 from zarr.common import (
     ZARR_JSON,
@@ -269,7 +269,7 @@ class AsyncArray:
 
         # We accept a numpy array as input from the user and convert it to a NDBuffer.
         # From this point onwards, we only pass Buffer and NDBuffer between components.
-        value = as_nd_buffer(value)
+        value = NDBuffer.from_numpy_array(value)
 
         # merging with existing data and encoding chunks
         await concurrent_map(
