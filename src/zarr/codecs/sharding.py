@@ -34,7 +34,6 @@ from zarr.indexing import (
 )
 from zarr.metadata import (
     ArrayMetadata,
-    runtime_configuration as make_runtime_configuration,
     parse_codecs,
 )
 
@@ -43,7 +42,6 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from zarr.common import JSON, SliceSelection
-    from zarr.config import RuntimeConfiguration
 
 MAX_UINT_64 = 2**64 - 1
 ShardMapping = Mapping[ChunkCoords, BytesLike]
@@ -382,7 +380,6 @@ class ShardingCodec(
         self,
         shard_bytes: BytesLike,
         shard_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         shard_shape = shard_spec.shape
         chunk_shape = self.chunk_shape
@@ -399,7 +396,7 @@ class ShardingCodec(
         out = np.zeros(
             shard_shape,
             dtype=shard_spec.dtype,
-            order=runtime_configuration.order,
+            order=shard_spec.order,
         )
         shard_dict = await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)
 
@@ -419,7 +416,6 @@ class ShardingCodec(
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             out,
-            runtime_configuration,
         )
 
         return out
@@ -429,7 +425,6 @@ class ShardingCodec(
         byte_getter: ByteGetter,
         selection: SliceSelection,
         shard_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         shard_shape = shard_spec.shape
         chunk_shape = self.chunk_shape
@@ -446,7 +441,7 @@ class ShardingCodec(
         out = np.zeros(
             indexer.shape,
             dtype=shard_spec.dtype,
-            order=runtime_configuration.order,
+            order=shard_spec.order,
         )
 
         indexed_chunks = list(indexer)
@@ -485,7 +480,6 @@ class ShardingCodec(
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             out,
-            runtime_configuration,
         )
 
         return out
@@ -494,7 +488,6 @@ class ShardingCodec(
         self,
         shard_array: np.ndarray,
         shard_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         shard_shape = shard_spec.shape
         chunk_shape = self.chunk_shape
@@ -522,7 +515,6 @@ class ShardingCodec(
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             shard_array,
-            runtime_configuration,
         )
 
         return await shard_builder.finalize(self.index_location, self._encode_shard_index)
@@ -533,7 +525,6 @@ class ShardingCodec(
         shard_array: np.ndarray,
         selection: SliceSelection,
         shard_spec: ArraySpec,
-        runtime_configuration: RuntimeConfiguration,
     ) -> None:
         shard_shape = shard_spec.shape
         chunk_shape = self.chunk_shape
@@ -565,7 +556,6 @@ class ShardingCodec(
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             shard_array,
-            runtime_configuration,
         )
 
         if shard_dict.is_empty():
@@ -592,7 +582,6 @@ class ShardingCodec(
             iter(
                 await self.index_codecs.decode(
                     [(index_bytes, self._get_index_chunk_spec(chunks_per_shard))],
-                    make_runtime_configuration("C"),
                 )
             )
         )
@@ -609,7 +598,6 @@ class ShardingCodec(
                             self._get_index_chunk_spec(index.chunks_per_shard),
                         )
                     ],
-                    make_runtime_configuration("C"),
                 )
             )
         )
@@ -627,6 +615,7 @@ class ShardingCodec(
             shape=chunks_per_shard + (2,),
             dtype=np.dtype("<u8"),
             fill_value=MAX_UINT_64,
+            order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
         )
 
     @lru_cache
@@ -635,6 +624,7 @@ class ShardingCodec(
             shape=self.chunk_shape,
             dtype=shard_spec.dtype,
             fill_value=shard_spec.fill_value,
+            order=shard_spec.order,
         )
 
     @lru_cache

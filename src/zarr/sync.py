@@ -10,7 +10,7 @@ import threading
 
 from typing_extensions import ParamSpec
 
-from zarr.config import SyncConfiguration
+from zarr.config import config
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -113,15 +113,12 @@ def _get_loop() -> asyncio.AbstractEventLoop:
 
 
 class SyncMixin:
-    _sync_configuration: SyncConfiguration
-
     def _sync(self, coroutine: Coroutine[Any, Any, T]) -> T:
         # TODO: refactor this to to take *args and **kwargs and pass those to the method
         # this should allow us to better type the sync wrapper
         return sync(
             coroutine,
-            loop=self._sync_configuration.asyncio_loop,
-            timeout=self._sync_configuration.timeout,
+            timeout=config.get("async.timeout"),
         )
 
     def _sync_iter(self, async_iterator: AsyncIterator[T]) -> list[T]:

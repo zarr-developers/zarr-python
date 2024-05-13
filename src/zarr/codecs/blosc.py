@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
     from zarr.common import JSON, ArraySpec, BytesLike
-    from zarr.config import RuntimeConfiguration
 
 
 class BloscShuffle(Enum):
@@ -163,7 +162,6 @@ class BloscCodec(BytesBytesCodecBatchMixin):
         self,
         chunk_bytes: bytes,
         _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         return await to_thread(self._blosc_codec.decode, chunk_bytes)
 
@@ -171,7 +169,6 @@ class BloscCodec(BytesBytesCodecBatchMixin):
         self,
         chunk_bytes: bytes,
         chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         chunk_array = np.frombuffer(chunk_bytes, dtype=chunk_spec.dtype)
         return await to_thread(self._blosc_codec.encode, chunk_array)

@@ -24,7 +24,6 @@ if TYPE_CHECKING:
     from typing import Iterator, List, Optional, Tuple, Union
     from typing_extensions import Self
     from zarr.metadata import ArrayMetadata
-    from zarr.config import RuntimeConfiguration
     from zarr.common import JSON, ArraySpec, BytesLike, SliceSelection
 
 
@@ -146,7 +145,6 @@ class CodecPipeline(Metadata, ABC):
     async def decode(
         self,
         chunk_bytes_and_specs: Iterable[Tuple[Optional[BytesLike], ArraySpec]],
-        runtime_configuration: RuntimeConfiguration,
     ) -> Iterable[Optional[np.ndarray]]:
         pass
 
@@ -154,7 +152,6 @@ class CodecPipeline(Metadata, ABC):
     async def decode_partial(
         self,
         batch_info: Iterable[Tuple[ByteGetter, SliceSelection, ArraySpec]],
-        runtime_configuration: RuntimeConfiguration,
     ) -> Iterable[Optional[np.ndarray]]:
         pass
 
@@ -162,7 +159,6 @@ class CodecPipeline(Metadata, ABC):
     async def encode(
         self,
         chunk_arrays_and_specs: Iterable[Tuple[Optional[np.ndarray], ArraySpec]],
-        runtime_configuration: RuntimeConfiguration,
     ) -> Iterable[Optional[BytesLike]]:
         pass
 
@@ -170,7 +166,6 @@ class CodecPipeline(Metadata, ABC):
     async def encode_partial(
         self,
         batch_info: Iterable[Tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]],
-        runtime_configuration: RuntimeConfiguration,
     ) -> None:
         pass
 
@@ -179,7 +174,6 @@ class CodecPipeline(Metadata, ABC):
         self,
         batch_info: Iterable[Tuple[ByteGetter, ArraySpec, SliceSelection, SliceSelection]],
         out: np.ndarray,
-        runtime_configuration: RuntimeConfiguration,
     ) -> None:
         pass
 
@@ -188,6 +182,5 @@ class CodecPipeline(Metadata, ABC):
         self,
         batch_info: Iterable[Tuple[ByteSetter, ArraySpec, SliceSelection, SliceSelection]],
         value: np.ndarray,
-        runtime_configuration: RuntimeConfiguration,
     ) -> None:
         pass
