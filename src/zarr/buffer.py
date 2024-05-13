@@ -10,6 +10,43 @@ if TYPE_CHECKING:
     from zarr.codecs.bytes import Endian
 
 
+class Buffer:
+    """A flat contiguous version of `NDBuffer` with an item size of 1"""
+
+    def __init__(self, array: np.ndarray):
+        assert isinstance(array, np.ndarray)
+        assert array.dtype != object
+        self._data = array
+
+    def memoryview(self) -> memoryview:
+        return memoryview(self._data.reshape(-1).view(dtype="b"))
+
+    def as_numpy_array(self, dtype: Optional[np.DTypeLike] = "b") -> np.ndarray:
+        return self._data.reshape(-1).view(dtype=dtype)
+
+    def to_bytes(self) -> bytes:
+        return bytes(self.memoryview())
+
+    def __getitem__(self, key: Any) -> Self:
+        return self.__class__(self.as_numpy_array().__getitem__(key))
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        self.as_numpy_array().__setitem__(key, value)
+
+    def __len__(self) -> int:
+        return self._data.nbytes
+
+    def __add__(self, other: Buffer) -> Self:
+        return self.__class__(np.frombuffer(self.to_bytes() + other.to_bytes(), dtype="b"))
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, (bytes, bytearray)):
+            return self.to_bytes() == other
+        raise ValueError(
+            f"equal operator not supported between {self.__class__} and {other.__class__}"
+        )
+
+
 class NDBuffer:
     """A n-dimensional memory block
 
@@ -84,44 +121,6 @@ class NDBuffer:
 
     def transpose(self, *axes: np.SupportsIndex) -> Self:
         return self.__class__(self.as_numpy_array().transpose(*axes))
-
-
-class Buffer(NDBuffer):
-    """A flat contiguous version of `NDBuffer` with an item size of 1"""
-
-    @classmethod
-    def create_empty(
-        cls, *, shape: Iterable[int], dtype: np.DTypeLike = "b", order: Literal["C", "F"] = "C"
-    ) -> Self:
-        return cls(np.empty(shape=shape, dtype=dtype, order=order))
-
-    def memoryview(self) -> memoryview:
-        return memoryview(self._data.reshape(-1).view(dtype="b"))
-
-    def as_numpy_array(self, dtype: Optional[np.DTypeLike] = "b") -> np.ndarray:
-        return self._data.reshape(-1).view(dtype=dtype)
-
-    def to_bytes(self) -> bytes:
-        return bytes(self.memoryview())
-
-    def __getitem__(self, key: Any) -> Self:
-        return self.__class__(self.as_numpy_array().__getitem__(key))
-
-    def __setitem__(self, key: Any, value: Any) -> None:
-        self.as_numpy_array().__setitem__(key, value)
-
-    def __len__(self) -> int:
-        return self._data.nbytes
-
-    def __add__(self, other: Buffer) -> Self:
-        return self.__class__(np.frombuffer(self.to_bytes() + other.to_bytes(), dtype="b"))
-
-    def __eq__(self, other: Any) -> bool:
-        if isinstance(other, (bytes, bytearray)):
-            return self.to_bytes() == other
-        raise ValueError(
-            f"equal operator not supported between {self.__class__} and {other.__class__}"
-        )
 
 
 def as_nd_buffer(data: Any) -> NDBuffer:
