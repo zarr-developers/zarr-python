@@ -17,8 +17,6 @@ if TYPE_CHECKING:
     from typing_extensions import Self
     from zarr.common import ArraySpec, BytesLike, SliceSelection
 
-DEFAULT_BATCH_SIZE = 1000
-
 T = TypeVar("T")
 
 
@@ -32,7 +30,7 @@ def batched(iterable: Iterable[T], n: int) -> Iterable[Tuple[T, ...]]:
 
 @dataclass(frozen=True)
 class HybridCodecPipeline(CodecPipeline):
-    batch_size: int  # TODO: There needs to be a way of specifying this from the user code
+    batch_size: int
     batched_codec_pipeline: BatchedCodecPipeline
 
     @classmethod
@@ -43,7 +41,7 @@ class HybridCodecPipeline(CodecPipeline):
             array_array_codecs=array_array_codecs,
             array_bytes_codec=array_bytes_codec,
             bytes_bytes_codecs=bytes_bytes_codecs,
-            batch_size=batch_size or DEFAULT_BATCH_SIZE,
+            batch_size=batch_size or config.get("codec_pipeline.batch_size"),
             batched_codec_pipeline=BatchedCodecPipeline(
                 array_array_codecs=array_array_codecs,
                 array_bytes_codec=array_bytes_codec,
