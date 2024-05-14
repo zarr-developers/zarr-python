@@ -148,7 +148,7 @@ class _ShardProxy(Mapping):
     def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardProxy:
         index = _ShardIndex.create_empty(chunks_per_shard)
         obj = cls()
-        obj.buf = Buffer.create_empty(nbytes=0)
+        obj.buf = Buffer.create_zero_length()
         obj.index = index
         return obj
 
@@ -190,7 +190,7 @@ class _ShardBuilder(_ShardProxy):
     @classmethod
     def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardBuilder:
         obj = cls()
-        obj.buf = Buffer.create_empty(nbytes=0)
+        obj.buf = Buffer.create_zero_length()
         obj.index = _ShardIndex.create_empty(chunks_per_shard)
         return obj
 

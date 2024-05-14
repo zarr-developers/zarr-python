@@ -98,8 +98,8 @@ class Buffer:
         self._data = array
 
     @classmethod
-    def create_empty(cls, *, nbytes: int) -> Self:
-        return cls(np.empty(shape=(nbytes,), dtype="b", order="C"))
+    def create_zero_length(cls) -> Self:
+        return cls(np.array([], dtype="b"))
 
     @classmethod
     def from_numpy_array(cls, array_like: np.ArrayLike) -> Self:
