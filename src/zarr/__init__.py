@@ -3,12 +3,11 @@ from __future__ import annotations
 from typing import Union
 
 import zarr.codecs  # noqa: F401
-from zarr.array import Array, AsyncArray  # noqa: F401
+from zarr.array import Array, AsyncArray
 from zarr.array_v2 import ArrayV2
-from zarr.config import RuntimeConfiguration  # noqa: F401
-from zarr.group import AsyncGroup, Group  # noqa: F401
-from zarr.metadata import runtime_configuration  # noqa: F401
-from zarr.store import (  # noqa: F401
+from zarr.config import config  # noqa: F401
+from zarr.group import AsyncGroup, Group
+from zarr.store import (
     StoreLike,
     make_store_path,
 )
@@ -21,22 +20,19 @@ assert not __version__.startswith("0.0.0")
 
 async def open_auto_async(
     store: StoreLike,
-    runtime_configuration_: RuntimeConfiguration = RuntimeConfiguration(),
 ) -> Union[AsyncArray, AsyncGroup]:
     store_path = make_store_path(store)
     try:
-        return await AsyncArray.open(store_path, runtime_configuration=runtime_configuration_)
+        return await AsyncArray.open(store_path)
     except KeyError:
-        return await AsyncGroup.open(store_path, runtime_configuration=runtime_configuration_)
+        return await AsyncGroup.open(store_path)
 
 
 def open_auto(
     store: StoreLike,
-    runtime_configuration_: RuntimeConfiguration = RuntimeConfiguration(),
 ) -> Union[Array, ArrayV2, Group]:
     object = _sync(
-        open_auto_async(store, runtime_configuration_),
-        runtime_configuration_.asyncio_loop,
+        open_auto_async(store),
     )
     if isinstance(object, AsyncArray):
         return Array(object)

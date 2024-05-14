@@ -20,7 +20,6 @@ from zarr.common import (
     concurrent_map,
     to_thread,
 )
-from zarr.config import RuntimeConfiguration
 from zarr.indexing import BasicIndexer, all_chunk_coords, is_total_slice
 from zarr.metadata import ArrayV2Metadata
 from zarr.store import StoreLike, StorePath, make_store_path
@@ -55,7 +54,6 @@ class ArrayV2:
     metadata: ArrayV2Metadata
     attributes: Optional[Dict[str, Any]]
     store_path: StorePath
-    runtime_configuration: RuntimeConfiguration
 
     @classmethod
     async def create_async(
@@ -72,7 +70,6 @@ class ArrayV2:
         compressor: Optional[Dict[str, Any]] = None,
         attributes: Optional[Dict[str, Any]] = None,
         exists_ok: bool = False,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> ArrayV2:
         store_path = make_store_path(store)
         if not exists_ok:
@@ -98,7 +95,6 @@ class ArrayV2:
             metadata=metadata,
             store_path=store_path,
             attributes=attributes,
-            runtime_configuration=runtime_configuration,
         )
         await array._save_metadata()
         return array
@@ -118,7 +114,6 @@ class ArrayV2:
         compressor: Optional[Dict[str, Any]] = None,
         attributes: Optional[Dict[str, Any]] = None,
         exists_ok: bool = False,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> ArrayV2:
         return sync(
             cls.create_async(
@@ -133,16 +128,13 @@ class ArrayV2:
                 filters=filters,
                 attributes=attributes,
                 exists_ok=exists_ok,
-                runtime_configuration=runtime_configuration,
             ),
-            runtime_configuration.asyncio_loop,
         )
 
     @classmethod
     async def open_async(
         cls,
         store: StoreLike,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> ArrayV2:
         store_path = make_store_path(store)
         zarray_bytes, zattrs_bytes = await asyncio.gather(
@@ -154,18 +146,15 @@ class ArrayV2:
             store_path,
             zarray_json=json.loads(zarray_bytes),
             zattrs_json=json.loads(zattrs_bytes) if zattrs_bytes is not None else None,
-            runtime_configuration=runtime_configuration,
         )
 
     @classmethod
     def open(
         cls,
         store: StoreLike,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> ArrayV2:
         return sync(
-            cls.open_async(store, runtime_configuration),
-            runtime_configuration.asyncio_loop,
+            cls.open_async(store),
         )
 
     @classmethod
@@ -174,14 +163,12 @@ class ArrayV2:
         store_path: StorePath,
         zarray_json: Any,
         zattrs_json: Optional[Any],
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> ArrayV2:
         metadata = ArrayV2Metadata.from_dict(zarray_json)
         out = cls(
             store_path=store_path,
             metadata=metadata,
             attributes=zattrs_json,
-            runtime_configuration=runtime_configuration,
         )
         out._validate_metadata()
         return out
@@ -219,7 +206,7 @@ class ArrayV2:
         return _AsyncArrayProxy(self)
 
     def __getitem__(self, selection: Selection):
-        return sync(self.get_async(selection), self.runtime_configuration.asyncio_loop)
+        return sync(self.get_async(selection))
 
     async def get_async(self, selection: Selection):
         indexer = BasicIndexer(
@@ -295,7 +282,7 @@ class ArrayV2:
         return chunk_array
 
     def __setitem__(self, selection: Selection, value: np.ndarray) -> None:
-        sync(self.set_async(selection, value), self.runtime_configuration.asyncio_loop)
+        sync(self.set_async(selection, value))
 
     async def set_async(self, selection: Selection, value: np.ndarray) -> None:
         chunk_shape = self.metadata.chunks
@@ -436,7 +423,7 @@ class ArrayV2:
         return replace(self, metadata=new_metadata)
 
     def resize(self, new_shape: ChunkCoords) -> ArrayV2:
-        return sync(self.resize_async(new_shape), self.runtime_configuration.asyncio_loop)
+        return sync(self.resize_async(new_shape))
 
     async def convert_to_v3_async(self) -> Array:
         from sys import byteorder as sys_byteorder
@@ -511,7 +498,6 @@ class ArrayV2:
         return Array.from_dict(
             store_path=self.store_path,
             data=json.loads(new_metadata_bytes),
-            runtime_configuration=self.runtime_configuration,
         )
 
     async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> ArrayV2:
@@ -521,11 +507,10 @@ class ArrayV2:
     def update_attributes(self, new_attributes: Dict[str, Any]) -> ArrayV2:
         return sync(
             self.update_attributes_async(new_attributes),
-            self.runtime_configuration.asyncio_loop,
         )
 
     def convert_to_v3(self) -> Array:
-        return sync(self.convert_to_v3_async(), loop=self.runtime_configuration.asyncio_loop)
+        return sync(self.convert_to_v3_async())
 
     def __repr__(self):
         return f"<Array_v2 {self.store_path} shape={self.shape} dtype={self.dtype}>"

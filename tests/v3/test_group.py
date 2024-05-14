@@ -13,7 +13,6 @@ import numpy as np
 
 from zarr.group import AsyncGroup, Group, GroupMetadata
 from zarr.store import StorePath
-from zarr.config import RuntimeConfiguration, SyncConfiguration
 from zarr.sync import sync
 
 
@@ -95,25 +94,14 @@ def test_group(store: MemoryStore | LocalStore) -> None:
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize("exists_ok", (True, False))
-@pytest.mark.parametrize(
-    "runtime_configuration", (RuntimeConfiguration(order="C"), RuntimeConfiguration(order="F"))
-)
-def test_group_create(
-    store: MemoryStore | LocalStore, exists_ok: bool, runtime_configuration: RuntimeConfiguration
-) -> None:
+def test_group_create(store: MemoryStore | LocalStore, exists_ok: bool) -> None:
     """
     Test that `Group.create` works as expected.
     """
     attributes = {"foo": 100}
-    group = Group.create(
-        store,
-        attributes=attributes,
-        exists_ok=exists_ok,
-        runtime_configuration=runtime_configuration,
-    )
+    group = Group.create(store, attributes=attributes, exists_ok=exists_ok)
 
     assert group.attrs == attributes
-    assert group._async_group.runtime_configuration == runtime_configuration
 
     if not exists_ok:
         with pytest.raises(AssertionError):
@@ -121,22 +109,16 @@ def test_group_create(
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
-                runtime_configuration=runtime_configuration,
             )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 @pytest.mark.parametrize("exists_ok", (True, False))
-@pytest.mark.parametrize(
-    "runtime_configuration", (RuntimeConfiguration(order="C"), RuntimeConfiguration(order="F"))
-)
 async def test_asyncgroup_create(
     store: MemoryStore | LocalStore,
     exists_ok: bool,
     zarr_format: ZarrFormat,
-    runtime_configuration: RuntimeConfiguration,
 ) -> None:
     """
     Test that `AsyncGroup.create` works as expected.
@@ -147,12 +129,10 @@ async def test_asyncgroup_create(
         attributes=attributes,
         exists_ok=exists_ok,
         zarr_format=zarr_format,
-        runtime_configuration=runtime_configuration,
     )
 
     assert agroup.metadata == GroupMetadata(zarr_format=zarr_format, attributes=attributes)
     assert agroup.store_path == make_store_path(store)
-    assert agroup.runtime_configuration == runtime_configuration
 
     if not exists_ok:
         with pytest.raises(AssertionError):
@@ -161,11 +141,9 @@ async def test_asyncgroup_create(
                 attributes=attributes,
                 exists_ok=exists_ok,
                 zarr_format=zarr_format,
-                runtime_configuration=runtime_configuration,
             )
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_attrs(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
@@ -175,7 +153,6 @@ async def test_asyncgroup_attrs(store: LocalStore | MemoryStore, zarr_format: Za
     assert agroup.attrs == agroup.metadata.attributes == attributes
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_info(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
@@ -187,14 +164,11 @@ async def test_asyncgroup_info(store: LocalStore | MemoryStore, zarr_format: Zar
     # assert agroup.info == agroup.metadata.info
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
-@pytest.mark.parametrize("runtime_configuration", (RuntimeConfiguration(),))
 async def test_asyncgroup_open(
     store: LocalStore | MemoryStore,
     zarr_format: ZarrFormat,
-    runtime_configuration: RuntimeConfiguration,
 ) -> None:
     """
     Create an `AsyncGroup`, then ensure that we can open it using `AsyncGroup.open`
@@ -205,20 +179,16 @@ async def test_asyncgroup_open(
         attributes=attributes,
         exists_ok=False,
         zarr_format=zarr_format,
-        runtime_configuration=runtime_configuration,
     )
 
-    group_r = await AsyncGroup.open(
-        store=store, zarr_format=zarr_format, runtime_configuration=runtime_configuration
-    )
+    group_r = await AsyncGroup.open(store=store, zarr_format=zarr_format)
 
     assert group_w.attrs == group_w.attrs == attributes
     assert group_w == group_r
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (pytest.param(2, marks=pytest.mark.xfail), 3))
+@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_open_wrong_format(
     store: LocalStore | MemoryStore,
     zarr_format: ZarrFormat,
@@ -253,16 +223,15 @@ def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, A
     """
     path = "test"
     store_path = StorePath(store=store, path=path)
-    group = AsyncGroup.from_dict(
-        store_path, data=data, runtime_configuration=RuntimeConfiguration()
-    )
+    group = AsyncGroup.from_dict(store_path, data=data)
 
     assert group.metadata.zarr_format == data["zarr_format"]
     assert group.metadata.attributes == data["attributes"]
 
 
 # todo: replace this with a declarative API where we model a full hierarchy
-@pytest.mark.asyncio
+
+
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize(
     "zarr_format",
@@ -291,11 +260,12 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
 
 
 # todo: replace this with a declarative API where we model a full hierarchy
-@pytest.mark.asyncio
+
+
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize(
     "zarr_format",
-    (pytest.param(2, marks=pytest.mark.xfail(reason="V2 arrays cannot be created yet.")), 3),
+    (2, 3),
 )
 async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
@@ -326,46 +296,31 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
         assert False
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize(
-    "runtime_configuration", (RuntimeConfiguration(), RuntimeConfiguration(order="F"))
-)
 @pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_create_group(
     store: LocalStore | MemoryStore,
     zarr_format: ZarrFormat,
-    runtime_configuration: RuntimeConfiguration,
 ) -> None:
-    agroup = await AsyncGroup.create(
-        store=store, zarr_format=zarr_format, runtime_configuration=RuntimeConfiguration
-    )
+    agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     sub_node_path = "sub_group"
     attributes = {"foo": 999}
-    subnode = await agroup.create_group(
-        path=sub_node_path, attributes=attributes, runtime_configuration=runtime_configuration
-    )
+    subnode = await agroup.create_group(path=sub_node_path, attributes=attributes)
 
     assert isinstance(subnode, AsyncGroup)
-    assert subnode.runtime_configuration == runtime_configuration
     assert subnode.attrs == attributes
     assert subnode.store_path.path == sub_node_path
     assert subnode.store_path.store == store
     assert subnode.metadata.zarr_format == zarr_format
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize(
-    "runtime_configuration", (RuntimeConfiguration(), RuntimeConfiguration(order="F"))
-)
 @pytest.mark.parametrize(
     "zarr_format",
     (pytest.param(2, marks=pytest.mark.xfail(reason="V2 arrays cannot be created yet")), 3),
 )
 async def test_asyncgroup_create_array(
     store: LocalStore | MemoryStore,
-    runtime_configuration: RuntimeConfiguration,
     zarr_format: ZarrFormat,
 ) -> None:
     """
@@ -373,9 +328,7 @@ async def test_asyncgroup_create_array(
     specified in create_array are present on the resulting array.
     """
 
-    agroup = await AsyncGroup.create(
-        store=store, zarr_format=zarr_format, runtime_configuration=runtime_configuration
-    )
+    agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
 
     shape = (10,)
     dtype = "uint8"
@@ -389,10 +342,8 @@ async def test_asyncgroup_create_array(
         dtype=dtype,
         chunk_shape=chunk_shape,
         attributes=attributes,
-        runtime_configuration=runtime_configuration,
     )
     assert isinstance(subnode, AsyncArray)
-    assert subnode.runtime_configuration == runtime_configuration
     assert subnode.attrs == attributes
     assert subnode.store_path.path == sub_node_path
     assert subnode.store_path.store == store
@@ -404,7 +355,6 @@ async def test_asyncgroup_create_array(
     assert subnode.metadata.zarr_format == zarr_format
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_update_attributes(
@@ -425,13 +375,7 @@ async def test_asyncgroup_update_attributes(
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
-@pytest.mark.parametrize(
-    "sync_configuration", (SyncConfiguration(), SyncConfiguration(concurrency=2))
-)
-async def test_group_init(
-    store: LocalStore | MemoryStore, zarr_format: ZarrFormat, sync_configuration: SyncConfiguration
-) -> None:
+async def test_group_init(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = sync(AsyncGroup.create(store=store, zarr_format=zarr_format))
-    group = Group(_async_group=agroup, _sync_configuration=sync_configuration)
+    group = Group(agroup)
     assert group._async_group == agroup
-    assert group._sync_configuration == sync_configuration

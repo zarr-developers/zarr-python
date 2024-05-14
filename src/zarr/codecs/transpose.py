@@ -6,7 +6,6 @@ from dataclasses import dataclass, replace
 from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
 
 if TYPE_CHECKING:
-    from zarr.config import RuntimeConfiguration
     from typing import TYPE_CHECKING, Optional, Tuple
     from typing_extensions import Self
 
@@ -71,13 +70,13 @@ class TransposeCodec(ArrayArrayCodec):
             shape=tuple(chunk_spec.shape[self.order[i]] for i in range(chunk_spec.ndim)),
             dtype=chunk_spec.dtype,
             fill_value=chunk_spec.fill_value,
+            order=chunk_spec.order,
         )
 
     async def decode(
         self,
         chunk_array: np.ndarray,
         chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> np.ndarray:
         inverse_order = [0] * chunk_spec.ndim
         for x, i in enumerate(self.order):
@@ -89,7 +88,6 @@ class TransposeCodec(ArrayArrayCodec):
         self,
         chunk_array: np.ndarray,
         chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[np.ndarray]:
         chunk_array = chunk_array.transpose(self.order)
         return chunk_array

@@ -764,7 +764,7 @@ def compressor_config_to_zarr(compressor_config: Dict[str, Any]) -> Optional[Dic
         zarr_config["filters"] = None
 
     elif codec_id == "gzip":
-        if "useZlib" in compressor_config and compressor_config["useZlib"]:
+        if compressor_config.get("useZlib"):
             zarr_config["id"] = "zlib"
             zarr_config["level"] = compressor_config["level"]
         else:

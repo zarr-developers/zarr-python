@@ -11,7 +11,6 @@ import pathlib
 
 import pytest
 
-from zarr.config import RuntimeConfiguration
 from zarr.store import LocalStore, StorePath, MemoryStore
 from zarr.store.remote import RemoteStore
 
@@ -67,7 +66,6 @@ class AsyncGroupRequest:
     zarr_format: ZarrFormat
     store: Literal["local", "remote", "memory"]
     attributes: dict[str, Any] = field(default_factory=dict)
-    runtime_configuration: RuntimeConfiguration = RuntimeConfiguration()
 
 
 @pytest.fixture(scope="function")
@@ -79,7 +77,6 @@ async def async_group(request: pytest.FixtureRequest, tmpdir) -> AsyncGroup:
         store,
         attributes=param.attributes,
         zarr_format=param.zarr_format,
-        runtime_configuration=param.runtime_configuration,
         exists_ok=False,
     )
     return agroup

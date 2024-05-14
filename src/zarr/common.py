@@ -1,5 +1,14 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Literal, Iterable, TypeVar, overload, Union, Any
+from typing import (
+    TYPE_CHECKING,
+    Literal,
+    Union,
+    Tuple,
+    Iterable,
+    TypeVar,
+    overload,
+    Any,
+)
 import asyncio
 import contextvars
 from dataclasses import dataclass
@@ -42,14 +51,14 @@ async def concurrent_map(
     else:
         sem = asyncio.Semaphore(limit)
 
-        async def run(item):
+        async def run(item: Tuple[Any]) -> V:
             async with sem:
                 return await func(*item)
 
         return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
 
 
-async def to_thread(func, /, *args, **kwargs):
+async def to_thread(func: Callable[..., V], /, *args: Any, **kwargs: Any) -> V:
     loop = asyncio.get_running_loop()
     ctx = contextvars.copy_context()
     func_call = functools.partial(ctx.run, func, *args, **kwargs)
@@ -71,7 +80,7 @@ def parse_enum(data: JSON, cls: Type[E]) -> E:
         raise TypeError(f"Expected str, got {type(data)}")
     if data in enum_names(cls):
         return cls(data)
-    raise ValueError(f"Value must be one of {repr(list(enum_names(cls)))}. Got {data} instead.")
+    raise ValueError(f"Value must be one of {list(enum_names(cls))!r}. Got {data} instead.")
 
 
 @dataclass(frozen=True)
@@ -79,15 +88,20 @@ class ArraySpec:
     shape: ChunkCoords
     dtype: np.dtype[Any]
     fill_value: Any
+    order: Literal["C", "F"]
 
-    def __init__(self, shape: ChunkCoords, dtype: np.dtype[Any], fill_value: Any) -> None:
+    def __init__(
+        self, shape: ChunkCoords, dtype: np.dtype[Any], fill_value: Any, order: Literal["C", "F"]
+    ) -> None:
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
         fill_value_parsed = parse_fill_value(fill_value)
+        order_parsed = parse_order(order)
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "dtype", dtype_parsed)
         object.__setattr__(self, "fill_value", fill_value_parsed)
+        object.__setattr__(self, "order", order_parsed)
 
     @property
     def ndim(self) -> int:
@@ -160,3 +174,9 @@ def parse_dtype(data: Any) -> np.dtype[Any]:
 def parse_fill_value(data: Any) -> Any:
     # todo: real validation
     return data
+
+
+def parse_order(data: Any) -> Literal["C", "F"]:
+    if data in ("C", "F"):
+        return data
+    raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")

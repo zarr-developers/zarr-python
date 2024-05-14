@@ -5,19 +5,16 @@ from dataclasses import asdict, dataclass, field, replace
 import asyncio
 import json
 import logging
+import numpy.typing as npt
 
 if TYPE_CHECKING:
-    from typing import (
-        Any,
-        AsyncGenerator,
-        Literal,
-    )
+    from typing import Any, AsyncGenerator, Literal, Iterable
+from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 
 from zarr.array import AsyncArray, Array
 from zarr.attributes import Attributes
-from zarr.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
-from zarr.config import RuntimeConfiguration, SyncConfiguration
+from zarr.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, ChunkCoords
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import SyncMixin, sync
 from typing import overload
@@ -98,7 +95,6 @@ class GroupMetadata(Metadata):
 class AsyncGroup:
     metadata: GroupMetadata
     store_path: StorePath
-    runtime_configuration: RuntimeConfiguration = RuntimeConfiguration()
 
     @classmethod
     async def create(
@@ -108,7 +104,6 @@ class AsyncGroup:
         attributes: dict[str, Any] = {},
         exists_ok: bool = False,
         zarr_format: Literal[2, 3] = 3,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> AsyncGroup:
         store_path = make_store_path(store)
         if not exists_ok:
@@ -119,7 +114,6 @@ class AsyncGroup:
         group = cls(
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
-            runtime_configuration=runtime_configuration,
         )
         await group._save_metadata()
         return group
@@ -128,7 +122,6 @@ class AsyncGroup:
     async def open(
         cls,
         store: StoreLike,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
         zarr_format: Literal[2, 3, None] = 3,
     ) -> AsyncGroup:
         store_path = make_store_path(store)
@@ -174,19 +167,17 @@ class AsyncGroup:
             assert zarr_json_bytes is not None
             group_metadata = json.loads(zarr_json_bytes)
 
-        return cls.from_dict(store_path, group_metadata, runtime_configuration)
+        return cls.from_dict(store_path, group_metadata)
 
     @classmethod
     def from_dict(
         cls,
         store_path: StorePath,
         data: dict[str, Any],
-        runtime_configuration: RuntimeConfiguration,
     ) -> AsyncGroup:
         group = cls(
             metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
-            runtime_configuration=runtime_configuration,
         )
         return group
 
@@ -210,11 +201,9 @@ class AsyncGroup:
             else:
                 zarr_json = json.loads(zarr_json_bytes)
             if zarr_json["node_type"] == "group":
-                return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
+                return type(self).from_dict(store_path, zarr_json)
             elif zarr_json["node_type"] == "array":
-                return AsyncArray.from_dict(
-                    store_path, zarr_json, runtime_configuration=self.runtime_configuration
-                )
+                return AsyncArray.from_dict(store_path, zarr_json)
             else:
                 raise ValueError(f"unexpected node_type: {zarr_json['node_type']}")
         elif self.metadata.zarr_format == 2:
@@ -237,9 +226,7 @@ class AsyncGroup:
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
                 zarr_json = {**zarray, "attributes": zattrs}
-                return AsyncArray.from_dict(
-                    store_path, zarray, runtime_configuration=self.runtime_configuration
-                )
+                return AsyncArray.from_dict(store_path, zarray)
             else:
                 zgroup = (
                     json.loads(zgroup_bytes)
@@ -247,7 +234,7 @@ class AsyncGroup:
                     else {"zarr_format": self.metadata.zarr_format}
                 )
                 zarr_json = {**zgroup, "attributes": zattrs}
-                return type(self).from_dict(store_path, zarr_json, self.runtime_configuration)
+                return type(self).from_dict(store_path, zarr_json)
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
@@ -276,22 +263,42 @@ class AsyncGroup:
     def info(self):
         return self.metadata.info
 
-    async def create_group(self, path: str, **kwargs) -> AsyncGroup:
-        runtime_configuration = kwargs.pop("runtime_configuration", self.runtime_configuration)
+    async def create_group(
+        self, path: str, exists_ok: bool = False, attributes: dict[str, Any] = {}
+    ) -> AsyncGroup:
         return await type(self).create(
             self.store_path / path,
-            runtime_configuration=runtime_configuration,
+            attributes=attributes,
+            exists_ok=exists_ok,
             zarr_format=self.metadata.zarr_format,
-            **kwargs,
         )
 
-    async def create_array(self, path: str, **kwargs) -> AsyncArray:
-        runtime_configuration = kwargs.pop("runtime_configuration", self.runtime_configuration)
+    async def create_array(
+        self,
+        path: str,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike,
+        chunk_shape: ChunkCoords,
+        fill_value: Any | None = None,
+        chunk_key_encoding: tuple[Literal["default"], Literal[".", "/"]]
+        | tuple[Literal["v2"], Literal[".", "/"]] = ("default", "/"),
+        codecs: Iterable[Codec | dict[str, Any]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        attributes: dict[str, Any] | None = None,
+        exists_ok: bool = False,
+    ) -> AsyncArray:
         return await AsyncArray.create(
             self.store_path / path,
-            runtime_configuration=runtime_configuration,
+            shape=shape,
+            dtype=dtype,
+            chunk_shape=chunk_shape,
+            fill_value=fill_value,
+            chunk_key_encoding=chunk_key_encoding,
+            codecs=codecs,
+            dimension_names=dimension_names,
+            attributes=attributes,
+            exists_ok=exists_ok,
             zarr_format=self.metadata.zarr_format,
-            **kwargs,
         )
 
     async def update_attributes(self, new_attributes: dict[str, Any]):
@@ -421,7 +428,6 @@ class AsyncGroup:
 @dataclass(frozen=True)
 class Group(SyncMixin):
     _async_group: AsyncGroup
-    _sync_configuration: SyncConfiguration = field(init=True, default=SyncConfiguration())
 
     @classmethod
     def create(
@@ -430,16 +436,13 @@ class Group(SyncMixin):
         *,
         attributes: dict[str, Any] = {},
         exists_ok: bool = False,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Group:
         obj = sync(
             AsyncGroup.create(
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
-                runtime_configuration=runtime_configuration,
             ),
-            loop=runtime_configuration.asyncio_loop,
         )
 
         return cls(obj)
@@ -448,11 +451,8 @@ class Group(SyncMixin):
     def open(
         cls,
         store: StoreLike,
-        runtime_configuration: RuntimeConfiguration = RuntimeConfiguration(),
     ) -> Group:
-        obj = sync(
-            AsyncGroup.open(store, runtime_configuration), loop=runtime_configuration.asyncio_loop
-        )
+        obj = sync(AsyncGroup.open(store))
         return cls(obj)
 
     def __getitem__(self, path: str) -> Array | Group:
