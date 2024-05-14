@@ -33,10 +33,45 @@ class Factory:
             dtype: np.DTypeLike,
             order: Literal["C", "F"],
             fill_value: Optional[Any],
-        ) -> NDBuffer: ...
+        ) -> NDBuffer:
+            """Factory function to create a new NDBuffer (or subclass)
+
+            Callables implementing the `Factor.Create` protocol must create a new
+            instance of NDBuffer (or subclass) given the following parameters.
+
+            Parameters
+            ----------
+            shape
+                The shape of the new buffer
+            dtype
+                The datatype of each element in the new buffer
+            order
+                Whether to store multi-dimensional data in row-major (C-style) or
+                column-major (Fortran-style) order in memory.
+            fill_value
+                If not None, fill the new buffer with a scalar value.
+
+            Return
+            ------
+                A new NDBuffer or subclass instance
+            """
 
     class NDArrayLike(Protocol):
-        def __call__(self, ndarray_like: NDArrayLike) -> NDBuffer: ...
+        def __call__(self, ndarray_like: NDArrayLike) -> NDBuffer:
+            """Factory function to coerce an array into a NDBuffer (or subclass)
+
+            Callables implementing the `Factor.NDArrayLike` protocol must return
+            an instance of NDBuffer (or subclass) given an ndarray-like object.
+
+            Parameters
+            ----------
+            ndarray_like
+                ndarray-like object
+
+            Return
+            ------
+                A NDBuffer or subclass instance that represents `ndarray_like`
+            """
 
 
 class Buffer:

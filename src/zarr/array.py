@@ -267,8 +267,9 @@ class AsyncArray:
             if value.dtype.name != self.metadata.dtype.name:
                 value = value.astype(self.metadata.dtype, order="A")
 
-        # We accept any ndarray like object from the user and convert it to a NDBuffer.
-        # From this point onwards, we only pass Buffer and NDBuffer between components.
+        # We accept any ndarray like object from the user and convert it
+        # to a NDBuffer (or subclass). From this point onwards, we only pass
+        # Buffer and NDBuffer between components.
         value = factory(value)
 
         # merging with existing data and encoding chunks
