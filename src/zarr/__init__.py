@@ -17,7 +17,7 @@ from zarr._version import version as __version__
 assert not __version__.startswith("0.0.0")
 
 
-async def open_auto_async(store: StoreLike) -> Union[AsyncArray, AsyncGroup]:
+async def open_auto_async(store: StoreLike) -> AsyncArray | AsyncGroup:
     store_path = make_store_path(store)
     try:
         return await AsyncArray.open(store_path)
