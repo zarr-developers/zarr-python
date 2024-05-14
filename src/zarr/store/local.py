@@ -58,10 +58,10 @@ def _put(
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
-            f.write(value.memoryview())
+            f.write(value.as_numpy_array())
         return None
     else:
-        return path.write_bytes(value.memoryview())
+        return path.write_bytes(value.as_numpy_array())
 
 
 class LocalStore(Store):

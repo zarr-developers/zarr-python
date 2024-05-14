@@ -35,7 +35,7 @@ class Crc32cCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
     ) -> Buffer:
-        data = chunk_bytes.memoryview()
+        data = chunk_bytes.to_bytes()
         crc32_bytes = data[-4:]
         inner_bytes = data[:-4]
 
@@ -53,8 +53,9 @@ class Crc32cCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
     ) -> Optional[Buffer]:
-        checksum = crc32c(chunk_bytes.memoryview())
-        return Buffer.from_bytes(chunk_bytes.to_bytes() + np.uint32(checksum).tobytes())
+        data = chunk_bytes.to_bytes()
+        checksum = crc32c(data)
+        return Buffer.from_bytes(data + np.uint32(checksum).tobytes())
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length + 4

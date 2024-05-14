@@ -173,7 +173,7 @@ class BloscCodec(BytesBytesCodec):
         # Since blosc only takes bytes, we convert the input and output of the encoding
         # between bytes and Buffer
         return await to_thread(
-            lambda chunk: Buffer.from_bytes(self._blosc_codec.encode(chunk.memoryview())),
+            lambda chunk: Buffer.from_bytes(self._blosc_codec.encode(chunk.as_ndarray_like())),
             chunk_bytes,
         )
 

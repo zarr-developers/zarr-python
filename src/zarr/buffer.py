@@ -109,8 +109,11 @@ class Buffer:
     def from_bytes(cls, data: BytesLike) -> Self:
         return cls.from_ndarray_like(np.frombuffer(data, dtype="b"))
 
+    def as_nd_buffer(self, *, dtype: np.DTypeLike) -> NDBuffer:
+        return NDBuffer(self._data.view(dtype=dtype))
+
     def as_ndarray_like(self) -> NDArrayLike:
-        """Return the underlying array that represents the memory of this buffer
+        """Return the underlying array (host or device memory) of this buffer
 
         This will never copy data.
 
@@ -120,25 +123,32 @@ class Buffer:
         """
         return self._data
 
-    def as_nd_buffer(self, *, dtype: np.DTypeLike) -> NDBuffer:
-        return NDBuffer(self._data.view(dtype=dtype))
+    def as_numpy_array(self) -> np.ndarray:
+        """Return the buffer as a NumPy array (host memory).
+
+        Warning
+        -------
+        Might have to copy data, consider using `.as_ndarray_like()` instead.
+
+        Return
+        ------
+            NumPy array of this buffer (might be a data copy)
+        """
+        return self._data
 
     def to_bytes(self) -> bytes:
         """Return the buffer as `bytes` (host memory).
 
         Warning
         -------
-        Will always copy data, only use this method for small buffers such
-        as metadata. If possible, use `.as_ndarray_like()` instead.
+        Will always copy data, only use this method for small buffers such as meta-
+        data. If possible, use `.as_numpy_array()` or `.as_ndarray_like()` instead.
 
         Return
         ------
             `bytes` of this buffer (data copy)
         """
-        return bytes(self.memoryview())
-
-    def memoryview(self) -> memoryview:
-        return memoryview(self._data)
+        return bytes(self.as_numpy_array())
 
     def __getitem__(self, key: slice) -> Self:
         check_item_key_is_1d_contiguous(key)
@@ -204,7 +214,7 @@ class NDBuffer:
         return cls(ndarray_like)
 
     def as_ndarray_like(self) -> NDArrayLike:
-        """Return the underlying array that represents the memory of this buffer
+        """Return the underlying array (host or device memory) of this buffer
 
         This will never copy data.
 
@@ -218,12 +228,11 @@ class NDBuffer:
         return Buffer(self._data.reshape(-1).view(dtype="b"))
 
     def as_numpy_array(self) -> np.ndarray:
-        """Return the buffer as a NumPy array.
+        """Return the buffer as a NumPy array (host memory).
 
         Warning
         -------
-        Might have to copy data, only use this method for small buffers such
-        as metadata. If possible, use `.as_ndarray_like()` instead.
+        Might have to copy data, consider using `.as_ndarray_like()` instead.
 
         Return
         ------
