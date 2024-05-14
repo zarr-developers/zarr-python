@@ -9,7 +9,7 @@ import numcodecs
 from numcodecs.blosc import Blosc
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.buffer import Buffer, as_bytes_wrapper
+from zarr.buffer import Buffer, as_numpy_array_wrapper
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration, to_thread
 
@@ -163,7 +163,7 @@ class BloscCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await to_thread(as_bytes_wrapper, self._blosc_codec.decode, chunk_bytes)
+        return await to_thread(as_numpy_array_wrapper, self._blosc_codec.decode, chunk_bytes)
 
     async def encode(
         self,

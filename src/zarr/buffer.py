@@ -141,8 +141,8 @@ class Buffer:
 
         Warning
         -------
-        Will always copy data, only use this method for small buffers such as meta-
-        data. If possible, use `.as_numpy_array()` or `.as_ndarray_like()` instead.
+        Will always copy data, only use this method for small buffers such as metadata
+        buffers. If possible, use `.as_numpy_array()` or `.as_ndarray_like()` instead.
 
         Return
         ------
@@ -289,5 +289,25 @@ class NDBuffer:
         return self.__class__(self._data.transpose(*axes))
 
 
-def as_bytes_wrapper(func: Callable[[bytes], bytes], buf: Buffer) -> Buffer:
-    return Buffer.from_bytes(func(buf.to_bytes()))
+def as_numpy_array_wrapper(func: Callable[[np.ndarray], bytes], buf: Buffer) -> Buffer:
+    """Converts the input of `func` to a numpy array and the output back to `Buffer`.
+
+    This function is useful when calling a `func` that only support host memory such
+    as `GZip.decode` and `Blosc.decode`. In this case, use this wrapper to convert
+    the input `buf` to a Numpy array and convert the result back into a `Buffer`.
+
+    Parameters
+    ----------
+    func
+        The callable that will be called with the converted `buf` as input.
+        `func` must return bytes, which will be converted into a `Buffer`
+        before returned.
+    buf
+        The buffer that will be converted to a Numpy array before given as
+        input to `func`.
+
+    Return
+    ------
+        The result of `func` converted to a `Buffer`
+    """
+    return Buffer.from_bytes(func(buf.as_numpy_array()))

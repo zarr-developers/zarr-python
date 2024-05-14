@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from numcodecs.gzip import GZip
 from zarr.abc.codec import BytesBytesCodec
-from zarr.buffer import Buffer, as_bytes_wrapper
+from zarr.buffer import Buffer, as_numpy_array_wrapper
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration, to_thread
 
@@ -49,14 +49,14 @@ class GzipCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await to_thread(as_bytes_wrapper, GZip(self.level).decode, chunk_bytes)
+        return await to_thread(as_numpy_array_wrapper, GZip(self.level).decode, chunk_bytes)
 
     async def encode(
         self,
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
     ) -> Optional[Buffer]:
-        return await to_thread(as_bytes_wrapper, GZip(self.level).encode, chunk_bytes)
+        return await to_thread(as_numpy_array_wrapper, GZip(self.level).encode, chunk_bytes)
 
     def compute_encoded_size(
         self,
