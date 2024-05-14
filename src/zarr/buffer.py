@@ -24,6 +24,15 @@ if TYPE_CHECKING:
 NDArrayLike: TypeAlias = np.ndarray
 
 
+def check_item_key_is_1d_contiguous(key: Any) -> None:
+    if not isinstance(key, slice):
+        raise TypeError(
+            f"Item key has incorrect type (expected slice, got {key.__class__.__name__})"
+        )
+    if not (key.step is None or key.step == 1):
+        raise ValueError("slice must be contiguous")
+
+
 class Factory:
     class Create(Protocol):
         def __call__(
@@ -109,14 +118,16 @@ class Buffer:
     def memoryview(self) -> memoryview:
         return memoryview(self._data)
 
-    def __getitem__(self, key: Any) -> Self:
+    def __getitem__(self, key: slice) -> Self:
+        check_item_key_is_1d_contiguous(key)
         return self.__class__(self._data.__getitem__(key))
 
-    def __setitem__(self, key: Any, value: Any) -> None:
+    def __setitem__(self, key: slice, value: Any) -> None:
+        check_item_key_is_1d_contiguous(key)
         self._data.__setitem__(key, value)
 
     def __len__(self) -> int:
-        return self._data.nbytes
+        return self._data.size
 
     def __add__(self, other: Buffer) -> Self:
         return self.__class__(np.frombuffer(self.to_bytes() + other.to_bytes(), dtype="b"))
