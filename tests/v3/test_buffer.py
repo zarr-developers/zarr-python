@@ -1,4 +1,5 @@
-from typing import Any, Iterable, Literal, Optional, Self
+from typing import TYPE_CHECKING, Any, Iterable, Literal, Optional
+
 import numpy as np
 import numpy.typing as npt
 import pytest
@@ -7,6 +8,9 @@ from zarr.array import AsyncArray
 from zarr.buffer import NDBuffer
 from zarr.store.core import StorePath
 from zarr.store.memory import MemoryStore
+
+if TYPE_CHECKING:
+    from typing_extensions import Self
 
 
 class MyNDArrayLike(np.ndarray):
