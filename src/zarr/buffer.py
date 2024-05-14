@@ -1,8 +1,17 @@
 from __future__ import annotations
 
 import sys
-from typing import (TYPE_CHECKING, Any, Callable, Iterable, Literal, Optional,
-                    Protocol, Tuple, TypeAlias)
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Literal,
+    Optional,
+    Protocol,
+    Tuple,
+    TypeAlias,
+)
 
 import numpy as np
 
