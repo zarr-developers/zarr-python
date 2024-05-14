@@ -181,6 +181,8 @@ disallow_any_generics = true
 disallow_incomplete_defs = true
 disallow_untyped_calls = true
 
+disallow_untyped_defs = true
+
 [[tool.mypy.overrides]]
 module = [
     "zarr.v2.*",
@@ -217,6 +219,16 @@ module = [
 ]
 disallow_untyped_calls = false
 
+[[tool.mypy.overrides]]
+module = [
+    "zarr.v2.*",
+    "zarr.array_v2",
+    "zarr.array",
+    "zarr.common",
+    "zarr.group",
+    "zarr.metadata"
+]
+disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 minversion = "7"
