@@ -130,7 +130,8 @@ class Buffer:
         return self._data.size
 
     def __add__(self, other: Buffer) -> Self:
-        return self.__class__(np.frombuffer(self.to_bytes() + other.to_bytes(), dtype="b"))
+        assert other._data.dtype == np.dtype("b")
+        return self.__class__(np.concatenate((self._data, other._data)))
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, (bytes, bytearray)):
