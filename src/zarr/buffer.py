@@ -102,17 +102,39 @@ class Buffer:
         return cls(np.array([], dtype="b"))
 
     @classmethod
-    def from_numpy_array(cls, array_like: np.ArrayLike) -> Self:
-        return cls(np.asarray(array_like).reshape(-1).view(dtype="b"))
+    def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
+        return cls(ndarray_like)
 
     @classmethod
     def from_bytes(cls, data: BytesLike) -> Self:
-        return cls.from_numpy_array(np.frombuffer(data, dtype="b"))
+        return cls.from_ndarray_like(np.frombuffer(data, dtype="b"))
+
+    def as_ndarray_like(self) -> NDArrayLike:
+        """Return the underlying array that represents the memory of this buffer
+
+        This will never copy data.
+
+        Return
+        ------
+            The underlying 1d array such as a NumPy or CuPy array.
+        """
+        return self._data
 
     def as_nd_buffer(self, *, dtype: np.DTypeLike) -> NDBuffer:
         return NDBuffer(self._data.view(dtype=dtype))
 
     def to_bytes(self) -> bytes:
+        """Return the buffer as `bytes` (host memory).
+
+        Warning
+        -------
+        Will always copy data, only use this method for small buffers such
+        as metadata. If possible, use `.as_ndarray_like()` instead.
+
+        Return
+        ------
+            `bytes` of this buffer (data copy)
+        """
         return bytes(self.memoryview())
 
     def memoryview(self) -> memoryview:
@@ -130,12 +152,17 @@ class Buffer:
         return self._data.size
 
     def __add__(self, other: Buffer) -> Self:
-        assert other._data.dtype == np.dtype("b")
-        return self.__class__(np.concatenate((self._data, other._data)))
+        other_array = other.as_ndarray_like()
+        assert other_array.dtype == np.dtype("b")
+        return self.__class__(np.concatenate((self._data, other_array)))
 
     def __eq__(self, other: Any) -> bool:
         if isinstance(other, (bytes, bytearray)):
-            return self.to_bytes() == other
+            # Many of the tests compares `Buffer` with `bytes` so we
+            # convert the bytes to a Buffer and try again
+            return self == self.from_bytes(other)
+        if isinstance(other, Buffer):
+            return (self._data == other.as_ndarray_like()).all()
         raise ValueError(
             f"equal operator not supported between {self.__class__} and {other.__class__}"
         )
@@ -144,7 +171,7 @@ class Buffer:
 class NDBuffer:
     """A n-dimensional memory block
 
-    We use `NDBuffer` throughout Zarr to represent a block of memory.
+    We use `NDBuffer` throughout Zarr to represent a n-dimensional memory block.
     For now, we only support host memory but the plan is to support other types
     of memory such as CUDA device memory.
     """
@@ -177,7 +204,7 @@ class NDBuffer:
         return cls(ndarray_like)
 
     def as_ndarray_like(self) -> NDArrayLike:
-        """Return the underlying array instance representing the memory of this buffer
+        """Return the underlying array that represents the memory of this buffer
 
         This will never copy data.
 
@@ -195,7 +222,8 @@ class NDBuffer:
 
         Warning
         -------
-        Might have to copy data, only use this method for small buffers such as metadata
+        Might have to copy data, only use this method for small buffers such
+        as metadata. If possible, use `.as_ndarray_like()` instead.
 
         Return
         ------
