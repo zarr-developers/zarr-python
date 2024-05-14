@@ -24,7 +24,7 @@ class MemoryStore(Store):
         return f"memory://{id(self._store_dict)}"
 
     def __repr__(self) -> str:
-        return f"MemoryStore({repr(str(self))})"
+        return f"MemoryStore({str(self)!r})"
 
     async def get(
         self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None

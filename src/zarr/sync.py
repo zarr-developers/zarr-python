@@ -84,7 +84,7 @@ def sync(
     if len(unfinished) > 0:
         raise asyncio.TimeoutError(f"Coroutine {coro} failed to finish in within {timeout}s")
     assert len(finished) == 1
-    return_result = list(finished)[0].result()
+    return_result = next(iter(finished)).result()
 
     if isinstance(return_result, BaseException):
         raise return_result

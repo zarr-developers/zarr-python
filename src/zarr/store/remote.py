@@ -39,7 +39,7 @@ class RemoteStore(Store):
         return str(self.root)
 
     def __repr__(self) -> str:
-        return f"RemoteStore({repr(str(self))})"
+        return f"RemoteStore({str(self)!r})"
 
     def _make_fs(self) -> Tuple[AsyncFileSystem, str]:
         import fsspec

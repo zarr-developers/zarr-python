@@ -631,7 +631,7 @@ class KVStore(Store):
         return len(self._mutable_mapping)
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}: \n{repr(self._mutable_mapping)}\n at {hex(id(self))}>"
+        return f"<{self.__class__.__name__}: \n{self._mutable_mapping!r}\n at {hex(id(self))}>"
 
     def __eq__(self, other):
         if isinstance(other, KVStore):

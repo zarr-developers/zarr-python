@@ -84,7 +84,7 @@ class LocalStore(Store):
         return f"file://{self.root}"
 
     def __repr__(self) -> str:
-        return f"LocalStore({repr(str(self))})"
+        return f"LocalStore({str(self)!r})"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.root == other.root
