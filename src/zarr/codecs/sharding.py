@@ -330,6 +330,11 @@ class ShardingCodec(
         object.__setattr__(self, "index_codecs", index_codecs_parsed)
         object.__setattr__(self, "index_location", index_location_parsed)
 
+        # Use instance-local lru_cache to avoid memory leaks
+        object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
+        object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
+        object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
+
     @classmethod
     def from_dict(cls, data: Dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
@@ -606,7 +611,6 @@ class ShardingCodec(
             16 * product(chunks_per_shard), self._get_index_chunk_spec(chunks_per_shard)
         )
 
-    @lru_cache
     def _get_index_chunk_spec(self, chunks_per_shard: ChunkCoords) -> ArraySpec:
         return ArraySpec(
             shape=chunks_per_shard + (2,),
@@ -615,7 +619,6 @@ class ShardingCodec(
             order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
         )
 
-    @lru_cache
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:
         return ArraySpec(
             shape=self.chunk_shape,
@@ -624,7 +627,6 @@ class ShardingCodec(
             order=shard_spec.order,
         )
 
-    @lru_cache
     def _get_chunks_per_shard(self, shard_spec: ArraySpec) -> ChunkCoords:
         return tuple(
             s // c
