@@ -79,7 +79,7 @@ def parse_enum(data: JSON, cls: type[E]) -> E:
         raise TypeError(f"Expected str, got {type(data)}")
     if data in enum_names(cls):
         return cls(data)
-    raise ValueError(f"Value must be one of {repr(list(enum_names(cls)))}. Got {data} instead.")
+    raise ValueError(f"Value must be one of {list(enum_names(cls))!r}. Got {data} instead.")
 
 
 @dataclass(frozen=True)

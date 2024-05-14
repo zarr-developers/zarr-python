@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import zarr.codecs  # noqa: F401
 from zarr._version import version as __version__
-from zarr.array import Array, AsyncArray  # noqa: F401
+from zarr.array import Array, AsyncArray
+
 from zarr.array_v2 import ArrayV2
 from zarr.config import config  # noqa: F401
-from zarr.group import AsyncGroup, Group  # noqa: F401
-from zarr.store import (  # noqa: F401
+from zarr.group import AsyncGroup, Group
+from zarr.store import (
     StoreLike,
     make_store_path,
 )
