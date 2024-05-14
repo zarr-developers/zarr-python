@@ -22,6 +22,7 @@ from zarr.abc.codec import Codec
 
 # from zarr.array_v2 import ArrayV2
 from zarr.codecs import BytesCodec
+from zarr.codecs.pipeline import CodecPipeline
 from zarr.common import (
     ZARR_JSON,
     ChunkCoords,
@@ -54,7 +55,7 @@ class AsyncArray:
     order: Literal["C", "F"]
 
     @property
-    def codecs(self):
+    def codecs(self) -> CodecPipeline:
         return self.metadata.codecs
 
     def __init__(
@@ -295,7 +296,7 @@ class AsyncArray:
         await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
         return replace(self, metadata=new_metadata)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
     async def info(self):
@@ -423,7 +424,7 @@ class Array:
             )
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
     def info(self):
