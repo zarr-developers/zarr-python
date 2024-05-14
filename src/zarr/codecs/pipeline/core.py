@@ -95,7 +95,7 @@ class CodecPipeline(Metadata, ABC):
 
         return (
             tuple(codec for codec in codecs if isinstance(codec, ArrayArrayCodec)),
-            [codec for codec in codecs if isinstance(codec, ArrayBytesCodec)][0],
+            next(codec for codec in codecs if isinstance(codec, ArrayBytesCodec)),
             tuple(codec for codec in codecs if isinstance(codec, BytesBytesCodec)),
         )
 

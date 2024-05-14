@@ -61,10 +61,6 @@ class AsyncArray:
     store_path: StorePath
     order: Literal["C", "F"]
 
-    @property
-    def codecs(self):
-        return self.metadata.codec_pipeline
-
     def __init__(
         self,
         metadata: ArrayMetadata,
@@ -371,7 +367,7 @@ class AsyncArray:
         )
 
         # reading chunks and decoding them
-        await self.codecs.read_batch(
+        await self.metadata.codec_pipeline.read_batch(
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
@@ -415,7 +411,7 @@ class AsyncArray:
                 value = value.astype(self.metadata.dtype, order="A")
 
         # merging with existing data and encoding chunks
-        await self.codecs.write_batch(
+        await self.metadata.codec_pipeline.write_batch(
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
@@ -463,7 +459,7 @@ class AsyncArray:
         await self._save_metadata(new_metadata)
         return replace(self, metadata=new_metadata)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
     async def info(self):
@@ -599,7 +595,7 @@ class Array:
             )
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
     def info(self):
