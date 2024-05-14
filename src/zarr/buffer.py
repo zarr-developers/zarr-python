@@ -1,18 +1,42 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Optional, Tuple, TypeAlias
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    Literal,
+    Optional,
+    Protocol,
+    Tuple,
+    TypeAlias,
+)
+
 import numpy as np
-
-from zarr.common import BytesLike
-
 
 if TYPE_CHECKING:
     from typing_extensions import Self
     from zarr.codecs.bytes import Endian
+    from zarr.common import BytesLike
 
 # TODO: create a protocol for the attributes we need, for now we just aliasing numpy
 NDArrayLike: TypeAlias = np.ndarray
+
+
+class Factory:
+    class Create(Protocol):
+        def __call__(
+            self,
+            *,
+            shape: Iterable[int],
+            dtype: np.DTypeLike,
+            order: Literal["C", "F"],
+            fill_value: Optional[Any],
+        ) -> NDBuffer: ...
+
+    class NDArrayLike(Protocol):
+        def __call__(self, ndarray_like: NDArrayLike) -> NDBuffer: ...
 
 
 class Buffer:
@@ -100,6 +124,21 @@ class NDBuffer:
     @classmethod
     def from_numpy_array(cls, array_like: np.ArrayLike) -> Self:
         return cls(np.asanyarray(array_like))
+
+    @classmethod
+    def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
+        return cls(ndarray_like)
+
+    def as_ndarray_like(self) -> NDArrayLike:
+        """Return the underlying array instance representing the memory of this buffer
+
+        This will never copy data.
+
+        Return
+        ------
+            The underlying array such as a NumPy or CuPy array.
+        """
+        return self._data
 
     def as_buffer(self) -> Buffer:
         return Buffer(self._data.reshape(-1).view(dtype="b"))

@@ -20,7 +20,7 @@ from zarr.abc.codec import Codec
 
 
 # from zarr.array_v2 import ArrayV2
-from zarr.buffer import Buffer, NDBuffer
+from zarr.buffer import Buffer, Factory, NDArrayLike, NDBuffer
 from zarr.codecs import BytesCodec
 from zarr.codecs.pipeline import CodecPipeline
 from zarr.common import (
@@ -185,7 +185,9 @@ class AsyncArray:
     def attrs(self) -> dict[str, Any]:
         return self.metadata.attributes
 
-    async def getitem(self, selection: Selection) -> npt.NDArray[Any]:
+    async def getitem(
+        self, selection: Selection, *, factory: Factory.Create = NDBuffer.create
+    ) -> NDArrayLike:
         assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
         indexer = BasicIndexer(
             selection,
@@ -194,7 +196,7 @@ class AsyncArray:
         )
 
         # setup output array
-        out = NDBuffer.create(
+        out = factory(
             shape=indexer.shape, dtype=self.metadata.dtype, order=self.order, fill_value=0
         )
 
@@ -207,12 +209,7 @@ class AsyncArray:
             self._read_chunk,
             config.get("async.concurrency"),
         )
-
-        # We always return a numpy array to the user
-        if out.shape:
-            return out.as_numpy_array()
-        else:
-            return out.as_numpy_array()[()]
+        return out.as_ndarray_like()
 
     async def _save_metadata(self) -> None:
         await (self.store_path / ZARR_JSON).set(Buffer.from_bytes(self.metadata.to_bytes()))
@@ -244,7 +241,12 @@ class AsyncArray:
             else:
                 out[out_selection] = self.metadata.fill_value
 
-    async def setitem(self, selection: Selection, value: npt.NDArray[Any]) -> None:
+    async def setitem(
+        self,
+        selection: Selection,
+        value: NDArrayLike,
+        factory: Factory.NDArrayLike = NDBuffer.from_ndarray_like,
+    ) -> None:
         assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
         chunk_shape = self.metadata.chunk_grid.chunk_shape
         indexer = BasicIndexer(
@@ -257,8 +259,7 @@ class AsyncArray:
 
         # check value shape
         if np.isscalar(value):
-            # setting a scalar value
-            pass
+            value = np.asanyarray(value)
         else:
             if not hasattr(value, "shape"):
                 value = np.asarray(value, self.metadata.dtype)
@@ -266,9 +267,9 @@ class AsyncArray:
             if value.dtype.name != self.metadata.dtype.name:
                 value = value.astype(self.metadata.dtype, order="A")
 
-        # We accept a numpy array as input from the user and convert it to a NDBuffer.
+        # We accept any ndarray like object from the user and convert it to a NDBuffer.
         # From this point onwards, we only pass Buffer and NDBuffer between components.
-        value = NDBuffer.from_numpy_array(value)
+        value = factory(value)
 
         # merging with existing data and encoding chunks
         await concurrent_map(
