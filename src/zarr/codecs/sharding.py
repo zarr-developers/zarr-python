@@ -312,10 +312,8 @@ class ShardingCodec(
         )
 
         # setup output array
-        out = NDBuffer.create_zeros(
-            shape=shard_shape,
-            dtype=shard_spec.dtype,
-            order=shard_spec.order,
+        out = NDBuffer.create(
+            shape=shard_shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
         )
         shard_dict = await _ShardProxy.from_bytes(shard_bytes, self, chunks_per_shard)
 
@@ -359,10 +357,8 @@ class ShardingCodec(
         )
 
         # setup output array
-        out = NDBuffer.create_zeros(
-            shape=indexer.shape,
-            dtype=shard_spec.dtype,
-            order=shard_spec.order,
+        out = NDBuffer.create(
+            shape=indexer.shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
         )
 
         indexed_chunks = list(indexer)
@@ -453,7 +449,7 @@ class ShardingCodec(
                 chunk_array = shard_array[out_selection]
             else:
                 # handling writing partial chunks
-                chunk_array = NDBuffer.create_empty(
+                chunk_array = NDBuffer.create(
                     shape=chunk_shape,
                     dtype=shard_spec.dtype,
                 )
@@ -527,7 +523,7 @@ class ShardingCodec(
 
                 # merge new value
                 if chunk_bytes is None:
-                    chunk_array = NDBuffer.create_empty(
+                    chunk_array = NDBuffer.create(
                         shape=self.chunk_shape,
                         dtype=shard_spec.dtype,
                     )

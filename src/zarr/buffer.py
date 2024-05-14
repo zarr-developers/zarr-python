@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Tuple, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal, Optional, Tuple, TypeAlias
 import numpy as np
 
 from zarr.common import BytesLike
@@ -84,25 +84,17 @@ class NDBuffer:
         self._data = array
 
     @classmethod
-    def create_empty(
+    def create(
         cls,
         *,
         shape: Iterable[int],
         dtype: np.DTypeLike,
         order: Literal["C", "F"] = "C",
+        fill_value: Optional[Any] = None,
     ) -> Self:
-        return cls(np.empty(shape=shape, dtype=dtype, order=order))
-
-    @classmethod
-    def create_zeros(
-        cls,
-        *,
-        shape: Iterable[int],
-        dtype: np.DTypeLike,
-        order: Literal["C", "F"] = "C",
-    ) -> Self:
-        ret = cls.create_empty(shape=shape, dtype=dtype, order=order)
-        ret[...] = 0
+        ret = cls(np.empty(shape=shape, dtype=dtype, order=order))
+        if fill_value is not None:
+            ret.fill(fill_value)
         return ret
 
     @classmethod

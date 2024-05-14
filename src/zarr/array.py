@@ -193,10 +193,8 @@ class AsyncArray:
         )
 
         # setup output array
-        out = NDBuffer.create_zeros(
-            shape=indexer.shape,
-            dtype=self.metadata.dtype,
-            order=self.order,
+        out = NDBuffer.create(
+            shape=indexer.shape, dtype=self.metadata.dtype, order=self.order, fill_value=0
         )
 
         # reading chunks and decoding them
@@ -303,11 +301,9 @@ class AsyncArray:
         if is_total_slice(chunk_selection, chunk_shape):
             # write entire chunks
             if np.isscalar(value):
-                chunk_array = NDBuffer.create_empty(
-                    shape=chunk_shape,
-                    dtype=self.metadata.dtype,
+                chunk_array = NDBuffer.create(
+                    shape=chunk_shape, dtype=self.metadata.dtype, fill_value=value
                 )
-                chunk_array.fill(value)
             else:
                 chunk_array = value[out_selection]
             await self._write_chunk_to_store(store_path, chunk_array, chunk_spec)
@@ -327,11 +323,11 @@ class AsyncArray:
 
             # merge new value
             if chunk_bytes is None:
-                chunk_array = NDBuffer.create_empty(
+                chunk_array = NDBuffer.create(
                     shape=chunk_shape,
                     dtype=self.metadata.dtype,
+                    fill_value=self.metadata.fill_value,
                 )
-                chunk_array.fill(self.metadata.fill_value)
             else:
                 chunk_array = (
                     await self.codecs.decode(chunk_bytes, chunk_spec)

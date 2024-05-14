@@ -224,10 +224,8 @@ class ArrayV2:
         )
 
         # setup output array
-        out = NDBuffer.create_zeros(
-            shape=indexer.shape,
-            dtype=self.metadata.dtype,
-            order=self.metadata.order,
+        out = NDBuffer.create(
+            shape=indexer.shape, dtype=self.metadata.dtype, order=self.metadata.order, fill_value=0
         )
 
         # reading chunks and decoding them
@@ -341,12 +339,12 @@ class ArrayV2:
         if is_total_slice(chunk_selection, chunk_shape):
             # write entire chunks
             if np.isscalar(value):
-                chunk_array = NDBuffer.create_empty(
+                chunk_array = NDBuffer.create(
                     shape=chunk_shape,
                     dtype=self.metadata.dtype,
                     order=self.metadata.order,
+                    fill_value=value,
                 )
-                chunk_array.fill(value)
             else:
                 chunk_array = value[out_selection]
             await self._write_chunk_to_store(store_path, chunk_array)
@@ -358,12 +356,12 @@ class ArrayV2:
 
             # merge new value
             if tmp is None:
-                chunk_array = NDBuffer.create_empty(
+                chunk_array = NDBuffer.create(
                     shape=chunk_shape,
                     dtype=self.metadata.dtype,
                     order=self.metadata.order,
+                    fill_value=self.metadata.fill_value,
                 )
-                chunk_array.fill(self.metadata.fill_value)
             else:
                 chunk_array = tmp.copy(
                     order=self.metadata.order,
