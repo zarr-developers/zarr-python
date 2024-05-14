@@ -50,14 +50,14 @@ async def concurrent_map(
     else:
         sem = asyncio.Semaphore(limit)
 
-        async def run(item):
+        async def run(item: Tuple[Any]) -> V:
             async with sem:
                 return await func(*item)
 
         return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
 
 
-async def to_thread(func, /, *args, **kwargs):
+async def to_thread(func: Callable[..., V], /, *args: Any, **kwargs: Any) -> V:
     loop = asyncio.get_running_loop()
     ctx = contextvars.copy_context()
     func_call = functools.partial(ctx.run, func, *args, **kwargs)
