@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterator
 from dataclasses import asdict, dataclass, field, replace
 
 import asyncio
@@ -268,7 +268,7 @@ class AsyncGroup:
         await asyncio.gather(*awaitables)
 
     @property
-    def attrs(self):
+    def attrs(self) -> dict[str, Any]:
         return self.metadata.attributes
 
     @property
@@ -330,7 +330,7 @@ class AsyncGroup:
             zarr_format=self.metadata.zarr_format,
         )
 
-    async def update_attributes(self, new_attributes: dict[str, Any]):
+    async def update_attributes(self, new_attributes: dict[str, Any]) -> "AsyncGroup":
         # metadata.attributes is "frozen" so we simply clear and update the dict
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -340,7 +340,7 @@ class AsyncGroup:
 
         return self
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<AsyncGroup {self.store_path}>"
 
     async def nmembers(self) -> int:
@@ -415,31 +415,31 @@ class AsyncGroup:
             if isinstance(value, AsyncArray):
                 yield value
 
-    async def tree(self, expand=False, level=None) -> Any:
+    async def tree(self, expand: bool = False, level: int | None = None) -> Any:
         raise NotImplementedError
 
-    async def empty(self, **kwargs) -> AsyncArray:
+    async def empty(self, **kwargs: Any) -> AsyncArray:
         raise NotImplementedError
 
-    async def zeros(self, **kwargs) -> AsyncArray:
+    async def zeros(self, **kwargs: Any) -> AsyncArray:
         raise NotImplementedError
 
-    async def ones(self, **kwargs) -> AsyncArray:
+    async def ones(self, **kwargs: Any) -> AsyncArray:
         raise NotImplementedError
 
-    async def full(self, **kwargs) -> AsyncArray:
+    async def full(self, **kwargs: Any) -> AsyncArray:
         raise NotImplementedError
 
-    async def empty_like(self, prototype: AsyncArray, **kwargs) -> AsyncArray:
+    async def empty_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
         raise NotImplementedError
 
-    async def zeros_like(self, prototype: AsyncArray, **kwargs) -> AsyncArray:
+    async def zeros_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
         raise NotImplementedError
 
-    async def ones_like(self, prototype: AsyncArray, **kwargs) -> AsyncArray:
+    async def ones_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
         raise NotImplementedError
 
-    async def full_like(self, prototype: AsyncArray, **kwargs) -> AsyncArray:
+    async def full_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
         raise NotImplementedError
 
     async def move(self, source: str, dest: str) -> None:
@@ -483,16 +483,16 @@ class Group(SyncMixin):
         else:
             return Group(obj)
 
-    def __delitem__(self, key) -> None:
+    def __delitem__(self, key: str) -> None:
         self._sync(self._async_group.delitem(key))
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         raise NotImplementedError
 
-    def __len__(self):
+    def __len__(self) -> int:
         raise NotImplementedError
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: Any) -> None:
         """__setitem__ is not supported in v3"""
         raise NotImplementedError
 
@@ -523,7 +523,7 @@ class Group(SyncMixin):
     def info(self):
         return self._async_group.info
 
-    def update_attributes(self, new_attributes: dict[str, Any]):
+    def update_attributes(self, new_attributes: dict[str, Any]) -> "Group":
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
@@ -542,7 +542,7 @@ class Group(SyncMixin):
         result = tuple(map(lambda kv: (kv[0], _parse_async_node(kv[1])), _members))
         return result
 
-    def __contains__(self, member) -> bool:
+    def __contains__(self, member: str) -> bool:
         return self._sync(self._async_group.contains(member))
 
     def group_keys(self) -> tuple[str, ...]:
@@ -558,37 +558,37 @@ class Group(SyncMixin):
     def arrays(self) -> tuple[Array, ...]:
         return tuple(Array(obj) for obj in self._sync_iter(self._async_group.arrays()))
 
-    def tree(self, expand=False, level=None) -> Any:
+    def tree(self, expand: bool = False, level: int | None = None) -> Any:
         return self._sync(self._async_group.tree(expand=expand, level=level))
 
-    def create_group(self, name: str, **kwargs) -> Group:
+    def create_group(self, name: str, **kwargs: Any) -> Group:
         return Group(self._sync(self._async_group.create_group(name, **kwargs)))
 
-    def create_array(self, name: str, **kwargs) -> Array:
+    def create_array(self, name: str, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.create_array(name, **kwargs)))
 
-    def empty(self, **kwargs) -> Array:
+    def empty(self, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty(**kwargs)))
 
-    def zeros(self, **kwargs) -> Array:
+    def zeros(self, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.zeros(**kwargs)))
 
-    def ones(self, **kwargs) -> Array:
+    def ones(self, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.ones(**kwargs)))
 
-    def full(self, **kwargs) -> Array:
+    def full(self, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.full(**kwargs)))
 
-    def empty_like(self, prototype: AsyncArray, **kwargs) -> Array:
+    def empty_like(self, prototype: AsyncArray, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty_like(prototype, **kwargs)))
 
-    def zeros_like(self, prototype: AsyncArray, **kwargs) -> Array:
+    def zeros_like(self, prototype: AsyncArray, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.zeros_like(prototype, **kwargs)))
 
-    def ones_like(self, prototype: AsyncArray, **kwargs) -> Array:
+    def ones_like(self, prototype: AsyncArray, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.ones_like(prototype, **kwargs)))
 
-    def full_like(self, prototype: AsyncArray, **kwargs) -> Array:
+    def full_like(self, prototype: AsyncArray, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.full_like(prototype, **kwargs)))
 
     def move(self, source: str, dest: str) -> None:
