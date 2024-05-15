@@ -45,6 +45,15 @@ def noop_for_none(
 
 
 class CodecBatchMixin(Generic[CodecInput, CodecOutput]):
+    """The default interface from the Codec class expects batches of codecs.
+    However, many codec implementation operate on single codecs.
+    This mixin provides abstract methods for decode_single and encode_single and
+    implements batching through concurrent processing.
+
+    Use ArrayArrayCodecBatchMixin, ArrayBytesCodecBatchMixin and BytesBytesCodecBatchMixin
+    for subclassing.
+    """
+
     @abstractmethod
     async def decode_single(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
         pass

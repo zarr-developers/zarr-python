@@ -54,6 +54,13 @@ def resolve_batched(codec: Codec, chunk_specs: Iterable[ArraySpec]) -> Iterable[
 
 @dataclass(frozen=True)
 class BatchedCodecPipeline(CodecPipeline):
+    """Default codec pipeline.
+
+    This batched codec pipeline divides the chunk batches into batches of a configurable
+    batch size ("mini-batch"). Fetching, decoding, encoding and storing are performed in
+    lock step for each mini-batch. Multiple mini-batches are processing concurrently.
+    """
+
     array_array_codecs: tuple[ArrayArrayCodec, ...]
     array_bytes_codec: ArrayBytesCodec
     bytes_bytes_codecs: tuple[BytesBytesCodec, ...]
@@ -394,15 +401,6 @@ class BatchedCodecPipeline(CodecPipeline):
             output.extend(await self.decode_batch(batch_info))
         return output
 
-    async def decode_partial(
-        self,
-        batch_info: Iterable[tuple[ByteGetter, SliceSelection, ArraySpec]],
-    ) -> Iterable[np.ndarray | None]:
-        output: list[np.ndarray | None] = []
-        for single_batch_info in batched(batch_info, self.batch_size):
-            output.extend(await self.decode_partial_batch(single_batch_info))
-        return output
-
     async def encode(
         self,
         chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
@@ -411,13 +409,6 @@ class BatchedCodecPipeline(CodecPipeline):
         for single_batch_info in batched(chunk_arrays_and_specs, self.batch_size):
             output.extend(await self.encode_batch(single_batch_info))
         return output
-
-    async def encode_partial(
-        self,
-        batch_info: Iterable[tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]],
-    ) -> None:
-        for single_batch_info in batched(batch_info, self.batch_size):
-            await self.encode_partial_batch(single_batch_info)
 
     async def read(
         self,
