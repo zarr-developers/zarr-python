@@ -101,7 +101,7 @@ class _ShardIndex(NamedTuple):
         return bool(np.array_equiv(self.offsets_and_lengths, MAX_UINT_64))
 
     def get_full_chunk_map(self) -> npt.NDArray[np.bool_]:
-        return self.offsets_and_lengths[..., 0] != MAX_UINT_64
+        return np.not_equal(self.offsets_and_lengths[..., 0], MAX_UINT_64)
 
     def get_chunk_slice(self, chunk_coords: ChunkCoords) -> tuple[int, int] | None:
         localized_chunk = self._localize_chunk(chunk_coords)

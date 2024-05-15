@@ -55,11 +55,11 @@ class ZstdCodec(BytesBytesCodec):
 
     def _compress(self, data: npt.NDArray[Any]) -> bytes:
         ctx = ZstdCompressor(level=self.level, write_checksum=self.checksum)
-        return ctx.compress(data)
+        return ctx.compress(data.tobytes())
 
     def _decompress(self, data: npt.NDArray[Any]) -> bytes:
         ctx = ZstdDecompressor()
-        return ctx.decompress(data)
+        return ctx.decompress(data.tobytes())
 
     async def _decode_single(
         self,
