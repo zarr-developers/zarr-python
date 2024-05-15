@@ -780,7 +780,7 @@ def compressor_config_to_zarr(compressor_config: Dict[str, Any]) -> Optional[Dic
     return zarr_config
 
 
-class N5ChunkWrapper(Codec):
+class N5ChunkWrapper(Codec): # type: ignore[misc]
     codec_id = "n5_wrapper"
 
     def __init__(self, dtype, chunk_shape, compressor_config=None, compressor=None):
