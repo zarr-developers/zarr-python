@@ -7,7 +7,7 @@ def test_config_defaults_set():
         {
             "array": {"order": "C"},
             "async": {"concurrency": None, "timeout": None},
-            "codec_pipeline": {"batch_size": 1000},
+            "codec_pipeline": {"batch_size": 1},
         }
     ]
     assert config.get("array.order") == "C"
