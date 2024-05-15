@@ -46,7 +46,7 @@ class Factory:
         ) -> NDBuffer:
             """Factory function to create a new NDBuffer (or subclass)
 
-            Callables implementing the `Factor.Create` protocol must create a new
+            Callables implementing the `Factory.Create` protocol must create a new
             instance of NDBuffer (or subclass) given the following parameters.
 
             Parameters
@@ -70,7 +70,7 @@ class Factory:
         def __call__(self, ndarray_like: NDArrayLike) -> NDBuffer:
             """Factory function to coerce an array into a NDBuffer (or subclass)
 
-            Callables implementing the `Factor.NDArrayLike` protocol must return
+            Callables implementing the `Factory.NDArrayLike` protocol must return
             an instance of NDBuffer (or subclass) given an ndarray-like object.
 
             Parameters
