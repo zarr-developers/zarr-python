@@ -25,6 +25,7 @@ NDArrayLike: TypeAlias = np.ndarray
 
 
 def check_item_key_is_1d_contiguous(key: Any) -> None:
+    """Raises error if `key` isn't a 1d contiguous slice"""
     if not isinstance(key, slice):
         raise TypeError(
             f"Item key has incorrect type (expected slice, got {key.__class__.__name__})"
@@ -86,31 +87,70 @@ class Factory:
 class Buffer:
     """A flat contiguous memory block
 
-    We use `Buffer` throughout Zarr to represent a contiguous block of memory.
-    For now, we only support host memory but the plan is to support other types
-    of memory such as CUDA device memory.
+    We use Buffer throughout Zarr to represent a contiguous block of memory.
+
+    A Buffer is backed by a underlying ndarray-like instance that represents
+    the memory. The memory type is unspecified; can be regular host memory,
+    CUDA device memory, or something else. The only requirement is that the
+    ndarray-like instance can be copied/converted to a regular Numpy array
+    (host memory).
+
+    Note
+    ----
+    This buffer is untyped, so all indexing and sizes are in bytes.
+
+    Parameters
+    ----------
+    ndarray_like
+        ndarray-like object that must be 1-dim, contiguous, and byte dtype.
     """
 
-    def __init__(self, array: NDArrayLike):
-        assert array.ndim == 1
-        assert array.itemsize == 1
-        assert array.dtype == np.dtype("b")
-        self._data = array
+    def __init__(self, ndarray_like: NDArrayLike):
+        if ndarray_like.ndim != 1:
+            raise ValueError("ndarray_like: only 1-dim allowed")
+        if ndarray_like.dtype != np.dtype("b"):
+            raise ValueError("ndarray_like: only byte dtype allowed")
+        self._data = ndarray_like
 
     @classmethod
     def create_zero_length(cls) -> Self:
+        """Create an empty buffer with length zero
+
+        Return
+        ------
+            New empty 0-length buffer
+        """
         return cls(np.array([], dtype="b"))
 
     @classmethod
     def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
+        """Create a new buffer of a ndarray-like object
+
+        Parameters
+        ----------
+        ndarray_like
+            ndarray-like object that must be 1-dim, contiguous, and byte dtype.
+
+        Return
+        ------
+            New buffer representing `ndarray_like`
+        """
         return cls(ndarray_like)
 
     @classmethod
-    def from_bytes(cls, data: BytesLike) -> Self:
-        return cls.from_ndarray_like(np.frombuffer(data, dtype="b"))
+    def from_bytes(cls, bytes_like: BytesLike) -> Self:
+        """Create a new buffer of a bytes-like object (host memory)
 
-    def as_nd_buffer(self, *, dtype: np.DTypeLike) -> NDBuffer:
-        return NDBuffer(self._data.view(dtype=dtype))
+        Parameters
+        ----------
+        bytes_like
+           bytes-like object
+
+        Return
+        ------
+            New buffer representing `bytes_like`
+        """
+        return cls.from_ndarray_like(np.frombuffer(bytes_like, dtype="b"))
 
     def as_ndarray_like(self) -> NDArrayLike:
         """Return the underlying array (host or device memory) of this buffer
@@ -123,6 +163,22 @@ class Buffer:
         """
         return self._data
 
+    def as_nd_buffer(self, *, dtype: np.DTypeLike) -> NDBuffer:
+        """Create a new NDBuffer from this one.
+
+        This will never copy data.
+
+        Parameters
+        ----------
+        dtype
+           The datatype of the returned buffer (reinterpretation of the bytes)
+
+        Return
+        ------
+            New NDbuffer representing `self.as_ndarray_like()`
+        """
+        return NDBuffer.from_ndarray_like(self._data.view(dtype=dtype))
+
     def as_numpy_array(self) -> np.ndarray:
         """Return the buffer as a NumPy array (host memory).
 
@@ -134,7 +190,7 @@ class Buffer:
         ------
             NumPy array of this buffer (might be a data copy)
         """
-        return self._data
+        return np.asanyarray(self._data)
 
     def to_bytes(self) -> bytes:
         """Return the buffer as `bytes` (host memory).
@@ -162,6 +218,8 @@ class Buffer:
         return self._data.size
 
     def __add__(self, other: Buffer) -> Self:
+        """Concatenate two buffers"""
+
         other_array = other.as_ndarray_like()
         assert other_array.dtype == np.dtype("b")
         return self.__class__(np.concatenate((self._data, other_array)))
@@ -181,9 +239,26 @@ class Buffer:
 class NDBuffer:
     """A n-dimensional memory block
 
-    We use `NDBuffer` throughout Zarr to represent a n-dimensional memory block.
-    For now, we only support host memory but the plan is to support other types
-    of memory such as CUDA device memory.
+    We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
+
+    A NDBuffer is backed by a underlying ndarray-like instance that represents
+    the memory. The memory type is unspecified; can be regular host memory,
+    CUDA device memory, or something else. The only requirement is that the
+    ndarray-like instance can be copied/converted to a regular Numpy array
+    (host memory).
+
+    Note
+    ----
+    The two buffer classes Buffer and NDBuffer are very similar. In fact,
+    Buffer is a special case of NDBuffer where dim=1, stride=1, and dtype="b".
+    However, in order to use the Python's type system to differentiate between
+    the flat contiguous Buffer and the n-dim (non-contiguous) NDBuffer, we keep
+    the definition of the two classes separate.
+
+    Parameters
+    ----------
+    ndarray_like
+        ndarray-like object that is convertible to a regular Numpy array.
     """
 
     def __init__(self, array: NDArrayLike):
@@ -200,18 +275,63 @@ class NDBuffer:
         order: Literal["C", "F"] = "C",
         fill_value: Optional[Any] = None,
     ) -> Self:
+        """Create a new buffer and its underlying ndarray-like object
+
+        Parameters
+        ----------
+        shape
+            The shape of the buffer and its underlying ndarray-like object
+        dtype
+            The datatype of the buffer and its underlying ndarray-like object
+        order
+            Whether to store multi-dimensional data in row-major (C-style) or
+            column-major (Fortran-style) order in memory.
+        fill_value
+            If not None, fill the new buffer with a scalar value.
+
+        Return
+        ------
+            New buffer representing a new ndarray_like object
+
+        Developer Notes
+        ---------------
+        A subclass can overwrite this method to create a ndarray-like object
+        other then the default Numpy array.
+        """
         ret = cls(np.empty(shape=shape, dtype=dtype, order=order))
         if fill_value is not None:
             ret.fill(fill_value)
         return ret
 
     @classmethod
-    def from_numpy_array(cls, array_like: np.ArrayLike) -> Self:
-        return cls(np.asanyarray(array_like))
+    def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
+        """Create a new buffer of a ndarray-like object
+
+        Parameters
+        ----------
+        ndarray_like
+            ndarray-like object
+
+        Return
+        ------
+            New buffer representing `ndarray_like`
+        """
+        return cls(ndarray_like)
 
     @classmethod
-    def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
-        return cls(ndarray_like)
+    def from_numpy_array(cls, array_like: np.ArrayLike) -> Self:
+        """Create a new buffer of Numpy array-like object
+
+        Parameters
+        ----------
+        array_like
+            Object that can be coerced into a Numpy array
+
+        Return
+        ------
+            New buffer representing `array_like`
+        """
+        return cls.from_ndarray_like(np.asanyarray(array_like))
 
     def as_ndarray_like(self) -> NDArrayLike:
         """Return the underlying array (host or device memory) of this buffer
@@ -225,7 +345,20 @@ class NDBuffer:
         return self._data
 
     def as_buffer(self) -> Buffer:
-        return Buffer(self._data.reshape(-1).view(dtype="b"))
+        """Create a new Buffer from this one.
+
+        Warning
+        -------
+        Copies data if the buffer is non-contiguous.
+
+        Return
+        ------
+            The new buffer (might be data copy)
+        """
+        data = self._data
+        if not self._data.flags.contiguous:
+            data = np.ascontiguousarray(self._data)
+        return Buffer(data.reshape(-1).view(dtype="b"))  # Flatten the array without copy
 
     def as_numpy_array(self) -> np.ndarray:
         """Return the buffer as a NumPy array (host memory).
@@ -238,7 +371,7 @@ class NDBuffer:
         ------
             NumPy array of this buffer (might be a data copy)
         """
-        return self._data
+        return np.asanyarray(self._data)
 
     @property
     def dtype(self) -> np.dtype[Any]:
