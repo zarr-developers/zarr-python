@@ -20,7 +20,9 @@ if TYPE_CHECKING:
     from zarr.codecs.bytes import Endian
     from zarr.common import BytesLike
 
-# TODO: create a protocol for the attributes we need, for now we just aliasing numpy
+# TODO: create a protocol for the attributes we need, for now we alias Numpy's ndarray
+#       both for the array-like and ndarray-like
+ArrayLike: TypeAlias = np.ndarray
 NDArrayLike: TypeAlias = np.ndarray
 
 
@@ -89,10 +91,10 @@ class Buffer:
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
 
-    A Buffer is backed by a underlying ndarray-like instance that represents
+    A Buffer is backed by a underlying array-like instance that represents
     the memory. The memory type is unspecified; can be regular host memory,
     CUDA device memory, or something else. The only requirement is that the
-    ndarray-like instance can be copied/converted to a regular Numpy array
+    array-like instance can be copied/converted to a regular Numpy array
     (host memory).
 
     Note
@@ -101,16 +103,16 @@ class Buffer:
 
     Parameters
     ----------
-    ndarray_like
-        ndarray-like object that must be 1-dim, contiguous, and byte dtype.
+    array_like
+        array-like object that must be 1-dim, contiguous, and byte dtype.
     """
 
-    def __init__(self, ndarray_like: NDArrayLike):
-        if ndarray_like.ndim != 1:
-            raise ValueError("ndarray_like: only 1-dim allowed")
-        if ndarray_like.dtype != np.dtype("b"):
-            raise ValueError("ndarray_like: only byte dtype allowed")
-        self._data = ndarray_like
+    def __init__(self, array_like: ArrayLike):
+        if array_like.ndim != 1:
+            raise ValueError("array_like: only 1-dim allowed")
+        if array_like.dtype != np.dtype("b"):
+            raise ValueError("array_like: only byte dtype allowed")
+        self._data = array_like
 
     @classmethod
     def create_zero_length(cls) -> Self:
@@ -123,19 +125,19 @@ class Buffer:
         return cls(np.array([], dtype="b"))
 
     @classmethod
-    def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
-        """Create a new buffer of a ndarray-like object
+    def from_array_like(cls, array_like: NDArrayLike) -> Self:
+        """Create a new buffer of a array-like object
 
         Parameters
         ----------
-        ndarray_like
-            ndarray-like object that must be 1-dim, contiguous, and byte dtype.
+        array_like
+            array-like object that must be 1-dim, contiguous, and byte dtype.
 
         Return
         ------
-            New buffer representing `ndarray_like`
+            New buffer representing `array_like`
         """
-        return cls(ndarray_like)
+        return cls(array_like)
 
     @classmethod
     def from_bytes(cls, bytes_like: BytesLike) -> Self:
@@ -150,9 +152,9 @@ class Buffer:
         ------
             New buffer representing `bytes_like`
         """
-        return cls.from_ndarray_like(np.frombuffer(bytes_like, dtype="b"))
+        return cls.from_array_like(np.frombuffer(bytes_like, dtype="b"))
 
-    def as_ndarray_like(self) -> NDArrayLike:
+    def as_array_like(self) -> NDArrayLike:
         """Return the underlying array (host or device memory) of this buffer
 
         This will never copy data.
@@ -175,7 +177,7 @@ class Buffer:
 
         Return
         ------
-            New NDbuffer representing `self.as_ndarray_like()`
+            New NDbuffer representing `self.as_array_like()`
         """
         return NDBuffer.from_ndarray_like(self._data.view(dtype=dtype))
 
@@ -184,7 +186,7 @@ class Buffer:
 
         Warning
         -------
-        Might have to copy data, consider using `.as_ndarray_like()` instead.
+        Might have to copy data, consider using `.as_array_like()` instead.
 
         Return
         ------
@@ -198,7 +200,7 @@ class Buffer:
         Warning
         -------
         Will always copy data, only use this method for small buffers such as metadata
-        buffers. If possible, use `.as_numpy_array()` or `.as_ndarray_like()` instead.
+        buffers. If possible, use `.as_numpy_array()` or `.as_array_like()` instead.
 
         Return
         ------
@@ -220,7 +222,7 @@ class Buffer:
     def __add__(self, other: Buffer) -> Self:
         """Concatenate two buffers"""
 
-        other_array = other.as_ndarray_like()
+        other_array = other.as_array_like()
         assert other_array.dtype == np.dtype("b")
         return self.__class__(np.concatenate((self._data, other_array)))
 
@@ -230,7 +232,7 @@ class Buffer:
             # convert the bytes to a Buffer and try again
             return self == self.from_bytes(other)
         if isinstance(other, Buffer):
-            return (self._data == other.as_ndarray_like()).all()
+            return (self._data == other.as_array_like()).all()
         raise ValueError(
             f"equal operator not supported between {self.__class__} and {other.__class__}"
         )

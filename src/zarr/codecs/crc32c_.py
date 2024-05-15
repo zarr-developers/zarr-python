@@ -46,7 +46,7 @@ class Crc32cCodec(BytesBytesCodec):
                 "Stored and computed checksum do not match. "
                 + f"Stored: {stored_checksum!r}. Computed: {computed_checksum!r}."
             )
-        return Buffer.from_ndarray_like(inner_bytes)
+        return Buffer.from_array_like(inner_bytes)
 
     async def encode(
         self,
@@ -57,7 +57,7 @@ class Crc32cCodec(BytesBytesCodec):
         # Calculate the checksum and "cast" it to a numpy array
         checksum = np.array([crc32c(data)], dtype=np.uint32)
         # Append the checksum (as bytes) to the data
-        return Buffer.from_ndarray_like(np.append(data, checksum.view("b")))
+        return Buffer.from_array_like(np.append(data, checksum.view("b")))
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length + 4
