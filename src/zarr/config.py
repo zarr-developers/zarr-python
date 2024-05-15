@@ -10,7 +10,7 @@ config = Config(
         {
             "array": {"order": "C"},
             "async": {"concurrency": None, "timeout": None},
-            "codec_pipeline": {"batch_size": 1000},
+            "codec_pipeline": {"batch_size": 1},
         }
     ],
 )
