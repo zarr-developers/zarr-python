@@ -17,16 +17,13 @@ def test_local_store_init(tmpdir, auto_mkdir: bool) -> None:
     assert store.auto_mkdir == auto_mkdir
 
     # ensure that str and pathlib.Path get normalized to the same output
-    # a stronger test is to ensure that these two store instances are identical
-    # but LocalStore.__eq__ is not defined at this time.
-    assert store.root == LocalStore(root=tmpdir_path, auto_mkdir=auto_mkdir).root
+    assert store == LocalStore(root=tmpdir_path, auto_mkdir=auto_mkdir)
 
     store_str = f"file://{tmpdir_str}"
     assert str(store) == store_str
     assert repr(store) == f"LocalStore({store_str!r})"
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("byte_range", (None, (0, None), (1, None), (1, 2), (None, 1)))
 async def test_local_store_get(
     local_store, byte_range: None | tuple[int | None, int | None]
@@ -58,7 +55,6 @@ async def test_local_store_get(
     assert await local_store.get(object_name + "_absent", byte_range=byte_range) is None
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "key_ranges",
     (
@@ -88,7 +84,6 @@ async def test_local_store_get_partial(
         assert observed == expected
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("path", ("foo", "foo/bar"))
 @pytest.mark.parametrize("auto_mkdir", (True, False))
 async def test_local_store_set(tmpdir, path: str, auto_mkdir: bool) -> None:
