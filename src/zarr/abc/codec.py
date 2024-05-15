@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Iterable, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Generic, Iterable, Protocol, TypeVar, runtime_checkable
 
 import numpy as np
 from zarr.abc.metadata import Metadata
+from zarr.common import BytesLike
 
 
 if TYPE_CHECKING:
     from typing_extensions import Self
-    from zarr.common import ArraySpec, BytesLike, SliceSelection
+    from zarr.common import ArraySpec, SliceSelection
     from zarr.metadata import ArrayMetadata
 
 
@@ -27,7 +28,11 @@ class ByteSetter(Protocol):
     async def delete(self) -> None: ...
 
 
-class Codec(Metadata):
+CodecInput = TypeVar("CodecInput", bound=np.ndarray | BytesLike)
+CodecOutput = TypeVar("CodecOutput", bound=np.ndarray | BytesLike)
+
+
+class _Codec(Generic[CodecInput, CodecOutput], Metadata):
     is_fixed_size: bool
 
     @abstractmethod
@@ -43,37 +48,34 @@ class Codec(Metadata):
     def validate(self, array_metadata: ArrayMetadata) -> None:
         pass
 
-
-class ArrayArrayCodec(Codec):
     @abstractmethod
     async def decode(
         self,
-        chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
-    ) -> Iterable[np.ndarray | None]:
+        chunks_and_specs: Iterable[tuple[CodecOutput | None, ArraySpec]],
+    ) -> Iterable[CodecInput | None]:
         pass
 
     @abstractmethod
     async def encode(
         self,
-        chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
-    ) -> Iterable[np.ndarray | None]:
+        chunks_and_specs: Iterable[tuple[CodecInput | None, ArraySpec]],
+    ) -> Iterable[CodecOutput | None]:
         pass
 
 
-class ArrayBytesCodec(Codec):
-    @abstractmethod
-    async def decode(
-        self,
-        chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
-    ) -> Iterable[np.ndarray | None]:
-        pass
+class ArrayArrayCodec(_Codec[np.ndarray, np.ndarray]):
+    pass
 
-    @abstractmethod
-    async def encode(
-        self,
-        chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
-    ) -> Iterable[BytesLike | None]:
-        pass
+
+class ArrayBytesCodec(_Codec[np.ndarray, BytesLike]):
+    pass
+
+
+class BytesBytesCodec(_Codec[BytesLike, BytesLike]):
+    pass
+
+
+Codec = ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
 
 
 class ArrayBytesCodecPartialDecodeMixin:
@@ -91,22 +93,6 @@ class ArrayBytesCodecPartialEncodeMixin:
         self,
         batch_info: Iterable[tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]],
     ) -> None:
-        pass
-
-
-class BytesBytesCodec(Codec):
-    @abstractmethod
-    async def decode(
-        self,
-        chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
-    ) -> Iterable[BytesLike | None]:
-        pass
-
-    @abstractmethod
-    async def encode(
-        self,
-        chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
-    ) -> Iterable[BytesLike | None]:
         pass
 
 

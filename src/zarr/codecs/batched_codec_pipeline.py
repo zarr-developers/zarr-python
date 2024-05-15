@@ -66,7 +66,9 @@ class BatchedCodecPipeline(CodecPipeline):
             raise TypeError(f"Expected iterable, got {type(data)}")
 
         for c in data:
-            if isinstance(c, Codec):
+            if isinstance(
+                c, ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
+            ):  # Can't use Codec here because of mypy limitation
                 out.append(c)
             else:
                 name_parsed, _ = parse_named_configuration(c, require_configuration=False)

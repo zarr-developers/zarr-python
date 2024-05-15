@@ -347,12 +347,12 @@ def parse_node_type_array(data: Any) -> Literal["array"]:
 
 
 # todo: real validation
-def parse_filters(data: Any) -> List[Codec]:
+def parse_filters(data: Any) -> list[dict[str, JSON]]:
     return data
 
 
 # todo: real validation
-def parse_compressor(data: Any) -> Codec:
+def parse_compressor(data: Any) -> dict[str, JSON] | None:
     return data
 
 
