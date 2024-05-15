@@ -11,11 +11,10 @@ from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 
 
 if TYPE_CHECKING:
-    from typing import Any, Literal, Union, List, Optional, Tuple
-    from zarr.codecs import CodecPipeline
+    from typing import Literal, Union, List, Optional, Tuple
 
 
-from zarr.abc.codec import Codec
+from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.metadata import Metadata
 
 from zarr.common import (
@@ -368,8 +367,8 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
 
 
 def parse_codecs(data: Iterable[Union[Codec, JSON]]) -> CodecPipeline:
-    from zarr.codecs.pipeline.hybrid import HybridCodecPipeline
+    from zarr.codecs import BatchedCodecPipeline
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")
-    return HybridCodecPipeline.from_dict(data)
+    return BatchedCodecPipeline.from_dict(data)

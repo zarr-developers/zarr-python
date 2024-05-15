@@ -46,60 +46,44 @@ def noop_for_none(
 
 class ArrayArrayCodecBatchMixin(ArrayArrayCodec):
     @abstractmethod
-    async def decode_single(
-        self,
-        chunk_array: np.ndarray,
-        chunk_spec: ArraySpec,
-    ) -> np.ndarray:
+    async def decode_single(self, chunk_array: np.ndarray, chunk_spec: ArraySpec) -> np.ndarray:
         pass
 
     async def decode(
-        self,
-        chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
+        self, chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]]
     ) -> Iterable[np.ndarray | None]:
         return await batching_helper(self.decode_single, chunk_arrays_and_specs)
 
     @abstractmethod
     async def encode_single(
-        self,
-        chunk_array: np.ndarray,
-        chunk_spec: ArraySpec,
+        self, chunk_array: np.ndarray, chunk_spec: ArraySpec
     ) -> np.ndarray | None:
         pass
 
     async def encode(
-        self,
-        chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
+        self, chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]]
     ) -> Iterable[np.ndarray | None]:
         return await batching_helper(self.encode_single, chunk_arrays_and_specs)
 
 
 class ArrayBytesCodecBatchMixin(ArrayBytesCodec):
     @abstractmethod
-    async def decode_single(
-        self,
-        chunk_bytes: BytesLike,
-        chunk_spec: ArraySpec,
-    ) -> np.ndarray:
+    async def decode_single(self, chunk_bytes: BytesLike, chunk_spec: ArraySpec) -> np.ndarray:
         pass
 
     async def decode(
-        self,
-        chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
+        self, chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]]
     ) -> Iterable[np.ndarray | None]:
         return await batching_helper(self.decode_single, chunk_bytes_and_specs)
 
     @abstractmethod
     async def encode_single(
-        self,
-        chunk_array: np.ndarray,
-        chunk_spec: ArraySpec,
+        self, chunk_array: np.ndarray, chunk_spec: ArraySpec
     ) -> BytesLike | None:
         pass
 
     async def encode(
-        self,
-        chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
+        self, chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]]
     ) -> Iterable[BytesLike | None]:
         return await batching_helper(self.encode_single, chunk_arrays_and_specs)
 
@@ -107,16 +91,12 @@ class ArrayBytesCodecBatchMixin(ArrayBytesCodec):
 class ArrayBytesCodecPartialDecodeBatchMixin(ArrayBytesCodecPartialDecodeMixin):
     @abstractmethod
     async def decode_partial_single(
-        self,
-        byte_getter: ByteGetter,
-        selection: SliceSelection,
-        chunk_spec: ArraySpec,
+        self, byte_getter: ByteGetter, selection: SliceSelection, chunk_spec: ArraySpec
     ) -> np.ndarray | None:
         pass
 
     async def decode_partial(
-        self,
-        batch_info: Iterable[tuple[ByteGetter, SliceSelection, ArraySpec]],
+        self, batch_info: Iterable[tuple[ByteGetter, SliceSelection, ArraySpec]]
     ) -> Iterable[np.ndarray | None]:
         return await concurrent_map(
             [
@@ -140,8 +120,7 @@ class ArrayBytesCodecPartialEncodeBatchMixin(ArrayBytesCodecPartialEncodeMixin):
         pass
 
     async def encode_partial(
-        self,
-        batch_info: Iterable[tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]],
+        self, batch_info: Iterable[tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]]
     ) -> None:
         await concurrent_map(
             [
@@ -155,29 +134,21 @@ class ArrayBytesCodecPartialEncodeBatchMixin(ArrayBytesCodecPartialEncodeMixin):
 
 class BytesBytesCodecBatchMixin(BytesBytesCodec):
     @abstractmethod
-    async def decode_single(
-        self,
-        chunk_bytes: BytesLike,
-        chunk_spec: ArraySpec,
-    ) -> BytesLike:
+    async def decode_single(self, chunk_bytes: BytesLike, chunk_spec: ArraySpec) -> BytesLike:
         pass
 
     async def decode(
-        self,
-        chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
+        self, chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]]
     ) -> Iterable[BytesLike | None]:
         return await batching_helper(self.decode_single, chunk_bytes_and_specs)
 
     @abstractmethod
     async def encode_single(
-        self,
-        chunk_array: BytesLike,
-        chunk_spec: ArraySpec,
+        self, chunk_array: BytesLike, chunk_spec: ArraySpec
     ) -> BytesLike | None:
         pass
 
     async def encode(
-        self,
-        chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
+        self, chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]]
     ) -> Iterable[BytesLike | None]:
         return await batching_helper(self.encode_single, chunk_bytes_and_specs)

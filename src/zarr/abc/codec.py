@@ -108,3 +108,76 @@ class BytesBytesCodec(Codec):
         chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
     ) -> Iterable[BytesLike | None]:
         pass
+
+
+class CodecPipeline(Metadata):
+    @abstractmethod
+    def evolve(self, array_spec: ArraySpec) -> Self:
+        pass
+
+    @classmethod
+    @abstractmethod
+    def from_list(cls, codecs: list[Codec]) -> Self:
+        pass
+
+    @property
+    @abstractmethod
+    def supports_partial_decode(self) -> bool:
+        pass
+
+    @property
+    @abstractmethod
+    def supports_partial_encode(self) -> bool:
+        pass
+
+    @abstractmethod
+    def validate(self, array_metadata: ArrayMetadata) -> None:
+        pass
+
+    @abstractmethod
+    def compute_encoded_size(self, byte_length: int, array_spec: ArraySpec) -> int:
+        pass
+
+    @abstractmethod
+    async def decode(
+        self,
+        chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
+    ) -> Iterable[np.ndarray | None]:
+        pass
+
+    @abstractmethod
+    async def decode_partial(
+        self,
+        batch_info: Iterable[tuple[ByteGetter, SliceSelection, ArraySpec]],
+    ) -> Iterable[np.ndarray | None]:
+        pass
+
+    @abstractmethod
+    async def encode(
+        self,
+        chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
+    ) -> Iterable[BytesLike | None]:
+        pass
+
+    @abstractmethod
+    async def encode_partial(
+        self,
+        batch_info: Iterable[tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]],
+    ) -> None:
+        pass
+
+    @abstractmethod
+    async def read(
+        self,
+        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SliceSelection, SliceSelection]],
+        out: np.ndarray,
+    ) -> None:
+        pass
+
+    @abstractmethod
+    async def write(
+        self,
+        batch_info: Iterable[tuple[ByteSetter, ArraySpec, SliceSelection, SliceSelection]],
+        value: np.ndarray,
+    ) -> None:
+        pass

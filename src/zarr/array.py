@@ -17,12 +17,11 @@ from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
 
 import numpy as np
 import numpy.typing as npt
-from zarr.abc.codec import Codec
+from zarr.abc.codec import Codec, CodecPipeline
 
 
 # from zarr.array_v2 import ArrayV2
 from zarr.codecs import BytesCodec
-from zarr.codecs.pipeline import CodecPipeline
 from zarr.common import (
     ZARR_JSON,
     ChunkCoords,
@@ -199,7 +198,7 @@ class AsyncArray:
         )
 
         # reading chunks and decoding them
-        await self.codecs.read_batch(
+        await self.codecs.read(
             [
                 (
                     self.store_path
@@ -244,7 +243,7 @@ class AsyncArray:
                 value = value.astype(self.metadata.dtype, order="A")
 
         # merging with existing data and encoding chunks
-        await self.codecs.write_batch(
+        await self.codecs.write(
             [
                 (
                     self.store_path
