@@ -1,11 +1,3 @@
-# import array
-# import atexit
-# import copy
-# import inspect
-# import os
-# import tempfile
-
-# import numpy as np
 from __future__ import annotations
 from zarr.store.local import LocalStore
 from pathlib import Path
@@ -31,7 +23,7 @@ def test_local_store_init(tmpdir, auto_mkdir: bool) -> None:
 
     store_str = f"file://{tmpdir_str}"
     assert str(store) == store_str
-    assert repr(store) == f"LocalStore({repr(store_str)})"
+    assert repr(store) == f"LocalStore({store_str!r})"
 
 
 @pytest.mark.asyncio
@@ -170,7 +162,7 @@ async def test_local_store_set(tmpdir, path: str, auto_mkdir: bool) -> None:
 # from .test_storage import TestSQLiteStore as _TestSQLiteStore
 # from .test_storage import TestSQLiteStoreInMemory as _TestSQLiteStoreInMemory
 # from .test_storage import TestZipStore as _TestZipStore
-# from .test_storage import dimension_separator_fixture, s3, skip_if_nested_chunks  # noqa
+# from .test_storage import dimension_separator_fixture, s3, skip_if_nested_chunks
 
 
 # pytestmark = pytest.mark.skipif(not v3_api_available, reason="v3 api is not available")
