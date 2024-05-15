@@ -444,7 +444,7 @@ class TreeNode:
         return type(self.obj).__name__
 
 
-class TreeTraversal(Traversal): # type: ignore[misc]
+class TreeTraversal(Traversal):  # type: ignore[misc]
     def get_children(self, node):
         return node.get_children()
 
