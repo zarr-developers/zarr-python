@@ -21,9 +21,9 @@ from zarr.codecs import (
     TransposeCodec,
     ZstdCodec,
 )
-from zarr.metadata import runtime_configuration
 
 from zarr.abc.store import Store
+from zarr.config import config
 from zarr.store import MemoryStore, StorePath
 
 
@@ -233,7 +233,6 @@ def test_nested_sharding(
 @pytest.mark.parametrize("runtime_write_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_read_order", ["F", "C"])
 @pytest.mark.parametrize("with_sharding", [True, False])
-@pytest.mark.asyncio
 async def test_order(
     store: Store,
     input_order: Literal["F", "C"],
@@ -255,25 +254,25 @@ async def test_order(
         else [TransposeCodec(order=order_from_dim(store_order, data.ndim)), BytesCodec()]
     )
 
-    a = await AsyncArray.create(
-        store / "order",
-        shape=data.shape,
-        chunk_shape=(32, 8),
-        dtype=data.dtype,
-        fill_value=0,
-        chunk_key_encoding=("v2", "."),
-        codecs=codecs_,
-        runtime_configuration=runtime_configuration(runtime_write_order),
-    )
+    with config.set({"array.order": runtime_write_order}):
+        a = await AsyncArray.create(
+            store / "order",
+            shape=data.shape,
+            chunk_shape=(32, 8),
+            dtype=data.dtype,
+            fill_value=0,
+            chunk_key_encoding=("v2", "."),
+            codecs=codecs_,
+        )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
     read_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, read_data)
 
-    a = await AsyncArray.open(
-        store / "order",
-        runtime_configuration=runtime_configuration(order=runtime_read_order),
-    )
+    with config.set({"array.order": runtime_read_order}):
+        a = await AsyncArray.open(
+            store / "order",
+        )
     read_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, read_data)
 
@@ -313,22 +312,22 @@ def test_order_implicit(
 
     codecs_: Optional[List[Codec]] = [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
 
-    a = Array.create(
-        store / "order_implicit",
-        shape=data.shape,
-        chunk_shape=(16, 16),
-        dtype=data.dtype,
-        fill_value=0,
-        codecs=codecs_,
-        runtime_configuration=runtime_configuration(runtime_write_order),
-    )
+    with config.set({"array.order": runtime_write_order}):
+        a = Array.create(
+            store / "order_implicit",
+            shape=data.shape,
+            chunk_shape=(16, 16),
+            dtype=data.dtype,
+            fill_value=0,
+            codecs=codecs_,
+        )
 
     a[:, :] = data
 
-    a = Array.open(
-        store / "order_implicit",
-        runtime_configuration=runtime_configuration(order=runtime_read_order),
-    )
+    with config.set({"array.order": runtime_read_order}):
+        a = Array.open(
+            store / "order_implicit",
+        )
     read_data = a[:, :]
     assert np.array_equal(data, read_data)
 
@@ -344,7 +343,6 @@ def test_order_implicit(
 @pytest.mark.parametrize("runtime_write_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_read_order", ["F", "C"])
 @pytest.mark.parametrize("with_sharding", [True, False])
-@pytest.mark.asyncio
 async def test_transpose(
     store: Store,
     input_order: Literal["F", "C"],
@@ -364,26 +362,25 @@ async def test_transpose(
         if with_sharding
         else [TransposeCodec(order=(2, 1, 0)), BytesCodec()]
     )
-
-    a = await AsyncArray.create(
-        store / "transpose",
-        shape=data.shape,
-        chunk_shape=(1, 32, 8),
-        dtype=data.dtype,
-        fill_value=0,
-        chunk_key_encoding=("v2", "."),
-        codecs=codecs_,
-        runtime_configuration=runtime_configuration(runtime_write_order),
-    )
+    with config.set({"array.order": runtime_write_order}):
+        a = await AsyncArray.create(
+            store / "transpose",
+            shape=data.shape,
+            chunk_shape=(1, 32, 8),
+            dtype=data.dtype,
+            fill_value=0,
+            chunk_key_encoding=("v2", "."),
+            codecs=codecs_,
+        )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
     read_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, read_data)
 
-    a = await AsyncArray.open(
-        store / "transpose",
-        runtime_configuration=runtime_configuration(runtime_read_order),
-    )
+    with config.set({"array.order": runtime_read_order}):
+        a = await AsyncArray.open(
+            store / "transpose",
+        )
     read_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, read_data)
 
@@ -602,7 +599,6 @@ def test_write_partial_sharded_chunks(store: Store):
     assert np.array_equal(a[0:16, 0:16], data)
 
 
-@pytest.mark.asyncio
 async def test_delete_empty_chunks(store: Store):
     data = np.ones((16, 16))
 
@@ -619,7 +615,6 @@ async def test_delete_empty_chunks(store: Store):
     assert await (store / "delete_empty_chunks/c0/0").get() is None
 
 
-@pytest.mark.asyncio
 async def test_delete_empty_sharded_chunks(store: Store):
     a = await AsyncArray.create(
         store / "delete_empty_sharded_chunks",
@@ -645,7 +640,6 @@ async def test_delete_empty_sharded_chunks(store: Store):
     assert chunk_bytes is not None and len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
 
 
-@pytest.mark.asyncio
 async def test_zarr_compat(store: Store):
     data = np.zeros((16, 18), dtype="uint16")
 
@@ -677,7 +671,6 @@ async def test_zarr_compat(store: Store):
     assert z2._store["1.1"] == await (store / "zarr_compat3/1.1").get()
 
 
-@pytest.mark.asyncio
 async def test_zarr_compat_F(store: Store):
     data = np.zeros((16, 18), dtype="uint16", order="F")
 
@@ -711,7 +704,6 @@ async def test_zarr_compat_F(store: Store):
     assert z2._store["1.1"] == await (store / "zarr_compatF3/1.1").get()
 
 
-@pytest.mark.asyncio
 async def test_dimension_names(store: Store):
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
@@ -777,7 +769,6 @@ def test_zstd(store: Store, checksum: bool):
 
 
 @pytest.mark.parametrize("endian", ["big", "little"])
-@pytest.mark.asyncio
 async def test_endian(store: Store, endian: Literal["big", "little"]):
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
@@ -809,7 +800,6 @@ async def test_endian(store: Store, endian: Literal["big", "little"]):
 
 @pytest.mark.parametrize("dtype_input_endian", [">u2", "<u2"])
 @pytest.mark.parametrize("dtype_store_endian", ["big", "little"])
-@pytest.mark.asyncio
 async def test_endian_write(
     store: Store,
     dtype_input_endian: Literal[">u2", "<u2"],
@@ -928,7 +918,6 @@ def test_invalid_metadata(store: Store):
         )
 
 
-@pytest.mark.asyncio
 async def test_resize(store: Store):
     data = np.zeros((16, 18), dtype="uint16")
 
@@ -955,7 +944,6 @@ async def test_resize(store: Store):
     assert await (store / "resize" / "1.1").get() is None
 
 
-@pytest.mark.asyncio
 async def test_blosc_evolve(store: Store):
     await AsyncArray.create(
         store / "blosc_evolve_u1",

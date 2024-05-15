@@ -1,5 +1,14 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Union, Tuple, Iterable, Dict, List, TypeVar, overload, Any
+from typing import (
+    TYPE_CHECKING,
+    Literal,
+    Union,
+    Tuple,
+    Iterable,
+    TypeVar,
+    overload,
+    Any,
+)
 import asyncio
 import contextvars
 from dataclasses import dataclass
@@ -7,7 +16,7 @@ from enum import Enum
 import functools
 
 if TYPE_CHECKING:
-    from typing import Any, Awaitable, Callable, Iterator, Optional, Type
+    from typing import Awaitable, Callable, Iterator, Optional, Type
 
 import numpy as np
 
@@ -16,39 +25,40 @@ ZARRAY_JSON = ".zarray"
 ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
 
-BytesLike = Union[bytes, bytearray, memoryview]
-ChunkCoords = Tuple[int, ...]
+BytesLike = bytes | bytearray | memoryview
+ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
-SliceSelection = Tuple[slice, ...]
-Selection = Union[slice, SliceSelection]
-JSON = Union[str, None, int, float, Enum, Dict[str, "JSON"], List["JSON"], Tuple["JSON", ...]]
+SliceSelection = tuple[slice, ...]
+Selection = slice | SliceSelection
+ZarrFormat = Literal[2, 3]
+JSON = Union[str, None, int, float, Enum, dict[str, "JSON"], list["JSON"], tuple["JSON", ...]]
 
 
 def product(tup: ChunkCoords) -> int:
     return functools.reduce(lambda x, y: x * y, tup, 1)
 
 
-T = TypeVar("T", bound=Tuple[Any, ...])
+T = TypeVar("T", bound=tuple[Any, ...])
 V = TypeVar("V")
 
 
 async def concurrent_map(
-    items: List[T], func: Callable[..., Awaitable[V]], limit: Optional[int] = None
-) -> List[V]:
+    items: list[T], func: Callable[..., Awaitable[V]], limit: Optional[int] = None
+) -> list[V]:
     if limit is None:
         return await asyncio.gather(*[func(*item) for item in items])
 
     else:
         sem = asyncio.Semaphore(limit)
 
-        async def run(item):
+        async def run(item: Tuple[Any]) -> V:
             async with sem:
                 return await func(*item)
 
         return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
 
 
-async def to_thread(func, /, *args, **kwargs):
+async def to_thread(func: Callable[..., V], /, *args: Any, **kwargs: Any) -> V:
     loop = asyncio.get_running_loop()
     ctx = contextvars.copy_context()
     func_call = functools.partial(ctx.run, func, *args, **kwargs)
@@ -70,7 +80,7 @@ def parse_enum(data: JSON, cls: Type[E]) -> E:
         raise TypeError(f"Expected str, got {type(data)}")
     if data in enum_names(cls):
         return cls(data)
-    raise ValueError(f"Value must be one of {repr(list(enum_names(cls)))}. Got {data} instead.")
+    raise ValueError(f"Value must be one of {list(enum_names(cls))!r}. Got {data} instead.")
 
 
 @dataclass(frozen=True)
@@ -78,15 +88,20 @@ class ArraySpec:
     shape: ChunkCoords
     dtype: np.dtype[Any]
     fill_value: Any
+    order: Literal["C", "F"]
 
-    def __init__(self, shape: ChunkCoords, dtype: np.dtype[Any], fill_value: Any) -> None:
+    def __init__(
+        self, shape: ChunkCoords, dtype: np.dtype[Any], fill_value: Any, order: Literal["C", "F"]
+    ) -> None:
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
         fill_value_parsed = parse_fill_value(fill_value)
+        order_parsed = parse_order(order)
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "dtype", dtype_parsed)
         object.__setattr__(self, "fill_value", fill_value_parsed)
+        object.__setattr__(self, "order", order_parsed)
 
     @property
     def ndim(self) -> int:
@@ -111,18 +126,18 @@ def parse_configuration(data: JSON) -> JSON:
 @overload
 def parse_named_configuration(
     data: JSON, expected_name: Optional[str] = None
-) -> Tuple[str, Dict[str, JSON]]: ...
+) -> tuple[str, dict[str, JSON]]: ...
 
 
 @overload
 def parse_named_configuration(
     data: JSON, expected_name: Optional[str] = None, *, require_configuration: bool = True
-) -> Tuple[str, Optional[Dict[str, JSON]]]: ...
+) -> tuple[str, Optional[dict[str, JSON]]]: ...
 
 
 def parse_named_configuration(
     data: JSON, expected_name: Optional[str] = None, *, require_configuration: bool = True
-) -> Tuple[str, Optional[JSON]]:
+) -> tuple[str, Optional[JSON]]:
     if not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")
     if "name" not in data:
@@ -137,7 +152,7 @@ def parse_named_configuration(
     return name_parsed, configuration_parsed
 
 
-def parse_shapelike(data: Any) -> Tuple[int, ...]:
+def parse_shapelike(data: Any) -> tuple[int, ...]:
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected an iterable. Got {data} instead.")
     data_tuple = tuple(data)
@@ -159,3 +174,9 @@ def parse_dtype(data: Any) -> np.dtype[Any]:
 def parse_fill_value(data: Any) -> Any:
     # todo: real validation
     return data
+
+
+def parse_order(data: Any) -> Literal["C", "F"]:
+    if data in ("C", "F"):
+        return data
+    raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")

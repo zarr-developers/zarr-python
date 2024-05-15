@@ -12,7 +12,6 @@ from zarr.common import parse_named_configuration, to_thread
 if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.config import RuntimeConfiguration
     from zarr.common import BytesLike, JSON, ArraySpec
 
 
@@ -64,7 +63,6 @@ class ZstdCodec(BytesBytesCodec):
         self,
         chunk_bytes: bytes,
         _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> BytesLike:
         return await to_thread(self._decompress, chunk_bytes)
 
@@ -72,7 +70,6 @@ class ZstdCodec(BytesBytesCodec):
         self,
         chunk_bytes: bytes,
         _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
     ) -> Optional[BytesLike]:
         return await to_thread(self._compress, chunk_bytes)
 
