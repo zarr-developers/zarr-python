@@ -32,6 +32,7 @@ from zarr.common import (
     ZATTRS_JSON,
     ChunkCoords,
     Selection,
+    ZarrFormat,
     concurrent_map,
 )
 from zarr.config import config
@@ -82,7 +83,7 @@ class AsyncArray:
         # v2 and v3
         shape: ChunkCoords,
         dtype: npt.DTypeLike,
-        zarr_format: Literal[2, 3] = 3,
+        zarr_format: ZarrFormat = 3,
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
         # v3 only
@@ -287,7 +288,7 @@ class AsyncArray:
     async def open(
         cls,
         store: StoreLike,
-        zarr_format: Literal[2, 3] | None = 3,
+        zarr_format: ZarrFormat | None = 3,
     ) -> AsyncArray:
         store_path = make_store_path(store)
 
@@ -352,6 +353,10 @@ class AsyncArray:
     def dtype(self) -> np.dtype[Any]:
         return self.metadata.dtype
 
+    @property
+    def attrs(self) -> dict[str, JSON]:
+        return self.metadata.attributes
+
     async def getitem(self, selection: Selection) -> npt.NDArray[Any]:
         indexer = BasicIndexer(
             selection,
@@ -367,7 +372,7 @@ class AsyncArray:
         )
 
         # reading chunks and decoding them
-        await self.metadata.codec_pipeline.read_batch(
+        await self.metadata.codec_pipeline.read(
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
@@ -411,7 +416,7 @@ class AsyncArray:
                 value = value.astype(self.metadata.dtype, order="A")
 
         # merging with existing data and encoding chunks
-        await self.metadata.codec_pipeline.write_batch(
+        await self.metadata.codec_pipeline.write(
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
@@ -478,7 +483,7 @@ class Array:
         # v2 and v3
         shape: ChunkCoords,
         dtype: npt.DTypeLike,
-        zarr_format: Literal[2, 3] = 3,
+        zarr_format: ZarrFormat = 3,
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
         # v3 only

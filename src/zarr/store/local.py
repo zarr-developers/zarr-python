@@ -4,20 +4,20 @@ import io
 import shutil
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Union, Optional, List, Tuple
 
 from zarr.abc.store import Store
 from zarr.common import BytesLike, concurrent_map, to_thread
 
 
-def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> bytes:
+def _get(path: Path, byte_range: tuple[int, int | None] | None) -> bytes:
     """
     Fetch a contiguous region of bytes from a file.
+
     Parameters
     ----------
     path: Path
         The file to read bytes from.
-    byte_range: Optional[Tuple[int, Optional[int]]] = None
+    byte_range: tuple[int, int | None] | None = None
         The range of bytes to read. If `byte_range` is `None`, then the entire file will be read.
         If `byte_range` is a tuple, the first value specifies the index of the first byte to read,
         and the second value specifies the total number of bytes to read. If the total value is
@@ -49,7 +49,7 @@ def _get(path: Path, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> 
 def _put(
     path: Path,
     value: BytesLike,
-    start: Optional[int] = None,
+    start: int | None = None,
     auto_mkdir: bool = True,
 ) -> int | None:
     if auto_mkdir:
@@ -71,7 +71,7 @@ class LocalStore(Store):
     root: Path
     auto_mkdir: bool
 
-    def __init__(self, root: Union[Path, str], auto_mkdir: bool = True):
+    def __init__(self, root: Path | str, auto_mkdir: bool = True):
         if isinstance(root, str):
             root = Path(root)
         assert isinstance(root, Path)
@@ -88,9 +88,7 @@ class LocalStore(Store):
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.root == other.root
 
-    async def get(
-        self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[bytes]:
+    async def get(self, key: str, byte_range: tuple[int, int | None] | None = None) -> bytes | None:
         assert isinstance(key, str)
         path = self.root / key
 
@@ -100,8 +98,8 @@ class LocalStore(Store):
             return None
 
     async def get_partial_values(
-        self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[Optional[bytes]]:
+        self, key_ranges: list[tuple[str, tuple[int, int]]]
+    ) -> list[bytes | None]:
         """
         Read byte ranges from multiple keys.
         Parameters
@@ -124,7 +122,7 @@ class LocalStore(Store):
         path = self.root / key
         await to_thread(_put, path, value, auto_mkdir=self.auto_mkdir)
 
-    async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
         args = []
         for key, start, value in key_start_values:
             assert isinstance(key, str)
@@ -169,6 +167,9 @@ class LocalStore(Store):
         -------
         AsyncGenerator[str, None]
         """
+        for p in (self.root / prefix).rglob("*"):
+            if p.is_file():
+                yield str(p)
 
         to_strip = str(self.root) + "/"
         for p in (self.root / prefix).rglob("*"):

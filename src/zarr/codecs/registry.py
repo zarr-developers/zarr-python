@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 
 from importlib.metadata import EntryPoint, entry_points as get_entry_points
 
-
 __codec_registry: Dict[str, Type[Codec]] = {}
 __lazy_load_codecs: Dict[str, EntryPoint] = {}
 

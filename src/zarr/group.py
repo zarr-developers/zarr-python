@@ -5,27 +5,35 @@ from dataclasses import asdict, dataclass, field, replace
 import asyncio
 import json
 import logging
+import numpy.typing as npt
 
-if TYPE_CHECKING:
-    from typing import (
-        Any,
-        AsyncGenerator,
-        Literal,
-        AsyncIterator,
-    )
 from zarr.abc.store import set_or_delete
+from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 
 from zarr.array import AsyncArray, Array
 from zarr.attributes import Attributes
-from zarr.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON
+from zarr.chunk_key_encodings import ChunkKeyEncoding
+from zarr.common import (
+    JSON,
+    ZARR_JSON,
+    ZARRAY_JSON,
+    ZATTRS_JSON,
+    ZGROUP_JSON,
+    ChunkCoords,
+    ZarrFormat,
+)
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import SyncMixin, sync
+from typing import overload
+
+if TYPE_CHECKING:
+    from typing import Any, AsyncGenerator, Literal, Iterable
 
 logger = logging.getLogger("zarr.group")
 
 
-def parse_zarr_format(data: Any) -> Literal[2, 3]:
+def parse_zarr_format(data: Any) -> ZarrFormat:
     if data in (2, 3):
         return data
     msg = msg = f"Invalid zarr_format. Expected one 2 or 3. Got {data}."
@@ -42,10 +50,30 @@ def parse_attributes(data: Any) -> dict[str, Any]:
     raise TypeError(msg)
 
 
+@overload
+def _parse_async_node(node: AsyncArray) -> Array: ...
+
+
+@overload
+def _parse_async_node(node: AsyncGroup) -> Group: ...
+
+
+def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
+    """
+    Wrap an AsyncArray in an Array, or an AsyncGroup in a Group.
+    """
+    if isinstance(node, AsyncArray):
+        return Array(node)
+    elif isinstance(node, AsyncGroup):
+        return Group(node)
+    else:
+        assert False
+
+
 @dataclass(frozen=True)
 class GroupMetadata(Metadata):
     attributes: dict[str, Any] = field(default_factory=dict)
-    zarr_format: Literal[2, 3] = 3
+    zarr_format: ZarrFormat = 3
     node_type: Literal["group"] = field(default="group", init=False)
 
     # todo: rename this, since it doesn't return bytes
@@ -54,11 +82,11 @@ class GroupMetadata(Metadata):
             return {ZARR_JSON: json.dumps(self.to_dict()).encode()}
         else:
             return {
-                ZGROUP_JSON: json.dumps({"zarr_format": 2}).encode(),
+                ZGROUP_JSON: json.dumps({"zarr_format": self.zarr_format}).encode(),
                 ZATTRS_JSON: json.dumps(self.attributes).encode(),
             }
 
-    def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: Literal[2, 3] = 3):
+    def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3):
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
 
@@ -86,7 +114,7 @@ class AsyncGroup:
         *,
         attributes: dict[str, Any] = {},
         exists_ok: bool = False,
-        zarr_format: Literal[2, 3] = 3,
+        zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
         store_path = make_store_path(store)
         if not exists_ok:
@@ -114,11 +142,11 @@ class AsyncGroup:
                 (store_path / ZGROUP_JSON).get(), (store_path / ZATTRS_JSON).get()
             )
             if zgroup_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
         elif zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
         elif zarr_format is None:
             zarr_json_bytes, zgroup_bytes, zattrs_bytes = await asyncio.gather(
                 (store_path / ZARR_JSON).get(),
@@ -169,16 +197,13 @@ class AsyncGroup:
         key: str,
     ) -> AsyncArray | AsyncGroup:
         store_path = self.store_path / key
+        logger.warning("key=%s, store_path=%s", key, store_path)
 
         # Note:
         # in zarr-python v2, we first check if `key` references an Array, else if `key` references
         # a group,using standalone `contains_array` and `contains_group` functions. These functions
         # are reusable, but for v3 they would perform redundant I/O operations.
         # Not clear how much of that strategy we want to keep here.
-
-        # if `key` names an object in storage, it cannot be an array or group
-        if await store_path.exists():
-            raise KeyError(key)
 
         if self.metadata.zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
@@ -231,6 +256,7 @@ class AsyncGroup:
         elif self.metadata.zarr_format == 2:
             await asyncio.gather(
                 (store_path / ZGROUP_JSON).delete(),  # TODO: missing_ok=False
+                (store_path / ZARRAY_JSON).delete(),  # TODO: missing_ok=False
                 (store_path / ZATTRS_JSON).delete(),  # TODO: missing_ok=True
             )
         else:
@@ -249,16 +275,59 @@ class AsyncGroup:
     def info(self):
         return self.metadata.info
 
-    async def create_group(self, path: str, **kwargs) -> AsyncGroup:
+    async def create_group(
+        self, path: str, exists_ok: bool = False, attributes: dict[str, Any] = {}
+    ) -> AsyncGroup:
         return await type(self).create(
             self.store_path / path,
-            **kwargs,
+            attributes=attributes,
+            exists_ok=exists_ok,
+            zarr_format=self.metadata.zarr_format,
         )
 
-    async def create_array(self, path: str, **kwargs) -> AsyncArray:
+    async def create_array(
+        self,
+        path: str,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike,
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ChunkCoords | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        exists_ok: bool = False,
+    ) -> AsyncArray:
         return await AsyncArray.create(
             self.store_path / path,
-            **kwargs,
+            shape=shape,
+            dtype=dtype,
+            chunk_shape=chunk_shape,
+            fill_value=fill_value,
+            chunk_key_encoding=chunk_key_encoding,
+            codecs=codecs,
+            dimension_names=dimension_names,
+            attributes=attributes,
+            chunks=chunks,
+            dimension_separator=dimension_separator,
+            order=order,
+            filters=filters,
+            compressor=compressor,
+            exists_ok=exists_ok,
+            zarr_format=self.metadata.zarr_format,
         )
 
     async def update_attributes(self, new_attributes: dict[str, Any]):
@@ -341,7 +410,7 @@ class AsyncGroup:
                 yield key
 
     # todo: decide if this method should be separate from `array_keys`
-    async def arrays(self) -> AsyncIterator[AsyncArray]:
+    async def arrays(self) -> AsyncGenerator[AsyncArray, None]:
         async for key, value in self.members():
             if isinstance(value, AsyncArray):
                 yield value
@@ -465,19 +534,13 @@ class Group(SyncMixin):
     @property
     def members(self) -> tuple[tuple[str, Array | Group], ...]:
         """
-        Return the sub-arrays and sub-groups of this group as a `tuple` of (name, array | group)
+        Return the sub-arrays and sub-groups of this group as a tuple of (name, array | group)
         pairs
         """
-        _members: list[tuple[str, AsyncArray | AsyncGroup]] = self._sync_iter(
-            self._async_group.members()
-        )
-        ret: list[tuple[str, Array | Group]] = []
-        for key, value in _members:
-            if isinstance(value, AsyncArray):
-                ret.append((key, Array(value)))
-            else:
-                ret.append((key, Group(value)))
-        return tuple(ret)
+        _members = self._sync_iter(self._async_group.members())
+
+        result = tuple(map(lambda kv: (kv[0], _parse_async_node(kv[1])), _members))
+        return result
 
     def __contains__(self, member) -> bool:
         return self._sync(self._async_group.contains(member))

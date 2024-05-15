@@ -6,7 +6,7 @@ from functools import lru_cache
 
 
 import numpy as np
-from zarr.abc.codec import ByteGetter, ByteSetter, Codec
+from zarr.abc.codec import ByteGetter, ByteSetter, Codec, CodecPipeline
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.mixins import (
@@ -14,7 +14,7 @@ from zarr.codecs.mixins import (
     ArrayBytesCodecPartialDecodeBatchMixin,
     ArrayBytesCodecPartialEncodeBatchMixin,
 )
-from zarr.codecs.pipeline import CodecPipeline, HybridCodecPipeline
+from zarr.codecs.batched_codec_pipeline import BatchedCodecPipeline
 from zarr.codecs.registry import register_codec
 from zarr.common import (
     ArraySpec,
@@ -312,12 +312,12 @@ class ShardingCodec(
         codecs_parsed = (
             parse_codecs(codecs)
             if codecs is not None
-            else HybridCodecPipeline.from_list([BytesCodec()])
+            else BatchedCodecPipeline.from_list([BytesCodec()])
         )
         index_codecs_parsed = (
             parse_codecs(index_codecs)
             if index_codecs is not None
-            else HybridCodecPipeline.from_list([BytesCodec(), Crc32cCodec()])
+            else BatchedCodecPipeline.from_list([BytesCodec(), Crc32cCodec()])
         )
         index_location_parsed = (
             parse_index_location(index_location)
@@ -407,7 +407,7 @@ class ShardingCodec(
             return out
 
         # decoding chunks and writing them into the output buffer
-        await self.codecs.read_batch(
+        await self.codecs.read(
             [
                 (
                     _ShardingByteGetter(shard_dict, chunk_coords),
@@ -471,7 +471,7 @@ class ShardingCodec(
                         shard_dict[chunk_coords] = chunk_bytes
 
         # decoding chunks and writing them into the output buffer
-        await self.codecs.read_batch(
+        await self.codecs.read(
             [
                 (
                     _ShardingByteGetter(shard_dict, chunk_coords),
@@ -506,7 +506,7 @@ class ShardingCodec(
 
         shard_builder = _ShardBuilder.create_empty(chunks_per_shard)
 
-        await self.codecs.write_batch(
+        await self.codecs.write(
             [
                 (
                     _ShardingByteSetter(shard_builder, chunk_coords),
@@ -547,7 +547,7 @@ class ShardingCodec(
             )
         )
 
-        await self.codecs.write_batch(
+        await self.codecs.write(
             [
                 (
                     _ShardingByteSetter(shard_dict, chunk_coords),

@@ -7,6 +7,8 @@ import json
 import numpy as np
 import numpy.typing as npt
 
+from zarr.abc.codec import Codec, CodecPipeline
+from zarr.abc.metadata import Metadata
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -15,11 +17,7 @@ from zarr.codecs._v2 import V2Compressor, V2Filters
 if TYPE_CHECKING:
     from typing import Literal
     from typing_extensions import Self
-    from zarr.codecs import CodecPipeline
 
-
-from zarr.abc.codec import Codec
-from zarr.abc.metadata import Metadata
 
 from zarr.common import (
     JSON,
@@ -357,9 +355,9 @@ class ArrayV2Metadata(ArrayMetadata):
 
     @property
     def codec_pipeline(self) -> CodecPipeline:
-        from zarr.codecs.pipeline.hybrid import HybridCodecPipeline
+        from zarr.codecs import BatchedCodecPipeline
 
-        return HybridCodecPipeline.from_list(
+        return BatchedCodecPipeline.from_list(
             [V2Filters(self.filters or [], self.order), V2Compressor(self.compressor)]
         )
 
@@ -386,6 +384,19 @@ class ArrayV2Metadata(ArrayMetadata):
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format_v2(data.pop("zarr_format"))
         return cls(**data)
+
+    def to_dict(self) -> JSON:
+        zarray_dict = super().to_dict()
+
+        assert isinstance(zarray_dict, dict)
+
+        _ = zarray_dict.pop("chunk_grid")
+        zarray_dict["chunks"] = self.chunk_grid.chunk_shape
+
+        _ = zarray_dict.pop("data_type")
+        zarray_dict["dtype"] = self.data_type
+
+        return zarray_dict
 
     def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
         return ArraySpec(
@@ -447,12 +458,12 @@ def parse_node_type_array(data: Any) -> Literal["array"]:
 
 
 # todo: real validation
-def parse_filters(data: Any) -> list[Codec]:
+def parse_filters(data: Any) -> list[dict[str, JSON]]:
     return data
 
 
 # todo: real validation
-def parse_compressor(data: Any) -> Codec:
+def parse_compressor(data: Any) -> dict[str, JSON] | None:
     return data
 
 
@@ -467,8 +478,8 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
 
 
 def parse_codecs(data: Iterable[Codec | JSON]) -> CodecPipeline:
-    from zarr.codecs.pipeline.hybrid import HybridCodecPipeline
+    from zarr.codecs import BatchedCodecPipeline
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")
-    return HybridCodecPipeline.from_dict(data)
+    return BatchedCodecPipeline.from_dict(data)

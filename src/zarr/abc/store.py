@@ -1,5 +1,4 @@
 from abc import abstractmethod, ABC
-
 from collections.abc import AsyncGenerator
 from typing import List, Protocol, Tuple, Optional, runtime_checkable
 
