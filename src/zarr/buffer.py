@@ -249,11 +249,11 @@ class NDBuffer:
 
     Note
     ----
-    The two buffer classes Buffer and NDBuffer are very similar. In fact,
-    Buffer is a special case of NDBuffer where dim=1, stride=1, and dtype="b".
-    However, in order to use the Python's type system to differentiate between
-    the flat contiguous Buffer and the n-dim (non-contiguous) NDBuffer, we keep
-    the definition of the two classes separate.
+    The two buffer classes Buffer and NDBuffer are very similar. In fact, Buffer
+    is a special case of NDBuffer where dim=1, stride=1, and dtype="b". However,
+    in order to use Python's type system to differentiate between the contiguous
+    Buffer and the n-dim (non-contiguous) NDBuffer, we keep the definition of the
+    two classes separate.
 
     Parameters
     ----------
