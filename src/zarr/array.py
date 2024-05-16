@@ -29,6 +29,7 @@ from zarr.common import (
     ChunkCoords,
     Selection,
     SliceSelection,
+    ZarrFormat,
     concurrent_map,
 )
 from zarr.config import config
@@ -90,6 +91,7 @@ class AsyncArray:
         dimension_names: Optional[Iterable[str]] = None,
         attributes: Optional[Dict[str, Any]] = None,
         exists_ok: bool = False,
+        zarr_format: ZarrFormat = 3,
     ) -> AsyncArray:
         store_path = make_store_path(store)
         if not exists_ok:

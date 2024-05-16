@@ -92,4 +92,4 @@ class MemoryStore(Store):
         else:
             for key in self._store_dict:
                 if key.startswith(prefix + "/") and key != prefix:
-                    yield key.strip(prefix + "/").split("/")[0]
+                    yield key.removeprefix(prefix + "/").split("/")[0]
