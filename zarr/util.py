@@ -234,17 +234,8 @@ def is_total_slice(item, shape: Tuple[int]) -> bool:
     if isinstance(item, tuple):
         return all(
             (
-                (
-                    isinstance(it, slice)
-                    and (
-                        (it == slice(None))
-                        or ((it.stop - it.start == sh) and (it.step in [1, None]))
-                    )
-                )
-                # The only scalar edge case, indexing with int 0 along a size-1 dimension
-                # is identical to a total slice
-                # https://github.com/zarr-developers/zarr-python/issues/1730
-                or (isinstance(it, int) and it == 0 and sh == 1)
+                isinstance(it, slice)
+                and ((it == slice(None)) or ((it.stop - it.start == sh) and (it.step in [1, None])))
             )
             for it, sh in zip(item, shape)
         )

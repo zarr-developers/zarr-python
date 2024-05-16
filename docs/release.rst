@@ -25,6 +25,9 @@ Unreleased
 
 Enhancements
 ~~~~~~~~~~~~
+* Revert "Performance improvement for reading and writing chunks if any of the dimensions is size 1."
+  By :user:`Deepak Cherian <dcherian>`. :issue:`1874`.
+
 
 Docs
 ~~~~

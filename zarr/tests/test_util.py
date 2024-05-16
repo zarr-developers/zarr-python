@@ -89,15 +89,6 @@ def test_is_total_slice():
     assert not is_total_slice((slice(0, 50), slice(0, 50)), (100, 100))
     assert not is_total_slice((slice(0, 100, 2), slice(0, 100)), (100, 100))
 
-    # size-1 dimension edge-case
-    # https://github.com/zarr-developers/zarr-python/issues/1730
-    assert is_total_slice((slice(0, 1),), (1,))
-    # this is an equivalent selection (without a slice)
-    assert is_total_slice((0,), (1,))
-    # same for multidimensional selection
-    assert is_total_slice((slice(0, 1), slice(0, 10)), (1, 10))
-    assert is_total_slice((0, slice(0, 10)), (1, 10))
-
     with pytest.raises(TypeError):
         is_total_slice("foo", (100,))
 
