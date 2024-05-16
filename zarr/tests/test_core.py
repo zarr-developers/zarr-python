@@ -3197,6 +3197,12 @@ def test_object_array_indexing():
     arr_add[:] = new_items
     arr.append(arr_add)
 
+    # heterogeneous elements
     elem = ["C", 3]
     arr[0] = elem
     assert arr[0] == elem
+
+    # homogeneous elements
+    elem = [1, 3]
+    arr[1] = elem
+    assert arr[1] == elem
