@@ -3176,3 +3176,27 @@ def test_scalar_indexing():
 
     store["a"][0] = (-3,)
     assert store["a"][0] == np.array(-3)
+
+
+def test_object_array_indexing():
+    # regression test for #1874
+    from numcodecs import MsgPack
+
+    root = zarr.group()
+    arr = root.create_dataset(
+        name="my_dataset",
+        shape=0,
+        dtype=object,
+        object_codec=MsgPack(),
+    )
+    new_items = [
+        ["A", 1],
+        ["B", 2, "hello"],
+    ]
+    arr_add = np.empty(len(new_items), dtype=object)
+    arr_add[:] = new_items
+    arr.append(arr_add)
+
+    elem = ["C", 3]
+    arr[0] = elem
+    assert arr[0] == elem
