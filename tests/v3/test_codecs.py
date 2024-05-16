@@ -615,9 +615,9 @@ async def test_delete_empty_chunks(store: Store):
     assert await (store / "delete_empty_chunks/c0/0").get() is None
 
 
-async def test_delete_empty_sharded_chunks(store: Store):
+async def test_delete_empty_shards(store: Store):
     a = await AsyncArray.create(
-        store / "delete_empty_sharded_chunks",
+        store / "delete_empty_shards",
         shape=(16, 16),
         chunk_shape=(8, 16),
         dtype="uint16",
@@ -635,8 +635,8 @@ async def test_delete_empty_sharded_chunks(store: Store):
     data = np.ones((16, 16), dtype="uint16")
     data[:8, :8] = 0
     assert np.array_equal(data, await _AsyncArrayProxy(a)[:, :].get())
-    assert await (store / "delete_empty_sharded_chunks/c/1/0").get() is None
-    chunk_bytes = await (store / "delete_empty_sharded_chunks/c/0/0").get()
+    assert await (store / "delete_empty_shards/c/1/0").get() is None
+    chunk_bytes = await (store / "delete_empty_shards/c/0/0").get()
     assert chunk_bytes is not None and len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
 
 

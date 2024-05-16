@@ -3,7 +3,6 @@ from __future__ import annotations
 from itertools import islice
 from typing import TYPE_CHECKING, Iterator, TypeVar, Iterable
 from warnings import warn
-import numpy as np
 from dataclasses import dataclass
 
 from zarr.config import config
@@ -370,11 +369,12 @@ class BatchedCodecPipeline(CodecPipeline):
                 if is_total_slice(chunk_selection, chunk_spec.shape):
                     return new_chunk_array_slice
                 if existing_chunk_array is None:
-                    chunk_array = np.empty(
-                        chunk_spec.shape,
+                    chunk_array = NDBuffer.create(
+                        shape=chunk_spec.shape,
                         dtype=chunk_spec.dtype,
+                        order=chunk_spec.order,
+                        fill_value=chunk_spec.fill_value,
                     )
-                    chunk_array.fill(chunk_spec.fill_value)
                 else:
                     chunk_array = existing_chunk_array.copy()  # make a writable copy
                 chunk_array[chunk_selection] = new_chunk_array_slice
@@ -388,7 +388,9 @@ class BatchedCodecPipeline(CodecPipeline):
             ]
 
             chunk_array_batch = [
-                None if np.all(chunk_array == chunk_spec.fill_value) else chunk_array
+                None
+                if chunk_array is None or chunk_array.all_equal(chunk_spec.fill_value)
+                else chunk_array
                 for chunk_array, (_, chunk_spec, _, _) in zip(chunk_array_batch, batch_info)
             ]
 

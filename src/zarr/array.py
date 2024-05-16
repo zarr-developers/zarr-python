@@ -368,7 +368,10 @@ class AsyncArray:
 
         # setup output array
         out = factory(
-            shape=indexer.shape, dtype=self.metadata.dtype, order=self.order, fill_value=0
+            shape=indexer.shape,
+            dtype=self.metadata.dtype,
+            order=self.order,
+            fill_value=0,  # TODO use fill_value
         )
 
         # reading chunks and decoding them
