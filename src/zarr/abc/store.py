@@ -3,13 +3,14 @@ from collections.abc import AsyncGenerator
 from typing import List, Protocol, Tuple, Optional, runtime_checkable
 
 from zarr.common import BytesLike
+from zarr.buffer import Buffer
 
 
 class Store(ABC):
     @abstractmethod
     async def get(
         self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[bytes]:
+    ) -> Optional[Buffer]:
         """Retrieve the value associated with a given key.
 
         Parameters
@@ -19,14 +20,14 @@ class Store(ABC):
 
         Returns
         -------
-        bytes
+        Buffer
         """
         ...
 
     @abstractmethod
     async def get_partial_values(
         self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[Optional[bytes]]:
+    ) -> List[Optional[Buffer]]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
@@ -36,8 +37,7 @@ class Store(ABC):
 
         Returns
         -------
-        list[bytes]
-            list of values, in the order of the key_ranges, may contain null/none for missing keys
+        list of values, in the order of the key_ranges, may contain null/none for missing keys
         """
         ...
 
@@ -62,13 +62,13 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def set(self, key: str, value: BytesLike) -> None:
+    async def set(self, key: str, value: Buffer) -> None:
         """Store a (key, value) pair.
 
         Parameters
         ----------
         key : str
-        value : BytesLike
+        value : Buffer
         """
         ...
 
@@ -152,21 +152,21 @@ class Store(ABC):
 class ByteGetter(Protocol):
     async def get(
         self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]: ...
+    ) -> Optional[Buffer]: ...
 
 
 @runtime_checkable
 class ByteSetter(Protocol):
     async def get(
         self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]: ...
+    ) -> Optional[Buffer]: ...
 
-    async def set(self, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None) -> None: ...
+    async def set(self, value: Buffer, byte_range: Optional[Tuple[int, int]] = None) -> None: ...
 
     async def delete(self) -> None: ...
 
 
-async def set_or_delete(byte_setter: ByteSetter, value: BytesLike | None) -> None:
+async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:
     if value is None:
         await byte_setter.delete()
     else:

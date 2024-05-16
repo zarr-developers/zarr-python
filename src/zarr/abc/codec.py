@@ -3,10 +3,9 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, Iterable, TypeVar
 
-import numpy as np
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.common import BytesLike
+from zarr.buffer import Buffer, NDBuffer
 
 
 if TYPE_CHECKING:
@@ -15,8 +14,8 @@ if TYPE_CHECKING:
     from zarr.metadata import ArrayMetadata
 
 
-CodecInput = TypeVar("CodecInput", bound=np.ndarray | BytesLike)
-CodecOutput = TypeVar("CodecOutput", bound=np.ndarray | BytesLike)
+CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
+CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 
 
 class _Codec(Generic[CodecInput, CodecOutput], Metadata):
@@ -122,19 +121,19 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         ...
 
 
-class ArrayArrayCodec(_Codec[np.ndarray, np.ndarray]):
+class ArrayArrayCodec(_Codec[NDBuffer, NDBuffer]):
     """Base class for array-to-array codecs."""
 
     ...
 
 
-class ArrayBytesCodec(_Codec[np.ndarray, BytesLike]):
+class ArrayBytesCodec(_Codec[NDBuffer, Buffer]):
     """Base class for array-to-bytes codecs."""
 
     ...
 
 
-class BytesBytesCodec(_Codec[BytesLike, BytesLike]):
+class BytesBytesCodec(_Codec[Buffer, Buffer]):
     """Base class for bytes-to-bytes codecs."""
 
     ...
@@ -150,7 +149,7 @@ class ArrayBytesCodecPartialDecodeMixin:
     async def decode_partial(
         self,
         batch_info: Iterable[tuple[ByteGetter, SliceSelection, ArraySpec]],
-    ) -> Iterable[np.ndarray | None]:
+    ) -> Iterable[NDBuffer | None]:
         """Partially decodes a batch of chunks.
         This method determines parts of a chunk from the slice selection,
         fetches these parts from the store (via ByteGetter) and decodes them.
@@ -165,7 +164,7 @@ class ArrayBytesCodecPartialDecodeMixin:
 
         Returns
         -------
-        Iterable[np.ndarray | None]
+        Iterable[NDBuffer | None]
         """
         ...
 
@@ -176,7 +175,7 @@ class ArrayBytesCodecPartialEncodeMixin:
     @abstractmethod
     async def encode_partial(
         self,
-        batch_info: Iterable[tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]],
+        batch_info: Iterable[tuple[ByteSetter, NDBuffer, SliceSelection, ArraySpec]],
     ) -> None:
         """Partially encodes a batch of chunks.
         This method determines parts of a chunk from the slice selection, encodes them and
@@ -186,7 +185,7 @@ class ArrayBytesCodecPartialEncodeMixin:
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]]
+        batch_info : Iterable[tuple[ByteSetter, NDBuffer, SliceSelection, ArraySpec]]
             Ordered set of information about slices of to-be-encoded chunks.
             The slice selection determines which parts of the chunk will be encoded.
             The ByteSetter is used to write the necessary bytes and fetch bytes for existing chunk data.
@@ -270,38 +269,38 @@ class CodecPipeline(Metadata):
     @abstractmethod
     async def decode(
         self,
-        chunk_bytes_and_specs: Iterable[tuple[BytesLike | None, ArraySpec]],
-    ) -> Iterable[np.ndarray | None]:
+        chunk_bytes_and_specs: Iterable[tuple[Buffer | None, ArraySpec]],
+    ) -> Iterable[NDBuffer | None]:
         """Decodes a batch of chunks.
         Chunks can be None in which case they are ignored by the codec.
 
         Parameters
         ----------
-        chunks_and_specs : Iterable[tuple[BytesLike | None, ArraySpec]]
+        chunks_and_specs : Iterable[tuple[Buffer | None, ArraySpec]]
             Ordered set of encoded chunks with their accompanying chunk spec.
 
         Returns
         -------
-        Iterable[np.ndarray | None]
+        Iterable[NDBuffer | None]
         """
         ...
 
     @abstractmethod
     async def encode(
         self,
-        chunk_arrays_and_specs: Iterable[tuple[np.ndarray | None, ArraySpec]],
-    ) -> Iterable[BytesLike | None]:
+        chunk_arrays_and_specs: Iterable[tuple[NDBuffer | None, ArraySpec]],
+    ) -> Iterable[Buffer | None]:
         """Encodes a batch of chunks.
         Chunks can be None in which case they are ignored by the codec.
 
         Parameters
         ----------
-        chunks_and_specs : Iterable[tuple[np.ndarray | None, ArraySpec]]
+        chunks_and_specs : Iterable[tuple[NDBuffer | None, ArraySpec]]
             Ordered set of to-be-encoded chunks with their accompanying chunk spec.
 
         Returns
         -------
-        Iterable[BytesLike | None]
+        Iterable[Buffer | None]
         """
         ...
 
@@ -309,7 +308,7 @@ class CodecPipeline(Metadata):
     async def read(
         self,
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SliceSelection, SliceSelection]],
-        out: np.ndarray,
+        out: NDBuffer,
     ) -> None:
         """Reads chunk data from the store, decodes it and writes it into an output array.
         Partial decoding may be utilized if the codecs and stores support it.
@@ -322,7 +321,7 @@ class CodecPipeline(Metadata):
             The second slice selection determines where in the output array the chunk data will be written.
             The ByteGetter is used to fetch the necessary bytes.
             The chunk spec contains information about the construction of an array from the bytes.
-        out : np.ndarray
+        out : NDBuffer
         """
         ...
 
@@ -330,7 +329,7 @@ class CodecPipeline(Metadata):
     async def write(
         self,
         batch_info: Iterable[tuple[ByteSetter, ArraySpec, SliceSelection, SliceSelection]],
-        value: np.ndarray,
+        value: NDBuffer,
     ) -> None:
         """Encodes chunk data and writes it to the store.
         Merges with existing chunk data by reading first, if necessary.
@@ -344,6 +343,6 @@ class CodecPipeline(Metadata):
             The second slice selection determines where in the value array the chunk data is located.
             The ByteSetter is used to fetch and write the necessary bytes.
             The chunk spec contains information about the chunk.
-        value : np.ndarray
+        value : NDBuffer
         """
         ...

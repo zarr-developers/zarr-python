@@ -9,6 +9,7 @@ import numpy.typing as npt
 
 from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.metadata import Metadata
+from zarr.buffer import Buffer
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -137,7 +138,7 @@ class ArrayMetadata(Metadata, ABC):
         pass
 
     @abstractmethod
-    def to_bytes(self) -> dict[str, bytes]:
+    def to_buffer_dict(self) -> dict[str, Buffer]:
         pass
 
     @abstractmethod
@@ -245,7 +246,7 @@ class ArrayV3Metadata(ArrayMetadata):
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
-    def to_bytes(self) -> dict[str, bytes]:
+    def to_buffer_dict(self) -> dict[str, Buffer]:
         def _json_convert(o):
             if isinstance(o, np.dtype):
                 return str(o)
@@ -257,7 +258,9 @@ class ArrayV3Metadata(ArrayMetadata):
                 return o.get_config()
             raise TypeError
 
-        return {ZARR_JSON: json.dumps(self.to_dict(), default=_json_convert).encode()}
+        return {
+            ZARR_JSON: Buffer.from_bytes(json.dumps(self.to_dict(), default=_json_convert).encode())
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
@@ -358,10 +361,10 @@ class ArrayV2Metadata(ArrayMetadata):
         from zarr.codecs import BatchedCodecPipeline
 
         return BatchedCodecPipeline.from_list(
-            [V2Filters(self.filters or [], self.order), V2Compressor(self.compressor)]
+            [V2Filters(self.filters or []), V2Compressor(self.compressor)]
         )
 
-    def to_bytes(self) -> dict[str, bytes]:
+    def to_buffer_dict(self) -> dict[str, Buffer]:
         def _json_convert(o):
             if isinstance(o, np.dtype):
                 if o.fields is None:
@@ -375,8 +378,8 @@ class ArrayV2Metadata(ArrayMetadata):
         zattrs_dict = zarray_dict.pop("attributes", {})
         assert isinstance(zattrs_dict, dict)
         return {
-            ZARRAY_JSON: json.dumps(zarray_dict, default=_json_convert).encode(),
-            ZATTRS_JSON: json.dumps(zattrs_dict).encode(),
+            ZARRAY_JSON: Buffer.from_bytes(json.dumps(zarray_dict, default=_json_convert).encode()),
+            ZATTRS_JSON: Buffer.from_bytes(json.dumps(zattrs_dict).encode()),
         }
 
     @classmethod

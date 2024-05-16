@@ -1,6 +1,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
+from zarr.buffer import Buffer
+from zarr.sync import sync
 from zarr.array import AsyncArray
 from zarr.store.core import make_store_path
 
@@ -13,7 +15,6 @@ import numpy as np
 
 from zarr.group import AsyncGroup, Group, GroupMetadata
 from zarr.store import StorePath
-from zarr.sync import sync
 
 
 # todo: put RemoteStore in here
@@ -43,7 +44,7 @@ def test_group_children(store: MemoryStore | LocalStore) -> None:
 
     # add an extra object to the domain of the group.
     # the list of children should ignore this object.
-    sync(store.set(f"{path}/extra_object-1", b"000000"))
+    sync(store.set(f"{path}/extra_object-1", Buffer.from_bytes(b"000000")))
     # add an extra object under a directory-like prefix in the domain of the group.
     # this creates a directory with a random key in it
     # this should not show up as a member

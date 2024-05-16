@@ -4,14 +4,13 @@ from typing import TYPE_CHECKING, Dict, Iterable, Union, cast
 from dataclasses import dataclass, replace
 
 from zarr.codecs.mixins import ArrayArrayCodecBatchMixin
+from zarr.buffer import NDBuffer
 from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
 from zarr.codecs.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import TYPE_CHECKING, Optional, Tuple
     from typing_extensions import Self
-
-import numpy as np
 
 
 def parse_transpose_order(data: Union[JSON, Iterable[int]]) -> Tuple[int, ...]:
@@ -74,9 +73,9 @@ class TransposeCodec(ArrayArrayCodecBatchMixin):
 
     async def decode_single(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
         inverse_order = [0] * chunk_spec.ndim
         for x, i in enumerate(self.order):
             inverse_order[x] = i
@@ -85,9 +84,9 @@ class TransposeCodec(ArrayArrayCodecBatchMixin):
 
     async def encode_single(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[NDBuffer]:
         chunk_array = chunk_array.transpose(self.order)
         return chunk_array
 

@@ -11,6 +11,7 @@ from zarr.abc.store import set_or_delete
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 
+from zarr.buffer import Buffer
 from zarr.array import AsyncArray, Array
 from zarr.attributes import Attributes
 from zarr.chunk_key_encodings import ChunkKeyEncoding
@@ -76,14 +77,15 @@ class GroupMetadata(Metadata):
     zarr_format: ZarrFormat = 3
     node_type: Literal["group"] = field(default="group", init=False)
 
-    # todo: rename this, since it doesn't return bytes
-    def to_bytes(self) -> dict[str, bytes]:
+    def to_buffer_dict(self) -> dict[str, Buffer]:
         if self.zarr_format == 3:
-            return {ZARR_JSON: json.dumps(self.to_dict()).encode()}
+            return {ZARR_JSON: Buffer.from_bytes(json.dumps(self.to_dict()).encode())}
         else:
             return {
-                ZGROUP_JSON: json.dumps({"zarr_format": self.zarr_format}).encode(),
-                ZATTRS_JSON: json.dumps(self.attributes).encode(),
+                ZGROUP_JSON: Buffer.from_bytes(
+                    json.dumps({"zarr_format": self.zarr_format}).encode()
+                ),
+                ZATTRS_JSON: Buffer.from_bytes(json.dumps(self.attributes).encode()),
             }
 
     def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3):
@@ -170,13 +172,13 @@ class AsyncGroup:
         if zarr_format == 2:
             # V2 groups are comprised of a .zgroup and .zattrs objects
             assert zgroup_bytes is not None
-            zgroup = json.loads(zgroup_bytes)
-            zattrs = json.loads(zattrs_bytes) if zattrs_bytes is not None else {}
+            zgroup = json.loads(zgroup_bytes.to_bytes())
+            zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
             group_metadata = {**zgroup, "attributes": zattrs}
         else:
             # V3 groups are comprised of a zarr.json object
             assert zarr_json_bytes is not None
-            group_metadata = json.loads(zarr_json_bytes)
+            group_metadata = json.loads(zarr_json_bytes.to_bytes())
 
         return cls.from_dict(store_path, group_metadata)
 
@@ -210,7 +212,7 @@ class AsyncGroup:
             if zarr_json_bytes is None:
                 raise KeyError(key)
             else:
-                zarr_json = json.loads(zarr_json_bytes)
+                zarr_json = json.loads(zarr_json_bytes.to_bytes())
             if zarr_json["node_type"] == "group":
                 return type(self).from_dict(store_path, zarr_json)
             elif zarr_json["node_type"] == "array":
@@ -230,9 +232,9 @@ class AsyncGroup:
                 raise KeyError(key)
 
             # unpack the zarray, if this is None then we must be opening a group
-            zarray = json.loads(zarray_bytes) if zarray_bytes else None
+            zarray = json.loads(zarray_bytes.to_bytes()) if zarray_bytes else None
             # unpack the zattrs, this can be None if no attrs were written
-            zattrs = json.loads(zattrs_bytes) if zattrs_bytes is not None else {}
+            zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
 
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
@@ -240,7 +242,7 @@ class AsyncGroup:
                 return AsyncArray.from_dict(store_path, zarray)
             else:
                 zgroup = (
-                    json.loads(zgroup_bytes)
+                    json.loads(zgroup_bytes.to_bytes())
                     if zgroup_bytes is not None
                     else {"zarr_format": self.metadata.zarr_format}
                 )
@@ -263,7 +265,7 @@ class AsyncGroup:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
     async def _save_metadata(self) -> None:
-        to_save = self.metadata.to_bytes()
+        to_save = self.metadata.to_buffer_dict()
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 
@@ -500,7 +502,7 @@ class Group(SyncMixin):
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        to_save = new_metadata.to_bytes()
+        to_save = new_metadata.to_buffer_dict()
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 

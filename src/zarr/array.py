@@ -22,8 +22,8 @@ from zarr.abc.codec import Codec
 from zarr.abc.store import set_or_delete
 
 
-# from zarr.array_v2 import ArrayV2
 from zarr.attributes import Attributes
+from zarr.buffer import Factory, NDArrayLike, NDBuffer
 from zarr.codecs import BytesCodec
 from zarr.common import (
     JSON,
@@ -325,8 +325,8 @@ class AsyncArray:
         if zarr_format == 2:
             # V2 arrays are comprised of a .zarray and .zattrs objects
             assert zarray_bytes is not None
-            zarray_dict = json.loads(zarray_bytes)
-            zattrs_dict = json.loads(zattrs_bytes) if zattrs_bytes is not None else {}
+            zarray_dict = json.loads(zarray_bytes.to_bytes())
+            zattrs_dict = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
             zarray_dict["attributes"] = zattrs_dict
             return cls(store_path=store_path, metadata=ArrayV2Metadata.from_dict(zarray_dict))
         else:
@@ -334,7 +334,7 @@ class AsyncArray:
             assert zarr_json_bytes is not None
             return cls(
                 store_path=store_path,
-                metadata=ArrayV3Metadata.from_dict(json.loads(zarr_json_bytes)),
+                metadata=ArrayV3Metadata.from_dict(json.loads(zarr_json_bytes.to_bytes())),
             )
 
     @property
@@ -357,7 +357,9 @@ class AsyncArray:
     def attrs(self) -> dict[str, JSON]:
         return self.metadata.attributes
 
-    async def getitem(self, selection: Selection) -> npt.NDArray[Any]:
+    async def getitem(
+        self, selection: Selection, *, factory: Factory.Create = NDBuffer.create
+    ) -> NDArrayLike:
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
@@ -365,10 +367,8 @@ class AsyncArray:
         )
 
         # setup output array
-        out = np.zeros(
-            indexer.shape,
-            dtype=self.metadata.dtype,
-            order=self.order,
+        out = factory(
+            shape=indexer.shape, dtype=self.metadata.dtype, order=self.order, fill_value=0
         )
 
         # reading chunks and decoding them
@@ -384,18 +384,19 @@ class AsyncArray:
             ],
             out,
         )
-
-        if out.shape:
-            return out
-        else:
-            return out[()]
+        return out.as_ndarray_like()
 
     async def _save_metadata(self, metadata: ArrayMetadata) -> None:
-        to_save = metadata.to_bytes()
+        to_save = metadata.to_buffer_dict()
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await gather(*awaitables)
 
-    async def setitem(self, selection: Selection, value: np.ndarray) -> None:
+    async def setitem(
+        self,
+        selection: Selection,
+        value: NDArrayLike,
+        factory: Factory.NDArrayLike = NDBuffer.from_ndarray_like,
+    ) -> None:
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
@@ -406,14 +407,18 @@ class AsyncArray:
 
         # check value shape
         if np.isscalar(value):
-            # setting a scalar value
-            pass
+            value = np.asanyarray(value)
         else:
             if not hasattr(value, "shape"):
                 value = np.asarray(value, self.metadata.dtype)
             assert value.shape == sel_shape
             if value.dtype.name != self.metadata.dtype.name:
                 value = value.astype(self.metadata.dtype, order="A")
+
+        # We accept any ndarray like object from the user and convert it
+        # to a NDBuffer (or subclass). From this point onwards, we only pass
+        # Buffer and NDBuffer between components.
+        value = factory(value)
 
         # merging with existing data and encoding chunks
         await self.metadata.codec_pipeline.write(

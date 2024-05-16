@@ -5,13 +5,14 @@ from typing import TYPE_CHECKING
 
 from numcodecs.gzip import GZip
 from zarr.codecs.mixins import BytesBytesCodecBatchMixin
+from zarr.buffer import Buffer, as_numpy_array_wrapper
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
     from typing import Optional, Dict
     from typing_extensions import Self
-    from zarr.common import JSON, ArraySpec, BytesLike
+    from zarr.common import JSON, ArraySpec
 
 
 def parse_gzip_level(data: JSON) -> int:
@@ -45,17 +46,17 @@ class GzipCodec(BytesBytesCodecBatchMixin):
 
     async def decode_single(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
-    ) -> BytesLike:
-        return await to_thread(GZip(self.level).decode, chunk_bytes)
+    ) -> Buffer:
+        return await to_thread(as_numpy_array_wrapper, GZip(self.level).decode, chunk_bytes)
 
     async def encode_single(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
-        return await to_thread(GZip(self.level).encode, chunk_bytes)
+    ) -> Optional[Buffer]:
+        return await to_thread(as_numpy_array_wrapper, GZip(self.level).encode, chunk_bytes)
 
     def compute_encoded_size(
         self,

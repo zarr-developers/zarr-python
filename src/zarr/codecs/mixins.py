@@ -3,7 +3,6 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import Awaitable, Callable, Generic, Iterable, TypeVar
 
-import numpy as np
 
 from zarr.abc.codec import (
     ArrayArrayCodec,
@@ -14,12 +13,13 @@ from zarr.abc.codec import (
     ByteSetter,
     BytesBytesCodec,
 )
-from zarr.common import ArraySpec, BytesLike, SliceSelection, concurrent_map
+from zarr.buffer import Buffer, NDBuffer
+from zarr.common import ArraySpec, SliceSelection, concurrent_map
 from zarr.config import config
 
 
-CodecInput = TypeVar("CodecInput", bound=np.ndarray | BytesLike)
-CodecOutput = TypeVar("CodecOutput", bound=np.ndarray | BytesLike)
+CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
+CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 
 
 async def batching_helper(
@@ -75,15 +75,15 @@ class CodecBatchMixin(Generic[CodecInput, CodecOutput]):
         return await batching_helper(self.encode_single, chunk_data_and_specs)
 
 
-class ArrayArrayCodecBatchMixin(CodecBatchMixin[np.ndarray, np.ndarray], ArrayArrayCodec):
+class ArrayArrayCodecBatchMixin(CodecBatchMixin[NDBuffer, NDBuffer], ArrayArrayCodec):
     pass
 
 
-class ArrayBytesCodecBatchMixin(CodecBatchMixin[np.ndarray, BytesLike], ArrayBytesCodec):
+class ArrayBytesCodecBatchMixin(CodecBatchMixin[NDBuffer, Buffer], ArrayBytesCodec):
     pass
 
 
-class BytesBytesCodecBatchMixin(CodecBatchMixin[BytesLike, BytesLike], BytesBytesCodec):
+class BytesBytesCodecBatchMixin(CodecBatchMixin[Buffer, Buffer], BytesBytesCodec):
     pass
 
 
@@ -91,12 +91,12 @@ class ArrayBytesCodecPartialDecodeBatchMixin(ArrayBytesCodecPartialDecodeMixin):
     @abstractmethod
     async def decode_partial_single(
         self, byte_getter: ByteGetter, selection: SliceSelection, chunk_spec: ArraySpec
-    ) -> np.ndarray | None:
+    ) -> NDBuffer | None:
         pass
 
     async def decode_partial(
         self, batch_info: Iterable[tuple[ByteGetter, SliceSelection, ArraySpec]]
-    ) -> Iterable[np.ndarray | None]:
+    ) -> Iterable[NDBuffer | None]:
         return await concurrent_map(
             [
                 (byte_getter, selection, chunk_spec)
@@ -112,14 +112,14 @@ class ArrayBytesCodecPartialEncodeBatchMixin(ArrayBytesCodecPartialEncodeMixin):
     async def encode_partial_single(
         self,
         byte_setter: ByteSetter,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
     ) -> None:
         pass
 
     async def encode_partial(
-        self, batch_info: Iterable[tuple[ByteSetter, np.ndarray, SliceSelection, ArraySpec]]
+        self, batch_info: Iterable[tuple[ByteSetter, NDBuffer, SliceSelection, ArraySpec]]
     ) -> None:
         await concurrent_map(
             [

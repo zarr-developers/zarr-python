@@ -6,17 +6,17 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Union
 
 import numcodecs
-import numpy as np
 from numcodecs.blosc import Blosc
 
 from zarr.codecs.mixins import BytesBytesCodecBatchMixin
+from zarr.buffer import Buffer, as_numpy_array_wrapper
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.common import JSON, ArraySpec, BytesLike
+    from zarr.common import JSON, ArraySpec
 
 
 class BloscShuffle(Enum):
@@ -160,18 +160,22 @@ class BloscCodec(BytesBytesCodecBatchMixin):
 
     async def decode_single(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
-    ) -> BytesLike:
-        return await to_thread(self._blosc_codec.decode, chunk_bytes)
+    ) -> Buffer:
+        return await to_thread(as_numpy_array_wrapper, self._blosc_codec.decode, chunk_bytes)
 
     async def encode_single(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
-        chunk_array = np.frombuffer(chunk_bytes, dtype=chunk_spec.dtype)
-        return await to_thread(self._blosc_codec.encode, chunk_array)
+    ) -> Optional[Buffer]:
+        # Since blosc only takes bytes, we convert the input and output of the encoding
+        # between bytes and Buffer
+        return await to_thread(
+            lambda chunk: Buffer.from_bytes(self._blosc_codec.encode(chunk.as_array_like())),
+            chunk_bytes,
+        )
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

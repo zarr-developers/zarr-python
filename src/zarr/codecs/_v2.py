@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
-import numpy as np
 
+from zarr.buffer import Buffer, NDBuffer
 from zarr.codecs.mixins import ArrayArrayCodecBatchMixin, ArrayBytesCodecBatchMixin
-from zarr.common import JSON, ArraySpec, BytesLike, to_thread
+from zarr.common import JSON, ArraySpec, to_thread
 
 import numcodecs
 from numcodecs.compat import ensure_bytes, ensure_ndarray
@@ -19,38 +18,46 @@ class V2Compressor(ArrayBytesCodecBatchMixin):
 
     async def decode_single(
         self,
-        chunk_bytes: BytesLike,
+        chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
         if chunk_bytes is None:
             return None
 
         if self.compressor is not None:
             compressor = numcodecs.get_codec(self.compressor)
-            chunk_array = ensure_ndarray(await to_thread(compressor.decode, chunk_bytes))
+            chunk_numpy_array = ensure_ndarray(
+                await to_thread(compressor.decode, chunk_bytes.as_array_like())
+            )
         else:
-            chunk_array = ensure_ndarray(chunk_bytes)
+            chunk_numpy_array = ensure_ndarray(chunk_bytes.as_array_like())
 
         # ensure correct dtype
-        if str(chunk_array.dtype) != chunk_spec.dtype:
-            chunk_array = chunk_array.view(chunk_spec.dtype)
+        if str(chunk_numpy_array.dtype) != chunk_spec.dtype:
+            chunk_numpy_array = chunk_numpy_array.view(chunk_spec.dtype)
 
-        return chunk_array
+        return NDBuffer.from_numpy_array(chunk_numpy_array)
 
     async def encode_single(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         _chunk_spec: ArraySpec,
-    ) -> BytesLike | None:
+    ) -> Buffer | None:
+        chunk_numpy_array = chunk_array.as_numpy_array()
         if self.compressor is not None:
             compressor = numcodecs.get_codec(self.compressor)
-            if not chunk_array.flags.c_contiguous and not chunk_array.flags.f_contiguous:
-                chunk_array = chunk_array.copy(order="A")
-            encoded_chunk_bytes = ensure_bytes(await to_thread(compressor.encode, chunk_array))
+            if (
+                not chunk_numpy_array.flags.c_contiguous
+                and not chunk_numpy_array.flags.f_contiguous
+            ):
+                chunk_numpy_array = chunk_numpy_array.copy(order="A")
+            encoded_chunk_bytes = ensure_bytes(
+                await to_thread(compressor.encode, chunk_numpy_array)
+            )
         else:
-            encoded_chunk_bytes = ensure_bytes(chunk_array)
+            encoded_chunk_bytes = ensure_bytes(chunk_numpy_array)
 
-        return encoded_chunk_bytes
+        return Buffer.from_bytes(encoded_chunk_bytes)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
@@ -59,42 +66,42 @@ class V2Compressor(ArrayBytesCodecBatchMixin):
 @dataclass(frozen=True)
 class V2Filters(ArrayArrayCodecBatchMixin):
     filters: list[dict[str, JSON]]
-    order: Literal["C", "F"]
 
     is_fixed_size = False
 
     async def decode_single(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
+        chunk_numpy_array = chunk_array.as_numpy_array()
         # apply filters in reverse order
         if self.filters is not None:
             for filter_metadata in self.filters[::-1]:
                 filter = numcodecs.get_codec(filter_metadata)
-                chunk_array = await to_thread(filter.decode, chunk_array)
+                chunk_numpy_array = await to_thread(filter.decode, chunk_numpy_array)
 
         # ensure correct chunk shape
-        if chunk_array.shape != chunk_spec.shape:
-            chunk_array = chunk_array.reshape(
+        if chunk_numpy_array.shape != chunk_spec.shape:
+            chunk_numpy_array = chunk_numpy_array.reshape(
                 chunk_spec.shape,
-                order=self.order,
+                order=chunk_spec.order,
             )
 
-        return chunk_array
+        return NDBuffer.from_numpy_array(chunk_numpy_array)
 
     async def encode_single(
         self,
-        chunk_array: np.ndarray,
-        _chunk_spec: ArraySpec,
-    ) -> np.ndarray | None:
-        chunk_array = chunk_array.ravel(order=self.order)
+        chunk_array: NDBuffer,
+        chunk_spec: ArraySpec,
+    ) -> NDBuffer | None:
+        chunk_numpy_array = chunk_array.as_numpy_array().ravel(order=chunk_spec.order)
 
         for filter_metadata in self.filters:
             filter = numcodecs.get_codec(filter_metadata)
-            chunk_array = await to_thread(filter.encode, chunk_array)
+            chunk_numpy_array = await to_thread(filter.encode, chunk_numpy_array)
 
-        return chunk_array
+        return NDBuffer.from_numpy_array(chunk_numpy_array)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
