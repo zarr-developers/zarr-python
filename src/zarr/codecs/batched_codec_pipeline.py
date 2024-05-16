@@ -126,7 +126,8 @@ class BatchedCodecPipeline(CodecPipeline):
         if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
             warn(
                 "Combining a `sharding_indexed` codec disables partial reads and "
-                + "writes, which may lead to inefficient performance."
+                + "writes, which may lead to inefficient performance.",
+                stacklevel=3
             )
 
         return (
