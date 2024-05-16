@@ -31,6 +31,8 @@ Docs
 
 Maintenance
 ~~~~~~~~~~~
+* Fix a regression when getting or setting a single value from arrays with size-1 chunks.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1874`
 
 Deprecations
 ~~~~~~~~~~~~
