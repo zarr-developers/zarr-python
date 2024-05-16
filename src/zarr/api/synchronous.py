@@ -39,7 +39,7 @@ def load(
 
     Parameters
     ----------
-    store : MutableMapping or string
+    store : Store or string
         Store or path to directory in file system or name of zip file.
     path : str or None, optional
         The path within the store from which to load.
