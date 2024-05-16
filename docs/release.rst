@@ -18,24 +18,15 @@ Release notes
    See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
    3.0 release.
 
-.. _unreleased:
+.. _release_2.18.1:
 
-Unreleased
-----------
-
-Enhancements
-~~~~~~~~~~~~
-
-Docs
-~~~~
+2.18.1
+------
 
 Maintenance
 ~~~~~~~~~~~
 * Fix a regression when getting or setting a single value from arrays with size-1 chunks.
   By :user:`Deepak Cherian <dcherian>` :issue:`1874`
-
-Deprecations
-~~~~~~~~~~~~
 
 .. _release_2.18.0:
 
