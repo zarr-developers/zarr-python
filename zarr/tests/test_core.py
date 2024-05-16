@@ -3168,13 +3168,13 @@ def test_scalar_indexing():
     assert store["a"][1] == np.array(2.0)
     assert store["a"][(1,)] == np.array(2.0)
 
-    store["a"][0] = [-1]
+    store["a"][slice(1)] = [-1]
     assert store["a"][0] == np.array(-1)
 
     store["a"][0] = -2
     assert store["a"][0] == np.array(-2)
 
-    store["a"][0] = (-3,)
+    store["a"][slice(1)] = (-3,)
     assert store["a"][0] == np.array(-3)
 
 
