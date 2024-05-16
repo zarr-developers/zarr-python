@@ -7,6 +7,8 @@ import json
 import logging
 import numpy.typing as npt
 
+from zarr.buffer import Buffer
+
 if TYPE_CHECKING:
     from typing import Any, AsyncGenerator, Literal, Iterable
 from zarr.abc.codec import Codec
@@ -159,13 +161,13 @@ class AsyncGroup:
         if zarr_format == 2:
             # V2 groups are comprised of a .zgroup and .zattrs objects
             assert zgroup_bytes is not None
-            zgroup = json.loads(zgroup_bytes)
-            zattrs = json.loads(zattrs_bytes) if zattrs_bytes is not None else {}
+            zgroup = json.loads(zgroup_bytes.to_bytes())
+            zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
             group_metadata = {**zgroup, "attributes": zattrs}
         else:
             # V3 groups are comprised of a zarr.json object
             assert zarr_json_bytes is not None
-            group_metadata = json.loads(zarr_json_bytes)
+            group_metadata = json.loads(zarr_json_bytes.to_bytes())
 
         return cls.from_dict(store_path, group_metadata)
 
@@ -199,7 +201,7 @@ class AsyncGroup:
             if zarr_json_bytes is None:
                 raise KeyError(key)
             else:
-                zarr_json = json.loads(zarr_json_bytes)
+                zarr_json = json.loads(zarr_json_bytes.to_bytes())
             if zarr_json["node_type"] == "group":
                 return type(self).from_dict(store_path, zarr_json)
             elif zarr_json["node_type"] == "array":
@@ -219,9 +221,9 @@ class AsyncGroup:
                 raise KeyError(key)
 
             # unpack the zarray, if this is None then we must be opening a group
-            zarray = json.loads(zarray_bytes) if zarray_bytes else None
+            zarray = json.loads(zarray_bytes.to_bytes()) if zarray_bytes else None
             # unpack the zattrs, this can be None if no attrs were written
-            zattrs = json.loads(zattrs_bytes) if zattrs_bytes is not None else {}
+            zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
 
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
@@ -229,7 +231,7 @@ class AsyncGroup:
                 return AsyncArray.from_dict(store_path, zarray)
             else:
                 zgroup = (
-                    json.loads(zgroup_bytes)
+                    json.loads(zgroup_bytes.to_bytes())
                     if zgroup_bytes is not None
                     else {"zarr_format": self.metadata.zarr_format}
                 )
@@ -252,7 +254,9 @@ class AsyncGroup:
 
     async def _save_metadata(self) -> None:
         to_save = self.metadata.to_bytes()
-        awaitables = [(self.store_path / key).set(value) for key, value in to_save.items()]
+        awaitables = [
+            (self.store_path / key).set(Buffer.from_bytes(value)) for key, value in to_save.items()
+        ]
         await asyncio.gather(*awaitables)
 
     @property
@@ -310,9 +314,9 @@ class AsyncGroup:
         to_save = self.metadata.to_bytes()
         if self.metadata.zarr_format == 2:
             # only save the .zattrs object
-            await (self.store_path / ZATTRS_JSON).set(to_save[ZATTRS_JSON])
+            await (self.store_path / ZATTRS_JSON).set(Buffer.from_bytes(to_save[ZATTRS_JSON]))
         else:
-            await (self.store_path / ZARR_JSON).set(to_save[ZARR_JSON])
+            await (self.store_path / ZARR_JSON).set(Buffer.from_bytes(to_save[ZARR_JSON]))
 
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -480,7 +484,9 @@ class Group(SyncMixin):
 
         # Write new metadata
         to_save = new_metadata.to_bytes()
-        awaitables = [(self.store_path / key).set(value) for key, value in to_save.items()]
+        awaitables = [
+            (self.store_path / key).set(Buffer.from_bytes(value)) for key, value in to_save.items()
+        ]
         await asyncio.gather(*awaitables)
 
         async_group = replace(self._async_group, metadata=new_metadata)

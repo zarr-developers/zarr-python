@@ -6,13 +6,14 @@ from dataclasses import dataclass
 from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.abc.codec import BytesBytesCodec
+from zarr.buffer import Buffer, as_numpy_array_wrapper
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
     from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.common import BytesLike, JSON, ArraySpec
+    from zarr.common import JSON, ArraySpec
 
 
 def parse_zstd_level(data: JSON) -> int:
@@ -61,17 +62,17 @@ class ZstdCodec(BytesBytesCodec):
 
     async def decode(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
-    ) -> BytesLike:
-        return await to_thread(self._decompress, chunk_bytes)
+    ) -> Buffer:
+        return await to_thread(as_numpy_array_wrapper, self._decompress, chunk_bytes)
 
     async def encode(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
-        return await to_thread(self._compress, chunk_bytes)
+    ) -> Optional[Buffer]:
+        return await to_thread(as_numpy_array_wrapper, self._compress, chunk_bytes)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

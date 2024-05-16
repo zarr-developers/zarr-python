@@ -3,16 +3,16 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Optional
 
-import numpy as np
 from zarr.abc.metadata import Metadata
 
+from zarr.buffer import Buffer, NDBuffer
 from zarr.common import ArraySpec
 from zarr.store import StorePath
 
 
 if TYPE_CHECKING:
     from typing_extensions import Self
-    from zarr.common import BytesLike, SliceSelection
+    from zarr.common import SliceSelection
     from zarr.metadata import ArrayMetadata
 
 
@@ -37,17 +37,17 @@ class ArrayArrayCodec(Codec):
     @abstractmethod
     async def decode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
         pass
 
     @abstractmethod
     async def encode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[NDBuffer]:
         pass
 
 
@@ -55,17 +55,17 @@ class ArrayBytesCodec(Codec):
     @abstractmethod
     async def decode(
         self,
-        chunk_array: BytesLike,
+        chunk_array: Buffer,
         chunk_spec: ArraySpec,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
         pass
 
     @abstractmethod
     async def encode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
+    ) -> Optional[Buffer]:
         pass
 
 
@@ -76,7 +76,7 @@ class ArrayBytesCodecPartialDecodeMixin:
         store_path: StorePath,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[NDBuffer]:
         pass
 
 
@@ -85,7 +85,7 @@ class ArrayBytesCodecPartialEncodeMixin:
     async def encode_partial(
         self,
         store_path: StorePath,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
     ) -> None:
@@ -96,15 +96,15 @@ class BytesBytesCodec(Codec):
     @abstractmethod
     async def decode(
         self,
-        chunk_array: BytesLike,
+        chunk_array: Buffer,
         chunk_spec: ArraySpec,
-    ) -> BytesLike:
+    ) -> Buffer:
         pass
 
     @abstractmethod
     async def encode(
         self,
-        chunk_array: BytesLike,
+        chunk_array: Buffer,
         chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
+    ) -> Optional[Buffer]:
         pass

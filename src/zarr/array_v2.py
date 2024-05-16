@@ -10,6 +10,7 @@ import numpy as np
 
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
+from zarr.buffer import Buffer, NDBuffer
 from zarr.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
@@ -27,6 +28,13 @@ from zarr.sync import sync
 
 if TYPE_CHECKING:
     from zarr.array import Array
+
+
+def as_bytearray(data: Optional[Buffer]) -> Optional[bytes]:
+    """Help function to convert a Buffer into bytes if not None"""
+    if data is None:
+        return data
+    return data.to_bytes()
 
 
 @dataclass(frozen=True)
@@ -144,8 +152,8 @@ class ArrayV2:
         assert zarray_bytes is not None
         return cls.from_dict(
             store_path,
-            zarray_json=json.loads(zarray_bytes),
-            zattrs_json=json.loads(zattrs_bytes) if zattrs_bytes is not None else None,
+            zarray_json=json.loads(zarray_bytes.to_bytes()),
+            zattrs_json=json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else None,
         )
 
     @classmethod
@@ -179,7 +187,7 @@ class ArrayV2:
         await (self.store_path / ZARRAY_JSON).set(self.metadata.to_bytes())
         if self.attributes is not None and len(self.attributes) > 0:
             await (self.store_path / ZATTRS_JSON).set(
-                json.dumps(self.attributes).encode(),
+                Buffer.from_bytes(json.dumps(self.attributes).encode()),
             )
         else:
             await (self.store_path / ZATTRS_JSON).delete()
@@ -216,10 +224,8 @@ class ArrayV2:
         )
 
         # setup output array
-        out = np.zeros(
-            indexer.shape,
-            dtype=self.metadata.dtype,
-            order=self.metadata.order,
+        out = NDBuffer.create(
+            shape=indexer.shape, dtype=self.metadata.dtype, order=self.metadata.order, fill_value=0
         )
 
         # reading chunks and decoding them
@@ -245,7 +251,7 @@ class ArrayV2:
     ):
         store_path = self.store_path / self._encode_chunk_key(chunk_coords)
 
-        chunk_array = await self._decode_chunk(await store_path.get())
+        chunk_array = await self._decode_chunk(as_bytearray(await store_path.get()))
         if chunk_array is not None:
             tmp = chunk_array[chunk_selection]
             out[out_selection] = tmp
@@ -333,12 +339,12 @@ class ArrayV2:
         if is_total_slice(chunk_selection, chunk_shape):
             # write entire chunks
             if np.isscalar(value):
-                chunk_array = np.empty(
-                    chunk_shape,
+                chunk_array = NDBuffer.create(
+                    shape=chunk_shape,
                     dtype=self.metadata.dtype,
                     order=self.metadata.order,
+                    fill_value=value,
                 )
-                chunk_array.fill(value)
             else:
                 chunk_array = value[out_selection]
             await self._write_chunk_to_store(store_path, chunk_array)
@@ -346,16 +352,16 @@ class ArrayV2:
         else:
             # writing partial chunks
             # read chunk first
-            tmp = await self._decode_chunk(await store_path.get())
+            tmp = await self._decode_chunk(as_bytearray(await store_path.get()))
 
             # merge new value
             if tmp is None:
-                chunk_array = np.empty(
-                    chunk_shape,
+                chunk_array = NDBuffer.create(
+                    shape=chunk_shape,
                     dtype=self.metadata.dtype,
                     order=self.metadata.order,
+                    fill_value=self.metadata.fill_value,
                 )
-                chunk_array.fill(self.metadata.fill_value)
             else:
                 chunk_array = tmp.copy(
                     order=self.metadata.order,
@@ -374,7 +380,7 @@ class ArrayV2:
             if chunk_bytes is None:
                 await store_path.delete()
             else:
-                await store_path.set(chunk_bytes)
+                await store_path.set(Buffer.from_bytes(chunk_bytes))
 
     async def _encode_chunk(self, chunk_array: np.ndarray) -> Optional[BytesLike]:
         chunk_array = chunk_array.ravel(order=self.metadata.order)
@@ -493,7 +499,7 @@ class ArrayV2:
         )
 
         new_metadata_bytes = new_metadata.to_bytes()
-        await (self.store_path / ZARR_JSON).set(new_metadata_bytes)
+        await (self.store_path / ZARR_JSON).set(Buffer.from_bytes(new_metadata_bytes))
 
         return Array.from_dict(
             store_path=self.store_path,
@@ -501,7 +507,9 @@ class ArrayV2:
         )
 
     async def update_attributes_async(self, new_attributes: Dict[str, Any]) -> ArrayV2:
-        await (self.store_path / ZATTRS_JSON).set(json.dumps(new_attributes).encode())
+        await (self.store_path / ZATTRS_JSON).set(
+            Buffer.from_bytes(json.dumps(new_attributes).encode())
+        )
         return replace(self, attributes=new_attributes)
 
     def update_attributes(self, new_attributes: Dict[str, Any]) -> ArrayV2:

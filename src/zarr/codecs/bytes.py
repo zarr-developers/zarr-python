@@ -8,11 +8,12 @@ from typing import TYPE_CHECKING, Dict, Optional, Union
 import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
+from zarr.buffer import Buffer, NDBuffer
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration
 
 if TYPE_CHECKING:
-    from zarr.common import JSON, ArraySpec, BytesLike
+    from zarr.common import JSON, ArraySpec
     from typing_extensions import Self
 
 
@@ -59,19 +60,12 @@ class BytesCodec(ArrayBytesCodec):
             )
         return self
 
-    def _get_byteorder(self, array: np.ndarray) -> Endian:
-        if array.dtype.byteorder == "<":
-            return Endian.little
-        elif array.dtype.byteorder == ">":
-            return Endian.big
-        else:
-            return default_system_endian
-
     async def decode(
         self,
-        chunk_bytes: BytesLike,
+        chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
+        assert isinstance(chunk_bytes, Buffer)
         if chunk_spec.dtype.itemsize > 0:
             if self.endian == Endian.little:
                 prefix = "<"
@@ -80,7 +74,7 @@ class BytesCodec(ArrayBytesCodec):
             dtype = np.dtype(f"{prefix}{chunk_spec.dtype.str[1:]}")
         else:
             dtype = np.dtype(f"|{chunk_spec.dtype.str[1:]}")
-        chunk_array = np.frombuffer(chunk_bytes, dtype)
+        chunk_array = chunk_bytes.as_nd_buffer(dtype=dtype)
 
         # ensure correct chunk shape
         if chunk_array.shape != chunk_spec.shape:
@@ -91,15 +85,15 @@ class BytesCodec(ArrayBytesCodec):
 
     async def encode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         _chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
+    ) -> Optional[Buffer]:
+        assert isinstance(chunk_array, NDBuffer)
         if chunk_array.dtype.itemsize > 1:
-            byteorder = self._get_byteorder(chunk_array)
-            if self.endian is not None and self.endian != byteorder:
+            if self.endian is not None and self.endian != chunk_array.byteorder:
                 new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)
                 chunk_array = chunk_array.astype(new_dtype)
-        return chunk_array.tobytes()
+        return chunk_array.as_buffer()
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length

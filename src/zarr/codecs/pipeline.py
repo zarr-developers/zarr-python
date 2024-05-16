@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Iterable
-import numpy as np
 from dataclasses import dataclass
 from warnings import warn
 
@@ -14,6 +13,7 @@ from zarr.abc.codec import (
     Codec,
 )
 from zarr.abc.metadata import Metadata
+from zarr.buffer import Buffer, NDBuffer
 from zarr.codecs.registry import get_codec_class
 from zarr.common import parse_named_configuration
 
@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from typing import Iterator, List, Optional, Tuple, Union
     from zarr.store import StorePath
     from zarr.metadata import ArrayMetadata
-    from zarr.common import JSON, ArraySpec, BytesLike, SliceSelection
+    from zarr.common import JSON, ArraySpec, SliceSelection
 
 
 @dataclass(frozen=True)
@@ -148,9 +148,9 @@ class CodecPipeline(Metadata):
 
     async def decode(
         self,
-        chunk_bytes: BytesLike,
+        chunk_bytes: Buffer,
         array_spec: ArraySpec,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
         (
             aa_codecs_with_spec,
             ab_codec_with_spec,
@@ -173,16 +173,16 @@ class CodecPipeline(Metadata):
         store_path: StorePath,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
-    ) -> Optional[np.ndarray]:
+    ) -> Optional[NDBuffer]:
         assert self.supports_partial_decode
         assert isinstance(self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin)
         return await self.array_bytes_codec.decode_partial(store_path, selection, chunk_spec)
 
     async def encode(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         array_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
+    ) -> Optional[Buffer]:
         (
             aa_codecs_with_spec,
             ab_codec_with_spec,
@@ -207,12 +207,13 @@ class CodecPipeline(Metadata):
                 return None
             chunk_bytes = chunk_bytes_maybe
 
+        assert isinstance(chunk_bytes, Buffer)
         return chunk_bytes
 
     async def encode_partial(
         self,
         store_path: StorePath,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         selection: SliceSelection,
         chunk_spec: ArraySpec,
     ) -> None:
