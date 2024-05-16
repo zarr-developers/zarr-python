@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Generic, Iterable, Protocol, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Generic, Iterable, TypeVar
 
 import numpy as np
 from zarr.abc.metadata import Metadata
+from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.common import BytesLike
 
 
@@ -12,20 +13,6 @@ if TYPE_CHECKING:
     from typing_extensions import Self
     from zarr.common import ArraySpec, SliceSelection
     from zarr.metadata import ArrayMetadata
-
-
-@runtime_checkable
-class ByteGetter(Protocol):
-    async def get(self, byte_range: tuple[int, int | None] | None = None) -> BytesLike | None: ...
-
-
-@runtime_checkable
-class ByteSetter(Protocol):
-    async def get(self, byte_range: tuple[int, int | None] | None = None) -> BytesLike | None: ...
-
-    async def set(self, value: BytesLike, byte_range: tuple[int, int] | None = None) -> None: ...
-
-    async def delete(self) -> None: ...
 
 
 CodecInput = TypeVar("CodecInput", bound=np.ndarray | BytesLike)

@@ -7,22 +7,33 @@ import json
 import logging
 import numpy.typing as npt
 
-if TYPE_CHECKING:
-    from typing import Any, AsyncGenerator, Literal, Iterable
+from zarr.abc.store import set_or_delete
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 
 from zarr.array import AsyncArray, Array
 from zarr.attributes import Attributes
-from zarr.common import ZARR_JSON, ZARRAY_JSON, ZATTRS_JSON, ZGROUP_JSON, ChunkCoords
+from zarr.chunk_key_encodings import ChunkKeyEncoding
+from zarr.common import (
+    JSON,
+    ZARR_JSON,
+    ZARRAY_JSON,
+    ZATTRS_JSON,
+    ZGROUP_JSON,
+    ChunkCoords,
+    ZarrFormat,
+)
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import SyncMixin, sync
 from typing import overload
 
+if TYPE_CHECKING:
+    from typing import Any, AsyncGenerator, Literal, Iterable
+
 logger = logging.getLogger("zarr.group")
 
 
-def parse_zarr_format(data: Any) -> Literal[2, 3]:
+def parse_zarr_format(data: Any) -> ZarrFormat:
     if data in (2, 3):
         return data
     msg = msg = f"Invalid zarr_format. Expected one 2 or 3. Got {data}."
@@ -62,7 +73,7 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
 @dataclass(frozen=True)
 class GroupMetadata(Metadata):
     attributes: dict[str, Any] = field(default_factory=dict)
-    zarr_format: Literal[2, 3] = 3
+    zarr_format: ZarrFormat = 3
     node_type: Literal["group"] = field(default="group", init=False)
 
     # todo: rename this, since it doesn't return bytes
@@ -75,7 +86,7 @@ class GroupMetadata(Metadata):
                 ZATTRS_JSON: json.dumps(self.attributes).encode(),
             }
 
-    def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: Literal[2, 3] = 3):
+    def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3):
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
 
@@ -103,7 +114,7 @@ class AsyncGroup:
         *,
         attributes: dict[str, Any] = {},
         exists_ok: bool = False,
-        zarr_format: Literal[2, 3] = 3,
+        zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
         store_path = make_store_path(store)
         if not exists_ok:
@@ -245,6 +256,7 @@ class AsyncGroup:
         elif self.metadata.zarr_format == 2:
             await asyncio.gather(
                 (store_path / ZGROUP_JSON).delete(),  # TODO: missing_ok=False
+                (store_path / ZARRAY_JSON).delete(),  # TODO: missing_ok=False
                 (store_path / ZATTRS_JSON).delete(),  # TODO: missing_ok=True
             )
         else:
@@ -252,7 +264,7 @@ class AsyncGroup:
 
     async def _save_metadata(self) -> None:
         to_save = self.metadata.to_bytes()
-        awaitables = [(self.store_path / key).set(value) for key, value in to_save.items()]
+        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 
     @property
@@ -278,13 +290,25 @@ class AsyncGroup:
         path: str,
         shape: ChunkCoords,
         dtype: npt.DTypeLike,
-        chunk_shape: ChunkCoords,
         fill_value: Any | None = None,
-        chunk_key_encoding: tuple[Literal["default"], Literal[".", "/"]]
-        | tuple[Literal["v2"], Literal[".", "/"]] = ("default", "/"),
-        codecs: Iterable[Codec | dict[str, Any]] | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
-        attributes: dict[str, Any] | None = None,
+        # v2 only
+        chunks: ChunkCoords | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
         exists_ok: bool = False,
     ) -> AsyncArray:
         return await AsyncArray.create(
@@ -297,6 +321,11 @@ class AsyncGroup:
             codecs=codecs,
             dimension_names=dimension_names,
             attributes=attributes,
+            chunks=chunks,
+            dimension_separator=dimension_separator,
+            order=order,
+            filters=filters,
+            compressor=compressor,
             exists_ok=exists_ok,
             zarr_format=self.metadata.zarr_format,
         )
@@ -307,15 +336,7 @@ class AsyncGroup:
         self.metadata.attributes.update(new_attributes)
 
         # Write new metadata
-        to_save = self.metadata.to_bytes()
-        if self.metadata.zarr_format == 2:
-            # only save the .zattrs object
-            await (self.store_path / ZATTRS_JSON).set(to_save[ZATTRS_JSON])
-        else:
-            await (self.store_path / ZARR_JSON).set(to_save[ZARR_JSON])
-
-        self.metadata.attributes.clear()
-        self.metadata.attributes.update(new_attributes)
+        await self._save_metadata()
 
         return self
 
@@ -480,7 +501,7 @@ class Group(SyncMixin):
 
         # Write new metadata
         to_save = new_metadata.to_bytes()
-        awaitables = [(self.store_path / key).set(value) for key, value in to_save.items()]
+        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 
         async_group = replace(self._async_group, metadata=new_metadata)

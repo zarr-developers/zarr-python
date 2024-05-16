@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import itertools
 import math
-from typing import Iterator, List, NamedTuple, Optional, Tuple
+from typing import TYPE_CHECKING, Iterator, List, NamedTuple, Optional, Tuple
 
 from zarr.common import ChunkCoords, Selection, SliceSelection, product
+
+if TYPE_CHECKING:
+    from zarr.chunk_grids import ChunkGrid
 
 
 def _ensure_tuple(v: Selection) -> SliceSelection:
@@ -131,13 +134,18 @@ class BasicIndexer:
         self,
         selection: Selection,
         shape: Tuple[int, ...],
-        chunk_shape: Tuple[int, ...],
+        chunk_grid: ChunkGrid,
     ):
+        from zarr.chunk_grids import RegularChunkGrid
+
+        assert isinstance(
+            chunk_grid, RegularChunkGrid
+        ), "Only regular chunk grid is supported, currently."
         # setup per-dimension indexers
         self.dim_indexers = [
             _SliceDimIndexer(dim_sel, dim_len, dim_chunk_len)
             for dim_sel, dim_len, dim_chunk_len in zip(
-                _ensure_selection(selection, shape), shape, chunk_shape
+                _ensure_selection(selection, shape), shape, chunk_grid.chunk_shape
             )
         ]
         self.shape = tuple(s.nitems for s in self.dim_indexers)
@@ -202,7 +210,3 @@ def is_total_slice(item: Selection, shape: ChunkCoords) -> bool:
         )
     else:
         raise TypeError("expected slice or tuple of slices, found %r" % item)
-
-
-def all_chunk_coords(shape: ChunkCoords, chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
-    return itertools.product(*(range(0, _ceildiv(s, c)) for s, c in zip(shape, chunk_shape)))

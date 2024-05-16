@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-from typing import Union
-
 import zarr.codecs  # noqa: F401
 from zarr.array import Array, AsyncArray
-from zarr.array_v2 import ArrayV2
 from zarr.config import config  # noqa: F401
 from zarr.group import AsyncGroup, Group
 from zarr.store import (
@@ -18,9 +15,7 @@ from zarr._version import version as __version__
 assert not __version__.startswith("0.0.0")
 
 
-async def open_auto_async(
-    store: StoreLike,
-) -> Union[AsyncArray, AsyncGroup]:
+async def open_auto_async(store: StoreLike) -> AsyncArray | AsyncGroup:
     store_path = make_store_path(store)
     try:
         return await AsyncArray.open(store_path)
@@ -28,9 +23,7 @@ async def open_auto_async(
         return await AsyncGroup.open(store_path)
 
 
-def open_auto(
-    store: StoreLike,
-) -> Union[Array, ArrayV2, Group]:
+def open_auto(store: StoreLike) -> Array | Group:
     object = _sync(
         open_auto_async(store),
     )

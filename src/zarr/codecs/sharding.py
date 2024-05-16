@@ -32,10 +32,7 @@ from zarr.indexing import (
     c_order_iter,
     morton_order_iter,
 )
-from zarr.metadata import (
-    ArrayMetadata,
-    parse_codecs,
-)
+from zarr.metadata import ArrayMetadata, parse_codecs
 
 if TYPE_CHECKING:
     from typing import Awaitable, Callable, Dict, Iterator, Optional, Set
@@ -394,7 +391,7 @@ class ShardingCodec(
         indexer = BasicIndexer(
             tuple(slice(0, s) for s in shard_shape),
             shape=shard_shape,
-            chunk_shape=chunk_shape,
+            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
         )
 
         # setup output array
@@ -439,7 +436,7 @@ class ShardingCodec(
         indexer = BasicIndexer(
             selection,
             shape=shard_shape,
-            chunk_shape=chunk_shape,
+            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
         )
 
         # setup output array
@@ -503,7 +500,7 @@ class ShardingCodec(
             BasicIndexer(
                 tuple(slice(0, s) for s in shard_shape),
                 shape=shard_shape,
-                chunk_shape=chunk_shape,
+                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             )
         )
 
@@ -546,7 +543,7 @@ class ShardingCodec(
             BasicIndexer(
                 selection,
                 shape=shard_shape,
-                chunk_shape=chunk_shape,
+                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             )
         )
 
