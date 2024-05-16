@@ -14,7 +14,7 @@ from zarr.codecs.mixins import (
     ArrayBytesCodecPartialDecodeBatchMixin,
     ArrayBytesCodecPartialEncodeBatchMixin,
 )
-from zarr.codecs.batched_codec_pipeline import BatchedCodecPipeline
+from zarr.codecs.pipeline import BatchedCodecPipeline
 from zarr.codecs.registry import register_codec
 from zarr.common import (
     ArraySpec,

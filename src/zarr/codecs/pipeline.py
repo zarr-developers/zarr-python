@@ -148,12 +148,32 @@ class BatchedCodecPipeline(CodecPipeline):
 
     @property
     def supports_partial_decode(self) -> bool:
+        """Determines whether the codec pipeline supports partial decoding.
+
+        Currently, only codec pipelines with a single ArrayBytesCodec that supports
+        partial decoding can support partial decoding. This limitation is due to the fact
+        that ArrayArrayCodecs can change the slice selection leading to non-contiguous
+        slices and BytesBytesCodecs can change the chunk bytes in a way that slice
+        selections cannot be attributed to byte ranges anymore which renders partial
+        decoding infeasible.
+
+        This limitation may softened in the future."""
         return (len(self.array_array_codecs) + len(self.bytes_bytes_codecs)) == 0 and isinstance(
             self.array_bytes_codec, ArrayBytesCodecPartialDecodeMixin
         )
 
     @property
     def supports_partial_encode(self) -> bool:
+        """Determines whether the codec pipeline supports partial encoding.
+
+        Currently, only codec pipelines with a single ArrayBytesCodec that supports
+        partial encoding can support partial encoding. This limitation is due to the fact
+        that ArrayArrayCodecs can change the slice selection leading to non-contiguous
+        slices and BytesBytesCodecs can change the chunk bytes in a way that slice
+        selections cannot be attributed to byte ranges anymore which renders partial
+        encoding infeasible.
+
+        This limitation may softened in the future."""
         return (len(self.array_array_codecs) + len(self.bytes_bytes_codecs)) == 0 and isinstance(
             self.array_bytes_codec, ArrayBytesCodecPartialEncodeMixin
         )
