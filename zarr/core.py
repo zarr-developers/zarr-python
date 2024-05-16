@@ -2283,11 +2283,8 @@ class Array:
                 chunk.fill(value)
 
             else:
-                if not isinstance(value, np.ndarray):
-                    chunk = np.asarray(value, dtype=self._dtype, order=self._order)
-                else:
-                    # ensure array is contiguous
-                    chunk = value.astype(self._dtype, order=self._order, copy=False)
+                # ensure array is contiguous
+                chunk = value.astype(self._dtype, order=self._order, copy=False)
 
         else:
             # partially replace the contents of this chunk
