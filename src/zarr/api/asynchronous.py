@@ -89,7 +89,7 @@ async def load(
 
     Parameters
     ----------
-    store : MutableMapping or string
+    store : Store or string
         Store or path to directory in file system or name of zip file.
     path : str or None, optional
         The path within the store from which to load.
@@ -332,6 +332,138 @@ async def array(data: npt.ArrayLike, **kwargs: Any) -> AsyncArray:
     return z
 
 
+async def group(
+    store: StoreLike | None = None,
+    overwrite: bool = False,
+    chunk_store: StoreLike | None = None,  # not used
+    cache_attrs: bool = True,  # not used
+    synchronizer: Any | None = None,  # not used
+    path: str | None = None,
+    *,
+    zarr_version: ZarrFormat | None = None,
+    zarr_format: ZarrFormat | None = None,
+    meta_array: Any | None = None,  # not used
+) -> AsyncGroup:
+    """Create a group.
+
+    Parameters
+    ----------
+    store : Store or string, optional
+        Store or path to directory in file system.
+    overwrite : bool, optional
+        If True, delete any pre-existing data in `store` at `path` before
+        creating the group.
+    chunk_store : Store, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
+    cache_attrs : bool, optional
+        If True (default), user attributes will be cached for attribute read
+        operations. If False, user attributes are reloaded from the store prior
+        to all attribute read operations.
+    synchronizer : object, optional
+        Array synchronizer.
+    path : string, optional
+        Group path within store.
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+    zarr_format : {2, 3, None}, optional
+        The zarr format to use when saving.
+
+    Returns
+    -------
+    g : AsyncGroup
+    """
+
+    if zarr_version is not None:
+        zarr_format = zarr_version
+        warnings.warn("zarr_format is deprecated, use zarr_format instead", DeprecationWarning)
+
+    if zarr_format is None:
+        zarr_format = 3  # TODO: perhaps this default should be set via config?
+
+    store_path = make_store_path(store)
+    if path is not None:
+        store_path = store_path / path
+
+    # requires_init = None
+    # if zarr_version == 2:
+    #     requires_init = overwrite or not contains_group(store)
+    # elif zarr_version == 3:
+    #     requires_init = overwrite or not contains_group(store, path)
+
+    # if requires_init:
+    #     init_group(store, overwrite=overwrite, chunk_store=chunk_store, path=path)
+
+    try:
+        return await AsyncGroup.open(store_path, zarr_format=zarr_format)
+    except KeyError:
+        # TODO: pass attributes here
+        attributes: dict[str, Any] = {}
+        return await AsyncGroup.create(
+            store_path, zarr_format=zarr_format, exists_ok=overwrite, attributes=attributes
+        )
+
+
+async def open_group(
+    store: StoreLike | None = None,
+    mode: str = "a",  # not used
+    cache_attrs: bool = True,  # not used
+    synchronizer: Any = None,  # not used
+    path: str | None = None,
+    chunk_store: StoreLike | None = None,  # not used
+    storage_options: dict[str, Any] | None = None,  # not used
+    *,
+    zarr_version: ZarrFormat | None = None,
+    zarr_format: ZarrFormat | None = None,
+    meta_array: Any | None = None,  # not used
+) -> AsyncGroup:
+    """Open a group using file-mode-like semantics.
+
+    Parameters
+    ----------
+    store : Store or string, optional
+        Store or path to directory in file system or name of zip file.
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
+        Persistence mode: 'r' means read only (must exist); 'r+' means
+        read/write (must exist); 'a' means read/write (create if doesn't
+        exist); 'w' means create (overwrite if exists); 'w-' means create
+        (fail if exists).
+    cache_attrs : bool, optional
+        If True (default), user attributes will be cached for attribute read
+        operations. If False, user attributes are reloaded from the store prior
+        to all attribute read operations.
+    synchronizer : object, optional
+        Array synchronizer.
+    path : string, optional
+        Group path within store.
+    chunk_store : Store or string, optional
+        Store or path to directory in file system or name of zip file.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+
+    Returns
+    -------
+    g : AsyncGroup
+    """
+
+    if zarr_version is not None:
+        zarr_format = zarr_version
+        warnings.warn("zarr_format is deprecated, use zarr_format instead", DeprecationWarning)
+    if zarr_format is None:
+        zarr_format = 3  # TODO: perhaps this default should be set via config?
+
+    store_path = make_store_path(store)
+    if path is not None:
+        store_path = store_path / path
+
+    return await AsyncGroup.open(store_path, zarr_format=zarr_format)
+
+
 # TODO: require kwargs
 async def create(
     shape: ShapeLike,
@@ -341,8 +473,8 @@ async def create(
     fill_value: int | None = 0,
     order: MEMORY_ORDER = "C",
     store: StoreLike | None = None,
-    # synchronizer: Synchronizer | None = None,
-    # overwrite: bool = False,
+    synchronizer: Any | None = None,
+    overwrite: bool = False,
     path: str | None = None,
     # chunk_store: StoreLike | None = None,
     # filters: Sequence[Codec] | None = None,

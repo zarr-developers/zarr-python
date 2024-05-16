@@ -234,6 +234,128 @@ def array(data: npt.ArrayLike, **kwargs: Any) -> Array:
     return Array(sync(async_api.array(data=data, **kwargs)))
 
 
+async def group(
+    store: StoreLike | None = None,
+    overwrite: bool = False,
+    chunk_store: StoreLike | None = None,  # not used in async_api
+    cache_attrs: bool = True,  # not used in async_api
+    synchronizer: Any | None = None,  # not used in async_api
+    path: str | None = None,
+    *,
+    zarr_version: ZarrFormat | None = None,
+    zarr_format: ZarrFormat | None = None,
+    meta_array: Any | None = None,  # not used in async_api
+) -> Group:
+    """Create a group.
+
+    Parameters
+    ----------
+    store : Store or string, optional
+        Store or path to directory in file system.
+    overwrite : bool, optional
+        If True, delete any pre-existing data in `store` at `path` before
+        creating the group.
+    chunk_store : Store, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
+    cache_attrs : bool, optional
+        If True (default), user attributes will be cached for attribute read
+        operations. If False, user attributes are reloaded from the store prior
+        to all attribute read operations.
+    synchronizer : object, optional
+        Array synchronizer.
+    path : string, optional
+        Group path within store.
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+    zarr_format : {2, 3, None}, optional
+        The zarr format to use when saving.
+
+    Returns
+    -------
+    g : Group
+    """
+    return Group(
+        sync(
+            async_api.group(
+                store=store,
+                overwrite=overwrite,
+                chunk_store=chunk_store,
+                cache_attrs=cache_attrs,
+                synchronizer=synchronizer,
+                path=path,
+                zarr_version=zarr_version,
+                zarr_format=zarr_format,
+                meta_array=meta_array,
+            )
+        )
+    )
+
+
+def open_group(
+    store: StoreLike | None = None,
+    mode: str = "a",  # not used in async api
+    cache_attrs: bool = True,  # not used in async api
+    synchronizer: Any = None,  # not used in async api
+    path: str | None = None,
+    chunk_store: StoreLike | None = None,  # not used in async api
+    storage_options: dict[str, Any] | None = None,  # not used in async api
+    *,
+    zarr_version: ZarrFormat | None = None,
+    zarr_format: ZarrFormat | None = None,
+    meta_array: Any | None = None,  # not used in async api
+) -> Group:
+    """Open a group using file-mode-like semantics.
+
+    Parameters
+    ----------
+    store : Store or string, optional
+        Store or path to directory in file system or name of zip file.
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
+        Persistence mode: 'r' means read only (must exist); 'r+' means
+        read/write (must exist); 'a' means read/write (create if doesn't
+        exist); 'w' means create (overwrite if exists); 'w-' means create
+        (fail if exists).
+    cache_attrs : bool, optional
+        If True (default), user attributes will be cached for attribute read
+        operations. If False, user attributes are reloaded from the store prior
+        to all attribute read operations.
+    synchronizer : object, optional
+        Array synchronizer.
+    path : string, optional
+        Group path within store.
+    chunk_store : Store or string, optional
+        Store or path to directory in file system or name of zip file.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+
+    Returns
+    -------
+    g : AsyncGroup
+    """
+    return Group(
+        sync(
+            async_api.open_group(
+                store=store,
+                mode=mode,
+                cache_attrs=cache_attrs,
+                synchronizer=synchronizer,
+                path=path,
+                chunk_store=chunk_store,
+                storage_options=storage_options,
+                zarr_version=zarr_version,
+                zarr_format=zarr_format,
+                meta_array=meta_array,
+            )
+        )
+    )
+
+
 # TODO: add type annotations for kwargs
 def create(*args: Any, **kwargs: Any) -> Array:
     return Array(sync(async_api.create(*args, **kwargs)))
