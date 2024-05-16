@@ -3157,3 +3157,47 @@ def test_issue_1279(tmpdir):
 
     written_data = ds_reopened[:]
     assert_array_equal(data, written_data)
+
+
+def test_scalar_indexing():
+    # regression test for #1874
+    store = zarr.KVStore({})
+
+    store["a"] = zarr.create((3,), chunks=(1,), store=store)
+    store["a"][:] = [1, 2, 3]
+
+    assert store["a"][1] == np.array(2.0)
+    assert store["a"][(1,)] == np.array(2.0)
+
+    store["a"][0] = [-1]
+    assert store["a"][0] == np.array(-1)
+
+    store["a"][0] = -2
+    assert store["a"][0] == np.array(-2)
+
+    store["a"][0] = (-3,)
+    assert store["a"][0] == np.array(-3)
+
+
+def test_object_array_indexing():
+    # regression test for #1874
+    from numcodecs import MsgPack
+
+    root = zarr.group()
+    arr = root.create_dataset(
+        name="my_dataset",
+        shape=0,
+        dtype=object,
+        object_codec=MsgPack(),
+    )
+    new_items = [
+        ["A", 1],
+        ["B", 2, "hello"],
+    ]
+    arr_add = np.empty(len(new_items), dtype=object)
+    arr_add[:] = new_items
+    arr.append(arr_add)
+
+    elem = ["C", 3]
+    arr[0] = elem
+    assert arr[0] == elem
