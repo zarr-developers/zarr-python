@@ -32,6 +32,7 @@ SliceSelection = tuple[slice, ...]
 Selection = slice | SliceSelection
 ZarrFormat = Literal[2, 3]
 JSON = Union[str, None, int, float, Enum, dict[str, "JSON"], list["JSON"], tuple["JSON", ...]]
+MEMORY_ORDER = Literal["C", "F"]
 
 
 def product(tup: ChunkCoords) -> int:
@@ -88,10 +89,10 @@ class ArraySpec:
     shape: ChunkCoords
     dtype: np.dtype[Any]
     fill_value: Any
-    order: Literal["C", "F"]
+    order: MEMORY_ORDER
 
     def __init__(
-        self, shape: ChunkCoords, dtype: np.dtype[Any], fill_value: Any, order: Literal["C", "F"]
+        self, shape: ChunkCoords, dtype: np.dtype[Any], fill_value: Any, order: MEMORY_ORDER
     ) -> None:
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)

@@ -6,6 +6,7 @@ from typing import Any, Optional, Tuple, Union
 from zarr.common import BytesLike
 from zarr.abc.store import Store
 from zarr.store.local import LocalStore
+from zarr.store.memory import MemoryStore
 
 
 def _dereference_path(root: str, path: str) -> str:
@@ -62,8 +63,10 @@ class StorePath:
 StoreLike = Union[Store, StorePath, Path, str]
 
 
-def make_store_path(store_like: StoreLike) -> StorePath:
-    if isinstance(store_like, StorePath):
+def make_store_path(store_like: StoreLike | None) -> StorePath:
+    if store_like is None:
+        return StorePath(MemoryStore())
+    elif isinstance(store_like, StorePath):
         return store_like
     elif isinstance(store_like, Store):
         return StorePath(store_like)
