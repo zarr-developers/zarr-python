@@ -1,8 +1,11 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Any, Dict
-from dataclasses import dataclass
-from zarr.abc.metadata import Metadata
 
+import itertools
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
+
+from zarr.abc.metadata import Metadata
 from zarr.common import (
     JSON,
     ChunkCoords,
@@ -10,6 +13,7 @@ from zarr.common import (
     parse_named_configuration,
     parse_shapelike,
 )
+from zarr.indexing import _ceildiv
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -18,7 +22,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class ChunkGrid(Metadata):
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> ChunkGrid:
+    def from_dict(cls, data: dict[str, JSON]) -> ChunkGrid:
         if isinstance(data, ChunkGrid):
             return data
 
@@ -26,6 +30,9 @@ class ChunkGrid(Metadata):
         if name_parsed == "regular":
             return RegularChunkGrid.from_dict(data)
         raise ValueError(f"Unknown chunk grid. Got {name_parsed}.")
+
+    def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -38,10 +45,15 @@ class RegularChunkGrid(ChunkGrid):
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> Self:
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "regular")
 
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         return {"name": "regular", "configuration": {"chunk_shape": list(self.chunk_shape)}}
+
+    def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
+        return itertools.product(
+            *(range(0, _ceildiv(s, c)) for s, c in zip(array_shape, self.chunk_shape, strict=False))
+        )

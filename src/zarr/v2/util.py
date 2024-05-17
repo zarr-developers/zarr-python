@@ -307,7 +307,7 @@ def normalize_fill_value(fill_value, dtype: np.dtype[Any]):
 
         if not isinstance(fill_value, str):
             raise ValueError(
-                "fill_value {!r} is not valid for dtype {}; must be a " "unicode string".format(
+                "fill_value {!r} is not valid for dtype {}; must be a unicode string".format(
                     fill_value, dtype
                 )
             )
@@ -323,7 +323,7 @@ def normalize_fill_value(fill_value, dtype: np.dtype[Any]):
         except Exception as e:
             # re-raise with our own error message to be helpful
             raise ValueError(
-                "fill_value {!r} is not valid for dtype {}; nested " "exception: {}".format(
+                "fill_value {!r} is not valid for dtype {}; nested exception: {}".format(
                     fill_value, dtype, e
                 )
             )

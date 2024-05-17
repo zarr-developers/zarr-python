@@ -1,9 +1,10 @@
 from __future__ import annotations
-from abc import abstractmethod
-from typing import TYPE_CHECKING, Dict, Literal, cast
-from dataclasses import dataclass
-from zarr.abc.metadata import Metadata
 
+from abc import abstractmethod
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal, cast
+
+from zarr.abc.metadata import Metadata
 from zarr.common import (
     JSON,
     ChunkCoords,
@@ -33,7 +34,7 @@ class ChunkKeyEncoding(Metadata):
         object.__setattr__(self, "separator", separator_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> ChunkKeyEncoding:
+    def from_dict(cls, data: dict[str, JSON]) -> ChunkKeyEncoding:
         if isinstance(data, ChunkKeyEncoding):
             return data
 
@@ -44,7 +45,7 @@ class ChunkKeyEncoding(Metadata):
             return V2ChunkKeyEncoding(**configuration_parsed)  # type: ignore[arg-type]
         raise ValueError(f"Unknown chunk key encoding. Got {name_parsed}.")
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name, "configuration": {"separator": self.separator}}
 
     @abstractmethod

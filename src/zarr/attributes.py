@@ -1,21 +1,24 @@
 from __future__ import annotations
-from collections.abc import MutableMapping
-from typing import TYPE_CHECKING, Any, Iterator, Union
+
+from collections.abc import Iterator, MutableMapping
+from typing import TYPE_CHECKING
+
+from zarr.common import JSON
 
 if TYPE_CHECKING:
-    from zarr.group import Group
     from zarr.array import Array
+    from zarr.group import Group
 
 
-class Attributes(MutableMapping[str, Any]):
-    def __init__(self, obj: Union[Array, Group]):
+class Attributes(MutableMapping[str, JSON]):
+    def __init__(self, obj: Array | Group):
         # key=".zattrs", read_only=False, cache=True, synchronizer=None
         self._obj = obj
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> JSON:
         return self._obj.metadata.attributes[key]
 
-    def __setitem__(self, key: str, value: Any) -> None:
+    def __setitem__(self, key: str, value: JSON) -> None:
         new_attrs = dict(self._obj.metadata.attributes)
         new_attrs[key] = value
         self._obj = self._obj.update_attributes(new_attrs)

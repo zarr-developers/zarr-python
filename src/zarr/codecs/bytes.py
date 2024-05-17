@@ -1,19 +1,21 @@
 from __future__ import annotations
+
+import sys
 from dataclasses import dataclass, replace
 from enum import Enum
-import sys
-
-from typing import TYPE_CHECKING, Dict, Optional, Union
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from zarr.abc.codec import ArrayBytesCodec
+from zarr.buffer import Buffer, NDBuffer
+from zarr.codecs.mixins import ArrayBytesCodecBatchMixin
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration
 
 if TYPE_CHECKING:
-    from zarr.common import JSON, ArraySpec, BytesLike
     from typing_extensions import Self
+
+    from zarr.common import JSON, ArraySpec
 
 
 class Endian(Enum):
@@ -25,25 +27,25 @@ default_system_endian = Endian(sys.byteorder)
 
 
 @dataclass(frozen=True)
-class BytesCodec(ArrayBytesCodec):
+class BytesCodec(ArrayBytesCodecBatchMixin):
     is_fixed_size = True
 
-    endian: Optional[Endian]
+    endian: Endian | None
 
-    def __init__(self, *, endian: Union[Endian, str, None] = default_system_endian) -> None:
+    def __init__(self, *, endian: Endian | str | None = default_system_endian) -> None:
         endian_parsed = None if endian is None else parse_enum(endian, Endian)
 
         object.__setattr__(self, "endian", endian_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(
             data, "bytes", require_configuration=False
         )
         configuration_parsed = configuration_parsed or {}
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         if self.endian is None:
             return {"name": "bytes"}
         else:
@@ -59,19 +61,12 @@ class BytesCodec(ArrayBytesCodec):
             )
         return self
 
-    def _get_byteorder(self, array: np.ndarray) -> Endian:
-        if array.dtype.byteorder == "<":
-            return Endian.little
-        elif array.dtype.byteorder == ">":
-            return Endian.big
-        else:
-            return default_system_endian
-
-    async def decode(
+    async def decode_single(
         self,
-        chunk_bytes: BytesLike,
+        chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
+        assert isinstance(chunk_bytes, Buffer)
         if chunk_spec.dtype.itemsize > 0:
             if self.endian == Endian.little:
                 prefix = "<"
@@ -80,7 +75,7 @@ class BytesCodec(ArrayBytesCodec):
             dtype = np.dtype(f"{prefix}{chunk_spec.dtype.str[1:]}")
         else:
             dtype = np.dtype(f"|{chunk_spec.dtype.str[1:]}")
-        chunk_array = np.frombuffer(chunk_bytes, dtype)
+        chunk_array = chunk_bytes.as_nd_buffer(dtype=dtype)
 
         # ensure correct chunk shape
         if chunk_array.shape != chunk_spec.shape:
@@ -89,17 +84,17 @@ class BytesCodec(ArrayBytesCodec):
             )
         return chunk_array
 
-    async def encode(
+    async def encode_single(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         _chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
+    ) -> Buffer | None:
+        assert isinstance(chunk_array, NDBuffer)
         if chunk_array.dtype.itemsize > 1:
-            byteorder = self._get_byteorder(chunk_array)
-            if self.endian is not None and self.endian != byteorder:
+            if self.endian is not None and self.endian != chunk_array.byteorder:
                 new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)
                 chunk_array = chunk_array.astype(new_dtype)
-        return chunk_array.tobytes()
+        return chunk_array.as_buffer()
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length

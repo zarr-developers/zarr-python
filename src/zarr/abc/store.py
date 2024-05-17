@@ -1,14 +1,16 @@
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
+from typing import Protocol, runtime_checkable
 
-from typing import List, Tuple, Optional
+from zarr.buffer import Buffer
+from zarr.common import BytesLike
 
 
 class Store(ABC):
     @abstractmethod
     async def get(
-        self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[bytes]:
+        self, key: str, byte_range: tuple[int, int | None] | None = None
+    ) -> Buffer | None:
         """Retrieve the value associated with a given key.
 
         Parameters
@@ -18,14 +20,14 @@ class Store(ABC):
 
         Returns
         -------
-        bytes
+        Buffer
         """
         ...
 
     @abstractmethod
     async def get_partial_values(
-        self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[Optional[bytes]]:
+        self, key_ranges: list[tuple[str, tuple[int, int]]]
+    ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
@@ -35,8 +37,7 @@ class Store(ABC):
 
         Returns
         -------
-        list[bytes]
-            list of values, in the order of the key_ranges, may contain null/none for missing keys
+        list of values, in the order of the key_ranges, may contain null/none for missing keys
         """
         ...
 
@@ -61,13 +62,13 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def set(self, key: str, value: bytes) -> None:
+    async def set(self, key: str, value: Buffer) -> None:
         """Store a (key, value) pair.
 
         Parameters
         ----------
         key : str
-        value : bytes
+        value : Buffer
         """
         ...
 
@@ -88,12 +89,12 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(self, key_start_values: list[tuple[str, int, BytesLike]]) -> None:
         """Store values at a given key, starting at byte range_start.
 
         Parameters
         ----------
-        key_start_values : list[tuple[str, int, bytes]]
+        key_start_values : list[tuple[str, int, BytesLike]]
             set of key, range_start, values triples, a key may occur multiple times with different
             range_starts, range_starts (considering the length of the respective values) must not
             specify overlapping ranges for the same key
@@ -145,3 +146,24 @@ class Store(ABC):
         AsyncGenerator[str, None]
         """
         ...
+
+
+@runtime_checkable
+class ByteGetter(Protocol):
+    async def get(self, byte_range: tuple[int, int | None] | None = None) -> Buffer | None: ...
+
+
+@runtime_checkable
+class ByteSetter(Protocol):
+    async def get(self, byte_range: tuple[int, int | None] | None = None) -> Buffer | None: ...
+
+    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None: ...
+
+    async def delete(self) -> None: ...
+
+
+async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:
+    if value is None:
+        await byte_setter.delete()
+    else:
+        await byte_setter.set(value)

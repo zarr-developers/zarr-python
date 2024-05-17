@@ -1,21 +1,21 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Dict, Iterable, Union, cast
 
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, cast
 
+from zarr.buffer import NDBuffer
+from zarr.codecs.mixins import ArrayArrayCodecBatchMixin
+from zarr.codecs.registry import register_codec
 from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
 
 if TYPE_CHECKING:
-    from typing import TYPE_CHECKING, Optional, Tuple
+    from typing import TYPE_CHECKING
+
     from typing_extensions import Self
 
-import numpy as np
 
-from zarr.abc.codec import ArrayArrayCodec
-from zarr.codecs.registry import register_codec
-
-
-def parse_transpose_order(data: Union[JSON, Iterable[int]]) -> Tuple[int, ...]:
+def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected an iterable. Got {data} instead.")
     if not all(isinstance(a, int) for a in data):
@@ -24,10 +24,10 @@ def parse_transpose_order(data: Union[JSON, Iterable[int]]) -> Tuple[int, ...]:
 
 
 @dataclass(frozen=True)
-class TransposeCodec(ArrayArrayCodec):
+class TransposeCodec(ArrayArrayCodecBatchMixin):
     is_fixed_size = True
 
-    order: Tuple[int, ...]
+    order: tuple[int, ...]
 
     def __init__(self, *, order: ChunkCoordsLike) -> None:
         order_parsed = parse_transpose_order(order)
@@ -35,18 +35,17 @@ class TransposeCodec(ArrayArrayCodec):
         object.__setattr__(self, "order", order_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "transpose")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         return {"name": "transpose", "configuration": {"order": list(self.order)}}
 
     def evolve(self, array_spec: ArraySpec) -> Self:
         if len(self.order) != array_spec.ndim:
             raise ValueError(
-                "The `order` tuple needs have as many entries as "
-                + f"there are dimensions in the array. Got {self.order}."
+                f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
             )
         if len(self.order) != len(set(self.order)):
             raise ValueError(
@@ -54,8 +53,7 @@ class TransposeCodec(ArrayArrayCodec):
             )
         if not all(0 <= x < array_spec.ndim for x in self.order):
             raise ValueError(
-                "All entries in the `order` tuple must be between 0 and "
-                + f"the number of dimensions in the array. Got {self.order}."
+                f"All entries in the `order` tuple must be between 0 and the number of dimensions in the array. Got {self.order}."
             )
         order = tuple(self.order)
 
@@ -73,22 +71,22 @@ class TransposeCodec(ArrayArrayCodec):
             order=chunk_spec.order,
         )
 
-    async def decode(
+    async def decode_single(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-    ) -> np.ndarray:
+    ) -> NDBuffer:
         inverse_order = [0] * chunk_spec.ndim
         for x, i in enumerate(self.order):
             inverse_order[x] = i
         chunk_array = chunk_array.transpose(inverse_order)
         return chunk_array
 
-    async def encode(
+    async def encode_single(
         self,
-        chunk_array: np.ndarray,
+        chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-    ) -> Optional[np.ndarray]:
+    ) -> NDBuffer | None:
         chunk_array = chunk_array.transpose(self.order)
         return chunk_array
 

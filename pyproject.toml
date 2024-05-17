@@ -160,12 +160,19 @@ extend-exclude = [
     "build",
     "dist",
     "venv",
-    "docs"
+    "docs",
+    "src/zarr/v2/",
+    "tests/v2/",
 ]
 
 [tool.ruff.lint]
 extend-select = [
-    "RUF"
+    "B",  # flake8-bugbear
+    "I",  # isort
+    "ISC",
+    "UP",  # pyupgrade
+    "RSE",
+    "RUF",
 ]
 ignore = [
     "RUF003",
@@ -207,10 +214,6 @@ check_untyped_defs = false
 module = [
     "zarr.v2.*",
     "zarr.abc.codec",
-    "zarr.codecs.bytes",
-    "zarr.codecs.pipeline",
-    "zarr.codecs.sharding",
-    "zarr.codecs.transpose",
     "zarr.array_v2",
 ]
 disallow_any_generics = false

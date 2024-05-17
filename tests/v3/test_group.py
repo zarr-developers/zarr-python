@@ -1,19 +1,21 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 from zarr.array import AsyncArray
+from zarr.buffer import Buffer
 from zarr.store.core import make_store_path
+from zarr.sync import sync
 
 if TYPE_CHECKING:
-    from zarr.store import MemoryStore, LocalStore
     from zarr.common import ZarrFormat
+    from zarr.store import LocalStore, MemoryStore
 
-import pytest
 import numpy as np
+import pytest
 
 from zarr.group import AsyncGroup, Group, GroupMetadata
 from zarr.store import StorePath
-from zarr.sync import sync
 
 
 # todo: put RemoteStore in here
@@ -43,7 +45,7 @@ def test_group_children(store: MemoryStore | LocalStore) -> None:
 
     # add an extra object to the domain of the group.
     # the list of children should ignore this object.
-    sync(store.set(f"{path}/extra_object-1", b"000000"))
+    sync(store.set(f"{path}/extra_object-1", Buffer.from_bytes(b"000000")))
     # add an extra object under a directory-like prefix in the domain of the group.
     # this creates a directory with a random key in it
     # this should not show up as a member
@@ -201,7 +203,7 @@ async def test_asyncgroup_open_wrong_format(
     elif zarr_format == 2:
         zarr_format_wrong = 3
     else:
-        assert False
+        raise AssertionError
 
     with pytest.raises(FileNotFoundError):
         await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
@@ -233,10 +235,7 @@ def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, A
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize(
-    "zarr_format",
-    (pytest.param(2, marks=pytest.mark.xfail(reason="V2 arrays cannot be created yet.")), 3),
-)
+@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     """
     Create an `AsyncGroup`, then create members of that group, and ensure that we can access those
@@ -263,10 +262,7 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize(
-    "zarr_format",
-    (2, 3),
-)
+@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     sub_array_path = "sub_array"
@@ -282,7 +278,7 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
     elif zarr_format == 3:
         assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
     else:
-        assert False
+        raise AssertionError
 
     sub_group_path = "sub_group"
     _ = await agroup.create_group(sub_group_path, attributes={"foo": 100})
@@ -293,7 +289,7 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
     elif zarr_format == 3:
         assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
     else:
-        assert False
+        raise AssertionError
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
@@ -315,10 +311,7 @@ async def test_asyncgroup_create_group(
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize(
-    "zarr_format",
-    (pytest.param(2, marks=pytest.mark.xfail(reason="V2 arrays cannot be created yet")), 3),
-)
+@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_create_array(
     store: LocalStore | MemoryStore,
     zarr_format: ZarrFormat,

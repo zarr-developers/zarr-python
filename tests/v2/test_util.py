@@ -210,7 +210,7 @@ def test_retry_call():
         def __call__(self):
             self.c += 1
             if self.c != self.pass_on:
-                raise PermissionError()
+                raise PermissionError
 
     for x in range(1, 11):
         # Any number of failures less than 10 will be accepted.

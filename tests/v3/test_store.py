@@ -1,10 +1,12 @@
 from __future__ import annotations
-from zarr.store.local import LocalStore
+
 from pathlib import Path
+
 import pytest
 
-from zarr.testing.store import StoreTests
+from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
+from zarr.testing.store import StoreTests
 
 
 @pytest.mark.parametrize("auto_mkdir", (True, False))

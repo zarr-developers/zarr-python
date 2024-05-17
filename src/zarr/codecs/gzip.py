@@ -1,17 +1,19 @@
 from __future__ import annotations
-from dataclasses import dataclass
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from numcodecs.gzip import GZip
-from zarr.abc.codec import BytesBytesCodec
+
+from zarr.buffer import Buffer, as_numpy_array_wrapper
+from zarr.codecs.mixins import BytesBytesCodecBatchMixin
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
-    from typing import Optional, Dict
     from typing_extensions import Self
-    from zarr.common import JSON, ArraySpec, BytesLike
+
+    from zarr.common import JSON, ArraySpec
 
 
 def parse_gzip_level(data: JSON) -> int:
@@ -25,7 +27,7 @@ def parse_gzip_level(data: JSON) -> int:
 
 
 @dataclass(frozen=True)
-class GzipCodec(BytesBytesCodec):
+class GzipCodec(BytesBytesCodecBatchMixin):
     is_fixed_size = False
 
     level: int = 5
@@ -36,26 +38,26 @@ class GzipCodec(BytesBytesCodec):
         object.__setattr__(self, "level", level_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "gzip")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         return {"name": "gzip", "configuration": {"level": self.level}}
 
-    async def decode(
+    async def decode_single(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
-    ) -> BytesLike:
-        return await to_thread(GZip(self.level).decode, chunk_bytes)
+    ) -> Buffer:
+        return await to_thread(as_numpy_array_wrapper, GZip(self.level).decode, chunk_bytes)
 
-    async def encode(
+    async def encode_single(
         self,
-        chunk_bytes: bytes,
+        chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
-    ) -> Optional[BytesLike]:
-        return await to_thread(GZip(self.level).encode, chunk_bytes)
+    ) -> Buffer | None:
+        return await to_thread(as_numpy_array_wrapper, GZip(self.level).encode, chunk_bytes)
 
     def compute_encoded_size(
         self,

@@ -1,42 +1,42 @@
+from __future__ import annotations
+
+import json
+
 # Notes on what I've changed here:
 # 1. Split Array into AsyncArray and Array
 # 3. Added .size and .attrs methods
 # 4. Temporarily disabled the creation of ArrayV2
 # 5. Added from_dict to AsyncArray
-
 # Questions to consider:
 # 1. Was splitting the array into two classes really necessary?
-
-from __future__ import annotations
-
+from asyncio import gather
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
-
-import json
-from typing import Any, Dict, Iterable, Literal, Optional, Tuple, Union
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
+
 from zarr.abc.codec import Codec
-
-
-# from zarr.array_v2 import ArrayV2
+from zarr.abc.store import set_or_delete
+from zarr.attributes import Attributes
+from zarr.buffer import Factory, NDArrayLike, NDBuffer
+from zarr.chunk_grids import RegularChunkGrid
+from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
-from zarr.codecs.pipeline import CodecPipeline
 from zarr.common import (
+    JSON,
     ZARR_JSON,
-    ArraySpec,
+    ZARRAY_JSON,
+    ZATTRS_JSON,
     ChunkCoords,
     Selection,
-    SliceSelection,
     ZarrFormat,
     concurrent_map,
 )
 from zarr.config import config
-
-from zarr.indexing import BasicIndexer, all_chunk_coords, is_total_slice
-from zarr.chunk_grids import RegularChunkGrid
-from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-from zarr.metadata import ArrayMetadata, parse_indexing_order
+from zarr.indexing import BasicIndexer
+from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata, parse_indexing_order
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
@@ -45,9 +45,11 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
     if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
-        return ArrayMetadata.from_dict(data)
-    else:
-        raise TypeError
+        if data["zarr_format"] == 3:
+            return ArrayV3Metadata.from_dict(data)
+        elif data["zarr_format"] == 2:
+            return ArrayV2Metadata.from_dict(data)
+    raise TypeError
 
 
 @dataclass(frozen=True)
@@ -55,10 +57,6 @@ class AsyncArray:
     metadata: ArrayMetadata
     store_path: StorePath
     order: Literal["C", "F"]
-
-    @property
-    def codecs(self) -> CodecPipeline:
-        return self.metadata.codecs
 
     def __init__(
         self,
@@ -78,21 +76,116 @@ class AsyncArray:
         cls,
         store: StoreLike,
         *,
+        # v2 and v3
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike,
+        zarr_format: ZarrFormat = 3,
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ChunkCoords | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        exists_ok: bool = False,
+    ) -> AsyncArray:
+        store_path = make_store_path(store)
+
+        if chunk_shape is None:
+            if chunks is None:
+                raise ValueError("Either chunk_shape or chunks needs to be provided.")
+            chunk_shape = chunks
+        elif chunks is not None:
+            raise ValueError("Only one of chunk_shape or chunks must be provided.")
+
+        if zarr_format == 3:
+            if dimension_separator is not None:
+                raise ValueError(
+                    "dimension_separator cannot be used for arrays with version 3. Use chunk_key_encoding instead."
+                )
+            if order is not None:
+                raise ValueError(
+                    "order cannot be used for arrays with version 3. Use a transpose codec instead."
+                )
+            if filters is not None:
+                raise ValueError(
+                    "filters cannot be used for arrays with version 3. Use array-to-array codecs instead."
+                )
+            if compressor is not None:
+                raise ValueError(
+                    "compressor cannot be used for arrays with version 3. Use bytes-to-bytes codecs instead."
+                )
+            return await cls._create_v3(
+                store_path,
+                shape=shape,
+                dtype=dtype,
+                chunk_shape=chunk_shape,
+                fill_value=fill_value,
+                chunk_key_encoding=chunk_key_encoding,
+                codecs=codecs,
+                dimension_names=dimension_names,
+                attributes=attributes,
+                exists_ok=exists_ok,
+            )
+        elif zarr_format == 2:
+            if codecs is not None:
+                raise ValueError(
+                    "codecs cannot be used for arrays with version 2. Use filters and compressor instead."
+                )
+            if chunk_key_encoding is not None:
+                raise ValueError(
+                    "chunk_key_encoding cannot be used for arrays with version 2. Use dimension_separator instead."
+                )
+            if dimension_names is not None:
+                raise ValueError("dimension_names cannot be used for arrays with version 2.")
+            return await cls._create_v2(
+                store_path,
+                shape=shape,
+                dtype=dtype,
+                chunks=chunk_shape,
+                dimension_separator=dimension_separator,
+                fill_value=fill_value,
+                order=order,
+                filters=filters,
+                compressor=compressor,
+                attributes=attributes,
+                exists_ok=exists_ok,
+            )
+        else:
+            raise ValueError(f"Insupported zarr_format. Got: {zarr_format}")
+
+    @classmethod
+    async def _create_v3(
+        cls,
+        store_path: StorePath,
+        *,
         shape: ChunkCoords,
         dtype: npt.DTypeLike,
         chunk_shape: ChunkCoords,
-        fill_value: Optional[Any] = None,
-        chunk_key_encoding: Union[
-            Tuple[Literal["default"], Literal[".", "/"]],
-            Tuple[Literal["v2"], Literal[".", "/"]],
-        ] = ("default", "/"),
-        codecs: Optional[Iterable[Union[Codec, Dict[str, Any]]]] = None,
-        dimension_names: Optional[Iterable[str]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        fill_value: Any | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
-        zarr_format: ZarrFormat = 3,
     ) -> AsyncArray:
-        store_path = make_store_path(store)
         if not exists_ok:
             assert not await (store_path / ZARR_JSON).exists()
 
@@ -104,36 +197,86 @@ class AsyncArray:
             else:
                 fill_value = 0
 
-        metadata = ArrayMetadata(
-            shape=shape,
-            data_type=dtype,
-            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
-            chunk_key_encoding=(
+        if chunk_key_encoding is None:
+            chunk_key_encoding = ("default", "/")
+        if isinstance(chunk_key_encoding, tuple):
+            chunk_key_encoding = (
                 V2ChunkKeyEncoding(separator=chunk_key_encoding[1])
                 if chunk_key_encoding[0] == "v2"
                 else DefaultChunkKeyEncoding(separator=chunk_key_encoding[1])
-            ),
+            )
+
+        metadata = ArrayV3Metadata(
+            shape=shape,
+            data_type=dtype,
+            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            chunk_key_encoding=chunk_key_encoding,
             fill_value=fill_value,
             codecs=codecs,
             dimension_names=tuple(dimension_names) if dimension_names else None,
             attributes=attributes or {},
         )
 
-        array = cls(
-            metadata=metadata,
-            store_path=store_path,
-        )
+        array = cls(metadata=metadata, store_path=store_path)
 
-        await array._save_metadata()
+        await array._save_metadata(metadata)
+        return array
+
+    @classmethod
+    async def _create_v2(
+        cls,
+        store_path: StorePath,
+        *,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike,
+        chunks: ChunkCoords,
+        dimension_separator: Literal[".", "/"] | None = None,
+        fill_value: None | int | float = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        attributes: dict[str, JSON] | None = None,
+        exists_ok: bool = False,
+    ) -> AsyncArray:
+        import numcodecs
+
+        if not exists_ok:
+            assert not await (store_path / ZARRAY_JSON).exists()
+
+        if order is None:
+            order = "C"
+
+        if dimension_separator is None:
+            dimension_separator = "."
+
+        metadata = ArrayV2Metadata(
+            shape=shape,
+            dtype=np.dtype(dtype),
+            chunks=chunks,
+            order=order,
+            dimension_separator=dimension_separator,
+            fill_value=0 if fill_value is None else fill_value,
+            compressor=(
+                numcodecs.get_codec(compressor).get_config() if compressor is not None else None
+            ),
+            filters=(
+                [numcodecs.get_codec(filter).get_config() for filter in filters]
+                if filters is not None
+                else None
+            ),
+            attributes=attributes,
+        )
+        array = cls(metadata=metadata, store_path=store_path)
+        await array._save_metadata(metadata)
         return array
 
     @classmethod
     def from_dict(
         cls,
         store_path: StorePath,
-        data: Dict[str, Any],
+        data: dict[str, JSON],
     ) -> AsyncArray:
-        metadata = ArrayMetadata.from_dict(data)
+        metadata = parse_array_metadata(data)
         async_array = cls(metadata=metadata, store_path=store_path)
         return async_array
 
@@ -141,30 +284,54 @@ class AsyncArray:
     async def open(
         cls,
         store: StoreLike,
+        zarr_format: ZarrFormat | None = 3,
     ) -> AsyncArray:
         store_path = make_store_path(store)
-        zarr_json_bytes = await (store_path / ZARR_JSON).get()
-        assert zarr_json_bytes is not None
-        return cls.from_dict(
-            store_path,
-            json.loads(zarr_json_bytes),
-        )
 
-    @classmethod
-    async def open_auto(
-        cls,
-        store: StoreLike,
-    ) -> AsyncArray:  # TODO: Union[AsyncArray, ArrayV2]
-        store_path = make_store_path(store)
-        v3_metadata_bytes = await (store_path / ZARR_JSON).get()
-        if v3_metadata_bytes is not None:
-            return cls.from_dict(
-                store_path,
-                json.loads(v3_metadata_bytes),
+        if zarr_format == 2:
+            zarray_bytes, zattrs_bytes = await gather(
+                (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
             )
+            if zarray_bytes is None:
+                raise KeyError(store_path)  # filenotfounderror?
+        elif zarr_format == 3:
+            zarr_json_bytes = await (store_path / ZARR_JSON).get()
+            if zarr_json_bytes is None:
+                raise KeyError(store_path)  # filenotfounderror?
+        elif zarr_format is None:
+            zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
+                (store_path / ZARR_JSON).get(),
+                (store_path / ZARRAY_JSON).get(),
+                (store_path / ZATTRS_JSON).get(),
+            )
+            if zarr_json_bytes is not None and zarray_bytes is not None:
+                # TODO: revisit this exception type
+                # alternatively, we could warn and favor v3
+                raise ValueError("Both zarr.json and .zarray objects exist")
+            if zarr_json_bytes is None and zarray_bytes is None:
+                raise KeyError(store_path)  # filenotfounderror?
+            # set zarr_format based on which keys were found
+            if zarr_json_bytes is not None:
+                zarr_format = 3
+            else:
+                zarr_format = 2
         else:
-            raise ValueError("no v2 support yet")
-            # return await ArrayV2.open(store_path)
+            raise ValueError(f"unexpected zarr_format: {zarr_format}")
+
+        if zarr_format == 2:
+            # V2 arrays are comprised of a .zarray and .zattrs objects
+            assert zarray_bytes is not None
+            zarray_dict = json.loads(zarray_bytes.to_bytes())
+            zattrs_dict = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
+            zarray_dict["attributes"] = zattrs_dict
+            return cls(store_path=store_path, metadata=ArrayV2Metadata.from_dict(zarray_dict))
+        else:
+            # V3 arrays are comprised of a zarr.json object
+            assert zarr_json_bytes is not None
+            return cls(
+                store_path=store_path,
+                metadata=ArrayV3Metadata.from_dict(json.loads(zarr_json_bytes.to_bytes())),
+            )
 
     @property
     def ndim(self) -> int:
@@ -183,84 +350,63 @@ class AsyncArray:
         return self.metadata.dtype
 
     @property
-    def attrs(self) -> dict[str, Any]:
+    def attrs(self) -> dict[str, JSON]:
         return self.metadata.attributes
 
-    async def getitem(self, selection: Selection) -> npt.NDArray[Any]:
-        assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
+    async def getitem(
+        self, selection: Selection, *, factory: Factory.Create = NDBuffer.create
+    ) -> NDArrayLike:
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
-            chunk_shape=self.metadata.chunk_grid.chunk_shape,
+            chunk_grid=self.metadata.chunk_grid,
         )
 
         # setup output array
-        out = np.zeros(
-            indexer.shape,
+        out = factory(
+            shape=indexer.shape,
             dtype=self.metadata.dtype,
             order=self.order,
+            fill_value=0,  # TODO use fill_value
         )
 
         # reading chunks and decoding them
-        await concurrent_map(
+        await self.metadata.codec_pipeline.read(
             [
-                (chunk_coords, chunk_selection, out_selection, out)
+                (
+                    self.store_path / self.metadata.encode_chunk_key(chunk_coords),
+                    self.metadata.get_chunk_spec(chunk_coords, self.order),
+                    chunk_selection,
+                    out_selection,
+                )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            self._read_chunk,
-            config.get("async.concurrency"),
+            out,
         )
+        return out.as_ndarray_like()
 
-        if out.shape:
-            return out
-        else:
-            return out[()]
+    async def _save_metadata(self, metadata: ArrayMetadata) -> None:
+        to_save = metadata.to_buffer_dict()
+        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
+        await gather(*awaitables)
 
-    async def _save_metadata(self) -> None:
-        await (self.store_path / ZARR_JSON).set(self.metadata.to_bytes())
-
-    async def _read_chunk(
+    async def setitem(
         self,
-        chunk_coords: ChunkCoords,
-        chunk_selection: SliceSelection,
-        out_selection: SliceSelection,
-        out: npt.NDArray[Any],
+        selection: Selection,
+        value: NDArrayLike,
+        factory: Factory.NDArrayLike = NDBuffer.from_ndarray_like,
     ) -> None:
-        chunk_spec = self.metadata.get_chunk_spec(chunk_coords, self.order)
-        chunk_key_encoding = self.metadata.chunk_key_encoding
-        chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
-        store_path = self.store_path / chunk_key
-
-        if self.codecs.supports_partial_decode:
-            chunk_array = await self.codecs.decode_partial(store_path, chunk_selection, chunk_spec)
-            if chunk_array is not None:
-                out[out_selection] = chunk_array
-            else:
-                out[out_selection] = self.metadata.fill_value
-        else:
-            chunk_bytes = await store_path.get()
-            if chunk_bytes is not None:
-                chunk_array = await self.codecs.decode(chunk_bytes, chunk_spec)
-                tmp = chunk_array[chunk_selection]
-                out[out_selection] = tmp
-            else:
-                out[out_selection] = self.metadata.fill_value
-
-    async def setitem(self, selection: Selection, value: npt.NDArray[Any]) -> None:
-        assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
-        chunk_shape = self.metadata.chunk_grid.chunk_shape
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
-            chunk_shape=chunk_shape,
+            chunk_grid=self.metadata.chunk_grid,
         )
 
         sel_shape = indexer.shape
 
         # check value shape
         if np.isscalar(value):
-            # setting a scalar value
-            pass
+            value = np.asanyarray(value)
         else:
             if not hasattr(value, "shape"):
                 value = np.asarray(value, self.metadata.dtype)
@@ -268,125 +414,58 @@ class AsyncArray:
             if value.dtype.name != self.metadata.dtype.name:
                 value = value.astype(self.metadata.dtype, order="A")
 
+        # We accept any ndarray like object from the user and convert it
+        # to a NDBuffer (or subclass). From this point onwards, we only pass
+        # Buffer and NDBuffer between components.
+        value = factory(value)
+
         # merging with existing data and encoding chunks
-        await concurrent_map(
+        await self.metadata.codec_pipeline.write(
             [
                 (
-                    value,
-                    chunk_shape,
-                    chunk_coords,
+                    self.store_path / self.metadata.encode_chunk_key(chunk_coords),
+                    self.metadata.get_chunk_spec(chunk_coords, self.order),
                     chunk_selection,
                     out_selection,
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            self._write_chunk,
-            config.get("async.concurrency"),
+            value,
         )
 
-    async def _write_chunk(
-        self,
-        value: npt.NDArray[Any],
-        chunk_shape: ChunkCoords,
-        chunk_coords: ChunkCoords,
-        chunk_selection: SliceSelection,
-        out_selection: SliceSelection,
-    ) -> None:
-        chunk_spec = self.metadata.get_chunk_spec(chunk_coords, self.order)
-        chunk_key_encoding = self.metadata.chunk_key_encoding
-        chunk_key = chunk_key_encoding.encode_chunk_key(chunk_coords)
-        store_path = self.store_path / chunk_key
-
-        if is_total_slice(chunk_selection, chunk_shape):
-            # write entire chunks
-            if np.isscalar(value):
-                chunk_array = np.empty(
-                    chunk_shape,
-                    dtype=self.metadata.dtype,
-                )
-                chunk_array.fill(value)
-            else:
-                chunk_array = value[out_selection]
-            await self._write_chunk_to_store(store_path, chunk_array, chunk_spec)
-
-        elif self.codecs.supports_partial_encode:
-            # print("encode_partial", chunk_coords, chunk_selection, repr(self))
-            await self.codecs.encode_partial(
-                store_path,
-                value[out_selection],
-                chunk_selection,
-                chunk_spec,
-            )
-        else:
-            # writing partial chunks
-            # read chunk first
-            chunk_bytes = await store_path.get()
-
-            # merge new value
-            if chunk_bytes is None:
-                chunk_array = np.empty(
-                    chunk_shape,
-                    dtype=self.metadata.dtype,
-                )
-                chunk_array.fill(self.metadata.fill_value)
-            else:
-                chunk_array = (
-                    await self.codecs.decode(chunk_bytes, chunk_spec)
-                ).copy()  # make a writable copy
-            chunk_array[chunk_selection] = value[out_selection]
-
-            await self._write_chunk_to_store(store_path, chunk_array, chunk_spec)
-
-    async def _write_chunk_to_store(
-        self, store_path: StorePath, chunk_array: npt.NDArray[Any], chunk_spec: ArraySpec
-    ) -> None:
-        if np.all(chunk_array == self.metadata.fill_value):
-            # chunks that only contain fill_value will be removed
-            await store_path.delete()
-        else:
-            chunk_bytes = await self.codecs.encode(chunk_array, chunk_spec)
-            if chunk_bytes is None:
-                await store_path.delete()
-            else:
-                await store_path.set(chunk_bytes)
-
-    async def resize(self, new_shape: ChunkCoords) -> AsyncArray:
-        if len(new_shape) != len(self.metadata.shape):
-            raise ValueError(
-                "The new shape must have the same number of dimensions "
-                + f"(={len(self.metadata.shape)})."
-            )
-
-        new_metadata = replace(self.metadata, shape=new_shape)
+    async def resize(
+        self, new_shape: ChunkCoords, delete_outside_chunks: bool = True
+    ) -> AsyncArray:
+        assert len(new_shape) == len(self.metadata.shape)
+        new_metadata = self.metadata.update_shape(new_shape)
 
         # Remove all chunks outside of the new shape
-        assert isinstance(self.metadata.chunk_grid, RegularChunkGrid)
-        chunk_shape = self.metadata.chunk_grid.chunk_shape
-        chunk_key_encoding = self.metadata.chunk_key_encoding
-        old_chunk_coords = set(all_chunk_coords(self.metadata.shape, chunk_shape))
-        new_chunk_coords = set(all_chunk_coords(new_shape, chunk_shape))
+        old_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(self.metadata.shape))
+        new_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(new_shape))
 
-        async def _delete_key(key: str) -> None:
-            await (self.store_path / key).delete()
+        if delete_outside_chunks:
 
-        await concurrent_map(
-            [
-                (chunk_key_encoding.encode_chunk_key(chunk_coords),)
-                for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
-            ],
-            _delete_key,
-            config.get("async.concurrency"),
-        )
+            async def _delete_key(key: str) -> None:
+                await (self.store_path / key).delete()
+
+            await concurrent_map(
+                [
+                    (self.metadata.encode_chunk_key(chunk_coords),)
+                    for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
+                ],
+                _delete_key,
+                config.get("async.concurrency"),
+            )
 
         # Write new metadata
-        await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
+        await self._save_metadata(new_metadata)
         return replace(self, metadata=new_metadata)
 
-    async def update_attributes(self, new_attributes: Dict[str, Any]) -> AsyncArray:
-        new_metadata = replace(self.metadata, attributes=new_attributes)
+    async def update_attributes(self, new_attributes: dict[str, JSON]) -> AsyncArray:
+        new_metadata = self.metadata.update_attributes(new_attributes)
 
         # Write new metadata
-        await (self.store_path / ZARR_JSON).set(new_metadata.to_bytes())
+        await self._save_metadata(new_metadata)
         return replace(self, metadata=new_metadata)
 
     def __repr__(self) -> str:
@@ -405,17 +484,29 @@ class Array:
         cls,
         store: StoreLike,
         *,
+        # v2 and v3
         shape: ChunkCoords,
         dtype: npt.DTypeLike,
-        chunk_shape: ChunkCoords,
-        fill_value: Optional[Any] = None,
-        chunk_key_encoding: Union[
-            Tuple[Literal["default"], Literal[".", "/"]],
-            Tuple[Literal["v2"], Literal[".", "/"]],
-        ] = ("default", "/"),
-        codecs: Optional[Iterable[Union[Codec, Dict[str, Any]]]] = None,
-        dimension_names: Optional[Iterable[str]] = None,
-        attributes: Optional[Dict[str, Any]] = None,
+        zarr_format: ZarrFormat = 3,
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ChunkCoords | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
         exists_ok: bool = False,
     ) -> Array:
         async_array = sync(
@@ -423,12 +514,18 @@ class Array:
                 store=store,
                 shape=shape,
                 dtype=dtype,
-                chunk_shape=chunk_shape,
+                zarr_format=zarr_format,
+                attributes=attributes,
                 fill_value=fill_value,
+                chunk_shape=chunk_shape,
                 chunk_key_encoding=chunk_key_encoding,
                 codecs=codecs,
                 dimension_names=dimension_names,
-                attributes=attributes,
+                chunks=chunks,
+                dimension_separator=dimension_separator,
+                order=order,
+                filters=filters,
+                compressor=compressor,
                 exists_ok=exists_ok,
             ),
         )
@@ -438,7 +535,7 @@ class Array:
     def from_dict(
         cls,
         store_path: StorePath,
-        data: Dict[str, Any],
+        data: dict[str, JSON],
     ) -> Array:
         async_array = AsyncArray.from_dict(store_path=store_path, data=data)
         return cls(async_array)
@@ -449,16 +546,6 @@ class Array:
         store: StoreLike,
     ) -> Array:
         async_array = sync(AsyncArray.open(store))
-        return cls(async_array)
-
-    @classmethod
-    def open_auto(
-        cls,
-        store: StoreLike,
-    ) -> Array:  # TODO: Union[Array, ArrayV2]:
-        async_array = sync(
-            AsyncArray.open_auto(store),
-        )
         return cls(async_array)
 
     @property
@@ -478,8 +565,8 @@ class Array:
         return self._async_array.dtype
 
     @property
-    def attrs(self) -> dict[str, Any]:
-        return self._async_array.attrs
+    def attrs(self) -> Attributes:
+        return Attributes(self)
 
     @property
     def metadata(self) -> ArrayMetadata:
@@ -510,7 +597,7 @@ class Array:
             )
         )
 
-    def update_attributes(self, new_attributes: Dict[str, Any]) -> Array:
+    def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
         return type(self)(
             sync(
                 self._async_array.update_attributes(new_attributes),

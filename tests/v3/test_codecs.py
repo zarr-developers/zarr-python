@@ -1,29 +1,29 @@
 from __future__ import annotations
-from dataclasses import dataclass
 
 import json
-from typing import Iterator, List, Literal, Optional, Tuple
-
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import pytest
+
 import zarr.v2
 from zarr.abc.codec import Codec
+from zarr.abc.store import Store
 from zarr.array import Array, AsyncArray
-from zarr.common import Selection
-from zarr.indexing import morton_order_iter
 from zarr.codecs import (
-    ShardingCodec,
-    ShardingCodecIndexLocation,
     BloscCodec,
     BytesCodec,
     GzipCodec,
+    ShardingCodec,
+    ShardingCodecIndexLocation,
     TransposeCodec,
     ZstdCodec,
 )
-
-from zarr.abc.store import Store
+from zarr.common import Selection
 from zarr.config import config
+from zarr.indexing import morton_order_iter
 from zarr.store import MemoryStore, StorePath
 
 
@@ -57,7 +57,7 @@ def sample_data() -> np.ndarray:
     return np.arange(0, 128 * 128 * 128, dtype="uint16").reshape((128, 128, 128), order="F")
 
 
-def order_from_dim(order: Literal["F", "C"], ndim: int) -> Tuple[int, ...]:
+def order_from_dim(order: Literal["F", "C"], ndim: int) -> tuple[int, ...]:
     if order == "F":
         return tuple(ndim - x - 1 for x in range(ndim))
     else:
@@ -243,7 +243,7 @@ async def test_order(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((32, 8), order=input_order)
 
-    codecs_: List[Codec] = (
+    codecs_: list[Codec] = (
         [
             ShardingCodec(
                 chunk_shape=(16, 8),
@@ -294,7 +294,7 @@ async def test_order(
             fill_value=1,
         )
         z[:, :] = data
-        assert await (store / "order/0.0").get() == z._store["0.0"]
+        assert (await (store / "order/0.0").get()) == z._store["0.0"]
 
 
 @pytest.mark.parametrize("input_order", ["F", "C"])
@@ -310,7 +310,7 @@ def test_order_implicit(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16), order=input_order)
 
-    codecs_: Optional[List[Codec]] = [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
+    codecs_: list[Codec] | None = [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
 
     with config.set({"array.order": runtime_write_order}):
         a = Array.create(
@@ -352,7 +352,7 @@ async def test_transpose(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((1, 32, 8), order=input_order)
 
-    codecs_: List[Codec] = (
+    codecs_: list[Codec] = (
         [
             ShardingCodec(
                 chunk_shape=(1, 16, 8),
@@ -615,9 +615,9 @@ async def test_delete_empty_chunks(store: Store):
     assert await (store / "delete_empty_chunks/c0/0").get() is None
 
 
-async def test_delete_empty_sharded_chunks(store: Store):
+async def test_delete_empty_shards(store: Store):
     a = await AsyncArray.create(
-        store / "delete_empty_sharded_chunks",
+        store / "delete_empty_shards",
         shape=(16, 16),
         chunk_shape=(8, 16),
         dtype="uint16",
@@ -635,8 +635,8 @@ async def test_delete_empty_sharded_chunks(store: Store):
     data = np.ones((16, 16), dtype="uint16")
     data[:8, :8] = 0
     assert np.array_equal(data, await _AsyncArrayProxy(a)[:, :].get())
-    assert await (store / "delete_empty_sharded_chunks/c/1/0").get() is None
-    chunk_bytes = await (store / "delete_empty_sharded_chunks/c/0/0").get()
+    assert await (store / "delete_empty_shards/c/1/0").get() is None
+    chunk_bytes = await (store / "delete_empty_shards/c/0/0").get()
     assert chunk_bytes is not None and len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
 
 
@@ -730,9 +730,9 @@ async def test_dimension_names(store: Store):
     )
 
     assert (await AsyncArray.open(store / "dimension_names2")).metadata.dimension_names is None
-    zarr_json_bytes = await (store / "dimension_names2" / "zarr.json").get()
-    assert zarr_json_bytes is not None
-    assert "dimension_names" not in json.loads(zarr_json_bytes)
+    zarr_json_buffer = await (store / "dimension_names2" / "zarr.json").get()
+    assert zarr_json_buffer is not None
+    assert "dimension_names" not in json.loads(zarr_json_buffer.to_bytes())
 
 
 def test_gzip(store: Store):
@@ -954,7 +954,7 @@ async def test_blosc_evolve(store: Store):
         codecs=[BytesCodec(), BloscCodec()],
     )
 
-    zarr_json = json.loads(await (store / "blosc_evolve_u1" / "zarr.json").get())
+    zarr_json = json.loads((await (store / "blosc_evolve_u1" / "zarr.json").get()).to_bytes())
     blosc_configuration_json = zarr_json["codecs"][1]["configuration"]
     assert blosc_configuration_json["typesize"] == 1
     assert blosc_configuration_json["shuffle"] == "bitshuffle"
@@ -968,7 +968,7 @@ async def test_blosc_evolve(store: Store):
         codecs=[BytesCodec(), BloscCodec()],
     )
 
-    zarr_json = json.loads(await (store / "blosc_evolve_u2" / "zarr.json").get())
+    zarr_json = json.loads((await (store / "blosc_evolve_u2" / "zarr.json").get()).to_bytes())
     blosc_configuration_json = zarr_json["codecs"][1]["configuration"]
     assert blosc_configuration_json["typesize"] == 2
     assert blosc_configuration_json["shuffle"] == "shuffle"
@@ -982,7 +982,7 @@ async def test_blosc_evolve(store: Store):
         codecs=[ShardingCodec(chunk_shape=(16, 16), codecs=[BytesCodec(), BloscCodec()])],
     )
 
-    zarr_json = json.loads(await (store / "sharding_blosc_evolve" / "zarr.json").get())
+    zarr_json = json.loads((await (store / "sharding_blosc_evolve" / "zarr.json").get()).to_bytes())
     blosc_configuration_json = zarr_json["codecs"][0]["configuration"]["codecs"][1]["configuration"]
     assert blosc_configuration_json["typesize"] == 2
     assert blosc_configuration_json["shuffle"] == "shuffle"
