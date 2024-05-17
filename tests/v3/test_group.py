@@ -234,10 +234,7 @@ def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, A
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize(
-    "zarr_format",
-    (pytest.param(2, marks=pytest.mark.xfail(reason="V2 arrays cannot be created yet.")), 3),
-)
+@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     """
     Create an `AsyncGroup`, then create members of that group, and ensure that we can access those
@@ -264,10 +261,7 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize(
-    "zarr_format",
-    (2, 3),
-)
+@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     sub_array_path = "sub_array"
@@ -316,10 +310,7 @@ async def test_asyncgroup_create_group(
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize(
-    "zarr_format",
-    (pytest.param(2, marks=pytest.mark.xfail(reason="V2 arrays cannot be created yet")), 3),
-)
+@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_create_array(
     store: LocalStore | MemoryStore,
     zarr_format: ZarrFormat,

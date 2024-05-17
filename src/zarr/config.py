@@ -6,7 +6,13 @@ from donfig import Config
 
 config = Config(
     "zarr",
-    defaults=[{"array": {"order": "C"}, "async": {"concurrency": None, "timeout": None}}],
+    defaults=[
+        {
+            "array": {"order": "C"},
+            "async": {"concurrency": None, "timeout": None},
+            "codec_pipeline": {"batch_size": 1},
+        }
+    ],
 )
 
 

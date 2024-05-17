@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import (
     TYPE_CHECKING,
+    ParamSpec,
     Literal,
     Union,
     Tuple,
@@ -58,7 +59,11 @@ async def concurrent_map(
         return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
 
 
-async def to_thread(func: Callable[..., V], /, *args: Any, **kwargs: Any) -> V:
+P = ParamSpec("P")
+U = TypeVar("U")
+
+
+async def to_thread(func: Callable[P, U], /, *args: P.args, **kwargs: P.kwargs) -> U:
     loop = asyncio.get_running_loop()
     ctx = contextvars.copy_context()
     func_call = functools.partial(ctx.run, func, *args, **kwargs)

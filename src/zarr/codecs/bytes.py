@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Dict, Optional, Union
 
 import numpy as np
 
-from zarr.abc.codec import ArrayBytesCodec
+from zarr.codecs.mixins import ArrayBytesCodecBatchMixin
 from zarr.buffer import Buffer, NDBuffer
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration
@@ -26,7 +26,7 @@ default_system_endian = Endian(sys.byteorder)
 
 
 @dataclass(frozen=True)
-class BytesCodec(ArrayBytesCodec):
+class BytesCodec(ArrayBytesCodecBatchMixin):
     is_fixed_size = True
 
     endian: Optional[Endian]
@@ -60,7 +60,7 @@ class BytesCodec(ArrayBytesCodec):
             )
         return self
 
-    async def decode(
+    async def decode_single(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
@@ -83,7 +83,7 @@ class BytesCodec(ArrayBytesCodec):
             )
         return chunk_array
 
-    async def encode(
+    async def encode_single(
         self,
         chunk_array: NDBuffer,
         _chunk_spec: ArraySpec,

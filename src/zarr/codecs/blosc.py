@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Union
 import numcodecs
 from numcodecs.blosc import Blosc
 
-from zarr.abc.codec import BytesBytesCodec
+from zarr.codecs.mixins import BytesBytesCodecBatchMixin
 from zarr.buffer import Buffer, as_numpy_array_wrapper
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration, to_thread
@@ -74,7 +74,7 @@ def parse_blocksize(data: JSON) -> int:
 
 
 @dataclass(frozen=True)
-class BloscCodec(BytesBytesCodec):
+class BloscCodec(BytesBytesCodecBatchMixin):
     is_fixed_size = False
 
     typesize: int
@@ -158,14 +158,14 @@ class BloscCodec(BytesBytesCodec):
         }
         return Blosc.from_config(config_dict)
 
-    async def decode(
+    async def decode_single(
         self,
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
     ) -> Buffer:
         return await to_thread(as_numpy_array_wrapper, self._blosc_codec.decode, chunk_bytes)
 
-    async def encode(
+    async def encode_single(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
