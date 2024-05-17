@@ -2030,7 +2030,9 @@ class Array:
             and not self._filters
             and self._dtype != object
         ):
-            dest = out[out_selection]
+            # For 0D arrays out_selection = () and out[out_selection] is a scalar
+            # Avoid that
+            dest = out[out_selection] if out_selection else out
             # Assume that array-like objects that doesn't have a
             # `writeable` flag is writable.
             dest_is_writable = getattr(dest, "writeable", True)

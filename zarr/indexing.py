@@ -52,6 +52,8 @@ def is_scalar(value, dtype):
         return True
     if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
         return True
+    if dtype.kind == "O" and not isinstance(value, np.ndarray):
+        return True
     return False
 
 
