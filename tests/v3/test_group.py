@@ -203,7 +203,7 @@ async def test_asyncgroup_open_wrong_format(
     elif zarr_format == 2:
         zarr_format_wrong = 3
     else:
-        raise AssertionError()
+        raise AssertionError
 
     with pytest.raises(FileNotFoundError):
         await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
@@ -278,7 +278,7 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
     elif zarr_format == 3:
         assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
     else:
-        raise AssertionError()
+        raise AssertionError
 
     sub_group_path = "sub_group"
     _ = await agroup.create_group(sub_group_path, attributes={"foo": 100})
@@ -289,7 +289,7 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
     elif zarr_format == 3:
         assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
     else:
-        raise AssertionError()
+        raise AssertionError
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
