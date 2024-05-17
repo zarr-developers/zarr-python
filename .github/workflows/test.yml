@@ -43,7 +43,3 @@ jobs:
     - name: Run Tests
       run: |
         hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run
-    - name: Run mypy
-      continue-on-error: true
-      run: |
-        hatch run test:run-mypy
