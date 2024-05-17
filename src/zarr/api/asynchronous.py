@@ -2,23 +2,26 @@ from __future__ import annotations
 
 import asyncio
 import warnings
-from typing import Union, Any, Literal, Iterable
+from collections.abc import Iterable
+from typing import Any, Literal, Union
 
 import numpy as np
 import numpy.typing as npt
 
 from zarr.abc.codec import Codec
-from zarr.array import AsyncArray, Array
-from zarr.common import ZarrFormat, MEMORY_ORDER, JSON, ChunkCoords
+from zarr.array import Array, AsyncArray
+from zarr.common import JSON, MEMORY_ORDER, ChunkCoords, ZarrFormat
 from zarr.group import AsyncGroup
-from zarr.metadata import ChunkKeyEncoding
+from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata, ChunkKeyEncoding
 from zarr.store import (
     StoreLike,
     make_store_path,
 )
 
-ShapeLike = Union[int, tuple[int, ...]]
-ArrayLike = Union[AsyncArray, Array, npt.NDArray[Any]]
+ShapeLike = tuple[int, ...]  # TODO: support int for shape
+# TODO: this type could use some more thought, noqa to avoid "Variable "asynchronous.ArrayLike" is not valid as a type"
+ArrayLike = Union[AsyncArray | Array | npt.NDArray[Any]]  # noqa
+PathLike = str
 
 
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ShapeLike | None, ChunkCoords | None]:
@@ -50,13 +53,12 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> None:
 
     if isinstance(a, AsyncArray):
         kwargs.setdefault("order", a.order)
-        if a.metadata.zarr_format == 2:
-            # TODO: make this v2/v3 aware
+        if isinstance(a.metadata, ArrayV2Metadata):
             kwargs.setdefault("compressor", a.metadata.compressor)
             kwargs.setdefault("filters", a.metadata.filters)
 
-        elif a.metadata.zarr_format == 3:
-            kwargs.setdefault("codecs", a.codecs)
+        if isinstance(a.metadata, ArrayV3Metadata):
+            kwargs.setdefault("codecs", a.metadata.codecs)
         else:
             raise ValueError(f"Unsupported zarr format: {a.metadata.zarr_format}")
     else:
@@ -84,7 +86,7 @@ async def copy_store(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
 
 async def load(
     store: StoreLike, zarr_version: ZarrFormat | None = None, path: str | None = None
-) -> Union[AsyncArray, AsyncGroup]:
+) -> AsyncArray | AsyncGroup:
     """Load data from an array or group into memory.
 
     Parameters
@@ -112,9 +114,11 @@ async def load(
     """
     if zarr_version is not None:
         warnings.warn(
-            "zarr_version is deprecated and no longer required in load", DeprecationWarning
+            "zarr_version is deprecated and no longer required in load",
+            DeprecationWarning,
+            stacklevel=2,
         )
-    obj = await open(store, path=path)
+    obj = await open(store=store, path=path)
     if isinstance(obj, AsyncArray):
         return await obj.getitem(slice(None))
     else:
@@ -122,14 +126,14 @@ async def load(
 
 
 async def open(
-    store: StoreLike | None = None,
-    mode: str = "a",
     *,
-    zarr_version: ZarrFormat | None = None,
+    store: StoreLike | None = None,
+    mode: str | None = None,  # type and value changed
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to open_array
-) -> Union[AsyncArray, AsyncGroup]:
+) -> AsyncArray | AsyncGroup:
     """Convenience function to open a group or array using file-mode-like semantics.
 
     Parameters
@@ -155,15 +159,17 @@ async def open(
         Array or group, depending on what exists in the given store.
     """
     if zarr_version is not None:
-        warnings.warn("zarr_version is deprecated, use zarr_format", DeprecationWarning)
+        warnings.warn(
+            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
+        )
         zarr_format = zarr_version
+    if mode is not None:
+        warnings.warn("mode is ignored", RuntimeWarning, stacklevel=2)
 
     store_path = make_store_path(store)
 
     if path is not None:
         store_path = store_path / path
-
-    warnings.warn("TODO: mode is ignored", RuntimeWarning)
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format, **kwargs)
@@ -178,7 +184,7 @@ async def open_consolidated(*args: Any, **kwargs: Any) -> AsyncGroup:
 async def save(
     store: StoreLike,
     *args: npt.ArrayLike,
-    zarr_version: ZarrFormat | None = None,
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
@@ -199,7 +205,9 @@ async def save(
         NumPy arrays with data to save.
     """
     if zarr_version is not None:
-        warnings.warn("zarr_version is deprecated, use zarr_format", DeprecationWarning)
+        warnings.warn(
+            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
+        )
         zarr_format = zarr_version
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
@@ -213,7 +221,7 @@ async def save_array(
     store: StoreLike,
     arr: npt.ArrayLike,
     *,
-    zarr_version: ZarrFormat | None = None,
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to create
@@ -235,11 +243,13 @@ async def save_array(
         Passed through to :func:`create`, e.g., compressor.
     """
     if zarr_version is not None:
-        warnings.warn("zarr_version is deprecated, use zarr_format", DeprecationWarning)
+        warnings.warn(
+            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
+        )
         zarr_format = zarr_version
 
     if zarr_format is None:
-        zarr_format = 3  # TODO: perhaps this default should be set via config?
+        zarr_format = 3  # default via config?
 
     store_path = make_store_path(store)
     if path is not None:
@@ -251,7 +261,7 @@ async def save_array(
 async def save_group(
     store: StoreLike,
     *args: npt.ArrayLike,
-    zarr_version: ZarrFormat | None = None,
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     **kwargs: npt.ArrayLike,
@@ -273,7 +283,9 @@ async def save_group(
         NumPy arrays with data to save.
     """
     if zarr_version is not None:
-        warnings.warn("zarr_version is deprecated, use zarr_format", DeprecationWarning)
+        warnings.warn(
+            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
+        )
         zarr_format = zarr_version
 
     if len(args) == 0 and len(kwargs) == 0:
@@ -333,14 +345,14 @@ async def array(data: npt.ArrayLike, **kwargs: Any) -> AsyncArray:
 
 
 async def group(
+    *,  # Note: this is a change from v2
     store: StoreLike | None = None,
     overwrite: bool = False,
     chunk_store: StoreLike | None = None,  # not used
     cache_attrs: bool = True,  # not used
     synchronizer: Any | None = None,  # not used
     path: str | None = None,
-    *,
-    zarr_version: ZarrFormat | None = None,
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
 ) -> AsyncGroup:
@@ -377,23 +389,25 @@ async def group(
 
     if zarr_version is not None:
         zarr_format = zarr_version
-        warnings.warn("zarr_format is deprecated, use zarr_format instead", DeprecationWarning)
+        warnings.warn(
+            "zarr_format is deprecated, use zarr_format instead", DeprecationWarning, stacklevel=2
+        )
 
     if zarr_format is None:
-        zarr_format = 3  # TODO: perhaps this default should be set via config?
+        zarr_format = 3  # default via config?
 
     store_path = make_store_path(store)
     if path is not None:
         store_path = store_path / path
 
-    # requires_init = None
-    # if zarr_version == 2:
-    #     requires_init = overwrite or not contains_group(store)
-    # elif zarr_version == 3:
-    #     requires_init = overwrite or not contains_group(store, path)
-
-    # if requires_init:
-    #     init_group(store, overwrite=overwrite, chunk_store=chunk_store, path=path)
+    if chunk_store is not None:
+        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
+    if cache_attrs is not None:
+        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
+    if synchronizer is not None:
+        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
+    if meta_array is not None:
+        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
     try:
         return await AsyncGroup.open(store_path, zarr_format=zarr_format)
@@ -406,15 +420,15 @@ async def group(
 
 
 async def open_group(
+    *,  # Note: this is a change from v2
     store: StoreLike | None = None,
-    mode: str = "a",  # not used
+    mode: str | None = None,  # not used
     cache_attrs: bool = True,  # not used
     synchronizer: Any = None,  # not used
     path: str | None = None,
     chunk_store: StoreLike | None = None,  # not used
     storage_options: dict[str, Any] | None = None,  # not used
-    *,
-    zarr_version: ZarrFormat | None = None,
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
 ) -> AsyncGroup:
@@ -453,9 +467,26 @@ async def open_group(
 
     if zarr_version is not None:
         zarr_format = zarr_version
-        warnings.warn("zarr_format is deprecated, use zarr_format instead", DeprecationWarning)
+        warnings.warn(
+            "zarr_format is deprecated, use zarr_format instead", DeprecationWarning, stacklevel=2
+        )
     if zarr_format is None:
-        zarr_format = 3  # TODO: perhaps this default should be set via config?
+        zarr_format = 3  # default from config?
+
+    if mode is not None:
+        warnings.warn("mode is not yet implemented", RuntimeWarning, stacklevel=2)
+    if cache_attrs is not None:
+        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
+    if synchronizer is not None:
+        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
+    if meta_array is not None:
+        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
+
+    if chunk_store is not None:
+        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
+
+    if storage_options is not None:
+        warnings.warn("storage_options is not yet implemented", RuntimeWarning, stacklevel=2)
 
     store_path = make_store_path(store)
     if path is not None:
@@ -467,36 +498,192 @@ async def open_group(
 # TODO: require kwargs
 async def create(
     shape: ShapeLike,
-    chunks: Union[int, tuple[int, ...], bool] = True,
+    *,  # Note: this is a change from v2
+    chunks: ShapeLike | None = None,  # TODO: v2 allowed chunks=True
     dtype: npt.DTypeLike | None = None,
-    compressor: str = "default",
-    fill_value: int | None = 0,
-    order: MEMORY_ORDER = "C",
-    store: StoreLike | None = None,
+    compressor: dict[str, JSON] | None = None,  # TODO: default and type change
+    fill_value: Any = 0,  # TODO: need type
+    order: MEMORY_ORDER | None = None,  # TODO: default change
+    store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
     overwrite: bool = False,
-    path: str | None = None,
-    # chunk_store: StoreLike | None = None,
-    # filters: Sequence[Codec] | None = None,
-    # cache_metadata: bool = True,
-    # cache_attrs: bool = True,
-    # read_only: bool = False,
-    # object_codec: Codec | None = None,
-    # dimension_separator: DIMENSION_SEPARATOR | None = None,
-    # write_empty_chunks: bool = True,
-    *,
-    zarr_version: ZarrFormat | None = None,
-    # meta_array: MetaArray | None = None,
-    # storage_transformers: Sequence[StorageTransformer] = (),
-    **kwargs: Any,  # TODO: type kwargs as valid args to AsyncArray.Create
+    path: PathLike | None = None,
+    chunk_store: StoreLike | None = None,
+    filters: list[dict[str, JSON]] | None = None,  # TODO: type has changed
+    cache_metadata: bool | None = None,
+    cache_attrs: bool | None = None,
+    read_only: bool | None = None,
+    object_codec: Codec | None = None,  # TODO: type has changed
+    dimension_separator: Literal[".", "/"] | None = None,
+    write_empty_chunks: bool = True,
+    zarr_version: ZarrFormat | None = None,  # deprecated
+    zarr_format: ZarrFormat | None = None,
+    meta_array: Any | None = None,  # TODO: need type
+    storage_transformers: Any | None = (),  # TODO: need type
+    attributes: dict[str, JSON] | None = None,
+    # v3 only
+    chunk_shape: ChunkCoords | None = None,
+    chunk_key_encoding: (
+        ChunkKeyEncoding
+        | tuple[Literal["default"], Literal[".", "/"]]
+        | tuple[Literal["v2"], Literal[".", "/"]]
+        | None
+    ) = None,
+    codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+    dimension_names: Iterable[str] | None = None,
+    **kwargs: Any,
 ) -> AsyncArray:
+    """Create an array.
+
+    Parameters
+    ----------
+    shape : int or tuple of ints
+        Array shape.
+    chunks : int or tuple of ints, optional
+        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
+        False, will be set to `shape`, i.e., single chunk for the whole array.
+        If an int, the chunk size in each dimension will be given by the value
+        of `chunks`. Default is True.
+    dtype : string or dtype, optional
+        NumPy dtype.
+    compressor : Codec, optional
+        Primary compressor.
+    fill_value : object
+        Default value to use for uninitialized portions of the array.
+    order : {'C', 'F'}, optional
+        Memory layout to be used within each chunk.
+    store : Store or string
+        Store or path to directory in file system or name of zip file.
+    synchronizer : object, optional
+        Array synchronizer.
+    overwrite : bool, optional
+        If True, delete all pre-existing data in `store` at `path` before
+        creating the array.
+    path : string, optional
+        Path under which array is stored.
+    chunk_store : MutableMapping, optional
+        Separate storage for chunks. If not provided, `store` will be used
+        for storage of both chunks and metadata.
+    filters : sequence of Codecs, optional
+        Sequence of filters to use to encode chunk data prior to compression.
+    cache_metadata : bool, optional
+        If True, array configuration metadata will be cached for the
+        lifetime of the object. If False, array metadata will be reloaded
+        prior to all data access and modification operations (may incur
+        overhead depending on storage and data access pattern).
+    cache_attrs : bool, optional
+        If True (default), user attributes will be cached for attribute read
+        operations. If False, user attributes are reloaded from the store prior
+        to all attribute read operations.
+    read_only : bool, optional
+        True if array should be protected against modification.
+    object_codec : Codec, optional
+        A codec to encode object arrays, only needed if dtype=object.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
+
+        .. versionadded:: 2.8
+
+    write_empty_chunks : bool, optional
+        If True (default), all chunks will be stored regardless of their
+        contents. If False, each chunk is compared to the array's fill value
+        prior to storing. If a chunk is uniformly equal to the fill value, then
+        that chunk is not be stored, and the store entry for that chunk's key
+        is deleted. This setting enables sparser storage, as only chunks with
+        non-fill-value data are stored, at the expense of overhead associated
+        with checking the data of each chunk.
+
+        .. versionadded:: 2.11
+
+    storage_transformers : sequence of StorageTransformers, optional
+        Setting storage transformers, changes the storage structure and behaviour
+        of data coming from the underlying store. The transformers are applied in the
+        order of the given sequence. Supplying an empty sequence is the same as omitting
+        the argument or setting it to None. May only be set when using zarr_version 3.
+
+        .. versionadded:: 2.13
+
+    zarr_format : {2, 3, None}, optional
+        The zarr format to use when saving.
+
+    meta_array : array-like, optional
+        An array instance to use for determining arrays to create and return
+        to users. Use `numpy.empty(())` by default.
+
+        .. versionadded:: 2.13
+
+    Returns
+    -------
+    z : zarr.core.Array
+    """
+    # TODOs:
+    # order=order,  # TODO: set via config
+    # synchronizer=synchronizer,  # TODO: warn if set
+    # chunk_store=chunk_store,  # TODO: this should be a store parameter
+    # cache_metadata=cache_metadata,  # TODO: not yet implemented
+    # cache_attrs=cache_attrs,  # TODO: not yet implemented
+    # read_only=read_only,  # TODO: this should be a store parameter
+    # object_codec=object_codec,  # TODO: not yet implemented
+    # write_empty_chunks=write_empty_chunks,  # TODO: not yet implemented
+    # meta_array=meta_array,  # TODO: not yet implemented
+    # storage_transformers=storage_transformers,  # TODO: not yet implemented
+
+    if zarr_version is not None:
+        zarr_format = zarr_version
+        warnings.warn(
+            "zarr_format is deprecated, use zarr_format instead", DeprecationWarning, stacklevel=2
+        )
+
+    if zarr_format is None:
+        zarr_format = 3  # default from config?
+
+    if order is not None:
+        warnings.warn(
+            "order is deprecated, use zarr config instead", DeprecationWarning, stacklevel=2
+        )
+    if synchronizer is not None:
+        warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
+    if chunk_store is not None:
+        warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
+    if cache_metadata is not None:
+        warnings.warn("cache_metadata is not yet implemented", RuntimeWarning, stacklevel=2)
+    if cache_attrs is not None:
+        warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
+    if read_only is not None:
+        warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
+    if object_codec is not None:
+        warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
+    if dimension_separator is not None:
+        warnings.warn("dimension_separator is not yet implemented", RuntimeWarning, stacklevel=2)
+    if write_empty_chunks is not None:
+        warnings.warn("write_empty_chunks is not yet implemented", RuntimeWarning, stacklevel=2)
+    if storage_transformers:
+        warnings.warn("storage_transformers is not yet implemented", RuntimeWarning, stacklevel=2)
+    if meta_array is not None:
+        warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
+
     store_path = make_store_path(store)
     if path is not None:
         store_path = store_path / path
 
-    raise NotImplementedError
-    # TODO: finish when Norman's PR goes in
-    # return await AsyncArray.create(store_path, chunks=chunks, dtype=dtype, zarr_version=zarr_version, **kwargs)
+    return await AsyncArray.create(
+        store_path,
+        shape=shape,
+        chunks=chunks,
+        dtype=dtype,
+        compressor=compressor,
+        fill_value=fill_value,
+        exists_ok=overwrite,  # TODO: name change
+        filters=filters,
+        dimension_separator=dimension_separator,
+        zarr_format=zarr_format,
+        chunk_shape=chunk_shape,
+        chunk_key_encoding=chunk_key_encoding,
+        codecs=codecs,
+        dimension_names=dimension_names,
+        attributes=attributes,
+        **kwargs,
+    )
 
 
 async def empty(shape: ShapeLike, **kwargs: Any) -> AsyncArray:
@@ -559,47 +746,25 @@ async def ones_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
 
 
 async def open_array(
+    *,  # note: this is a change from v2
     store: StoreLike | None = None,
-    mode: str = "a",
-    shape: ShapeLike | None = None,
-    chunks: Union[int, tuple[int, ...], bool] = True,  # v2 only
-    dtype: npt.DTypeLike | None = None,
-    compressor: dict[str, JSON] | None = None,  # v2 only
-    fill_value: Any | None = 0,  # note: default is 0 here and None on Array.create
-    order: Literal["C", "F"] | None = "C",  # deprecate in favor of runtime config?
-    synchronizer: Any = None,  # deprecate and catch
-    filters: list[dict[str, JSON]] | None = None,  # v2 only
-    cache_metadata: bool = True,  # not implemented
-    cache_attrs: bool = True,  # not implemented
-    path: str | None = None,
-    object_codec: Any = None,  # not implemented
-    chunk_store: StoreLike | None = None,  # not implemented
-    storage_options: dict[str, Any] | None = None,  # not implemented
-    partial_decompress: bool = False,  # not implemented
-    write_empty_chunks: bool = True,  # not implemented
-    *,
-    zarr_version: ZarrFormat | None = None,  # deprecate in favor of zarr_format
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
-    dimension_separator: Literal[".", "/"] | None = None,  # v2 only
-    meta_array: Any | None = None,  # not implemented
-    attributes: dict[str, JSON] | None = None,
-    # v3 only
-    chunk_shape: ChunkCoords | None = None,
-    chunk_key_encoding: (
-        ChunkKeyEncoding
-        | tuple[Literal["default"], Literal[".", "/"]]
-        | tuple[Literal["v2"], Literal[".", "/"]]
-        | None
-    ) = None,
-    codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-    dimension_names: Iterable[str] | None = None,
+    path: PathLike | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
 ) -> AsyncArray:
     """Open an array using file-mode-like semantics.
 
     Parameters
     ----------
-    TODO
+    store : Store or string
+        Store or path to directory in file system or name of zip file.
+    zarr_format : {2, 3, None}, optional
+        The zarr format to use when saving.
+    path : string, optional
+        Path in store to array.
+    **kwargs
+        Any keyword arguments to pass to the array constructor.
 
     Returns
     -------
@@ -611,21 +776,19 @@ async def open_array(
     if path is not None:
         store_path = store_path / path
 
+    if zarr_version is not None:
+        zarr_format = zarr_version
+        warnings.warn(
+            "zarr_format is deprecated, use zarr_format instead", DeprecationWarning, stacklevel=2
+        )
+
     try:
-        return await AsyncArray.open(store_path)
+        return await AsyncArray.open(store_path, zarr_format=zarr_format)
     except KeyError:
         pass
 
-    warnings.warn("mode is ignored", RuntimeWarning)
-
-    if zarr_version is not None:
-        zarr_format = zarr_version
-        warnings.warn("zarr_format is deprecated, use zarr_format instead", DeprecationWarning)
-    if zarr_format is None:
-        zarr_format = 3  # TODO: perhaps this default should be set via config?
-
-    # TODO: finish when Norman's PR goes in
-    return await AsyncArray.create(store_path, zarr_format=zarr_format, **kwargs)
+    # if array was not found, create it
+    return await create(store=store, path=path, zarr_format=zarr_format, **kwargs)
 
 
 async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AsyncArray:
@@ -646,9 +809,9 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AsyncArray:
         The opened array.
     """
     _like_args(a, kwargs)
-    if isinstance(a, (AsyncArray, Array)):
+    if isinstance(a, (AsyncArray | Array)):
         kwargs.setdefault("fill_value", a.metadata.fill_value)
-    return await open_array(path, **kwargs)
+    return await open_array(path=path, **kwargs)
 
 
 async def zeros(shape: ShapeLike, **kwargs: Any) -> AsyncArray:

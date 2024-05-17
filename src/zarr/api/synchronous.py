@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from typing import Union, Any
+from typing import Any
+
 import numpy.typing as npt
 
-from zarr.store import StoreLike
-from zarr.array import Array
-from zarr.group import Group
 import zarr.api.asynchronous as async_api
-from zarr.sync import sync
+from zarr.array import Array
 from zarr.common import ZarrFormat
+from zarr.group import Group
+from zarr.store import StoreLike
+from zarr.sync import sync
 
 
 def consolidate_metadata(*args: Any, **kwargs: Any) -> Group:
@@ -33,7 +34,7 @@ def copy_store(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
 
 def load(
     store: StoreLike, zarr_version: ZarrFormat | None = None, path: str | None = None
-) -> Union[npt.ArrayLike, dict[str, npt.ArrayLike]]:
+) -> npt.ArrayLike | dict[str, npt.ArrayLike]:
     """
     Load data from an array or group into memory.
 
@@ -64,14 +65,14 @@ def load(
 
 
 def open(
-    store: StoreLike | None = None,
-    mode: str = "a",
     *,
-    zarr_version: ZarrFormat | None = None,
+    store: StoreLike | None = None,
+    mode: str | None = None,  # type and value changed
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.open
-) -> Union[Array, Group]:
+) -> Array | Group:
     """Convenience function to open a group or array using file-mode-like semantics.
 
     Parameters
@@ -119,7 +120,7 @@ def open_consolidated(*args: Any, **kwargs: Any) -> Group:
 def save(
     store: StoreLike,
     *args: npt.ArrayLike,
-    zarr_version: ZarrFormat | None = None,
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save
@@ -150,7 +151,7 @@ def save_array(
     store: StoreLike,
     arr: npt.ArrayLike,
     *,
-    zarr_version: ZarrFormat | None = None,
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save_array
@@ -186,7 +187,7 @@ def save_array(
 def save_group(
     store: StoreLike,
     *args: npt.ArrayLike,
-    zarr_version: ZarrFormat | None = None,
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     **kwargs: npt.ArrayLike,
@@ -210,7 +211,7 @@ def save_group(
     return sync(
         async_api.save_group(
             store=store,
-            *args,
+            *args,  # noqa: B026
             zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
@@ -235,14 +236,14 @@ def array(data: npt.ArrayLike, **kwargs: Any) -> Array:
 
 
 async def group(
+    *,  # Note: this is a change from v2
     store: StoreLike | None = None,
     overwrite: bool = False,
     chunk_store: StoreLike | None = None,  # not used in async_api
     cache_attrs: bool = True,  # not used in async_api
     synchronizer: Any | None = None,  # not used in async_api
     path: str | None = None,
-    *,
-    zarr_version: ZarrFormat | None = None,
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used in async_api
 ) -> Group:
@@ -294,15 +295,15 @@ async def group(
 
 
 def open_group(
+    *,  # Note: this is a change from v2
     store: StoreLike | None = None,
-    mode: str = "a",  # not used in async api
+    mode: str | None = None,  # not used in async api
     cache_attrs: bool = True,  # not used in async api
     synchronizer: Any = None,  # not used in async api
     path: str | None = None,
     chunk_store: StoreLike | None = None,  # not used in async api
     storage_options: dict[str, Any] | None = None,  # not used in async api
-    *,
-    zarr_version: ZarrFormat | None = None,
+    zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used in async api
 ) -> Group:
