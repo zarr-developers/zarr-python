@@ -42,8 +42,7 @@ class Crc32cCodec(BytesBytesCodecBatchMixin):
         stored_checksum = bytes(crc32_bytes)
         if computed_checksum != stored_checksum:
             raise ValueError(
-                "Stored and computed checksum do not match. "
-                + f"Stored: {stored_checksum!r}. Computed: {computed_checksum!r}."
+                f"Stored and computed checksum do not match. Stored: {stored_checksum!r}. Computed: {computed_checksum!r}."
             )
         return Buffer.from_array_like(inner_bytes)
 

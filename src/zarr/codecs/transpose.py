@@ -45,8 +45,7 @@ class TransposeCodec(ArrayArrayCodecBatchMixin):
     def evolve(self, array_spec: ArraySpec) -> Self:
         if len(self.order) != array_spec.ndim:
             raise ValueError(
-                "The `order` tuple needs have as many entries as "
-                + f"there are dimensions in the array. Got {self.order}."
+                f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
             )
         if len(self.order) != len(set(self.order)):
             raise ValueError(
@@ -54,8 +53,7 @@ class TransposeCodec(ArrayArrayCodecBatchMixin):
             )
         if not all(0 <= x < array_spec.ndim for x in self.order):
             raise ValueError(
-                "All entries in the `order` tuple must be between 0 and "
-                + f"the number of dimensions in the array. Got {self.order}."
+                f"All entries in the `order` tuple must be between 0 and the number of dimensions in the array. Got {self.order}."
             )
         order = tuple(self.order)
 
