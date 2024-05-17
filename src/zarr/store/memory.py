@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
-from typing import Optional, MutableMapping, List, Tuple
+from collections.abc import AsyncGenerator, MutableMapping
 
-from zarr.common import concurrent_map
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
+from zarr.common import concurrent_map
 
 
 # TODO: this store could easily be extended to wrap any MutableMapping store from v2
@@ -17,7 +16,7 @@ class MemoryStore(Store):
 
     _store_dict: MutableMapping[str, Buffer]
 
-    def __init__(self, store_dict: Optional[MutableMapping[str, Buffer]] = None):
+    def __init__(self, store_dict: MutableMapping[str, Buffer] | None = None):
         self._store_dict = store_dict or {}
 
     def __str__(self) -> str:
@@ -27,8 +26,8 @@ class MemoryStore(Store):
         return f"MemoryStore({str(self)!r})"
 
     async def get(
-        self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[Buffer]:
+        self, key: str, byte_range: tuple[int, int | None] | None = None
+    ) -> Buffer | None:
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
@@ -39,17 +38,15 @@ class MemoryStore(Store):
             return None
 
     async def get_partial_values(
-        self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[Optional[Buffer]]:
+        self, key_ranges: list[tuple[str, tuple[int, int]]]
+    ) -> list[Buffer | None]:
         vals = await concurrent_map(key_ranges, self.get, limit=None)
         return vals
 
     async def exists(self, key: str) -> bool:
         return key in self._store_dict
 
-    async def set(
-        self, key: str, value: Buffer, byte_range: Optional[Tuple[int, int]] = None
-    ) -> None:
+    async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         assert isinstance(key, str)
         if isinstance(value, (bytes, bytearray)):
             # TODO: to support the v2 tests, we convert bytes to Buffer here
@@ -70,7 +67,7 @@ class MemoryStore(Store):
         except KeyError:
             pass  # Q(JH): why not raise?
 
-    async def set_partial_values(self, key_start_values: List[Tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
         raise NotImplementedError
 
     async def list(self) -> AsyncGenerator[str, None]:

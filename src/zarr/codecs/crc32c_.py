@@ -1,20 +1,19 @@
 from __future__ import annotations
-from dataclasses import dataclass
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
-
 from crc32c import crc32c
 
-from zarr.codecs.mixins import BytesBytesCodecBatchMixin
 from zarr.buffer import Buffer
+from zarr.codecs.mixins import BytesBytesCodecBatchMixin
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration
 
 if TYPE_CHECKING:
-    from typing import Dict, Optional
     from typing_extensions import Self
+
     from zarr.common import JSON, ArraySpec
 
 
@@ -23,11 +22,11 @@ class Crc32cCodec(BytesBytesCodecBatchMixin):
     is_fixed_size = True
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         parse_named_configuration(data, "crc32c", require_configuration=False)
         return cls()
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         return {"name": "crc32c"}
 
     async def decode_single(
@@ -52,7 +51,7 @@ class Crc32cCodec(BytesBytesCodecBatchMixin):
         self,
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
-    ) -> Optional[Buffer]:
+    ) -> Buffer | None:
         data = chunk_bytes.as_numpy_array()
         # Calculate the checksum and "cast" it to a numpy array
         checksum = np.array([crc32c(data)], dtype=np.uint32)

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 from zarr.common import ZarrFormat
@@ -6,12 +7,12 @@ from zarr.group import AsyncGroup
 
 if TYPE_CHECKING:
     from typing import Any, Literal
-from dataclasses import dataclass, field
 import pathlib
+from dataclasses import dataclass, field
 
 import pytest
 
-from zarr.store import LocalStore, StorePath, MemoryStore
+from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.remote import RemoteStore
 
 

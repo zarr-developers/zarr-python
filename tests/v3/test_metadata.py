@@ -1,9 +1,12 @@
 from __future__ import annotations
-import pytest
+
 from typing import TYPE_CHECKING
 
+import pytest
+
 if TYPE_CHECKING:
-    from typing import Sequence, Any
+    from collections.abc import Sequence
+    from typing import Any
 
 from zarr.metadata import parse_dimension_names, parse_zarr_format_v2, parse_zarr_format_v3
 

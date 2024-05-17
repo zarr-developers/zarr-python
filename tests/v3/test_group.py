@@ -1,17 +1,18 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
-from zarr.buffer import Buffer
-from zarr.sync import sync
 from zarr.array import AsyncArray
+from zarr.buffer import Buffer
 from zarr.store.core import make_store_path
+from zarr.sync import sync
 
 if TYPE_CHECKING:
-    from zarr.store import MemoryStore, LocalStore
     from zarr.common import ZarrFormat
+    from zarr.store import LocalStore, MemoryStore
 
-import pytest
 import numpy as np
+import pytest
 
 from zarr.group import AsyncGroup, Group, GroupMetadata
 from zarr.store import StorePath

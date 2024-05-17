@@ -1,4 +1,5 @@
 from numpy import ndarray
+
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.common import ArraySpec, BytesLike
 

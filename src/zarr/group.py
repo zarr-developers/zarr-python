@@ -1,19 +1,20 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Iterator
-from dataclasses import asdict, dataclass, field, replace
 
 import asyncio
 import json
 import logging
+from collections.abc import Iterator
+from dataclasses import asdict, dataclass, field, replace
+from typing import TYPE_CHECKING, overload
+
 import numpy.typing as npt
 
-from zarr.abc.store import set_or_delete
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
-
-from zarr.buffer import Buffer
-from zarr.array import AsyncArray, Array
+from zarr.abc.store import set_or_delete
+from zarr.array import Array, AsyncArray
 from zarr.attributes import Attributes
+from zarr.buffer import Buffer
 from zarr.chunk_key_encodings import ChunkKeyEncoding
 from zarr.common import (
     JSON,
@@ -26,10 +27,10 @@ from zarr.common import (
 )
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import SyncMixin, sync
-from typing import overload
 
 if TYPE_CHECKING:
-    from typing import Any, AsyncGenerator, Literal, Iterable
+    from collections.abc import AsyncGenerator, Iterable
+    from typing import Any, Literal
 
 logger = logging.getLogger("zarr.group")
 
@@ -332,7 +333,7 @@ class AsyncGroup:
             zarr_format=self.metadata.zarr_format,
         )
 
-    async def update_attributes(self, new_attributes: dict[str, Any]) -> "AsyncGroup":
+    async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
         # metadata.attributes is "frozen" so we simply clear and update the dict
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -525,7 +526,7 @@ class Group(SyncMixin):
     def info(self):
         return self._async_group.info
 
-    def update_attributes(self, new_attributes: dict[str, Any]) -> "Group":
+    def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
