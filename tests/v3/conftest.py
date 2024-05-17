@@ -25,7 +25,7 @@ def parse_store(
         return MemoryStore()
     if store == "remote":
         return RemoteStore()
-    assert False
+    raise AssertionError()
 
 
 @pytest.fixture(params=[str, pathlib.Path])

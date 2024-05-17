@@ -6,15 +6,7 @@ import functools
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Literal,
-    ParamSpec,
-    TypeVar,
-    Union,
-    overload,
-)
+from typing import TYPE_CHECKING, Any, Literal, ParamSpec, TypeVar, overload
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -32,7 +24,7 @@ ChunkCoordsLike = Iterable[int]
 SliceSelection = tuple[slice, ...]
 Selection = slice | SliceSelection
 ZarrFormat = Literal[2, 3]
-JSON = Union[str, None, int, float, Enum, dict[str, "JSON"], list["JSON"], tuple["JSON", ...]]
+JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
 
 
 def product(tup: ChunkCoords) -> int:

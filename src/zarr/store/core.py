@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
@@ -57,7 +57,7 @@ class StorePath:
         return False
 
 
-StoreLike = Union[Store, StorePath, Path, str]
+StoreLike = Store | StorePath | Path | str
 
 
 def make_store_path(store_like: StoreLike) -> StorePath:

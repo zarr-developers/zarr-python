@@ -225,7 +225,7 @@ class Buffer:
         return self.__class__(np.concatenate((self._data, other_array)))
 
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, (bytes, bytearray)):
+        if isinstance(other, bytes | bytearray):
             # Many of the tests compares `Buffer` with `bytes` so we
             # convert the bytes to a Buffer and try again
             return self == self.from_bytes(other)

@@ -69,7 +69,7 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
     elif isinstance(node, AsyncGroup):
         return Group(node)
     else:
-        assert False
+        raise TypeError(f"Unknown node type, got {type(node)}")
 
 
 @dataclass(frozen=True)
@@ -115,7 +115,7 @@ class AsyncGroup:
         cls,
         store: StoreLike,
         *,
-        attributes: dict[str, Any] = {},
+        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
         exists_ok: bool = False,
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
@@ -279,7 +279,10 @@ class AsyncGroup:
         return self.metadata.info
 
     async def create_group(
-        self, path: str, exists_ok: bool = False, attributes: dict[str, Any] = {}
+        self,
+        path: str,
+        exists_ok: bool = False,
+        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
     ) -> AsyncGroup:
         return await type(self).create(
             self.store_path / path,
@@ -402,7 +405,7 @@ class AsyncGroup:
 
     # todo: decide if this method should be separate from `group_keys`
     async def groups(self) -> AsyncGenerator[AsyncGroup, None]:
-        async for key, value in self.members():
+        async for _, value in self.members():
             if isinstance(value, AsyncGroup):
                 yield value
 
@@ -414,7 +417,7 @@ class AsyncGroup:
 
     # todo: decide if this method should be separate from `array_keys`
     async def arrays(self) -> AsyncGenerator[AsyncArray, None]:
-        async for key, value in self.members():
+        async for _, value in self.members():
             if isinstance(value, AsyncArray):
                 yield value
 
@@ -458,7 +461,7 @@ class Group(SyncMixin):
         cls,
         store: StoreLike,
         *,
-        attributes: dict[str, Any] = {},
+        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
         exists_ok: bool = False,
     ) -> Group:
         obj = sync(

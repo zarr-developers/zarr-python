@@ -182,13 +182,9 @@ class BatchedCodecPipeline(CodecPipeline):
         )
 
     def __iter__(self) -> Iterator[Codec]:
-        for aa_codec in self.array_array_codecs:
-            yield aa_codec
-
+        yield from self.array_array_codecs
         yield self.array_bytes_codec
-
-        for bb_codec in self.bytes_bytes_codecs:
-            yield bb_codec
+        yield from self.bytes_bytes_codecs
 
     def validate(self, array_metadata: ArrayMetadata) -> None:
         for codec in self:

@@ -48,7 +48,7 @@ class MemoryStore(Store):
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         assert isinstance(key, str)
-        if isinstance(value, (bytes, bytearray)):
+        if isinstance(value, bytes | bytearray):
             # TODO: to support the v2 tests, we convert bytes to Buffer here
             value = Buffer.from_bytes(value)
         if not isinstance(value, Buffer):
