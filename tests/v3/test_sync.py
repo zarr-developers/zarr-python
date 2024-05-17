@@ -1,11 +1,11 @@
-from collections.abc import AsyncGenerator
 import asyncio
 import time
-from unittest.mock import patch, AsyncMock
-
-from zarr.sync import sync, _get_loop, _get_lock, SyncError, SyncMixin
+from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock, patch
 
 import pytest
+
+from zarr.sync import SyncError, SyncMixin, _get_lock, _get_loop, sync
 
 
 @pytest.fixture(params=[True, False])

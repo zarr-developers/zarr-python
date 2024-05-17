@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union
+from typing import Any
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
@@ -21,14 +21,14 @@ class StorePath:
     store: Store
     path: str
 
-    def __init__(self, store: Store, path: Optional[str] = None):
+    def __init__(self, store: Store, path: str | None = None):
         self.store = store
         self.path = path or ""
 
-    async def get(self, byte_range: Optional[Tuple[int, Optional[int]]] = None) -> Optional[Buffer]:
+    async def get(self, byte_range: tuple[int, int | None] | None = None) -> Buffer | None:
         return await self.store.get(self.path, byte_range)
 
-    async def set(self, value: Buffer, byte_range: Optional[Tuple[int, int]] = None) -> None:
+    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         if byte_range is not None:
             raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)
@@ -57,7 +57,7 @@ class StorePath:
         return False
 
 
-StoreLike = Union[Store, StorePath, Path, str]
+StoreLike = Store | StorePath | Path | str
 
 
 def make_store_path(store_like: StoreLike) -> StorePath:

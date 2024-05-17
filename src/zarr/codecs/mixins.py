@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import Awaitable, Callable, Generic, Iterable, TypeVar
-
+from collections.abc import Awaitable, Callable, Iterable
+from typing import Generic, TypeVar
 
 from zarr.abc.codec import (
     ArrayArrayCodec,
@@ -10,13 +10,12 @@ from zarr.abc.codec import (
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
     ByteGetter,
-    ByteSetter,
     BytesBytesCodec,
+    ByteSetter,
 )
 from zarr.buffer import Buffer, NDBuffer
 from zarr.common import ArraySpec, SliceSelection, concurrent_map
 from zarr.config import config
-
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)

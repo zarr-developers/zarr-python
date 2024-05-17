@@ -1,16 +1,16 @@
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from typing import List, Protocol, Tuple, Optional, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-from zarr.common import BytesLike
 from zarr.buffer import Buffer
+from zarr.common import BytesLike
 
 
 class Store(ABC):
     @abstractmethod
     async def get(
-        self, key: str, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[Buffer]:
+        self, key: str, byte_range: tuple[int, int | None] | None = None
+    ) -> Buffer | None:
         """Retrieve the value associated with a given key.
 
         Parameters
@@ -26,8 +26,8 @@ class Store(ABC):
 
     @abstractmethod
     async def get_partial_values(
-        self, key_ranges: List[Tuple[str, Tuple[int, int]]]
-    ) -> List[Optional[Buffer]]:
+        self, key_ranges: list[tuple[str, tuple[int, int]]]
+    ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
@@ -150,18 +150,14 @@ class Store(ABC):
 
 @runtime_checkable
 class ByteGetter(Protocol):
-    async def get(
-        self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[Buffer]: ...
+    async def get(self, byte_range: tuple[int, int | None] | None = None) -> Buffer | None: ...
 
 
 @runtime_checkable
 class ByteSetter(Protocol):
-    async def get(
-        self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[Buffer]: ...
+    async def get(self, byte_range: tuple[int, int | None] | None = None) -> Buffer | None: ...
 
-    async def set(self, value: Buffer, byte_range: Optional[Tuple[int, int]] = None) -> None: ...
+    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None: ...
 
     async def delete(self) -> None: ...
 

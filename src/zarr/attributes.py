@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import MutableMapping
-from typing import TYPE_CHECKING, Iterator
+from collections.abc import Iterator, MutableMapping
+from typing import TYPE_CHECKING
 
 from zarr.common import JSON
 
 if TYPE_CHECKING:
-    from zarr.group import Group
     from zarr.array import Array
+    from zarr.group import Group
 
 
 class Attributes(MutableMapping[str, JSON]):

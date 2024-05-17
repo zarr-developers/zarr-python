@@ -1,17 +1,18 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
-from zarr.buffer import Buffer
-from zarr.sync import sync
 from zarr.array import AsyncArray
+from zarr.buffer import Buffer
 from zarr.store.core import make_store_path
+from zarr.sync import sync
 
 if TYPE_CHECKING:
-    from zarr.store import MemoryStore, LocalStore
     from zarr.common import ZarrFormat
+    from zarr.store import LocalStore, MemoryStore
 
-import pytest
 import numpy as np
+import pytest
 
 from zarr.group import AsyncGroup, Group, GroupMetadata
 from zarr.store import StorePath
@@ -202,7 +203,7 @@ async def test_asyncgroup_open_wrong_format(
     elif zarr_format == 2:
         zarr_format_wrong = 3
     else:
-        assert False
+        raise AssertionError()
 
     with pytest.raises(FileNotFoundError):
         await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
@@ -277,7 +278,7 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
     elif zarr_format == 3:
         assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
     else:
-        assert False
+        raise AssertionError()
 
     sub_group_path = "sub_group"
     _ = await agroup.create_group(sub_group_path, attributes={"foo": 100})
@@ -288,7 +289,7 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
     elif zarr_format == 3:
         assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
     else:
-        assert False
+        raise AssertionError()
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])

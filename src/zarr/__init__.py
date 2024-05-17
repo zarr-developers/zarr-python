@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import zarr.codecs  # noqa: F401
+from zarr._version import version as __version__
 from zarr.array import Array, AsyncArray
 from zarr.config import config  # noqa: F401
 from zarr.group import AsyncGroup, Group
@@ -9,7 +10,6 @@ from zarr.store import (
     make_store_path,
 )
 from zarr.sync import sync as _sync
-from zarr._version import version as __version__
 
 # in case setuptools scm screw up and find version to be 0.0.0
 assert not __version__.startswith("0.0.0")

@@ -1,29 +1,29 @@
 from __future__ import annotations
-from dataclasses import dataclass
 
 import json
-from typing import Iterator, List, Literal, Optional, Tuple
-
+from collections.abc import Iterator
+from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 import pytest
+
 import zarr.v2
 from zarr.abc.codec import Codec
+from zarr.abc.store import Store
 from zarr.array import Array, AsyncArray
-from zarr.common import Selection
-from zarr.indexing import morton_order_iter
 from zarr.codecs import (
-    ShardingCodec,
-    ShardingCodecIndexLocation,
     BloscCodec,
     BytesCodec,
     GzipCodec,
+    ShardingCodec,
+    ShardingCodecIndexLocation,
     TransposeCodec,
     ZstdCodec,
 )
-
-from zarr.abc.store import Store
+from zarr.common import Selection
 from zarr.config import config
+from zarr.indexing import morton_order_iter
 from zarr.store import MemoryStore, StorePath
 
 
@@ -57,7 +57,7 @@ def sample_data() -> np.ndarray:
     return np.arange(0, 128 * 128 * 128, dtype="uint16").reshape((128, 128, 128), order="F")
 
 
-def order_from_dim(order: Literal["F", "C"], ndim: int) -> Tuple[int, ...]:
+def order_from_dim(order: Literal["F", "C"], ndim: int) -> tuple[int, ...]:
     if order == "F":
         return tuple(ndim - x - 1 for x in range(ndim))
     else:
@@ -243,7 +243,7 @@ async def test_order(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((32, 8), order=input_order)
 
-    codecs_: List[Codec] = (
+    codecs_: list[Codec] = (
         [
             ShardingCodec(
                 chunk_shape=(16, 8),
@@ -310,7 +310,7 @@ def test_order_implicit(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16), order=input_order)
 
-    codecs_: Optional[List[Codec]] = [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
+    codecs_: list[Codec] | None = [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
 
     with config.set({"array.order": runtime_write_order}):
         a = Array.create(
@@ -352,7 +352,7 @@ async def test_transpose(
 ):
     data = np.arange(0, 256, dtype="uint16").reshape((1, 32, 8), order=input_order)
 
-    codecs_: List[Codec] = (
+    codecs_: list[Codec] = (
         [
             ShardingCodec(
                 chunk_shape=(1, 16, 8),

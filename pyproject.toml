@@ -160,12 +160,17 @@ extend-exclude = [
     "build",
     "dist",
     "venv",
-    "docs"
+    "docs",
+    "src/zarr/v2/",
+    "tests/v2/",
 ]
 
 [tool.ruff.lint]
 extend-select = [
-    "RUF"
+    "B",  # flake8-bugbear
+    "I",  # isort
+    "UP",  # pyupgrade
+    "RUF",
 ]
 ignore = [
     "RUF003",

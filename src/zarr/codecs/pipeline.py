@@ -1,30 +1,32 @@
 from __future__ import annotations
 
-from itertools import islice
-from typing import TYPE_CHECKING, Iterator, TypeVar, Iterable
-from warnings import warn
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from itertools import islice
+from typing import TYPE_CHECKING, TypeVar
+from warnings import warn
 
-from zarr.config import config
 from zarr.abc.codec import (
-    ByteGetter,
-    ByteSetter,
-    Codec,
-    CodecPipeline,
     ArrayArrayCodec,
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
+    ByteGetter,
     BytesBytesCodec,
+    ByteSetter,
+    Codec,
+    CodecPipeline,
 )
 from zarr.buffer import Buffer, NDBuffer
 from zarr.codecs.registry import get_codec_class
 from zarr.common import JSON, concurrent_map, parse_named_configuration
+from zarr.config import config
 from zarr.indexing import is_total_slice
 from zarr.metadata import ArrayMetadata
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
     from zarr.common import ArraySpec, SliceSelection
 
 T = TypeVar("T")
@@ -180,13 +182,9 @@ class BatchedCodecPipeline(CodecPipeline):
         )
 
     def __iter__(self) -> Iterator[Codec]:
-        for aa_codec in self.array_array_codecs:
-            yield aa_codec
-
+        yield from self.array_array_codecs
         yield self.array_bytes_codec
-
-        for bb_codec in self.bytes_bytes_codecs:
-            yield bb_codec
+        yield from self.bytes_bytes_codecs
 
     def validate(self, array_metadata: ArrayMetadata) -> None:
         for codec in self:
@@ -237,13 +235,19 @@ class BatchedCodecPipeline(CodecPipeline):
         ) = self._codecs_with_resolved_metadata_batched(chunk_specs)
 
         for bb_codec, chunk_spec_batch in bb_codecs_with_spec[::-1]:
-            chunk_bytes_batch = await bb_codec.decode(zip(chunk_bytes_batch, chunk_spec_batch))
+            chunk_bytes_batch = await bb_codec.decode(
+                zip(chunk_bytes_batch, chunk_spec_batch, strict=False)
+            )
 
         ab_codec, chunk_spec_batch = ab_codec_with_spec
-        chunk_array_batch = await ab_codec.decode(zip(chunk_bytes_batch, chunk_spec_batch))
+        chunk_array_batch = await ab_codec.decode(
+            zip(chunk_bytes_batch, chunk_spec_batch, strict=False)
+        )
 
         for aa_codec, chunk_spec_batch in aa_codecs_with_spec[::-1]:
-            chunk_array_batch = await aa_codec.decode(zip(chunk_array_batch, chunk_spec_batch))
+            chunk_array_batch = await aa_codec.decode(
+                zip(chunk_array_batch, chunk_spec_batch, strict=False)
+            )
 
         return chunk_array_batch
 
@@ -264,14 +268,20 @@ class BatchedCodecPipeline(CodecPipeline):
         chunk_array_batch, chunk_specs = _unzip2(chunk_arrays_and_specs)
 
         for aa_codec in self.array_array_codecs:
-            chunk_array_batch = await aa_codec.encode(zip(chunk_array_batch, chunk_specs))
+            chunk_array_batch = await aa_codec.encode(
+                zip(chunk_array_batch, chunk_specs, strict=False)
+            )
             chunk_specs = resolve_batched(aa_codec, chunk_specs)
 
-        chunk_bytes_batch = await self.array_bytes_codec.encode(zip(chunk_array_batch, chunk_specs))
+        chunk_bytes_batch = await self.array_bytes_codec.encode(
+            zip(chunk_array_batch, chunk_specs, strict=False)
+        )
         chunk_specs = resolve_batched(self.array_bytes_codec, chunk_specs)
 
         for bb_codec in self.bytes_bytes_codecs:
-            chunk_bytes_batch = await bb_codec.encode(zip(chunk_bytes_batch, chunk_specs))
+            chunk_bytes_batch = await bb_codec.encode(
+                zip(chunk_bytes_batch, chunk_specs, strict=False)
+            )
             chunk_specs = resolve_batched(bb_codec, chunk_specs)
 
         return chunk_bytes_batch
@@ -297,7 +307,7 @@ class BatchedCodecPipeline(CodecPipeline):
                 ]
             )
             for chunk_array, (_, chunk_spec, _, out_selection) in zip(
-                chunk_array_batch, batch_info
+                chunk_array_batch, batch_info, strict=False
             ):
                 if chunk_array is not None:
                     out[out_selection] = chunk_array
@@ -312,11 +322,13 @@ class BatchedCodecPipeline(CodecPipeline):
             chunk_array_batch = await self.decode_batch(
                 [
                     (chunk_bytes, chunk_spec)
-                    for chunk_bytes, (_, chunk_spec, _, _) in zip(chunk_bytes_batch, batch_info)
+                    for chunk_bytes, (_, chunk_spec, _, _) in zip(
+                        chunk_bytes_batch, batch_info, strict=False
+                    )
                 ],
             )
             for chunk_array, (_, chunk_spec, chunk_selection, out_selection) in zip(
-                chunk_array_batch, batch_info
+                chunk_array_batch, batch_info, strict=False
             ):
                 if chunk_array is not None:
                     tmp = chunk_array[chunk_selection]
@@ -356,7 +368,9 @@ class BatchedCodecPipeline(CodecPipeline):
             chunk_array_batch = await self.decode_batch(
                 [
                     (chunk_bytes, chunk_spec)
-                    for chunk_bytes, (_, chunk_spec, _, _) in zip(chunk_bytes_batch, batch_info)
+                    for chunk_bytes, (_, chunk_spec, _, _) in zip(
+                        chunk_bytes_batch, batch_info, strict=False
+                    )
                 ],
             )
 
@@ -383,7 +397,7 @@ class BatchedCodecPipeline(CodecPipeline):
             chunk_array_batch = [
                 _merge_chunk_array(chunk_array, value[out_selection], chunk_spec, chunk_selection)
                 for chunk_array, (_, chunk_spec, chunk_selection, out_selection) in zip(
-                    chunk_array_batch, batch_info
+                    chunk_array_batch, batch_info, strict=False
                 )
             ]
 
@@ -391,13 +405,17 @@ class BatchedCodecPipeline(CodecPipeline):
                 None
                 if chunk_array is None or chunk_array.all_equal(chunk_spec.fill_value)
                 else chunk_array
-                for chunk_array, (_, chunk_spec, _, _) in zip(chunk_array_batch, batch_info)
+                for chunk_array, (_, chunk_spec, _, _) in zip(
+                    chunk_array_batch, batch_info, strict=False
+                )
             ]
 
             chunk_bytes_batch = await self.encode_batch(
                 [
                     (chunk_array, chunk_spec)
-                    for chunk_array, (_, chunk_spec, _, _) in zip(chunk_array_batch, batch_info)
+                    for chunk_array, (_, chunk_spec, _, _) in zip(
+                        chunk_array_batch, batch_info, strict=False
+                    )
                 ],
             )
 
@@ -410,7 +428,9 @@ class BatchedCodecPipeline(CodecPipeline):
             await concurrent_map(
                 [
                     (byte_setter, chunk_bytes)
-                    for chunk_bytes, (byte_setter, _, _, _) in zip(chunk_bytes_batch, batch_info)
+                    for chunk_bytes, (byte_setter, _, _, _) in zip(
+                        chunk_bytes_batch, batch_info, strict=False
+                    )
                 ],
                 _write_key,
                 config.get("async.concurrency"),
