@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from zarr.buffer import Buffer, NDBuffer
-from zarr.codecs.mixins import ArrayArrayCodecBatchMixin, ArrayBytesCodecBatchMixin
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
 from zarr.common import JSON, ArraySpec, to_thread
 
 import numcodecs
@@ -11,12 +11,12 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 
 @dataclass(frozen=True)
-class V2Compressor(ArrayBytesCodecBatchMixin):
+class V2Compressor(ArrayBytesCodec):
     compressor: dict[str, JSON] | None
 
     is_fixed_size = False
 
-    async def decode_single(
+    async def _decode_single(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
@@ -38,7 +38,7 @@ class V2Compressor(ArrayBytesCodecBatchMixin):
 
         return NDBuffer.from_numpy_array(chunk_numpy_array)
 
-    async def encode_single(
+    async def _encode_single(
         self,
         chunk_array: NDBuffer,
         _chunk_spec: ArraySpec,
@@ -64,12 +64,12 @@ class V2Compressor(ArrayBytesCodecBatchMixin):
 
 
 @dataclass(frozen=True)
-class V2Filters(ArrayArrayCodecBatchMixin):
+class V2Filters(ArrayArrayCodec):
     filters: list[dict[str, JSON]]
 
     is_fixed_size = False
 
-    async def decode_single(
+    async def _decode_single(
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
@@ -90,7 +90,7 @@ class V2Filters(ArrayArrayCodecBatchMixin):
 
         return NDBuffer.from_numpy_array(chunk_numpy_array)
 
-    async def encode_single(
+    async def _encode_single(
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
