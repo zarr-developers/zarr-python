@@ -40,7 +40,7 @@ class TransposeCodec(ArrayArrayCodec):
     def to_dict(self) -> Dict[str, JSON]:
         return {"name": "transpose", "configuration": {"order": list(self.order)}}
 
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if len(self.order) != array_spec.ndim:
             raise ValueError(
                 "The `order` tuple needs have as many entries as "

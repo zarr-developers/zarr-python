@@ -125,7 +125,7 @@ class BloscCodec(BytesBytesCodec):
             },
         }
 
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         new_codec = self
         if new_codec.typesize is None:
             new_codec = replace(new_codec, typesize=array_spec.dtype.itemsize)

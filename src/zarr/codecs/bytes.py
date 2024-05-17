@@ -50,7 +50,7 @@ class BytesCodec(ArrayBytesCodec):
         else:
             return {"name": "bytes", "configuration": {"endian": self.endian}}
 
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if array_spec.dtype.itemsize == 0:
             if self.endian is not None:
                 return replace(self, endian=None)

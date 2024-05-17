@@ -60,7 +60,7 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         """
         return chunk_spec
 
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         """Fills in codec configuration parameters that can be automatically
         inferred from the array metadata.
 
@@ -236,7 +236,7 @@ class CodecPipeline(Metadata):
     and writes them to a store (via ByteSetter)."""
 
     @abstractmethod
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         """Fills in codec configuration parameters that can be automatically
         inferred from the array metadata.
 

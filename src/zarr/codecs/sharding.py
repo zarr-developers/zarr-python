@@ -347,9 +347,9 @@ class ShardingCodec(
             },
         }
 
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         shard_spec = self._get_chunk_spec(array_spec)
-        evolved_codecs = self.codecs.evolve(shard_spec)
+        evolved_codecs = self.codecs.evolve_from_array_spec(shard_spec)
         if evolved_codecs != self.codecs:
             return replace(self, codecs=evolved_codecs)
         return self

@@ -192,7 +192,7 @@ class ArrayV3Metadata(ArrayMetadata):
             fill_value=fill_value_parsed,
             order="C",  # TODO: order is not needed here.
         )
-        codecs_parsed = parse_codecs(codecs).evolve(array_spec)
+        codecs_parsed = parse_codecs(codecs).evolve_from_array_spec(array_spec)
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type_parsed)
