@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from typing import TYPE_CHECKING, Awaitable, Callable, Generic, Iterable, TypeVar
+from collections.abc import Awaitable, Callable, Iterable
+from typing import TYPE_CHECKING, Generic, TypeVar
 
-from zarr.config import config
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, NDBuffer
 from zarr.common import concurrent_map
-
+from zarr.config import config
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
     from zarr.common import ArraySpec, SliceSelection
     from zarr.metadata import ArrayMetadata
 

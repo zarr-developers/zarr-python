@@ -1,19 +1,21 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Dict, Iterable, Union, cast
 
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, cast
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.buffer import NDBuffer
-from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
 from zarr.codecs.registry import register_codec
+from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
 
 if TYPE_CHECKING:
-    from typing import TYPE_CHECKING, Optional, Tuple
+    from typing import TYPE_CHECKING
+
     from typing_extensions import Self
 
 
-def parse_transpose_order(data: Union[JSON, Iterable[int]]) -> Tuple[int, ...]:
+def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected an iterable. Got {data} instead.")
     if not all(isinstance(a, int) for a in data):
@@ -25,7 +27,7 @@ def parse_transpose_order(data: Union[JSON, Iterable[int]]) -> Tuple[int, ...]:
 class TransposeCodec(ArrayArrayCodec):
     is_fixed_size = True
 
-    order: Tuple[int, ...]
+    order: tuple[int, ...]
 
     def __init__(self, *, order: ChunkCoordsLike) -> None:
         order_parsed = parse_transpose_order(order)
@@ -33,11 +35,11 @@ class TransposeCodec(ArrayArrayCodec):
         object.__setattr__(self, "order", order_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "transpose")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         return {"name": "transpose", "configuration": {"order": list(self.order)}}
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
@@ -86,7 +88,7 @@ class TransposeCodec(ArrayArrayCodec):
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
-    ) -> Optional[NDBuffer]:
+    ) -> NDBuffer | None:
         chunk_array = chunk_array.transpose(self.order)
         return chunk_array
 

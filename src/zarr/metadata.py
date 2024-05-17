@@ -1,9 +1,12 @@
 from __future__ import annotations
-from abc import ABC, abstractmethod
-from enum import Enum
-from typing import TYPE_CHECKING, Any, cast, Iterable
-from dataclasses import dataclass, field, replace
+
 import json
+from abc import ABC, abstractmethod
+from collections.abc import Iterable
+from dataclasses import dataclass, field, replace
+from enum import Enum
+from typing import TYPE_CHECKING, Any, cast
+
 import numpy as np
 import numpy.typing as npt
 
@@ -14,9 +17,9 @@ from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
 
-
 if TYPE_CHECKING:
     from typing import Literal
+
     from typing_extensions import Self
 
 
@@ -32,7 +35,6 @@ from zarr.common import (
     parse_shapelike,
 )
 from zarr.config import parse_indexing_order
-
 
 # For type checking
 _bool = bool

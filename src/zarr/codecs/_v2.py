@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from zarr.buffer import Buffer, NDBuffer
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
-from zarr.common import JSON, ArraySpec, to_thread
-
 import numcodecs
 from numcodecs.compat import ensure_bytes, ensure_ndarray
+
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
+from zarr.buffer import Buffer, NDBuffer
+from zarr.common import JSON, ArraySpec, to_thread
 
 
 @dataclass(frozen=True)

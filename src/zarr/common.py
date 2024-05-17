@@ -1,23 +1,15 @@
 from __future__ import annotations
-from typing import (
-    TYPE_CHECKING,
-    ParamSpec,
-    Literal,
-    Union,
-    Tuple,
-    Iterable,
-    TypeVar,
-    overload,
-    Any,
-)
+
 import asyncio
 import contextvars
+import functools
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
-import functools
+from typing import TYPE_CHECKING, Any, Literal, ParamSpec, TypeVar, overload
 
 if TYPE_CHECKING:
-    from typing import Awaitable, Callable, Iterator, Optional, Type
+    from collections.abc import Awaitable, Callable, Iterator
 
 import numpy as np
 
@@ -32,7 +24,7 @@ ChunkCoordsLike = Iterable[int]
 SliceSelection = tuple[slice, ...]
 Selection = slice | SliceSelection
 ZarrFormat = Literal[2, 3]
-JSON = Union[str, None, int, float, Enum, dict[str, "JSON"], list["JSON"], tuple["JSON", ...]]
+JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
 
 
 def product(tup: ChunkCoords) -> int:
@@ -44,7 +36,7 @@ V = TypeVar("V")
 
 
 async def concurrent_map(
-    items: list[T], func: Callable[..., Awaitable[V]], limit: Optional[int] = None
+    items: list[T], func: Callable[..., Awaitable[V]], limit: int | None = None
 ) -> list[V]:
     if limit is None:
         return await asyncio.gather(*[func(*item) for item in items])
@@ -52,7 +44,7 @@ async def concurrent_map(
     else:
         sem = asyncio.Semaphore(limit)
 
-        async def run(item: Tuple[Any]) -> V:
+        async def run(item: tuple[Any]) -> V:
             async with sem:
                 return await func(*item)
 
@@ -73,12 +65,12 @@ async def to_thread(func: Callable[P, U], /, *args: P.args, **kwargs: P.kwargs) 
 E = TypeVar("E", bound=Enum)
 
 
-def enum_names(enum: Type[E]) -> Iterator[str]:
+def enum_names(enum: type[E]) -> Iterator[str]:
     for item in enum:
         yield item.name
 
 
-def parse_enum(data: JSON, cls: Type[E]) -> E:
+def parse_enum(data: JSON, cls: type[E]) -> E:
     if isinstance(data, cls):
         return data
     if not isinstance(data, str):
@@ -113,7 +105,7 @@ class ArraySpec:
         return len(self.shape)
 
 
-def parse_name(data: JSON, expected: Optional[str] = None) -> str:
+def parse_name(data: JSON, expected: str | None = None) -> str:
     if isinstance(data, str):
         if expected is None or data == expected:
             return data
@@ -130,19 +122,19 @@ def parse_configuration(data: JSON) -> JSON:
 
 @overload
 def parse_named_configuration(
-    data: JSON, expected_name: Optional[str] = None
+    data: JSON, expected_name: str | None = None
 ) -> tuple[str, dict[str, JSON]]: ...
 
 
 @overload
 def parse_named_configuration(
-    data: JSON, expected_name: Optional[str] = None, *, require_configuration: bool = True
-) -> tuple[str, Optional[dict[str, JSON]]]: ...
+    data: JSON, expected_name: str | None = None, *, require_configuration: bool = True
+) -> tuple[str, dict[str, JSON] | None]: ...
 
 
 def parse_named_configuration(
-    data: JSON, expected_name: Optional[str] = None, *, require_configuration: bool = True
-) -> tuple[str, Optional[JSON]]:
+    data: JSON, expected_name: str | None = None, *, require_configuration: bool = True
+) -> tuple[str, JSON | None]:
     if not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")
     if "name" not in data:

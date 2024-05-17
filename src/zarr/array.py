@@ -1,29 +1,28 @@
 from __future__ import annotations
 
+import json
+
 # Notes on what I've changed here:
 # 1. Split Array into AsyncArray and Array
 # 3. Added .size and .attrs methods
 # 4. Temporarily disabled the creation of ArrayV2
 # 5. Added from_dict to AsyncArray
-
 # Questions to consider:
 # 1. Was splitting the array into two classes really necessary?
-
-
 from asyncio import gather
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
-
-import json
-from typing import Any, Iterable, Literal
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
+
 from zarr.abc.codec import Codec
 from zarr.abc.store import set_or_delete
-
-
 from zarr.attributes import Attributes
 from zarr.buffer import Factory, NDArrayLike, NDBuffer
+from zarr.chunk_grids import RegularChunkGrid
+from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
 from zarr.common import (
     JSON,
@@ -36,11 +35,8 @@ from zarr.common import (
     concurrent_map,
 )
 from zarr.config import config
-
 from zarr.indexing import BasicIndexer
-from zarr.chunk_grids import RegularChunkGrid
-from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-from zarr.metadata import ArrayMetadata, ArrayV3Metadata, ArrayV2Metadata, parse_indexing_order
+from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata, parse_indexing_order
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 

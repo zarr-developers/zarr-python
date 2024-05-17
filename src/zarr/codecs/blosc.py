@@ -1,9 +1,9 @@
 from __future__ import annotations
+
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import cached_property
-
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 import numcodecs
 from numcodecs.blosc import Blosc
@@ -14,8 +14,8 @@ from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
-    from typing import Dict, Optional
     from typing_extensions import Self
+
     from zarr.common import JSON, ArraySpec
 
 
@@ -86,10 +86,10 @@ class BloscCodec(BytesBytesCodec):
     def __init__(
         self,
         *,
-        typesize: Optional[int] = None,
-        cname: Union[BloscCname, str] = BloscCname.zstd,
+        typesize: int | None = None,
+        cname: BloscCname | str = BloscCname.zstd,
         clevel: int = 5,
-        shuffle: Union[BloscShuffle, str, None] = None,
+        shuffle: BloscShuffle | str | None = None,
         blocksize: int = 0,
     ) -> None:
         typesize_parsed = parse_typesize(typesize) if typesize is not None else None
@@ -105,11 +105,11 @@ class BloscCodec(BytesBytesCodec):
         object.__setattr__(self, "blocksize", blocksize_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "blosc")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         if self.typesize is None:
             raise ValueError("`typesize` needs to be set for serialization.")
         if self.shuffle is None:
@@ -169,7 +169,7 @@ class BloscCodec(BytesBytesCodec):
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
-    ) -> Optional[Buffer]:
+    ) -> Buffer | None:
         # Since blosc only takes bytes, we convert the input and output of the encoding
         # between bytes and Buffer
         return await to_thread(

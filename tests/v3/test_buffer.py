@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Iterable, Literal, Optional
+from collections.abc import Iterable
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -31,7 +32,7 @@ class MyNDBuffer(NDBuffer):
         shape: Iterable[int],
         dtype: npt.DTypeLike,
         order: Literal["C", "F"] = "C",
-        fill_value: Optional[Any] = None,
+        fill_value: Any | None = None,
     ) -> Self:
         """Overwrite `NDBuffer.create` to create an MyNDArrayLike instance"""
         ret = cls(MyNDArrayLike(shape=shape, dtype=dtype, order=order))

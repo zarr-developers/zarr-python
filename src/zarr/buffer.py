@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable, Iterable
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Iterable,
     Literal,
-    Optional,
     Protocol,
-    Tuple,
     TypeAlias,
 )
 
@@ -17,6 +14,7 @@ import numpy as np
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
     from zarr.codecs.bytes import Endian
     from zarr.common import BytesLike
 
@@ -44,7 +42,7 @@ class Factory:
             shape: Iterable[int],
             dtype: np.DTypeLike,
             order: Literal["C", "F"],
-            fill_value: Optional[Any],
+            fill_value: Any | None,
         ) -> NDBuffer:
             """Factory function to create a new NDBuffer (or subclass)
 
@@ -227,7 +225,7 @@ class Buffer:
         return self.__class__(np.concatenate((self._data, other_array)))
 
     def __eq__(self, other: Any) -> bool:
-        if isinstance(other, (bytes, bytearray)):
+        if isinstance(other, bytes | bytearray):
             # Many of the tests compares `Buffer` with `bytes` so we
             # convert the bytes to a Buffer and try again
             return self == self.from_bytes(other)
@@ -275,7 +273,7 @@ class NDBuffer:
         shape: Iterable[int],
         dtype: np.DTypeLike,
         order: Literal["C", "F"] = "C",
-        fill_value: Optional[Any] = None,
+        fill_value: Any | None = None,
     ) -> Self:
         """Create a new buffer and its underlying ndarray-like object
 
@@ -380,7 +378,7 @@ class NDBuffer:
         return self._data.dtype
 
     @property
-    def shape(self) -> Tuple[int, ...]:
+    def shape(self) -> tuple[int, ...]:
         return self._data.shape
 
     @property

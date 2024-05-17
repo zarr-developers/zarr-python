@@ -1,10 +1,11 @@
-from typing import Iterator
+from collections.abc import Iterator
+
 import numpy as np
 import pytest
 
 from zarr.abc.store import Store
 from zarr.array import Array
-from zarr.store import StorePath, MemoryStore
+from zarr.store import MemoryStore, StorePath
 
 
 @pytest.fixture

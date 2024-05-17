@@ -1,19 +1,20 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Iterator
-from dataclasses import asdict, dataclass, field, replace
 
 import asyncio
 import json
 import logging
+from collections.abc import Iterator
+from dataclasses import asdict, dataclass, field, replace
+from typing import TYPE_CHECKING, overload
+
 import numpy.typing as npt
 
-from zarr.abc.store import set_or_delete
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
-
-from zarr.buffer import Buffer
-from zarr.array import AsyncArray, Array
+from zarr.abc.store import set_or_delete
+from zarr.array import Array, AsyncArray
 from zarr.attributes import Attributes
+from zarr.buffer import Buffer
 from zarr.chunk_key_encodings import ChunkKeyEncoding
 from zarr.common import (
     JSON,
@@ -26,10 +27,10 @@ from zarr.common import (
 )
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import SyncMixin, sync
-from typing import overload
 
 if TYPE_CHECKING:
-    from typing import Any, AsyncGenerator, Literal, Iterable
+    from collections.abc import AsyncGenerator, Iterable
+    from typing import Any, Literal
 
 logger = logging.getLogger("zarr.group")
 
@@ -68,7 +69,7 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
     elif isinstance(node, AsyncGroup):
         return Group(node)
     else:
-        assert False
+        raise TypeError(f"Unknown node type, got {type(node)}")
 
 
 @dataclass(frozen=True)
@@ -114,7 +115,7 @@ class AsyncGroup:
         cls,
         store: StoreLike,
         *,
-        attributes: dict[str, Any] = {},
+        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
         exists_ok: bool = False,
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
@@ -278,7 +279,10 @@ class AsyncGroup:
         return self.metadata.info
 
     async def create_group(
-        self, path: str, exists_ok: bool = False, attributes: dict[str, Any] = {}
+        self,
+        path: str,
+        exists_ok: bool = False,
+        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
     ) -> AsyncGroup:
         return await type(self).create(
             self.store_path / path,
@@ -332,7 +336,7 @@ class AsyncGroup:
             zarr_format=self.metadata.zarr_format,
         )
 
-    async def update_attributes(self, new_attributes: dict[str, Any]) -> "AsyncGroup":
+    async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
         # metadata.attributes is "frozen" so we simply clear and update the dict
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -401,7 +405,7 @@ class AsyncGroup:
 
     # todo: decide if this method should be separate from `group_keys`
     async def groups(self) -> AsyncGenerator[AsyncGroup, None]:
-        async for key, value in self.members():
+        async for _, value in self.members():
             if isinstance(value, AsyncGroup):
                 yield value
 
@@ -413,7 +417,7 @@ class AsyncGroup:
 
     # todo: decide if this method should be separate from `array_keys`
     async def arrays(self) -> AsyncGenerator[AsyncArray, None]:
-        async for key, value in self.members():
+        async for _, value in self.members():
             if isinstance(value, AsyncArray):
                 yield value
 
@@ -457,7 +461,7 @@ class Group(SyncMixin):
         cls,
         store: StoreLike,
         *,
-        attributes: dict[str, Any] = {},
+        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
         exists_ok: bool = False,
     ) -> Group:
         obj = sync(
@@ -525,7 +529,7 @@ class Group(SyncMixin):
     def info(self):
         return self._async_group.info
 
-    def update_attributes(self, new_attributes: dict[str, Any]) -> "Group":
+    def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
