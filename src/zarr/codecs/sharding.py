@@ -4,6 +4,7 @@ from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import lru_cache
+from operator import itemgetter
 from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
@@ -124,7 +125,7 @@ class _ShardIndex(NamedTuple):
                 for offset, length in self.offsets_and_lengths
                 if offset != MAX_UINT_64
             ],
-            key=lambda entry: entry[0],
+            key=itemgetter(0),
         )
 
         # Are all non-empty offsets unique?

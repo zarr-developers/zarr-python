@@ -171,6 +171,7 @@ extend-select = [
     "I",  # isort
     "ISC",
     "UP",  # pyupgrade
+    "RSE",
     "RUF",
 ]
 ignore = [

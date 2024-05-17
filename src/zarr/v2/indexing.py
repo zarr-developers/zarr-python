@@ -170,7 +170,7 @@ class SliceDimIndexer:
         # normalize
         self.start, self.stop, self.step = dim_sel.indices(dim_len)
         if self.step < 1:
-            raise NegativeStepError()
+            raise NegativeStepError
 
         # store attributes
         self.dim_len = dim_len
@@ -972,7 +972,7 @@ def make_slice_selection(selection):
             if len(dim_selection) == 1:
                 ls.append(slice(int(dim_selection[0]), int(dim_selection[0]) + 1, 1))
             else:
-                raise ArrayIndexError()
+                raise ArrayIndexError
         else:
             ls.append(dim_selection)
     return ls

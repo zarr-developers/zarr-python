@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import functools
+import operator
 from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
@@ -28,7 +29,7 @@ JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tupl
 
 
 def product(tup: ChunkCoords) -> int:
-    return functools.reduce(lambda x, y: x * y, tup, 1)
+    return functools.reduce(operator.mul, tup, 1)
 
 
 T = TypeVar("T", bound=tuple[Any, ...])

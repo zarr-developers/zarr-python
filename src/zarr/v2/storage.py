@@ -1275,7 +1275,7 @@ class FSStore(Store):
 
     def setitems(self, values):
         if self.mode == "r":
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         # Normalize keys and make sure the values are bytes
         values = {
@@ -1286,7 +1286,7 @@ class FSStore(Store):
 
     def __setitem__(self, key, value):
         if self.mode == "r":
-            raise ReadOnlyError()
+            raise ReadOnlyError
         key = self._normalize_key(key)
         value = ensure_contiguous_ndarray_or_bytes(value)
         path = self.dir_path(key)
@@ -1300,7 +1300,7 @@ class FSStore(Store):
 
     def __delitem__(self, key):
         if self.mode == "r":
-            raise ReadOnlyError()
+            raise ReadOnlyError
         key = self._normalize_key(key)
         path = self.dir_path(key)
         if self.fs.isdir(path):
@@ -1310,7 +1310,7 @@ class FSStore(Store):
 
     def delitems(self, keys):
         if self.mode == "r":
-            raise ReadOnlyError()
+            raise ReadOnlyError
         # only remove the keys that exist in the store
         nkeys = [self._normalize_key(key) for key in keys if key in self]
         # rm errors if you pass an empty collection
@@ -1369,7 +1369,7 @@ class FSStore(Store):
 
     def rmdir(self, path=None):
         if self.mode == "r":
-            raise ReadOnlyError()
+            raise ReadOnlyError
         store_path = self.dir_path(path)
         if self.fs.isdir(store_path):
             self.fs.rm(store_path, recursive=True)
@@ -1380,7 +1380,7 @@ class FSStore(Store):
 
     def clear(self):
         if self.mode == "r":
-            raise ReadOnlyError()
+            raise ReadOnlyError
         self.map.clear()
 
     @classmethod
@@ -1670,7 +1670,7 @@ class ZipStore(Store):
 
     def __setitem__(self, key, value):
         if self.mode == "r":
-            raise ReadOnlyError()
+            raise ReadOnlyError
         value = ensure_contiguous_ndarray_like(value).view("u1")
         with self.mutex:
             # writestr(key, value) writes with default permissions from
@@ -1752,7 +1752,7 @@ class ZipStore(Store):
 
     def clear(self):
         if self.mode == "r":
-            raise ReadOnlyError()
+            raise ReadOnlyError
         with self.mutex:
             self.close()
             os.remove(self.path)
@@ -2810,10 +2810,10 @@ class ConsolidatedMetadataStore(Store):
         return len(self.meta_store)
 
     def __delitem__(self, key):
-        raise ReadOnlyError()
+        raise ReadOnlyError
 
     def __setitem__(self, key, value):
-        raise ReadOnlyError()
+        raise ReadOnlyError
 
     def getsize(self, path):
         return getsize(self.meta_store, path)

@@ -222,7 +222,7 @@ class Metadata2:
                 return -np.inf
             else:
                 return np.array(v, dtype=dtype)[()]
-        elif dtype.kind in "c":
+        elif dtype.kind == "c":
             v = (
                 cls.decode_fill_value(v[0], dtype.type().real.dtype),
                 cls.decode_fill_value(v[1], dtype.type().imag.dtype),
@@ -269,23 +269,23 @@ class Metadata2:
                 return "-Infinity"
             else:
                 return float(v)
-        elif dtype.kind in "ui":
+        elif dtype.kind in ("u", "i"):
             return int(v)
         elif dtype.kind == "b":
             return bool(v)
-        elif dtype.kind in "c":
+        elif dtype.kind == "c":
             c = cast(np.complex128, np.dtype(complex).type())
             v = (
                 cls.encode_fill_value(v.real, c.real.dtype, object_codec),
                 cls.encode_fill_value(v.imag, c.imag.dtype, object_codec),
             )
             return v
-        elif dtype.kind in "SV":
+        elif dtype.kind in ("S", "V"):
             v = str(base64.standard_b64encode(v), "ascii")
             return v
         elif dtype.kind == "U":
             return v
-        elif dtype.kind in "mM":
+        elif dtype.kind in ("m", "M"):
             return int(v.view("i8"))
         else:
             return v
