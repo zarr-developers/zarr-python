@@ -8,6 +8,7 @@ from operator import itemgetter
 from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
+import numpy.typing as npt
 
 from zarr.abc.codec import ByteGetter, ByteSetter, Codec, CodecPipeline
 from zarr.buffer import Buffer, NDBuffer
@@ -82,7 +83,7 @@ class _ShardingByteSetter(_ShardingByteGetter, ByteSetter):
 
 class _ShardIndex(NamedTuple):
     # dtype uint64, shape (chunks_per_shard_0, chunks_per_shard_1, ..., 2)
-    offsets_and_lengths: np.ndarray
+    offsets_and_lengths: npt.NDArray[np.uint64]
 
     @property
     def chunks_per_shard(self) -> ChunkCoords:
@@ -97,7 +98,7 @@ class _ShardIndex(NamedTuple):
     def is_all_empty(self) -> bool:
         return bool(np.array_equiv(self.offsets_and_lengths, MAX_UINT_64))
 
-    def get_full_chunk_map(self) -> np.ndarray:
+    def get_full_chunk_map(self) -> npt.NDArray[np.bool_]:
         return self.offsets_and_lengths[..., 0] != MAX_UINT_64
 
     def get_chunk_slice(self, chunk_coords: ChunkCoords) -> tuple[int, int] | None:

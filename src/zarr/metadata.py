@@ -399,7 +399,7 @@ class ArrayV2Metadata(ArrayMetadata):
         zarray_dict["chunks"] = self.chunk_grid.chunk_shape
 
         _ = zarray_dict.pop("data_type")
-        zarray_dict["dtype"] = self.data_type
+        zarray_dict["dtype"] = self.data_type.str
 
         return zarray_dict
 
