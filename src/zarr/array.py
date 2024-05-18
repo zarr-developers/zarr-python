@@ -199,6 +199,8 @@ class AsyncArray:
 
         if chunk_key_encoding is None:
             chunk_key_encoding = ("default", "/")
+        assert chunk_key_encoding is not None
+
         if isinstance(chunk_key_encoding, tuple):
             chunk_key_encoding = (
                 V2ChunkKeyEncoding(separator=chunk_key_encoding[1])

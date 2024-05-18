@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
 
 import numpy as np
+import numpy.typing as npt
 
 ZARR_JSON = "zarr.json"
 ZARRAY_JSON = ".zarray"
@@ -150,7 +151,7 @@ def parse_named_configuration(
     return name_parsed, configuration_parsed
 
 
-def parse_shapelike(data: Any) -> tuple[int, ...]:
+def parse_shapelike(data: Iterable[int]) -> tuple[int, ...]:
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected an iterable. Got {data} instead.")
     data_tuple = tuple(data)
@@ -164,7 +165,7 @@ def parse_shapelike(data: Any) -> tuple[int, ...]:
     return data_tuple
 
 
-def parse_dtype(data: Any) -> np.dtype[Any]:
+def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
     # todo: real validation
     return np.dtype(data)
 

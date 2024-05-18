@@ -3,7 +3,7 @@ from __future__ import annotations
 import itertools
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from zarr.abc.metadata import Metadata
 from zarr.common import (
@@ -22,13 +22,13 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class ChunkGrid(Metadata):
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ChunkGrid:
+    def from_dict(cls, data: dict[str, JSON] | ChunkGrid) -> ChunkGrid:
         if isinstance(data, ChunkGrid):
             return data
 
         name_parsed, _ = parse_named_configuration(data)
         if name_parsed == "regular":
-            return RegularChunkGrid.from_dict(data)
+            return RegularChunkGrid._from_dict(data)
         raise ValueError(f"Unknown chunk grid. Got {name_parsed}.")
 
     def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
@@ -45,7 +45,7 @@ class RegularChunkGrid(ChunkGrid):
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> Self:
+    def _from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "regular")
 
         return cls(**configuration_parsed)  # type: ignore[arg-type]
