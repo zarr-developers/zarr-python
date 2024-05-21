@@ -159,7 +159,7 @@ class Buffer:
         return cls(np.array([], dtype="b"))
 
     @classmethod
-    def from_array_like(cls, array_like: NDArrayLike) -> Self:
+    def from_array_like(cls, array_like: ArrayLike) -> Self:
         """Create a new buffer of a array-like object
 
         Parameters
@@ -188,7 +188,7 @@ class Buffer:
         """
         return cls.from_array_like(np.frombuffer(bytes_like, dtype="b"))
 
-    def as_array_like(self) -> NDArrayLike:
+    def as_array_like(self) -> ArrayLike:
         """Return the underlying array (host or device memory) of this buffer
 
         This will never copy data.
@@ -259,17 +259,6 @@ class Buffer:
         other_array = other.as_array_like()
         assert other_array.dtype == np.dtype("b")
         return self.__class__(np.concatenate((self._data, other_array)))
-
-    def __eq__(self, other: Any) -> bool:
-        if isinstance(other, bytes | bytearray):
-            # Many of the tests compares `Buffer` with `bytes` so we
-            # convert the bytes to a Buffer and try again
-            return self == self.from_bytes(other)
-        if isinstance(other, Buffer):
-            return (self._data == other.as_array_like()).all()
-        raise ValueError(
-            f"equal operator not supported between {self.__class__} and {other.__class__}"
-        )
 
 
 class NDBuffer:

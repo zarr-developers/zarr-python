@@ -7,6 +7,7 @@ import pytest
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
 from zarr.testing.store import StoreTests
+from zarr.testing.utils import assert_bytes_equal
 
 
 @pytest.mark.parametrize("auto_mkdir", (True, False))
@@ -51,7 +52,7 @@ async def test_local_store_get(
             length = maybe_len
 
     expected = payload[start : start + length]
-    assert observed == expected
+    assert_bytes_equal(observed, expected)
 
     # test that getting from a file that doesn't exist returns None
     assert await local_store.get(object_name + "_absent", byte_range=byte_range) is None
@@ -83,7 +84,7 @@ async def test_local_store_get_partial(
     for idx, observed in enumerate(results):
         key, byte_range = key_ranges[idx]
         expected = await store.get(key, byte_range=byte_range)
-        assert observed == expected
+        assert_bytes_equal(observed, expected)
 
 
 @pytest.mark.parametrize("path", ("foo", "foo/bar"))

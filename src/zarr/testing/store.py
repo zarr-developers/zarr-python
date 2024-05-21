@@ -2,6 +2,7 @@ import pytest
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
+from zarr.testing.utils import assert_bytes_equal
 
 
 class StoreTests:
@@ -27,7 +28,7 @@ class StoreTests:
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     async def test_set_get_bytes_roundtrip(self, store: Store, key: str, data: bytes) -> None:
         await store.set(key, Buffer.from_bytes(data))
-        assert await store.get(key) == data
+        assert_bytes_equal(await store.get(key), data)
 
     @pytest.mark.parametrize("key", ["foo/c/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
@@ -36,11 +37,12 @@ class StoreTests:
         await store.set(key, Buffer.from_bytes(data))
         # read back just part of it
         vals = await store.get_partial_values([(key, (0, 2))])
-        assert vals == [data[0:2]]
+        assert_bytes_equal(vals[0], data[0:2])
 
         # read back multiple parts of it at once
         vals = await store.get_partial_values([(key, (0, 2)), (key, (2, 4))])
-        assert vals == [data[0:2], data[2:4]]
+        assert_bytes_equal(vals[0], data[0:2])
+        assert_bytes_equal(vals[1], data[2:4])
 
     async def test_exists(self, store: Store) -> None:
         assert not await store.exists("foo")
