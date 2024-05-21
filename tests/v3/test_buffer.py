@@ -8,7 +8,7 @@ import numpy.typing as npt
 import pytest
 
 from zarr.array import AsyncArray
-from zarr.buffer import NDBuffer
+from zarr.buffer import NDArrayLike, NDBuffer
 from zarr.store.core import StorePath
 from zarr.store.memory import MemoryStore
 
@@ -39,6 +39,11 @@ class MyNDBuffer(NDBuffer):
         if fill_value is not None:
             ret.fill(fill_value)
         return ret
+
+
+def test_nd_array_like(xp):
+    ary = xp.arange(10)
+    assert isinstance(ary, NDArrayLike)
 
 
 @pytest.mark.asyncio

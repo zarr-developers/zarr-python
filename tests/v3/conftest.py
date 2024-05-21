@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 from zarr.common import ZarrFormat
@@ -81,3 +83,10 @@ async def async_group(request: pytest.FixtureRequest, tmpdir) -> AsyncGroup:
         exists_ok=False,
     )
     return agroup
+
+
+@pytest.fixture(params=["numpy", "cupy"])
+def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
+    """Fixture to parametrize over numpy-like libraries"""
+
+    yield pytest.importorskip(request.param)

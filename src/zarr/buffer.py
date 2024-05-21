@@ -8,9 +8,12 @@ from typing import (
     Literal,
     Protocol,
     TypeAlias,
+    runtime_checkable,
 )
 
 import numpy as np
+
+from zarr.common import ChunkCoords
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -21,7 +24,40 @@ if TYPE_CHECKING:
 # TODO: create a protocol for the attributes we need, for now we alias Numpy's ndarray
 #       both for the array-like and ndarray-like
 ArrayLike: TypeAlias = np.ndarray
-NDArrayLike: TypeAlias = np.ndarray
+
+
+@runtime_checkable
+class NDArrayLike(Protocol):
+    """Protocol for the nd-array-like type that underlie NDBuffer"""
+
+    dtype: np.DTypeLike
+    shape: ChunkCoords
+    ndim: int
+    size: int
+
+    @runtime_checkable
+    class flags(Protocol):
+        contiguous: bool
+
+    def __len__(self) -> int: ...
+
+    def __getitem__(self, key: slice) -> Self: ...
+
+    def __setitem__(self, key: slice, value: Any) -> None: ...
+
+    def reshape(self, shape: ChunkCoords, order: Literal["A", "C", "F"] = ...) -> Self: ...
+
+    def view(self, dtype: np.DTypeLike) -> Self: ...
+
+    def astype(self, dtype: np.DTypeLike, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
+
+    def fill(self, value: Any) -> None: ...
+
+    def copy(self) -> Self: ...
+
+    def transpose(self, *axes: np.SupportsIndex) -> Self: ...
+
+    def ravel(self, order: Literal["K", "A", "C", "F"]) -> Self: ...
 
 
 def check_item_key_is_1d_contiguous(key: Any) -> None:
@@ -358,7 +394,7 @@ class NDBuffer:
         data = self._data
         if not self._data.flags.contiguous:
             data = np.ascontiguousarray(self._data)
-        return Buffer(data.reshape(-1).view(dtype="b"))  # Flatten the array without copy
+        return Buffer(data.reshape((-1,)).view(dtype="b"))  # Flatten the array without copy
 
     def as_numpy_array(self) -> np.ndarray:
         """Return the buffer as a NumPy array (host memory).
@@ -392,7 +428,7 @@ class NDBuffer:
         else:
             return Endian(sys.byteorder)
 
-    def reshape(self, newshape: Iterable[int]) -> Self:
+    def reshape(self, newshape: ChunkCoords) -> Self:
         return self.__class__(self._data.reshape(newshape))
 
     def astype(self, dtype: np.DTypeLike, order: Literal["K", "A", "C", "F"] = "K") -> Self:
