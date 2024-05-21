@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 
 from zstandard import ZstdCompressor, ZstdDecompressor
 
+from zarr.abc.codec import BytesBytesCodec
 from zarr.buffer import Buffer, as_numpy_array_wrapper
-from zarr.codecs.mixins import BytesBytesCodecBatchMixin
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration, to_thread
 
@@ -31,7 +31,7 @@ def parse_checksum(data: JSON) -> bool:
 
 
 @dataclass(frozen=True)
-class ZstdCodec(BytesBytesCodecBatchMixin):
+class ZstdCodec(BytesBytesCodec):
     is_fixed_size = True
 
     level: int = 0
@@ -60,14 +60,14 @@ class ZstdCodec(BytesBytesCodecBatchMixin):
         ctx = ZstdDecompressor()
         return ctx.decompress(data)
 
-    async def decode_single(
+    async def _decode_single(
         self,
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
     ) -> Buffer:
         return await to_thread(as_numpy_array_wrapper, self._decompress, chunk_bytes)
 
-    async def encode_single(
+    async def _encode_single(
         self,
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,

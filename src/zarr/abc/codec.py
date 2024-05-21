@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, NDBuffer
+from zarr.common import concurrent_map
+from zarr.config import config
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -59,7 +61,7 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         """
         return chunk_spec
 
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         """Fills in codec configuration parameters that can be automatically
         inferred from the array metadata.
 
@@ -83,7 +85,9 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         """
         ...
 
-    @abstractmethod
+    async def _decode_single(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
+        raise NotImplementedError
+
     async def decode(
         self,
         chunks_and_specs: Iterable[tuple[CodecOutput | None, ArraySpec]],
@@ -100,9 +104,13 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         -------
         Iterable[CodecInput | None]
         """
-        ...
+        return await batching_helper(self._decode_single, chunks_and_specs)
 
-    @abstractmethod
+    async def _encode_single(
+        self, chunk_data: CodecInput, chunk_spec: ArraySpec
+    ) -> CodecOutput | None:
+        raise NotImplementedError
+
     async def encode(
         self,
         chunks_and_specs: Iterable[tuple[CodecInput | None, ArraySpec]],
@@ -119,7 +127,7 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         -------
         Iterable[CodecOutput | None]
         """
-        ...
+        return await batching_helper(self._encode_single, chunks_and_specs)
 
 
 class ArrayArrayCodec(_Codec[NDBuffer, NDBuffer]):
@@ -146,7 +154,11 @@ Codec = ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
 class ArrayBytesCodecPartialDecodeMixin:
     """Mixin for array-to-bytes codecs that implement partial decoding."""
 
-    @abstractmethod
+    async def _decode_partial_single(
+        self, byte_getter: ByteGetter, selection: SliceSelection, chunk_spec: ArraySpec
+    ) -> NDBuffer | None:
+        raise NotImplementedError
+
     async def decode_partial(
         self,
         batch_info: Iterable[tuple[ByteGetter, SliceSelection, ArraySpec]],
@@ -167,13 +179,28 @@ class ArrayBytesCodecPartialDecodeMixin:
         -------
         Iterable[NDBuffer | None]
         """
-        ...
+        return await concurrent_map(
+            [
+                (byte_getter, selection, chunk_spec)
+                for byte_getter, selection, chunk_spec in batch_info
+            ],
+            self._decode_partial_single,
+            config.get("async.concurrency"),
+        )
 
 
 class ArrayBytesCodecPartialEncodeMixin:
     """Mixin for array-to-bytes codecs that implement partial encoding."""
 
-    @abstractmethod
+    async def _encode_partial_single(
+        self,
+        byte_setter: ByteSetter,
+        chunk_array: NDBuffer,
+        selection: SliceSelection,
+        chunk_spec: ArraySpec,
+    ) -> None:
+        raise NotImplementedError
+
     async def encode_partial(
         self,
         batch_info: Iterable[tuple[ByteSetter, NDBuffer, SliceSelection, ArraySpec]],
@@ -192,7 +219,14 @@ class ArrayBytesCodecPartialEncodeMixin:
             The ByteSetter is used to write the necessary bytes and fetch bytes for existing chunk data.
             The chunk spec contains information about the chunk.
         """
-        ...
+        await concurrent_map(
+            [
+                (byte_setter, chunk_array, selection, chunk_spec)
+                for byte_setter, chunk_array, selection, chunk_spec in batch_info
+            ],
+            self._encode_partial_single,
+            config.get("async.concurrency"),
+        )
 
 
 class CodecPipeline(Metadata):
@@ -203,7 +237,7 @@ class CodecPipeline(Metadata):
     and writes them to a store (via ByteSetter)."""
 
     @abstractmethod
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         """Fills in codec configuration parameters that can be automatically
         inferred from the array metadata.
 
@@ -347,3 +381,25 @@ class CodecPipeline(Metadata):
         value : NDBuffer
         """
         ...
+
+
+async def batching_helper(
+    func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
+    batch_info: Iterable[tuple[CodecInput | None, ArraySpec]],
+) -> list[CodecOutput | None]:
+    return await concurrent_map(
+        [(chunk_array, chunk_spec) for chunk_array, chunk_spec in batch_info],
+        noop_for_none(func),
+        config.get("async.concurrency"),
+    )
+
+
+def noop_for_none(
+    func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
+) -> Callable[[CodecInput | None, ArraySpec], Awaitable[CodecOutput | None]]:
+    async def wrap(chunk: CodecInput | None, chunk_spec: ArraySpec) -> CodecOutput | None:
+        if chunk is None:
+            return None
+        return await func(chunk, chunk_spec)
+
+    return wrap
