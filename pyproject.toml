@@ -213,7 +213,6 @@ check_untyped_defs = false
 [[tool.mypy.overrides]]
 module = [
     "zarr.v2.*",
-    "zarr.abc.codec",
     "zarr.array_v2",
 ]
 disallow_any_generics = false
@@ -239,7 +238,6 @@ module = [
     "zarr.v2.*",
     "zarr.array_v2",
     "zarr.array",
-    "zarr.common",
     "zarr.group",
     "zarr.metadata"
 ]
