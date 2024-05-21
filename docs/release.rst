@@ -37,6 +37,16 @@ Maintenance
 Deprecations
 ~~~~~~~~~~~~
 
+.. _release_2.18.1:
+
+2.18.1
+------
+
+Maintenance
+~~~~~~~~~~~
+* Fix a regression when getting or setting a single value from arrays with size-1 chunks.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1874`
+
 .. _release_2.18.0:
 
 2.18.0
