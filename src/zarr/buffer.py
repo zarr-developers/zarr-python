@@ -7,7 +7,6 @@ from typing import (
     Any,
     Literal,
     Protocol,
-    TypeAlias,
     runtime_checkable,
 )
 
@@ -21,9 +20,20 @@ if TYPE_CHECKING:
     from zarr.codecs.bytes import Endian
     from zarr.common import BytesLike
 
-# TODO: create a protocol for the attributes we need, for now we alias Numpy's ndarray
-#       both for the array-like and ndarray-like
-ArrayLike: TypeAlias = np.ndarray
+
+@runtime_checkable
+class ArrayLike(Protocol):
+    """Protocol for the array-like type that underlie Buffer"""
+
+    dtype: np.DTypeLike
+    ndim: int
+    size: int
+
+    def view(self, dtype: np.DTypeLike) -> Self: ...
+
+    def __getitem__(self, key: slice) -> Self: ...
+
+    def __setitem__(self, key: slice, value: Any) -> None: ...
 
 
 @runtime_checkable
@@ -199,22 +209,6 @@ class Buffer:
         """
         return self._data
 
-    def as_nd_buffer(self, *, dtype: np.DTypeLike) -> NDBuffer:
-        """Create a new NDBuffer from this one.
-
-        This will never copy data.
-
-        Parameters
-        ----------
-        dtype
-           The datatype of the returned buffer (reinterpretation of the bytes)
-
-        Return
-        ------
-            New NDbuffer representing `self.as_array_like()`
-        """
-        return NDBuffer.from_ndarray_like(self._data.view(dtype=dtype))
-
     def as_numpy_array(self) -> np.ndarray:
         """Return the buffer as a NumPy array (host memory).
 
@@ -368,22 +362,6 @@ class NDBuffer:
             The underlying array such as a NumPy or CuPy array.
         """
         return self._data
-
-    def as_buffer(self) -> Buffer:
-        """Create a new Buffer from this one.
-
-        Warning
-        -------
-        Copies data if the buffer is non-contiguous.
-
-        Return
-        ------
-            The new buffer (might be data copy)
-        """
-        data = self._data
-        if not self._data.flags.contiguous:
-            data = np.ascontiguousarray(self._data)
-        return Buffer(data.reshape((-1,)).view(dtype="b"))  # Flatten the array without copy
 
     def as_numpy_array(self) -> np.ndarray:
         """Return the buffer as a NumPy array (host memory).
