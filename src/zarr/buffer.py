@@ -69,6 +69,19 @@ class NDArrayLike(Protocol):
 
     def ravel(self, order: Literal["K", "A", "C", "F"]) -> Self: ...
 
+    def all(self) -> bool: ...
+
+    def __eq__(self, other: NDBuffer | np.ScalarType) -> Self:  # type: ignore
+        """Element-wise equal
+
+        Notice
+        ------
+        Type checkers such as mypy complains because the type signature isn't compatible
+        with the supertype "object", which violates the Liskov substitution principle.
+        This is correct, but since NumPy's ndarray is defined as an element-wise equal,
+        our hands are tied.
+        """
+
 
 def check_item_key_is_1d_contiguous(key: Any) -> None:
     """Raises error if `key` isn't a 1d contiguous slice"""
@@ -412,7 +425,7 @@ class NDBuffer:
     def __len__(self) -> int:
         return self._data.__len__()
 
-    def all_equal(self, other: Any) -> bool:
+    def all_equal(self, other: NDBuffer | np.ScalarType) -> bool:
         return bool((self._data == other).all())
 
     def fill(self, value: Any) -> None:
