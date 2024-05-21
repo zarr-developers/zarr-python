@@ -34,7 +34,7 @@ class ChunkKeyEncoding(Metadata):
         object.__setattr__(self, "separator", separator_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ChunkKeyEncoding:
+    def from_dict(cls, data: dict[str, JSON] | ChunkKeyEncoding) -> ChunkKeyEncoding:
         if isinstance(data, ChunkKeyEncoding):
             return data
 

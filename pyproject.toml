@@ -239,7 +239,6 @@ module = [
     "zarr.array_v2",
     "zarr.array",
     "zarr.group",
-    "zarr.metadata"
 ]
 disallow_untyped_defs = false
 

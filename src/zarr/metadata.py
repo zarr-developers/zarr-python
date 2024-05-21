@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self
 
+import numcodecs.abc
 
 from zarr.common import (
     JSON,
@@ -168,15 +169,15 @@ class ArrayV3Metadata(ArrayMetadata):
     def __init__(
         self,
         *,
-        shape,
-        data_type,
-        chunk_grid,
-        chunk_key_encoding,
-        fill_value,
-        codecs,
-        attributes,
-        dimension_names,
-    ):
+        shape: Iterable[int],
+        data_type: npt.DTypeLike,
+        chunk_grid: dict[str, JSON] | ChunkGrid,
+        chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
+        fill_value: Any,
+        codecs: Iterable[Codec | JSON],
+        attributes: None | dict[str, JSON],
+        dimension_names: None | Iterable[str],
+    ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
@@ -249,14 +250,14 @@ class ArrayV3Metadata(ArrayMetadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self) -> dict[str, Buffer]:
-        def _json_convert(o):
+        def _json_convert(o: np.dtype[Any] | Enum | Codec) -> str | dict[str, Any]:
             if isinstance(o, np.dtype):
                 return str(o)
             if isinstance(o, Enum):
                 return o.name
             # this serializes numcodecs compressors
             # todo: implement to_dict for codecs
-            elif hasattr(o, "get_config"):
+            elif isinstance(o, numcodecs.abc.Codec):
                 return o.get_config()
             raise TypeError
 
@@ -271,9 +272,10 @@ class ArrayV3Metadata(ArrayMetadata):
         # check that the node_type attribute is correct
         _ = parse_node_type_array(data.pop("node_type"))
 
-        dimension_names = data.pop("dimension_names", None)
+        data["dimension_names"] = data.pop("dimension_names", None)
 
-        return cls(**data, dimension_names=dimension_names)
+        # TODO: Remove the ignores and use a TypedDict to type `data`
+        return cls(**data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, Any]:
         out_dict = super().to_dict()
@@ -367,7 +369,9 @@ class ArrayV2Metadata(ArrayMetadata):
         )
 
     def to_buffer_dict(self) -> dict[str, Buffer]:
-        def _json_convert(o):
+        def _json_convert(
+            o: np.dtype[Any],
+        ) -> str | list[tuple[str, str] | tuple[str, str, tuple[int, ...]]]:
             if isinstance(o, np.dtype):
                 if o.fields is None:
                     return o.str
@@ -399,7 +403,7 @@ class ArrayV2Metadata(ArrayMetadata):
         zarray_dict["chunks"] = self.chunk_grid.chunk_shape
 
         _ = zarray_dict.pop("data_type")
-        zarray_dict["dtype"] = self.data_type
+        zarray_dict["dtype"] = self.data_type.str
 
         return zarray_dict
 
@@ -422,7 +426,7 @@ class ArrayV2Metadata(ArrayMetadata):
         return replace(self, attributes=attributes)
 
 
-def parse_dimension_names(data: Any) -> tuple[str, ...] | None:
+def parse_dimension_names(data: None | Iterable[str]) -> tuple[str, ...] | None:
     if data is None:
         return data
     if isinstance(data, Iterable) and all([isinstance(x, str) for x in data]):
@@ -432,12 +436,11 @@ def parse_dimension_names(data: Any) -> tuple[str, ...] | None:
 
 
 # todo: real validation
-def parse_attributes(data: Any) -> dict[str, JSON]:
+def parse_attributes(data: None | dict[str, JSON]) -> dict[str, JSON]:
     if data is None:
         return {}
 
-    data_json = cast(dict[str, JSON], data)
-    return data_json
+    return data
 
 
 # todo: move to its own module and drop _v3 suffix
