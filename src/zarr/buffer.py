@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
     Protocol,
+    SupportsIndex,
     runtime_checkable,
 )
 
@@ -26,11 +27,14 @@ if TYPE_CHECKING:
 class ArrayLike(Protocol):
     """Protocol for the array-like type that underlie Buffer"""
 
-    dtype: np.DTypeLike
-    ndim: int
-    size: int
+    @property
+    def dtype(self) -> np.dtype[Any]: ...
 
-    def view(self, dtype: np.DTypeLike) -> Self: ...
+    @property
+    def ndim(self) -> int: ...
+
+    @property
+    def size(self) -> int: ...
 
     def __getitem__(self, key: slice) -> Self: ...
 
@@ -41,14 +45,17 @@ class ArrayLike(Protocol):
 class NDArrayLike(Protocol):
     """Protocol for the nd-array-like type that underlie NDBuffer"""
 
-    dtype: np.DTypeLike
-    shape: ChunkCoords
-    ndim: int
-    size: int
+    @property
+    def dtype(self) -> np.dtype[Any]: ...
 
-    @runtime_checkable
-    class flags(Protocol):
-        contiguous: bool
+    @property
+    def ndim(self) -> int: ...
+
+    @property
+    def size(self) -> int: ...
+
+    @property
+    def shape(self) -> ChunkCoords: ...
 
     def __len__(self) -> int: ...
 
@@ -56,30 +63,30 @@ class NDArrayLike(Protocol):
 
     def __setitem__(self, key: slice, value: Any) -> None: ...
 
-    def reshape(self, shape: ChunkCoords, order: Literal["A", "C", "F"] = ...) -> Self: ...
+    def reshape(self, shape: ChunkCoords, *, order: Literal["A", "C", "F"] = ...) -> Self: ...
 
-    def view(self, dtype: np.DTypeLike) -> Self: ...
+    def view(self, dtype: npt.DTypeLike) -> Self: ...
 
-    def astype(self, dtype: np.DTypeLike, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
+    def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
 
     def fill(self, value: Any) -> None: ...
 
     def copy(self) -> Self: ...
 
-    def transpose(self, *axes: np.SupportsIndex) -> Self: ...
+    def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None) -> Self: ...
 
-    def ravel(self, order: Literal["K", "A", "C", "F"]) -> Self: ...
+    def ravel(self, order: Literal["K", "A", "C", "F"] = "C") -> Self: ...
 
     def all(self) -> bool: ...
 
-    def __eq__(self, other: NDBuffer | np.ScalarType) -> Self:  # type: ignore
+    def __eq__(self, other: Any) -> Self:  # type: ignore
         """Element-wise equal
 
         Notice
         ------
-        Type checkers such as mypy complains because the type signature isn't compatible
-        with the supertype "object", which violates the Liskov substitution principle.
-        This is correct, but since NumPy's ndarray is defined as an element-wise equal,
+        Type checkers such as mypy complains because the return type isn't a bool like
+        its supertype "object", which violates the Liskov substitution principle.
+        This is true, but since NumPy's ndarray is defined as an element-wise equal,
         our hands are tied.
         """
 
@@ -266,7 +273,9 @@ class Buffer:
 
         other_array = other.as_array_like()
         assert other_array.dtype == np.dtype("b")
-        return self.__class__(np.concatenate((self._data, other_array)))
+        return self.__class__(
+            np.concatenate((np.asanyarray(self._data), np.asanyarray(other_array)))
+        )
 
 
 class NDBuffer:
@@ -426,7 +435,7 @@ class NDBuffer:
     def __len__(self) -> int:
         return self._data.__len__()
 
-    def all_equal(self, other: NDBuffer | np.ScalarType) -> bool:
+    def all_equal(self, other: Any) -> bool:
         return bool((self._data == other).all())
 
     def fill(self, value: Any) -> None:
@@ -435,8 +444,8 @@ class NDBuffer:
     def copy(self) -> Self:
         return self.__class__(self._data.copy())
 
-    def transpose(self, *axes: np.SupportsIndex) -> Self:  # type: ignore[name-defined]
-        return self.__class__(self._data.transpose(*axes))
+    def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None) -> Self:
+        return self.__class__(self._data.transpose(axes))
 
 
 def as_numpy_array_wrapper(func: Callable[[npt.NDArray[Any]], bytes], buf: Buffer) -> Buffer:

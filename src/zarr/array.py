@@ -582,12 +582,12 @@ class Array:
     def order(self) -> Literal["C", "F"]:
         return self._async_array.order
 
-    def __getitem__(self, selection: Selection) -> npt.NDArray[Any]:
+    def __getitem__(self, selection: Selection) -> NDArrayLike:
         return sync(
             self._async_array.getitem(selection),
         )
 
-    def __setitem__(self, selection: Selection, value: npt.NDArray[Any]) -> None:
+    def __setitem__(self, selection: Selection, value: NDArrayLike) -> None:
         sync(
             self._async_array.setitem(selection, value),
         )
