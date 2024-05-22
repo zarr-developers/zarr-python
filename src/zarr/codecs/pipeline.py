@@ -87,8 +87,8 @@ class BatchedCodecPipeline(CodecPipeline):
     def to_dict(self) -> JSON:
         return [c.to_dict() for c in self]
 
-    def evolve(self, array_spec: ArraySpec) -> Self:
-        return type(self).from_list([c.evolve(array_spec) for c in self])
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
+        return type(self).from_list([c.evolve_from_array_spec(array_spec) for c in self])
 
     @staticmethod
     def codecs_from_list(

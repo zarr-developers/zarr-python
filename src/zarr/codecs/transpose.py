@@ -4,8 +4,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 
+from zarr.abc.codec import ArrayArrayCodec
 from zarr.buffer import NDBuffer
-from zarr.codecs.mixins import ArrayArrayCodecBatchMixin
 from zarr.codecs.registry import register_codec
 from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
 
@@ -24,7 +24,7 @@ def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
 
 
 @dataclass(frozen=True)
-class TransposeCodec(ArrayArrayCodecBatchMixin):
+class TransposeCodec(ArrayArrayCodec):
     is_fixed_size = True
 
     order: tuple[int, ...]
@@ -42,7 +42,7 @@ class TransposeCodec(ArrayArrayCodecBatchMixin):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "transpose", "configuration": {"order": list(self.order)}}
 
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if len(self.order) != array_spec.ndim:
             raise ValueError(
                 f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
@@ -71,7 +71,7 @@ class TransposeCodec(ArrayArrayCodecBatchMixin):
             order=chunk_spec.order,
         )
 
-    async def decode_single(
+    async def _decode_single(
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
@@ -82,7 +82,7 @@ class TransposeCodec(ArrayArrayCodecBatchMixin):
         chunk_array = chunk_array.transpose(inverse_order)
         return chunk_array
 
-    async def encode_single(
+    async def _encode_single(
         self,
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,

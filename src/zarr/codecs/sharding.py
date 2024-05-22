@@ -10,16 +10,19 @@ from typing import TYPE_CHECKING, NamedTuple
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import ByteGetter, ByteSetter, Codec, CodecPipeline
+from zarr.abc.codec import (
+    ArrayBytesCodec,
+    ArrayBytesCodecPartialDecodeMixin,
+    ArrayBytesCodecPartialEncodeMixin,
+    ByteGetter,
+    ByteSetter,
+    Codec,
+    CodecPipeline,
+)
 from zarr.buffer import Buffer, NDBuffer
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
-from zarr.codecs.mixins import (
-    ArrayBytesCodecBatchMixin,
-    ArrayBytesCodecPartialDecodeBatchMixin,
-    ArrayBytesCodecPartialEncodeBatchMixin,
-)
 from zarr.codecs.pipeline import BatchedCodecPipeline
 from zarr.codecs.registry import register_codec
 from zarr.common import (
@@ -292,9 +295,7 @@ class _MergingShardBuilder(ShardMutableMapping):
 
 @dataclass(frozen=True)
 class ShardingCodec(
-    ArrayBytesCodecBatchMixin,
-    ArrayBytesCodecPartialDecodeBatchMixin,
-    ArrayBytesCodecPartialEncodeBatchMixin,
+    ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
 ):
     chunk_shape: ChunkCoords
     codecs: CodecPipeline
@@ -352,9 +353,9 @@ class ShardingCodec(
             },
         }
 
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         shard_spec = self._get_chunk_spec(array_spec)
-        evolved_codecs = self.codecs.evolve(shard_spec)
+        evolved_codecs = self.codecs.evolve_from_array_spec(shard_spec)
         if evolved_codecs != self.codecs:
             return replace(self, codecs=evolved_codecs)
         return self
@@ -378,7 +379,7 @@ class ShardingCodec(
                 "The array's `chunk_shape` needs to be divisible by the shard's inner `chunk_shape`."
             )
 
-    async def decode_single(
+    async def _decode_single(
         self,
         shard_bytes: Buffer,
         shard_spec: ArraySpec,
@@ -420,7 +421,7 @@ class ShardingCodec(
 
         return out
 
-    async def decode_partial_single(
+    async def _decode_partial_single(
         self,
         byte_getter: ByteGetter,
         selection: SliceSelection,
@@ -481,7 +482,7 @@ class ShardingCodec(
         )
         return out
 
-    async def encode_single(
+    async def _encode_single(
         self,
         shard_array: NDBuffer,
         shard_spec: ArraySpec,
@@ -516,7 +517,7 @@ class ShardingCodec(
 
         return await shard_builder.finalize(self.index_location, self._encode_shard_index)
 
-    async def encode_partial_single(
+    async def _encode_partial_single(
         self,
         byte_setter: ByteSetter,
         shard_array: NDBuffer,
