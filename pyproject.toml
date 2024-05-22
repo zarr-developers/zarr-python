@@ -230,6 +230,7 @@ module = [
     "zarr.v2.*",
     "zarr.array_v2",
     "zarr.array",
+    "zarr.buffer"
 ]
 disallow_untyped_calls = false
 
