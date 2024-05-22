@@ -94,7 +94,7 @@ class BytesCodec(ArrayBytesCodec):
             if self.endian is not None and self.endian != chunk_array.byteorder:
                 # type-ignore is a numpy bug
                 # see https://github.com/numpy/numpy/issues/26473
-                new_dtype = chunk_array.dtype.newbyteorder(self.endian.name) # type: ignore[arg-type]
+                new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)  # type: ignore[arg-type]
                 chunk_array = chunk_array.astype(new_dtype)
         return chunk_array.as_buffer()
 
