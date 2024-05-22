@@ -9,8 +9,6 @@ import pytest
 
 from zarr.array import AsyncArray
 from zarr.buffer import ArrayLike, NDArrayLike, NDBuffer
-from zarr.store.core import StorePath
-from zarr.store.memory import MemoryStore
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -43,16 +41,15 @@ class MyNDBuffer(NDBuffer):
 
 def test_nd_array_like(xp):
     ary = xp.arange(10)
-    assert isinstance(ary, NDArrayLike)
     assert isinstance(ary, ArrayLike)
+    assert isinstance(ary, NDArrayLike)
 
 
 @pytest.mark.asyncio
-async def test_async_array_factory():
-    store = StorePath(MemoryStore())
+async def test_async_array_factory(store_path):
     expect = np.zeros((9, 9), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        store / "test_async_array",
+        store_path,
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
