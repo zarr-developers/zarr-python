@@ -8,17 +8,16 @@ from zarr.buffer import Buffer
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
 from zarr.testing.store import StoreTests
-from zarr.testing.utils import assert_bytes_equal
 
 
 @pytest.mark.parametrize("store_dict", (None, {}))
 class TestMemoryStore(StoreTests[MemoryStore]):
     store_cls = MemoryStore
 
-    def set(self, store: MemoryStore, key: str, value: bytes) -> None:
+    def set(self, store: MemoryStore, key: str, value: Buffer) -> None:
         store._store_dict[key] = value
 
-    def get(self, store: MemoryStore, key: str) -> bytes:
+    def get(self, store: MemoryStore, key: str) -> Buffer:
         return store._store_dict[key]
 
     @pytest.fixture(scope="function")
@@ -44,14 +43,14 @@ class TestMemoryStore(StoreTests[MemoryStore]):
 class TestLocalStore(StoreTests[LocalStore]):
     store_cls = LocalStore
 
-    def get(self, store: LocalStore, key: str) -> bytes:
-        return (store.root / key).read_bytes()
+    def get(self, store: LocalStore, key: str) -> Buffer:
+        return Buffer.from_bytes((store.root / key).read_bytes())
 
-    def set(self, store: LocalStore, key: str, value: bytes) -> None:
+    def set(self, store: LocalStore, key: str, value: Buffer) -> None:
         parent = (store.root / key).parent
         if not parent.exists():
             parent.mkdir(parents=True)
-        (store.root / key).write_bytes(value)
+        (store.root / key).write_bytes(value.to_bytes())
 
     @pytest.fixture(scope="function")
     def store(self, tmpdir) -> LocalStore:

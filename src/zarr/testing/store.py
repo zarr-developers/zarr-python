@@ -4,32 +4,8 @@ import pytest
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
+from zarr.store.core import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
-
-
-def _normalize_byte_range(
-    data: bytes, byte_range: None | tuple[int | None, int | None]
-) -> tuple[int, int]:
-    """
-    Convert an implicit byte range into an explicit start and length
-    """
-    if byte_range is None:
-        start = 0
-        length = len(data)
-    else:
-        maybe_start, maybe_len = byte_range
-        if maybe_start is None:
-            start = 0
-        else:
-            start = maybe_start
-
-        if maybe_len is None:
-            length = len(data) - start
-        else:
-            length = maybe_len
-
-    return (start, length)
-
 
 S = TypeVar("S", bound=Store)
 
@@ -37,13 +13,13 @@ S = TypeVar("S", bound=Store)
 class StoreTests(Generic[S]):
     store_cls: type[S]
 
-    def set(self, store: S, key: str, value: bytes) -> None:
+    def set(self, store: S, key: str, value: Buffer) -> None:
         """
         Insert key: value pairs into a store without using the store methods.
         """
         raise NotImplementedError
 
-    def get(self, store: S, key: str) -> bytes:
+    def get(self, store: S, key: str) -> Buffer:
         """
         Retrieve values from a store without using the store methods.
         """
@@ -77,17 +53,20 @@ class StoreTests(Generic[S]):
         self, store: S, key: str, data: bytes, byte_range: None | tuple[int | None, int | None]
     ) -> None:
         # insert values into the store
-        self.set(store, key, data)
+        data_buf = Buffer.from_bytes(data)
+        self.set(store, key, data_buf)
         observed = await store.get(key, byte_range=byte_range)
-        start, length = _normalize_byte_range(data, byte_range=byte_range)
-        expected = Buffer.from_bytes(data[start : start + length])
-        assert observed == expected
+        start, length = _normalize_interval_index(data_buf, interval=byte_range)
+        expected = data_buf[start : start + length]
+        assert_bytes_equal(observed, expected)
 
     @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     async def test_set(self, store: S, key: str, data: bytes) -> None:
-        await store.set(key, Buffer.from_bytes(data))
-        assert self.get(store, key) == data
+        data_buf = Buffer.from_bytes(data)
+        await store.set(key, data_buf)
+        observed = self.get(store, key)
+        assert_bytes_equal(observed, data_buf)
 
     @pytest.mark.parametrize(
         "key_ranges",
@@ -103,15 +82,27 @@ class StoreTests(Generic[S]):
     ) -> None:
         # put all of the data
         for key, _ in key_ranges:
-            self.set(store, key, bytes(key, encoding="utf-8"))
+            self.set(store, key, Buffer.from_bytes(bytes(key, encoding="utf-8")))
 
         # read back just part of it
-        observed = await store.get_partial_values(key_ranges=key_ranges)
-        expected = []
+        observed_maybe = await store.get_partial_values(key_ranges=key_ranges)
+
+        observed: list[Buffer] = []
+        expected: list[Buffer] = []
+
+        for obs in observed_maybe:
+            assert obs is not None
+            observed.append(obs)
+
         for idx in range(len(observed)):
             key, byte_range = key_ranges[idx]
-            expected.append(await store.get(key, byte_range=byte_range))
-        assert observed == expected
+            result = await store.get(key, byte_range=byte_range)
+            assert result is not None
+            expected.append(result)
+
+        assert all(
+            obs.to_bytes() == exp.to_bytes() for obs, exp in zip(observed, expected, strict=True)
+        )
 
     async def test_exists(self, store: S) -> None:
         assert not await store.exists("foo")

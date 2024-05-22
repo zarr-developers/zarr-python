@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator, MutableMapping
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
 from zarr.common import concurrent_map
+from zarr.store.core import _normalize_interval_index
 
 
 # TODO: this store could easily be extended to wrap any MutableMapping store from v2
@@ -31,9 +32,8 @@ class MemoryStore(Store):
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
-            if byte_range is not None:
-                value = value[byte_range[0] : byte_range[1]]
-            return value
+            start, length = _normalize_interval_index(value, byte_range)
+            return value[start : start + length]
         except KeyError:
             return None
 
