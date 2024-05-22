@@ -56,10 +56,10 @@ def _put(
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
-            f.write(value.as_numpy_array())
+            f.write(value.as_numpy_array().tobytes())
         return None
     else:
-        return path.write_bytes(value.as_numpy_array())
+        return path.write_bytes(value.as_numpy_array().tobytes())
 
 
 class LocalStore(Store):

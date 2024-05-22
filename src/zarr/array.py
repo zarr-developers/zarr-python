@@ -419,7 +419,7 @@ class AsyncArray:
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass
         # Buffer and NDBuffer between components.
-        value = factory(value)
+        value_buffer = factory(value)
 
         # merging with existing data and encoding chunks
         await self.metadata.codec_pipeline.write(
@@ -432,7 +432,7 @@ class AsyncArray:
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            value,
+            value_buffer,
         )
 
     async def resize(

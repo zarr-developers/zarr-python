@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import numpy.typing as npt
 from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.abc.codec import BytesBytesCodec
@@ -52,11 +53,11 @@ class ZstdCodec(BytesBytesCodec):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
 
-    def _compress(self, data: bytes) -> bytes:
+    def _compress(self, data: npt.NDArray[Any]) -> bytes:
         ctx = ZstdCompressor(level=self.level, write_checksum=self.checksum)
         return ctx.compress(data)
 
-    def _decompress(self, data: bytes) -> bytes:
+    def _decompress(self, data: npt.NDArray[Any]) -> bytes:
         ctx = ZstdDecompressor()
         return ctx.decompress(data)
 
