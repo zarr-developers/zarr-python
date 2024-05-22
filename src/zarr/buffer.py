@@ -419,7 +419,7 @@ class NDBuffer:
     def copy(self) -> Self:
         return self.__class__(self._data.copy())
 
-    def transpose(self, *axes: np.SupportsIndex) -> Self:
+    def transpose(self, *axes: np.SupportsIndex) -> Self:  # type: ignore[name-defined]
         return self.__class__(self._data.transpose(*axes))
 
 
