@@ -25,6 +25,7 @@ from zarr.common import Selection
 from zarr.config import config
 from zarr.indexing import morton_order_iter
 from zarr.store import MemoryStore, StorePath
+from zarr.testing.utils import assert_bytes_equal
 
 
 @dataclass(frozen=True)
@@ -294,7 +295,7 @@ async def test_order(
             fill_value=1,
         )
         z[:, :] = data
-        assert (await (store / "order/0.0").get()) == z._store["0.0"]
+        assert_bytes_equal(await (store / "order/0.0").get(), z._store["0.0"])
 
 
 @pytest.mark.parametrize("input_order", ["F", "C"])
@@ -665,10 +666,10 @@ async def test_zarr_compat(store: Store):
     assert np.array_equal(data, await _AsyncArrayProxy(a)[:16, :18].get())
     assert np.array_equal(data, z2[:16, :18])
 
-    assert z2._store["0.0"] == await (store / "zarr_compat3/0.0").get()
-    assert z2._store["0.1"] == await (store / "zarr_compat3/0.1").get()
-    assert z2._store["1.0"] == await (store / "zarr_compat3/1.0").get()
-    assert z2._store["1.1"] == await (store / "zarr_compat3/1.1").get()
+    assert_bytes_equal(z2._store["0.0"], await (store / "zarr_compat3/0.0").get())
+    assert_bytes_equal(z2._store["0.1"], await (store / "zarr_compat3/0.1").get())
+    assert_bytes_equal(z2._store["1.0"], await (store / "zarr_compat3/1.0").get())
+    assert_bytes_equal(z2._store["1.1"], await (store / "zarr_compat3/1.1").get())
 
 
 async def test_zarr_compat_F(store: Store):
@@ -698,10 +699,10 @@ async def test_zarr_compat_F(store: Store):
     assert np.array_equal(data, await _AsyncArrayProxy(a)[:16, :18].get())
     assert np.array_equal(data, z2[:16, :18])
 
-    assert z2._store["0.0"] == await (store / "zarr_compatF3/0.0").get()
-    assert z2._store["0.1"] == await (store / "zarr_compatF3/0.1").get()
-    assert z2._store["1.0"] == await (store / "zarr_compatF3/1.0").get()
-    assert z2._store["1.1"] == await (store / "zarr_compatF3/1.1").get()
+    assert_bytes_equal(z2._store["0.0"], await (store / "zarr_compatF3/0.0").get())
+    assert_bytes_equal(z2._store["0.1"], await (store / "zarr_compatF3/0.1").get())
+    assert_bytes_equal(z2._store["1.0"], await (store / "zarr_compatF3/1.0").get())
+    assert_bytes_equal(z2._store["1.1"], await (store / "zarr_compatF3/1.1").get())
 
 
 async def test_dimension_names(store: Store):
@@ -795,7 +796,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]):
         fill_value=1,
     )
     z[:, :] = data
-    assert await (store / "endian/0.0").get() == z._store["0.0"]
+    assert_bytes_equal(await (store / "endian/0.0").get(), z._store["0.0"])
 
 
 @pytest.mark.parametrize("dtype_input_endian", [">u2", "<u2"])
@@ -830,7 +831,7 @@ async def test_endian_write(
         fill_value=1,
     )
     z[:, :] = data
-    assert await (store / "endian/0.0").get() == z._store["0.0"]
+    assert_bytes_equal(await (store / "endian/0.0").get(), z._store["0.0"])
 
 
 def test_invalid_metadata(store: Store):
