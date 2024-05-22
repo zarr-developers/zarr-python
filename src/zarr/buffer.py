@@ -11,6 +11,7 @@ from typing import (
 )
 
 import numpy as np
+import numpy.typing as npt
 
 from zarr.common import ChunkCoords
 
@@ -99,7 +100,7 @@ class Factory:
             self,
             *,
             shape: Iterable[int],
-            dtype: np.DTypeLike,
+            dtype: npt.DTypeLike,
             order: Literal["C", "F"],
             fill_value: Any | None,
         ) -> NDBuffer:
@@ -222,7 +223,7 @@ class Buffer:
         """
         return self._data
 
-    def as_numpy_array(self) -> np.ndarray:
+    def as_numpy_array(self) -> npt.NDArray[Any]:
         """Return the buffer as a NumPy array (host memory).
 
         Warning
@@ -303,7 +304,7 @@ class NDBuffer:
         cls,
         *,
         shape: Iterable[int],
-        dtype: np.DTypeLike,
+        dtype: npt.DTypeLike,
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:
@@ -330,7 +331,7 @@ class NDBuffer:
         A subclass can overwrite this method to create a ndarray-like object
         other then the default Numpy array.
         """
-        ret = cls(np.empty(shape=shape, dtype=dtype, order=order))
+        ret = cls(np.empty(shape=tuple(shape), dtype=dtype, order=order))
         if fill_value is not None:
             ret.fill(fill_value)
         return ret
@@ -351,7 +352,7 @@ class NDBuffer:
         return cls(ndarray_like)
 
     @classmethod
-    def from_numpy_array(cls, array_like: np.ArrayLike) -> Self:
+    def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
         """Create a new buffer of Numpy array-like object
 
         Parameters
@@ -376,7 +377,7 @@ class NDBuffer:
         """
         return self._data
 
-    def as_numpy_array(self) -> np.ndarray:
+    def as_numpy_array(self) -> npt.NDArray[Any]:
         """Return the buffer as a NumPy array (host memory).
 
         Warning
@@ -411,7 +412,7 @@ class NDBuffer:
     def reshape(self, newshape: ChunkCoords) -> Self:
         return self.__class__(self._data.reshape(newshape))
 
-    def astype(self, dtype: np.DTypeLike, order: Literal["K", "A", "C", "F"] = "K") -> Self:
+    def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K") -> Self:
         return self.__class__(self._data.astype(dtype=dtype, order=order))
 
     def __getitem__(self, key: Any) -> Self:
@@ -434,11 +435,11 @@ class NDBuffer:
     def copy(self) -> Self:
         return self.__class__(self._data.copy())
 
-    def transpose(self, *axes: np.SupportsIndex) -> Self:
+    def transpose(self, *axes: np.SupportsIndex) -> Self:  # type: ignore[name-defined]
         return self.__class__(self._data.transpose(*axes))
 
 
-def as_numpy_array_wrapper(func: Callable[[np.ndarray], bytes], buf: Buffer) -> Buffer:
+def as_numpy_array_wrapper(func: Callable[[npt.NDArray[Any]], bytes], buf: Buffer) -> Buffer:
     """Converts the input of `func` to a numpy array and the output back to `Buffer`.
 
     This function is useful when calling a `func` that only support host memory such
