@@ -4,6 +4,7 @@ import pytest
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
+from zarr.testing.utils import assert_bytes_equal
 
 
 def _normalize_byte_range(

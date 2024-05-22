@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.buffer import Buffer, NDBuffer
+from zarr.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration
 
@@ -75,7 +75,13 @@ class BytesCodec(ArrayBytesCodec):
             dtype = np.dtype(f"{prefix}{chunk_spec.dtype.str[1:]}")
         else:
             dtype = np.dtype(f"|{chunk_spec.dtype.str[1:]}")
-        chunk_array = chunk_bytes.as_nd_buffer(dtype=dtype)
+
+        as_array_like = chunk_bytes.as_array_like()
+        if isinstance(as_array_like, NDArrayLike):
+            as_nd_array_like = as_array_like
+        else:
+            as_nd_array_like = np.asanyarray(as_array_like)
+        chunk_array = NDBuffer.from_ndarray_like(as_nd_array_like.view(dtype=dtype))
 
         # ensure correct chunk shape
         if chunk_array.shape != chunk_spec.shape:
@@ -96,7 +102,11 @@ class BytesCodec(ArrayBytesCodec):
                 # see https://github.com/numpy/numpy/issues/26473
                 new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)  # type: ignore[arg-type]
                 chunk_array = chunk_array.astype(new_dtype)
-        return chunk_array.as_buffer()
+
+        as_nd_array_like = chunk_array.as_ndarray_like()
+        # Flatten the nd-array (only copy if needed)
+        as_nd_array_like = as_nd_array_like.ravel().view(dtype="b")
+        return Buffer.from_array_like(as_nd_array_like)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length

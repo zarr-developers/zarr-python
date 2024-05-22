@@ -8,6 +8,7 @@ from zarr.buffer import Buffer
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
 from zarr.testing.store import StoreTests
+from zarr.testing.utils import assert_bytes_equal
 
 
 @pytest.mark.parametrize("store_dict", (None, {}))
