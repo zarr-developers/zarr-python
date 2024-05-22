@@ -10,7 +10,7 @@ from zarr.buffer import Buffer
 from zarr.common import concurrent_map, to_thread
 
 
-def _get(path: Path, byte_range: tuple[int, int | None] | None) -> Buffer:
+def _get(path: Path, byte_range: tuple[int | None, int | None] | None) -> Buffer:
     """
     Fetch a contiguous region of bytes from a file.
 
@@ -90,7 +90,7 @@ class LocalStore(Store):
         return isinstance(other, type(self)) and self.root == other.root
 
     async def get(
-        self, key: str, byte_range: tuple[int, int | None] | None = None
+        self, key: str, byte_range: tuple[int | None, int | None] | None = None
     ) -> Buffer | None:
         assert isinstance(key, str)
         path = self.root / key

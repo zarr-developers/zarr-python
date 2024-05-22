@@ -9,7 +9,7 @@ from zarr.common import BytesLike
 class Store(ABC):
     @abstractmethod
     async def get(
-        self, key: str, byte_range: tuple[int, int | None] | None = None
+        self, key: str, byte_range: tuple[int | None, int | None] | None = None
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
 
