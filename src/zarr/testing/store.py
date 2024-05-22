@@ -79,7 +79,7 @@ class StoreTests(Generic[S]):
         self.set(store, key, data)
         observed = await store.get(key, byte_range=byte_range)
         start, length = _normalize_byte_range(data, byte_range=byte_range)
-        expected = Buffer(data[start : start + length])
+        expected = Buffer.from_bytes(data[start : start + length])
         assert observed == expected
 
     @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"])
