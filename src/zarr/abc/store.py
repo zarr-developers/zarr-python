@@ -26,7 +26,7 @@ class Store(ABC):
 
     @abstractmethod
     async def get_partial_values(
-        self, key_ranges: list[tuple[str, tuple[int, int]]]
+        self, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 

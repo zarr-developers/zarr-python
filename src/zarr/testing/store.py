@@ -15,13 +15,17 @@ class StoreTests(Generic[S]):
 
     def set(self, store: S, key: str, value: Buffer) -> None:
         """
-        Insert key: value pairs into a store without using the store methods.
+        Insert a value into a storage backend, with a specific key.
+        This should not not use any store methods. Bypassing the store methods allows them to be
+        tested.
         """
         raise NotImplementedError
 
     def get(self, store: S, key: str) -> Buffer:
         """
-        Retrieve values from a store without using the store methods.
+        Retrieve a value from a storage backend, by key.
+        This should not not use any store methods. Bypassing the store methods allows them to be
+        tested.
         """
 
         raise NotImplementedError
@@ -52,7 +56,9 @@ class StoreTests(Generic[S]):
     async def test_get(
         self, store: S, key: str, data: bytes, byte_range: None | tuple[int | None, int | None]
     ) -> None:
-        # insert values into the store
+        """
+        Ensure that data can be read from the store using the store.get method.
+        """
         data_buf = Buffer.from_bytes(data)
         self.set(store, key, data_buf)
         observed = await store.get(key, byte_range=byte_range)
@@ -63,6 +69,9 @@ class StoreTests(Generic[S]):
     @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     async def test_set(self, store: S, key: str, data: bytes) -> None:
+        """
+        Ensure that data can be written to the store using the store.set method.
+        """
         data_buf = Buffer.from_bytes(data)
         await store.set(key, data_buf)
         observed = self.get(store, key)
@@ -73,12 +82,12 @@ class StoreTests(Generic[S]):
         (
             [],
             [("zarr.json", (0, 1))],
-            [("c/0", (0, 1)), ("zarr.json", (0, 2))],
-            [("c/0/0", (0, 1)), ("c/0/1", (0, 2)), ("c/0/2", (0, 3))],
+            [("c/0", (0, 1)), ("zarr.json", (0, None))],
+            [("c/0/0", (0, 1)), ("c/0/1", (None, 2)), ("c/0/2", (0, 3))],
         ),
     )
     async def test_get_partial_values(
-        self, store: S, key_ranges: list[tuple[str, tuple[int, int]]]
+        self, store: S, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
     ) -> None:
         # put all of the data
         for key, _ in key_ranges:
