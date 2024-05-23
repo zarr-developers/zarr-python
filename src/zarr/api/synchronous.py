@@ -6,7 +6,7 @@ import numpy.typing as npt
 
 import zarr.api.asynchronous as async_api
 from zarr.array import Array
-from zarr.common import ZarrFormat
+from zarr.common import JSON, ZarrFormat
 from zarr.group import Group
 from zarr.store import StoreLike
 from zarr.sync import sync
@@ -210,8 +210,8 @@ def save_group(
     """
     return sync(
         async_api.save_group(
-            store=store,
-            *args,  # noqa: B026
+            store,
+            *args,
             zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
@@ -220,9 +220,8 @@ def save_group(
     )
 
 
-# TODO: implement or deprecate
-# def tree(*args: Any, **kwargs: Any) -> "TreeViewer":
-#     return sync(async_api.tree(*args, **kwargs))
+def tree(*args: Any, **kwargs: Any) -> None:
+    return sync(async_api.tree(*args, **kwargs))
 
 
 # TODO: add type annotations for kwargs
@@ -235,17 +234,18 @@ def array(data: npt.ArrayLike, **kwargs: Any) -> Array:
     return Array(sync(async_api.array(data=data, **kwargs)))
 
 
-async def group(
+def group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,
     overwrite: bool = False,
     chunk_store: StoreLike | None = None,  # not used in async_api
-    cache_attrs: bool = True,  # not used in async_api
+    cache_attrs: bool | None = None,  # default changed, not used in async_api
     synchronizer: Any | None = None,  # not used in async_api
     path: str | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used in async_api
+    attributes: dict[str, JSON] | None = None,
 ) -> Group:
     """Create a group.
 
@@ -289,6 +289,7 @@ async def group(
                 zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
+                attributes=attributes,
             )
         )
     )
@@ -298,7 +299,7 @@ def open_group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,
     mode: str | None = None,  # not used in async api
-    cache_attrs: bool = True,  # not used in async api
+    cache_attrs: bool | None = None,  # default changed, not used in async api
     synchronizer: Any = None,  # not used in async api
     path: str | None = None,
     chunk_store: StoreLike | None = None,  # not used in async api
@@ -397,7 +398,7 @@ def full(shape: async_api.ShapeLike, fill_value: Any, **kwargs: Any) -> Array:
 
 # TODO: move ArrayLike to common module
 # TODO: add type annotations for kwargs
-async def full_like(a: async_api.ArrayLike, **kwargs: Any) -> Array:
+def full_like(a: async_api.ArrayLike, **kwargs: Any) -> Array:
     """Create a filled array like `a`."""
     return Array(sync(async_api.full_like(a, **kwargs)))
 

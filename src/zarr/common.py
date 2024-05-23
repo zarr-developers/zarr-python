@@ -152,6 +152,8 @@ def parse_named_configuration(
 
 
 def parse_shapelike(data: Any) -> tuple[int, ...]:
+    if isinstance(data, int):
+        return (data,)
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected an iterable. Got {data} instead.")
     data_tuple = tuple(data)

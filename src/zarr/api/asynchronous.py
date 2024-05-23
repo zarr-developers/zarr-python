@@ -172,9 +172,9 @@ async def open(
         store_path = store_path / path
 
     try:
-        return await AsyncArray.open(store_path, zarr_format=zarr_format, **kwargs)
+        return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
     except KeyError:
-        return await AsyncGroup.open(store_path, zarr_format=zarr_format, **kwargs)
+        return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
 
 
 async def open_consolidated(*args: Any, **kwargs: Any) -> AsyncGroup:
@@ -298,8 +298,8 @@ async def save_group(
     await asyncio.gather(*aws)
 
 
-# async def tree(*args: Any, **kwargs: Any) -> "TreeViewer":
-#     raise NotImplementedError
+async def tree(*args: Any, **kwargs: Any) -> None:
+    raise NotImplementedError
 
 
 async def array(data: npt.ArrayLike, **kwargs: Any) -> AsyncArray:
@@ -349,12 +349,13 @@ async def group(
     store: StoreLike | None = None,
     overwrite: bool = False,
     chunk_store: StoreLike | None = None,  # not used
-    cache_attrs: bool = True,  # not used
+    cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any | None = None,  # not used
     path: str | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
+    attributes: dict[str, JSON] | None = None,
 ) -> AsyncGroup:
     """Create a group.
 
@@ -409,13 +410,17 @@ async def group(
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
+    if attributes is None:
+        attributes = {}
+
     try:
-        return await AsyncGroup.open(store_path, zarr_format=zarr_format)
-    except KeyError:
-        # TODO: pass attributes here
-        attributes: dict[str, Any] = {}
+        return await AsyncGroup.open(store=store_path, zarr_format=zarr_format)
+    except (KeyError, FileNotFoundError):
         return await AsyncGroup.create(
-            store_path, zarr_format=zarr_format, exists_ok=overwrite, attributes=attributes
+            store=store_path,
+            zarr_format=zarr_format,
+            exists_ok=overwrite,
+            attributes=attributes,
         )
 
 
@@ -423,7 +428,7 @@ async def open_group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,
     mode: str | None = None,  # not used
-    cache_attrs: bool = True,  # not used
+    cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any = None,  # not used
     path: str | None = None,
     chunk_store: StoreLike | None = None,  # not used
@@ -431,6 +436,7 @@ async def open_group(
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
+    attributes: dict[str, JSON] | None = None,
 ) -> AsyncGroup:
     """Open a group using file-mode-like semantics.
 
@@ -481,10 +487,8 @@ async def open_group(
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
-
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
-
     if storage_options is not None:
         warnings.warn("storage_options is not yet implemented", RuntimeWarning, stacklevel=2)
 
@@ -492,7 +496,15 @@ async def open_group(
     if path is not None:
         store_path = store_path / path
 
-    return await AsyncGroup.open(store_path, zarr_format=zarr_format)
+    if attributes is None:
+        attributes = {}
+
+    try:
+        return await AsyncGroup.open(store_path, zarr_format=zarr_format)
+    except (KeyError, FileNotFoundError):
+        return await AsyncGroup.create(
+            store_path, zarr_format=zarr_format, exists_ok=True, attributes=attributes
+        )
 
 
 # TODO: require kwargs
@@ -515,7 +527,7 @@ async def create(
     read_only: bool | None = None,
     object_codec: Codec | None = None,  # TODO: type has changed
     dimension_separator: Literal[".", "/"] | None = None,
-    write_empty_chunks: bool = True,
+    write_empty_chunks: bool = False,  # TODO: default has changed
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # TODO: need type
@@ -637,6 +649,11 @@ async def create(
     if zarr_format is None:
         zarr_format = 3  # default from config?
 
+    if zarr_format == 2 and chunks is None:
+        chunks = shape
+    if zarr_format == 3 and chunk_shape is None:
+        chunk_shape = shape
+
     if order is not None:
         warnings.warn(
             "order is deprecated, use zarr config instead", DeprecationWarning, stacklevel=2
@@ -655,7 +672,7 @@ async def create(
         warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
     if dimension_separator is not None:
         warnings.warn("dimension_separator is not yet implemented", RuntimeWarning, stacklevel=2)
-    if write_empty_chunks is not None:
+    if write_empty_chunks:
         warnings.warn("write_empty_chunks is not yet implemented", RuntimeWarning, stacklevel=2)
     if storage_transformers:
         warnings.warn("storage_transformers is not yet implemented", RuntimeWarning, stacklevel=2)
