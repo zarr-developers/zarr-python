@@ -13,7 +13,8 @@ from zarr.common import parse_named_configuration, to_thread
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.common import JSON, ArraySpec
+    from zarr.array_spec import ArraySpec
+    from zarr.common import JSON
 
 
 def parse_gzip_level(data: JSON) -> int:

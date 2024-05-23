@@ -16,7 +16,8 @@ from zarr.common import parse_enum, parse_named_configuration, to_thread
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.common import JSON, ArraySpec
+    from zarr.array_spec import ArraySpec
+    from zarr.common import JSON
 
 
 class BloscShuffle(Enum):

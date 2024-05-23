@@ -13,7 +13,8 @@ from zarr.config import config
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.common import ArraySpec, SliceSelection
+    from zarr.array_spec import ArraySpec
+    from zarr.common import SliceSelection
     from zarr.metadata import ArrayMetadata
 
 

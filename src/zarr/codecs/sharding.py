@@ -19,6 +19,7 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
+from zarr.array_spec import ArraySpec
 from zarr.buffer import Buffer, NDBuffer
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.codecs.bytes import BytesCodec
@@ -26,7 +27,6 @@ from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.pipeline import BatchedCodecPipeline
 from zarr.codecs.registry import register_codec
 from zarr.common import (
-    ArraySpec,
     ChunkCoords,
     ChunkCoordsLike,
     parse_enum,

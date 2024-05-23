@@ -5,9 +5,10 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 
 from zarr.abc.codec import ArrayArrayCodec
+from zarr.array_spec import ArraySpec
 from zarr.buffer import NDBuffer
 from zarr.codecs.registry import register_codec
-from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
+from zarr.common import JSON, ChunkCoordsLike, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import TYPE_CHECKING
@@ -62,8 +63,6 @@ class TransposeCodec(ArrayArrayCodec):
         return self
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
-        from zarr.common import ArraySpec
-
         return ArraySpec(
             shape=tuple(chunk_spec.shape[self.order[i]] for i in range(chunk_spec.ndim)),
             dtype=chunk_spec.dtype,

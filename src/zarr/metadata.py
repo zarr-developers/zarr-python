@@ -24,12 +24,12 @@ if TYPE_CHECKING:
 
 import numcodecs.abc
 
+from zarr.array_spec import ArraySpec
 from zarr.common import (
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
-    ArraySpec,
     ChunkCoords,
     parse_dtype,
     parse_fill_value,

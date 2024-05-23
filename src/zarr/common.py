@@ -5,7 +5,6 @@ import contextvars
 import functools
 import operator
 from collections.abc import Iterable
-from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Literal, ParamSpec, TypeVar, overload
 
@@ -80,31 +79,6 @@ def parse_enum(data: JSON, cls: type[E]) -> E:
     if data in enum_names(cls):
         return cls(data)
     raise ValueError(f"Value must be one of {list(enum_names(cls))!r}. Got {data} instead.")
-
-
-@dataclass(frozen=True)
-class ArraySpec:
-    shape: ChunkCoords
-    dtype: np.dtype[Any]
-    fill_value: Any
-    order: Literal["C", "F"]
-
-    def __init__(
-        self, shape: ChunkCoords, dtype: np.dtype[Any], fill_value: Any, order: Literal["C", "F"]
-    ) -> None:
-        shape_parsed = parse_shapelike(shape)
-        dtype_parsed = parse_dtype(dtype)
-        fill_value_parsed = parse_fill_value(fill_value)
-        order_parsed = parse_order(order)
-
-        object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "dtype", dtype_parsed)
-        object.__setattr__(self, "fill_value", fill_value_parsed)
-        object.__setattr__(self, "order", order_parsed)
-
-    @property
-    def ndim(self) -> int:
-        return len(self.shape)
 
 
 def parse_name(data: JSON, expected: str | None = None) -> str:
