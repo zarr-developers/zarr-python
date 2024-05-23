@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import itertools
+import operator
+from abc import abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import reduce
 from typing import TYPE_CHECKING
 
 from zarr.abc.metadata import Metadata
@@ -31,8 +34,13 @@ class ChunkGrid(Metadata):
             return RegularChunkGrid._from_dict(data)
         raise ValueError(f"Unknown chunk grid. Got {name_parsed}.")
 
+    @abstractmethod
     def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
-        raise NotImplementedError
+        pass
+
+    @abstractmethod
+    def get_nchunks(self, array_shape: ChunkCoords) -> int:
+        pass
 
 
 @dataclass(frozen=True)
@@ -56,4 +64,11 @@ class RegularChunkGrid(ChunkGrid):
     def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
         return itertools.product(
             *(range(0, _ceildiv(s, c)) for s, c in zip(array_shape, self.chunk_shape, strict=False))
+        )
+
+    def get_nchunks(self, array_shape: ChunkCoords) -> int:
+        return reduce(
+            operator.mul,
+            (_ceildiv(s, c) for s, c in zip(array_shape, self.chunk_shape, strict=True)),
+            1,
         )

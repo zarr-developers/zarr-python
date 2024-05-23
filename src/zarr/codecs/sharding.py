@@ -34,11 +34,8 @@ from zarr.common import (
     parse_shapelike,
     product,
 )
-from zarr.indexing import (
-    BasicIndexer,
-    c_order_iter,
-    morton_order_iter,
-)
+from zarr.indexing import c_order_iter, morton_order_iter
+from zarr.indexing2 import BasicIndexer
 from zarr.metadata import ArrayMetadata, parse_codecs
 
 if TYPE_CHECKING:
