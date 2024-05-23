@@ -60,8 +60,8 @@ async def test_async_array_factory(store_path):
     await a.setitem(
         selection=(slice(1, 4), slice(3, 6)),
         value=np.ones((3, 3)),
-        factory=MyNDBuffer.from_ndarray_like,
+        prototype=MyNDBuffer,
     )
-    got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), factory=MyNDBuffer.create)
+    got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=MyNDBuffer)
     assert isinstance(got, MyNDArrayLike)
     assert np.array_equal(expect, got)
