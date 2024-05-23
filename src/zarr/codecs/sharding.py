@@ -396,7 +396,7 @@ class ShardingCodec(
         )
 
         # setup output array
-        out = NDBuffer.create(
+        out = chunk_spec.prototype.create(
             shape=shard_shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
         )
         shard_dict = await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)
@@ -439,7 +439,7 @@ class ShardingCodec(
         )
 
         # setup output array
-        out = NDBuffer.create(
+        out = shard_spec.prototype.create(
             shape=indexer.shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
         )
 
@@ -614,6 +614,7 @@ class ShardingCodec(
             dtype=np.dtype("<u8"),
             fill_value=MAX_UINT_64,
             order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
+            prototype=NDBuffer,
         )
 
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:
@@ -622,6 +623,7 @@ class ShardingCodec(
             dtype=shard_spec.dtype,
             fill_value=shard_spec.fill_value,
             order=shard_spec.order,
+            prototype=shard_spec.prototype,
         )
 
     def _get_chunks_per_shard(self, shard_spec: ArraySpec) -> ChunkCoords:

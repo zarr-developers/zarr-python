@@ -379,7 +379,7 @@ class BatchedCodecPipeline(CodecPipeline):
                 if is_total_slice(chunk_selection, chunk_spec.shape):
                     return new_chunk_array_slice
                 if existing_chunk_array is None:
-                    chunk_array = NDBuffer.create(
+                    chunk_array = chunk_spec.prototype.create(
                         shape=chunk_spec.shape,
                         dtype=chunk_spec.dtype,
                         order=chunk_spec.order,

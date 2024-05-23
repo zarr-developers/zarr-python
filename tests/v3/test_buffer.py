@@ -8,7 +8,9 @@ import numpy.typing as npt
 import pytest
 
 from zarr.array import AsyncArray
-from zarr.buffer import ArrayLike, NDArrayLike, NDBuffer
+from zarr.buffer import ArrayLike, Buffer, NDArrayLike, NDBuffer
+from zarr.store.core import StorePath
+from zarr.store.memory import MemoryStore
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -17,7 +19,9 @@ if TYPE_CHECKING:
 class MyNDArrayLike(np.ndarray):
     """An example of a ndarray-like class"""
 
-    pass
+
+class MyBuffer(Buffer):
+    """Example of a custom Buffer that handles ArrayLike"""
 
 
 class MyNDBuffer(NDBuffer):
@@ -38,6 +42,19 @@ class MyNDBuffer(NDBuffer):
             ret.fill(fill_value)
         return ret
 
+    def as_buffer(self) -> Buffer:
+        return MyBuffer.from_array_like(self.as_ndarray_like().ravel().view(dtype="b"))
+
+
+class MyStore(MemoryStore):
+    """Example of a custom Store that expect MyBuffer for all its non-metadata"""
+
+    async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        # Check that non-metadata is using MyBuffer
+        if "json" not in key:
+            assert isinstance(value, MyBuffer)
+        await super().set(key, value, byte_range)
+
 
 def test_nd_array_like(xp):
     ary = xp.arange(10)
@@ -46,10 +63,12 @@ def test_nd_array_like(xp):
 
 
 @pytest.mark.asyncio
-async def test_async_array_factory(store_path):
+async def test_async_array_prototype():
+    """Test the use of a custom buffer prototype"""
+
     expect = np.zeros((9, 9), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        store_path,
+        StorePath(MyStore()) / "test_async_array_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,

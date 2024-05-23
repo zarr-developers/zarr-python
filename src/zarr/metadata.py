@@ -12,7 +12,7 @@ import numpy.typing as npt
 
 from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.metadata import Metadata
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, NDBuffer
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -133,7 +133,9 @@ class ArrayMetadata(Metadata, ABC):
         pass
 
     @abstractmethod
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: type[NDBuffer]
+    ) -> ArraySpec:
         pass
 
     @abstractmethod
@@ -194,6 +196,7 @@ class ArrayV3Metadata(ArrayMetadata):
             dtype=data_type_parsed,
             fill_value=fill_value_parsed,
             order="C",  # TODO: order is not needed here.
+            prototype=NDBuffer,
         )
         codecs_parsed = parse_codecs(codecs).evolve_from_array_spec(array_spec)
 
@@ -235,7 +238,9 @@ class ArrayV3Metadata(ArrayMetadata):
     def codec_pipeline(self) -> CodecPipeline:
         return self.codecs
 
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: type[NDBuffer]
+    ) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
         ), "Currently, only regular chunk grid is supported"
@@ -244,6 +249,7 @@ class ArrayV3Metadata(ArrayMetadata):
             dtype=self.dtype,
             fill_value=self.fill_value,
             order=order,
+            prototype=prototype,
         )
 
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
@@ -407,12 +413,15 @@ class ArrayV2Metadata(ArrayMetadata):
 
         return zarray_dict
 
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: type[NDBuffer]
+    ) -> ArraySpec:
         return ArraySpec(
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
             order=order,
+            prototype=prototype,
         )
 
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:

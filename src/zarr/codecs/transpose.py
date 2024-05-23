@@ -68,6 +68,7 @@ class TransposeCodec(ArrayArrayCodec):
             dtype=chunk_spec.dtype,
             fill_value=chunk_spec.fill_value,
             order=chunk_spec.order,
+            prototype=chunk_spec.prototype,
         )
 
     async def _decode_single(

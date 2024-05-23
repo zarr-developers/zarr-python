@@ -377,7 +377,7 @@ class AsyncArray:
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                    self.metadata.get_chunk_spec(chunk_coords, self.order),
+                    self.metadata.get_chunk_spec(chunk_coords, self.order, prototype),
                     chunk_selection,
                     out_selection,
                 )
@@ -423,7 +423,7 @@ class AsyncArray:
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                    self.metadata.get_chunk_spec(chunk_coords, self.order),
+                    self.metadata.get_chunk_spec(chunk_coords, self.order, prototype),
                     chunk_selection,
                     out_selection,
                 )
