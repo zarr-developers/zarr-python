@@ -349,6 +349,19 @@ class NDBuffer:
         """
         return np.asanyarray(self._data)
 
+    def as_buffer(self) -> Buffer:
+        """Return the NDBuffer as a flat Buffer.
+
+        This will only copy data if it isn't contiguous already.
+
+        Return
+        ------
+            Buffer (might be a data copy)
+        """
+
+        # Flatten the nd-array (only copy if needed) and reinterpret as bytes
+        return Buffer.from_array_like(self.as_ndarray_like().ravel().view(dtype="b"))
+
     @property
     def dtype(self) -> np.dtype[Any]:
         return self._data.dtype

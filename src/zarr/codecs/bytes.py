@@ -103,11 +103,7 @@ class BytesCodec(ArrayBytesCodec):
                 # see https://github.com/numpy/numpy/issues/26473
                 new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)  # type: ignore[arg-type]
                 chunk_array = chunk_array.astype(new_dtype)
-
-        as_nd_array_like = chunk_array.as_ndarray_like()
-        # Flatten the nd-array (only copy if needed)
-        as_nd_array_like = as_nd_array_like.ravel().view(dtype="b")
-        return Buffer.from_array_like(as_nd_array_like)
+        return chunk_array.as_buffer()
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
