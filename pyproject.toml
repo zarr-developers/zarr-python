@@ -24,10 +24,11 @@ requires-python = ">=3.10"
 dependencies = [
     'asciitree',
     'numpy>=1.24',
-    'fasteners',
-    'numcodecs>=0.10.0',
-    'crc32c',
-    'zstandard',
+    'fasteners; sys_platform != "emscripten"',
+    # 'numcodecs[msgpack]>=0.10.0; sys_platform != "emscripten"',  # does not currently work
+    'numcodecs[msgpack]>=0.10.0',  # this works
+    'crc32c',  # not available in Pyodide, have to see if we can make it optional for Pyodide
+    'zstandard',  # not available in Pyodide, have to see if we can make it optional for Pyodide
     'typing_extensions',
     'donfig'
 ]
