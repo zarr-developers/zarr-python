@@ -17,9 +17,10 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
+from zarr.array_spec import ArraySpec
 from zarr.buffer import Buffer, NDBuffer, Prototype
 from zarr.codecs.registry import get_codec_class
-from zarr.common import JSON, concurrent_map, parse_named_configuration
+from zarr.common import JSON, SliceSelection, concurrent_map, parse_named_configuration
 from zarr.config import config
 from zarr.indexing import is_total_slice
 from zarr.metadata import ArrayMetadata
@@ -27,8 +28,6 @@ from zarr.metadata import ArrayMetadata
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.array_spec import ArraySpec
-    from zarr.common import SliceSelection
 
 T = TypeVar("T")
 U = TypeVar("U")

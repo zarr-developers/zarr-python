@@ -8,15 +8,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
+from zarr.array_spec import ArraySpec
 from zarr.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.codecs.registry import register_codec
-from zarr.common import parse_enum, parse_named_configuration
+from zarr.common import JSON, parse_enum, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing_extensions import Self
-
-    from zarr.array_spec import ArraySpec
-    from zarr.common import JSON
 
 
 class Endian(Enum):
