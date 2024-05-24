@@ -204,6 +204,7 @@ disallow_untyped_defs = true
 no_implicit_reexport = true
 
 
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
 [[tool.mypy.overrides]]
 module = [

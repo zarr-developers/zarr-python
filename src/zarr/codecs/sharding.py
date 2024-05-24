@@ -205,7 +205,7 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
     ) -> _ShardBuilder:
         obj = cls.create_empty(chunks_per_shard)
         for chunk_coords in morton_order_iter(chunks_per_shard):
-            if tombstones is not None and chunk_coords in tombstones:
+            if chunk_coords in tombstones:
                 continue
             for shard_dict in shard_dicts:
                 maybe_value = shard_dict.get(chunk_coords, None)
