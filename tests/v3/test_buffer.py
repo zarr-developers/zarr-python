@@ -50,10 +50,12 @@ class MyNDBuffer(NDBuffer):
 
 
 class MyStore(MemoryStore):
-    """Example of a custom Store that expect MyBuffer for all its non-metadata"""
+    """Example of a custom Store that expect MyBuffer for all its non-metadata
+
+    We assume that keys containing "json" is metadata
+    """
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
-        # Check that non-metadata is using MyBuffer
         if "json" not in key:
             assert isinstance(value, MyBuffer)
         await super().set(key, value, byte_range)
@@ -64,7 +66,6 @@ class MyStore(MemoryStore):
         prototype: Prototype,
         byte_range: tuple[int, int | None] | None = None,
     ) -> Buffer | None:
-        # Check that non-metadata is using MyBuffer
         if "json" not in key:
             assert prototype.buffer is MyBuffer
         return await super().get(key, byte_range)
