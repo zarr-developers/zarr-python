@@ -8,7 +8,7 @@ import numpy.typing as npt
 import pytest
 
 from zarr.array import AsyncArray
-from zarr.buffer import ArrayLike, Buffer, NDArrayLike, NDBuffer
+from zarr.buffer import ArrayLike, Buffer, NDArrayLike, NDBuffer, Prototype
 from zarr.store.core import StorePath
 from zarr.store.memory import MemoryStore
 
@@ -76,11 +76,13 @@ async def test_async_array_prototype():
     )
     expect[1:4, 3:6] = np.ones((3, 3))
 
+    my_prototype = Prototype(buffer=MyBuffer, nd_buffer=MyNDBuffer)
+
     await a.setitem(
         selection=(slice(1, 4), slice(3, 6)),
         value=np.ones((3, 3)),
-        prototype=MyNDBuffer,
+        prototype=my_prototype,
     )
-    got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=MyNDBuffer)
+    got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=my_prototype)
     assert isinstance(got, MyNDArrayLike)
     assert np.array_equal(expect, got)

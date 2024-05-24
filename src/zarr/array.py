@@ -20,7 +20,7 @@ import numpy.typing as npt
 from zarr.abc.codec import Codec
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
-from zarr.buffer import NDArrayLike, NDBuffer
+from zarr.buffer import NDArrayLike, Prototype, default_prototype
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
@@ -356,7 +356,7 @@ class AsyncArray:
         return self.metadata.attributes
 
     async def getitem(
-        self, selection: Selection, *, prototype: type[NDBuffer] = NDBuffer
+        self, selection: Selection, *, prototype: Prototype = default_prototype
     ) -> NDArrayLike:
         indexer = BasicIndexer(
             selection,
@@ -365,7 +365,7 @@ class AsyncArray:
         )
 
         # setup output array
-        out = prototype.create(
+        out = prototype.nd_buffer.create(
             shape=indexer.shape,
             dtype=self.metadata.dtype,
             order=self.order,
@@ -393,7 +393,11 @@ class AsyncArray:
         await gather(*awaitables)
 
     async def setitem(
-        self, selection: Selection, value: NDArrayLike, *, prototype: type[NDBuffer] = NDBuffer
+        self,
+        selection: Selection,
+        value: NDArrayLike,
+        *,
+        prototype: Prototype = default_prototype,
     ) -> None:
         indexer = BasicIndexer(
             selection,
@@ -416,7 +420,7 @@ class AsyncArray:
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass
         # Buffer and NDBuffer between components.
-        value_buffer = prototype.from_ndarray_like(value)
+        value_buffer = prototype.nd_buffer.from_ndarray_like(value)
 
         # merging with existing data and encoding chunks
         await self.metadata.codec_pipeline.write(

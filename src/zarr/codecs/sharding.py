@@ -20,7 +20,7 @@ from zarr.abc.codec import (
     CodecPipeline,
 )
 from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer, NDBuffer
+from zarr.buffer import Buffer, NDBuffer, default_prototype
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
@@ -396,7 +396,7 @@ class ShardingCodec(
         )
 
         # setup output array
-        out = chunk_spec.prototype.create(
+        out = chunk_spec.prototype.nd_buffer.create(
             shape=shard_shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
         )
         shard_dict = await _ShardReader.from_bytes(shard_bytes, self, chunks_per_shard)
@@ -439,7 +439,7 @@ class ShardingCodec(
         )
 
         # setup output array
-        out = shard_spec.prototype.create(
+        out = shard_spec.prototype.nd_buffer.create(
             shape=indexer.shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
         )
 
@@ -614,7 +614,7 @@ class ShardingCodec(
             dtype=np.dtype("<u8"),
             fill_value=MAX_UINT_64,
             order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
-            prototype=NDBuffer,
+            prototype=default_prototype,
         )
 
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:

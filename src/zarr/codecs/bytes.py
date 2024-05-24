@@ -82,7 +82,9 @@ class BytesCodec(ArrayBytesCodec):
             as_nd_array_like = as_array_like
         else:
             as_nd_array_like = np.asanyarray(as_array_like)
-        chunk_array = chunk_spec.prototype.from_ndarray_like(as_nd_array_like.view(dtype=dtype))
+        chunk_array = chunk_spec.prototype.nd_buffer.from_ndarray_like(
+            as_nd_array_like.view(dtype=dtype)
+        )
 
         # ensure correct chunk shape
         if chunk_array.shape != chunk_spec.shape:

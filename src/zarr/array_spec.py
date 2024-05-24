@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
-from zarr.buffer import NDBuffer
+from zarr.buffer import Prototype
 from zarr.common import ChunkCoords, parse_dtype, parse_fill_value, parse_order, parse_shapelike
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ class ArraySpec:
     dtype: np.dtype[Any]
     fill_value: Any
     order: Literal["C", "F"]
-    prototype: type[NDBuffer]
+    prototype: Prototype
 
     def __init__(
         self,
@@ -26,7 +26,7 @@ class ArraySpec:
         dtype: np.dtype[Any],
         fill_value: Any,
         order: Literal["C", "F"],
-        prototype: type[NDBuffer],
+        prototype: Prototype,
     ) -> None:
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)

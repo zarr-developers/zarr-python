@@ -6,6 +6,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
+    NamedTuple,
     Protocol,
     SupportsIndex,
     runtime_checkable,
@@ -433,3 +434,11 @@ def as_numpy_array_wrapper(func: Callable[[npt.NDArray[Any]], bytes], buf: Buffe
         The result of `func` converted to a `Buffer`
     """
     return Buffer.from_bytes(func(buf.as_numpy_array()))
+
+
+class Prototype(NamedTuple):
+    buffer: type[Buffer]
+    nd_buffer: type[NDBuffer]
+
+
+default_prototype = Prototype(buffer=Buffer, nd_buffer=NDBuffer)
