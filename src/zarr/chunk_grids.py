@@ -16,7 +16,7 @@ from zarr.common import (
     parse_named_configuration,
     parse_shapelike,
 )
-from zarr.indexing import _ceildiv
+from zarr.indexing import ceildiv
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -63,12 +63,12 @@ class RegularChunkGrid(ChunkGrid):
 
     def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
         return itertools.product(
-            *(range(0, _ceildiv(s, c)) for s, c in zip(array_shape, self.chunk_shape, strict=False))
+            *(range(0, ceildiv(s, c)) for s, c in zip(array_shape, self.chunk_shape, strict=False))
         )
 
     def get_nchunks(self, array_shape: ChunkCoords) -> int:
         return reduce(
             operator.mul,
-            (_ceildiv(s, c) for s, c in zip(array_shape, self.chunk_shape, strict=True)),
+            (ceildiv(s, c) for s, c in zip(array_shape, self.chunk_shape, strict=True)),
             1,
         )

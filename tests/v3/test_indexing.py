@@ -12,7 +12,7 @@ from numpy.testing import assert_array_equal
 import zarr
 from zarr.abc.store import Store
 from zarr.common import ChunkCoords
-from zarr.indexing2 import (
+from zarr.indexing import (
     make_slice_selection,
     normalize_integer_selection,
     oindex,

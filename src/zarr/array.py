@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import math
 
 # Notes on what I've changed here:
 # 1. Split Array into AsyncArray and Array
@@ -34,9 +33,10 @@ from zarr.common import (
     Selection,
     ZarrFormat,
     concurrent_map,
+    product,
 )
 from zarr.config import config
-from zarr.indexing2 import (
+from zarr.indexing import (
     BasicIndexer,
     BlockIndex,
     BlockIndexer,
@@ -408,7 +408,7 @@ class AsyncArray:
                 order=self.order,
                 fill_value=self.metadata.fill_value,
             )
-        if math.prod(indexer.shape) > 0:
+        if product(indexer.shape) > 0:
             # reading chunks and decoding them
             await self.metadata.codec_pipeline.read(
                 [
@@ -433,7 +433,7 @@ class AsyncArray:
             shape=self.metadata.shape,
             chunk_grid=self.metadata.chunk_grid,
         )
-        return await self._get_selection(indexer, factory=factory)
+        return await self._get_selection(indexer, create_factory=factory)
 
     async def _save_metadata(self, metadata: ArrayMetadata) -> None:
         to_save = metadata.to_buffer_dict()

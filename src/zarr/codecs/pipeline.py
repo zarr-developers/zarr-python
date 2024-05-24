@@ -23,8 +23,7 @@ from zarr.buffer import Buffer, NDBuffer
 from zarr.codecs.registry import get_codec_class
 from zarr.common import JSON, concurrent_map, parse_named_configuration
 from zarr.config import config
-from zarr.indexing import is_total_slice
-from zarr.indexing2 import is_scalar
+from zarr.indexing import is_scalar, is_total_slice
 from zarr.metadata import ArrayMetadata
 
 if TYPE_CHECKING:
