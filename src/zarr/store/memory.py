@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator, MutableMapping
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
-from zarr.common import concurrent_map
+from zarr.common import OpenMode, concurrent_map
 
 
 # TODO: this store could easily be extended to wrap any MutableMapping store from v2
@@ -16,8 +16,11 @@ class MemoryStore(Store):
 
     _store_dict: MutableMapping[str, Buffer]
 
-    def __init__(self, store_dict: MutableMapping[str, Buffer] | None = None):
+    def __init__(
+        self, store_dict: MutableMapping[str, Buffer] | None = None, *, mode: OpenMode = "r"
+    ):
         self._store_dict = store_dict or {}
+        self._mode = mode
 
     def __str__(self) -> str:
         return f"memory://{id(self._store_dict)}"
@@ -47,6 +50,7 @@ class MemoryStore(Store):
         return key in self._store_dict
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        self._check_writable()
         assert isinstance(key, str)
         if isinstance(value, bytes | bytearray):
             # TODO: to support the v2 tests, we convert bytes to Buffer here
@@ -62,6 +66,7 @@ class MemoryStore(Store):
             self._store_dict[key] = value
 
     async def delete(self, key: str) -> None:
+        self._check_writable()
         try:
             del self._store_dict[key]
         except KeyError:

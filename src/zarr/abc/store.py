@@ -3,10 +3,21 @@ from collections.abc import AsyncGenerator
 from typing import Protocol, runtime_checkable
 
 from zarr.buffer import Buffer
-from zarr.common import BytesLike
+from zarr.common import BytesLike, OpenMode
 
 
 class Store(ABC):
+    _mode: OpenMode
+
+    @property
+    def mode(self) -> OpenMode:
+        """Access mode of the store."""
+        return self._mode
+
+    def _check_writable(self) -> None:
+        if self.mode not in ("a", "w", "w-"):
+            ValueError("store mode does not support writing")
+
     @abstractmethod
     async def get(
         self, key: str, byte_range: tuple[int, int | None] | None = None
@@ -146,6 +157,10 @@ class Store(ABC):
         AsyncGenerator[str, None]
         """
         ...
+
+    def close(self) -> None:  # noqa: B027
+        """Close the store."""
+        pass
 
 
 @runtime_checkable
