@@ -42,9 +42,6 @@ class MyNDBuffer(NDBuffer):
             ret.fill(fill_value)
         return ret
 
-    def as_buffer(self) -> Buffer:
-        return MyBuffer.from_array_like(self.as_ndarray_like().ravel().view(dtype="b"))
-
 
 class MyStore(MemoryStore):
     """Example of a custom Store that expect MyBuffer for all its non-metadata"""

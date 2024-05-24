@@ -96,7 +96,7 @@ class BytesCodec(ArrayBytesCodec):
     async def _encode_single(
         self,
         chunk_array: NDBuffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> Buffer | None:
         assert isinstance(chunk_array, NDBuffer)
         if chunk_array.dtype.itemsize > 1:
@@ -105,7 +105,11 @@ class BytesCodec(ArrayBytesCodec):
                 # see https://github.com/numpy/numpy/issues/26473
                 new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)  # type: ignore[arg-type]
                 chunk_array = chunk_array.astype(new_dtype)
-        return chunk_array.as_buffer()
+
+        nd_array = chunk_array.as_ndarray_like()
+        # Flatten the nd-array (only copy if needed) and reinterpret as bytes
+        nd_array = nd_array.ravel().view(dtype="b")
+        return chunk_spec.prototype.buffer.from_array_like(nd_array)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
