@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from zarr.buffer import default_prototype
+from zarr.buffer import Buffer, default_prototype
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
 from zarr.testing.store import StoreTests
@@ -103,9 +103,9 @@ async def test_local_store_set(tmpdir, path: str, auto_mkdir: bool) -> None:
 
     if "/" in path and not auto_mkdir:
         with pytest.raises(FileNotFoundError):
-            await store.set(path, payload)
+            await store.set(path, Buffer.from_bytes(payload))
     else:
-        x = await store.set(path, payload)
+        x = await store.set(path, Buffer.from_bytes(payload))
 
         # this method should not return anything
         assert x is None

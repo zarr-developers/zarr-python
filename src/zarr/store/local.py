@@ -122,9 +122,6 @@ class LocalStore(Store):
 
     async def set(self, key: str, value: Buffer) -> None:
         assert isinstance(key, str)
-        if isinstance(value, bytes | bytearray):
-            # TODO: to support the v2 tests, we convert bytes to Buffer here
-            value = Buffer.from_bytes(value)
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
         path = self.root / key
