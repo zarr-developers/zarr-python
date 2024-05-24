@@ -46,6 +46,7 @@ from zarr.v2.storage import (
     SQLiteStore,
     TempStore,
     ZipStore,
+    FSStore,
 )
 from zarr.v2.sync import ProcessSynchronizer, ThreadSynchronizer
 from zarr._version import version as __version__
