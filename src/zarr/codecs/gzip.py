@@ -49,16 +49,20 @@ class GzipCodec(BytesBytesCodec):
     async def _decode_single(
         self,
         chunk_bytes: Buffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await to_thread(as_numpy_array_wrapper, GZip(self.level).decode, chunk_bytes)
+        return await to_thread(
+            as_numpy_array_wrapper, GZip(self.level).decode, chunk_bytes, chunk_spec.prototype
+        )
 
     async def _encode_single(
         self,
         chunk_bytes: Buffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        return await to_thread(as_numpy_array_wrapper, GZip(self.level).encode, chunk_bytes)
+        return await to_thread(
+            as_numpy_array_wrapper, GZip(self.level).encode, chunk_bytes, chunk_spec.prototype
+        )
 
     def compute_encoded_size(
         self,

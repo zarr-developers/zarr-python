@@ -65,16 +65,20 @@ class ZstdCodec(BytesBytesCodec):
     async def _decode_single(
         self,
         chunk_bytes: Buffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await to_thread(as_numpy_array_wrapper, self._decompress, chunk_bytes)
+        return await to_thread(
+            as_numpy_array_wrapper, self._decompress, chunk_bytes, chunk_spec.prototype
+        )
 
     async def _encode_single(
         self,
         chunk_bytes: Buffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        return await to_thread(as_numpy_array_wrapper, self._compress, chunk_bytes)
+        return await to_thread(
+            as_numpy_array_wrapper, self._compress, chunk_bytes, chunk_spec.prototype
+        )
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

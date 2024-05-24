@@ -399,7 +399,9 @@ class NDBuffer:
         return self.__class__(self._data.transpose(axes))
 
 
-def as_numpy_array_wrapper(func: Callable[[npt.NDArray[Any]], bytes], buf: Buffer) -> Buffer:
+def as_numpy_array_wrapper(
+    func: Callable[[npt.NDArray[Any]], bytes], buf: Buffer, prototype: Prototype
+) -> Buffer:
     """Converts the input of `func` to a numpy array and the output back to `Buffer`.
 
     This function is useful when calling a `func` that only support host memory such
@@ -415,12 +417,14 @@ def as_numpy_array_wrapper(func: Callable[[npt.NDArray[Any]], bytes], buf: Buffe
     buf
         The buffer that will be converted to a Numpy array before given as
         input to `func`.
+    prototype
+        The prototype of the output buffer.
 
     Return
     ------
-        The result of `func` converted to a `Buffer`
+        The result of `func` converted to a `prototype.buffer`
     """
-    return Buffer.from_bytes(func(buf.as_numpy_array()))
+    return prototype.buffer.from_bytes(func(buf.as_numpy_array()))
 
 
 class Prototype(NamedTuple):

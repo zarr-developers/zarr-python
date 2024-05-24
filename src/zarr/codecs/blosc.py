@@ -162,19 +162,23 @@ class BloscCodec(BytesBytesCodec):
     async def _decode_single(
         self,
         chunk_bytes: Buffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await to_thread(as_numpy_array_wrapper, self._blosc_codec.decode, chunk_bytes)
+        return await to_thread(
+            as_numpy_array_wrapper, self._blosc_codec.decode, chunk_bytes, chunk_spec.prototype
+        )
 
     async def _encode_single(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        # Since blosc only takes bytes, we convert the input and output of the encoding
-        # between bytes and Buffer
+        # Since blosc only support host memory, we convert the input and output of the encoding
+        # between numpy array and buffer
         return await to_thread(
-            lambda chunk: Buffer.from_bytes(self._blosc_codec.encode(chunk.as_array_like())),
+            lambda chunk: chunk_spec.prototype.buffer.from_bytes(
+                self._blosc_codec.encode(chunk.as_numpy_array())
+            ),
             chunk_bytes,
         )
 

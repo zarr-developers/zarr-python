@@ -85,7 +85,7 @@ class TransposeCodec(ArrayArrayCodec):
     async def _encode_single(
         self,
         chunk_array: NDBuffer,
-        chunk_spec: ArraySpec,
+        _chunk_spec: ArraySpec,
     ) -> NDBuffer | None:
         chunk_array = chunk_array.transpose(self.order)
         return chunk_array
