@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 import numpy as np
 
 from zarr.buffer import Prototype
 from zarr.common import ChunkCoords, parse_dtype, parse_fill_value, parse_order, parse_shapelike
-
-if TYPE_CHECKING:
-    pass
 
 
 @dataclass(frozen=True)
