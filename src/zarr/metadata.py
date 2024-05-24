@@ -16,6 +16,7 @@ from zarr.buffer import Buffer
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
+from zarr.codecs.bytes import BytesCodec
 
 if TYPE_CHECKING:
     from typing import Literal
@@ -174,9 +175,9 @@ class ArrayV3Metadata(ArrayMetadata):
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
-        codecs: Iterable[Codec | JSON],
-        attributes: None | dict[str, JSON],
-        dimension_names: None | Iterable[str],
+        codecs: Iterable[Codec | JSON] = (BytesCodec(),),
+        attributes: None | dict[str, JSON] = None,
+        dimension_names: None | Iterable[str] = None,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__

@@ -26,7 +26,7 @@ def parse_separator(data: JSON) -> SeparatorLiteral:
 @dataclass(frozen=True)
 class ChunkKeyEncoding(Metadata):
     name: str
-    separator: SeparatorLiteral = "."
+    separator: SeparatorLiteral = "/"
 
     def __init__(self, *, separator: SeparatorLiteral) -> None:
         separator_parsed = parse_separator(separator)

@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
     from typing import Any, Literal
 
+    from typing_extensions import Self
+
 logger = logging.getLogger("zarr.group")
 
 
@@ -97,7 +99,7 @@ class GroupMetadata(Metadata):
         object.__setattr__(self, "zarr_format", zarr_format_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         assert data.pop("node_type", None) in ("group", None)
         return cls(**data)
 
