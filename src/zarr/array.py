@@ -47,8 +47,10 @@ from zarr.indexing2 import (
     OIndex,
     OrthogonalIndexer,
     VIndex,
+    check_no_multi_fields,
     is_pure_fancy_indexing,
     is_pure_orthogonal_indexing,
+    is_scalar,
     pop_fields,
 )
 from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata, parse_indexing_order
@@ -377,19 +379,35 @@ class AsyncArray:
         self,
         indexer: Indexer,
         *,
-        factory: Factory.Create = NDBuffer.create,
+        out: NDArrayLike | NDBuffer | None = None,
+        create_factory: Factory.Create = NDBuffer.create,
+        from_factory: Factory.Create = NDBuffer.from_ndarray_like,
         fields: Fields | None = None,
     ) -> NDArrayLike:
         # check fields are sensible
-        out_dtype = check_fields(fields, self.metadata.dtype)
+        out_dtype = check_fields(fields, self.dtype)
 
-        # setup output array
-        out = factory(
-            shape=indexer.shape,
-            dtype=out_dtype,
-            order=self.order,
-            fill_value=self.metadata.fill_value,
-        )
+        # setup output buffer
+        if out is not None:
+            if isinstance(out, NDArrayLike):
+                out_buffer = NDBuffer.from_ndarray_like(out)
+            elif isinstance(out, NDBuffer):
+                out_buffer = out
+            else:
+                raise TypeError(
+                    f"out argument needs to be either an ndarray or an NDBuffer. Got {type(out)!r}"
+                )
+            if out_buffer.shape != indexer.shape:
+                raise ValueError(
+                    f"shape of out argument doesn't match. Expected {indexer.shape}, got {out.shape}"
+                )
+        else:
+            out_buffer = create_factory(
+                shape=indexer.shape,
+                dtype=out_dtype,
+                order=self.order,
+                fill_value=self.metadata.fill_value,
+            )
         if math.prod(indexer.shape) > 0:
             # reading chunks and decoding them
             await self.metadata.codec_pipeline.read(
@@ -402,9 +420,10 @@ class AsyncArray:
                     )
                     for chunk_coords, chunk_selection, out_selection in indexer
                 ],
-                out,
+                out_buffer,
+                drop_axes=indexer.drop_axes,
             )
-        return out.as_ndarray_like()
+        return out_buffer.as_ndarray_like()
 
     async def getitem(
         self, selection: Selection, *, factory: Factory.Create = NDBuffer.create
@@ -429,7 +448,9 @@ class AsyncArray:
         factory: Factory.NDArrayLike = NDBuffer.from_ndarray_like,
         fields: Fields | None = None,
     ) -> None:
-        sel_shape = indexer.shape
+        # check fields are sensible
+        check_fields(fields, self.dtype)
+        fields = check_no_multi_fields(fields)
 
         # check value shape
         if np.isscalar(value):
@@ -437,7 +458,9 @@ class AsyncArray:
         else:
             if not hasattr(value, "shape"):
                 value = np.asarray(value, self.metadata.dtype)
-            assert value.shape == sel_shape
+            # assert (
+            #     value.shape == indexer.shape
+            # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
             if value.dtype.name != self.metadata.dtype.name:
                 value = value.astype(self.metadata.dtype, order="A")
 
@@ -458,6 +481,7 @@ class AsyncArray:
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             value_buffer,
+            drop_axes=indexer.drop_axes,
         )
 
     async def setitem(
@@ -640,74 +664,69 @@ class Array:
             self.set_basic_selection(pure_selection, value, fields=fields)
 
     def get_basic_selection(
-        self, selection: Selection = Ellipsis, out=None, fields: Fields | None = None
+        self,
+        selection: Selection = Ellipsis,
+        out: NDArrayLike | NDBuffer | None = None,
+        fields: Fields | None = None,
     ) -> NDArrayLike:
-        check_fields(fields, self.dtype)
         if self.shape == ():
             raise NotImplementedError
         else:
             return sync(
                 self._async_array._get_selection(
-                    BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
+                    BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
+                    out=out,
+                    fields=fields,
                 )
             )
 
     def set_basic_selection(
         self, selection: Selection, value: NDArrayLike, fields: Fields | None = None
     ) -> None:
-        check_fields(fields, self.dtype)
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
-
         sync(self._async_array._set_selection(indexer, value, fields=fields))
 
     def get_orthogonal_selection(
-        self, selection: Selection, fields: Fields | None = None
+        self,
+        selection: Selection,
+        out: NDArrayLike | NDBuffer | None = None,
+        fields: Fields | None = None,
     ) -> NDArrayLike:
-        check_fields(fields, self.dtype)
-
-        # setup indexer
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
-        return sync(self._async_array._get_selection(indexer=indexer))
+        return sync(self._async_array._get_selection(indexer=indexer, out=out, fields=fields))
 
     def set_orthogonal_selection(
         self, selection: Selection, value: NDArrayLike, fields: Fields | None = None
     ) -> None:
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
-
         return sync(self._async_array._set_selection(indexer, value, fields=fields))
 
     def get_mask_selection(
-        self, mask: npt.NDArray[Any], fields: Fields | None = None
+        self,
+        mask: npt.NDArray[Any],
+        out: NDArrayLike | NDBuffer | None = None,
+        fields: Fields | None = None,
     ) -> NDArrayLike:
-        # check args
-        check_fields(fields, self.dtype)
-
-        # setup indexer
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
-
-        return sync(self._async_array._get_selection(indexer=indexer, fields=fields))
+        return sync(self._async_array._get_selection(indexer=indexer, out=out, fields=fields))
 
     def set_mask_selection(
         self, mask: npt.NDArray[Any], value: NDArrayLike, fields: Fields | None = None
     ) -> None:
-        # setup indexer
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
-
         sync(self._async_array._set_selection(indexer, value, fields=fields))
 
     def get_coordinate_selection(
-        self, selection: CoordinateSelection, fields: Fields | None = None
+        self,
+        selection: CoordinateSelection,
+        out: NDArrayLike | NDBuffer | None = None,
+        fields: Fields | None = None,
     ) -> NDArrayLike:
-        check_fields(fields, self.dtype)
-
-        # setup indexer
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
-
-        out = sync(self._async_array._get_selection(indexer=indexer, fields=fields))
+        out = sync(self._async_array._get_selection(indexer=indexer, out=out, fields=fields))
 
         # restore shape
         out = out.reshape(indexer.sel_shape)
-
         return out
 
     def set_coordinate_selection(
@@ -716,35 +735,33 @@ class Array:
         # setup indexer
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
 
-        # # handle value - need ndarray-like flatten value
-        # if not is_scalar(value, self._dtype):
-        #     try:
-        #         value = ensure_ndarray_like(value)
-        #     except TypeError:
-        #         # Handle types like `list` or `tuple`
-        #         value = np.array(value, like=self._meta_array)
+        # handle value - need ndarray-like flatten value
+        if not is_scalar(value, self.dtype):
+            try:
+                from numcodecs.compat import ensure_ndarray_like
+
+                value = ensure_ndarray_like(value)  # TODO replace with agnostic
+            except TypeError:
+                # Handle types like `list` or `tuple`
+                value = np.array(value)  # TODO replace with agnostic
         if hasattr(value, "shape") and len(value.shape) > 1:
             value = value.reshape(-1)
 
         sync(self._async_array._set_selection(indexer, value, fields=fields))
 
     def get_block_selection(
-        self, selection: Selection, fields: Fields | None = None
+        self,
+        selection: Selection,
+        out: NDArrayLike | NDBuffer | None = None,
+        fields: Fields | None = None,
     ) -> NDArrayLike:
-        # check args
-        check_fields(fields, self.dtype)
-
-        # setup indexer
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
-
-        return sync(self._async_array._get_selection(indexer=indexer, fields=fields))
+        return sync(self._async_array._get_selection(indexer=indexer, out=out, fields=fields))
 
     def set_block_selection(
         self, selection: Selection, value: npt.NDArray[Any], fields: Fields | None = None
     ) -> None:
-        # setup indexer
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
-
         sync(self._async_array._set_selection(indexer, value, fields=fields))
 
     @property

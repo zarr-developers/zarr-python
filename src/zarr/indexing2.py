@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from enum import Enum
 import itertools
 import math
 import numbers
 import operator
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
+from enum import Enum
 from functools import reduce
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
@@ -27,16 +27,17 @@ if TYPE_CHECKING:
     from zarr.buffer import NDArrayLike
     from zarr.chunk_grids import ChunkGrid
 
-Selector = int | slice | npt.NDArray[Any]
+Selector = int | slice | npt.NDArray[np.bool_]
 Selection = tuple[Selector, ...]
+Fields = str | list | tuple
 
 
 @runtime_checkable
 class Indexer(Protocol):
     shape: ChunkCoords
+    drop_axes: ChunkCoords | None
 
-    def __iter__(self) -> Iterator[ChunkProjection]:
-        ...
+    def __iter__(self) -> Iterator[ChunkProjection]: ...
 
 
 def is_integer(x: Selector) -> bool:
@@ -73,6 +74,8 @@ def is_bool_array(x: Selector, ndim: int | None = None) -> bool:
 
 def is_scalar(value: Selector, dtype: npt.DTypeLike) -> bool:
     if np.isscalar(value):
+        return True
+    if hasattr(value, "shape") and value.shape == ():
         return True
     if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
         return True
@@ -205,6 +208,8 @@ def ceildiv(a: int, b: int) -> int:
 class SliceDimIndexer:
     dim_len: int
     dim_chunk_len: int
+    nitems: int
+    nchunks: int
 
     start: int
     stop: int
@@ -321,7 +326,7 @@ def replace_lists(selection: Selection) -> Selection:
     )
 
 
-def ensure_tuple(v):
+def ensure_tuple(v: Selector | tuple[Selector]) -> tuple[Selector, ...]:
     if not isinstance(v, tuple):
         v = (v,)
     return v
@@ -370,7 +375,8 @@ def is_basic_selection(selection: Selection) -> bool:
     return all(is_integer(s) or is_positive_slice(s) for s in selection)
 
 
-class BasicIndexer:
+@dataclass(frozen=True)
+class BasicIndexer(Indexer):
     dim_indexers: list[IntDimIndexer | SliceDimIndexer]
     shape: ChunkCoords
     drop_axes: None
@@ -402,9 +408,13 @@ class BasicIndexer:
 
             dim_indexers.append(dim_indexer)
 
-        self.dim_indexers = dim_indexers
-        self.shape = tuple(s.nitems for s in self.dim_indexers if not isinstance(s, IntDimIndexer))
-        self.drop_axes = None
+        object.__setattr__(self, "dim_indexers", dim_indexers)
+        object.__setattr__(
+            self,
+            "shape",
+            tuple(s.nitems for s in self.dim_indexers if not isinstance(s, IntDimIndexer)),
+        )
+        object.__setattr__(self, "drop_axes", None)
 
     def __iter__(self) -> Iterator[ChunkProjection]:
         for dim_projections in itertools.product(*self.dim_indexers):
@@ -437,9 +447,7 @@ class BoolArrayDimIndexer:
         # check shape
         if dim_sel.shape[0] != dim_len:
             raise IndexError(
-                "Boolean array has the wrong length for dimension; expected {}, got {}".format(
-                    dim_len, dim_sel.shape[0]
-                )
+                f"Boolean array has the wrong length for dimension; expected {dim_len}, got {dim_sel.shape[0]}"
             )
 
         # precompute number of selected items for each chunk
@@ -521,6 +529,7 @@ def boundscheck_indices(x, dim_len):
         raise BoundsCheckError(dim_len)
 
 
+@dataclass(frozen=True)
 class IntArrayDimIndexer:
     """Integer array selection against a single dimension."""
 
@@ -549,6 +558,9 @@ class IntArrayDimIndexer:
         if not is_integer_array(dim_sel, 1):
             raise IndexError("integer arrays in an orthogonal selection must be 1-dimensional only")
 
+        nitems = len(dim_sel)
+        nchunks = ceildiv(dim_len, dim_chunk_len)
+
         # handle wraparound
         if wraparound:
             wraparound_indices(dim_sel, dim_len)
@@ -556,12 +568,6 @@ class IntArrayDimIndexer:
         # handle out of bounds
         if boundscheck:
             boundscheck_indices(dim_sel, dim_len)
-
-        # store attributes
-        self.dim_len = dim_len
-        self.dim_chunk_len = dim_chunk_len
-        self.nchunks = ceildiv(self.dim_len, self.dim_chunk_len)
-        self.nitems = len(dim_sel)
 
         # determine which chunk is needed for each selection item
         # note: for dense integer selections, the division operation here is the
@@ -571,28 +577,40 @@ class IntArrayDimIndexer:
         # determine order of indices
         if order == Order.UNKNOWN:
             order = Order.check(dim_sel)
-        self.order = Order(order)
+        order = Order(order)
 
-        if self.order == Order.INCREASING:
-            self.dim_sel = dim_sel
-            self.dim_out_sel = None
-        elif self.order == Order.DECREASING:
-            self.dim_sel = dim_sel[::-1]
+        if order == Order.INCREASING:
+            dim_sel = dim_sel
+            dim_out_sel = None
+        elif order == Order.DECREASING:
+            dim_sel = dim_sel[::-1]
             # TODO should be possible to do this without creating an arange
-            self.dim_out_sel = np.arange(self.nitems - 1, -1, -1)
+            dim_out_sel = np.arange(nitems - 1, -1, -1)
         else:
             # sort indices to group by chunk
-            self.dim_out_sel = np.argsort(dim_sel_chunk)
-            self.dim_sel = np.take(dim_sel, self.dim_out_sel)
+            dim_out_sel = np.argsort(dim_sel_chunk)
+            dim_sel = np.take(dim_sel, dim_out_sel)
 
         # precompute number of selected items for each chunk
-        self.chunk_nitems = np.bincount(dim_sel_chunk, minlength=self.nchunks)
+        chunk_nitems = np.bincount(dim_sel_chunk, minlength=nchunks)
 
         # find chunks that we need to visit
-        self.dim_chunk_ixs = np.nonzero(self.chunk_nitems)[0]
+        dim_chunk_ixs = np.nonzero(chunk_nitems)[0]
 
         # compute offsets into the output array
-        self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
+        chunk_nitems_cumsum = np.cumsum(chunk_nitems)
+
+        # store attributes
+        object.__setattr__(self, "dim_len", dim_len)
+        object.__setattr__(self, "dim_chunk_len", dim_chunk_len)
+        object.__setattr__(self, "nchunks", nchunks)
+        object.__setattr__(self, "nitems", nitems)
+        object.__setattr__(self, "order", order)
+        object.__setattr__(self, "dim_sel", dim_sel)
+        object.__setattr__(self, "dim_out_sel", dim_out_sel)
+        object.__setattr__(self, "chunk_nitems", chunk_nitems)
+        object.__setattr__(self, "dim_chunk_ixs", dim_chunk_ixs)
+        object.__setattr__(self, "chunk_nitems_cumsum", chunk_nitems_cumsum)
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
         for dim_chunk_ix in self.dim_chunk_ixs:
@@ -666,8 +684,8 @@ def oindex_set(a: npt.NDArray[Any], selection: Selection, value):
     a[selection] = value
 
 
-# noinspection PyProtectedMember
-class OrthogonalIndexer:
+@dataclass(frozen=True)
+class OrthogonalIndexer(Indexer):
     dim_indexers: list[IntDimIndexer | SliceDimIndexer | IntArrayDimIndexer | BoolArrayDimIndexer]
     shape: ChunkCoords
     chunk_shape: ChunkCoords
@@ -707,18 +725,24 @@ class OrthogonalIndexer:
 
             dim_indexers.append(dim_indexer)
 
-        self.dim_indexers = dim_indexers
-        self.shape = tuple(s.nitems for s in self.dim_indexers if not isinstance(s, IntDimIndexer))
-        self.chunk_shape = chunk_shape
-        self.is_advanced = not is_basic_selection(selection)
-        if self.is_advanced:
-            self.drop_axes = tuple(
+        dim_indexers = dim_indexers
+        shape = tuple(s.nitems for s in dim_indexers if not isinstance(s, IntDimIndexer))
+        chunk_shape = chunk_shape
+        is_advanced = not is_basic_selection(selection)
+        if is_advanced:
+            drop_axes = tuple(
                 i
-                for i, dim_indexer in enumerate(self.dim_indexers)
+                for i, dim_indexer in enumerate(dim_indexers)
                 if isinstance(dim_indexer, IntDimIndexer)
             )
         else:
-            self.drop_axes = None
+            drop_axes = None
+
+        object.__setattr__(self, "dim_indexers", dim_indexers)
+        object.__setattr__(self, "shape", shape)
+        object.__setattr__(self, "chunk_shape", chunk_shape)
+        object.__setattr__(self, "is_advanced", is_advanced)
+        object.__setattr__(self, "drop_axes", drop_axes)
 
     def __iter__(self) -> Iterator[ChunkProjection]:
         for dim_projections in itertools.product(*self.dim_indexers):
@@ -760,8 +784,8 @@ class OIndex:
         return self.array.set_orthogonal_selection(selection, value, fields=fields)
 
 
-# noinspection PyProtectedMember
-class BlockIndexer:
+@dataclass(frozen=True)
+class BlockIndexer(Indexer):
     dim_indexers: list[SliceDimIndexer]
     shape: ChunkCoords
     drop_axes: None
@@ -821,9 +845,12 @@ class BlockIndexer:
             if start >= dim_len or start < 0:
                 raise BoundsCheckError(dim_len)
 
-        self.dim_indexers = dim_indexers
-        self.shape = tuple(s.nitems for s in self.dim_indexers)
-        self.drop_axes = None
+        dim_indexers = dim_indexers
+        shape = tuple(s.nitems for s in dim_indexers)
+
+        object.__setattr__(self, "dim_indexers", dim_indexers)
+        object.__setattr__(self, "shape", shape)
+        object.__setattr__(self, "drop_axes", None)
 
     def __iter__(self) -> Iterator[ChunkProjection]:
         for dim_projections in itertools.product(*self.dim_indexers):
@@ -853,23 +880,24 @@ class BlockIndex:
         return self.array.set_block_selection(selection, value, fields=fields)
 
 
-# noinspection PyProtectedMember
 def is_coordinate_selection(selection: Selection, shape: ChunkCoords) -> bool:
     return (len(selection) == len(shape)) and all(
         is_integer(dim_sel) or is_integer_array(dim_sel) for dim_sel in selection
     )
 
 
-# noinspection PyProtectedMember
 def is_mask_selection(selection: Selection, shape: ChunkCoords) -> bool:
     return len(selection) == 1 and is_bool_array(selection[0]) and selection[0].shape == shape
 
 
-# noinspection PyProtectedMember
-class CoordinateIndexer:
+@dataclass(frozen=True)
+class CoordinateIndexer(Indexer):
     sel_shape: ChunkCoords
     selection: Selection
     sel_sort: npt.NDArray[np.intp] | None
+    chunk_nitems_cumsum: npt.NDArray[np.intp]
+    chunk_rixs: npt.NDArray[np.intp]
+    chunk_mixs: tuple[npt.NDArray[np.intp], ...]
     shape: ChunkCoords
     chunk_shape: ChunkCoords
     drop_axes: None
@@ -915,7 +943,7 @@ class CoordinateIndexer:
         chunks_multi_index = np.broadcast_arrays(*chunks_multi_index)
 
         # remember shape of selection, because we will flatten indices for processing
-        self.sel_shape = selection[0].shape if selection[0].shape else (1,)
+        sel_shape = selection[0].shape if selection[0].shape else (1,)
 
         # flatten selection
         selection = [dim_sel.reshape(-1) for dim_sel in selection]
@@ -932,21 +960,26 @@ class CoordinateIndexer:
         else:
             sel_sort = None
 
-        # store attributes
-        self.selection = selection
-        self.sel_sort = sel_sort
-        self.shape = selection[0].shape if selection[0].shape else (1,)
-        self.chunk_shape = chunk_shape
-        self.drop_axes = None
+        shape = selection[0].shape if selection[0].shape else (1,)
 
         # precompute number of selected items for each chunk
-        self.chunk_nitems = np.bincount(chunks_raveled_indices, minlength=nchunks)
-        self.chunk_nitems_cumsum = np.cumsum(self.chunk_nitems)
+        chunk_nitems = np.bincount(chunks_raveled_indices, minlength=nchunks)
+        chunk_nitems_cumsum = np.cumsum(chunk_nitems)
         # locate the chunks we need to process
-        self.chunk_rixs = np.nonzero(self.chunk_nitems)[0]
+        chunk_rixs = np.nonzero(chunk_nitems)[0]
 
         # unravel chunk indices
-        self.chunk_mixs = np.unravel_index(self.chunk_rixs, cdata_shape)
+        chunk_mixs = np.unravel_index(chunk_rixs, cdata_shape)
+
+        object.__setattr__(self, "sel_shape", sel_shape)
+        object.__setattr__(self, "selection", selection)
+        object.__setattr__(self, "sel_sort", sel_sort)
+        object.__setattr__(self, "chunk_nitems_cumsum", chunk_nitems_cumsum)
+        object.__setattr__(self, "chunk_rixs", chunk_rixs)
+        object.__setattr__(self, "chunk_mixs", chunk_mixs)
+        object.__setattr__(self, "chunk_shape", chunk_shape)
+        object.__setattr__(self, "shape", shape)
+        object.__setattr__(self, "drop_axes", None)
 
     def __iter__(self) -> Iterator[ChunkProjection]:
         # iterate over chunks
@@ -974,7 +1007,7 @@ class CoordinateIndexer:
             yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
 
 
-# noinspection PyProtectedMember
+@dataclass(frozen=True)
 class MaskIndexer(CoordinateIndexer):
     def __init__(self, selection, shape: ChunkCoords, chunk_grid: ChunkGrid):
         # some initial normalization
@@ -1020,9 +1053,6 @@ class VIndex:
             self.array.set_mask_selection(selection, value, fields=fields)
         else:
             raise VindexInvalidSelectionError(selection)
-
-
-Fields = str | list | tuple
 
 
 def check_fields(fields: Fields, dtype: npt.DTypeLike) -> npt.DTypeLike:

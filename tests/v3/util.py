@@ -38,8 +38,8 @@ except ImportError:  # pragma: no cover
 
 
 def abs_container():
-    from azure.core.exceptions import ResourceExistsError
     import azure.storage.blob as asb
+    from azure.core.exceptions import ResourceExistsError
 
     URL = "http://127.0.0.1:10000"
     ACCOUNT_NAME = "devstoreaccount1"
