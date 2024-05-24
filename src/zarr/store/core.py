@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, Prototype, default_prototype
 from zarr.store.local import LocalStore
 
 
@@ -25,8 +25,12 @@ class StorePath:
         self.store = store
         self.path = path or ""
 
-    async def get(self, byte_range: tuple[int, int | None] | None = None) -> Buffer | None:
-        return await self.store.get(self.path, byte_range)
+    async def get(
+        self,
+        prototype: Prototype = default_prototype,
+        byte_range: tuple[int, int | None] | None = None,
+    ) -> Buffer | None:
+        return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
     async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         if byte_range is not None:

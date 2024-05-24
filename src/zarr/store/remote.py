@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, Prototype
 from zarr.store.core import _dereference_path
 
 if TYPE_CHECKING:
@@ -49,7 +49,7 @@ class RemoteStore(Store):
         return fs, root
 
     async def get(
-        self, key: str, byte_range: tuple[int, int | None] | None = None
+        self, key: str, prototype: Prototype, byte_range: tuple[int, int | None] | None = None
     ) -> Buffer | None:
         assert isinstance(key, str)
         fs, root = self._make_fs()

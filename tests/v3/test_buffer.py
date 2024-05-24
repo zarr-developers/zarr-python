@@ -52,6 +52,17 @@ class MyStore(MemoryStore):
             assert isinstance(value, MyBuffer)
         await super().set(key, value, byte_range)
 
+    async def get(
+        self,
+        key: str,
+        prototype: Prototype,
+        byte_range: tuple[int, int | None] | None = None,
+    ) -> Buffer | None:
+        # Check that non-metadata is using MyBuffer
+        if "json" not in key:
+            assert prototype.buffer is MyBuffer
+        return await super().get(key, byte_range)
+
 
 def test_nd_array_like(xp):
     ary = xp.arange(10)

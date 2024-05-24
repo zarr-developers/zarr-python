@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from zarr.buffer import default_prototype
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
 from zarr.testing.store import StoreTests
@@ -34,7 +35,9 @@ async def test_local_store_get(
     payload = b"\x01\x02\x03\x04"
     object_name = "foo"
     (local_store.root / object_name).write_bytes(payload)
-    observed = await local_store.get(object_name, byte_range=byte_range)
+    observed = await local_store.get(
+        object_name, prototype=default_prototype, byte_range=byte_range
+    )
 
     if byte_range is None:
         start = 0
@@ -55,7 +58,12 @@ async def test_local_store_get(
     assert_bytes_equal(observed, expected)
 
     # test that getting from a file that doesn't exist returns None
-    assert await local_store.get(object_name + "_absent", byte_range=byte_range) is None
+    assert (
+        await local_store.get(
+            object_name + "_absent", prototype=default_prototype, byte_range=byte_range
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize(
@@ -80,10 +88,10 @@ async def test_local_store_get_partial(
         # write bytes
         target_path.write_bytes(payload)
 
-    results = await store.get_partial_values(key_ranges)
+    results = await store.get_partial_values(default_prototype, key_ranges)
     for idx, observed in enumerate(results):
         key, byte_range = key_ranges[idx]
-        expected = await store.get(key, byte_range=byte_range)
+        expected = await store.get(key, prototype=default_prototype, byte_range=byte_range)
         assert_bytes_equal(observed, expected)
 
 

@@ -424,8 +424,19 @@ def as_numpy_array_wrapper(func: Callable[[npt.NDArray[Any]], bytes], buf: Buffe
 
 
 class Prototype(NamedTuple):
+    """Prototype of the Buffer and NDBuffer class
+
+    Attributes
+    ----------
+    buffer
+        The Buffer class to use when Zarr needs to create new Buffer.
+    nd_buffer
+        The NDBuffer class to use when Zarr needs to create new NDBuffer.
+    """
+
     buffer: type[Buffer]
     nd_buffer: type[NDBuffer]
 
 
+# The default prototype used throughout the Zarr codebase.
 default_prototype = Prototype(buffer=Buffer, nd_buffer=NDBuffer)

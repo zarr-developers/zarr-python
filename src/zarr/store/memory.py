@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, MutableMapping
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, Prototype
 from zarr.common import concurrent_map
 
 
@@ -26,7 +26,7 @@ class MemoryStore(Store):
         return f"MemoryStore({str(self)!r})"
 
     async def get(
-        self, key: str, byte_range: tuple[int, int | None] | None = None
+        self, key: str, prototype: Prototype, byte_range: tuple[int, int | None] | None = None
     ) -> Buffer | None:
         assert isinstance(key, str)
         try:
@@ -38,9 +38,13 @@ class MemoryStore(Store):
             return None
 
     async def get_partial_values(
-        self, key_ranges: list[tuple[str, tuple[int, int]]]
+        self, prototype: Prototype, key_ranges: list[tuple[str, tuple[int, int]]]
     ) -> list[Buffer | None]:
-        vals = await concurrent_map(key_ranges, self.get, limit=None)
+        # All the key-ranges arguments goes with the same prototype
+        async def _get(key: str, byte_range: tuple[int, int | None]) -> Buffer | None:
+            return await self.get(key, prototype=prototype, byte_range=byte_range)
+
+        vals = await concurrent_map(key_ranges, _get, limit=None)
         return vals
 
     async def exists(self, key: str) -> bool:
