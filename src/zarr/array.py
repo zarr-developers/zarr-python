@@ -379,9 +379,8 @@ class AsyncArray:
         self,
         indexer: Indexer,
         *,
-        out: NDArrayLike | NDBuffer | None = None,
-        create_factory: Factory.Create = NDBuffer.create,
-        from_factory: Factory.Create = NDBuffer.from_ndarray_like,
+        out: NDBuffer | None = None,
+        factory: Factory.Create = NDBuffer.create,
         fields: Fields | None = None,
     ) -> NDArrayLike:
         # check fields are sensible
@@ -389,20 +388,16 @@ class AsyncArray:
 
         # setup output buffer
         if out is not None:
-            if isinstance(out, NDArrayLike):
-                out_buffer = NDBuffer.from_ndarray_like(out)
-            elif isinstance(out, NDBuffer):
+            if isinstance(out, NDBuffer):
                 out_buffer = out
             else:
-                raise TypeError(
-                    f"out argument needs to be either an ndarray or an NDBuffer. Got {type(out)!r}"
-                )
+                raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
             if out_buffer.shape != indexer.shape:
                 raise ValueError(
                     f"shape of out argument doesn't match. Expected {indexer.shape}, got {out.shape}"
                 )
         else:
-            out_buffer = create_factory(
+            out_buffer = factory(
                 shape=indexer.shape,
                 dtype=out_dtype,
                 order=self.order,
@@ -433,7 +428,7 @@ class AsyncArray:
             shape=self.metadata.shape,
             chunk_grid=self.metadata.chunk_grid,
         )
-        return await self._get_selection(indexer, create_factory=factory)
+        return await self._get_selection(indexer, factory=factory)
 
     async def _save_metadata(self, metadata: ArrayMetadata) -> None:
         to_save = metadata.to_buffer_dict()
@@ -666,7 +661,7 @@ class Array:
     def get_basic_selection(
         self,
         selection: Selection = Ellipsis,
-        out: NDArrayLike | NDBuffer | None = None,
+        out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
         if self.shape == ():
@@ -689,7 +684,7 @@ class Array:
     def get_orthogonal_selection(
         self,
         selection: Selection,
-        out: NDArrayLike | NDBuffer | None = None,
+        out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
@@ -704,7 +699,7 @@ class Array:
     def get_mask_selection(
         self,
         mask: npt.NDArray[Any],
-        out: NDArrayLike | NDBuffer | None = None,
+        out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
@@ -719,7 +714,7 @@ class Array:
     def get_coordinate_selection(
         self,
         selection: CoordinateSelection,
-        out: NDArrayLike | NDBuffer | None = None,
+        out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
@@ -752,7 +747,7 @@ class Array:
     def get_block_selection(
         self,
         selection: Selection,
-        out: NDArrayLike | NDBuffer | None = None,
+        out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)

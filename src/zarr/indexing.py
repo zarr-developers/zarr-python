@@ -204,10 +204,6 @@ class IntDimIndexer:
         yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
 
 
-def ceildiv(a: int, b: int) -> int:
-    return math.ceil(a / b)
-
-
 @dataclass(frozen=True)
 class SliceDimIndexer:
     dim_len: int
