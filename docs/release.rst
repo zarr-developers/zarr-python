@@ -32,6 +32,9 @@ Docs
 Maintenance
 ~~~~~~~~~~~
 
+* Add Zstd codec to old V3 code path.
+  By :user:`Ryan Abernathey <rabernat>` 
+
 Deprecations
 ~~~~~~~~~~~~
 

@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from zarr.codecs import Blosc, Delta, Pickle, Zlib
+from zarr.codecs import Blosc, Delta, Pickle, Zlib, Zstd
 from zarr.errors import MetadataError
 from zarr.meta import (
     ZARR_FORMAT,
@@ -268,12 +268,17 @@ def test_encode_decode_array_dtype_shape():
     assert meta_dec["filters"] is None
 
 
-def test_encode_decode_array_dtype_shape_v3():
+@pytest.mark.parametrize("cname", ["zlib", "zstd"])
+def test_encode_decode_array_dtype_shape_v3(cname):
+    if cname=="zlib":
+        compressor=Zlib(1)
+    elif cname=="zstd":
+        compressor=Zstd(1)
     meta = dict(
         shape=(100,),
         chunk_grid=dict(type="regular", chunk_shape=(10,), separator=("/")),
         data_type=np.dtype("(10, 10)<f8"),
-        compressor=Zlib(1),
+        compressor=compressor,
         fill_value=None,
         chunk_memory_layout="C",
     )
@@ -287,7 +292,9 @@ def test_encode_decode_array_dtype_shape_v3():
         },
         "chunk_memory_layout": "C",
         "compressor": {
-            "codec": "https://purl.org/zarr/spec/codec/zlib/1.0",
+        """ + f"""
+        "codec": "https://purl.org/zarr/spec/codec/{cname}/1.0",
+        """ + """
             "configuration": {
                 "level": 1
             }
