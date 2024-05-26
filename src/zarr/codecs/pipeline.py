@@ -69,7 +69,7 @@ class BatchedCodecPipeline(CodecPipeline):
     batch_size: int
 
     @classmethod
-    def from_dict(cls, data: Iterable[JSON | Codec], *, batch_size: int | None = None) -> Self:
+    def from_dict(cls, data: dict[str, JSON | Codec], *, batch_size: int | None = None) -> Self:
         out: list[Codec] = []
         if not isinstance(data, Iterable):
             raise TypeError(f"Expected iterable, got {type(data)}")
