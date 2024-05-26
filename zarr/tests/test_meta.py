@@ -270,10 +270,10 @@ def test_encode_decode_array_dtype_shape():
 
 @pytest.mark.parametrize("cname", ["zlib", "zstd"])
 def test_encode_decode_array_dtype_shape_v3(cname):
-    if cname=="zlib":
-        compressor=Zlib(1)
-    elif cname=="zstd":
-        compressor=Zstd(1)
+    if cname == "zlib":
+        compressor = Zlib(1)
+    elif cname == "zstd":
+        compressor = Zstd(1)
     meta = dict(
         shape=(100,),
         chunk_grid=dict(type="regular", chunk_shape=(10,), separator=("/")),
@@ -283,7 +283,8 @@ def test_encode_decode_array_dtype_shape_v3(cname):
         chunk_memory_layout="C",
     )
 
-    meta_json = """{
+    meta_json = (
+        """{
         "attributes": {},
         "chunk_grid": {
             "chunk_shape": [10],
@@ -292,9 +293,11 @@ def test_encode_decode_array_dtype_shape_v3(cname):
         },
         "chunk_memory_layout": "C",
         "compressor": {
-        """ + f"""
+        """
+        + f"""
         "codec": "https://purl.org/zarr/spec/codec/{cname}/1.0",
-        """ + """
+        """
+        + """
             "configuration": {
                 "level": 1
             }
@@ -304,6 +307,7 @@ def test_encode_decode_array_dtype_shape_v3(cname):
         "fill_value": null,
         "shape": [100, 10, 10 ]
     }"""
+    )
 
     # test encoding
     meta_enc = Metadata3.encode_array_metadata(meta)
