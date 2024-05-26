@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from zarr.codecs import Blosc, Delta, Pickle, Zlib
+from zarr.codecs import Blosc, Delta, Pickle, Zlib, Zstd
 from zarr.errors import MetadataError
 from zarr.meta import (
     ZARR_FORMAT,
@@ -268,17 +268,23 @@ def test_encode_decode_array_dtype_shape():
     assert meta_dec["filters"] is None
 
 
-def test_encode_decode_array_dtype_shape_v3():
+@pytest.mark.parametrize("cname", ["zlib", "zstd"])
+def test_encode_decode_array_dtype_shape_v3(cname):
+    if cname == "zlib":
+        compressor = Zlib(1)
+    elif cname == "zstd":
+        compressor = Zstd(1)
     meta = dict(
         shape=(100,),
         chunk_grid=dict(type="regular", chunk_shape=(10,), separator=("/")),
         data_type=np.dtype("(10, 10)<f8"),
-        compressor=Zlib(1),
+        compressor=compressor,
         fill_value=None,
         chunk_memory_layout="C",
     )
 
-    meta_json = """{
+    meta_json = (
+        """{
         "attributes": {},
         "chunk_grid": {
             "chunk_shape": [10],
@@ -287,7 +293,11 @@ def test_encode_decode_array_dtype_shape_v3():
         },
         "chunk_memory_layout": "C",
         "compressor": {
-            "codec": "https://purl.org/zarr/spec/codec/zlib/1.0",
+        """
+        + f"""
+        "codec": "https://purl.org/zarr/spec/codec/{cname}/1.0",
+        """
+        + """
             "configuration": {
                 "level": 1
             }
@@ -297,6 +307,7 @@ def test_encode_decode_array_dtype_shape_v3():
         "fill_value": null,
         "shape": [100, 10, 10 ]
     }"""
+    )
 
     # test encoding
     meta_enc = Metadata3.encode_array_metadata(meta)
@@ -315,7 +326,7 @@ def test_encode_decode_array_dtype_shape_v3():
     assert "filters" not in meta_dec
 
 
-@pytest.mark.parametrize("comp_id", ["gzip", "zlib", "blosc", "bz2", "lz4", "lzma"])
+@pytest.mark.parametrize("comp_id", ["gzip", "zlib", "blosc", "bz2", "lz4", "lzma", "zstd"])
 def test_decode_metadata_implicit_compressor_config_v3(comp_id):
     meta = {
         "attributes": {},
