@@ -12,7 +12,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” 
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass, field
 
 from typing_extensions import Self
 
@@ -28,23 +28,29 @@ class ArrayModel(ArrayV3Metadata):
     """
 
     @classmethod
-    def from_stored(cls: type[Self], node: Array):
+    def from_stored(cls: type[Self], node: Array) -> Self:
+        """
+        Create an array model from a stored array.
+        """
         return cls.from_dict(node.metadata.to_dict())
 
-    def to_stored(self, store_path: StorePath) -> Array:
+    def to_stored(self, store_path: StorePath, exists_ok: bool = False) -> Array:
+        """
+        Create a stored version of this array.
+        """
+        # exists_ok kwarg is unhandled until we wire it up to the
+        # array creation routines
+
         return Array.from_dict(store_path=store_path, data=self.to_dict())
 
 
+@dataclass(frozen=True)
 class GroupModel(GroupMetadata):
     """
     A model of a Zarr v3 group.
     """
 
-    members: dict[str, GroupModel | ArrayModel] | None
-
-    @classmethod
-    def from_dict(cls: type[Self], data: dict[str, Any]):
-        return cls(**data)
+    members: dict[str, GroupModel | ArrayModel] | None = field(default_factory=dict)
 
     @classmethod
     def from_stored(cls: type[Self], node: Group, *, depth: int | None = None) -> Self:
@@ -53,7 +59,7 @@ class GroupModel(GroupMetadata):
         controlled by the `depth` argument, which is either None (no depth limit) or a finite natural number
         specifying how deep into the hierarchy to parse.
         """
-        members: dict[str, GroupModel | ArrayModel]
+        members: dict[str, GroupModel | ArrayModel] = {}
 
         if depth is None:
             new_depth = depth
@@ -64,7 +70,8 @@ class GroupModel(GroupMetadata):
             return cls(**node.metadata.to_dict(), members=None)
 
         else:
-            for name, member in node.members():
+            for name, member in node.members:
+                item_out: ArrayModel | GroupModel
                 if isinstance(member, Array):
                     item_out = ArrayModel.from_stored(member)
                 else:
@@ -72,8 +79,9 @@ class GroupModel(GroupMetadata):
 
                 members[name] = item_out
 
-        return cls(**node.metadata.to_dict(), members=members)
+        return cls(attributes=node.metadata.attributes, members=members)
 
+    # todo: make this async
     def to_stored(self, store_path: StorePath, *, exists_ok: bool = False) -> Group:
         """
         Serialize this GroupModel to storage.
@@ -90,15 +98,18 @@ class GroupModel(GroupMetadata):
 def to_flat(
     node: ArrayModel | GroupModel, root_path: str = ""
 ) -> dict[str, ArrayModel | GroupModel]:
+    """
+    Generate a dict representation of an ArrayModel or GroupModel, where the hierarchy structure
+    is represented by the keys of the dict.
+    """
     result = {}
     model_copy: ArrayModel | GroupModel
     node_dict = node.to_dict()
     if isinstance(node, ArrayModel):
         model_copy = ArrayModel(**node_dict)
     else:
-        members = node_dict.pop("members")
-        model_copy = GroupModel(node_dict)
-        if members is not None:
+        model_copy = GroupModel(**node_dict)
+        if node.members is not None:
             for name, value in node.members.items():
                 result.update(to_flat(value, "/".join([root_path, name])))
 
@@ -109,6 +120,9 @@ def to_flat(
 
 
 def from_flat(data: dict[str, ArrayModel | GroupModel]) -> ArrayModel | GroupModel:
+    """
+    Create a GroupModel or ArrayModel from a dict representation.
+    """
     # minimal check that the keys are valid
     invalid_keys = []
     for key in data.keys():
@@ -125,6 +139,10 @@ def from_flat(data: dict[str, ArrayModel | GroupModel]) -> ArrayModel | GroupMod
 
 
 def from_flat_group(data: dict[str, ArrayModel | GroupModel]) -> GroupModel:
+    """
+    Create a GroupModel from a hierarchy represented as a dict with string keys and ArrayModel
+    or GroupModel values.
+    """
     root_name = ""
     sep = "/"
     # arrays that will be members of the returned GroupModel

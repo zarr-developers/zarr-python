@@ -273,13 +273,13 @@ class AsyncArray:
         return array
 
     @classmethod
-    def from_dict(
-        cls,
-        store_path: StorePath,
-        data: dict[str, JSON],
+    async def from_dict(
+        cls, store_path: StorePath, data: dict[str, JSON], order: Literal["C", "F"] | None = None
     ) -> AsyncArray:
-        metadata = parse_array_metadata(data)
-        async_array = cls(metadata=metadata, store_path=store_path)
+        data_parsed = parse_array_metadata(data)
+        async_array = cls(metadata=data_parsed, store_path=store_path, order=order)
+        # weird that this method doesn't use the metadata attribute
+        await async_array._save_metadata(async_array.metadata)
         return async_array
 
     @classmethod
@@ -535,11 +535,9 @@ class Array:
 
     @classmethod
     def from_dict(
-        cls,
-        store_path: StorePath,
-        data: dict[str, JSON],
+        cls, store_path: StorePath, data: dict[str, JSON], order: Literal["C", "F"] | None = None
     ) -> Array:
-        async_array = AsyncArray.from_dict(store_path=store_path, data=data)
+        async_array = sync(AsyncArray.from_dict(store_path=store_path, data=data))
         return cls(async_array)
 
     @classmethod

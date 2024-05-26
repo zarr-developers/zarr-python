@@ -267,18 +267,19 @@ class ArrayV3Metadata(ArrayMetadata):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
+    def from_dict(cls: type[Self], data: dict[str, JSON]) -> Self:
+        data_copy = data.copy()
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v3(data.pop("zarr_format"))
+        _ = parse_zarr_format_v3(data_copy.pop("zarr_format"))
         # check that the node_type attribute is correct
-        _ = parse_node_type_array(data.pop("node_type"))
+        _ = parse_node_type_array(data_copy.pop("node_type"))
 
-        data["dimension_names"] = data.pop("dimension_names", None)
+        data_copy["dimension_names"] = data_copy.pop("dimension_names", None)
 
         # TODO: Remove the ignores and use a TypedDict to type `data`
-        return cls(**data)  # type: ignore[arg-type]
+        return cls(**data_copy)  # type: ignore[arg-type]
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()
 
         if not isinstance(out_dict, dict):
@@ -391,11 +392,12 @@ class ArrayV2Metadata(ArrayMetadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
+        data_copy = data.copy()
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v2(data.pop("zarr_format"))
-        return cls(**data)
+        _ = parse_zarr_format_v2(data_copy.pop("zarr_format"))
+        return cls(**data_copy)
 
-    def to_dict(self) -> JSON:
+    def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
 
         assert isinstance(zarray_dict, dict)

@@ -219,7 +219,7 @@ class AsyncGroup:
             if zarr_json["node_type"] == "group":
                 return type(self).from_dict(store_path, zarr_json)
             elif zarr_json["node_type"] == "array":
-                return AsyncArray.from_dict(store_path, zarr_json)
+                return sync(AsyncArray.from_dict(store_path, zarr_json))
             else:
                 raise ValueError(f"unexpected node_type: {zarr_json['node_type']}")
         elif self.metadata.zarr_format == 2:
@@ -242,7 +242,7 @@ class AsyncGroup:
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
                 zarr_json = {**zarray, "attributes": zattrs}
-                return AsyncArray.from_dict(store_path, zarray)
+                return sync(AsyncArray.from_dict(store_path, zarray))
             else:
                 zgroup = (
                     json.loads(zgroup_bytes.to_bytes())
