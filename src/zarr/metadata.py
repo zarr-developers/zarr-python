@@ -394,7 +394,7 @@ class ArrayV2Metadata(ArrayMetadata):
         _ = parse_zarr_format_v2(data.pop("zarr_format"))
         return cls(**data)
 
-    def to_dict(self) -> JSON:
+    def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
 
         assert isinstance(zarray_dict, dict)

@@ -84,7 +84,7 @@ class BatchedCodecPipeline(CodecPipeline):
                 out.append(get_codec_class(name_parsed).from_dict(c))  # type: ignore[arg-type]
         return cls.from_list(out, batch_size=batch_size)
 
-    def to_dict(self) -> JSON:
+    def to_dict(self) -> dict[str, JSON]:
         return [c.to_dict() for c in self]
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
