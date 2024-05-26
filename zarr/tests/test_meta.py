@@ -315,7 +315,7 @@ def test_encode_decode_array_dtype_shape_v3():
     assert "filters" not in meta_dec
 
 
-@pytest.mark.parametrize("comp_id", ["gzip", "zlib", "blosc", "bz2", "lz4", "lzma"])
+@pytest.mark.parametrize("comp_id", ["gzip", "zlib", "blosc", "bz2", "lz4", "lzma", "zstd"])
 def test_decode_metadata_implicit_compressor_config_v3(comp_id):
     meta = {
         "attributes": {},

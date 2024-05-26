@@ -414,6 +414,8 @@ class Metadata3(Metadata2):
             uri = uri + "lz4/1.0"
         elif isinstance(codec, numcodecs.LZMA):
             uri = uri + "lzma/1.0"
+        elif isinstance(codec, numcodecs.Zstd):
+            uri = uri + "zstd/1.0"
         meta = {
             "codec": uri,
             "configuration": config,
@@ -439,6 +441,8 @@ class Metadata3(Metadata2):
             conf["id"] = "lz4"
         elif meta["codec"].startswith(uri + "lzma/"):
             conf["id"] = "lzma"
+        elif meta["codec"].startswith(uri + "zstd/"):
+            conf["id"] = "zstd"
         else:
             raise NotImplementedError
 
