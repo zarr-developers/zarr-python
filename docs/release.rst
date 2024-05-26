@@ -18,25 +18,13 @@ Release notes
    See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
    3.0 release.
 
-.. _unreleased:
-
-Unreleased
-----------
+.. _release_2.18.2:
 
 Enhancements
 ~~~~~~~~~~~~
 
-Docs
-~~~~
-
-Maintenance
-~~~~~~~~~~~
-
 * Add Zstd codec to old V3 code path.
   By :user:`Ryan Abernathey <rabernat>` 
-
-Deprecations
-~~~~~~~~~~~~
 
 .. _release_2.18.1:
 
