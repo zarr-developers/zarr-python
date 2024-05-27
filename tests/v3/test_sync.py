@@ -68,6 +68,7 @@ def test_sync_raises_if_no_coroutine(sync_loop: asyncio.AbstractEventLoop | None
         sync(foo(), loop=sync_loop)
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't start new threads in WASM")
 @pytest.mark.filterwarnings("ignore:coroutine.*was never awaited")
 def test_sync_raises_if_loop_is_closed() -> None:
     loop = _get_loop()
