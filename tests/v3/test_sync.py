@@ -18,6 +18,7 @@ def sync_loop(request) -> asyncio.AbstractEventLoop | None:
         return None
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't start new threads in WASM")
 def test_get_loop() -> None:
     # test that calling _get_loop() twice returns the same loop
     loop = _get_loop()
