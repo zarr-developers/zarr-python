@@ -1,6 +1,5 @@
 # Attributed to NumPy https://github.com/numpy/numpy/pull/25894
 # https://github.com/numpy/numpy/blob/d2d2c25fa81b47810f5cbd85ea6485eb3a3ffec3/.github/workflows/emscripten.yml
-#
 
 name: Pyodide wheel
 
@@ -10,13 +9,13 @@ on:
 
 env:
   FORCE_COLOR: 3
-  PYODIDE_VERSION: 0.25.1
+  PYODIDE_VERSION: 0.26.0
   # PYTHON_VERSION and EMSCRIPTEN_VERSION are determined by PYODIDE_VERSION.
   # The appropriate versions can be found in the Pyodide repodata.json
   # "info" field, or in Makefile.envs:
   # https://github.com/pyodide/pyodide/blob/main/Makefile.envs#L2
-  PYTHON_VERSION: 3.11.3
-  EMSCRIPTEN_VERSION: 3.1.46
+  PYTHON_VERSION: 3.12.1
+  EMSCRIPTEN_VERSION: 3.1.58
   NODE_VERSION: 18
 
 concurrency:
@@ -75,5 +74,3 @@ jobs:
         with:
           name: zarr-pyodide-wheel
           path: dist/*.whl
-
-
