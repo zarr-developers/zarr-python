@@ -1,5 +1,6 @@
 # A common file that can be used to add constants, functions,
 # convenience classes, etc. that are shared across multiple tests
+# similar to tests/v2/util.py, but can be used for both v2 and v3
 
 import platform
 import sys

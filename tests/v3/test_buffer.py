@@ -9,7 +9,7 @@ import numpy.typing as npt
 from zarr.array import AsyncArray
 from zarr.buffer import ArrayLike, NDArrayLike, NDBuffer
 
-from ._shared import asyncio_tests_wrapper
+from .._shared import asyncio_tests_wrapper
 
 if TYPE_CHECKING:
     from typing_extensions import Self
