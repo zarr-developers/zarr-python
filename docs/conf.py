@@ -59,7 +59,7 @@ autoapi_root = "api"
 autoapi_ignore = ["*v2*"]
 
 def skip_private_modules(app, what: str, name: str, obj, skip: bool, options) -> bool:
-    if what == "module" and "._" in name:
+    if "._" in name:
        return True
     return False
 
