@@ -8,6 +8,7 @@ from tempfile import mkdtemp
 
 import numpy as np
 from numpy.testing import assert_array_equal
+import pytest
 
 from zarr.v2.attrs import Attributes
 from zarr.v2.core import Array
@@ -20,7 +21,10 @@ from .test_attrs import TestAttributes
 from .test_core import TestArray
 from .test_hierarchy import TestGroup
 
+from tests._shared import IS_WASM
 
+
+@pytest.mark.skipif(IS_WASM, reason="no threading support in WASM")
 class TestAttributesWithThreadSynchronizer(TestAttributes):
     def init_attributes(self, store, read_only=False, cache=True):
         key = ".zattrs"
@@ -30,6 +34,7 @@ class TestAttributesWithThreadSynchronizer(TestAttributes):
         )
 
 
+@pytest.mark.skipif(IS_WASM, reason="no threading support in WASM")
 class TestAttributesProcessSynchronizer(TestAttributes):
     def init_attributes(self, store, read_only=False, cache=True):
         key = ".zattrs"
