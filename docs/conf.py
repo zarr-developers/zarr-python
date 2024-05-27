@@ -56,11 +56,7 @@ issues_github_path = "zarr-developers/zarr-python"
 autoapi_dirs = ['../src/zarr']
 autoapi_add_toctree_entry = False
 autoapi_root = "api"
-
-def skip_submodules(app, what, name, obj, skip, options):
-    if "v2" in name:
-        skip = True
-    return skip
+autoapi_ignore = ["*v2*"]
 
 
 # Add any paths that contain templates here, relative to this directory.
@@ -175,7 +171,6 @@ html_logo = "_static/logo1.png"
 
 def setup(app):
     app.add_css_file("custom.css")
-    app.connect("autoapi-skip-member", skip_submodules)
 
 
 # The name of an image file (relative to this directory) to use as a favicon of

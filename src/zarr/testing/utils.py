@@ -7,8 +7,8 @@ from zarr.common import BytesLike
 def assert_bytes_equal(b1: Buffer | BytesLike | None, b2: Buffer | BytesLike | None) -> None:
     """Help function to assert if two bytes-like or Buffers are equal
 
-    Warning
-    -------
+    Warnings
+    --------
     Always copies data, only use for testing and debugging
     """
     if isinstance(b1, Buffer):

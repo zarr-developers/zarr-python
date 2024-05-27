@@ -85,8 +85,8 @@ class NDArrayLike(Protocol):
     def __eq__(self, other: Any) -> Self:  # type: ignore[explicit-override, override]
         """Element-wise equal
 
-        Notice
-        ------
+        Notes
+        -----
         Type checkers such as mypy complains because the return type isn't a bool like
         its supertype "object", which violates the Liskov substitution principle.
         This is true, but since NumPy's ndarray is defined as an element-wise equal,
@@ -115,8 +115,8 @@ class Buffer:
     array-like instance can be copied/converted to a regular Numpy array
     (host memory).
 
-    Note
-    ----
+    Notes
+    -----
     This buffer is untyped, so all indexing and sizes are in bytes.
 
     Parameters
@@ -186,8 +186,8 @@ class Buffer:
     def as_numpy_array(self) -> npt.NDArray[Any]:
         """Returns the buffer as a NumPy array (host memory).
 
-        Warning
-        -------
+        Notes
+        -----
         Might have to copy data, consider using `.as_array_like()` instead.
 
         Returns
@@ -199,8 +199,8 @@ class Buffer:
     def to_bytes(self) -> bytes:
         """Returns the buffer as `bytes` (host memory).
 
-        Warning
-        -------
+        Warnings
+        --------
         Will always copy data, only use this method for small buffers such as metadata
         buffers. If possible, use `.as_numpy_array()` or `.as_array_like()` instead.
 
@@ -242,8 +242,8 @@ class NDBuffer:
     ndarray-like instance can be copied/converted to a regular Numpy array
     (host memory).
 
-    Note
-    ----
+    Notes
+    -----
     The two buffer classes Buffer and NDBuffer are very similar. In fact, Buffer
     is a special case of NDBuffer where dim=1, stride=1, and dtype="b". However,
     in order to use Python's type system to differentiate between the contiguous
@@ -288,8 +288,8 @@ class NDBuffer:
         -------
             New buffer representing a new ndarray_like object
 
-        Developer Notes
-        ---------------
+        Notes
+        -----
         A subclass can overwrite this method to create a ndarray-like object
         other then the default Numpy array.
         """
@@ -342,8 +342,8 @@ class NDBuffer:
     def as_numpy_array(self) -> npt.NDArray[Any]:
         """Returns the buffer as a NumPy array (host memory).
 
-        Warning
-        -------
+        Warnings
+        --------
         Might have to copy data, consider using `.as_ndarray_like()` instead.
 
         Returns
@@ -431,7 +431,7 @@ def as_numpy_array_wrapper(
 
     Returns
     -------
-        The result of `func` converted to a `prototype.buffer`
+        The result of `func` converted to a `Buffer`
     """
     return prototype.buffer.from_bytes(func(buf.as_numpy_array()))
 
