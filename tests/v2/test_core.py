@@ -65,6 +65,8 @@ from zarr.v2.storage import (
 from zarr.v2.util import buffer_size
 from .util import abs_container, skip_test_env_var, have_fsspec, mktemp
 
+from tests._shared import IS_WASM
+
 # noinspection PyMethodMayBeStatic
 
 
@@ -1992,6 +1994,7 @@ class TestArrayWithN5FSStore(TestArrayWithN5Store):
         return store
 
 
+@pytest.mark.skipif(IS_WASM, reason="no dbm support in WASM")
 class TestArrayWithDBMStore(TestArray):
     def create_store(self):
         path = mktemp(suffix=".anydbm")
@@ -2003,6 +2006,7 @@ class TestArrayWithDBMStore(TestArray):
         pass  # not implemented
 
 
+@pytest.mark.skipif(IS_WASM, reason="no dbm support in WASM")
 @pytest.mark.skip(reason="can't get bsddb3 to work on CI right now")
 class TestArrayWithDBMStoreBerkeleyDB(TestArray):
     def create_store(self):

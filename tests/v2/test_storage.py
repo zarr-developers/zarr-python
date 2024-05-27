@@ -59,6 +59,7 @@ from zarr.v2.storage import FSStore, rename, listdir
 from .util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
 from zarr.v2.util import ConstantMap, json_dumps
 
+from tests._shared import IS_WASM
 
 @contextmanager
 def does_not_raise():
@@ -1765,6 +1766,7 @@ class TestZipStore(StoreTests):
         assert np.array_equiv(y, x)
 
 
+@pytest.mark.skipif(IS_WASM, reason="dbm not available in WASM")
 class TestDBMStore(StoreTests):
     def create_store(self, dimension_separator=None):
         path = mktemp(suffix=".anydbm")
@@ -1780,6 +1782,7 @@ class TestDBMStore(StoreTests):
             assert 2 == len(store)
 
 
+@pytest.mark.skipif(IS_WASM, reason="dbm not available in WASM")
 class TestDBMStoreDumb(TestDBMStore):
     def create_store(self, **kwargs):
         path = mktemp(suffix=".dumbdbm")

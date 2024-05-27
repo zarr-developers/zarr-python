@@ -45,6 +45,8 @@ from zarr.v2.storage import (
 from zarr.v2.util import InfoReporter
 from .util import skip_test_env_var, have_fsspec, abs_container, mktemp
 
+from tests._shared import IS_WASM
+
 # noinspection PyStatementEffect
 
 
@@ -1122,6 +1124,7 @@ class TestGroupWithZipStore(TestGroup):
         pass
 
 
+@pytest.mark.skipif(IS_WASM, reason="dbm not available in WASM")
 class TestGroupWithDBMStore(TestGroup):
     @staticmethod
     def create_store():
@@ -1131,6 +1134,7 @@ class TestGroupWithDBMStore(TestGroup):
         return store, None
 
 
+@pytest.mark.skipif(IS_WASM, reason="dbm not available in WASM")
 class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
     @staticmethod
     def create_store():
