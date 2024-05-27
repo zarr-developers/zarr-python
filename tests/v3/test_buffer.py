@@ -5,14 +5,19 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import numpy.typing as npt
+import pytest
 
 from zarr.array import AsyncArray
 from zarr.buffer import ArrayLike, NDArrayLike, NDBuffer
-
-from .._shared import asyncio_tests_wrapper
+from zarr.testing.utils import IS_WASM
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+
+# Helper function to skip async tests on WASM platforms
+def asyncio_tests_wrapper(func):
+    return func if IS_WASM else pytest.mark.asyncio(func)
 
 
 class MyNDArrayLike(np.ndarray):
