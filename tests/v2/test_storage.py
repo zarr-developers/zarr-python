@@ -939,6 +939,7 @@ class TestDirectoryStore(StoreTests):
         )
         return store
 
+    @pytest.mark.xfail(reason="Emscripten filesystem handles umasks differently")
     def test_filesystem_path(self):
         # test behaviour with path that does not exist
         path = "data/store"
