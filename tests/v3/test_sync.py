@@ -8,6 +8,8 @@ import pytest
 from zarr.sync import SyncError, SyncMixin, _get_lock, _get_loop, sync
 from zarr.testing.utils import IS_WASM
 
+pytestmark = pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
+
 
 @pytest.fixture(params=[True, False])
 def sync_loop(request) -> asyncio.AbstractEventLoop | None:
@@ -18,7 +20,6 @@ def sync_loop(request) -> asyncio.AbstractEventLoop | None:
         return None
 
 
-@pytest.mark.skipif(IS_WASM, reason="Can't start new threads in WASM")
 def test_get_loop() -> None:
     # test that calling _get_loop() twice returns the same loop
     loop = _get_loop()
@@ -33,14 +34,12 @@ def test_get_lock() -> None:
     assert lock is lock2
 
 
-@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 def test_sync(sync_loop: asyncio.AbstractEventLoop | None) -> None:
     foo = AsyncMock(return_value="foo")
     assert sync(foo(), loop=sync_loop) == "foo"
     foo.assert_awaited_once()
 
 
-@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 def test_sync_raises(sync_loop: asyncio.AbstractEventLoop | None) -> None:
     foo = AsyncMock(side_effect=ValueError("foo-bar"))
     with pytest.raises(ValueError, match="foo-bar"):
@@ -48,7 +47,6 @@ def test_sync_raises(sync_loop: asyncio.AbstractEventLoop | None) -> None:
     foo.assert_awaited_once()
 
 
-@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 def test_sync_timeout() -> None:
     duration = 0.002
 
@@ -59,7 +57,6 @@ def test_sync_timeout() -> None:
         sync(foo(), timeout=duration / 2)
 
 
-@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 def test_sync_raises_if_no_coroutine(sync_loop: asyncio.AbstractEventLoop | None) -> None:
     def foo() -> str:
         return "foo"
@@ -68,7 +65,6 @@ def test_sync_raises_if_no_coroutine(sync_loop: asyncio.AbstractEventLoop | None
         sync(foo(), loop=sync_loop)
 
 
-@pytest.mark.skipif(IS_WASM, reason="Can't start new threads in WASM")
 @pytest.mark.filterwarnings("ignore:coroutine.*was never awaited")
 def test_sync_raises_if_loop_is_closed() -> None:
     loop = _get_loop()
@@ -104,7 +100,6 @@ def test_sync_raises_if_loop_is_invalid_type() -> None:
     foo.assert_not_awaited()
 
 
-@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 def test_sync_mixin(sync_loop) -> None:
     class AsyncFoo:
         def __init__(self) -> None:
