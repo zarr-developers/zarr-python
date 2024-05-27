@@ -5,10 +5,11 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import numpy.typing as npt
-import pytest
 
 from zarr.array import AsyncArray
 from zarr.buffer import ArrayLike, NDArrayLike, NDBuffer
+
+from ._shared import asyncio_tests_wrapper
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -45,7 +46,7 @@ def test_nd_array_like(xp):
     assert isinstance(ary, NDArrayLike)
 
 
-@pytest.mark.asyncio
+@asyncio_tests_wrapper
 async def test_async_array_factory(store_path):
     expect = np.zeros((9, 9), dtype="uint16", order="F")
     a = await AsyncArray.create(

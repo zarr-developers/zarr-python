@@ -249,7 +249,7 @@ minversion = "7"
 testpaths = ["tests"]
 log_cli_level = "INFO"
 xfail_strict = true
-asyncio_mode = "auto"
+# asyncio_mode = "auto"
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
     "ELLIPSIS",
