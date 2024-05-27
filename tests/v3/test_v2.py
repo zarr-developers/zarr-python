@@ -6,6 +6,7 @@ import pytest
 from zarr.abc.store import Store
 from zarr.array import Array
 from zarr.store import MemoryStore, StorePath
+from zarr.testing.utils import IS_WASM
 
 
 @pytest.fixture
@@ -13,6 +14,7 @@ def store() -> Iterator[Store]:
     yield StorePath(MemoryStore())
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 def test_simple(store: Store):
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 

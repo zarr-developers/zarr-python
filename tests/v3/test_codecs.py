@@ -25,7 +25,7 @@ from zarr.common import Selection
 from zarr.config import config
 from zarr.indexing import morton_order_iter
 from zarr.store import MemoryStore, StorePath
-from zarr.testing.utils import assert_bytes_equal
+from zarr.testing.utils import IS_WASM, assert_bytes_equal
 
 
 @dataclass(frozen=True)
@@ -65,6 +65,7 @@ def order_from_dim(order: Literal["F", "C"], ndim: int) -> tuple[int, ...]:
         return tuple(range(ndim))
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't start new threads in WASM")
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding(
     store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
@@ -95,6 +96,7 @@ def test_sharding(
     assert np.array_equal(sample_data, read_data)
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding_partial(
     store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
@@ -128,6 +130,7 @@ def test_sharding_partial(
     assert np.array_equal(sample_data, read_data)
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding_partial_read(
     store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
@@ -155,6 +158,7 @@ def test_sharding_partial_read(
     assert np.all(read_data == 1)
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding_partial_overwrite(
     store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
@@ -191,6 +195,7 @@ def test_sharding_partial_overwrite(
     assert np.array_equal(data, read_data)
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 @pytest.mark.parametrize(
     "outer_index_location",
     ["start", "end"],
@@ -298,6 +303,7 @@ async def test_order(
         assert_bytes_equal(await (store / "order/0.0").get(), z._store["0.0"])
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 @pytest.mark.parametrize("input_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_write_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_read_order", ["F", "C"])
