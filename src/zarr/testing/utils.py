@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import platform
+import sys
+
 from zarr.buffer import Buffer
 from zarr.common import BytesLike
 
@@ -16,3 +19,6 @@ def assert_bytes_equal(b1: Buffer | BytesLike | None, b2: Buffer | BytesLike | N
     if isinstance(b2, Buffer):
         b2 = b2.to_bytes()
     assert b1 == b2
+
+
+IS_WASM = sys.platform == "emscripten" or platform.machine() in ["wasm32", "wasm64"]

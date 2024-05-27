@@ -65,7 +65,7 @@ from zarr.v2.storage import (
 from zarr.v2.util import buffer_size
 from .util import abs_container, skip_test_env_var, have_fsspec, mktemp
 
-from tests._shared import IS_WASM
+from zarr.testing.utils import IS_WASM
 
 # noinspection PyMethodMayBeStatic
 

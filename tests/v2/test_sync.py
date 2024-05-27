@@ -21,7 +21,7 @@ from .test_attrs import TestAttributes
 from .test_core import TestArray
 from .test_hierarchy import TestGroup
 
-from tests._shared import IS_WASM
+from zarr.testing.utils import IS_WASM
 
 
 @pytest.mark.skipif(IS_WASM, reason="no threading support in WASM")

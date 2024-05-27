@@ -45,7 +45,7 @@ from zarr.v2.storage import (
 from zarr.v2.util import InfoReporter
 from .util import skip_test_env_var, have_fsspec, abs_container, mktemp
 
-from tests._shared import IS_WASM
+from zarr.testing.utils import IS_WASM
 
 # noinspection PyStatementEffect
 

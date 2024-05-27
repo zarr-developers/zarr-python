@@ -59,7 +59,7 @@ from zarr.v2.storage import FSStore, rename, listdir
 from .util import CountingDict, have_fsspec, skip_test_env_var, abs_container, mktemp
 from zarr.v2.util import ConstantMap, json_dumps
 
-from tests._shared import IS_WASM
+from zarr.testing.utils import IS_WASM
 
 @contextmanager
 def does_not_raise():
