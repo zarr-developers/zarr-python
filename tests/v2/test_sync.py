@@ -101,6 +101,7 @@ class MixinArraySyncTests:
         pool.terminate()
 
 
+@pytest.mark.skipif(IS_WASM, reason="no multiprocessing support in WASM")
 class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
     def create_array(self, read_only=False, **kwargs):
         store = KVStore(dict())
@@ -265,6 +266,7 @@ class MixinGroupSyncTests:
         pool.terminate()
 
 
+@pytest.mark.skipif(IS_WASM, reason="no multiprocessing support in WASM")
 class TestGroupWithThreadSynchronizer(TestGroup, MixinGroupSyncTests):
     def create_group(
         self, store=None, path=None, read_only=False, chunk_store=None, synchronizer=None
