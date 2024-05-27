@@ -8,7 +8,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum
 from functools import reduce
-from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, TypeGuard, runtime_checkable
 
 import numpy as np
 import numpy.typing as npt
@@ -44,7 +44,7 @@ def ceildiv(a: float, b: float) -> int:
     return math.ceil(a / b)
 
 
-def is_integer(x: Selector) -> bool:
+def is_integer(x: Selector) -> TypeGuard[int]:
     """True if x is an integer (both pure Python or NumPy).
 
     Note that Python's bool is considered an integer too.
@@ -52,7 +52,7 @@ def is_integer(x: Selector) -> bool:
     return isinstance(x, numbers.Integral)
 
 
-def is_integer_list(x: Selector) -> bool:
+def is_integer_list(x: Selector) -> TypeGuard[list[int]]:
     """True if x is a list of integers.
 
     This function assumes ie *does not check* that all elements of the list
@@ -62,17 +62,17 @@ def is_integer_list(x: Selector) -> bool:
     return isinstance(x, list) and len(x) > 0 and is_integer(x[0])
 
 
-def is_integer_array(x: Selector, ndim: int | None = None) -> bool:
+def is_integer_array(x: Selector, ndim: int | None = None) -> TypeGuard[npt.NDArray[np.intp]]:
     t = not np.isscalar(x) and hasattr(x, "shape") and hasattr(x, "dtype") and x.dtype.kind in "ui"
     if ndim is not None:
-        t = t and len(x.shape) == ndim
+        t = t and hasattr(x, "shape") and len(x.shape) == ndim
     return t
 
 
-def is_bool_array(x: Selector, ndim: int | None = None) -> bool:
+def is_bool_array(x: Selector, ndim: int | None = None) -> TypeGuard[npt.NDArray[np.bool_]]:
     t = hasattr(x, "shape") and hasattr(x, "dtype") and x.dtype == bool
     if ndim is not None:
-        t = t and len(x.shape) == ndim
+        t = t and hasattr(x, "shape") and len(x.shape) == ndim
     return t
 
 
