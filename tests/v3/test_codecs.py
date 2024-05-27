@@ -411,6 +411,7 @@ async def test_transpose(
         assert await (store / "transpose/0.0").get() == await (store / "transpose_zarr/0.0").get()
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't start new threads in WASM")
 def test_transpose_invalid(
     store: Store,
 ):
