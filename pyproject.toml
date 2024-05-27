@@ -145,7 +145,7 @@ features = ['docs']
 
 [tool.hatch.envs.docs.scripts]
 build = "cd docs && make html"
-serve = "sphinx-autobuild docs docs/_build --ignore 'docs/_autoapi/**/*' --host 0.0.0.0"
+serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
 [tool.ruff]
 line-length = 100
