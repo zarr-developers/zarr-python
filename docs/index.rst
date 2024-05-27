@@ -10,7 +10,7 @@ Zarr-Python
 
     getting_started
     tutorial
-    api
+    api/zarr/index
     spec
     release
     license

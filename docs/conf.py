@@ -42,7 +42,7 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
-    "sphinx_automodapi.automodapi",
+    'autoapi.extension',
     "numpydoc",
     "sphinx_issues",
     "sphinx_copybutton",
@@ -53,8 +53,15 @@ numpydoc_show_class_members = False
 numpydoc_class_members_toctree = False
 issues_github_path = "zarr-developers/zarr-python"
 
-automodapi_inheritance_diagram = False
-automodapi_toctreedirnm = "_autoapi"
+autoapi_dirs = ['../src/zarr']
+autoapi_add_toctree_entry = False
+autoapi_root = "api"
+
+def skip_submodules(app, what, name, obj, skip, options):
+    if "v2" in name:
+        skip = True
+    return skip
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -166,9 +173,9 @@ html_theme_options = {
 html_logo = "_static/logo1.png"
 
 
-# Add custom css
 def setup(app):
     app.add_css_file("custom.css")
+    app.connect("autoapi-skip-member", skip_submodules)
 
 
 # The name of an image file (relative to this directory) to use as a favicon of
