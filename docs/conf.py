@@ -58,6 +58,11 @@ autoapi_add_toctree_entry = False
 autoapi_root = "api"
 autoapi_ignore = ["*v2*"]
 
+def skip_private_modules(app, what: str, name: str, obj, skip: bool, options) -> bool:
+    if what == "module" and "._" in name:
+       return True
+    return False
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -171,6 +176,7 @@ html_logo = "_static/logo1.png"
 
 def setup(app):
     app.add_css_file("custom.css")
+    app.connect("autoapi-skip-member", skip_private_modules)
 
 
 # The name of an image file (relative to this directory) to use as a favicon of
