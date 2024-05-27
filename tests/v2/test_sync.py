@@ -153,6 +153,7 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
         assert "05b0663ffe1785f38d3a459dec17e57a18f254af" == z.hexdigest()
 
 
+@pytest.mark.skipif(IS_WASM, reason="fcntl not available in WASM")
 class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
     def create_array(self, read_only=False, **kwargs):
         path = tempfile.mkdtemp()
@@ -291,6 +292,7 @@ class TestGroupWithThreadSynchronizer(TestGroup, MixinGroupSyncTests):
         assert isinstance(g.synchronizer, ThreadSynchronizer)
 
 
+@pytest.mark.skipif(IS_WASM, reason="fcntl not available in WASM")
 class TestGroupWithProcessSynchronizer(TestGroup, MixinGroupSyncTests):
     def create_store(self):
         path = tempfile.mkdtemp()
