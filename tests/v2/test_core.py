@@ -27,7 +27,14 @@ from numcodecs import (
     Zlib,
 )
 from numcodecs.compat import ensure_bytes, ensure_ndarray
-from numcodecs.tests.common import greetings
+
+try:
+    from numcodecs.tests.common import greetings
+except ModuleNotFoundError:
+    greetings = ['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', 'Hei maailma!',
+             'Xin chào thế giới', 'Njatjeta Botë!', 'Γεια σου κόσμε!',
+             'こんにちは世界', '世界，你好！', 'Helló, világ!', 'Zdravo svete!',
+             'เฮลโลเวิลด์']
 from numpy.testing import assert_array_almost_equal, assert_array_equal
 
 import zarr.v2
