@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator, MutableMapping
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
 from zarr.common import OpenMode, concurrent_map
+from zarr.store.core import _normalize_interval_index
 
 
 # TODO: this store could easily be extended to wrap any MutableMapping store from v2
@@ -29,19 +30,18 @@ class MemoryStore(Store):
         return f"MemoryStore({str(self)!r})"
 
     async def get(
-        self, key: str, byte_range: tuple[int, int | None] | None = None
+        self, key: str, byte_range: tuple[int | None, int | None] | None = None
     ) -> Buffer | None:
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
-            if byte_range is not None:
-                value = value[byte_range[0] : byte_range[1]]
-            return value
+            start, length = _normalize_interval_index(value, byte_range)
+            return value[start : start + length]
         except KeyError:
             return None
 
     async def get_partial_values(
-        self, key_ranges: list[tuple[str, tuple[int, int]]]
+        self, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
     ) -> list[Buffer | None]:
         vals = await concurrent_map(key_ranges, self.get, limit=None)
         return vals

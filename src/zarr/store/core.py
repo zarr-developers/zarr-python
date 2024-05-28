@@ -74,3 +74,27 @@ def make_store_path(store_like: StoreLike, *, mode: OpenMode | None = None) -> S
         assert mode is not None
         return StorePath(LocalStore(Path(store_like), mode=mode))
     raise TypeError
+
+
+def _normalize_interval_index(
+    data: Buffer, interval: None | tuple[int | None, int | None]
+) -> tuple[int, int]:
+    """
+    Convert an implicit interval into an explicit start and length
+    """
+    if interval is None:
+        start = 0
+        length = len(data)
+    else:
+        maybe_start, maybe_len = interval
+        if maybe_start is None:
+            start = 0
+        else:
+            start = maybe_start
+
+        if maybe_len is None:
+            length = len(data) - start
+        else:
+            length = maybe_len
+
+    return (start, length)
