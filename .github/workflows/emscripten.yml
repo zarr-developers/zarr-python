@@ -62,6 +62,8 @@ jobs:
 
       - name: Run Zarr tests for Pyodide
         run: |
+          # Avoid missing asyncio plugin error from pytest, unavailable in Pyodide
+          if grep -q 'asyncio_mode = "auto"' "pyproject.toml"; then sed '/asyncio_mode = "auto"/d' "pyproject.toml" > temp && mv temp "pyproject.toml"; fi
           pyodide venv .venv-pyodide
           source .venv-pyodide/bin/activate
           python -m pip install dist/*.whl

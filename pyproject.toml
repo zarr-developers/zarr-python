@@ -249,7 +249,8 @@ minversion = "7"
 testpaths = ["tests"]
 log_cli_level = "INFO"
 xfail_strict = true
-# asyncio_mode = "auto"
+# Doesn't work under WASM, remove when running Pyodide test suite
+asyncio_mode = "auto"
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
     "ELLIPSIS",
