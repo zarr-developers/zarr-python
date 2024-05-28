@@ -49,7 +49,7 @@ class RemoteStore(Store):
         return fs, root
 
     async def get(
-        self, key: str, byte_range: tuple[int, int | None] | None = None
+        self, key: str, byte_range: tuple[int | None, int | None] | None = None
     ) -> Buffer | None:
         assert isinstance(key, str)
         fs, root = self._make_fs()
