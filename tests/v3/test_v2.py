@@ -10,7 +10,7 @@ from zarr.store import MemoryStore, StorePath
 
 @pytest.fixture
 def store() -> Iterator[Store]:
-    yield StorePath(MemoryStore())
+    yield StorePath(MemoryStore(mode="w"))
 
 
 def test_simple(store: Store):
