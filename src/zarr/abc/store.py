@@ -12,7 +12,7 @@ class Store(ABC):
         self,
         key: str,
         prototype: Prototype,
-        byte_range: tuple[int, int | None] | None = None,
+        byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
 
@@ -29,7 +29,7 @@ class Store(ABC):
 
     @abstractmethod
     async def get_partial_values(
-        self, prototype: Prototype, key_ranges: list[tuple[str, tuple[int, int]]]
+        self, prototype: Prototype, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
