@@ -12,7 +12,7 @@ import json
 from asyncio import gather
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -38,14 +38,19 @@ from zarr.common import (
 from zarr.config import config
 from zarr.indexing import (
     BasicIndexer,
+    BasicSelection,
     BlockIndex,
     BlockIndexer,
+    BlockSelection,
     CoordinateIndexer,
+    CoordinateSelection,
     Fields,
     Indexer,
     MaskIndexer,
+    MaskSelection,
     OIndex,
     OrthogonalIndexer,
+    OrthogonalSelection,
     VIndex,
     check_no_multi_fields,
     is_pure_fancy_indexing,
@@ -57,8 +62,6 @@ from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata, parse
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 from zarr.v2.indexing import check_fields
-
-CoordinateSelection = Iterable[int | Iterable[int]]
 
 
 def parse_array_metadata(data: Any) -> ArrayMetadata:
@@ -642,25 +645,29 @@ class Array:
     def __getitem__(self, selection: Selection) -> NDArrayLike:
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
-            result = self.vindex[selection]
+            result = self.vindex[cast(CoordinateSelection | MaskSelection, selection)]
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
-            result = self.get_orthogonal_selection(pure_selection, fields=fields)
+            result = self.get_orthogonal_selection(
+                cast(OrthogonalSelection, pure_selection), fields=fields
+            )
         else:
-            result = self.get_basic_selection(pure_selection, fields=fields)
+            result = self.get_basic_selection(cast(BasicSelection, pure_selection), fields=fields)
         return result
 
     def __setitem__(self, selection: Selection, value: NDArrayLike) -> None:
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
-            self.vindex[selection] = value
+            self.vindex[cast(CoordinateSelection | MaskSelection, selection)] = value
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
-            self.set_orthogonal_selection(pure_selection, value, fields=fields)
+            self.set_orthogonal_selection(
+                cast(OrthogonalSelection, pure_selection), value, fields=fields
+            )
         else:
-            self.set_basic_selection(pure_selection, value, fields=fields)
+            self.set_basic_selection(cast(BasicSelection, pure_selection), value, fields=fields)
 
     def get_basic_selection(
         self,
-        selection: Selection = Ellipsis,
+        selection: BasicSelection = Ellipsis,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
@@ -676,14 +683,14 @@ class Array:
             )
 
     def set_basic_selection(
-        self, selection: Selection, value: NDArrayLike, fields: Fields | None = None
+        self, selection: BasicSelection, value: NDArrayLike, fields: Fields | None = None
     ) -> None:
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields))
 
     def get_orthogonal_selection(
         self,
-        selection: Selection,
+        selection: OrthogonalSelection,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
@@ -691,22 +698,19 @@ class Array:
         return sync(self._async_array._get_selection(indexer=indexer, out=out, fields=fields))
 
     def set_orthogonal_selection(
-        self, selection: Selection, value: NDArrayLike, fields: Fields | None = None
+        self, selection: OrthogonalSelection, value: NDArrayLike, fields: Fields | None = None
     ) -> None:
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(self._async_array._set_selection(indexer, value, fields=fields))
 
     def get_mask_selection(
-        self,
-        mask: npt.NDArray[Any],
-        out: NDBuffer | None = None,
-        fields: Fields | None = None,
+        self, mask: MaskSelection, out: NDBuffer | None = None, fields: Fields | None = None
     ) -> NDArrayLike:
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         return sync(self._async_array._get_selection(indexer=indexer, out=out, fields=fields))
 
     def set_mask_selection(
-        self, mask: npt.NDArray[Any], value: NDArrayLike, fields: Fields | None = None
+        self, mask: MaskSelection, value: NDArrayLike, fields: Fields | None = None
     ) -> None:
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields))
@@ -746,7 +750,7 @@ class Array:
 
     def get_block_selection(
         self,
-        selection: Selection,
+        selection: BlockSelection,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
@@ -754,7 +758,10 @@ class Array:
         return sync(self._async_array._get_selection(indexer=indexer, out=out, fields=fields))
 
     def set_block_selection(
-        self, selection: Selection, value: npt.NDArray[Any], fields: Fields | None = None
+        self,
+        selection: BlockSelection,
+        value: NDArrayLike,
+        fields: Fields | None = None,
     ) -> None:
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields))
