@@ -25,6 +25,8 @@ class RemoteStore(Store):
         import fsspec
         from upath import UPath
 
+        super().__init__(mode=mode)
+
         if isinstance(url, str):
             self.root = UPath(url, **storage_options)
         else:
@@ -33,7 +35,6 @@ class RemoteStore(Store):
             ), "If constructed with a UPath object, no additional storage_options are allowed."
             self.root = url.rstrip("/")
 
-        self._mode = mode
         # test instantiate file system
         fs, _ = fsspec.core.url_to_fs(str(self.root), asynchronous=True, **self.root._kwargs)
         assert fs.__class__.async_impl, "FileSystem needs to support async operations."

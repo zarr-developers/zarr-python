@@ -70,12 +70,12 @@ class LocalStore(Store):
     root: Path
 
     def __init__(self, root: Path | str, *, mode: OpenMode = "r"):
+        super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
         assert isinstance(root, Path)
 
         self.root = root
-        self._mode = mode
 
     def __str__(self) -> str:
         return f"file://{self.root}"

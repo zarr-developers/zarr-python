@@ -20,8 +20,8 @@ class MemoryStore(Store):
     def __init__(
         self, store_dict: MutableMapping[str, Buffer] | None = None, *, mode: OpenMode = "r"
     ):
+        super().__init__(mode=mode)
         self._store_dict = store_dict or {}
-        self._mode = mode
 
     def __str__(self) -> str:
         return f"memory://{id(self._store_dict)}"
