@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from zarr.abc.store import Store
+from zarr.buffer import Buffer
+from zarr.common import OpenMode
 from zarr.store.core import _dereference_path
 
 if TYPE_CHECKING:
@@ -27,6 +29,7 @@ class RemoteStore(Store):
     def __init__(
         self,
         url: UPath | str,
+        mode: OpenMode = "r",
         allowed_exceptions: tuple[type[Exception], ...] = (
             FileNotFoundError,
             IsADirectoryError,
@@ -44,6 +47,8 @@ class RemoteStore(Store):
         storage_options: passed on to fsspec to make the filesystem instance. If url is a UPath,
             this must not be used.
         """
+
+        super().__init__(mode=mode)
 
         if isinstance(url, str):
             self._fs, self.path = fsspec.url_to_fs(url, **storage_options)

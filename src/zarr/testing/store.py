@@ -1,4 +1,4 @@
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 import pytest
 
@@ -31,12 +31,42 @@ class StoreTests(Generic[S]):
         raise NotImplementedError
 
     @pytest.fixture(scope="function")
-    def store(self) -> Store:
-        return self.store_cls()
+    def store_kwargs(self) -> dict[str, Any]:
+        return {"mode": "w"}
+
+    @pytest.fixture(scope="function")
+    def store(self, store_kwargs: dict[str, Any]) -> Store:
+        return self.store_cls(**store_kwargs)
 
     def test_store_type(self, store: S) -> None:
         assert isinstance(store, Store)
         assert isinstance(store, self.store_cls)
+
+    def test_store_mode(self, store: S, store_kwargs: dict[str, Any]) -> None:
+        assert store.mode == "w", store.mode
+        assert store.writeable
+
+        with pytest.raises(AttributeError):
+            store.mode = "w"  # type: ignore
+
+        # read-only
+        kwargs = {**store_kwargs, "mode": "r"}
+        read_store = self.store_cls(**kwargs)
+        assert read_store.mode == "r", read_store.mode
+        assert not read_store.writeable
+
+    async def test_not_writable_store_raises(self, store_kwargs: dict[str, Any]) -> None:
+        kwargs = {**store_kwargs, "mode": "r"}
+        store = self.store_cls(**kwargs)
+        assert not store.writeable
+
+        # set
+        with pytest.raises(ValueError):
+            await store.set("foo", Buffer.from_bytes(b"bar"))
+
+        # delete
+        with pytest.raises(ValueError):
+            await store.delete("foo")
 
     def test_store_repr(self, store: S) -> None:
         raise NotImplementedError
@@ -72,6 +102,7 @@ class StoreTests(Generic[S]):
         """
         Ensure that data can be written to the store using the store.set method.
         """
+        assert store.writeable
         data_buf = Buffer.from_bytes(data)
         await store.set(key, data_buf)
         observed = self.get(store, key)

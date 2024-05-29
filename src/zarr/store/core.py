@@ -5,6 +5,7 @@ from typing import Any
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
+from zarr.common import OpenMode
 from zarr.store.local import LocalStore
 
 
@@ -60,13 +61,18 @@ class StorePath:
 StoreLike = Store | StorePath | Path | str
 
 
-def make_store_path(store_like: StoreLike) -> StorePath:
+def make_store_path(store_like: StoreLike, *, mode: OpenMode | None = None) -> StorePath:
     if isinstance(store_like, StorePath):
+        if mode is not None:
+            assert mode == store_like.store.mode
         return store_like
     elif isinstance(store_like, Store):
+        if mode is not None:
+            assert mode == store_like.mode
         return StorePath(store_like)
     elif isinstance(store_like, str):
-        return StorePath(LocalStore(Path(store_like)))
+        assert mode is not None
+        return StorePath(LocalStore(Path(store_like), mode=mode))
     raise TypeError
 
 

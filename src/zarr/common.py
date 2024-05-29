@@ -27,6 +27,7 @@ SliceSelection = tuple[slice, ...]
 Selection = slice | SliceSelection
 ZarrFormat = Literal[2, 3]
 JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
+OpenMode = Literal["r", "r+", "a", "w", "w-"]
 
 
 def product(tup: ChunkCoords) -> int:
