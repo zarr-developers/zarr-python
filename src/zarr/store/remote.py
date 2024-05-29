@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
     from upath import UPath
 
-    from zarr.buffer import Buffer
+    from zarr.buffer import Buffer, BytesLike
 
 
 class RemoteStore(Store):
@@ -112,11 +112,20 @@ class RemoteStore(Store):
     async def get_partial_values(
         self, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
     ) -> list[Buffer | None]:
-        paths, starts, stops = (
-            (_dereference_path(self.path, k[0]), k[1][0], k[1][1]) for k in key_ranges
+        paths, starts, stops = zip(
+            *((_dereference_path(self.path, k[0]), k[1][0], k[1][1]) for k in key_ranges),
+            strict=False,
         )
         # TODO: expectations for exceptions or missing keys?
-        return await self._fs._cat_ranges(paths, starts, stops, on_error="return")
+        res = await self._fs._cat_ranges(list(paths), starts, stops, on_error="return")
+        for r in res:
+            if isinstance(r, Exception) and not isinstance(r, self.exceptions):
+                raise r
+
+        return [None if isinstance(r, Exception) else r for r in res]
+
+    async def set_partial_values(self, key_start_values: list[tuple[str, int, BytesLike]]) -> None:
+        raise NotImplementedError
 
     async def list(self) -> AsyncGenerator[str, None]:
         allfiles = await self._fs._find(self.path, detail=False, withdirs=False)
@@ -132,6 +141,3 @@ class RemoteStore(Store):
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         for onefile in await self._fs._ls(prefix, detail=False):
             yield onefile
-
-    async def set_partial_values(self, key_start_values: Any) -> None:
-        raise NotImplementedError
