@@ -7,7 +7,6 @@ import fsspec
 
 from zarr.abc.store import Store
 from zarr.store.core import _dereference_path
-from zarr.v3.common import BytesLike
 
 if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
@@ -73,7 +72,7 @@ class RemoteStore(Store):
 
     async def get(
         self, key: str, byte_range: tuple[int | None, int | None] | None | None = None
-    ) -> BytesLike | None:
+    ) -> Buffer | None:
         path = _dereference_path(self.path, key)
 
         try:
@@ -87,7 +86,10 @@ class RemoteStore(Store):
             return None
 
     async def set(
-        self, key: str, value: BytesLike, byte_range: tuple[int, int] | None = None
+        self,
+        key: str,
+        value: Buffer,
+        byte_range: tuple[int, int] | None = None,
     ) -> None:
         path = _dereference_path(self.path, key)
         # write data
