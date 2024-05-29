@@ -7,8 +7,18 @@ build-backend = "hatchling.build"
 name = "zarr"
 description = "An implementation of chunked, compressed, N-dimensional arrays for Python"
 readme = { file = "README.md", content-type = "text/markdown" }
+authors = [
+    { name = "Alistair Miles", email = "alimanfoo@googlemail.com" },
+]
 maintainers = [
-    { name = "Alistair Miles", email = "alimanfoo@googlemail.com" }
+    { name = "Davis Bennett", email = "davis.v.bennett@gmail.com" },
+    { name = "jakirkham" },
+    { name = "Josh Moore", email = "josh@openmicroscopy.org" },
+    { name = "Joe Hamman", email = "joe@earthmover.io" },
+    { name = "Juan Nunez-Iglesias", email = "juan.nunez-iglesias@monash.edu" },
+    { name = "Martin Durant", email = "mdurant@anaconda.com" },
+    { name = "Norman Rzepka" },
+    { name = "Ryan Abernathey" }
 ]
 requires-python = ">=3.10"
 dependencies = [
@@ -16,7 +26,11 @@ dependencies = [
     'numpy>=1.24',
     'fasteners',
     'numcodecs>=0.10.0',
-    'fsspec>2024'
+    'fsspec>2024',
+    'crc32c',
+    'zstandard',
+    'typing_extensions',
+    'donfig'
 ]
 dynamic = [
   "version",
@@ -35,7 +49,8 @@ classifiers = [
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
 ]
-license = "MIT"
+license = {text = "MIT License"}
+keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
 jupyter = [
@@ -53,13 +68,11 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
+    "msgpack",
+    "lmdb",
 ]
 extra = [
-    'attrs',
-    'cattrs',
     'msgpack',
-    'crc32c',
-    'zstandard'
 ]
 optional = [
     'lmdb',
@@ -89,27 +102,28 @@ version.source = "vcs"
 build.hooks.vcs.version-file = "src/zarr/_version.py"
 
 [tool.hatch.envs.test]
+dependencies = [
+    "numpy~={matrix:numpy}",
+]
 extra-dependencies = [
     "coverage",
     "pytest",
     "pytest-cov",
     "msgpack",
     "lmdb",
-    "zstandard",
-    "crc32c",
     "pytest-asyncio",
-    "typing_extensions"
+    "mypy"
 ]
 features = ["extra"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.11"]
-numpy = ["1.24", "1.26"]
+numpy = ["1.24", "1.26", "2.0.0rc1"]
 version = ["minimal"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.11"]
-numpy = ["1.24", "1.26"]
+numpy = ["1.24", "1.26", "2.0.0rc1"]
 features = ["optional"]
 
 [tool.hatch.envs.test.scripts]
@@ -117,6 +131,7 @@ run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
+list-env = "pip list"
 
 [tool.hatch.envs.docs]
 features = ['docs']
@@ -128,6 +143,7 @@ serve = "sphinx-autobuild docs docs/_build --ignore 'docs/_autoapi/**/*' --host 
 
 [tool.ruff]
 line-length = 100
+src = ["src"]
 force-exclude = true
 extend-exclude = [
     ".bzr",
@@ -145,27 +161,102 @@ extend-exclude = [
     "build",
     "dist",
     "venv",
-    "docs"
+    "docs",
+    "src/zarr/v2/",
+    "tests/v2/",
+]
+
+[tool.ruff.lint]
+extend-select = [
+    "B",  # flake8-bugbear
+    "I",  # isort
+    "ISC",
+    "UP",  # pyupgrade
+    "RSE",
+    "RUF",
+]
+ignore = [
+    "RUF003",
+    "RUF005",
+    "RUF009",
+    "RUF012",
+    "RUF015",
 ]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 ignore_missing_imports = true
 namespace_packages = false
 
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
+strict_equality = true
+strict_concatenate = true
 
+check_untyped_defs = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr.v2.*",
+    "zarr.group",
+    "tests.*",
+]
+check_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr.v2.*",
+    "zarr.array_v2",
+]
+disallow_any_generics = false
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr.v2.*",
+    "zarr.array_v2",
+    "zarr.group"
+]
+disallow_incomplete_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr.v2.*",
+    "zarr.array_v2",
+    "zarr.array",
+    "zarr.buffer"
+]
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = [
+    "zarr.v2.*",
+    "zarr.array_v2",
+    "zarr.array",
+    "zarr.group",
+]
+disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
+minversion = "7"
+testpaths = ["tests"]
+log_cli_level = "INFO"
+xfail_strict = true
+asyncio_mode = "auto"
 doctest_optionflags = [
     "NORMALIZE_WHITESPACE",
     "ELLIPSIS",
     "IGNORE_EXCEPTION_DETAIL",
 ]
 addopts = [
-    "--durations=10",
+    "--durations=10", "-ra", "--strict-config", "--strict-markers",
 ]
 filterwarnings = [
     "error:::zarr.*",

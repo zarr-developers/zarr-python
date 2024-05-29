@@ -13,7 +13,6 @@ API reference
     api/codecs
     api/attrs
     api/sync
-    api/v3
 
 Indices and tables
 ------------------

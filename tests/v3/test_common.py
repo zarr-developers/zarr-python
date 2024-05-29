@@ -1,43 +1,41 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING, Iterable
+
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Literal, Any, Tuple
+    from typing import Any, Literal
 
 import numpy as np
-from src.zarr.v3.config import parse_indexing_order
-from src.zarr.v3.common import parse_shapelike
-from zarr.v3.common import parse_name, product
 import pytest
+
+from zarr.common import parse_name, parse_shapelike, product
+from zarr.config import parse_indexing_order
 
 
 @pytest.mark.parametrize("data", [(0, 0, 0, 0), (1, 3, 4, 5, 6), (2, 4)])
-def test_product(data: Tuple[int, ...]):
+def test_product(data: tuple[int, ...]):
     assert product(data) == np.prod(data)
 
 
 # todo: test
-def test_concurrent_map():
-    ...
+def test_concurrent_map(): ...
 
 
 # todo: test
-def test_to_thread():
-    ...
+def test_to_thread(): ...
 
 
 # todo: test
-def test_enum_names():
-    ...
+def test_enum_names(): ...
 
 
 # todo: test
-def test_parse_enum():
-    ...
+def test_parse_enum(): ...
 
 
 @pytest.mark.parametrize("data", [("foo", "bar"), (10, 11)])
-def test_parse_name_invalid(data: Tuple[Any, Any]):
+def test_parse_name_invalid(data: tuple[Any, Any]):
     observed, expected = data
     if isinstance(observed, str):
         with pytest.raises(ValueError, match=f"Expected '{expected}'. Got {observed} instead."):
@@ -50,7 +48,7 @@ def test_parse_name_invalid(data: Tuple[Any, Any]):
 
 
 @pytest.mark.parametrize("data", [("foo", "foo"), ("10", "10")])
-def test_parse_name_valid(data: Tuple[Any, Any]):
+def test_parse_name_valid(data: tuple[Any, Any]):
     observed, expected = data
     assert parse_name(observed, expected) == observed
 
@@ -87,11 +85,10 @@ def test_parse_shapelike_valid(data: Iterable[Any]):
 
 # todo: more dtypes
 @pytest.mark.parametrize("data", [("uint8", np.uint8), ("float64", np.float64)])
-def parse_dtype(data: Tuple[str, np.dtype]):
+def parse_dtype(data: tuple[str, np.dtype]):
     unparsed, parsed = data
     assert parse_dtype(unparsed) == parsed
 
 
 # todo: figure out what it means to test this
-def test_parse_fill_value():
-    ...
+def test_parse_fill_value(): ...
