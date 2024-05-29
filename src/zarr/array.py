@@ -344,6 +344,16 @@ class AsyncArray:
         return self.metadata.shape
 
     @property
+    def chunks(self) -> ChunkCoords:
+        try:
+            chunk_shape = getattr(self.metadata.chunk_grid, "chunk_shape")  # noqa: B009
+            return chunk_shape
+        except AttributeError as err:  # pragma: no cover
+            raise AttributeError(
+                f"Chunk grid {self.metadata.chunk_grid} array does not have a chunk shape."
+            ) from err
+
+    @property
     def size(self) -> int:
         return np.prod(self.metadata.shape).item()
 
@@ -557,6 +567,10 @@ class Array:
     @property
     def shape(self) -> ChunkCoords:
         return self._async_array.shape
+
+    @property
+    def chunks(self) -> ChunkCoords:
+        return self._async_array.chunks
 
     @property
     def size(self) -> int:
