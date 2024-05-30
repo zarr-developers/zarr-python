@@ -219,13 +219,13 @@ async def test_asyncgroup_open_wrong_format(
         {"zarr_format": 2, "attributes": {"foo": 100}},
     ),
 )
-def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, Any]) -> None:
+async def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, Any]) -> None:
     """
     Test that we can create an AsyncGroup from a dict
     """
     path = "test"
     store_path = StorePath(store=store, path=path)
-    group = AsyncGroup.from_dict(store_path, data=data)
+    group = await AsyncGroup.from_dict(store_path, data=data)
 
     assert group.metadata.zarr_format == data["zarr_format"]
     assert group.metadata.attributes == data["attributes"]
