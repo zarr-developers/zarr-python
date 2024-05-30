@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 from crc32c import crc32c
 
+from zarr.abc.codec import BytesBytesCodec
 from zarr.buffer import Buffer
-from zarr.codecs.mixins import BytesBytesCodecBatchMixin
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_named_configuration
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Crc32cCodec(BytesBytesCodecBatchMixin):
+class Crc32cCodec(BytesBytesCodec):
     is_fixed_size = True
 
     @classmethod
@@ -29,7 +29,7 @@ class Crc32cCodec(BytesBytesCodecBatchMixin):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "crc32c"}
 
-    async def decode_single(
+    async def _decode_single(
         self,
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,
@@ -46,7 +46,7 @@ class Crc32cCodec(BytesBytesCodecBatchMixin):
             )
         return Buffer.from_array_like(inner_bytes)
 
-    async def encode_single(
+    async def _encode_single(
         self,
         chunk_bytes: Buffer,
         _chunk_spec: ArraySpec,

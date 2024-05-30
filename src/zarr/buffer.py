@@ -1,16 +1,20 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
     Protocol,
-    TypeAlias,
+    SupportsIndex,
+    runtime_checkable,
 )
 
 import numpy as np
+import numpy.typing as npt
+
+from zarr.common import ChunkCoords
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -18,10 +22,73 @@ if TYPE_CHECKING:
     from zarr.codecs.bytes import Endian
     from zarr.common import BytesLike
 
-# TODO: create a protocol for the attributes we need, for now we alias Numpy's ndarray
-#       both for the array-like and ndarray-like
-ArrayLike: TypeAlias = np.ndarray
-NDArrayLike: TypeAlias = np.ndarray
+
+@runtime_checkable
+class ArrayLike(Protocol):
+    """Protocol for the array-like type that underlie Buffer"""
+
+    @property
+    def dtype(self) -> np.dtype[Any]: ...
+
+    @property
+    def ndim(self) -> int: ...
+
+    @property
+    def size(self) -> int: ...
+
+    def __getitem__(self, key: slice) -> Self: ...
+
+    def __setitem__(self, key: slice, value: Any) -> None: ...
+
+
+@runtime_checkable
+class NDArrayLike(Protocol):
+    """Protocol for the nd-array-like type that underlie NDBuffer"""
+
+    @property
+    def dtype(self) -> np.dtype[Any]: ...
+
+    @property
+    def ndim(self) -> int: ...
+
+    @property
+    def size(self) -> int: ...
+
+    @property
+    def shape(self) -> ChunkCoords: ...
+
+    def __len__(self) -> int: ...
+
+    def __getitem__(self, key: slice) -> Self: ...
+
+    def __setitem__(self, key: slice, value: Any) -> None: ...
+
+    def reshape(self, shape: ChunkCoords, *, order: Literal["A", "C", "F"] = ...) -> Self: ...
+
+    def view(self, dtype: npt.DTypeLike) -> Self: ...
+
+    def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
+
+    def fill(self, value: Any) -> None: ...
+
+    def copy(self) -> Self: ...
+
+    def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None) -> Self: ...
+
+    def ravel(self, order: Literal["K", "A", "C", "F"] = "C") -> Self: ...
+
+    def all(self) -> bool: ...
+
+    def __eq__(self, other: Any) -> Self:  # type: ignore
+        """Element-wise equal
+
+        Notice
+        ------
+        Type checkers such as mypy complains because the return type isn't a bool like
+        its supertype "object", which violates the Liskov substitution principle.
+        This is true, but since NumPy's ndarray is defined as an element-wise equal,
+        our hands are tied.
+        """
 
 
 def check_item_key_is_1d_contiguous(key: Any) -> None:
@@ -40,7 +107,7 @@ class Factory:
             self,
             *,
             shape: Iterable[int],
-            dtype: np.DTypeLike,
+            dtype: npt.DTypeLike,
             order: Literal["C", "F"],
             fill_value: Any | None,
         ) -> NDBuffer:
@@ -123,7 +190,7 @@ class Buffer:
         return cls(np.array([], dtype="b"))
 
     @classmethod
-    def from_array_like(cls, array_like: NDArrayLike) -> Self:
+    def from_array_like(cls, array_like: ArrayLike) -> Self:
         """Create a new buffer of a array-like object
 
         Parameters
@@ -152,7 +219,7 @@ class Buffer:
         """
         return cls.from_array_like(np.frombuffer(bytes_like, dtype="b"))
 
-    def as_array_like(self) -> NDArrayLike:
+    def as_array_like(self) -> ArrayLike:
         """Return the underlying array (host or device memory) of this buffer
 
         This will never copy data.
@@ -163,23 +230,7 @@ class Buffer:
         """
         return self._data
 
-    def as_nd_buffer(self, *, dtype: np.DTypeLike) -> NDBuffer:
-        """Create a new NDBuffer from this one.
-
-        This will never copy data.
-
-        Parameters
-        ----------
-        dtype
-           The datatype of the returned buffer (reinterpretation of the bytes)
-
-        Return
-        ------
-            New NDbuffer representing `self.as_array_like()`
-        """
-        return NDBuffer.from_ndarray_like(self._data.view(dtype=dtype))
-
-    def as_numpy_array(self) -> np.ndarray:
+    def as_numpy_array(self) -> npt.NDArray[Any]:
         """Return the buffer as a NumPy array (host memory).
 
         Warning
@@ -222,17 +273,8 @@ class Buffer:
 
         other_array = other.as_array_like()
         assert other_array.dtype == np.dtype("b")
-        return self.__class__(np.concatenate((self._data, other_array)))
-
-    def __eq__(self, other: Any) -> bool:
-        if isinstance(other, bytes | bytearray):
-            # Many of the tests compares `Buffer` with `bytes` so we
-            # convert the bytes to a Buffer and try again
-            return self == self.from_bytes(other)
-        if isinstance(other, Buffer):
-            return (self._data == other.as_array_like()).all()
-        raise ValueError(
-            f"equal operator not supported between {self.__class__} and {other.__class__}"
+        return self.__class__(
+            np.concatenate((np.asanyarray(self._data), np.asanyarray(other_array)))
         )
 
 
@@ -271,7 +313,7 @@ class NDBuffer:
         cls,
         *,
         shape: Iterable[int],
-        dtype: np.DTypeLike,
+        dtype: npt.DTypeLike,
         order: Literal["C", "F"] = "C",
         fill_value: Any | None = None,
     ) -> Self:
@@ -298,7 +340,7 @@ class NDBuffer:
         A subclass can overwrite this method to create a ndarray-like object
         other then the default Numpy array.
         """
-        ret = cls(np.empty(shape=shape, dtype=dtype, order=order))
+        ret = cls(np.empty(shape=tuple(shape), dtype=dtype, order=order))
         if fill_value is not None:
             ret.fill(fill_value)
         return ret
@@ -319,7 +361,7 @@ class NDBuffer:
         return cls(ndarray_like)
 
     @classmethod
-    def from_numpy_array(cls, array_like: np.ArrayLike) -> Self:
+    def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
         """Create a new buffer of Numpy array-like object
 
         Parameters
@@ -344,23 +386,7 @@ class NDBuffer:
         """
         return self._data
 
-    def as_buffer(self) -> Buffer:
-        """Create a new Buffer from this one.
-
-        Warning
-        -------
-        Copies data if the buffer is non-contiguous.
-
-        Return
-        ------
-            The new buffer (might be data copy)
-        """
-        data = self._data
-        if not self._data.flags.contiguous:
-            data = np.ascontiguousarray(self._data)
-        return Buffer(data.reshape(-1).view(dtype="b"))  # Flatten the array without copy
-
-    def as_numpy_array(self) -> np.ndarray:
+    def as_numpy_array(self) -> npt.NDArray[Any]:
         """Return the buffer as a NumPy array (host memory).
 
         Warning
@@ -392,10 +418,10 @@ class NDBuffer:
         else:
             return Endian(sys.byteorder)
 
-    def reshape(self, newshape: Iterable[int]) -> Self:
+    def reshape(self, newshape: ChunkCoords) -> Self:
         return self.__class__(self._data.reshape(newshape))
 
-    def astype(self, dtype: np.DTypeLike, order: Literal["K", "A", "C", "F"] = "K") -> Self:
+    def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K") -> Self:
         return self.__class__(self._data.astype(dtype=dtype, order=order))
 
     def __getitem__(self, key: Any) -> Self:
@@ -418,11 +444,11 @@ class NDBuffer:
     def copy(self) -> Self:
         return self.__class__(self._data.copy())
 
-    def transpose(self, *axes: np.SupportsIndex) -> Self:
-        return self.__class__(self._data.transpose(*axes))
+    def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None) -> Self:
+        return self.__class__(self._data.transpose(axes))
 
 
-def as_numpy_array_wrapper(func: Callable[[np.ndarray], bytes], buf: Buffer) -> Buffer:
+def as_numpy_array_wrapper(func: Callable[[npt.NDArray[Any]], bytes], buf: Buffer) -> Buffer:
     """Converts the input of `func` to a numpy array and the output back to `Buffer`.
 
     This function is useful when calling a `func` that only support host memory such

@@ -26,8 +26,8 @@ repos:
     hooks:
       - id: mypy
         files: src
-        args: []
         additional_dependencies:
           - types-redis
           - types-setuptools
           - pytest
+          - numpy

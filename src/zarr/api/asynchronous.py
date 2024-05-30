@@ -10,6 +10,7 @@ import numpy.typing as npt
 
 from zarr.abc.codec import Codec
 from zarr.array import Array, AsyncArray
+from zarr.buffer import NDArrayLike
 from zarr.common import JSON, MEMORY_ORDER, ChunkCoords, ZarrFormat
 from zarr.group import AsyncGroup
 from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata, ChunkKeyEncoding
@@ -86,7 +87,7 @@ async def copy_store(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
 
 async def load(
     store: StoreLike, zarr_version: ZarrFormat | None = None, path: str | None = None
-) -> AsyncArray | AsyncGroup:
+) -> NDArrayLike | dict[str, NDArrayLike]:
     """Load data from an array or group into memory.
 
     Parameters
@@ -183,7 +184,7 @@ async def open_consolidated(*args: Any, **kwargs: Any) -> AsyncGroup:
 
 async def save(
     store: StoreLike,
-    *args: npt.ArrayLike,
+    *args: NDArrayLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -219,7 +220,7 @@ async def save(
 
 async def save_array(
     store: StoreLike,
-    arr: npt.ArrayLike,
+    arr: NDArrayLike,
     *,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
@@ -260,11 +261,11 @@ async def save_array(
 
 async def save_group(
     store: StoreLike,
-    *args: npt.ArrayLike,
+    *args: NDArrayLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
-    **kwargs: npt.ArrayLike,
+    **kwargs: NDArrayLike,
 ) -> None:
     """Convenience function to save several NumPy arrays to the local file system, following a
     similar API to the NumPy savez()/savez_compressed() functions.
@@ -302,7 +303,7 @@ async def tree(*args: Any, **kwargs: Any) -> None:
     raise NotImplementedError
 
 
-async def array(data: npt.ArrayLike, **kwargs: Any) -> AsyncArray:
+async def array(data: NDArrayLike, **kwargs: Any) -> AsyncArray:
     """Create an array filled with `data`.
 
     The `data` argument should be a array-like object. For

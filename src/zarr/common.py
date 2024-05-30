@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
 
 import numpy as np
+import numpy.typing as npt
 
 ZARR_JSON = "zarr.json"
 ZARRAY_JSON = ".zarray"
@@ -27,6 +28,7 @@ Selection = slice | SliceSelection
 ZarrFormat = Literal[2, 3]
 JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
 MEMORY_ORDER = Literal["C", "F"]
+OpenMode = Literal["r", "r+", "a", "w", "w-"]
 
 
 def product(tup: ChunkCoords) -> int:
@@ -151,7 +153,7 @@ def parse_named_configuration(
     return name_parsed, configuration_parsed
 
 
-def parse_shapelike(data: Any) -> tuple[int, ...]:
+def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
     if isinstance(data, int):
         return (data,)
     if not isinstance(data, Iterable):
@@ -167,7 +169,7 @@ def parse_shapelike(data: Any) -> tuple[int, ...]:
     return data_tuple
 
 
-def parse_dtype(data: Any) -> np.dtype[Any]:
+def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
     # todo: real validation
     return np.dtype(data)
 

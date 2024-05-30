@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from zarr.buffer import Buffer, NDBuffer
-from zarr.codecs.mixins import ArrayBytesCodecBatchMixin
+from zarr.abc.codec import ArrayBytesCodec
+from zarr.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.codecs.registry import register_codec
 from zarr.common import parse_enum, parse_named_configuration
 
@@ -27,7 +27,7 @@ default_system_endian = Endian(sys.byteorder)
 
 
 @dataclass(frozen=True)
-class BytesCodec(ArrayBytesCodecBatchMixin):
+class BytesCodec(ArrayBytesCodec):
     is_fixed_size = True
 
     endian: Endian | None
@@ -51,7 +51,7 @@ class BytesCodec(ArrayBytesCodecBatchMixin):
         else:
             return {"name": "bytes", "configuration": {"endian": self.endian}}
 
-    def evolve(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if array_spec.dtype.itemsize == 0:
             if self.endian is not None:
                 return replace(self, endian=None)
@@ -61,7 +61,7 @@ class BytesCodec(ArrayBytesCodecBatchMixin):
             )
         return self
 
-    async def decode_single(
+    async def _decode_single(
         self,
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
@@ -75,7 +75,13 @@ class BytesCodec(ArrayBytesCodecBatchMixin):
             dtype = np.dtype(f"{prefix}{chunk_spec.dtype.str[1:]}")
         else:
             dtype = np.dtype(f"|{chunk_spec.dtype.str[1:]}")
-        chunk_array = chunk_bytes.as_nd_buffer(dtype=dtype)
+
+        as_array_like = chunk_bytes.as_array_like()
+        if isinstance(as_array_like, NDArrayLike):
+            as_nd_array_like = as_array_like
+        else:
+            as_nd_array_like = np.asanyarray(as_array_like)
+        chunk_array = NDBuffer.from_ndarray_like(as_nd_array_like.view(dtype=dtype))
 
         # ensure correct chunk shape
         if chunk_array.shape != chunk_spec.shape:
@@ -84,7 +90,7 @@ class BytesCodec(ArrayBytesCodecBatchMixin):
             )
         return chunk_array
 
-    async def encode_single(
+    async def _encode_single(
         self,
         chunk_array: NDBuffer,
         _chunk_spec: ArraySpec,
@@ -92,9 +98,15 @@ class BytesCodec(ArrayBytesCodecBatchMixin):
         assert isinstance(chunk_array, NDBuffer)
         if chunk_array.dtype.itemsize > 1:
             if self.endian is not None and self.endian != chunk_array.byteorder:
-                new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)
+                # type-ignore is a numpy bug
+                # see https://github.com/numpy/numpy/issues/26473
+                new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)  # type: ignore[arg-type]
                 chunk_array = chunk_array.astype(new_dtype)
-        return chunk_array.as_buffer()
+
+        as_nd_array_like = chunk_array.as_ndarray_like()
+        # Flatten the nd-array (only copy if needed)
+        as_nd_array_like = as_nd_array_like.ravel().view(dtype="b")
+        return Buffer.from_array_like(as_nd_array_like)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length

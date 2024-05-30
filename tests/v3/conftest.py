@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from types import ModuleType
 from typing import TYPE_CHECKING
 
 from zarr.common import ZarrFormat
@@ -20,11 +22,11 @@ def parse_store(
     store: Literal["local", "memory", "remote"], path: str
 ) -> LocalStore | MemoryStore | RemoteStore:
     if store == "local":
-        return LocalStore(path)
+        return LocalStore(path, mode="w")
     if store == "memory":
-        return MemoryStore()
+        return MemoryStore(mode="w")
     if store == "remote":
-        return RemoteStore()
+        return RemoteStore(mode="w")
     raise AssertionError
 
 
@@ -36,24 +38,24 @@ def path_type(request):
 # todo: harmonize this with local_store fixture
 @pytest.fixture
 def store_path(tmpdir):
-    store = LocalStore(str(tmpdir))
+    store = LocalStore(str(tmpdir), mode="w")
     p = StorePath(store)
     return p
 
 
 @pytest.fixture(scope="function")
 def local_store(tmpdir):
-    return LocalStore(str(tmpdir))
+    return LocalStore(str(tmpdir), mode="w")
 
 
 @pytest.fixture(scope="function")
 def remote_store():
-    return RemoteStore()
+    return RemoteStore(mode="w")
 
 
 @pytest.fixture(scope="function")
 def memory_store():
-    return MemoryStore()
+    return MemoryStore(mode="w")
 
 
 @pytest.fixture(scope="function")
@@ -81,3 +83,10 @@ async def async_group(request: pytest.FixtureRequest, tmpdir) -> AsyncGroup:
         exists_ok=False,
     )
     return agroup
+
+
+@pytest.fixture(params=["numpy", "cupy"])
+def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
+    """Fixture to parametrize over numpy-like libraries"""
+
+    yield pytest.importorskip(request.param)

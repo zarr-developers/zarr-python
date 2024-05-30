@@ -199,6 +199,8 @@ class AsyncArray:
 
         if chunk_key_encoding is None:
             chunk_key_encoding = ("default", "/")
+        assert chunk_key_encoding is not None
+
         if isinstance(chunk_key_encoding, tuple):
             chunk_key_encoding = (
                 V2ChunkKeyEncoding(separator=chunk_key_encoding[1])
@@ -417,7 +419,7 @@ class AsyncArray:
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass
         # Buffer and NDBuffer between components.
-        value = factory(value)
+        value_buffer = factory(value)
 
         # merging with existing data and encoding chunks
         await self.metadata.codec_pipeline.write(
@@ -430,7 +432,7 @@ class AsyncArray:
                 )
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
-            value,
+            value_buffer,
         )
 
     async def resize(
@@ -580,12 +582,12 @@ class Array:
     def order(self) -> Literal["C", "F"]:
         return self._async_array.order
 
-    def __getitem__(self, selection: Selection) -> npt.NDArray[Any]:
+    def __getitem__(self, selection: Selection) -> NDArrayLike:
         return sync(
             self._async_array.getitem(selection),
         )
 
-    def __setitem__(self, selection: Selection, value: npt.NDArray[Any]) -> None:
+    def __setitem__(self, selection: Selection, value: NDArrayLike) -> None:
         sync(
             self._async_array.setitem(selection, value),
         )
