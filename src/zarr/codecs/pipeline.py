@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from itertools import islice
+from itertools import islice, pairwise
 from typing import TYPE_CHECKING, TypeVar
 from warnings import warn
 
@@ -90,52 +90,9 @@ class BatchedCodecPipeline(CodecPipeline):
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return type(self).from_list([c.evolve_from_array_spec(array_spec) for c in self])
 
-    @staticmethod
-    def codecs_from_list(
-        codecs: list[Codec],
-    ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
-        from zarr.codecs.sharding import ShardingCodec
-
-        if not any(isinstance(codec, ArrayBytesCodec) for codec in codecs):
-            raise ValueError("Exactly one array-to-bytes codec is required.")
-
-        prev_codec: Codec | None = None
-        for codec in codecs:
-            if prev_codec is not None:
-                if isinstance(codec, ArrayBytesCodec) and isinstance(prev_codec, ArrayBytesCodec):
-                    raise ValueError(
-                        f"ArrayBytesCodec '{type(codec)}' cannot follow after ArrayBytesCodec '{type(prev_codec)}' because exactly 1 ArrayBytesCodec is allowed."
-                    )
-                if isinstance(codec, ArrayBytesCodec) and isinstance(prev_codec, BytesBytesCodec):
-                    raise ValueError(
-                        f"ArrayBytesCodec '{type(codec)}' cannot follow after BytesBytesCodec '{type(prev_codec)}'."
-                    )
-                if isinstance(codec, ArrayArrayCodec) and isinstance(prev_codec, ArrayBytesCodec):
-                    raise ValueError(
-                        f"ArrayArrayCodec '{type(codec)}' cannot follow after ArrayBytesCodec '{type(prev_codec)}'."
-                    )
-                if isinstance(codec, ArrayArrayCodec) and isinstance(prev_codec, BytesBytesCodec):
-                    raise ValueError(
-                        f"ArrayArrayCodec '{type(codec)}' cannot follow after BytesBytesCodec '{type(prev_codec)}'."
-                    )
-            prev_codec = codec
-
-        if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
-            warn(
-                "Combining a `sharding_indexed` codec disables partial reads and "
-                "writes, which may lead to inefficient performance.",
-                stacklevel=3,
-            )
-
-        return (
-            tuple(codec for codec in codecs if isinstance(codec, ArrayArrayCodec)),
-            next(codec for codec in codecs if isinstance(codec, ArrayBytesCodec)),
-            tuple(codec for codec in codecs if isinstance(codec, BytesBytesCodec)),
-        )
-
     @classmethod
     def from_list(cls, codecs: list[Codec], *, batch_size: int | None = None) -> Self:
-        array_array_codecs, array_bytes_codec, bytes_bytes_codecs = cls.codecs_from_list(codecs)
+        array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(codecs)
 
         return cls(
             array_array_codecs=array_array_codecs,
@@ -476,3 +433,61 @@ class BatchedCodecPipeline(CodecPipeline):
             self.write_batch,
             config.get("async.concurrency"),
         )
+
+
+def codecs_from_list(
+    codecs: list[Codec],
+) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
+    from zarr.codecs.sharding import ShardingCodec
+
+    array_array: tuple[ArrayArrayCodec] = ()
+    array_bytes: ArrayBytesCodec = None
+    bytes_bytes: tuple[BytesBytesCodec] = ()
+
+    if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
+        warn(
+            "Combining a `sharding_indexed` codec disables partial reads and "
+            "writes, which may lead to inefficient performance.",
+            stacklevel=3,
+        )
+
+    for prev_codec, cur_codec in pairwise((None, *codecs)):
+        if isinstance(cur_codec, ArrayArrayCodec):
+            if isinstance(prev_codec, (ArrayBytesCodec, BytesBytesCodec)):
+                msg = (
+                    f"Invalid codec order. ArrayArrayCodec {cur_codec}"
+                    "must be preceded by another ArrayArrayCodec. "
+                    f"Got {type(prev_codec)} instead."
+                )
+                raise ValueError(msg)
+            array_array += (cur_codec,)
+
+        elif isinstance(cur_codec, ArrayBytesCodec):
+            if isinstance(prev_codec, BytesBytesCodec):
+                msg = (
+                    f"Invalid codec order. ArrayBytes codec {cur_codec}"
+                    f" must be preceded by an ArrayArrayCodec. Got {type(prev_codec)} instead."
+                )
+                raise ValueError(msg)
+            if array_bytes is not None:
+                msg = (
+                    f"Got two instances of ArrayBytesCodec: {array_bytes} and {cur_codec}. "
+                    "Only one array-to-bytes codec is allowed."
+                )
+                raise ValueError(msg)
+            array_bytes = cur_codec
+
+        elif isinstance(cur_codec, BytesBytesCodec):
+            if isinstance(prev_codec, ArrayArrayCodec):
+                msg = (
+                    f"Invalid codec order. BytesBytesCodec {cur_codec}"
+                    "must be preceded by either another BytesBytesCodec, or an ArrayBytesCodec. "
+                    f"Got {type(prev_codec)} instead."
+                )
+            bytes_bytes += (cur_codec,)
+        else:
+            assert False
+
+        if array_bytes is None:
+            raise ValueError("Required ArrayBytesCodec was not found.")
+        return array_array, array_bytes, bytes_bytes

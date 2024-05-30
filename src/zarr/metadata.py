@@ -10,12 +10,13 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec, CodecPipeline
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
 from zarr.abc.metadata import Metadata
 from zarr.buffer import Buffer
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
+from zarr.codecs.registry import get_codec_class
 
 if TYPE_CHECKING:
     from typing import Literal
@@ -33,6 +34,7 @@ from zarr.common import (
     ChunkCoords,
     parse_dtype,
     parse_fill_value,
+    parse_named_configuration,
     parse_shapelike,
 )
 from zarr.config import parse_indexing_order
@@ -160,7 +162,7 @@ class ArrayV3Metadata(ArrayMetadata):
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
-    codecs: CodecPipeline
+    codecs: tuple[Codec, ...]
     attributes: dict[str, Any] = field(default_factory=dict)
     dimension_names: tuple[str, ...] | None = None
     zarr_format: Literal[3] = field(default=3, init=False)
@@ -195,7 +197,7 @@ class ArrayV3Metadata(ArrayMetadata):
             fill_value=fill_value_parsed,
             order="C",  # TODO: order is not needed here.
         )
-        codecs_parsed = parse_codecs(codecs).evolve_from_array_spec(array_spec)
+        codecs_parsed = parse_codecs(codecs)
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type_parsed)
@@ -485,9 +487,27 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def parse_codecs(data: Iterable[Codec | JSON]) -> CodecPipeline:
+def create_pipeline(data: Iterable[Codec | JSON]) -> CodecPipeline:
     from zarr.codecs import BatchedCodecPipeline
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")
     return BatchedCodecPipeline.from_dict(data)
+
+
+def parse_codecs(data: Iterable[Codec | JSON]) -> tuple[Codec, ...]:
+    out: tuple[Codec] = ()
+
+    if not isinstance(data, Iterable):
+        raise TypeError(f"Expected iterable, got {type(data)}")
+
+    for c in data:
+        if isinstance(
+            c, ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
+        ):  # Can't use Codec here because of mypy limitation
+            out += (c,)
+        else:
+            name_parsed, _ = parse_named_configuration(c, require_configuration=False)
+            out += (get_codec_class(name_parsed).from_dict(c),)
+
+    return out

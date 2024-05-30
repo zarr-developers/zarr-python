@@ -229,7 +229,7 @@ class ArrayBytesCodecPartialEncodeMixin:
         )
 
 
-class CodecPipeline(Metadata):
+class CodecPipeline:
     """Base class for implementing CodecPipeline.
     A CodecPipeline implements the read and write paths for chunk data.
     On the read path, it is responsible for fetching chunks from a store (via ByteGetter),
