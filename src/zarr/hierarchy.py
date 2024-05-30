@@ -13,13 +13,111 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS “AS IS” 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any, Literal
 
+import numpy as np
 from typing_extensions import Self
 
+from zarr.abc.codec import CodecPipeline
 from zarr.array import Array
+from zarr.buffer import NDBuffer
+from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding
+from zarr.codecs.bytes import BytesCodec
 from zarr.group import Group, GroupMetadata
 from zarr.metadata import ArrayV3Metadata
 from zarr.store.core import StorePath
+from zarr.v2.util import guess_chunks
+
+
+def auto_data_type(data: Any) -> Any:
+    if hasattr(data, "dtype"):
+        if hasattr(data, "data_type"):
+            msg = (
+                f"Could not infer the data_type attribute from {data}, because "
+                "it has both `dtype` and `data_type` attributes. "
+                "This method requires input with one, or the other, of these attributes."
+            )
+            raise ValueError(msg)
+        return data.dtype
+    elif hasattr(data, "data_type") and not hasattr(data, "dtype"):
+        return data.data_type
+    else:
+        msg = (
+            f"Could not infer the data_type attribute from {data}. "
+            "Expected either an object with a `dtype` attribute, "
+            "or an object with a `data_type` attribute."
+        )
+        raise ValueError(msg)
+
+
+def auto_attributes(data: Any) -> Any:
+    """
+    Guess attributes from:
+        input with an `attrs` attribute, or
+        input with an `attributes` attribute,
+        or anything (returning {})
+    """
+    if hasattr(data, "attrs"):
+        return data.attrs
+    if hasattr(data, "attributes"):
+        return data.attributes
+    return {}
+
+
+def auto_chunk_key_encoding(data: Any) -> Any:
+    if hasattr(data, "chunk_key_encoding"):
+        return data.chunk_key_encoding
+    return DefaultChunkKeyEncoding()
+
+
+def auto_fill_value(data: Any) -> Any:
+    """
+    Guess fill value from an input with a `fill_value` attribute, returning 0 otherwise.
+    """
+    if hasattr(data, "fill_value"):
+        return data.fill_value
+    return 0
+
+
+def auto_codecs(data: Any) -> Any:
+    """
+    Guess compressor from an input with a `compressor` attribute, returning `None` otherwise.
+    """
+    if hasattr(data, "codecs"):
+        return data.codecs
+    return (BytesCodec(),)
+
+
+def auto_dimension_names(data: Any) -> Any:
+    """
+    If the input has a `dimension_names` attribute, return it, otherwise
+    return None.
+    """
+
+    if hasattr(data, "dimension_names"):
+        return data.dimension_names
+    return None
+
+
+def auto_chunk_grid(data: Any) -> Any:
+    """
+    Guess a chunk grid from:
+      input with a `chunk_grid` attribute,
+      input with a `chunksize` attribute, or
+      input with a `chunks` attribute, or,
+      input with `shape` and `dtype` attributes
+    """
+    if hasattr(data, "chunk_grid"):
+        # more a statement of intent than anything else
+        return data.chunk_grid
+    if hasattr(data, "chunksize"):
+        chunks = data.chunksize
+    elif hasattr(data, "chunks"):
+        chunks = data.chunks
+    else:
+        chunks = guess_chunks(data.shape, np.dtype(data.dtype).itemsize)
+    return RegularChunkGrid(chunk_shape=chunks)
 
 
 class ArrayModel(ArrayV3Metadata):
@@ -42,6 +140,70 @@ class ArrayModel(ArrayV3Metadata):
         # array creation routines
 
         return Array.from_dict(store_path=store_path, data=self.to_dict())
+
+    @classmethod
+    def from_array(
+        cls: type[Self],
+        data: NDBuffer,
+        *,
+        chunk_grid: ChunkGrid | Literal["auto"] = "auto",
+        chunk_key_encoding: ChunkKeyEncoding | Literal["auto"] = "auto",
+        fill_value: Any | Literal["auto"] = "auto",
+        codecs: CodecPipeline | Literal["auto"] = "auto",
+        attributes: dict[str, Any] | Literal["auto"] = "auto",
+        dimension_names: tuple[str, ...] | Literal["auto"] = "auto",
+    ) -> Self:
+        """
+        Create an ArrayModel from an array-like object, e.g. a numpy array.
+
+        The returned ArrayModel will use the shape and dtype attributes of the input.
+        The remaining ArrayModel attributes are exposed by this method as keyword arguments,
+        which can either be the string "auto", which instructs this method to infer or guess
+        a value, or a concrete value to use.
+        """
+        shape_out = data.shape
+        data_type_out = auto_data_type(data)
+
+        if chunk_grid == "auto":
+            chunk_grid_out = auto_chunk_grid(data)
+        else:
+            chunk_grid_out = chunk_grid
+
+        if chunk_key_encoding == "auto":
+            chunk_key_encoding_out = auto_chunk_key_encoding(data)
+        else:
+            chunk_key_encoding_out = chunk_key_encoding
+
+        if fill_value == "auto":
+            fill_value_out = auto_fill_value(data)
+        else:
+            fill_value_out = fill_value
+
+        if codecs == "auto":
+            codecs_out = auto_codecs(data)
+        else:
+            codecs_out = codecs
+
+        if attributes == "auto":
+            attributes_out = auto_attributes(data)
+        else:
+            attributes_out = attributes
+
+        if dimension_names == "auto":
+            dimension_names_out = auto_dimension_names(data)
+        else:
+            dimension_names_out = dimension_names
+
+        return cls(
+            shape=shape_out,
+            data_type=data_type_out,
+            chunk_grid=chunk_grid_out,
+            chunk_key_encoding=chunk_key_encoding_out,
+            fill_value=fill_value_out,
+            codecs=codecs_out,
+            attributes=attributes_out,
+            dimension_names=dimension_names_out,
+        )
 
 
 @dataclass(frozen=True)
@@ -104,11 +266,20 @@ def to_flat(
     """
     result = {}
     model_copy: ArrayModel | GroupModel
-    node_dict = node.to_dict()
     if isinstance(node, ArrayModel):
-        model_copy = ArrayModel(**node_dict)
+        # we can remove this if we add a model_copy method
+        model_copy = ArrayModel(
+            shape=node.shape,
+            data_type=node.data_type,
+            chunk_grid=node.chunk_grid,
+            chunk_key_encoding=node.chunk_key_encoding,
+            fill_value=node.fill_value,
+            codecs=node.codecs,
+            attributes=node.attributes,
+            dimension_names=node.dimension_names,
+        )
     else:
-        model_copy = GroupModel(**node_dict)
+        model_copy = GroupModel(attributes=node.attributes, members=None)
         if node.members is not None:
             for name, value in node.members.items():
                 result.update(to_flat(value, "/".join([root_path, name])))

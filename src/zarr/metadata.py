@@ -162,7 +162,7 @@ class ArrayV3Metadata(ArrayMetadata):
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
     codecs: CodecPipeline
-    attributes: dict[str, Any] = field(default_factory=dict)
+    attributes: dict[str, JSON] = field(default_factory=dict)
     dimension_names: tuple[str, ...] | None = None
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["array"] = field(default="array", init=False)
