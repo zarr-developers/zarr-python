@@ -5,6 +5,7 @@ from typing import Any
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
+from zarr.common import OpenMode
 from zarr.store.local import LocalStore
 
 
@@ -60,11 +61,40 @@ class StorePath:
 StoreLike = Store | StorePath | Path | str
 
 
-def make_store_path(store_like: StoreLike) -> StorePath:
+def make_store_path(store_like: StoreLike, *, mode: OpenMode | None = None) -> StorePath:
     if isinstance(store_like, StorePath):
+        if mode is not None:
+            assert mode == store_like.store.mode
         return store_like
     elif isinstance(store_like, Store):
+        if mode is not None:
+            assert mode == store_like.mode
         return StorePath(store_like)
     elif isinstance(store_like, str):
-        return StorePath(LocalStore(Path(store_like)))
+        assert mode is not None
+        return StorePath(LocalStore(Path(store_like), mode=mode))
     raise TypeError
+
+
+def _normalize_interval_index(
+    data: Buffer, interval: None | tuple[int | None, int | None]
+) -> tuple[int, int]:
+    """
+    Convert an implicit interval into an explicit start and length
+    """
+    if interval is None:
+        start = 0
+        length = len(data)
+    else:
+        maybe_start, maybe_len = interval
+        if maybe_start is None:
+            start = 0
+        else:
+            start = maybe_start
+
+        if maybe_len is None:
+            length = len(data) - start
+        else:
+            length = maybe_len
+
+    return (start, length)

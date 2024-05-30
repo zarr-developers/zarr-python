@@ -7,10 +7,10 @@ from pathlib import Path
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
-from zarr.common import concurrent_map, to_thread
+from zarr.common import OpenMode, concurrent_map, to_thread
 
 
-def _get(path: Path, byte_range: tuple[int, int | None] | None) -> Buffer:
+def _get(path: Path, byte_range: tuple[int | None, int | None] | None) -> Buffer:
     """
     Fetch a contiguous region of bytes from a file.
 
@@ -51,10 +51,8 @@ def _put(
     path: Path,
     value: Buffer,
     start: int | None = None,
-    auto_mkdir: bool = True,
 ) -> int | None:
-    if auto_mkdir:
-        path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     if start is not None:
         with path.open("r+b") as f:
             f.seek(start)
@@ -70,15 +68,14 @@ class LocalStore(Store):
     supports_listing: bool = True
 
     root: Path
-    auto_mkdir: bool
 
-    def __init__(self, root: Path | str, auto_mkdir: bool = True):
+    def __init__(self, root: Path | str, *, mode: OpenMode = "r"):
+        super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
         assert isinstance(root, Path)
 
         self.root = root
-        self.auto_mkdir = auto_mkdir
 
     def __str__(self) -> str:
         return f"file://{self.root}"
@@ -90,7 +87,7 @@ class LocalStore(Store):
         return isinstance(other, type(self)) and self.root == other.root
 
     async def get(
-        self, key: str, byte_range: tuple[int, int | None] | None = None
+        self, key: str, byte_range: tuple[int | None, int | None] | None = None
     ) -> Buffer | None:
         assert isinstance(key, str)
         path = self.root / key
@@ -101,7 +98,7 @@ class LocalStore(Store):
             return None
 
     async def get_partial_values(
-        self, key_ranges: list[tuple[str, tuple[int, int]]]
+        self, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
     ) -> list[Buffer | None]:
         """
         Read byte ranges from multiple keys.
@@ -121,6 +118,7 @@ class LocalStore(Store):
         return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: Buffer) -> None:
+        self._check_writable()
         assert isinstance(key, str)
         if isinstance(value, bytes | bytearray):
             # TODO: to support the v2 tests, we convert bytes to Buffer here
@@ -128,9 +126,10 @@ class LocalStore(Store):
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
         path = self.root / key
-        await to_thread(_put, path, value, auto_mkdir=self.auto_mkdir)
+        await to_thread(_put, path, value)
 
     async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
+        self._check_writable()
         args = []
         for key, start, value in key_start_values:
             assert isinstance(key, str)
@@ -142,6 +141,7 @@ class LocalStore(Store):
         await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def delete(self, key: str) -> None:
+        self._check_writable()
         path = self.root / key
         if path.is_dir():  # TODO: support deleting directories? shutil.rmtree?
             shutil.rmtree(path)
