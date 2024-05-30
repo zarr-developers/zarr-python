@@ -83,7 +83,7 @@ async def test_async_array_prototype():
 
     expect = np.zeros((9, 9), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(MyStore()) / "test_async_array_prototype",
+        StorePath(MyStore(mode="w")) / "test_async_array_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
@@ -107,7 +107,7 @@ async def test_async_array_prototype():
 async def test_codecs_use_of_prototype():
     expect = np.zeros((10, 10), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(MyStore()) / "test_codecs_use_of_prototype",
+        StorePath(MyStore(mode="w")) / "test_codecs_use_of_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,

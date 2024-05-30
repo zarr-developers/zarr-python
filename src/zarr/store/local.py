@@ -7,7 +7,7 @@ from pathlib import Path
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer, Prototype
-from zarr.common import concurrent_map, to_thread
+from zarr.common import OpenMode, concurrent_map, to_thread
 
 
 def _get(
@@ -71,7 +71,8 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str):
+    def __init__(self, root: Path | str, *, mode: OpenMode = "r"):
+        super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
         assert isinstance(root, Path)
@@ -122,6 +123,7 @@ class LocalStore(Store):
         return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: Buffer) -> None:
+        self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
@@ -129,6 +131,7 @@ class LocalStore(Store):
         await to_thread(_put, path, value)
 
     async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
+        self._check_writable()
         args = []
         for key, start, value in key_start_values:
             assert isinstance(key, str)
@@ -140,6 +143,7 @@ class LocalStore(Store):
         await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def delete(self, key: str) -> None:
+        self._check_writable()
         path = self.root / key
         if path.is_dir():  # TODO: support deleting directories? shutil.rmtree?
             shutil.rmtree(path)
