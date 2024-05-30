@@ -15,7 +15,6 @@ from zarr.abc.metadata import Metadata
 from zarr.buffer import Buffer
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
-from zarr.codecs._v2 import V2Compressor, V2Filters
 from zarr.codecs.registry import get_codec_class
 
 if TYPE_CHECKING:
@@ -129,11 +128,6 @@ class ArrayMetadata(Metadata, ABC):
     def ndim(self) -> int:
         pass
 
-    @property
-    @abstractmethod
-    def codec_pipeline(self) -> CodecPipeline:
-        pass
-
     @abstractmethod
     def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
         pass
@@ -176,7 +170,7 @@ class ArrayV3Metadata(ArrayMetadata):
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
-        codecs: Iterable[Codec | JSON],
+        codecs: Iterable[Codec | dict[str, JSON]],
         attributes: None | dict[str, JSON],
         dimension_names: None | Iterable[str],
     ) -> None:
@@ -190,13 +184,6 @@ class ArrayV3Metadata(ArrayMetadata):
         dimension_names_parsed = parse_dimension_names(dimension_names)
         fill_value_parsed = parse_fill_value(fill_value)
         attributes_parsed = parse_attributes(attributes)
-
-        array_spec = ArraySpec(
-            shape=shape_parsed,
-            dtype=data_type_parsed,
-            fill_value=fill_value_parsed,
-            order="C",  # TODO: order is not needed here.
-        )
         codecs_parsed = parse_codecs(codecs)
 
         object.__setattr__(self, "shape", shape_parsed)
@@ -223,7 +210,8 @@ class ArrayV3Metadata(ArrayMetadata):
             )
         if self.fill_value is None:
             raise ValueError("`fill_value` is required.")
-        self.codecs.validate(self)
+        for codec in self.codecs:
+            codec.validate(shape=self.shape, dtype=self.dtype, chunk_grid=self.chunk_grid)
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -232,10 +220,6 @@ class ArrayV3Metadata(ArrayMetadata):
     @property
     def ndim(self) -> int:
         return len(self.shape)
-
-    @property
-    def codec_pipeline(self) -> CodecPipeline:
-        return self.codecs
 
     def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
         assert isinstance(
@@ -362,13 +346,13 @@ class ArrayV2Metadata(ArrayMetadata):
     def chunks(self) -> ChunkCoords:
         return self.chunk_grid.chunk_shape
 
-    @property
-    def codec_pipeline(self) -> CodecPipeline:
-        from zarr.codecs import BatchedCodecPipeline
+    # @property
+    # def codec_pipeline(self) -> CodecPipeline:
+    #     from zarr.codecs import BatchedCodecPipeline
 
-        return BatchedCodecPipeline.from_list(
-            [V2Filters(self.filters or []), V2Compressor(self.compressor)]
-        )
+    #     return BatchedCodecPipeline.from_list(
+    #         [V2Filters(self.filters or []), V2Compressor(self.compressor)]
+    #     )
 
     def to_buffer_dict(self) -> dict[str, Buffer]:
         def _json_convert(
@@ -495,8 +479,8 @@ def create_pipeline(data: Iterable[Codec | JSON]) -> CodecPipeline:
     return BatchedCodecPipeline.from_dict(data)
 
 
-def parse_codecs(data: Iterable[Codec | JSON]) -> tuple[Codec, ...]:
-    out: tuple[Codec] = ()
+def parse_codecs(data: Iterable[Codec | dict[str, JSON]]) -> tuple[Codec, ...]:
+    out: tuple[Codec, ...] = ()
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")

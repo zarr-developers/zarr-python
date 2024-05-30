@@ -81,7 +81,7 @@ def test_sharding(
                 codecs=[
                     TransposeCodec(order=order_from_dim("F", sample_data.ndim)),
                     BytesCodec(),
-                    BloscCodec(cname="lz4"),
+                    BloscCodec(cname="lz4", typesize=sample_data.dtype.itemsize, shuffle="shuffle"),
                 ],
                 index_location=index_location,
             )
@@ -111,7 +111,9 @@ def test_sharding_partial(
                 codecs=[
                     TransposeCodec(order=order_from_dim("F", sample_data.ndim)),
                     BytesCodec(),
-                    BloscCodec(cname="lz4"),
+                    BloscCodec(
+                        cname="lz4", typesize=sample_data.dtype.itemsize, shuffle="noshuffle"
+                    ),
                 ],
                 index_location=index_location,
             )
@@ -144,7 +146,9 @@ def test_sharding_partial_read(
                 codecs=[
                     TransposeCodec(order=order_from_dim("F", sample_data.ndim)),
                     BytesCodec(),
-                    BloscCodec(cname="lz4"),
+                    BloscCodec(
+                        cname="lz4", typesize=sample_data.dtype.itemsize, shuffle="noshuffle"
+                    ),
                 ],
                 index_location=index_location,
             )
@@ -173,7 +177,9 @@ def test_sharding_partial_overwrite(
                 codecs=[
                     TransposeCodec(order=order_from_dim("F", data.ndim)),
                     BytesCodec(),
-                    BloscCodec(cname="lz4"),
+                    BloscCodec(
+                        cname="lz4", typesize=sample_data.dtype.itemsize, shuffle="noshuffle"
+                    ),
                 ],
                 index_location=index_location,
             )
@@ -449,7 +455,7 @@ def test_open_sharding(store: Store):
                 codecs=[
                     TransposeCodec(order=order_from_dim("F", 2)),
                     BytesCodec(),
-                    BloscCodec(),
+                    BloscCodec(typesize=np.dtype("int32").itemsize, shuffle="noshuffle"),
                 ],
             )
         ],
@@ -591,7 +597,7 @@ def test_write_partial_sharded_chunks(store: Store):
                 chunk_shape=(10, 10),
                 codecs=[
                     BytesCodec(),
-                    BloscCodec(),
+                    BloscCodec(typesize=data.dtype.itemsize),
                 ],
             )
         ],
@@ -952,7 +958,10 @@ async def test_blosc_evolve(store: Store):
         chunk_shape=(16, 16),
         dtype="uint8",
         fill_value=0,
-        codecs=[BytesCodec(), BloscCodec()],
+        codecs=[
+            BytesCodec(),
+            BloscCodec(typesize=np.dtype("uint8").itemsize, shuffle="bitshuffle"),
+        ],
     )
 
     zarr_json = json.loads((await (store / "blosc_evolve_u1" / "zarr.json").get()).to_bytes())
@@ -966,7 +975,7 @@ async def test_blosc_evolve(store: Store):
         chunk_shape=(16, 16),
         dtype="uint16",
         fill_value=0,
-        codecs=[BytesCodec(), BloscCodec()],
+        codecs=[BytesCodec(), BloscCodec(typesize=np.dtype("uint16").itemsize, shuffle="shuffle")],
     )
 
     zarr_json = json.loads((await (store / "blosc_evolve_u2" / "zarr.json").get()).to_bytes())
@@ -980,7 +989,15 @@ async def test_blosc_evolve(store: Store):
         chunk_shape=(16, 16),
         dtype="uint16",
         fill_value=0,
-        codecs=[ShardingCodec(chunk_shape=(16, 16), codecs=[BytesCodec(), BloscCodec()])],
+        codecs=[
+            ShardingCodec(
+                chunk_shape=(16, 16),
+                codecs=[
+                    BytesCodec(),
+                    BloscCodec(typesize=np.dtype("uint16").itemsize, shuffle="shuffle"),
+                ],
+            )
+        ],
     )
 
     zarr_json = json.loads((await (store / "sharding_blosc_evolve" / "zarr.json").get()).to_bytes())

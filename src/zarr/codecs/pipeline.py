@@ -3,8 +3,10 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from itertools import islice, pairwise
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 from warnings import warn
+
+import numpy as np
 
 from zarr.abc.codec import (
     ArrayArrayCodec,
@@ -18,11 +20,11 @@ from zarr.abc.codec import (
     CodecPipeline,
 )
 from zarr.buffer import Buffer, NDBuffer
+from zarr.chunk_grids import ChunkGrid
 from zarr.codecs.registry import get_codec_class
 from zarr.common import JSON, concurrent_map, parse_named_configuration
 from zarr.config import config
 from zarr.indexing import is_total_slice
-from zarr.metadata import ArrayMetadata
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -91,7 +93,7 @@ class BatchedCodecPipeline(CodecPipeline):
         return type(self).from_list([c.evolve_from_array_spec(array_spec) for c in self])
 
     @classmethod
-    def from_list(cls, codecs: list[Codec], *, batch_size: int | None = None) -> Self:
+    def from_list(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
         array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(codecs)
 
         return cls(
@@ -138,9 +140,9 @@ class BatchedCodecPipeline(CodecPipeline):
         yield self.array_bytes_codec
         yield from self.bytes_bytes_codecs
 
-    def validate(self, array_metadata: ArrayMetadata) -> None:
+    def validate(self, shape: tuple[int, ...], dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
         for codec in self:
-            codec.validate(array_metadata)
+            codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)
 
     def compute_encoded_size(self, byte_length: int, array_spec: ArraySpec) -> int:
         for codec in self:
@@ -436,15 +438,15 @@ class BatchedCodecPipeline(CodecPipeline):
 
 
 def codecs_from_list(
-    codecs: list[Codec],
+    codecs: Iterable[Codec],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     from zarr.codecs.sharding import ShardingCodec
 
-    array_array: tuple[ArrayArrayCodec] = ()
-    array_bytes: ArrayBytesCodec = None
-    bytes_bytes: tuple[BytesBytesCodec] = ()
+    array_array: tuple[ArrayArrayCodec, ...] = ()
+    array_bytes_maybe: ArrayBytesCodec | None = None
+    bytes_bytes: tuple[BytesBytesCodec, ...] = ()
 
-    if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(codecs) > 1:
+    if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(tuple(codecs)) > 1:
         warn(
             "Combining a `sharding_indexed` codec disables partial reads and "
             "writes, which may lead to inefficient performance.",
@@ -453,7 +455,7 @@ def codecs_from_list(
 
     for prev_codec, cur_codec in pairwise((None, *codecs)):
         if isinstance(cur_codec, ArrayArrayCodec):
-            if isinstance(prev_codec, (ArrayBytesCodec, BytesBytesCodec)):
+            if isinstance(prev_codec, ArrayBytesCodec | BytesBytesCodec):
                 msg = (
                     f"Invalid codec order. ArrayArrayCodec {cur_codec}"
                     "must be preceded by another ArrayArrayCodec. "
@@ -469,13 +471,15 @@ def codecs_from_list(
                     f" must be preceded by an ArrayArrayCodec. Got {type(prev_codec)} instead."
                 )
                 raise ValueError(msg)
-            if array_bytes is not None:
+
+            if array_bytes_maybe is not None:
                 msg = (
-                    f"Got two instances of ArrayBytesCodec: {array_bytes} and {cur_codec}. "
+                    f"Got two instances of ArrayBytesCodec: {array_bytes_maybe} and {cur_codec}. "
                     "Only one array-to-bytes codec is allowed."
                 )
                 raise ValueError(msg)
-            array_bytes = cur_codec
+
+            array_bytes_maybe = cur_codec
 
         elif isinstance(cur_codec, BytesBytesCodec):
             if isinstance(prev_codec, ArrayArrayCodec):
@@ -486,8 +490,9 @@ def codecs_from_list(
                 )
             bytes_bytes += (cur_codec,)
         else:
-            assert False
+            raise AssertionError
 
-        if array_bytes is None:
-            raise ValueError("Required ArrayBytesCodec was not found.")
-        return array_array, array_bytes, bytes_bytes
+    if array_bytes_maybe is None:
+        raise ValueError("Required ArrayBytesCodec was not found.")
+    else:
+        return array_array, array_bytes_maybe, bytes_bytes

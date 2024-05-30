@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
+
+import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.buffer import NDBuffer
+from zarr.chunk_grids import ChunkGrid
 from zarr.codecs.registry import register_codec
 from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
 
@@ -41,6 +44,20 @@ class TransposeCodec(ArrayArrayCodec):
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "transpose", "configuration": {"order": list(self.order)}}
+
+    def validate(self, shape: tuple[int, ...], dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+        if len(self.order) != len(shape):
+            raise ValueError(
+                f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
+            )
+        if len(self.order) != len(set(self.order)):
+            raise ValueError(
+                f"There must not be duplicates in the `order` tuple. Got {self.order}."
+            )
+        if not all(0 <= x < len(shape) for x in self.order):
+            raise ValueError(
+                f"All entries in the `order` tuple must be between 0 and the number of dimensions in the array. Got {self.order}."
+            )
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if len(self.order) != array_spec.ndim:

@@ -11,19 +11,21 @@ import json
 # 1. Was splitting the array into two classes really necessary?
 from asyncio import gather
 from collections.abc import Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec
+from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
 from zarr.buffer import Factory, NDArrayLike, NDBuffer
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
+from zarr.codecs._v2 import V2Compressor, V2Filters
+from zarr.codecs.pipeline import BatchedCodecPipeline
 from zarr.common import (
     JSON,
     ZARR_JSON,
@@ -41,8 +43,8 @@ from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
 
-def parse_array_metadata(data: Any) -> ArrayMetadata:
-    if isinstance(data, ArrayMetadata):
+def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
+    if isinstance(data, ArrayV2Metadata | ArrayV3Metadata):
         return data
     elif isinstance(data, dict):
         if data["zarr_format"] == 3:
@@ -52,10 +54,22 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
     raise TypeError
 
 
+def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> BatchedCodecPipeline:
+    if isinstance(metadata, ArrayV3Metadata):
+        return BatchedCodecPipeline.from_list(metadata.codecs)
+    elif isinstance(metadata, ArrayV2Metadata):
+        return BatchedCodecPipeline.from_list(
+            [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
+        )
+    else:
+        raise AssertionError
+
+
 @dataclass(frozen=True)
 class AsyncArray:
     metadata: ArrayMetadata
     store_path: StorePath
+    codec_pipeline: CodecPipeline = field(init=False)
     order: Literal["C", "F"]
 
     def __init__(
@@ -70,6 +84,7 @@ class AsyncArray:
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
         object.__setattr__(self, "order", order_parsed)
+        object.__setattr__(self, "codec_pipeline", create_codec_pipeline(metadata=metadata_parsed))
 
     @classmethod
     async def create(
@@ -373,7 +388,7 @@ class AsyncArray:
         )
 
         # reading chunks and decoding them
-        await self.metadata.codec_pipeline.read(
+        await self.codec_pipeline.read(
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
@@ -422,7 +437,7 @@ class AsyncArray:
         value_buffer = factory(value)
 
         # merging with existing data and encoding chunks
-        await self.metadata.codec_pipeline.write(
+        await self.codec_pipeline.write(
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
