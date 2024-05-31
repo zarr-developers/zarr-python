@@ -86,16 +86,16 @@ class BloscCodec(BytesBytesCodec):
     def __init__(
         self,
         *,
-        typesize: int,
+        typesize: int | None = None,
         cname: BloscCname | str = BloscCname.zstd,
         clevel: int = 5,
-        shuffle: BloscShuffle | str = "noshuffle",
+        shuffle: BloscShuffle | str | None = None,
         blocksize: int = 0,
     ) -> None:
-        typesize_parsed = parse_typesize(typesize)
+        typesize_parsed = parse_typesize(typesize) if typesize is not None else None
         cname_parsed = parse_enum(cname, BloscCname)
         clevel_parsed = parse_clevel(clevel)
-        shuffle_parsed = parse_enum(shuffle, BloscShuffle)
+        shuffle_parsed = parse_enum(shuffle, BloscShuffle) if shuffle is not None else None
         blocksize_parsed = parse_blocksize(blocksize)
 
         object.__setattr__(self, "typesize", typesize_parsed)
