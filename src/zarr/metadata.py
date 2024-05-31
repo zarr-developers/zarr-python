@@ -185,12 +185,14 @@ class ArrayV3Metadata(ArrayMetadata):
         fill_value_parsed = parse_fill_value(fill_value)
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
-        codecs_parsed = [
-            c.evolve_from_array_spec(
-                shape=shape_parsed, dtype=data_type_parsed, chunk_grid=chunk_grid_parsed
-            )
-            for c in codecs_parsed_partial
-        ]
+
+        array_spec = ArraySpec(
+            shape=shape_parsed,
+            dtype=data_type_parsed,
+            fill_value=fill_value_parsed,
+            order="C",  # TODO: order is not needed here.
+        )
+        codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type_parsed)
@@ -217,7 +219,7 @@ class ArrayV3Metadata(ArrayMetadata):
         if self.fill_value is None:
             raise ValueError("`fill_value` is required.")
         for codec in self.codecs:
-            codec.validate(shape=self.shape, dtype=self.dtype, chunk_grid=self.chunk_grid)
+            codec.validate(shape=self.shape, dtype=self.data_type, chunk_grid=self.chunk_grid)
 
     @property
     def dtype(self) -> np.dtype[Any]:

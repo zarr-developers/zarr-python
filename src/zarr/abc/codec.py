@@ -63,20 +63,13 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         """
         return chunk_spec
 
-    def evolve_from_array_spec(
-        self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid
-    ) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         """Fills in codec configuration parameters that can be automatically
         inferred from the array metadata.
 
         Parameters
         ----------
-        shape: tuple[int, ...]
-            The shape of the array.
-        dtype: np.dtype
-            The datatype of the array.
-        chunk_grid: ChunkGrid
-            The chunk grid of the array.
+        chunk_spec : ArraySpec
 
         Returns
         -------
@@ -84,19 +77,18 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         """
         return self
 
-    def validate(self, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
-        """
-        Validates that the codec configuration is compatible with the array metadata.
+    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+        """Validates that the codec configuration is compatible with the array metadata.
         Raises errors when the codec configuration is not compatible.
 
         Parameters
         ----------
-        shape: tuple[int, ...]
-            The shape of the array.
-        dtype: np.dtype
-            The datatype of the array.
+        shape: ChunkCoords
+            The array shape
+        dtype: np.dtype[Any]
+            The array data type
         chunk_grid: ChunkGrid
-            The chunk grid of the array.
+            The array chunk grid
         """
         ...
 
@@ -244,7 +236,7 @@ class ArrayBytesCodecPartialEncodeMixin:
         )
 
 
-class CodecPipeline:
+class CodecPipeline(Metadata):
     """Base class for implementing CodecPipeline.
     A CodecPipeline implements the read and write paths for chunk data.
     On the read path, it is responsible for fetching chunks from a store (via ByteGetter),
@@ -252,20 +244,13 @@ class CodecPipeline:
     and writes them to a store (via ByteSetter)."""
 
     @abstractmethod
-    def evolve_from_array_spec(
-        self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid
-    ) -> Self:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         """Fills in codec configuration parameters that can be automatically
         inferred from the array metadata.
 
         Parameters
         ----------
-        shape: tuple[int, ...]
-            The shape of the array.
-        dtype: np.dtype
-            The datatype of the array.
-        chunk_grid: ChunkGrid
-            The chunk grid of the array.
+        array_spec : ArraySpec
 
         Returns
         -------
@@ -297,18 +282,18 @@ class CodecPipeline:
     def supports_partial_encode(self) -> bool: ...
 
     @abstractmethod
-    def validate(self, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
         """Validates that all codec configurations are compatible with the array metadata.
         Raises errors when a codec configuration is not compatible.
 
         Parameters
         ----------
-        shape: tuple[int, ...]
-            The shape of the array.
-        dtype: np.dtype
-            The datatype of the array.
+        shape: ChunkCoords
+            The array shape
+        dtype: np.dtype[Any]
+            The array data type
         chunk_grid: ChunkGrid
-            The chunk grid of the array.
+            The array chunk grid
         """
         ...
 

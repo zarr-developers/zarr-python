@@ -89,15 +89,8 @@ class BatchedCodecPipeline(CodecPipeline):
     def to_dict(self) -> JSON:
         return [c.to_dict() for c in self]
 
-    def evolve_from_array_spec(
-        self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid
-    ) -> Self:
-        return type(self).from_list(
-            [
-                c.evolve_from_array_spec(shape=shape, dtype=dtype, chunk_grid=chunk_grid)
-                for c in self
-            ]
-        )
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
+        return type(self).from_list([c.evolve_from_array_spec(array_spec=array_spec) for c in self])
 
     @classmethod
     def from_list(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
@@ -147,7 +140,7 @@ class BatchedCodecPipeline(CodecPipeline):
         yield self.array_bytes_codec
         yield from self.bytes_bytes_codecs
 
-    def validate(self, shape: tuple[int, ...], dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
+    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
         for codec in self:
             codec.validate(shape=shape, dtype=dtype, chunk_grid=chunk_grid)
 

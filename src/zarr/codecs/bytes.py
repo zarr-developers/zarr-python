@@ -3,15 +3,14 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.buffer import Buffer, NDArrayLike, NDBuffer
-from zarr.chunk_grids import ChunkGrid
 from zarr.codecs.registry import register_codec
-from zarr.common import ChunkCoords, parse_enum, parse_named_configuration
+from zarr.common import parse_enum, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -52,10 +51,8 @@ class BytesCodec(ArrayBytesCodec):
         else:
             return {"name": "bytes", "configuration": {"endian": self.endian}}
 
-    def evolve_from_array_spec(
-        self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid
-    ) -> Self:
-        if dtype.itemsize == 0:
+    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
+        if array_spec.dtype.itemsize == 0:
             if self.endian is not None:
                 return replace(self, endian=None)
         elif self.endian is None:
