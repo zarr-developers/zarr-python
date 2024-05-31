@@ -340,9 +340,13 @@ class ShardingCodec(
             },
         }
 
-    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        shard_spec = self._get_chunk_spec(array_spec)
-        evolved_codecs = tuple(c.evolve_from_array_spec(shard_spec) for c in self.codecs)
+    def evolve_from_array_spec(
+        self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid
+    ) -> Self:
+        evolved_codecs = tuple(
+            c.evolve_from_array_spec(shape=self.chunk_shape, dtype=dtype, chunk_grid=chunk_grid)
+            for c in self.codecs
+        )
         if evolved_codecs != self.codecs:
             return replace(self, codecs=evolved_codecs)
         return self

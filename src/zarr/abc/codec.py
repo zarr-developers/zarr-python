@@ -63,13 +63,20 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         """
         return chunk_spec
 
-    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(
+        self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid
+    ) -> Self:
         """Fills in codec configuration parameters that can be automatically
         inferred from the array metadata.
 
         Parameters
         ----------
-        chunk_spec : ArraySpec
+        shape: tuple[int, ...]
+            The shape of the array.
+        dtype: np.dtype
+            The datatype of the array.
+        chunk_grid: ChunkGrid
+            The chunk grid of the array.
 
         Returns
         -------
@@ -245,13 +252,20 @@ class CodecPipeline:
     and writes them to a store (via ByteSetter)."""
 
     @abstractmethod
-    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(
+        self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid
+    ) -> Self:
         """Fills in codec configuration parameters that can be automatically
         inferred from the array metadata.
 
         Parameters
         ----------
-        array_spec : ArraySpec
+        shape: tuple[int, ...]
+            The shape of the array.
+        dtype: np.dtype
+            The datatype of the array.
+        chunk_grid: ChunkGrid
+            The chunk grid of the array.
 
         Returns
         -------

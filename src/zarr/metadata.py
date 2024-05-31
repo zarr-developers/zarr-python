@@ -184,7 +184,13 @@ class ArrayV3Metadata(ArrayMetadata):
         dimension_names_parsed = parse_dimension_names(dimension_names)
         fill_value_parsed = parse_fill_value(fill_value)
         attributes_parsed = parse_attributes(attributes)
-        codecs_parsed = parse_codecs(codecs)
+        codecs_parsed_partial = parse_codecs(codecs)
+        codecs_parsed = [
+            c.evolve_from_array_spec(
+                shape=shape_parsed, dtype=data_type_parsed, chunk_grid=chunk_grid_parsed
+            )
+            for c in codecs_parsed_partial
+        ]
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type_parsed)

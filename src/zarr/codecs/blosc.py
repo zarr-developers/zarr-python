@@ -3,15 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numcodecs
+import numpy as np
 from numcodecs.blosc import Blosc
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.buffer import Buffer, as_numpy_array_wrapper
+from zarr.chunk_grids import ChunkGrid
 from zarr.codecs.registry import register_codec
-from zarr.common import parse_enum, parse_named_configuration, to_thread
+from zarr.common import ChunkCoords, parse_enum, parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -125,18 +127,16 @@ class BloscCodec(BytesBytesCodec):
             },
         }
 
-    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
+    def evolve_from_array_spec(
+        self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid
+    ) -> Self:
         new_codec = self
         if new_codec.typesize is None:
-            new_codec = replace(new_codec, typesize=array_spec.dtype.itemsize)
+            new_codec = replace(new_codec, typesize=dtype.itemsize)
         if new_codec.shuffle is None:
             new_codec = replace(
                 new_codec,
-                shuffle=(
-                    BloscShuffle.bitshuffle
-                    if array_spec.dtype.itemsize == 1
-                    else BloscShuffle.shuffle
-                ),
+                shuffle=(BloscShuffle.bitshuffle if dtype.itemsize == 1 else BloscShuffle.shuffle),
             )
 
         return new_codec

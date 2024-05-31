@@ -10,7 +10,7 @@ from zarr.abc.codec import ArrayArrayCodec
 from zarr.buffer import NDBuffer
 from zarr.chunk_grids import ChunkGrid
 from zarr.codecs.registry import register_codec
-from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
+from zarr.common import JSON, ArraySpec, ChunkCoords, ChunkCoordsLike, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import TYPE_CHECKING
@@ -59,8 +59,10 @@ class TransposeCodec(ArrayArrayCodec):
                 f"All entries in the `order` tuple must be between 0 and the number of dimensions in the array. Got {self.order}."
             )
 
-    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        if len(self.order) != array_spec.ndim:
+    def evolve_from_array_spec(
+        self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid
+    ) -> Self:
+        if len(self.order) != len(shape):
             raise ValueError(
                 f"The `order` tuple needs have as many entries as there are dimensions in the array. Got {self.order}."
             )
@@ -68,7 +70,7 @@ class TransposeCodec(ArrayArrayCodec):
             raise ValueError(
                 f"There must not be duplicates in the `order` tuple. Got {self.order}."
             )
-        if not all(0 <= x < array_spec.ndim for x in self.order):
+        if not all(0 <= x < len(shape) for x in self.order):
             raise ValueError(
                 f"All entries in the `order` tuple must be between 0 and the number of dimensions in the array. Got {self.order}."
             )

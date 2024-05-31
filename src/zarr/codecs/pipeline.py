@@ -22,7 +22,7 @@ from zarr.abc.codec import (
 from zarr.buffer import Buffer, NDBuffer
 from zarr.chunk_grids import ChunkGrid
 from zarr.codecs.registry import get_codec_class
-from zarr.common import JSON, concurrent_map, parse_named_configuration
+from zarr.common import JSON, ChunkCoords, concurrent_map, parse_named_configuration
 from zarr.config import config
 from zarr.indexing import is_total_slice
 
@@ -89,8 +89,15 @@ class BatchedCodecPipeline(CodecPipeline):
     def to_dict(self) -> JSON:
         return [c.to_dict() for c in self]
 
-    def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        return type(self).from_list([c.evolve_from_array_spec(array_spec) for c in self])
+    def evolve_from_array_spec(
+        self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid
+    ) -> Self:
+        return type(self).from_list(
+            [
+                c.evolve_from_array_spec(shape=shape, dtype=dtype, chunk_grid=chunk_grid)
+                for c in self
+            ]
+        )
 
     @classmethod
     def from_list(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
