@@ -41,6 +41,9 @@ from zarr.config import parse_indexing_order
 _bool = bool
 
 
+__all__ = ["ArrayMetadata"]
+
+
 class DataType(Enum):
     bool = "bool"
     int8 = "int8"
