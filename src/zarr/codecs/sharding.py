@@ -216,6 +216,24 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
         return obj
 
     @classmethod
+    def merge_with_c_order(
+        cls,
+        chunks_per_shard: ChunkCoords,
+        tombstones: set[ChunkCoords],
+        *shard_dicts: ShardMapping,
+    ) -> _ShardBuilder:
+        obj = cls.create_empty(chunks_per_shard)
+        for chunk_coords in c_order_iter(chunks_per_shard):
+            if tombstones is not None and chunk_coords in tombstones:
+                continue
+            for shard_dict in shard_dicts:
+                maybe_value = shard_dict.get(chunk_coords, None)
+                if maybe_value is not None:
+                    obj[chunk_coords] = maybe_value
+                    break
+        return obj
+
+    @classmethod
     def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardBuilder:
         obj = cls()
         obj.buf = Buffer.create_zero_length()
@@ -284,7 +302,8 @@ class _MergingShardBuilder(ShardMutableMapping):
         index_location: ShardingCodecIndexLocation,
         index_encoder: Callable[[_ShardIndex], Awaitable[Buffer]],
     ) -> Buffer:
-        shard_builder = _ShardBuilder.merge_with_morton_order(
+        print("merging shards with c order")
+        shard_builder = _ShardBuilder.merge_with_c_order(
             self.new_dict.index.chunks_per_shard,
             self.tombstones,
             self.new_dict,

@@ -5,7 +5,7 @@ from collections.abc import AsyncGenerator, MutableMapping
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
 from zarr.common import OpenMode, concurrent_map
-from zarr.store.core import _normalize_interval_index
+from zarr.store.utils import _normalize_interval_index
 
 
 # TODO: this store could easily be extended to wrap any MutableMapping store from v2

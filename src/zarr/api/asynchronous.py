@@ -11,7 +11,7 @@ import numpy.typing as npt
 from zarr.abc.codec import Codec
 from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
-from zarr.common import JSON, MEMORY_ORDER, ChunkCoords, ZarrFormat
+from zarr.common import JSON, MEMORY_ORDER, ChunkCoords, OpenMode, ZarrFormat
 from zarr.group import AsyncGroup
 from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata, ChunkKeyEncoding
 from zarr.store import (
@@ -129,7 +129,7 @@ async def load(
 async def open(
     *,
     store: StoreLike | None = None,
-    mode: str | None = None,  # type and value changed
+    mode: OpenMode | None = None,  # type and value changed
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -164,10 +164,8 @@ async def open(
             "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
         )
         zarr_format = zarr_version
-    if mode is not None:
-        warnings.warn("mode is ignored", RuntimeWarning, stacklevel=2)
 
-    store_path = make_store_path(store)
+    store_path = make_store_path(store, mode=mode)
 
     if path is not None:
         store_path = store_path / path
@@ -252,10 +250,17 @@ async def save_array(
     if zarr_format is None:
         zarr_format = 3  # default via config?
 
-    store_path = make_store_path(store)
+    store_path = make_store_path(store, mode="w")
     if path is not None:
         store_path = store_path / path
-    new = await AsyncArray.create(store_path, zarr_format=zarr_format, **kwargs)
+    new = await AsyncArray.create(
+        store_path,
+        zarr_format=zarr_format,
+        shape=arr.shape,
+        dtype=arr.dtype,
+        chunks=arr.shape,
+        **kwargs,
+    )
     await new.setitem(slice(None), arr)
 
 
@@ -295,7 +300,8 @@ async def save_group(
     for i, arr in enumerate(args):
         aws.append(save_array(store, arr, zarr_format=zarr_format, path=f"{path}/arr_{i}"))
     for k, arr in kwargs.items():
-        aws.append(save_array(store, arr, zarr_format=zarr_format, path=f"{path}/{k}"))
+        path = f"{path}/{k}" if path is not None else k
+        aws.append(save_array(store, arr, zarr_format=zarr_format, path=path))
     await asyncio.gather(*aws)
 
 
@@ -428,7 +434,7 @@ async def group(
 async def open_group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,
-    mode: str | None = None,  # not used
+    mode: OpenMode | None = None,  # not used
     cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any = None,  # not used
     path: str | None = None,
@@ -480,8 +486,6 @@ async def open_group(
     if zarr_format is None:
         zarr_format = 3  # default from config?
 
-    if mode is not None:
-        warnings.warn("mode is not yet implemented", RuntimeWarning, stacklevel=2)
     if cache_attrs is not None:
         warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
     if synchronizer is not None:
@@ -493,7 +497,7 @@ async def open_group(
     if storage_options is not None:
         warnings.warn("storage_options is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    store_path = make_store_path(store)
+    store_path = make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
 
@@ -508,7 +512,6 @@ async def open_group(
         )
 
 
-# TODO: require kwargs
 async def create(
     shape: ShapeLike,
     *,  # Note: this is a change from v2
@@ -680,7 +683,7 @@ async def create(
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    store_path = make_store_path(store)
+    store_path = make_store_path(store, mode="w")
     if path is not None:
         store_path = store_path / path
 
@@ -801,9 +804,14 @@ async def open_array(
         )
 
     try:
+        print(store_path)
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except KeyError:
-        pass
+    except KeyError as e:
+        print(e, type(e))
+        if store_path.store.writeable:
+            pass
+        else:
+            raise e
 
     # if array was not found, create it
     return await create(store=store, path=path, zarr_format=zarr_format, **kwargs)
