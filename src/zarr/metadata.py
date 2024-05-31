@@ -354,14 +354,6 @@ class ArrayV2Metadata(ArrayMetadata):
     def chunks(self) -> ChunkCoords:
         return self.chunk_grid.chunk_shape
 
-    # @property
-    # def codec_pipeline(self) -> CodecPipeline:
-    #     from zarr.codecs import BatchedCodecPipeline
-
-    #     return BatchedCodecPipeline.from_list(
-    #         [V2Filters(self.filters or []), V2Compressor(self.compressor)]
-    #     )
-
     def to_buffer_dict(self) -> dict[str, Buffer]:
         def _json_convert(
             o: np.dtype[Any],
