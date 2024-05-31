@@ -134,8 +134,8 @@ class Buffer:
     def create_zero_length(cls) -> Self:
         """Create an empty buffer with length zero
 
-        Return
-        ------
+        Returns
+        -------
             New empty 0-length buffer
         """
         return cls(np.array([], dtype="b"))
@@ -149,8 +149,8 @@ class Buffer:
         array_like
             array-like object that must be 1-dim, contiguous, and byte dtype.
 
-        Return
-        ------
+        Returns
+        -------
             New buffer representing `array_like`
         """
         return cls(array_like)
@@ -164,46 +164,46 @@ class Buffer:
         bytes_like
            bytes-like object
 
-        Return
-        ------
+        Returns
+        -------
             New buffer representing `bytes_like`
         """
         return cls.from_array_like(np.frombuffer(bytes_like, dtype="b"))
 
     def as_array_like(self) -> ArrayLike:
-        """Return the underlying array (host or device memory) of this buffer
+        """Returns the underlying array (host or device memory) of this buffer
 
         This will never copy data.
 
-        Return
-        ------
+        Returns
+        -------
             The underlying 1d array such as a NumPy or CuPy array.
         """
         return self._data
 
     def as_numpy_array(self) -> npt.NDArray[Any]:
-        """Return the buffer as a NumPy array (host memory).
+        """Returns the buffer as a NumPy array (host memory).
 
         Warning
         -------
         Might have to copy data, consider using `.as_array_like()` instead.
 
-        Return
-        ------
+        Returns
+        -------
             NumPy array of this buffer (might be a data copy)
         """
         return np.asanyarray(self._data)
 
     def to_bytes(self) -> bytes:
-        """Return the buffer as `bytes` (host memory).
+        """Returns the buffer as `bytes` (host memory).
 
         Warning
         -------
         Will always copy data, only use this method for small buffers such as metadata
         buffers. If possible, use `.as_numpy_array()` or `.as_array_like()` instead.
 
-        Return
-        ------
+        Returns
+        -------
             `bytes` of this buffer (data copy)
         """
         return bytes(self.as_numpy_array())
@@ -282,8 +282,8 @@ class NDBuffer:
         fill_value
             If not None, fill the new buffer with a scalar value.
 
-        Return
-        ------
+        Returns
+        -------
             New buffer representing a new ndarray_like object
 
         Developer Notes
@@ -305,8 +305,8 @@ class NDBuffer:
         ndarray_like
             ndarray-like object
 
-        Return
-        ------
+        Returns
+        -------
             New buffer representing `ndarray_like`
         """
         return cls(ndarray_like)
@@ -320,32 +320,32 @@ class NDBuffer:
         array_like
             Object that can be coerced into a Numpy array
 
-        Return
-        ------
+        Returns
+        -------
             New buffer representing `array_like`
         """
         return cls.from_ndarray_like(np.asanyarray(array_like))
 
     def as_ndarray_like(self) -> NDArrayLike:
-        """Return the underlying array (host or device memory) of this buffer
+        """Returns the underlying array (host or device memory) of this buffer
 
         This will never copy data.
 
-        Return
-        ------
+        Returns
+        -------
             The underlying array such as a NumPy or CuPy array.
         """
         return self._data
 
     def as_numpy_array(self) -> npt.NDArray[Any]:
-        """Return the buffer as a NumPy array (host memory).
+        """Returns the buffer as a NumPy array (host memory).
 
         Warning
         -------
         Might have to copy data, consider using `.as_ndarray_like()` instead.
 
-        Return
-        ------
+        Returns
+        -------
             NumPy array of this buffer (might be a data copy)
         """
         return np.asanyarray(self._data)
@@ -420,8 +420,8 @@ def as_numpy_array_wrapper(
     prototype
         The prototype of the output buffer.
 
-    Return
-    ------
+    Returns
+    -------
         The result of `func` converted to a `prototype.buffer`
     """
     return prototype.buffer.from_bytes(func(buf.as_numpy_array()))
@@ -429,6 +429,8 @@ def as_numpy_array_wrapper(
 
 class Prototype(NamedTuple):
     """Prototype of the Buffer and NDBuffer class
+
+    The protocol must be pickable.
 
     Attributes
     ----------
