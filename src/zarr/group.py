@@ -9,9 +9,6 @@ from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy.typing as npt
 
-if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable
-    from typing import Any
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
