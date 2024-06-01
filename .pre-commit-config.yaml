@@ -31,3 +31,5 @@ repos:
           - types-setuptools
           - pytest
           - numpy
+          - numcodecs
+          - zstandard

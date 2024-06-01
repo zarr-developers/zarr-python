@@ -5,7 +5,7 @@ import json
 import logging
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field, replace
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy.typing as npt
 
@@ -37,7 +37,7 @@ logger = logging.getLogger("zarr.group")
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
     if data in (2, 3):
-        return data
+        return cast(Literal[2, 3], data)
     msg = msg = f"Invalid zarr_format. Expected one 2 or 3. Got {data}."
     raise ValueError(msg)
 
