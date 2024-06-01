@@ -11,12 +11,11 @@ from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
-    ByteGetter,
     BytesBytesCodec,
-    ByteSetter,
     Codec,
     CodecPipeline,
 )
+from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, NDBuffer
 from zarr.codecs.registry import get_codec_class
 from zarr.common import JSON, concurrent_map, parse_named_configuration
