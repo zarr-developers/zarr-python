@@ -21,6 +21,7 @@ maintainers = [
     { name = "Ryan Abernathey" }
 ]
 requires-python = ">=3.10"
+# If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'asciitree',
     'numpy>=1.24',
@@ -136,8 +137,7 @@ list-env = "pip list"
 features = ['docs']
 
 [tool.hatch.envs.docs.scripts]
-build = "sphinx-build docs/ docs/_build/"
-rtd = "sphinx-build docs/ _readthedocs/html/"
+build = "cd docs && make html"
 serve = "sphinx-autobuild docs docs/_build --ignore 'docs/_autoapi/**/*' --host 0.0.0.0"
 
 [tool.ruff]
@@ -188,7 +188,7 @@ ignore_missing_imports = true
 namespace_packages = false
 
 strict = true
-
+warn_unreachable = true
 
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
@@ -200,16 +200,9 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
-    "zarr.group",
     "tests.*",
 ]
 check_untyped_defs = false
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.group"
-]
-disallow_incomplete_defs = false
 
 [[tool.mypy.overrides]]
 module = [
@@ -221,7 +214,6 @@ disallow_untyped_calls = false
 [[tool.mypy.overrides]]
 module = [
     "zarr.array",
-    "zarr.group",
 ]
 disallow_untyped_defs = false
 
