@@ -275,8 +275,8 @@ class AsyncGroup:
         return self.metadata.attributes
 
     @property
-    def info(self):
-        return self.metadata.info
+    def info(self) -> None:
+        raise NotImplementedError
 
     async def create_group(
         self,
@@ -526,8 +526,8 @@ class Group(SyncMixin):
         return Attributes(self)
 
     @property
-    def info(self):
-        return self._async_group.info
+    def info(self) -> None:
+        raise NotImplementedError
 
     def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
         self._sync(self._async_group.update_attributes(new_attributes))

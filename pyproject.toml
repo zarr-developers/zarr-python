@@ -201,16 +201,9 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
-    "zarr.group",
     "tests.*",
 ]
 check_untyped_defs = false
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.group"
-]
-disallow_incomplete_defs = false
 
 [[tool.mypy.overrides]]
 module = [
@@ -222,7 +215,6 @@ disallow_untyped_calls = false
 [[tool.mypy.overrides]]
 module = [
     "zarr.array",
-    "zarr.group",
 ]
 disallow_untyped_defs = false
 
