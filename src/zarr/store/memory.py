@@ -4,7 +4,8 @@ from collections.abc import AsyncGenerator, MutableMapping
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
-from zarr.common import concurrent_map
+from zarr.common import OpenMode, concurrent_map
+from zarr.store.core import _normalize_interval_index
 
 
 # TODO: this store could easily be extended to wrap any MutableMapping store from v2
@@ -16,7 +17,10 @@ class MemoryStore(Store):
 
     _store_dict: MutableMapping[str, Buffer]
 
-    def __init__(self, store_dict: MutableMapping[str, Buffer] | None = None):
+    def __init__(
+        self, store_dict: MutableMapping[str, Buffer] | None = None, *, mode: OpenMode = "r"
+    ):
+        super().__init__(mode=mode)
         self._store_dict = store_dict or {}
 
     def __str__(self) -> str:
@@ -26,19 +30,18 @@ class MemoryStore(Store):
         return f"MemoryStore({str(self)!r})"
 
     async def get(
-        self, key: str, byte_range: tuple[int, int | None] | None = None
+        self, key: str, byte_range: tuple[int | None, int | None] | None = None
     ) -> Buffer | None:
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
-            if byte_range is not None:
-                value = value[byte_range[0] : byte_range[1]]
-            return value
+            start, length = _normalize_interval_index(value, byte_range)
+            return value[start : start + length]
         except KeyError:
             return None
 
     async def get_partial_values(
-        self, key_ranges: list[tuple[str, tuple[int, int]]]
+        self, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
     ) -> list[Buffer | None]:
         vals = await concurrent_map(key_ranges, self.get, limit=None)
         return vals
@@ -47,10 +50,11 @@ class MemoryStore(Store):
         return key in self._store_dict
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        self._check_writable()
         assert isinstance(key, str)
-        if isinstance(value, bytes | bytearray):
+        if isinstance(value, bytes | bytearray):  # type:ignore[unreachable]
             # TODO: to support the v2 tests, we convert bytes to Buffer here
-            value = Buffer.from_bytes(value)
+            value = Buffer.from_bytes(value)  # type:ignore[unreachable]
         if not isinstance(value, Buffer):
             raise TypeError(f"Expected Buffer. Got {type(value)}.")
 
@@ -62,6 +66,7 @@ class MemoryStore(Store):
             self._store_dict[key] = value
 
     async def delete(self, key: str) -> None:
+        self._check_writable()
         try:
             del self._store_dict[key]
         except KeyError:

@@ -41,6 +41,9 @@ from zarr.config import parse_indexing_order
 _bool = bool
 
 
+__all__ = ["ArrayMetadata"]
+
+
 class DataType(Enum):
     bool = "bool"
     int8 = "int8"
@@ -429,10 +432,11 @@ class ArrayV2Metadata(ArrayMetadata):
 def parse_dimension_names(data: None | Iterable[str]) -> tuple[str, ...] | None:
     if data is None:
         return data
-    if isinstance(data, Iterable) and all([isinstance(x, str) for x in data]):
+    elif all([isinstance(x, str) for x in data]):
         return tuple(data)
-    msg = f"Expected either None or a iterable of str, got {type(data)}"
-    raise TypeError(msg)
+    else:
+        msg = f"Expected either None or a iterable of str, got {type(data)}"
+        raise TypeError(msg)
 
 
 # todo: real validation
