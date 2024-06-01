@@ -62,7 +62,7 @@ class RemoteStore(Store):
         path = _dereference_path(root, key)
 
         try:
-            value = await (
+            value: Buffer | None = await (
                 fs._cat_file(path, start=byte_range[0], end=byte_range[1])
                 if byte_range
                 else fs._cat_file(path)
@@ -96,4 +96,5 @@ class RemoteStore(Store):
     async def exists(self, key: str) -> bool:
         fs, root = self._make_fs()
         path = _dereference_path(root, key)
-        return await fs._exists(path)
+        exists: bool = await fs._exists(path)
+        return exists
