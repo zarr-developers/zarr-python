@@ -52,9 +52,9 @@ class MemoryStore(Store):
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         self._check_writable()
         assert isinstance(key, str)
-        if isinstance(value, bytes | bytearray):
+        if isinstance(value, bytes | bytearray):  # type:ignore[unreachable]
             # TODO: to support the v2 tests, we convert bytes to Buffer here
-            value = Buffer.from_bytes(value)
+            value = Buffer.from_bytes(value)  # type:ignore[unreachable]
         if not isinstance(value, Buffer):
             raise TypeError(f"Expected Buffer. Got {type(value)}.")
 
