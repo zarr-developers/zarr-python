@@ -21,6 +21,7 @@ maintainers = [
     { name = "Ryan Abernathey" }
 ]
 requires-python = ">=3.10"
+# If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'asciitree',
     'numpy>=1.24',
