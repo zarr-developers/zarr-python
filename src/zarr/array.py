@@ -288,24 +288,19 @@ class AsyncArray:
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
     ) -> AsyncArray:
-        print(f"store: {store}")
         store_path = make_store_path(store)
-        print(f"store_path: {store_path}")
 
         if zarr_format == 2:
-            print("^^^^^^", (store_path / ZARR_JSON))
             zarray_bytes, zattrs_bytes = await gather(
                 (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
             )
             if zarray_bytes is None:
                 raise KeyError(store_path)  # filenotfounderror?
         elif zarr_format == 3:
-            print("*******", (store_path / ZARR_JSON))
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
                 raise KeyError(store_path)  # filenotfounderror?
         elif zarr_format is None:
-            print("$$$$$$", (store_path / ZARR_JSON))
             zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
                 (store_path / ZARR_JSON).get(),
                 (store_path / ZARRAY_JSON).get(),

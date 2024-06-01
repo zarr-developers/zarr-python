@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import warnings
 from collections.abc import Iterable
-from typing import Any, Literal, Union
+from typing import Any, Literal, Union, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -70,6 +70,26 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> None:
         pass
 
 
+def _handle_zarr_version_or_format(
+    *, zarr_version: ZarrFormat | None, zarr_format: ZarrFormat | None
+) -> ZarrFormat | None:
+    if zarr_format is not None and zarr_version is not None and zarr_format != zarr_version:
+        raise ValueError(
+            f"zarr_format {zarr_format} does not match zarr_version {zarr_version}, please only set one"
+        )
+    if zarr_version is not None:
+        warnings.warn(
+            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
+        )
+        return zarr_version
+    return zarr_format
+
+
+def _default_zarr_version() -> ZarrFormat:
+    # TODO: set default value from config
+    return 3
+
+
 async def consolidate_metadata(*args: Any, **kwargs: Any) -> AsyncGroup:
     raise NotImplementedError
 
@@ -87,7 +107,11 @@ async def copy_store(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
 
 
 async def load(
-    store: StoreLike, zarr_version: ZarrFormat | None = None, path: str | None = None
+    *,
+    store: StoreLike,
+    path: str | None = None,
+    zarr_format: ZarrFormat | None = None,
+    zarr_version: ZarrFormat | None = None,
 ) -> NDArrayLike | dict[str, NDArrayLike]:
     """Load data from an array or group into memory.
 
@@ -114,13 +138,9 @@ async def load(
     If loading data from a group of arrays, data will not be immediately loaded into
     memory. Rather, arrays will be loaded into memory as they are requested.
     """
-    if zarr_version is not None:
-        warnings.warn(
-            "zarr_version is deprecated and no longer required in load",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-    obj = await open(store=store, path=path)
+    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+
+    obj = await open(store=store, path=path, zarr_format=zarr_format)
     if isinstance(obj, AsyncArray):
         return await obj.getitem(slice(None))
     else:
@@ -160,12 +180,7 @@ async def open(
     z : AsyncArray or AsyncGroup
         Array or group, depending on what exists in the given store.
     """
-    if zarr_version is not None:
-        warnings.warn(
-            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
-        )
-        zarr_format = zarr_version
-
+    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
     store_path = make_store_path(store, mode=mode)
 
     if path is not None:
@@ -204,11 +219,8 @@ async def save(
     kwargs
         NumPy arrays with data to save.
     """
-    if zarr_version is not None:
-        warnings.warn(
-            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
-        )
-        zarr_format = zarr_version
+    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
     if len(args) == 1 and len(kwargs) == 0:
@@ -242,14 +254,10 @@ async def save_array(
     kwargs
         Passed through to :func:`create`, e.g., compressor.
     """
-    if zarr_version is not None:
-        warnings.warn(
-            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
-        )
-        zarr_format = zarr_version
-
-    if zarr_format is None:
-        zarr_format = 3  # default via config?
+    zarr_format = (
+        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+        or _default_zarr_version()
+    )
 
     store_path = make_store_path(store, mode="w")
     if path is not None:
@@ -289,11 +297,7 @@ async def save_group(
     kwargs
         NumPy arrays with data to save.
     """
-    if zarr_version is not None:
-        warnings.warn(
-            "zarr_version is deprecated, use zarr_format", DeprecationWarning, stacklevel=2
-        )
-        zarr_format = zarr_version
+    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
@@ -301,8 +305,8 @@ async def save_group(
     for i, arr in enumerate(args):
         aws.append(save_array(store, arr, zarr_format=zarr_format, path=f"{path}/arr_{i}"))
     for k, arr in kwargs.items():
-        path = f"{path}/{k}" if path is not None else k
-        aws.append(save_array(store, arr, zarr_format=zarr_format, path=path))
+        _path = f"{path}/{k}" if path is not None else k
+        aws.append(save_array(store, arr, zarr_format=zarr_format, path=_path))
     await asyncio.gather(*aws)
 
 
@@ -337,17 +341,15 @@ async def array(data: NDArrayLike, **kwargs: Any) -> AsyncArray:
     else:
         kwargs["chunks"] = kw_chunks
 
-    # pop read-only to apply after storing the data
-    # read_only = kwargs.pop("read_only", False)
+    read_only = kwargs.pop("read_only", False)
+    if read_only:
+        raise ValueError("read_only=True is no longer supported when creating new arrays")
 
     # instantiate array
     z = await create(**kwargs)
 
     # fill with data
     await z.setitem(slice(None), data)
-
-    # set read_only property afterwards
-    # z.read_only = read_only
 
     return z
 
@@ -396,14 +398,10 @@ async def group(
     g : AsyncGroup
     """
 
-    if zarr_version is not None:
-        zarr_format = zarr_version
-        warnings.warn(
-            "zarr_format is deprecated, use zarr_format instead", DeprecationWarning, stacklevel=2
-        )
-
-    if zarr_format is None:
-        zarr_format = 3  # default via config?
+    zarr_format = (
+        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+        or _default_zarr_version()
+    )
 
     store_path = make_store_path(store)
     if path is not None:
@@ -479,13 +477,10 @@ async def open_group(
     g : AsyncGroup
     """
 
-    if zarr_version is not None:
-        zarr_format = zarr_version
-        warnings.warn(
-            "zarr_format is deprecated, use zarr_format instead", DeprecationWarning, stacklevel=2
-        )
-    if zarr_format is None:
-        zarr_format = 3  # default from config?
+    zarr_format = (
+        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+        or _default_zarr_version()
+    )
 
     if cache_attrs is not None:
         warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -536,7 +531,6 @@ async def create(
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # TODO: need type
-    storage_transformers: Any | None = (),  # TODO: need type
     attributes: dict[str, JSON] | None = None,
     # v3 only
     chunk_shape: ChunkCoords | None = None,
@@ -612,17 +606,8 @@ async def create(
 
         .. versionadded:: 2.11
 
-    storage_transformers : sequence of StorageTransformers, optional
-        Setting storage transformers, changes the storage structure and behaviour
-        of data coming from the underlying store. The transformers are applied in the
-        order of the given sequence. Supplying an empty sequence is the same as omitting
-        the argument or setting it to None. May only be set when using zarr_version 3.
-
-        .. versionadded:: 2.13
-
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
-
     meta_array : array-like, optional
         An array instance to use for determining arrays to create and return
         to users. Use `numpy.empty(())` by default.
@@ -633,26 +618,10 @@ async def create(
     -------
     z : zarr.core.Array
     """
-    # TODOs:
-    # order=order,  # TODO: set via config
-    # synchronizer=synchronizer,  # TODO: warn if set
-    # chunk_store=chunk_store,  # TODO: this should be a store parameter
-    # cache_metadata=cache_metadata,  # TODO: not yet implemented
-    # cache_attrs=cache_attrs,  # TODO: not yet implemented
-    # read_only=read_only,  # TODO: this should be a store parameter
-    # object_codec=object_codec,  # TODO: not yet implemented
-    # write_empty_chunks=write_empty_chunks,  # TODO: not yet implemented
-    # meta_array=meta_array,  # TODO: not yet implemented
-    # storage_transformers=storage_transformers,  # TODO: not yet implemented
-
-    if zarr_version is not None:
-        zarr_format = zarr_version
-        warnings.warn(
-            "zarr_format is deprecated, use zarr_format instead", DeprecationWarning, stacklevel=2
-        )
-
-    if zarr_format is None:
-        zarr_format = 3  # default from config?
+    zarr_format = (
+        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+        or _default_zarr_version()
+    )
 
     if zarr_format == 2 and chunks is None:
         chunks = shape
@@ -661,7 +630,9 @@ async def create(
 
     if order is not None:
         warnings.warn(
-            "order is deprecated, use zarr config instead", DeprecationWarning, stacklevel=2
+            "order is deprecated, use config `array.order` instead",
+            DeprecationWarning,
+            stacklevel=2,
         )
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -671,20 +642,24 @@ async def create(
         warnings.warn("cache_metadata is not yet implemented", RuntimeWarning, stacklevel=2)
     if cache_attrs is not None:
         warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
-    if read_only is not None:
-        warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
     if object_codec is not None:
         warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
     if dimension_separator is not None:
-        warnings.warn("dimension_separator is not yet implemented", RuntimeWarning, stacklevel=2)
+        if zarr_format == 3:
+            raise ValueError(
+                "dimension_separator is not supported for zarr format 3, use chunk_key_encoding instead"
+            )
+        else:
+            warnings.warn(
+                "dimension_separator is not yet implemented", RuntimeWarning, stacklevel=2
+            )
     if write_empty_chunks:
         warnings.warn("write_empty_chunks is not yet implemented", RuntimeWarning, stacklevel=2)
-    if storage_transformers:
-        warnings.warn("storage_transformers is not yet implemented", RuntimeWarning, stacklevel=2)
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    store_path = make_store_path(store, mode="w")
+    mode = cast(OpenMode, "r" if read_only else "w")
+    store_path = make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
 
@@ -798,17 +773,11 @@ async def open_array(
     if path is not None:
         store_path = store_path / path
 
-    if zarr_version is not None:
-        zarr_format = zarr_version
-        warnings.warn(
-            "zarr_format is deprecated, use zarr_format instead", DeprecationWarning, stacklevel=2
-        )
+    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     try:
-        print(store_path)
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
     except KeyError as e:
-        print(e, type(e))
         if store_path.store.writeable:
             pass
         else:

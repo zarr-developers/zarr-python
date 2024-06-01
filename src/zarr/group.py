@@ -295,7 +295,7 @@ class AsyncGroup:
         self,
         path: str,
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
         # v3 only
