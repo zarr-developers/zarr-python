@@ -295,7 +295,7 @@ class BatchedCodecPipeline(CodecPipeline):
         self,
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]],
         out: NDBuffer,
-        drop_axes: tuple[int, ...] | None = None,
+        drop_axes: tuple[int, ...] = (),
     ) -> None:
         if self.supports_partial_decode:
             chunk_array_batch = await self.decode_partial_batch(
@@ -340,7 +340,7 @@ class BatchedCodecPipeline(CodecPipeline):
         self,
         batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]],
         value: NDBuffer,
-        drop_axes: tuple[int, ...] | None = None,
+        drop_axes: tuple[int, ...] = (),
     ) -> None:
         if self.supports_partial_encode:
             await self.encode_partial_batch(
@@ -381,6 +381,7 @@ class BatchedCodecPipeline(CodecPipeline):
                 out_selection: SelectorTuple,
                 chunk_spec: ArraySpec,
                 chunk_selection: SelectorTuple,
+                drop_axes: tuple[int, ...],
             ) -> NDBuffer:
                 if (
                     is_total_slice(chunk_selection, chunk_spec.shape)
@@ -403,17 +404,18 @@ class BatchedCodecPipeline(CodecPipeline):
                 else:
                     chunk_value = value[out_selection]
                     # handle missing singleton dimensions
-                    if drop_axes:
-                        item = [slice(None)] * chunk_spec.ndim
-                        for a in drop_axes:
-                            item[a] = newaxis  # TODO replace with agnostic newaxis
-                        item = tuple(item)
-                        chunk_value = chunk_value[item]
+                    item = tuple(
+                        newaxis if idx in drop_axes else slice(None)
+                        for idx in range(chunk_spec.ndim)
+                    )
+                    chunk_value = chunk_value[item]
                 chunk_array[chunk_selection] = chunk_value
                 return chunk_array
 
             chunk_array_batch = [
-                _merge_chunk_array(chunk_array, value, out_selection, chunk_spec, chunk_selection)
+                _merge_chunk_array(
+                    chunk_array, value, out_selection, chunk_spec, chunk_selection, drop_axes
+                )
                 for chunk_array, (_, chunk_spec, chunk_selection, out_selection) in zip(
                     chunk_array_batch, batch_info, strict=False
                 )
@@ -476,7 +478,7 @@ class BatchedCodecPipeline(CodecPipeline):
         self,
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]],
         out: NDBuffer,
-        drop_axes: tuple[int, ...] | None = None,
+        drop_axes: tuple[int, ...] = (),
     ) -> None:
         await concurrent_map(
             [
@@ -491,7 +493,7 @@ class BatchedCodecPipeline(CodecPipeline):
         self,
         batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]],
         value: NDBuffer,
-        drop_axes: tuple[int, ...] | None = None,
+        drop_axes: tuple[int, ...] = (),
     ) -> None:
         await concurrent_map(
             [

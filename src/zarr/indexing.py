@@ -88,7 +88,7 @@ def err_too_many_indices(selection: Any, shape: ChunkCoords) -> None:
 @runtime_checkable
 class Indexer(Protocol):
     shape: ChunkCoords
-    drop_axes: ChunkCoords | None
+    drop_axes: ChunkCoords
 
     def __iter__(self) -> Iterator[ChunkProjection]: ...
 
@@ -435,7 +435,7 @@ def is_basic_selection(selection: Any) -> TypeGuard[BasicSelection]:
 class BasicIndexer(Indexer):
     dim_indexers: list[IntDimIndexer | SliceDimIndexer]
     shape: ChunkCoords
-    drop_axes: None
+    drop_axes: ChunkCoords
 
     def __init__(
         self,
@@ -473,7 +473,7 @@ class BasicIndexer(Indexer):
             "shape",
             tuple(s.nitems for s in self.dim_indexers if not isinstance(s, IntDimIndexer)),
         )
-        object.__setattr__(self, "drop_axes", None)
+        object.__setattr__(self, "drop_axes", ())
 
     def __iter__(self) -> Iterator[ChunkProjection]:
         for dim_projections in itertools.product(*self.dim_indexers):
@@ -749,7 +749,7 @@ class OrthogonalIndexer(Indexer):
     shape: ChunkCoords
     chunk_shape: ChunkCoords
     is_advanced: bool
-    drop_axes: tuple[int, ...] | None
+    drop_axes: tuple[int, ...]
 
     def __init__(self, selection: Selection, shape: ChunkCoords, chunk_grid: ChunkGrid):
         chunk_shape = get_chunk_shape(chunk_grid)
@@ -798,7 +798,7 @@ class OrthogonalIndexer(Indexer):
                 if isinstance(dim_indexer, IntDimIndexer)
             )
         else:
-            drop_axes = None
+            drop_axes = ()
 
         object.__setattr__(self, "dim_indexers", dim_indexers)
         object.__setattr__(self, "shape", shape)
@@ -856,7 +856,7 @@ class OIndex:
 class BlockIndexer(Indexer):
     dim_indexers: list[SliceDimIndexer]
     shape: ChunkCoords
-    drop_axes: None
+    drop_axes: ChunkCoords
 
     def __init__(self, selection: BlockSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
         chunk_shape = get_chunk_shape(chunk_grid)
@@ -920,7 +920,7 @@ class BlockIndexer(Indexer):
 
         object.__setattr__(self, "dim_indexers", dim_indexers)
         object.__setattr__(self, "shape", shape)
-        object.__setattr__(self, "drop_axes", None)
+        object.__setattr__(self, "drop_axes", ())
 
     def __iter__(self) -> Iterator[ChunkProjection]:
         for dim_projections in itertools.product(*self.dim_indexers):
@@ -974,7 +974,7 @@ class CoordinateIndexer(Indexer):
     chunk_mixs: tuple[npt.NDArray[np.intp], ...]
     shape: ChunkCoords
     chunk_shape: ChunkCoords
-    drop_axes: None
+    drop_axes: ChunkCoords
 
     def __init__(self, selection: CoordinateSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
         chunk_shape = get_chunk_shape(chunk_grid)
@@ -1053,7 +1053,7 @@ class CoordinateIndexer(Indexer):
         object.__setattr__(self, "chunk_mixs", chunk_mixs)
         object.__setattr__(self, "chunk_shape", chunk_shape)
         object.__setattr__(self, "shape", shape)
-        object.__setattr__(self, "drop_axes", None)
+        object.__setattr__(self, "drop_axes", ())
 
     def __iter__(self) -> Iterator[ChunkProjection]:
         # iterate over chunks
