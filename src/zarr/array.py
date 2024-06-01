@@ -645,12 +645,11 @@ class Array:
     def __getitem__(self, selection: Selection) -> NDArrayLike:
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
-            result = self.vindex[cast(CoordinateSelection | MaskSelection, selection)]
+            return self.vindex[cast(CoordinateSelection | MaskSelection, selection)]
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
-            result = self.get_orthogonal_selection(pure_selection, fields=fields)
+            return self.get_orthogonal_selection(pure_selection, fields=fields)
         else:
-            result = self.get_basic_selection(cast(BasicSelection, pure_selection), fields=fields)
-        return result
+            return self.get_basic_selection(cast(BasicSelection, pure_selection), fields=fields)
 
     def __setitem__(self, selection: Selection, value: NDArrayLike) -> None:
         fields, pure_selection = pop_fields(selection)
@@ -763,15 +762,15 @@ class Array:
         sync(self._async_array._set_selection(indexer, value, fields=fields))
 
     @property
-    def vindex(self) -> Any:
+    def vindex(self) -> VIndex:
         return VIndex(self)
 
     @property
-    def oindex(self) -> Any:
+    def oindex(self) -> OIndex:
         return OIndex(self)
 
     @property
-    def blocks(self) -> Any:
+    def blocks(self) -> BlockIndex:
         return BlockIndex(self)
 
     def resize(self, new_shape: ChunkCoords) -> Array:

@@ -4,7 +4,7 @@ import itertools
 import math
 import numbers
 import operator
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from functools import reduce
@@ -34,12 +34,14 @@ BasicSelector = int | slice | EllipsisType
 BasicSelectorTuple = tuple[BasicSelector, ...]
 BasicSelection = BasicSelector | BasicSelectorTuple
 BasicSelectionNormalized = tuple[int | slice, ...]
-CoordinateSelection = npt.NDArray[np.intp]
+CoordinateSelector = list[int] | npt.NDArray[np.intp]
+CoordinateSelection = CoordinateSelector | tuple[CoordinateSelector, ...]
+CoordinateSelectionNormalized = tuple[npt.NDArray[np.intp], ...]
 BlockSelector = int | slice
 BlockSelection = BlockSelector | tuple[BlockSelector, ...]
 BlockSelectionNormalized = tuple[BlockSelector, ...]
 MaskSelection = npt.NDArray[np.bool_]
-OrthogonalSelector = int | slice | npt.NDArray[np.intp | np.bool_]
+OrthogonalSelector = int | slice | npt.NDArray[np.intp] | npt.NDArray[np.bool_]
 OrthogonalSelection = OrthogonalSelector | tuple[OrthogonalSelector, ...]
 OrthogonalSelectionNormalized = tuple[OrthogonalSelector, ...]
 
@@ -48,13 +50,14 @@ Selection = (
 )
 SelectionNormalized = (
     BasicSelectionNormalized
-    | CoordinateSelection
+    | CoordinateSelectionNormalized
     | BlockSelectionNormalized
     | MaskSelection
     | OrthogonalSelectionNormalized
 )
-Selector = int | slice | npt.NDArray[np.intp | np.bool_]
-SelectorTuple = tuple[Selector, ...] | npt.NDArray[np.intp]
+Selector = int | slice | npt.NDArray[np.intp] | npt.NDArray[np.bool_]
+SelectionWithFields = Selection | str | Sequence[str]
+SelectorTuple = tuple[Selector, ...] | npt.NDArray[np.intp] | slice
 Fields = str | list[str] | tuple[str, ...]
 
 
@@ -370,7 +373,7 @@ def replace_ellipsis(selection: Any, shape: ChunkCoords) -> SelectionNormalized:
     # check selection not too long
     check_selection_length(selection, shape)
 
-    return selection
+    return cast(SelectionNormalized, selection)
 
 
 def replace_lists(selection: SelectionNormalized) -> SelectionNormalized:
@@ -385,7 +388,7 @@ T = TypeVar("T")
 def ensure_tuple(v: Any) -> SelectionNormalized:
     if not isinstance(v, tuple):
         v = (v,)
-    return v
+    return cast(SelectionNormalized, v)
 
 
 class ChunkProjection(NamedTuple):
@@ -406,7 +409,7 @@ class ChunkProjection(NamedTuple):
 
     chunk_coords: ChunkCoords
     chunk_selection: tuple[Selector, ...] | npt.NDArray[np.intp]
-    out_selection: tuple[Selector, ...] | npt.NDArray[np.intp]
+    out_selection: tuple[Selector, ...] | npt.NDArray[np.intp] | slice
 
 
 def is_slice(s: Any) -> TypeGuard[slice]:
@@ -716,7 +719,7 @@ def ix_(selection: Any, shape: ChunkCoords) -> npt.NDArray[np.intp]:
     # now get numpy to convert to a coordinate selection
     selection = np.ix_(*selection)
 
-    return selection
+    return cast(npt.NDArray[np.intp], selection)
 
 
 def oindex(a: npt.NDArray[Any], selection: Selection) -> npt.NDArray[Any]:
@@ -953,21 +956,28 @@ class BlockIndex:
 
 
 def is_coordinate_selection(
-    selection: Selection, shape: ChunkCoords
-) -> TypeGuard[CoordinateSelection]:
-    return (len(selection) == len(shape)) and all(
-        is_integer(dim_sel) or is_integer_array(dim_sel) for dim_sel in selection
+    selection: SelectionNormalized, shape: ChunkCoords
+) -> TypeGuard[CoordinateSelectionNormalized]:
+    return (
+        isinstance(selection, tuple)
+        and len(selection) == len(shape)
+        and all(is_integer(dim_sel) or is_integer_array(dim_sel) for dim_sel in selection)
     )
 
 
 def is_mask_selection(selection: Selection, shape: ChunkCoords) -> TypeGuard[MaskSelection]:
-    return len(selection) == 1 and is_bool_array(selection[0]) and selection[0].shape == shape
+    return (
+        isinstance(selection, tuple)
+        and len(selection) == 1
+        and is_bool_array(selection[0])
+        and selection[0].shape == shape
+    )
 
 
 @dataclass(frozen=True)
 class CoordinateIndexer(Indexer):
     sel_shape: ChunkCoords
-    selection: Selection
+    selection: CoordinateSelectionNormalized
     sel_sort: npt.NDArray[np.intp] | None
     chunk_nitems_cumsum: npt.NDArray[np.intp]
     chunk_rixs: npt.NDArray[np.intp]
@@ -979,6 +989,7 @@ class CoordinateIndexer(Indexer):
     def __init__(self, selection: CoordinateSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
         chunk_shape = get_chunk_shape(chunk_grid)
 
+        cdata_shape: ChunkCoords
         if shape == ():
             cdata_shape = (1,)
         else:
@@ -986,12 +997,16 @@ class CoordinateIndexer(Indexer):
         nchunks = reduce(operator.mul, cdata_shape, 1)
 
         # some initial normalization
-        selection = ensure_tuple(selection)
-        selection = tuple([i] if is_integer(i) else i for i in selection)
-        selection = replace_lists(selection)
+        selection_normalized = cast(CoordinateSelectionNormalized, ensure_tuple(selection))
+        selection_normalized = tuple(
+            np.asarray([i]) if is_integer(i) else i for i in selection_normalized
+        )
+        selection_normalized = cast(
+            CoordinateSelectionNormalized, replace_lists(selection_normalized)
+        )
 
         # validation
-        if not is_coordinate_selection(selection, shape):
+        if not is_coordinate_selection(selection_normalized, shape):
             raise IndexError(
                 "invalid coordinate selection; expected one integer "
                 "(coordinate) array per dimension of the target array, "
@@ -999,7 +1014,7 @@ class CoordinateIndexer(Indexer):
             )
 
         # handle wraparound, boundscheck
-        for dim_sel, dim_len in zip(selection, shape, strict=True):
+        for dim_sel, dim_len in zip(selection_normalized, shape, strict=True):
             # handle wraparound
             wraparound_indices(dim_sel, dim_len)
 
@@ -1009,32 +1024,36 @@ class CoordinateIndexer(Indexer):
         # compute chunk index for each point in the selection
         chunks_multi_index = tuple(
             dim_sel // dim_chunk_len
-            for (dim_sel, dim_chunk_len) in zip(selection, chunk_shape, strict=True)
+            for (dim_sel, dim_chunk_len) in zip(selection_normalized, chunk_shape, strict=True)
         )
 
         # broadcast selection - this will raise error if array dimensions don't match
-        selection = np.broadcast_arrays(*selection)
-        chunks_multi_index = np.broadcast_arrays(*chunks_multi_index)
+        selection_broadcast = tuple(np.broadcast_arrays(*selection_normalized))
+        chunks_multi_index_broadcast = np.broadcast_arrays(*chunks_multi_index)
 
         # remember shape of selection, because we will flatten indices for processing
-        sel_shape = selection[0].shape if selection[0].shape else (1,)
+        sel_shape = selection_broadcast[0].shape if selection_broadcast[0].shape else (1,)
 
         # flatten selection
-        selection = [dim_sel.reshape(-1) for dim_sel in selection]
-        chunks_multi_index = [dim_chunks.reshape(-1) for dim_chunks in chunks_multi_index]
+        selection_broadcast = tuple(dim_sel.reshape(-1) for dim_sel in selection_broadcast)
+        chunks_multi_index_broadcast = [
+            dim_chunks.reshape(-1) for dim_chunks in chunks_multi_index_broadcast
+        ]
 
         # ravel chunk indices
-        chunks_raveled_indices = np.ravel_multi_index(chunks_multi_index, dims=cdata_shape)
+        chunks_raveled_indices = np.ravel_multi_index(
+            chunks_multi_index_broadcast, dims=cdata_shape
+        )
 
         # group points by chunk
         if np.any(np.diff(chunks_raveled_indices) < 0):
             # optimisation, only sort if needed
             sel_sort = np.argsort(chunks_raveled_indices)
-            selection = tuple(dim_sel[sel_sort] for dim_sel in selection)
+            selection_broadcast = tuple(dim_sel[sel_sort] for dim_sel in selection_broadcast)
         else:
             sel_sort = None
 
-        shape = selection[0].shape if selection[0].shape else (1,)
+        shape = selection_broadcast[0].shape if selection_broadcast[0].shape else (1,)
 
         # precompute number of selected items for each chunk
         chunk_nitems = np.bincount(chunks_raveled_indices, minlength=nchunks)
@@ -1046,7 +1065,7 @@ class CoordinateIndexer(Indexer):
         chunk_mixs = np.unravel_index(chunk_rixs, cdata_shape)
 
         object.__setattr__(self, "sel_shape", sel_shape)
-        object.__setattr__(self, "selection", selection)
+        object.__setattr__(self, "selection", selection_broadcast)
         object.__setattr__(self, "sel_sort", sel_sort)
         object.__setattr__(self, "chunk_nitems_cumsum", chunk_nitems_cumsum)
         object.__setattr__(self, "chunk_rixs", chunk_rixs)
@@ -1064,6 +1083,7 @@ class CoordinateIndexer(Indexer):
             else:
                 start = self.chunk_nitems_cumsum[chunk_rix - 1]
             stop = self.chunk_nitems_cumsum[chunk_rix]
+            out_selection: slice | npt.NDArray[np.intp]
             if self.sel_sort is None:
                 out_selection = slice(start, stop)
             else:
@@ -1085,21 +1105,21 @@ class CoordinateIndexer(Indexer):
 class MaskIndexer(CoordinateIndexer):
     def __init__(self, selection: MaskSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
         # some initial normalization
-        selection = ensure_tuple(selection)
-        selection = replace_lists(selection)
+        selection_normalized = cast(tuple[MaskSelection], ensure_tuple(selection))
+        selection_normalized = cast(tuple[MaskSelection], replace_lists(selection_normalized))
 
         # validation
-        if not is_mask_selection(selection, shape):
+        if not is_mask_selection(selection_normalized, shape):
             raise IndexError(
                 "invalid mask selection; expected one Boolean (mask)"
-                f"array with the same shape as the target array, got {selection!r}"
+                f"array with the same shape as the target array, got {selection_normalized!r}"
             )
 
         # convert to indices
-        selection = np.nonzero(selection[0])
+        selection_indices = np.nonzero(selection_normalized[0])
 
         # delegate the rest to superclass
-        super().__init__(selection, shape, chunk_grid)
+        super().__init__(selection_indices, shape, chunk_grid)
 
 
 @dataclass(frozen=True)
@@ -1131,12 +1151,12 @@ class VIndex:
             raise VindexInvalidSelectionError(new_selection)
 
 
-def check_fields(fields: Fields, dtype: np.dtype[Any]) -> np.dtype[Any]:
+def check_fields(fields: Fields | None, dtype: np.dtype[Any]) -> np.dtype[Any]:
     # early out
     if fields is None:
         return dtype
     # check type
-    if not isinstance(fields, Fields):
+    if not isinstance(fields, str | list | tuple):
         raise IndexError(
             f"'fields' argument must be a string or list of strings; found {type(fields)!r}"
         )
@@ -1167,22 +1187,23 @@ def check_no_multi_fields(fields: Fields | None) -> Fields | None:
     return fields
 
 
-def pop_fields(selection: Selection) -> tuple[Fields | None, Selection]:
+def pop_fields(selection: SelectionWithFields) -> tuple[Fields | None, Selection]:
     if isinstance(selection, str):
         # single field selection
-        fields = selection
-        selection = ()
+        return selection, ()
     elif not isinstance(selection, tuple):
         # single selection item, no fields
-        fields = None
         # leave selection as-is
+        return None, cast(Selection, selection)
     else:
         # multiple items, split fields from selection items
-        fields = [f for f in selection if isinstance(f, str)]
+        fields: Fields = [f for f in selection if isinstance(f, str)]
         fields = fields[0] if len(fields) == 1 else fields
-        selection = tuple(s for s in selection if not isinstance(s, str))
-        selection = selection[0] if len(selection) == 1 else selection
-    return fields, selection
+        selection_tuple = tuple(s for s in selection if not isinstance(s, str))
+        selection = cast(
+            Selection, selection_tuple[0] if len(selection_tuple) == 1 else selection_tuple
+        )
+        return fields, selection
 
 
 def make_slice_selection(selection: Any) -> list[int | slice]:
@@ -1249,8 +1270,10 @@ def is_total_slice(item: Selection, shape: ChunkCoords) -> bool:
         raise TypeError(f"expected slice or tuple of slices, found {item!r}")
 
 
-def get_indexer(selection: Selection, shape: ChunkCoords, chunk_grid: ChunkGrid) -> Indexer:
-    fields, pure_selection = pop_fields(selection)
+def get_indexer(
+    selection: SelectionWithFields, shape: ChunkCoords, chunk_grid: ChunkGrid
+) -> Indexer:
+    _, pure_selection = pop_fields(selection)
     if is_pure_fancy_indexing(pure_selection, len(shape)):
         new_selection = ensure_tuple(selection)
         new_selection = replace_lists(new_selection)
