@@ -11,9 +11,10 @@ import numpy.typing as npt
 from zarr.abc.codec import Codec
 from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
+from zarr.chunk_key_encodings import ChunkKeyEncoding
 from zarr.common import JSON, MEMORY_ORDER, ChunkCoords, OpenMode, ZarrFormat
 from zarr.group import AsyncGroup
-from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata, ChunkKeyEncoding
+from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import (
     StoreLike,
     make_store_path,

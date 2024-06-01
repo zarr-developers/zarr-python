@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import zarr.api.asynchronous as async_api
-from zarr.array import Array
+from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
 from zarr.common import JSON, OpenMode, ZarrFormat
 from zarr.group import Group
@@ -106,7 +106,7 @@ def open(
             **kwargs,
         )
     )
-    if isinstance(obj, async_api.AsyncArray):
+    if isinstance(obj, AsyncArray):
         return Array(obj)
     else:
         return Group(obj)

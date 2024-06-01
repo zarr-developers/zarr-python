@@ -34,9 +34,9 @@ from zarr.common import (
     ZarrFormat,
     concurrent_map,
 )
-from zarr.config import config
+from zarr.config import config, parse_indexing_order
 from zarr.indexing import BasicIndexer
-from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata, parse_indexing_order
+from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 

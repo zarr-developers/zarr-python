@@ -47,7 +47,7 @@ class StoreTests(Generic[S]):
         assert store.writeable
 
         with pytest.raises(AttributeError):
-            store.mode = "w"  # type: ignore
+            store.mode = "w"  # type: ignore[misc]
 
         # read-only
         kwargs = {**store_kwargs, "mode": "r"}

@@ -14,11 +14,10 @@ from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
-    ByteGetter,
-    ByteSetter,
     Codec,
     CodecPipeline,
 )
+from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, NDBuffer
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.codecs.bytes import BytesCodec
@@ -102,7 +101,7 @@ class _ShardIndex(NamedTuple):
         return bool(np.array_equiv(self.offsets_and_lengths, MAX_UINT_64))
 
     def get_full_chunk_map(self) -> npt.NDArray[np.bool_]:
-        return self.offsets_and_lengths[..., 0] != MAX_UINT_64
+        return np.not_equal(self.offsets_and_lengths[..., 0], MAX_UINT_64)
 
     def get_chunk_slice(self, chunk_coords: ChunkCoords) -> tuple[int, int] | None:
         localized_chunk = self._localize_chunk(chunk_coords)
@@ -206,25 +205,7 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
     ) -> _ShardBuilder:
         obj = cls.create_empty(chunks_per_shard)
         for chunk_coords in morton_order_iter(chunks_per_shard):
-            if tombstones is not None and chunk_coords in tombstones:
-                continue
-            for shard_dict in shard_dicts:
-                maybe_value = shard_dict.get(chunk_coords, None)
-                if maybe_value is not None:
-                    obj[chunk_coords] = maybe_value
-                    break
-        return obj
-
-    @classmethod
-    def merge_with_c_order(
-        cls,
-        chunks_per_shard: ChunkCoords,
-        tombstones: set[ChunkCoords],
-        *shard_dicts: ShardMapping,
-    ) -> _ShardBuilder:
-        obj = cls.create_empty(chunks_per_shard)
-        for chunk_coords in c_order_iter(chunks_per_shard):
-            if tombstones is not None and chunk_coords in tombstones:
+            if chunk_coords in tombstones:
                 continue
             for shard_dict in shard_dicts:
                 maybe_value = shard_dict.get(chunk_coords, None)
@@ -302,8 +283,7 @@ class _MergingShardBuilder(ShardMutableMapping):
         index_location: ShardingCodecIndexLocation,
         index_encoder: Callable[[_ShardIndex], Awaitable[Buffer]],
     ) -> Buffer:
-        print("merging shards with c order")
-        shard_builder = _ShardBuilder.merge_with_c_order(
+        shard_builder = _ShardBuilder.merge_with_morton_order(
             self.new_dict.index.chunks_per_shard,
             self.tombstones,
             self.new_dict,
