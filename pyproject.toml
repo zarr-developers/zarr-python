@@ -190,6 +190,8 @@ namespace_packages = false
 strict = true
 
 
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
 [[tool.mypy.overrides]]
 module = [
     "zarr.v2.*",
