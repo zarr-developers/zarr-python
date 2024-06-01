@@ -27,6 +27,7 @@ PathLike = str
 
 
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ShapeLike | None, ChunkCoords | None]:
+    """helper function to get the shape and chunks from an array-like object"""
     shape = None
     chunks = None
 
@@ -44,6 +45,7 @@ def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ShapeLike | None, ChunkCoords
 
 
 def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> None:
+    """set default values for shape and chunks if they are not present in the array-like object"""
     shape, chunks = _get_shape_chunks(a)
     if shape is not None:
         kwargs.setdefault("shape", shape)
@@ -73,6 +75,7 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> None:
 def _handle_zarr_version_or_format(
     *, zarr_version: ZarrFormat | None, zarr_format: ZarrFormat | None
 ) -> ZarrFormat | None:
+    """handle the deprecated zarr_version kwarg and return zarr_format"""
     if zarr_format is not None and zarr_version is not None and zarr_format != zarr_version:
         raise ValueError(
             f"zarr_format {zarr_format} does not match zarr_version {zarr_version}, please only set one"
@@ -86,6 +89,7 @@ def _handle_zarr_version_or_format(
 
 
 def _default_zarr_version() -> ZarrFormat:
+    """return the default zarr_version"""
     # TODO: set default value from config
     return 3
 
@@ -177,8 +181,8 @@ async def open(
 
     Returns
     -------
-    z : AsyncArray or AsyncGroup
-        Array or group, depending on what exists in the given store.
+    z : array or group
+        Return type depends on what exists in the given store.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
     store_path = make_store_path(store, mode=mode)
@@ -317,8 +321,17 @@ async def tree(*args: Any, **kwargs: Any) -> None:
 async def array(data: NDArrayLike, **kwargs: Any) -> AsyncArray:
     """Create an array filled with `data`.
 
-    The `data` argument should be a array-like object. For
-    other parameter definitions see :func:`zarr.api.asynchronous.create`.
+    Parameters
+    ----------
+    data : array_like
+        The data to fill the array with.
+    kwargs
+        Passed through to :func:`create`.
+
+    Returns
+    -------
+    array : array
+        The new array.
     """
 
     # ensure data is array-like
@@ -395,7 +408,8 @@ async def group(
 
     Returns
     -------
-    g : AsyncGroup
+    g : group
+        The new group.
     """
 
     zarr_format = (
@@ -474,7 +488,8 @@ async def open_group(
 
     Returns
     -------
-    g : AsyncGroup
+    g : group
+        The new group.
     """
 
     zarr_format = (
@@ -616,7 +631,8 @@ async def create(
 
     Returns
     -------
-    z : zarr.core.Array
+    z : array
+        The array.
     """
     zarr_format = (
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
@@ -686,7 +702,12 @@ async def create(
 async def empty(shape: ShapeLike, **kwargs: Any) -> AsyncArray:
     """Create an empty array.
 
-    For parameter definitions see :func:`zarr.api.asynchronous.create`.
+    Parameters
+    ----------
+    shape : int or tuple of int
+        Shape of the empty array.
+    **kwargs
+        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
 
     Notes
     -----
@@ -698,7 +719,20 @@ async def empty(shape: ShapeLike, **kwargs: Any) -> AsyncArray:
 
 
 async def empty_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
-    """Create an empty array like `a`."""
+    """Create an empty array like `a`.
+
+    Parameters
+    ----------
+    a : array-like
+        The array to create an empty array like.
+    **kwargs
+        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+    Returns
+    -------
+    Array
+        The new array.
+    """
     _like_args(a, kwargs)
     return await empty(**kwargs)
 
@@ -708,14 +742,39 @@ async def full(shape: ShapeLike, fill_value: Any, **kwargs: Any) -> AsyncArray:
     """Create an array, with `fill_value` being used as the default value for
     uninitialized portions of the array.
 
-    For parameter definitions see :func:`zarr.api.asynchronous.create`.
+    Parameters
+    ----------
+    shape : int or tuple of int
+        Shape of the empty array.
+    fill_value : scalar
+        Fill value.
+    **kwargs
+        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+    Returns
+    -------
+    Array
+        The new array.
     """
     return await create(shape=shape, fill_value=fill_value, **kwargs)
 
 
 # TODO: add type annotations for kwargs
 async def full_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
-    """Create a filled array like `a`."""
+    """Create a filled array like `a`.
+
+    Parameters
+    ----------
+    a : array-like
+        The array to create an empty array like.
+    **kwargs
+        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+    Returns
+    -------
+    Array
+        The new array.
+    """
     _like_args(a, kwargs)
     if isinstance(a, AsyncArray):
         kwargs.setdefault("fill_value", a.metadata.fill_value)
@@ -726,7 +785,12 @@ async def ones(shape: ShapeLike, **kwargs: Any) -> AsyncArray:
     """Create an array, with one being used as the default value for
     uninitialized portions of the array.
 
-    For parameter definitions see :func:`zarr.creation.create`.
+    Parameters
+    ----------
+    shape : int or tuple of int
+        Shape of the empty array.
+    **kwargs
+        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
 
     Returns
     -------
@@ -737,7 +801,20 @@ async def ones(shape: ShapeLike, **kwargs: Any) -> AsyncArray:
 
 
 async def ones_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
-    """Create an array of ones like `a`."""
+    """Create an array of ones like `a`.
+
+    Parameters
+    ----------
+    a : array-like
+        The array to create an empty array like.
+    **kwargs
+        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+    Returns
+    -------
+    Array
+        The new array.
+    """
     _like_args(a, kwargs)
     return await ones(**kwargs)
 
@@ -813,11 +890,36 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AsyncArray:
 async def zeros(shape: ShapeLike, **kwargs: Any) -> AsyncArray:
     """Create an array, with zero being used as the default value for
     uninitialized portions of the array.
+
+    Parameters
+    ----------
+    shape : int or tuple of int
+        Shape of the empty array.
+    **kwargs
+        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+    Returns
+    -------
+    Array
+        The new array.
     """
     return await create(shape=shape, fill_value=0, **kwargs)
 
 
 async def zeros_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
-    """Create an array of zeros like `a`."""
+    """Create an array of zeros like `a`.
+
+    Parameters
+    ----------
+    a : array-like
+        The array to create an empty array like.
+    **kwargs
+        Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+    Returns
+    -------
+    Array
+        The new array.
+    """
     _like_args(a, kwargs)
     return await zeros(**kwargs)
