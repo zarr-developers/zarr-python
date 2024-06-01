@@ -198,33 +198,6 @@ module = [
 ]
 ignore_errors = true
 
-[[tool.mypy.overrides]]
-module = [
-    "tests.*",
-]
-check_untyped_defs = false
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.array",
-    "zarr.buffer"
-]
-disallow_untyped_calls = false
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.array",
-]
-disallow_untyped_defs = false
-
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.metadata",
-    "zarr.store.remote"
-]
-warn_return_any = false
-
 [tool.pytest.ini_options]
 minversion = "7"
 testpaths = ["tests"]
