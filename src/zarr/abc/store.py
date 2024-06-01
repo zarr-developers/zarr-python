@@ -3,13 +3,34 @@ from collections.abc import AsyncGenerator
 from typing import Protocol, runtime_checkable
 
 from zarr.buffer import Buffer
-from zarr.common import BytesLike
+from zarr.common import BytesLike, OpenMode
 
 
 class Store(ABC):
+    _mode: OpenMode
+
+    def __init__(self, mode: OpenMode = "r"):
+        if mode not in ("r", "r+", "w", "w-", "a"):
+            raise ValueError("mode must be one of 'r', 'r+', 'w', 'w-', 'a'")
+        self._mode = mode
+
+    @property
+    def mode(self) -> OpenMode:
+        """Access mode of the store."""
+        return self._mode
+
+    @property
+    def writeable(self) -> bool:
+        """Is the store writeable?"""
+        return self.mode in ("a", "w", "w-")
+
+    def _check_writable(self) -> None:
+        if not self.writeable:
+            raise ValueError("store mode does not support writing")
+
     @abstractmethod
     async def get(
-        self, key: str, byte_range: tuple[int, int | None] | None = None
+        self, key: str, byte_range: tuple[int | None, int | None] | None = None
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
 
@@ -26,7 +47,7 @@ class Store(ABC):
 
     @abstractmethod
     async def get_partial_values(
-        self, key_ranges: list[tuple[str, tuple[int, int]]]
+        self, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
@@ -146,6 +167,10 @@ class Store(ABC):
         AsyncGenerator[str, None]
         """
         ...
+
+    def close(self) -> None:  # noqa: B027
+        """Close the store."""
+        pass
 
 
 @runtime_checkable

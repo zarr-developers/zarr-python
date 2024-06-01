@@ -28,7 +28,7 @@ from .util import CountingDict
 
 @pytest.fixture
 def store() -> Iterator[Store]:
-    yield StorePath(MemoryStore())
+    yield StorePath(MemoryStore(mode="w"))
 
 
 def zarr_array_from_numpy_array(

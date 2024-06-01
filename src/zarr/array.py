@@ -35,7 +35,7 @@ from zarr.common import (
     concurrent_map,
     product,
 )
-from zarr.config import config
+from zarr.config import config, parse_indexing_order
 from zarr.indexing import (
     BasicIndexer,
     BasicSelection,
@@ -58,7 +58,7 @@ from zarr.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata, parse_indexing_order
+from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 from zarr.v2.indexing import check_fields

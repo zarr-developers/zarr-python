@@ -9,7 +9,7 @@ from zarr.store.memory import MemoryStore
 
 class CountingDict(MemoryStore):
     def __init__(self):
-        super().__init__()
+        super().__init__(mode="w")
         self.counter = collections.Counter()
 
     async def get(self, key, byte_range=None):
