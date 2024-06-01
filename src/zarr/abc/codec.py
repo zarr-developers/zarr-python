@@ -345,7 +345,7 @@ class CodecPipeline(Metadata):
         self,
         batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]],
         out: NDBuffer,
-        drop_axes: tuple[int, ...] | None = None,
+        drop_axes: tuple[int, ...] = (),
     ) -> None:
         """Reads chunk data from the store, decodes it and writes it into an output array.
         Partial decoding may be utilized if the codecs and stores support it.
@@ -367,7 +367,7 @@ class CodecPipeline(Metadata):
         self,
         batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]],
         value: NDBuffer,
-        drop_axes: tuple[int, ...] | None = None,
+        drop_axes: tuple[int, ...] = (),
     ) -> None:
         """Encodes chunk data and writes it to the store.
         Merges with existing chunk data by reading first, if necessary.
