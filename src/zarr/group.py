@@ -483,6 +483,7 @@ class Group(SyncMixin):
         store: StoreLike,
         *,
         attributes: dict[str, Any] = {},  # noqa: B006, FIXME
+        zarr_format: ZarrFormat = 3,
         exists_ok: bool = False,
     ) -> Group:
         obj = sync(
@@ -490,6 +491,7 @@ class Group(SyncMixin):
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
+                zarr_format=zarr_format,
             ),
         )
 
