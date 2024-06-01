@@ -27,9 +27,16 @@ repos:
       - id: mypy
         files: src
         additional_dependencies:
-          - types-redis
-          - types-setuptools
-          - pytest
-          - numpy
+          # Package dependencies
+          - asciitree
+          - crc32c
+          - donfig
+          - fasteners
           - numcodecs
+          - numpy
+          - typing_extensions
           - zstandard
+          # Tests
+          - pytest
+          # Zarr v2
+          - types-redis
