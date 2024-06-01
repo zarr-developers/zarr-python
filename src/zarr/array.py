@@ -52,6 +52,7 @@ from zarr.indexing import (
     OrthogonalIndexer,
     OrthogonalSelection,
     VIndex,
+    check_fields,
     check_no_multi_fields,
     is_pure_fancy_indexing,
     is_pure_orthogonal_indexing,
@@ -61,7 +62,6 @@ from zarr.indexing import (
 from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
-from zarr.v2.indexing import check_fields
 
 
 def parse_array_metadata(data: Any) -> ArrayMetadata:
