@@ -54,7 +54,7 @@ SelectionNormalized = (
     | OrthogonalSelectionNormalized
 )
 Selector = int | slice | npt.NDArray[np.intp | np.bool_]
-SelectorTuple = tuple[Selector, ...]
+SelectorTuple = tuple[Selector, ...] | npt.NDArray[np.intp]
 Fields = str | list[str] | tuple[str, ...]
 
 
@@ -1111,11 +1111,9 @@ class VIndex:
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         if is_coordinate_selection(new_selection, self.array.shape):
-            return self.array.get_coordinate_selection(
-                cast(CoordinateSelection, new_selection), fields=fields
-            )
+            return self.array.get_coordinate_selection(new_selection, fields=fields)
         elif is_mask_selection(new_selection, self.array.shape):
-            return self.array.get_mask_selection(cast(MaskSelection, new_selection), fields=fields)
+            return self.array.get_mask_selection(new_selection, fields=fields)
         else:
             raise VindexInvalidSelectionError(new_selection)
 
@@ -1126,11 +1124,9 @@ class VIndex:
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         if is_coordinate_selection(new_selection, self.array.shape):
-            self.array.set_coordinate_selection(
-                cast(CoordinateSelection, new_selection), value, fields=fields
-            )
+            self.array.set_coordinate_selection(new_selection, value, fields=fields)
         elif is_mask_selection(new_selection, self.array.shape):
-            self.array.set_mask_selection(cast(MaskSelection, new_selection), value, fields=fields)
+            self.array.set_mask_selection(new_selection, value, fields=fields)
         else:
             raise VindexInvalidSelectionError(new_selection)
 
@@ -1162,7 +1158,7 @@ def check_fields(fields: Fields, dtype: np.dtype[Any]) -> np.dtype[Any]:
         return dtype
 
 
-def check_no_multi_fields(fields: Fields) -> Fields:
+def check_no_multi_fields(fields: Fields | None) -> Fields | None:
     if isinstance(fields, list):
         if len(fields) == 1:
             return fields[0]

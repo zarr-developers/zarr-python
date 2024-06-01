@@ -647,9 +647,7 @@ class Array:
         if is_pure_fancy_indexing(pure_selection, self.ndim):
             result = self.vindex[cast(CoordinateSelection | MaskSelection, selection)]
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
-            result = self.get_orthogonal_selection(
-                cast(OrthogonalSelection, pure_selection), fields=fields
-            )
+            result = self.get_orthogonal_selection(pure_selection, fields=fields)
         else:
             result = self.get_basic_selection(cast(BasicSelection, pure_selection), fields=fields)
         return result
@@ -659,9 +657,7 @@ class Array:
         if is_pure_fancy_indexing(pure_selection, self.ndim):
             self.vindex[cast(CoordinateSelection | MaskSelection, selection)] = value
         elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
-            self.set_orthogonal_selection(
-                cast(OrthogonalSelection, pure_selection), value, fields=fields
-            )
+            self.set_orthogonal_selection(pure_selection, value, fields=fields)
         else:
             self.set_basic_selection(cast(BasicSelection, pure_selection), value, fields=fields)
 
@@ -722,11 +718,11 @@ class Array:
         fields: Fields | None = None,
     ) -> NDArrayLike:
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
-        out = sync(self._async_array._get_selection(indexer=indexer, out=out, fields=fields))
+        out_array = sync(self._async_array._get_selection(indexer=indexer, out=out, fields=fields))
 
         # restore shape
-        out = out.reshape(indexer.sel_shape)
-        return out
+        out_array = out_array.reshape(indexer.sel_shape)
+        return out_array
 
     def set_coordinate_selection(
         self, selection: CoordinateSelection, value: NDArrayLike, fields: Fields | None = None

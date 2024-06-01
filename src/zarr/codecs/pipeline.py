@@ -6,8 +6,6 @@ from itertools import islice
 from typing import TYPE_CHECKING, TypeVar
 from warnings import warn
 
-from numpy import newaxis
-
 from zarr.abc.codec import (
     ArrayArrayCodec,
     ArrayBytesCodec,
@@ -405,7 +403,9 @@ class BatchedCodecPipeline(CodecPipeline):
                     chunk_value = value[out_selection]
                     # handle missing singleton dimensions
                     item = tuple(
-                        newaxis if idx in drop_axes else slice(None)
+                        None  # equivalent to np.newaxis
+                        if idx in drop_axes
+                        else slice(None)
                         for idx in range(chunk_spec.ndim)
                     )
                     chunk_value = chunk_value[item]
