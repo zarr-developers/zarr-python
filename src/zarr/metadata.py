@@ -472,7 +472,9 @@ def parse_node_type_array(data: Literal["array"]) -> Literal["array"]:
 
 # todo: real validation
 def parse_filters(data: Any) -> tuple[dict[str, JSON]] | None:
-    return cast(tuple[dict[str, JSON]], data)
+    if isinstance(data, Iterable):
+        result = tuple(data)
+    return cast(tuple[dict[str, JSON]], result)
 
 
 # todo: real validation
