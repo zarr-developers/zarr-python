@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer
+from zarr.common import OpenMode
 from zarr.store.core import _dereference_path
 
 if TYPE_CHECKING:
@@ -18,9 +19,13 @@ class RemoteStore(Store):
 
     root: UPath
 
-    def __init__(self, url: UPath | str, **storage_options: dict[str, Any]):
+    def __init__(
+        self, url: UPath | str, *, mode: OpenMode = "r", **storage_options: dict[str, Any]
+    ):
         import fsspec
         from upath import UPath
+
+        super().__init__(mode=mode)
 
         if isinstance(url, str):
             self.root = UPath(url, **storage_options)
@@ -29,6 +34,7 @@ class RemoteStore(Store):
                 len(storage_options) == 0
             ), "If constructed with a UPath object, no additional storage_options are allowed."
             self.root = url.rstrip("/")
+
         # test instantiate file system
         fs, _ = fsspec.core.url_to_fs(str(self.root), asynchronous=True, **self.root._kwargs)
         assert fs.__class__.async_impl, "FileSystem needs to support async operations."
@@ -56,7 +62,7 @@ class RemoteStore(Store):
         path = _dereference_path(root, key)
 
         try:
-            value = await (
+            value: Buffer | None = await (
                 fs._cat_file(path, start=byte_range[0], end=byte_range[1])
                 if byte_range
                 else fs._cat_file(path)
@@ -67,6 +73,7 @@ class RemoteStore(Store):
         return value
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        self._check_writable()
         assert isinstance(key, str)
         fs, root = self._make_fs()
         path = _dereference_path(root, key)
@@ -80,6 +87,7 @@ class RemoteStore(Store):
             await fs._pipe_file(path, value)
 
     async def delete(self, key: str) -> None:
+        self._check_writable()
         fs, root = self._make_fs()
         path = _dereference_path(root, key)
         if await fs._exists(path):
@@ -88,4 +96,5 @@ class RemoteStore(Store):
     async def exists(self, key: str) -> bool:
         fs, root = self._make_fs()
         path = _dereference_path(root, key)
-        return await fs._exists(path)
+        exists: bool = await fs._exists(path)
+        return exists
