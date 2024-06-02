@@ -96,8 +96,8 @@ class AsyncArray:
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
-        filters: Iterable[dict[str, JSON] | Codec] = [],
-        post_compressors: Iterable[dict[str, JSON] | Codec] = [],
+        filters: Iterable[dict[str, JSON] | ArrayArrayCodec] = [],
+        post_compressors: Iterable[dict[str, JSON] | BytesBytesCodec] = [],
         # runtime
         exists_ok: bool = False,
     ) -> AsyncArray:
@@ -172,8 +172,8 @@ class AsyncArray:
             | None
         ) = None,
         compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
-        filters: Iterable[dict[str, JSON] | Codec] = (),
-        post_compressors: Iterable[dict[str, JSON] | Codec] = (),
+        filters: Iterable[dict[str, JSON] | ArrayArrayCodec] = (),
+        post_compressors: Iterable[dict[str, JSON] | BytesBytesCodec] = (),
         dimension_names: Iterable[str] | None = None,
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
@@ -234,7 +234,7 @@ class AsyncArray:
         fill_value: None | int | float = None,
         order: Literal["C", "F"] | None = None,
         filters: Iterable[dict[str, JSON] | Codec] = [],
-        compressor: dict[str, JSON] | Codec | None = None,
+        compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray:
