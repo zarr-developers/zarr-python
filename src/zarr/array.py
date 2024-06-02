@@ -34,9 +34,9 @@ from zarr.common import (
     ZarrFormat,
     concurrent_map,
 )
-from zarr.config import config
+from zarr.config import config, parse_indexing_order
 from zarr.indexing import BasicIndexer
-from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata, parse_indexing_order
+from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
@@ -482,8 +482,8 @@ class AsyncArray:
     def __repr__(self) -> str:
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
-    async def info(self):
-        return NotImplemented
+    async def info(self) -> None:
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -622,7 +622,7 @@ class Array:
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
-    def info(self):
+    def info(self) -> None:
         return sync(
             self._async_array.info(),
         )
