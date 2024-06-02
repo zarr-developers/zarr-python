@@ -346,7 +346,7 @@ class AsyncArray:
     @property
     def chunks(self) -> ChunkCoords:
         try:
-            return self.metadata.chunk_grid.chunk_shape  # type: ignore
+            return self.metadata.chunk_grid.chunk_shape  # type: ignore[attr-defined]
         except AttributeError as err:  # pragma: no cover
             raise AttributeError(
                 f"Chunk grid {self.metadata.chunk_grid} array does not have a chunk shape."
