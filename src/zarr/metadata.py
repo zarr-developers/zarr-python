@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
@@ -310,7 +310,7 @@ class ArrayV2Metadata(ArrayMetadata):
     filters: list[dict[str, JSON]] | None = None
     dimension_separator: Literal[".", "/"] = "."
     compressor: dict[str, JSON] | None = None
-    attributes: dict[str, JSON] = cast(dict[str, JSON], field(default_factory=dict))
+    attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
     def __init__(
