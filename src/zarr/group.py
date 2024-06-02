@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
 from zarr.array import Array, AsyncArray
@@ -306,14 +306,14 @@ class AsyncGroup:
             | tuple[Literal["v2"], Literal[".", "/"]]
             | None
         ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
         chunks: ChunkCoords | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
+        filters: Iterable[dict[str, JSON] | ArrayArrayCodec] = (),
+        post_compressors: Iterable[dict[str, JSON] | BytesBytesCodec] = (),
         # runtime
         exists_ok: bool = False,
     ) -> AsyncArray:
@@ -324,14 +324,14 @@ class AsyncGroup:
             chunk_shape=chunk_shape,
             fill_value=fill_value,
             chunk_key_encoding=chunk_key_encoding,
-            codecs=codecs,
+            compressor=compressor,
+            filters=filters,
+            post_compressors=post_compressors,
             dimension_names=dimension_names,
             attributes=attributes,
             chunks=chunks,
             dimension_separator=dimension_separator,
             order=order,
-            filters=filters,
-            compressor=compressor,
             exists_ok=exists_ok,
             zarr_format=self.metadata.zarr_format,
         )

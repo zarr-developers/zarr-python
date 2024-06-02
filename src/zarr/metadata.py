@@ -323,7 +323,7 @@ class ArrayV2Metadata(ArrayMetadata):
         order: Literal["C", "F"],
         dimension_separator: Literal[".", "/"] = ".",
         compressor: dict[str, JSON] | None = None,
-        filters: list[dict[str, JSON]] | None = None,
+        filters: Iterable[dict[str, JSON]] | None = None,
         attributes: dict[str, JSON] | None = None,
     ):
         """
@@ -471,8 +471,8 @@ def parse_node_type_array(data: Literal["array"]) -> Literal["array"]:
 
 
 # todo: real validation
-def parse_filters(data: list[dict[str, JSON]] | None) -> list[dict[str, JSON]] | None:
-    return data
+def parse_filters(data: Any) -> tuple[dict[str, JSON]] | None:
+    return cast(tuple[dict[str, JSON]], data)
 
 
 # todo: real validation
