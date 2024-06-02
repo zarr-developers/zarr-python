@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterator
 from typing import Any
 from uuid import uuid4
@@ -23,8 +24,6 @@ from zarr.indexing import (
 from zarr.store.core import StorePath
 from zarr.store.memory import MemoryStore
 
-from .util import CountingDict
-
 
 @pytest.fixture
 def store() -> Iterator[Store]:
@@ -45,6 +44,22 @@ def zarr_array_from_numpy_array(
     )
     z[:] = a
     return z
+
+
+class CountingDict(MemoryStore):
+    def __init__(self):
+        super().__init__(mode="w")
+        self.counter = Counter()
+
+    async def get(self, key, byte_range=None):
+        key_suffix = "/".join(key.split("/")[1:])
+        self.counter["__getitem__", key_suffix] += 1
+        return await super().get(key, byte_range)
+
+    async def set(self, key, value, byte_range=None):
+        key_suffix = "/".join(key.split("/")[1:])
+        self.counter["__setitem__", key_suffix] += 1
+        return await super().set(key, value, byte_range)
 
 
 def test_normalize_integer_selection():
