@@ -846,6 +846,16 @@ def test_invalid_metadata(store: Store):
             post_compressors=(TransposeCodec(order=order_from_dim("F", 2)),),
         )
 
+    with pytest.raises(ValueError):
+        Array.create(
+            store / "invalid_missing_bytes_codec",
+            shape=(16, 16),
+            chunk_shape=(16, 16),
+            dtype=np.dtype("uint8"),
+            fill_value=0,
+            compressor=TransposeCodec(order=order_from_dim("F", 2)),
+        )
+
     with pytest.raises(TypeError):
         Array.create(
             store / "invalid_order",
