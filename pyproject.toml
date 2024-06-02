@@ -189,14 +189,35 @@ namespace_packages = false
 
 strict = true
 warn_unreachable = true
-
 enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
+exclude = [
+    'tests/v2.*$',  # TOML literal string (single-quotes, no escaping necessary)
+]
 
 [[tool.mypy.overrides]]
 module = [
     "zarr.v2.*",
 ]
 ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "tests.v3.*",
+]
+warn_unused_configs = false
+warn_unused_ignores = false
+strict_equality = false
+strict_concatenate = false
+check_untyped_defs = false
+disallow_subclassing_any = false
+disallow_untyped_decorators = false
+disallow_any_generics = false
+disallow_untyped_calls = false
+disallow_incomplete_defs = false
+disallow_untyped_defs = false
+no_implicit_reexport = false
+warn_return_any = false
 
 [tool.pytest.ini_options]
 minversion = "7"
