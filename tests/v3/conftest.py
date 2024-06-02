@@ -4,6 +4,8 @@ from collections.abc import Iterator
 from types import ModuleType
 from typing import TYPE_CHECKING
 
+import pytest
+
 from zarr.common import ZarrFormat
 from zarr.group import AsyncGroup
 
@@ -11,8 +13,6 @@ if TYPE_CHECKING:
     from typing import Any, Literal
 import pathlib
 from dataclasses import dataclass, field
-
-import pytest
 
 from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.remote import RemoteStore
@@ -59,7 +59,7 @@ def memory_store():
 
 
 @pytest.fixture(scope="function")
-def store(request: str, tmpdir):
+def store(request: pytest.FixtureRequest, tmpdir):
     param = request.param
     return parse_store(param, str(tmpdir))
 

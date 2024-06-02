@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from zarr.array import AsyncArray
+from zarr.array import Array, AsyncArray
 from zarr.buffer import Buffer
 from zarr.store.core import make_store_path
 from zarr.sync import sync
@@ -32,11 +32,12 @@ def test_group_children(store: MemoryStore | LocalStore) -> None:
         store_path=StorePath(store=store, path=path),
     )
     group = Group(agroup)
-    members_expected = {}
+    members_expected: dict[str, Group | Array] = {}
 
     members_expected["subgroup"] = group.create_group("subgroup")
     # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
     # too deep in the hierarchy
+    assert isinstance(members_expected["subgroup"], Group)
     _ = members_expected["subgroup"].create_group("subsubgroup")
 
     members_expected["subarray"] = group.create_array(
@@ -206,7 +207,7 @@ async def test_asyncgroup_open_wrong_format(
         raise AssertionError
 
     with pytest.raises(FileNotFoundError):
-        await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)
+        await AsyncGroup.open(store=store, zarr_format=zarr_format_wrong)  # type: ignore[arg-type]
 
 
 # todo: replace the dict[str, Any] type with something a bit more specific
