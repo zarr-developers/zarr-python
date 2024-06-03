@@ -33,11 +33,7 @@ from zarr.common import (
     parse_shapelike,
     product,
 )
-from zarr.indexing import (
-    BasicIndexer,
-    c_order_iter,
-    morton_order_iter,
-)
+from zarr.indexing import BasicIndexer, SelectorTuple, c_order_iter, get_indexer, morton_order_iter
 from zarr.metadata import ArrayMetadata, parse_codecs
 
 if TYPE_CHECKING:
@@ -45,7 +41,7 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self
 
-    from zarr.common import JSON, SliceSelection
+    from zarr.common import JSON
 
 MAX_UINT_64 = 2**64 - 1
 ShardMapping = Mapping[ChunkCoords, Buffer]
@@ -423,7 +419,7 @@ class ShardingCodec(
     async def _decode_partial_single(
         self,
         byte_getter: ByteGetter,
-        selection: SliceSelection,
+        selection: SelectorTuple,
         shard_spec: ArraySpec,
     ) -> NDBuffer | None:
         shard_shape = shard_spec.shape
@@ -431,7 +427,7 @@ class ShardingCodec(
         chunks_per_shard = self._get_chunks_per_shard(shard_spec)
         chunk_spec = self._get_chunk_spec(shard_spec)
 
-        indexer = BasicIndexer(
+        indexer = get_indexer(
             selection,
             shape=shard_shape,
             chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
@@ -520,7 +516,7 @@ class ShardingCodec(
         self,
         byte_setter: ByteSetter,
         shard_array: NDBuffer,
-        selection: SliceSelection,
+        selection: SelectorTuple,
         shard_spec: ArraySpec,
     ) -> None:
         shard_shape = shard_spec.shape
@@ -535,10 +531,8 @@ class ShardingCodec(
         )
 
         indexer = list(
-            BasicIndexer(
-                selection,
-                shape=shard_shape,
-                chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            get_indexer(
+                selection, shape=shard_shape, chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape)
             )
         )
 

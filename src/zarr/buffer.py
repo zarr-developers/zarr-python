@@ -63,7 +63,9 @@ class NDArrayLike(Protocol):
 
     def __setitem__(self, key: slice, value: Any) -> None: ...
 
-    def reshape(self, shape: ChunkCoords, *, order: Literal["A", "C", "F"] = ...) -> Self: ...
+    def reshape(
+        self, shape: ChunkCoords | Literal[-1], *, order: Literal["A", "C", "F"] = ...
+    ) -> Self: ...
 
     def view(self, dtype: npt.DTypeLike) -> Self: ...
 
@@ -304,7 +306,7 @@ class NDBuffer:
     """
 
     def __init__(self, array: NDArrayLike):
-        assert array.ndim > 0
+        # assert array.ndim > 0
         assert array.dtype != object
         self._data = array
 
@@ -418,7 +420,11 @@ class NDBuffer:
         else:
             return Endian(sys.byteorder)
 
-    def reshape(self, newshape: ChunkCoords) -> Self:
+    def reshape(self, newshape: ChunkCoords | Literal[-1]) -> Self:
+        return self.__class__(self._data.reshape(newshape))
+
+    def squeeze(self, axis: tuple[int, ...]) -> Self:
+        newshape = tuple(a for i, a in enumerate(self.shape) if i not in axis)
         return self.__class__(self._data.reshape(newshape))
 
     def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K") -> Self:
@@ -434,6 +440,9 @@ class NDBuffer:
 
     def __len__(self) -> int:
         return self._data.__len__()
+
+    def __repr__(self) -> str:
+        return f"<NDBuffer shape={self.shape} dtype={self.dtype} {self._data!r}>"
 
     def all_equal(self, other: Any) -> bool:
         return bool((self._data == other).all())
