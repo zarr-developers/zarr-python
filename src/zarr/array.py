@@ -378,6 +378,29 @@ class AsyncArray:
     def attrs(self) -> dict[str, JSON]:
         return self.metadata.attributes
 
+    @property
+    def path(self) -> str:
+        """Storage path."""
+        return self.store_path.path
+
+    @property
+    def name(self) -> str | None:
+        """Array name following h5py convention."""
+        if self.path:
+            # follow h5py convention: add leading slash
+            name = self.path
+            if name[0] != "/":
+                name = "/" + name
+            return name
+        return None
+
+    @property
+    def basename(self) -> str | None:
+        """Final component of name."""
+        if self.name is not None:
+            return self.name.split("/")[-1]
+        return None
+
     async def _get_selection(
         self,
         indexer: Indexer,
@@ -627,6 +650,21 @@ class Array:
     @property
     def attrs(self) -> Attributes:
         return Attributes(self)
+
+    @property
+    def path(self) -> str:
+        """Storage path."""
+        return self._async_array.path
+
+    @property
+    def name(self) -> str | None:
+        """Array name following h5py convention."""
+        return self._async_array.name
+
+    @property
+    def basename(self) -> str | None:
+        """Final component of name."""
+        return self._async_array.basename
 
     @property
     def metadata(self) -> ArrayMetadata:
