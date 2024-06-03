@@ -3206,3 +3206,20 @@ def test_object_array_indexing():
     elem = [1, 3]
     arr[1] = elem
     assert arr[1] == elem
+
+
+@pytest.mark.parametrize("shape", ((1, 1, 1), (5, 5, 1), (1, 5, 5)))
+def test_scalar_orthogonal_indexing(shape):
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/1931
+    store = zarr.MemoryStore({})
+    data = np.random.randint(0, 255, shape)
+    arr = zarr.zeros(
+        shape=shape, chunks=shape[:-1] + (1,), compressor=None, store=store, dtype="u1"
+    )
+    arr[:, :, :] = data
+    store.close()
+
+    zf = zarr.open(store, "r")
+    assert_array_equal(zf[0, :, :], data[0, :, :])
+    assert_array_equal(zf[:, 0, :], data[:, 0, :])
+    assert_array_equal(zf[:, :, 0], data[:, :, 0])
