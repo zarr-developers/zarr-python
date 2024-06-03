@@ -79,7 +79,7 @@ def test_group(store: MemoryStore | LocalStore) -> None:
     assert arr.dtype == data.dtype
 
     # TODO: update this once the array api settles down
-    # assert arr.chunk_shape == (2, 2)
+    assert arr.chunks == (2, 2)
 
     bar2 = foo["bar"]
     assert dict(bar2.attrs) == {"baz": "qux"}
