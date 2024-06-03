@@ -120,7 +120,6 @@ class ArrayMetadata(Metadata, ABC):
     shape: ChunkCoords
     fill_value: Any
     chunk_grid: ChunkGrid
-    fill_value: Any
     attributes: dict[str, JSON]
     zarr_format: ZarrFormat
 
