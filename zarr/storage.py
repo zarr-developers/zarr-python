@@ -1861,7 +1861,12 @@ class ZipStore(Store):
     def __getitem__(self, key):
         with self.mutex:
             with self.zf.open(key) as f:  # will raise KeyError
-                return f.read()
+                data = f.read()
+
+                if data:
+                    return data
+                else:
+                    raise KeyError("Key not found")
 
     def __setitem__(self, key, value):
         if self.mode == "r":
@@ -1882,7 +1887,23 @@ class ZipStore(Store):
             self.zf.writestr(keyinfo, value)
 
     def __delitem__(self, key):
-        raise NotImplementedError
+        with self.mutex:
+            try:
+                self.zf.getinfo(key)
+            except KeyError:
+                raise KeyError("Cannot delete a non-existent key")
+            keyinfo = zipfile.ZipInfo(
+                filename=key,
+                date_time=time.localtime(time.time())[:6]
+            )
+            keyinfo.compress_type = self.compression
+            if keyinfo.filename[-1] == os.sep:
+                keyinfo.external_attr = 0o40775 << 16   # drwxrwxr-x
+                keyinfo.external_attr |= 0x10           # MS-DOS directory flag
+            else:
+                keyinfo.external_attr = 0o644 << 16     # ?rw-r--r--
+
+            self.zf.writestr(keyinfo, b"")
 
     def __eq__(self, other):
         return (
@@ -1894,7 +1915,8 @@ class ZipStore(Store):
 
     def keylist(self):
         with self.mutex:
-            return sorted(self.zf.namelist())
+            namelist = [key for key in self.zf.namelist() if self.zf.getinfo(key) != b""]
+            return sorted(namelist)
 
     def keys(self):
         yield from self.keylist()
@@ -1908,7 +1930,11 @@ class ZipStore(Store):
     def __contains__(self, key):
         try:
             with self.mutex:
-                self.zf.getinfo(key)
+                value = self.zf.getinfo(key)
+
+                if value == b"":
+                    raise KeyError
+
         except KeyError:
             return False
         else:

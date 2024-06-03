@@ -217,6 +217,21 @@ class StoreTests:
 
         store.close()
 
+    def test_delitem(self):
+        store = self.create_store()
+        foo = self.root + 'foo'
+        store[foo] = b'bar'
+
+        del store[foo]
+
+        with pytest.raises(KeyError):
+            store[foo]
+        # if foo in store:
+        # if isinstance(store, ZipStore):
+        #     assert store[foo] == b''
+        # else:
+        #     assert foo not in store
+
     def test_popitem(self):
         store = self.create_store()
         store[self.root + "foo"] = b"bar"
@@ -1828,8 +1843,7 @@ class TestZipStore(StoreTests):
         store.flush()
         assert store[self.root + "foo"] == b"bar"
         store.close()
-
-        store = self.ZipStoreClass("data/store.zip", mode="r")
+        store = self.ZipStoreClass('data/store.zip', mode='r')
         store.flush()  # no-op
 
     def test_context_manager(self):
@@ -1841,9 +1855,9 @@ class TestZipStore(StoreTests):
     def test_pop(self):
         # override because not implemented
         store = self.create_store()
-        store[self.root + "foo"] = b"bar"
-        with pytest.raises(NotImplementedError):
-            store.pop(self.root + "foo")
+        store[self.root + 'foo'] = b'bar'
+        store.pop(self.root + 'foo')
+        assert store[self.root + 'foo'] == b""
 
     def test_popitem(self):
         # override because not implemented
