@@ -18,6 +18,17 @@ Release notes
    See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
    3.0 release.
 
+.. _release_2.18.3:
+
+2.18.3
+------
+
+Maintenance
+~~~~~~~~~~~
+* Fix a regression when using orthogonal indexing with a scalar.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1931`
+
+
 .. _release_2.18.2:
 
 Enhancements

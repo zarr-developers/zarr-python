@@ -2053,7 +2053,12 @@ class Array:
                     if isinstance(cdata, UncompressedPartialReadBufferV3):
                         cdata = cdata.read_full()
                     chunk = ensure_ndarray_like(cdata).view(self._dtype)
-                    chunk = chunk.reshape(self._chunks, order=self._order)
+                    # dest.shape is not self._chunks when a dimensions is squeezed out
+                    # For example, assume self._chunks = (5, 5, 1)
+                    # and the selection is [:, :, 0]
+                    # Then out_selection is (slice(5), slice(5))
+                    # See https://github.com/zarr-developers/zarr-python/issues/1931
+                    chunk = chunk.reshape(dest.shape, order=self._order)
                     np.copyto(dest, chunk)
                 return
 
