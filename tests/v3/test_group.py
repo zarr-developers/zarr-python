@@ -368,7 +368,26 @@ async def test_asyncgroup_update_attributes(
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
-async def test_group_init(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+def test_group_init(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = sync(AsyncGroup.create(store=store, zarr_format=zarr_format))
     group = Group(agroup)
     assert group._async_group == agroup
+
+
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+def test_group_name_properties(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    root = Group.create(store=store, zarr_format=zarr_format)
+    assert root.path == ""
+    assert root.name == "/"
+    assert root.basename == ""
+
+    foo = root.create_group("foo")
+    assert foo.path == "foo"
+    assert foo.name == "/foo"
+    assert foo.basename == "foo"
+
+    bar = root.create_group("foo/bar")
+    assert bar.path == "foo/bar"
+    assert bar.name == "/foo/bar"
+    assert bar.basename == "bar"

@@ -177,7 +177,6 @@ extend-select = [
 ignore = [
     "RUF003",
     "RUF005",
-    "RUF009",
     "RUF012",
     "RUF015",
 ]

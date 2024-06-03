@@ -11,12 +11,12 @@ from zarr.codecs.zstd import ZstdCodec
 
 __all__ = [
     "BatchedCodecPipeline",
-    "BloscCodec",
     "BloscCname",
+    "BloscCodec",
     "BloscShuffle",
     "BytesCodec",
-    "Endian",
     "Crc32cCodec",
+    "Endian",
     "GzipCodec",
     "ShardingCodec",
     "ShardingCodecIndexLocation",
