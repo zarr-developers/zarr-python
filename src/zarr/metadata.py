@@ -119,6 +119,7 @@ class DataType(Enum):
 class ArrayMetadata(Metadata, ABC):
     shape: ChunkCoords
     chunk_grid: ChunkGrid
+    fill_value: Any
     attributes: dict[str, JSON]
 
     @property
