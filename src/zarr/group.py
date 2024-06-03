@@ -271,6 +271,27 @@ class AsyncGroup:
         await asyncio.gather(*awaitables)
 
     @property
+    def path(self) -> str:
+        """Storage path."""
+        return self.store_path.path
+
+    @property
+    def name(self) -> str:
+        """Group name following h5py convention."""
+        if self.path:
+            # follow h5py convention: add leading slash
+            name = self.path
+            if name[0] != "/":
+                name = "/" + name
+            return name
+        return "/"
+
+    @property
+    def basename(self) -> str:
+        """Final component of name."""
+        return self.name.split("/")[-1]
+
+    @property
     def attrs(self) -> dict[str, Any]:
         return self.metadata.attributes
 
@@ -462,6 +483,7 @@ class Group(SyncMixin):
         store: StoreLike,
         *,
         attributes: dict[str, Any] = {},  # noqa: B006, FIXME
+        zarr_format: ZarrFormat = 3,
         exists_ok: bool = False,
     ) -> Group:
         obj = sync(
@@ -469,6 +491,7 @@ class Group(SyncMixin):
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
+                zarr_format=zarr_format,
             ),
         )
 
@@ -520,6 +543,21 @@ class Group(SyncMixin):
     @property
     def metadata(self) -> GroupMetadata:
         return self._async_group.metadata
+
+    @property
+    def path(self) -> str:
+        """Storage path."""
+        return self._async_group.path
+
+    @property
+    def name(self) -> str:
+        """Group name following h5py convention."""
+        return self._async_group.name
+
+    @property
+    def basename(self) -> str:
+        """Final component of name."""
+        return self._async_group.basename
 
     @property
     def attrs(self) -> Attributes:

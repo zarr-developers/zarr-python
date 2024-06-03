@@ -177,7 +177,6 @@ extend-select = [
 ignore = [
     "RUF003",
     "RUF005",
-    "RUF009",
     "RUF012",
     "RUF015",
 ]
@@ -197,33 +196,6 @@ module = [
     "zarr.v2.*",
 ]
 ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = [
-    "tests.*",
-]
-check_untyped_defs = false
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.array",
-    "zarr.buffer"
-]
-disallow_untyped_calls = false
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.array",
-]
-disallow_untyped_defs = false
-
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.metadata",
-    "zarr.store.remote"
-]
-warn_return_any = false
 
 [tool.pytest.ini_options]
 minversion = "7"
