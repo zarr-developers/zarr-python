@@ -368,7 +368,7 @@ async def test_asyncgroup_update_attributes(
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
-async def test_group_init(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+def test_group_init(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = sync(AsyncGroup.create(store=store, zarr_format=zarr_format))
     group = Group(agroup)
     assert group._async_group == agroup
