@@ -36,6 +36,7 @@ np_arrays = npst.arrays(
     shape=npst.array_shapes(max_dims=4),
 )
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
+compressors = st.sampled_from([None, "default"])
 
 
 @st.composite
@@ -54,12 +55,21 @@ def np_array_and_chunks(draw, *, arrays=np_arrays):
 
 
 @st.composite
-def arrays(draw, *, stores=stores, arrays=np_arrays, paths=paths, array_names=array_names):
+def arrays(
+    draw,
+    *,
+    compressors=compressors,
+    stores=stores,
+    arrays=np_arrays,
+    paths=paths,
+    array_names=array_names,
+):
     store = draw(stores)
     nparray, chunks = draw(np_array_and_chunks(arrays=arrays))
     path = draw(paths)
     name = draw(array_names)
     attributes = draw(attrs)
+    compressor = draw(compressors)
 
     # TODO: clean this up
     if path is None and name is None:
@@ -89,6 +99,7 @@ def arrays(draw, *, stores=stores, arrays=np_arrays, paths=paths, array_names=ar
         chunks=chunks,
         dtype=nparray.dtype.str,
         attributes=attributes,
+        compressor=compressor,
         # TODO: FIXME seems to break with booleans and timedelta
         # fill_value=nparray.dtype.type(0),
     )
@@ -122,6 +133,7 @@ def test_roundtrip(data):
 
 
 # @pytest.mark.slow
+@settings(max_examples=500)
 @given(data=st.data())
 def test_basic_indexing(data):
     def is_negative_slice(idx):
