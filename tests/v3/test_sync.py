@@ -5,6 +5,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from zarr.sync import SyncError, SyncMixin, _get_lock, _get_loop, sync
+from zarr.testing.utils import IS_WASM
+
+pytestmark = pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 
 
 @pytest.fixture(params=[True, False])

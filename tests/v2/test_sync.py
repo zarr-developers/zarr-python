@@ -8,6 +8,7 @@ from tempfile import mkdtemp
 
 import numpy as np
 from numpy.testing import assert_array_equal
+import pytest
 
 from zarr.v2.attrs import Attributes
 from zarr.v2.core import Array
@@ -20,7 +21,10 @@ from .test_attrs import TestAttributes
 from .test_core import TestArray
 from .test_hierarchy import TestGroup
 
+from zarr.testing.utils import IS_WASM
 
+
+@pytest.mark.skipif(IS_WASM, reason="no threading support in WASM")
 class TestAttributesWithThreadSynchronizer(TestAttributes):
     def init_attributes(self, store, read_only=False, cache=True):
         key = ".zattrs"
@@ -30,6 +34,7 @@ class TestAttributesWithThreadSynchronizer(TestAttributes):
         )
 
 
+@pytest.mark.skipif(IS_WASM, reason="no threading support in WASM")
 class TestAttributesProcessSynchronizer(TestAttributes):
     def init_attributes(self, store, read_only=False, cache=True):
         key = ".zattrs"
@@ -96,6 +101,7 @@ class MixinArraySyncTests:
         pool.terminate()
 
 
+@pytest.mark.skipif(IS_WASM, reason="no multiprocessing support in WASM")
 class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
     def create_array(self, read_only=False, **kwargs):
         store = KVStore(dict())
@@ -148,6 +154,7 @@ class TestArrayWithThreadSynchronizer(TestArray, MixinArraySyncTests):
         assert "05b0663ffe1785f38d3a459dec17e57a18f254af" == z.hexdigest()
 
 
+@pytest.mark.skipif(IS_WASM, reason="fcntl not available in WASM")
 class TestArrayWithProcessSynchronizer(TestArray, MixinArraySyncTests):
     def create_array(self, read_only=False, **kwargs):
         path = tempfile.mkdtemp()
@@ -259,6 +266,7 @@ class MixinGroupSyncTests:
         pool.terminate()
 
 
+@pytest.mark.skipif(IS_WASM, reason="no multiprocessing support in WASM")
 class TestGroupWithThreadSynchronizer(TestGroup, MixinGroupSyncTests):
     def create_group(
         self, store=None, path=None, read_only=False, chunk_store=None, synchronizer=None
@@ -286,6 +294,7 @@ class TestGroupWithThreadSynchronizer(TestGroup, MixinGroupSyncTests):
         assert isinstance(g.synchronizer, ThreadSynchronizer)
 
 
+@pytest.mark.skipif(IS_WASM, reason="fcntl not available in WASM")
 class TestGroupWithProcessSynchronizer(TestGroup, MixinGroupSyncTests):
     def create_store(self):
         path = tempfile.mkdtemp()

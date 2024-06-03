@@ -9,9 +9,15 @@ import pytest
 
 from zarr.array import AsyncArray
 from zarr.buffer import ArrayLike, NDArrayLike, NDBuffer
+from zarr.testing.utils import IS_WASM
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+
+# Helper function to skip async tests on WASM platforms
+def asyncio_tests_wrapper(func):
+    return func if IS_WASM else pytest.mark.asyncio(func)
 
 
 class MyNDArrayLike(np.ndarray):
@@ -45,7 +51,7 @@ def test_nd_array_like(xp):
     assert isinstance(ary, NDArrayLike)
 
 
-@pytest.mark.asyncio
+@asyncio_tests_wrapper
 async def test_async_array_factory(store_path):
     expect = np.zeros((9, 9), dtype="uint16", order="F")
     a = await AsyncArray.create(

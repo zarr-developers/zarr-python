@@ -25,7 +25,12 @@ from zarr.common import Selection
 from zarr.config import config
 from zarr.indexing import morton_order_iter
 from zarr.store import MemoryStore, StorePath
-from zarr.testing.utils import assert_bytes_equal
+from zarr.testing.utils import IS_WASM, assert_bytes_equal
+
+# Skip entire file if running on WASM platforms, see
+# 1. https://github.com/pyodide/pyodide/issues/2221
+# 2. https://github.com/pyodide/pyodide/issues/237
+pytestmark = pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 
 
 @dataclass(frozen=True)
@@ -406,6 +411,7 @@ async def test_transpose(
         assert await (store / "transpose/0.0").get() == await (store / "transpose_zarr/0.0").get()
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't start new threads in WASM")
 def test_transpose_invalid(
     store: Store,
 ):

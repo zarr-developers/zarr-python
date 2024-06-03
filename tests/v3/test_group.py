@@ -6,6 +6,7 @@ from zarr.array import AsyncArray
 from zarr.buffer import Buffer
 from zarr.store.core import make_store_path
 from zarr.sync import sync
+from zarr.testing.utils import IS_WASM
 
 if TYPE_CHECKING:
     from zarr.common import ZarrFormat
@@ -18,6 +19,7 @@ from zarr.group import AsyncGroup, Group, GroupMetadata
 from zarr.store import StorePath
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 # todo: put RemoteStore in here
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 def test_group_children(store: MemoryStore | LocalStore) -> None:
@@ -55,6 +57,7 @@ def test_group_children(store: MemoryStore | LocalStore) -> None:
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 @pytest.mark.parametrize("store", (("local", "memory")), indirect=["store"])
 def test_group(store: MemoryStore | LocalStore) -> None:
     store_path = StorePath(store)
@@ -94,6 +97,7 @@ def test_group(store: MemoryStore | LocalStore) -> None:
     assert dict(bar3.attrs) == {"baz": "qux", "name": "bar"}
 
 
+@pytest.mark.skipif(IS_WASM, reason="Can't test async code in WASM")
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize("exists_ok", (True, False))
 def test_group_create(store: MemoryStore | LocalStore, exists_ok: bool) -> None:

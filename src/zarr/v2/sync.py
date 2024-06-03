@@ -2,8 +2,6 @@ import os
 from collections import defaultdict
 from threading import Lock
 
-import fasteners
-
 
 class ThreadSynchronizer:
     """Provides synchronization using thread locks."""
@@ -42,6 +40,7 @@ class ProcessSynchronizer:
 
     def __getitem__(self, item):
         path = os.path.join(self.path, item)
+        import fasteners
         lock = fasteners.InterProcessLock(path)
         return lock
 
