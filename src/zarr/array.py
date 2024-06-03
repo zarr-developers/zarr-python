@@ -367,6 +367,15 @@ class AsyncArray:
         return self.metadata.shape
 
     @property
+    def chunks(self) -> ChunkCoords:
+        if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
+            return self.metadata.chunk_grid.chunk_shape
+        else:
+            raise ValueError(
+                f"chunk attribute is only available for RegularChunkGrid, this array has a {self.metadata.chunk_grid}"
+            )
+
+    @property
     def size(self) -> int:
         return np.prod(self.metadata.shape).item()
 
@@ -640,6 +649,10 @@ class Array:
     @property
     def shape(self) -> ChunkCoords:
         return self._async_array.shape
+
+    @property
+    def chunks(self) -> ChunkCoords:
+        return self._async_array.chunks
 
     @property
     def size(self) -> int:
