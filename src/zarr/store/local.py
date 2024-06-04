@@ -120,9 +120,9 @@ class LocalStore(Store):
     async def set(self, key: str, value: Buffer) -> None:
         self._check_writable()
         assert isinstance(key, str)
-        if isinstance(value, bytes | bytearray):
+        if isinstance(value, bytes | bytearray):  # type:ignore[unreachable]
             # TODO: to support the v2 tests, we convert bytes to Buffer here
-            value = Buffer.from_bytes(value)
+            value = Buffer.from_bytes(value)  # type:ignore[unreachable]
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
         path = self.root / key
@@ -134,10 +134,7 @@ class LocalStore(Store):
         for key, start, value in key_start_values:
             assert isinstance(key, str)
             path = self.root / key
-            if start is not None:
-                args.append((_put, path, value, start))
-            else:
-                args.append((_put, path, value))
+            args.append((_put, path, value, start))
         await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def delete(self, key: str) -> None:

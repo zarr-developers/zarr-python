@@ -21,6 +21,7 @@ maintainers = [
     { name = "Ryan Abernathey" }
 ]
 requires-python = ">=3.10"
+# If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'asciitree',
     'numpy>=1.24',
@@ -137,8 +138,7 @@ list-env = "pip list"
 features = ['docs']
 
 [tool.hatch.envs.docs.scripts]
-build = "sphinx-build docs/ docs/_build/"
-rtd = "sphinx-build docs/ _readthedocs/html/"
+build = "cd docs && make html"
 serve = "sphinx-autobuild docs docs/_build --ignore 'docs/_autoapi/**/*' --host 0.0.0.0"
 
 [tool.ruff]
@@ -178,7 +178,6 @@ extend-select = [
 ignore = [
     "RUF003",
     "RUF005",
-    "RUF009",
     "RUF012",
     "RUF015",
 ]
@@ -188,61 +187,16 @@ python_version = "3.10"
 ignore_missing_imports = true
 namespace_packages = false
 
-warn_unused_configs = true
-warn_redundant_casts = true
-warn_unused_ignores = true
-strict_equality = true
-strict_concatenate = true
+strict = true
+warn_unreachable = true
 
-check_untyped_defs = true
-disallow_untyped_decorators = true
-disallow_any_generics = true
-
-disallow_incomplete_defs = true
-disallow_untyped_calls = true
-
-disallow_untyped_defs = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 
 [[tool.mypy.overrides]]
 module = [
     "zarr.v2.*",
-    "zarr.group",
-    "tests.*",
 ]
-check_untyped_defs = false
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.v2.*",
-    "zarr.array_v2",
-]
-disallow_any_generics = false
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.v2.*",
-    "zarr.array_v2",
-    "zarr.group"
-]
-disallow_incomplete_defs = false
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.v2.*",
-    "zarr.array_v2",
-    "zarr.array",
-    "zarr.buffer"
-]
-disallow_untyped_calls = false
-
-[[tool.mypy.overrides]]
-module = [
-    "zarr.v2.*",
-    "zarr.array_v2",
-    "zarr.array",
-    "zarr.group",
-]
-disallow_untyped_defs = false
+ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "7"

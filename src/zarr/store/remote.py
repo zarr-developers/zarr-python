@@ -14,7 +14,8 @@ if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
     from upath import UPath
 
-    from zarr.buffer import Buffer, BytesLike
+    from zarr.buffer import Buffer
+    from zarr.common import BytesLike
 
 
 class RemoteStore(Store):
@@ -63,8 +64,7 @@ class RemoteStore(Store):
             self._fs = url._fs
         else:
             raise ValueError("URL not understood, %s", url)
-        # dear mypy: these have the same type annotations
-        self.exceptions = allowed_exceptions  # type: ignore
+        self.exceptions = allowed_exceptions
         # test instantiate file system
         if not self._fs.async_impl:
             raise TypeError("FileSystem needs to support async operations")
@@ -76,18 +76,21 @@ class RemoteStore(Store):
         return f"<FsspecStore({self.path})>"
 
     async def get(
-        self, key: str, byte_range: tuple[int | None, int | None] | None | None = None
+        self, key: str, byte_range: tuple[int | None, int | None] | None = None
     ) -> Buffer | None:
         path = _dereference_path(self.path, key)
 
         try:
-            return await (
-                self._fs._cat_file(path, start=byte_range[0], end=byte_range[1])
-                if byte_range
-                else self._fs._cat_file(path)
+            value: Buffer = Buffer.from_bytes(
+                await (
+                    self._fs._cat_file(path, start=byte_range[0], end=byte_range[1])
+                    if byte_range
+                    else self._fs._cat_file(path)
+                )
             )
-        # dear mypy: this is indeed defined as a tuple of exceptions
-        except self.exceptions:  # type: ignore
+            return value
+
+        except self.exceptions:  # type: ignore[misc]
             return None
 
     async def set(
@@ -96,23 +99,26 @@ class RemoteStore(Store):
         value: Buffer,
         byte_range: tuple[int, int] | None = None,
     ) -> None:
+        self._check_writable()
         path = _dereference_path(self.path, key)
         # write data
         if byte_range:
             raise NotImplementedError
-        await self._fs._pipe_file(path, value)
+        await self._fs._pipe_file(path, value.to_bytes())
 
     async def delete(self, key: str) -> None:
+        self._check_writable()
         path = _dereference_path(self.path, key)
         try:
             await self._fs._rm(path)
         # dear mypy: yes, I can add a tuple to a tuple
-        except (FileNotFoundError,) + self.exceptions:  # type: ignore
+        except (FileNotFoundError,) + self.exceptions:  # type: ignore[operator]
             pass
 
     async def exists(self, key: str) -> bool:
         path = _dereference_path(self.path, key)
-        return await self._fs._exists(path)
+        exists: bool = await self._fs._exists(path)
+        return exists
 
     async def get_partial_values(
         self, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
@@ -127,7 +133,7 @@ class RemoteStore(Store):
             if isinstance(r, Exception) and not isinstance(r, self.exceptions):
                 raise r
 
-        return [None if isinstance(r, Exception) else r for r in res]
+        return [None if isinstance(r, Exception) else Buffer.from_bytes(r) for r in res]
 
     async def set_partial_values(self, key_start_values: list[tuple[str, int, BytesLike]]) -> None:
         raise NotImplementedError
