@@ -346,7 +346,7 @@ class BasicIndexer:
 
         self.dim_indexers = dim_indexers
         self.shape = tuple(s.nitems for s in self.dim_indexers if not isinstance(s, IntDimIndexer))
-        self.drop_axes = None
+        self.drop_axes = ()
 
     def __iter__(self):
         for dim_projections in itertools.product(*self.dim_indexers):
@@ -625,7 +625,7 @@ class OrthogonalIndexer:
                 if isinstance(dim_indexer, IntDimIndexer)
             )
         else:
-            self.drop_axes = None
+            self.drop_axes = ()
 
     def __iter__(self):
         for dim_projections in itertools.product(*self.dim_indexers):
@@ -724,7 +724,7 @@ class BlockIndexer:
 
         self.dim_indexers = dim_indexers
         self.shape = tuple(s.nitems for s in self.dim_indexers)
-        self.drop_axes = None
+        self.drop_axes = ()
 
     def __iter__(self):
         for dim_projections in itertools.product(*self.dim_indexers):
@@ -823,7 +823,7 @@ class CoordinateIndexer:
         self.selection = selection
         self.sel_sort = sel_sort
         self.shape = selection[0].shape if selection[0].shape else (1,)
-        self.drop_axes = None
+        self.drop_axes = ()
         self.array = array
 
         # precompute number of selected items for each chunk
