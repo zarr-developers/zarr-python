@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pickle
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -134,5 +133,3 @@ async def test_codecs_use_of_prototype():
     got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=my_prototype)
     assert isinstance(got, MyNDArrayLike)
     assert np.array_equal(expect, got)
-
-    print(pickle.dumps(my_prototype))

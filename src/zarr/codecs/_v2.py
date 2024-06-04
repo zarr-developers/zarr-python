@@ -22,9 +22,6 @@ class V2Compressor(ArrayBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
-        if chunk_bytes is None:
-            return None
-
         if self.compressor is not None:
             compressor = numcodecs.get_codec(self.compressor)
             chunk_numpy_array = ensure_ndarray(

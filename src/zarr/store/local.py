@@ -136,10 +136,7 @@ class LocalStore(Store):
         for key, start, value in key_start_values:
             assert isinstance(key, str)
             path = self.root / key
-            if start is not None:
-                args.append((_put, path, value, start))
-            else:
-                args.append((_put, path, value))
+            args.append((_put, path, value, start))
         await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def delete(self, key: str) -> None:

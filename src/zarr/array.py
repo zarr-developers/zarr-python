@@ -12,7 +12,7 @@ import json
 from asyncio import gather
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -20,7 +20,7 @@ import numpy.typing as npt
 from zarr.abc.codec import Codec
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
-from zarr.buffer import NDArrayLike, Prototype, default_prototype
+from zarr.buffer import NDArrayLike, NDBuffer, Prototype, default_prototype
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
@@ -33,10 +33,33 @@ from zarr.common import (
     Selection,
     ZarrFormat,
     concurrent_map,
+    product,
 )
-from zarr.config import config
-from zarr.indexing import BasicIndexer
-from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata, parse_indexing_order
+from zarr.config import config, parse_indexing_order
+from zarr.indexing import (
+    BasicIndexer,
+    BasicSelection,
+    BlockIndex,
+    BlockIndexer,
+    BlockSelection,
+    CoordinateIndexer,
+    CoordinateSelection,
+    Fields,
+    Indexer,
+    MaskIndexer,
+    MaskSelection,
+    OIndex,
+    OrthogonalIndexer,
+    OrthogonalSelection,
+    VIndex,
+    check_fields,
+    check_no_multi_fields,
+    is_pure_fancy_indexing,
+    is_pure_orthogonal_indexing,
+    is_scalar,
+    pop_fields,
+)
+from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
@@ -344,6 +367,15 @@ class AsyncArray:
         return self.metadata.shape
 
     @property
+    def chunks(self) -> ChunkCoords:
+        if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
+            return self.metadata.chunk_grid.chunk_shape
+        else:
+            raise ValueError(
+                f"chunk attribute is only available for RegularChunkGrid, this array has a {self.metadata.chunk_grid}"
+            )
+
+    @property
     def size(self) -> int:
         return np.prod(self.metadata.shape).item()
 
@@ -355,6 +387,74 @@ class AsyncArray:
     def attrs(self) -> dict[str, JSON]:
         return self.metadata.attributes
 
+    @property
+    def path(self) -> str:
+        """Storage path."""
+        return self.store_path.path
+
+    @property
+    def name(self) -> str | None:
+        """Array name following h5py convention."""
+        if self.path:
+            # follow h5py convention: add leading slash
+            name = self.path
+            if name[0] != "/":
+                name = "/" + name
+            return name
+        return None
+
+    @property
+    def basename(self) -> str | None:
+        """Final component of name."""
+        if self.name is not None:
+            return self.name.split("/")[-1]
+        return None
+
+    async def _get_selection(
+        self,
+        indexer: Indexer,
+        *,
+        prototype: Prototype,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+    ) -> NDArrayLike:
+        # check fields are sensible
+        out_dtype = check_fields(fields, self.dtype)
+
+        # setup output buffer
+        if out is not None:
+            if isinstance(out, NDBuffer):
+                out_buffer = out
+            else:
+                raise TypeError(f"out argument needs to be an NDBuffer. Got {type(out)!r}")
+            if out_buffer.shape != indexer.shape:
+                raise ValueError(
+                    f"shape of out argument doesn't match. Expected {indexer.shape}, got {out.shape}"
+                )
+        else:
+            out_buffer = prototype.nd_buffer.create(
+                shape=indexer.shape,
+                dtype=out_dtype,
+                order=self.order,
+                fill_value=self.metadata.fill_value,
+            )
+        if product(indexer.shape) > 0:
+            # reading chunks and decoding them
+            await self.metadata.codec_pipeline.read(
+                [
+                    (
+                        self.store_path / self.metadata.encode_chunk_key(chunk_coords),
+                        self.metadata.get_chunk_spec(chunk_coords, self.order, prototype=prototype),
+                        chunk_selection,
+                        out_selection,
+                    )
+                    for chunk_coords, chunk_selection, out_selection in indexer
+                ],
+                out_buffer,
+                drop_axes=indexer.drop_axes,
+            )
+        return out_buffer.as_ndarray_like()
+
     async def getitem(
         self, selection: Selection, *, prototype: Prototype = default_prototype
     ) -> NDArrayLike:
@@ -363,49 +463,24 @@ class AsyncArray:
             shape=self.metadata.shape,
             chunk_grid=self.metadata.chunk_grid,
         )
-
-        # setup output array
-        out = prototype.nd_buffer.create(
-            shape=indexer.shape,
-            dtype=self.metadata.dtype,
-            order=self.order,
-            fill_value=0,  # TODO use fill_value
-        )
-
-        # reading chunks and decoding them
-        await self.metadata.codec_pipeline.read(
-            [
-                (
-                    self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                    self.metadata.get_chunk_spec(chunk_coords, self.order, prototype),
-                    chunk_selection,
-                    out_selection,
-                )
-                for chunk_coords, chunk_selection, out_selection in indexer
-            ],
-            out,
-        )
-        return out.as_ndarray_like()
+        return await self._get_selection(indexer, prototype=prototype)
 
     async def _save_metadata(self, metadata: ArrayMetadata) -> None:
         to_save = metadata.to_buffer_dict()
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await gather(*awaitables)
 
-    async def setitem(
+    async def _set_selection(
         self,
-        selection: Selection,
+        indexer: Indexer,
         value: NDArrayLike,
         *,
-        prototype: Prototype = default_prototype,
+        prototype: Prototype,
+        fields: Fields | None = None,
     ) -> None:
-        indexer = BasicIndexer(
-            selection,
-            shape=self.metadata.shape,
-            chunk_grid=self.metadata.chunk_grid,
-        )
-
-        sel_shape = indexer.shape
+        # check fields are sensible
+        check_fields(fields, self.dtype)
+        fields = check_no_multi_fields(fields)
 
         # check value shape
         if np.isscalar(value):
@@ -413,7 +488,9 @@ class AsyncArray:
         else:
             if not hasattr(value, "shape"):
                 value = np.asarray(value, self.metadata.dtype)
-            assert value.shape == sel_shape
+            # assert (
+            #     value.shape == indexer.shape
+            # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
             if value.dtype.name != self.metadata.dtype.name:
                 value = value.astype(self.metadata.dtype, order="A")
 
@@ -434,7 +511,18 @@ class AsyncArray:
                 for chunk_coords, chunk_selection, out_selection in indexer
             ],
             value_buffer,
+            drop_axes=indexer.drop_axes,
         )
+
+    async def setitem(
+        self, selection: Selection, value: NDArrayLike, prototype: Prototype = default_prototype
+    ) -> None:
+        indexer = BasicIndexer(
+            selection,
+            shape=self.metadata.shape,
+            chunk_grid=self.metadata.chunk_grid,
+        )
+        return await self._set_selection(indexer, value, prototype=prototype)
 
     async def resize(
         self, new_shape: ChunkCoords, delete_outside_chunks: bool = True
@@ -474,8 +562,8 @@ class AsyncArray:
     def __repr__(self) -> str:
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
-    async def info(self):
-        return NotImplemented
+    async def info(self) -> None:
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
@@ -560,6 +648,10 @@ class Array:
         return self._async_array.shape
 
     @property
+    def chunks(self) -> ChunkCoords:
+        return self._async_array.chunks
+
+    @property
     def size(self) -> int:
         return self._async_array.size
 
@@ -570,6 +662,21 @@ class Array:
     @property
     def attrs(self) -> Attributes:
         return Attributes(self)
+
+    @property
+    def path(self) -> str:
+        """Storage path."""
+        return self._async_array.path
+
+    @property
+    def name(self) -> str | None:
+        """Array name following h5py convention."""
+        return self._async_array.name
+
+    @property
+    def basename(self) -> str | None:
+        """Final component of name."""
+        return self._async_array.basename
 
     @property
     def metadata(self) -> ArrayMetadata:
@@ -584,14 +691,189 @@ class Array:
         return self._async_array.order
 
     def __getitem__(self, selection: Selection) -> NDArrayLike:
-        return sync(
-            self._async_array.getitem(selection),
-        )
+        fields, pure_selection = pop_fields(selection)
+        if is_pure_fancy_indexing(pure_selection, self.ndim):
+            return self.vindex[cast(CoordinateSelection | MaskSelection, selection)]
+        elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
+            return self.get_orthogonal_selection(pure_selection, fields=fields)
+        else:
+            return self.get_basic_selection(cast(BasicSelection, pure_selection), fields=fields)
 
     def __setitem__(self, selection: Selection, value: NDArrayLike) -> None:
-        sync(
-            self._async_array.setitem(selection, value),
+        fields, pure_selection = pop_fields(selection)
+        if is_pure_fancy_indexing(pure_selection, self.ndim):
+            self.vindex[cast(CoordinateSelection | MaskSelection, selection)] = value
+        elif is_pure_orthogonal_indexing(pure_selection, self.ndim):
+            self.set_orthogonal_selection(pure_selection, value, fields=fields)
+        else:
+            self.set_basic_selection(cast(BasicSelection, pure_selection), value, fields=fields)
+
+    def get_basic_selection(
+        self,
+        selection: BasicSelection = Ellipsis,
+        *,
+        out: NDBuffer | None = None,
+        prototype: Prototype = default_prototype,
+        fields: Fields | None = None,
+    ) -> NDArrayLike:
+        if self.shape == ():
+            raise NotImplementedError
+        else:
+            return sync(
+                self._async_array._get_selection(
+                    BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
+                    out=out,
+                    fields=fields,
+                    prototype=prototype,
+                )
+            )
+
+    def set_basic_selection(
+        self,
+        selection: BasicSelection,
+        value: NDArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: Prototype = default_prototype,
+    ) -> None:
+        indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
+        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+
+    def get_orthogonal_selection(
+        self,
+        selection: OrthogonalSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: Prototype = default_prototype,
+    ) -> NDArrayLike:
+        indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
+        return sync(
+            self._async_array._get_selection(
+                indexer=indexer, out=out, fields=fields, prototype=prototype
+            )
         )
+
+    def set_orthogonal_selection(
+        self,
+        selection: OrthogonalSelection,
+        value: NDArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: Prototype = default_prototype,
+    ) -> None:
+        indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
+        return sync(
+            self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
+        )
+
+    def get_mask_selection(
+        self,
+        mask: MaskSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: Prototype = default_prototype,
+    ) -> NDArrayLike:
+        indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
+        return sync(
+            self._async_array._get_selection(
+                indexer=indexer, out=out, fields=fields, prototype=prototype
+            )
+        )
+
+    def set_mask_selection(
+        self,
+        mask: MaskSelection,
+        value: NDArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: Prototype = default_prototype,
+    ) -> None:
+        indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
+        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+
+    def get_coordinate_selection(
+        self,
+        selection: CoordinateSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: Prototype = default_prototype,
+    ) -> NDArrayLike:
+        indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
+        out_array = sync(
+            self._async_array._get_selection(
+                indexer=indexer, out=out, fields=fields, prototype=prototype
+            )
+        )
+
+        # restore shape
+        out_array = out_array.reshape(indexer.sel_shape)
+        return out_array
+
+    def set_coordinate_selection(
+        self,
+        selection: CoordinateSelection,
+        value: NDArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: Prototype = default_prototype,
+    ) -> None:
+        # setup indexer
+        indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
+
+        # handle value - need ndarray-like flatten value
+        if not is_scalar(value, self.dtype):
+            try:
+                from numcodecs.compat import ensure_ndarray_like
+
+                value = ensure_ndarray_like(value)  # TODO replace with agnostic
+            except TypeError:
+                # Handle types like `list` or `tuple`
+                value = np.array(value)  # TODO replace with agnostic
+        if hasattr(value, "shape") and len(value.shape) > 1:
+            value = value.reshape(-1)
+
+        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+
+    def get_block_selection(
+        self,
+        selection: BlockSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: Prototype = default_prototype,
+    ) -> NDArrayLike:
+        indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
+        return sync(
+            self._async_array._get_selection(
+                indexer=indexer, out=out, fields=fields, prototype=prototype
+            )
+        )
+
+    def set_block_selection(
+        self,
+        selection: BlockSelection,
+        value: NDArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: Prototype = default_prototype,
+    ) -> None:
+        indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
+        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
+
+    @property
+    def vindex(self) -> VIndex:
+        return VIndex(self)
+
+    @property
+    def oindex(self) -> OIndex:
+        return OIndex(self)
+
+    @property
+    def blocks(self) -> BlockIndex:
+        return BlockIndex(self)
 
     def resize(self, new_shape: ChunkCoords) -> Array:
         return type(self)(
@@ -610,7 +892,7 @@ class Array:
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
-    def info(self):
+    def info(self) -> None:
         return sync(
             self._async_array.info(),
         )

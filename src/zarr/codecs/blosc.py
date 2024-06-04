@@ -76,10 +76,10 @@ def parse_blocksize(data: JSON) -> int:
 class BloscCodec(BytesBytesCodec):
     is_fixed_size = False
 
-    typesize: int
+    typesize: int | None
     cname: BloscCname = BloscCname.zstd
     clevel: int = 5
-    shuffle: BloscShuffle = BloscShuffle.noshuffle
+    shuffle: BloscShuffle | None = BloscShuffle.noshuffle
     blocksize: int = 0
 
     def __init__(

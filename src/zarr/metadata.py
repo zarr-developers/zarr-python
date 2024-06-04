@@ -5,7 +5,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -18,8 +18,6 @@ from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
 
 if TYPE_CHECKING:
-    from typing import Literal
-
     from typing_extensions import Self
 
 import numcodecs.abc
@@ -39,6 +37,9 @@ from zarr.config import parse_indexing_order
 
 # For type checking
 _bool = bool
+
+
+__all__ = ["ArrayMetadata"]
 
 
 class DataType(Enum):
@@ -115,6 +116,7 @@ class DataType(Enum):
 class ArrayMetadata(Metadata, ABC):
     shape: ChunkCoords
     chunk_grid: ChunkGrid
+    fill_value: Any
     attributes: dict[str, JSON]
 
     @property
@@ -264,7 +266,8 @@ class ArrayV3Metadata(ArrayMetadata):
             # this serializes numcodecs compressors
             # todo: implement to_dict for codecs
             elif isinstance(o, numcodecs.abc.Codec):
-                return o.get_config()
+                config: dict[str, Any] = o.get_config()
+                return config
             raise TypeError
 
         return {
@@ -273,14 +276,14 @@ class ArrayV3Metadata(ArrayMetadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
+        # TODO: Remove the type: ignores[] comments below and use a TypedDict to type `data`
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v3(data.pop("zarr_format"))
+        _ = parse_zarr_format_v3(data.pop("zarr_format"))  # type: ignore[arg-type]
         # check that the node_type attribute is correct
-        _ = parse_node_type_array(data.pop("node_type"))
+        _ = parse_node_type_array(data.pop("node_type"))  # type: ignore[arg-type]
 
         data["dimension_names"] = data.pop("dimension_names", None)
 
-        # TODO: Remove the ignores and use a TypedDict to type `data`
         return cls(**data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, Any]:
@@ -312,7 +315,7 @@ class ArrayV2Metadata(ArrayMetadata):
     filters: list[dict[str, JSON]] | None = None
     dimension_separator: Literal[".", "/"] = "."
     compressor: dict[str, JSON] | None = None
-    attributes: dict[str, JSON] = cast(dict[str, JSON], field(default_factory=dict))
+    attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
     def __init__(
@@ -438,10 +441,11 @@ class ArrayV2Metadata(ArrayMetadata):
 def parse_dimension_names(data: None | Iterable[str]) -> tuple[str, ...] | None:
     if data is None:
         return data
-    if isinstance(data, Iterable) and all([isinstance(x, str) for x in data]):
+    elif all([isinstance(x, str) for x in data]):
         return tuple(data)
-    msg = f"Expected either None or a iterable of str, got {type(data)}"
-    raise TypeError(msg)
+    else:
+        msg = f"Expected either None or a iterable of str, got {type(data)}"
+        raise TypeError(msg)
 
 
 # todo: real validation
@@ -455,32 +459,32 @@ def parse_attributes(data: None | dict[str, JSON]) -> dict[str, JSON]:
 # todo: move to its own module and drop _v3 suffix
 # todo: consider folding all the literal parsing into a single function
 # that takes 2 arguments
-def parse_zarr_format_v3(data: Any) -> Literal[3]:
+def parse_zarr_format_v3(data: Literal[3]) -> Literal[3]:
     if data == 3:
         return data
     raise ValueError(f"Invalid value. Expected 3. Got {data}.")
 
 
 # todo: move to its own module and drop _v2 suffix
-def parse_zarr_format_v2(data: Any) -> Literal[2]:
+def parse_zarr_format_v2(data: Literal[2]) -> Literal[2]:
     if data == 2:
         return data
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_node_type_array(data: Any) -> Literal["array"]:
+def parse_node_type_array(data: Literal["array"]) -> Literal["array"]:
     if data == "array":
         return data
     raise ValueError(f"Invalid value. Expected 'array'. Got {data}.")
 
 
 # todo: real validation
-def parse_filters(data: Any) -> list[dict[str, JSON]]:
+def parse_filters(data: list[dict[str, JSON]] | None) -> list[dict[str, JSON]] | None:
     return data
 
 
 # todo: real validation
-def parse_compressor(data: Any) -> dict[str, JSON] | None:
+def parse_compressor(data: dict[str, JSON] | None) -> dict[str, JSON] | None:
     return data
 
 
