@@ -113,6 +113,8 @@ extra-dependencies = [
     "msgpack",
     "lmdb",
     "pytest-asyncio",
+    "moto",
+    "requests",
     "mypy"
 ]
 features = ["extra"]

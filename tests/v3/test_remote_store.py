@@ -1,12 +1,12 @@
 import os
 
 import pytest
-import requests
 
 from zarr.buffer import Buffer
 from zarr.store import RemoteStore
 
 s3fs = pytest.importorskip("s3fs")
+requests = pytest.importorskip("requests")
 moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
 moto = pytest.importorskip("moto")
 
