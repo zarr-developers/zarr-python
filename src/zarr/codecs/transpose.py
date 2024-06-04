@@ -4,6 +4,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 
+import numpy as np
+
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.array_spec import ArraySpec
 from zarr.buffer import NDBuffer
@@ -76,9 +78,7 @@ class TransposeCodec(ArrayArrayCodec):
         chunk_array: NDBuffer,
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
-        inverse_order = [0] * chunk_spec.ndim
-        for x, i in enumerate(self.order):
-            inverse_order[x] = i
+        inverse_order = np.argsort(self.order)
         chunk_array = chunk_array.transpose(inverse_order)
         return chunk_array
 
