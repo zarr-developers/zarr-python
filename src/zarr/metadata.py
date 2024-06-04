@@ -262,7 +262,8 @@ class ArrayV3Metadata(ArrayMetadata):
             # this serializes numcodecs compressors
             # todo: implement to_dict for codecs
             elif isinstance(o, numcodecs.abc.Codec):
-                return o.get_config()
+                config: dict[str, Any] = o.get_config()
+                return config
             raise TypeError
 
         return {
@@ -455,30 +456,30 @@ def parse_attributes(data: None | dict[str, JSON]) -> dict[str, JSON]:
 # that takes 2 arguments
 def parse_zarr_format_v3(data: Any) -> Literal[3]:
     if data == 3:
-        return data
+        return 3
     raise ValueError(f"Invalid value. Expected 3. Got {data}.")
 
 
 # todo: move to its own module and drop _v2 suffix
 def parse_zarr_format_v2(data: Any) -> Literal[2]:
     if data == 2:
-        return data
+        return 2
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
 def parse_node_type_array(data: Any) -> Literal["array"]:
     if data == "array":
-        return data
+        return "array"
     raise ValueError(f"Invalid value. Expected 'array'. Got {data}.")
 
 
 # todo: real validation
-def parse_filters(data: Any) -> list[dict[str, JSON]]:
+def parse_filters(data: list[dict[str, JSON]] | None) -> list[dict[str, JSON]] | None:
     return data
 
 
 # todo: real validation
-def parse_compressor(data: Any) -> dict[str, JSON] | None:
+def parse_compressor(data: dict[str, JSON] | None) -> dict[str, JSON] | None:
     return data
 
 
