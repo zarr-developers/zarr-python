@@ -5,7 +5,10 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from typing import Any
 
 import numpy as np
 import numpy.typing as npt

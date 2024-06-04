@@ -407,7 +407,8 @@ def test_transpose_non_self_inverse(store: Store, order):
         chunk_shape=data.shape,
         dtype=data.dtype,
         fill_value=0,
-        codecs=[TransposeCodec(order=order), BytesCodec()],
+        compressor=BytesCodec(),
+        filters=(TransposeCodec(order=order),),
     )
     a[:, :] = data
     read_data = a[:, :]
