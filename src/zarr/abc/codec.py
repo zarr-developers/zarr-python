@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.array_spec import ArraySpec
 from zarr.buffer import Buffer, NDBuffer
 from zarr.common import concurrent_map
 from zarr.config import config
-from zarr.indexing import SelectorTuple
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
+    from zarr.array_spec import ArraySpec
+    from zarr.indexing import SelectorTuple
     from zarr.metadata import ArrayMetadata
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
