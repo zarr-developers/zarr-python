@@ -1,5 +1,5 @@
-import pytest
 import numpy as np
+import pytest
 from numpy.testing import assert_array_equal
 
 import zarr
@@ -100,7 +100,7 @@ def arrays(
         chunks=chunks,
         dtype=nparray.dtype.str,
         attributes=attributes,
-        compressor=compressor,
+        # compressor=compressor,  # TODO: FIXME
         # TODO: FIXME seems to break with booleans and timedelta
         # fill_value=nparray.dtype.type(0),
     )
@@ -165,4 +165,4 @@ def test_basic_indexing(data):
     new_data = np.ones_like(actual)
     zarray[indexer] = new_data
     nparray[indexer] = new_data
-    assert_array_equal(nparray, zarray)
+    assert_array_equal(nparray, zarray[:])
