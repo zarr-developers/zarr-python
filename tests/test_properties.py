@@ -1,3 +1,5 @@
+from itertools import zip_longest
+
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
@@ -42,7 +44,33 @@ def test_basic_indexing(data):
     assert_array_equal(nparray, zarray[:])
 
 
+@st.composite
+def advanced_indices(draw, *, shape):
+    basic_idxr = draw(
+        basic_indices(
+            shape=shape, min_dims=len(shape), max_dims=len(shape), allow_ellipsis=False
+        ).filter(lambda x: isinstance(x, tuple))
+    )
+
+    int_idxr = draw(
+        npst.integer_array_indices(shape=shape, result_shape=npst.array_shapes(max_dims=1))
+    )
+    args = tuple(
+        st.sampled_from((l, r)) for l, r in zip_longest(basic_idxr, int_idxr, fillvalue=slice(None))
+    )
+    return draw(st.tuples(*args))
+
+
 @settings(max_examples=500)
 @given(data=st.data())
-def test_advanced_indexing(data):
-    pass
+def test_vindex(data):
+    zarray = data.draw(arrays())
+    nparray = zarray[:]
+
+    indexer = data.draw(
+        npst.integer_array_indices(
+            shape=nparray.shape, result_shape=npst.array_shapes(max_dims=None)
+        )
+    )
+    actual = zarray.vindex[indexer]
+    assert_array_equal(nparray[indexer], actual)
