@@ -81,3 +81,5 @@ data/*
 src/fixture/
 
 .DS_Store
+tests/.hypothesis
+.hypothesis/

@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 from numpy.testing import assert_array_equal
 
 import zarr
@@ -132,6 +133,13 @@ def test_roundtrip(data):
     assert_array_equal(nparray, zarray[:])
 
 
+@given(st.data())
+def test_roundtrip_object_array(data):
+    nparray = data.draw(np_arrays)
+    zarray = data.draw(arrays(arrays=st.just(nparray)))
+    assert_array_equal(nparray, zarray[:])
+
+
 # @pytest.mark.slow
 @settings(max_examples=500)
 @given(data=st.data())
@@ -151,4 +159,10 @@ def test_basic_indexing(data):
             )
         )
     )
-    assert_array_equal(nparray[indexer], zarray[indexer])
+    actual = zarray[indexer]
+    assert_array_equal(nparray[indexer], actual)
+
+    new_data = np.ones_like(actual)
+    zarray[indexer] = new_data
+    nparray[indexer] = new_data
+    assert_array_equal(nparray, zarray)
