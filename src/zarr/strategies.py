@@ -1,3 +1,5 @@
+from typing import Any
+
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 import numpy as np
@@ -116,3 +118,22 @@ def arrays(
     store.close()
 
     return a
+
+
+def is_negative_slice(idx: Any) -> bool:
+    return isinstance(idx, slice) and idx.step is not None and idx.step < 0
+
+
+@st.composite  # type: ignore[misc]
+def basic_indices(draw: st.DrawFn, *, shape: tuple[int]):
+    """Basic indices without unsupported negative slices."""
+    return draw(
+        npst.basic_indices(shape=shape).filter(
+            lambda idxr: (
+                not (
+                    is_negative_slice(idxr)
+                    or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
+                )
+            )
+        )
+    )

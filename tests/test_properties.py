@@ -7,7 +7,7 @@ pytest.importorskip("hypothesis")
 import hypothesis.extra.numpy as npst  # noqa
 import hypothesis.strategies as st  # noqa
 from hypothesis import given, settings  # noqa
-from zarr.strategies import arrays, np_arrays  # noqa
+from zarr.strategies import arrays, np_arrays, basic_indices  # noqa
 
 
 # @pytest.mark.slow
@@ -30,21 +30,9 @@ def test_roundtrip_object_array(data):
 @settings(max_examples=500)
 @given(data=st.data())
 def test_basic_indexing(data):
-    def is_negative_slice(idx):
-        return isinstance(idx, slice) and idx.step is not None and idx.step < 0
-
     zarray = data.draw(arrays())
     nparray = zarray[:]
-    indexer = data.draw(
-        npst.basic_indices(shape=nparray.shape).filter(
-            lambda idxr: (
-                not (
-                    is_negative_slice(idxr)
-                    or (isinstance(idxr, tuple) and any(is_negative_slice(idx) for idx in idxr))
-                )
-            )
-        )
-    )
+    indexer = data.draw(basic_indices(shape=nparray.shape))
     actual = zarray[indexer]
     assert_array_equal(nparray[indexer], actual)
 
@@ -52,3 +40,9 @@ def test_basic_indexing(data):
     zarray[indexer] = new_data
     nparray[indexer] = new_data
     assert_array_equal(nparray, zarray[:])
+
+
+@settings(max_examples=500)
+@given(data=st.data())
+def test_advanced_indexing(data):
+    pass
