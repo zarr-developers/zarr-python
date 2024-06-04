@@ -38,6 +38,7 @@ np_arrays = npst.arrays(
 )
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
 compressors = st.sampled_from([None, "default"])
+zarr_versions = st.sampled_from([2])
 
 
 @st.composite
@@ -64,6 +65,7 @@ def arrays(
     arrays=np_arrays,
     paths=paths,
     array_names=array_names,
+    zarr_versions=zarr_versions,
 ):
     store = draw(stores)
     nparray, chunks = draw(np_array_and_chunks(arrays=arrays))
@@ -71,6 +73,7 @@ def arrays(
     name = draw(array_names)
     attributes = draw(attrs)
     compressor = draw(compressors)
+    zarr_version = draw(zarr_versions)
 
     # TODO: clean this up
     if path is None and name is None:
@@ -103,6 +106,7 @@ def arrays(
         compressor=compressor,
         # TODO: FIXME seems to break with booleans and timedelta
         # fill_value=nparray.dtype.type(0),
+        zarr_version=zarr_version,
     )
 
     assert isinstance(a, Array)
