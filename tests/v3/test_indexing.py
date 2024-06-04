@@ -12,7 +12,7 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from zarr.abc.store import Store
-from zarr.buffer import NDBuffer, Prototype
+from zarr.buffer import BufferPrototype, NDBuffer
 from zarr.common import ChunkCoords
 from zarr.indexing import (
     make_slice_selection,
@@ -51,7 +51,7 @@ class CountingDict(MemoryStore):
         super().__init__(mode="w")
         self.counter = Counter()
 
-    async def get(self, key, prototype: Prototype, byte_range=None):
+    async def get(self, key, prototype: BufferPrototype, byte_range=None):
         key_suffix = "/".join(key.split("/")[1:])
         self.counter["__getitem__", key_suffix] += 1
         return await super().get(key, prototype, byte_range)

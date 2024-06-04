@@ -20,7 +20,7 @@ import numpy.typing as npt
 from zarr.abc.codec import Codec
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
-from zarr.buffer import NDArrayLike, NDBuffer, Prototype, default_prototype
+from zarr.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
@@ -414,7 +414,7 @@ class AsyncArray:
         self,
         indexer: Indexer,
         *,
-        prototype: Prototype,
+        prototype: BufferPrototype,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
@@ -456,7 +456,7 @@ class AsyncArray:
         return out_buffer.as_ndarray_like()
 
     async def getitem(
-        self, selection: Selection, *, prototype: Prototype = default_prototype
+        self, selection: Selection, *, prototype: BufferPrototype = default_buffer_prototype
     ) -> NDArrayLike:
         indexer = BasicIndexer(
             selection,
@@ -475,7 +475,7 @@ class AsyncArray:
         indexer: Indexer,
         value: NDArrayLike,
         *,
-        prototype: Prototype,
+        prototype: BufferPrototype,
         fields: Fields | None = None,
     ) -> None:
         # check fields are sensible
@@ -515,7 +515,10 @@ class AsyncArray:
         )
 
     async def setitem(
-        self, selection: Selection, value: NDArrayLike, prototype: Prototype = default_prototype
+        self,
+        selection: Selection,
+        value: NDArrayLike,
+        prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
         indexer = BasicIndexer(
             selection,
@@ -713,7 +716,7 @@ class Array:
         selection: BasicSelection = Ellipsis,
         *,
         out: NDBuffer | None = None,
-        prototype: Prototype = default_prototype,
+        prototype: BufferPrototype = default_buffer_prototype,
         fields: Fields | None = None,
     ) -> NDArrayLike:
         if self.shape == ():
@@ -734,7 +737,7 @@ class Array:
         value: NDArrayLike,
         *,
         fields: Fields | None = None,
-        prototype: Prototype = default_prototype,
+        prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
@@ -745,7 +748,7 @@ class Array:
         *,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
-        prototype: Prototype = default_prototype,
+        prototype: BufferPrototype = default_buffer_prototype,
     ) -> NDArrayLike:
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
@@ -760,7 +763,7 @@ class Array:
         value: NDArrayLike,
         *,
         fields: Fields | None = None,
-        prototype: Prototype = default_prototype,
+        prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
@@ -773,7 +776,7 @@ class Array:
         *,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
-        prototype: Prototype = default_prototype,
+        prototype: BufferPrototype = default_buffer_prototype,
     ) -> NDArrayLike:
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         return sync(
@@ -788,7 +791,7 @@ class Array:
         value: NDArrayLike,
         *,
         fields: Fields | None = None,
-        prototype: Prototype = default_prototype,
+        prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
@@ -799,7 +802,7 @@ class Array:
         *,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
-        prototype: Prototype = default_prototype,
+        prototype: BufferPrototype = default_buffer_prototype,
     ) -> NDArrayLike:
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
         out_array = sync(
@@ -818,7 +821,7 @@ class Array:
         value: NDArrayLike,
         *,
         fields: Fields | None = None,
-        prototype: Prototype = default_prototype,
+        prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
         # setup indexer
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
@@ -843,7 +846,7 @@ class Array:
         *,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
-        prototype: Prototype = default_prototype,
+        prototype: BufferPrototype = default_buffer_prototype,
     ) -> NDArrayLike:
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
@@ -858,7 +861,7 @@ class Array:
         value: NDArrayLike,
         *,
         fields: Fields | None = None,
-        prototype: Prototype = default_prototype,
+        prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))

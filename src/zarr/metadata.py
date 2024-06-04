@@ -12,7 +12,7 @@ import numpy.typing as npt
 
 from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.metadata import Metadata
-from zarr.buffer import Buffer, Prototype, default_prototype
+from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -136,7 +136,7 @@ class ArrayMetadata(Metadata, ABC):
 
     @abstractmethod
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: Prototype
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
     ) -> ArraySpec:
         pass
 
@@ -198,7 +198,7 @@ class ArrayV3Metadata(ArrayMetadata):
             dtype=data_type_parsed,
             fill_value=fill_value_parsed,
             order="C",  # TODO: order is not needed here.
-            prototype=default_prototype,  # TODO: prototype is not needed here.
+            prototype=default_buffer_prototype,  # TODO: prototype is not needed here.
         )
         codecs_parsed = parse_codecs(codecs).evolve_from_array_spec(array_spec)
 
@@ -241,7 +241,7 @@ class ArrayV3Metadata(ArrayMetadata):
         return self.codecs
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: Prototype
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
     ) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
@@ -417,7 +417,7 @@ class ArrayV2Metadata(ArrayMetadata):
         return zarray_dict
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: Prototype
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
     ) -> ArraySpec:
         return ArraySpec(
             shape=self.chunk_grid.chunk_shape,

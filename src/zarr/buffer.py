@@ -409,7 +409,7 @@ class NDBuffer:
 
 
 def as_numpy_array_wrapper(
-    func: Callable[[npt.NDArray[Any]], bytes], buf: Buffer, prototype: Prototype
+    func: Callable[[npt.NDArray[Any]], bytes], buf: Buffer, prototype: BufferPrototype
 ) -> Buffer:
     """Converts the input of `func` to a numpy array and the output back to `Buffer`.
 
@@ -436,7 +436,7 @@ def as_numpy_array_wrapper(
     return prototype.buffer.from_bytes(func(buf.as_numpy_array()))
 
 
-class Prototype(NamedTuple):
+class BufferPrototype(NamedTuple):
     """Prototype of the Buffer and NDBuffer class
 
     The protocol must be pickable.
@@ -453,5 +453,5 @@ class Prototype(NamedTuple):
     nd_buffer: type[NDBuffer]
 
 
-# The default prototype used throughout the Zarr codebase.
-default_prototype = Prototype(buffer=Buffer, nd_buffer=NDBuffer)
+# The default buffer prototype used throughout the Zarr codebase.
+default_buffer_prototype = BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)

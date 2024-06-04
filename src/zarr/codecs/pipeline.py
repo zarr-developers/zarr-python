@@ -16,7 +16,7 @@ from zarr.abc.codec import (
     CodecPipeline,
 )
 from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.buffer import Buffer, NDBuffer, Prototype
+from zarr.buffer import Buffer, BufferPrototype, NDBuffer
 from zarr.codecs.registry import get_codec_class
 from zarr.common import JSON, concurrent_map, parse_named_configuration
 from zarr.config import config
@@ -391,7 +391,7 @@ class BatchedCodecPipeline(CodecPipeline):
         else:
             # Read existing bytes if not total slice
             async def _read_key(
-                byte_setter: ByteSetter | None, prototype: Prototype
+                byte_setter: ByteSetter | None, prototype: BufferPrototype
             ) -> Buffer | None:
                 if byte_setter is None:
                     return None

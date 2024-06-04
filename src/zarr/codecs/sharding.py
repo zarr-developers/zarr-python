@@ -19,7 +19,7 @@ from zarr.abc.codec import (
 )
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer, NDBuffer, Prototype, default_prototype
+from zarr.buffer import Buffer, BufferPrototype, NDBuffer, default_buffer_prototype
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
@@ -63,10 +63,12 @@ class _ShardingByteGetter(ByteGetter):
     chunk_coords: ChunkCoords
 
     async def get(
-        self, prototype: Prototype, byte_range: tuple[int, int | None] | None = None
+        self, prototype: BufferPrototype, byte_range: tuple[int, int | None] | None = None
     ) -> Buffer | None:
         assert byte_range is None, "byte_range is not supported within shards"
-        assert prototype is default_prototype, "prototype is not supported within shards currently"
+        assert (
+            prototype is default_buffer_prototype
+        ), "prototype is not supported within shards currently"
         return self.shard_dict.get(self.chunk_coords)
 
 
@@ -620,7 +622,7 @@ class ShardingCodec(
             dtype=np.dtype("<u8"),
             fill_value=MAX_UINT_64,
             order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
-            prototype=default_prototype,
+            prototype=default_buffer_prototype,
         )
 
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:
@@ -648,11 +650,11 @@ class ShardingCodec(
         shard_index_size = self._shard_index_size(chunks_per_shard)
         if self.index_location == ShardingCodecIndexLocation.start:
             index_bytes = await byte_getter.get(
-                prototype=default_prototype, byte_range=(0, shard_index_size)
+                prototype=default_buffer_prototype, byte_range=(0, shard_index_size)
             )
         else:
             index_bytes = await byte_getter.get(
-                prototype=default_prototype, byte_range=(-shard_index_size, None)
+                prototype=default_buffer_prototype, byte_range=(-shard_index_size, None)
             )
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes, chunks_per_shard)
@@ -666,7 +668,7 @@ class ShardingCodec(
         ) or _ShardIndex.create_empty(chunks_per_shard)
 
     async def _load_full_shard_maybe(
-        self, byte_getter: ByteGetter, prototype: Prototype, chunks_per_shard: ChunkCoords
+        self, byte_getter: ByteGetter, prototype: BufferPrototype, chunks_per_shard: ChunkCoords
     ) -> _ShardReader | None:
         shard_bytes = await byte_getter.get(prototype=prototype)
 

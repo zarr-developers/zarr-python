@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import numpy as np
 
-from zarr.buffer import Prototype
+from zarr.buffer import BufferPrototype
 from zarr.common import ChunkCoords, parse_dtype, parse_fill_value, parse_order, parse_shapelike
 
 
@@ -15,7 +15,7 @@ class ArraySpec:
     dtype: np.dtype[Any]
     fill_value: Any
     order: Literal["C", "F"]
-    prototype: Prototype
+    prototype: BufferPrototype
 
     def __init__(
         self,
@@ -23,7 +23,7 @@ class ArraySpec:
         dtype: np.dtype[Any],
         fill_value: Any,
         order: Literal["C", "F"],
-        prototype: Prototype,
+        prototype: BufferPrototype,
     ) -> None:
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)

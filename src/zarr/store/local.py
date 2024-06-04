@@ -6,12 +6,12 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, Prototype
+from zarr.buffer import Buffer, BufferPrototype
 from zarr.common import OpenMode, concurrent_map, to_thread
 
 
 def _get(
-    path: Path, prototype: Prototype, byte_range: tuple[int | None, int | None] | None
+    path: Path, prototype: BufferPrototype, byte_range: tuple[int | None, int | None] | None
 ) -> Buffer:
     """
     Fetch a contiguous region of bytes from a file.
@@ -91,7 +91,7 @@ class LocalStore(Store):
     async def get(
         self,
         key: str,
-        prototype: Prototype,
+        prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         assert isinstance(key, str)
@@ -103,7 +103,9 @@ class LocalStore(Store):
             return None
 
     async def get_partial_values(
-        self, prototype: Prototype, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
+        self,
+        prototype: BufferPrototype,
+        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
     ) -> list[Buffer | None]:
         """
         Read byte ranges from multiple keys.

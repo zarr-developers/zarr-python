@@ -8,7 +8,7 @@ import numpy.typing as npt
 import pytest
 
 from zarr.array import AsyncArray
-from zarr.buffer import ArrayLike, Buffer, NDArrayLike, NDBuffer, Prototype
+from zarr.buffer import ArrayLike, Buffer, BufferPrototype, NDArrayLike, NDBuffer
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
@@ -63,7 +63,7 @@ class MyStore(MemoryStore):
     async def get(
         self,
         key: str,
-        prototype: Prototype,
+        prototype: BufferPrototype,
         byte_range: tuple[int, int | None] | None = None,
     ) -> Buffer | None:
         if "json" not in key:
@@ -91,7 +91,7 @@ async def test_async_array_prototype():
     )
     expect[1:4, 3:6] = np.ones((3, 3))
 
-    my_prototype = Prototype(buffer=MyBuffer, nd_buffer=MyNDBuffer)
+    my_prototype = BufferPrototype(buffer=MyBuffer, nd_buffer=MyNDBuffer)
 
     await a.setitem(
         selection=(slice(1, 4), slice(3, 6)),
@@ -123,7 +123,7 @@ async def test_codecs_use_of_prototype():
     )
     expect[:] = np.arange(100).reshape(10, 10)
 
-    my_prototype = Prototype(buffer=MyBuffer, nd_buffer=MyNDBuffer)
+    my_prototype = BufferPrototype(buffer=MyBuffer, nd_buffer=MyNDBuffer)
 
     await a.setitem(
         selection=(slice(0, 10), slice(0, 10)),

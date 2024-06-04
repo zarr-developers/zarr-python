@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
 from typing import Protocol, runtime_checkable
 
-from zarr.buffer import Buffer, Prototype
+from zarr.buffer import Buffer, BufferPrototype
 from zarr.common import BytesLike, OpenMode
 
 
@@ -32,7 +32,7 @@ class Store(ABC):
     async def get(
         self,
         key: str,
-        prototype: Prototype,
+        prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
@@ -50,7 +50,9 @@ class Store(ABC):
 
     @abstractmethod
     async def get_partial_values(
-        self, prototype: Prototype, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
+        self,
+        prototype: BufferPrototype,
+        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
@@ -179,14 +181,14 @@ class Store(ABC):
 @runtime_checkable
 class ByteGetter(Protocol):
     async def get(
-        self, prototype: Prototype, byte_range: tuple[int, int | None] | None = None
+        self, prototype: BufferPrototype, byte_range: tuple[int, int | None] | None = None
     ) -> Buffer | None: ...
 
 
 @runtime_checkable
 class ByteSetter(Protocol):
     async def get(
-        self, prototype: Prototype, byte_range: tuple[int, int | None] | None = None
+        self, prototype: BufferPrototype, byte_range: tuple[int, int | None] | None = None
     ) -> Buffer | None: ...
 
     async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None: ...

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, Prototype
+from zarr.buffer import Buffer, BufferPrototype
 from zarr.common import OpenMode
 from zarr.store.core import _dereference_path
 
@@ -57,7 +57,7 @@ class RemoteStore(Store):
     async def get(
         self,
         key: str,
-        prototype: Prototype,
+        prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         assert isinstance(key, str)
