@@ -21,12 +21,6 @@ jobs:
   hypothesis:
     name: Slow Hypothesis Tests
     runs-on: "ubuntu-latest"
-    if: |
-        always()
-        && (
-            (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-            # || contains( github.event.pull_request.labels.*.name, 'run-slow-hypothesis')
-        )
     defaults:
       run:
         shell: bash -l {0}
