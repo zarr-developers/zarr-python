@@ -16,7 +16,7 @@ from zarr.abc.codec import (
     CodecPipeline,
 )
 from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.buffer import Buffer, NDBuffer
+from zarr.buffer import Buffer, BufferPrototype, NDBuffer
 from zarr.codecs.registry import get_codec_class
 from zarr.common import JSON, concurrent_map, parse_named_configuration
 from zarr.config import config
@@ -26,7 +26,7 @@ from zarr.metadata import ArrayMetadata
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.common import ArraySpec
+    from zarr.array_spec import ArraySpec
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -310,8 +310,11 @@ class BatchedCodecPipeline(CodecPipeline):
                     out[out_selection] = chunk_spec.fill_value
         else:
             chunk_bytes_batch = await concurrent_map(
-                [(byte_getter,) for byte_getter, _, _, _ in batch_info],
-                lambda byte_getter: byte_getter.get(),
+                [
+                    (byte_getter, array_spec.prototype)
+                    for byte_getter, array_spec, _, _ in batch_info
+                ],
+                lambda byte_getter, prototype: byte_getter.get(prototype),
                 config.get("async.concurrency"),
             )
             chunk_array_batch = await self.decode_batch(
@@ -345,7 +348,7 @@ class BatchedCodecPipeline(CodecPipeline):
         if is_total_slice(chunk_selection, chunk_spec.shape) and value.shape == chunk_spec.shape:
             return value
         if existing_chunk_array is None:
-            chunk_array = NDBuffer.create(
+            chunk_array = chunk_spec.prototype.nd_buffer.create(
                 shape=chunk_spec.shape,
                 dtype=chunk_spec.dtype,
                 order=chunk_spec.order,
@@ -387,15 +390,20 @@ class BatchedCodecPipeline(CodecPipeline):
 
         else:
             # Read existing bytes if not total slice
-            async def _read_key(byte_setter: ByteSetter | None) -> Buffer | None:
+            async def _read_key(
+                byte_setter: ByteSetter | None, prototype: BufferPrototype
+            ) -> Buffer | None:
                 if byte_setter is None:
                     return None
-                return await byte_setter.get()
+                return await byte_setter.get(prototype=prototype)
 
             chunk_bytes_batch: Iterable[Buffer | None]
             chunk_bytes_batch = await concurrent_map(
                 [
-                    (None if is_total_slice(chunk_selection, chunk_spec.shape) else byte_setter,)
+                    (
+                        None if is_total_slice(chunk_selection, chunk_spec.shape) else byte_setter,
+                        chunk_spec.prototype,
+                    )
                     for byte_setter, chunk_spec, chunk_selection, _ in batch_info
                 ],
                 _read_key,

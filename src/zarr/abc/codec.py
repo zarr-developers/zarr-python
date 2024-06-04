@@ -13,10 +13,9 @@ from zarr.config import config
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.common import ArraySpec
+    from zarr.array_spec import ArraySpec
     from zarr.indexing import SelectorTuple
     from zarr.metadata import ArrayMetadata
-
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
