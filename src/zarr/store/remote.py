@@ -85,7 +85,7 @@ class RemoteStore(Store):
         path = _dereference_path(self.path, key)
 
         try:
-            value: Buffer = Buffer.from_bytes(
+            value: Buffer = prototype.buffer.from_bytes(
                 await (
                     self._fs._cat_file(path, start=byte_range[0], end=byte_range[1])
                     if byte_range
@@ -126,7 +126,9 @@ class RemoteStore(Store):
         return exists
 
     async def get_partial_values(
-        self, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
+        self,
+        prototype: BufferPrototype,
+        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
     ) -> list[Buffer | None]:
         paths, starts, stops = zip(
             *((_dereference_path(self.path, k[0]), k[1][0], k[1][1]) for k in key_ranges),
@@ -138,7 +140,7 @@ class RemoteStore(Store):
             if isinstance(r, Exception) and not isinstance(r, self.exceptions):
                 raise r
 
-        return [None if isinstance(r, Exception) else Buffer.from_bytes(r) for r in res]
+        return [None if isinstance(r, Exception) else prototype.buffer.from_bytes(r) for r in res]
 
     async def set_partial_values(self, key_start_values: list[tuple[str, int, BytesLike]]) -> None:
         raise NotImplementedError
