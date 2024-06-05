@@ -74,7 +74,7 @@ class RemoteStore(Store):
         return f"Remote fsspec store: {self.path}"
 
     def __repr__(self) -> str:
-        return f"<FsspecStore({self.path})>"
+        return f"<RemoteStore({self.path})>"
 
     async def get(
         self, key: str, byte_range: tuple[int | None, int | None] | None = None
