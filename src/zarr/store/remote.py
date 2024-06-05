@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, BufferPrototype
 from zarr.common import OpenMode
 from zarr.store.core import _dereference_path
 
@@ -77,7 +77,10 @@ class RemoteStore(Store):
         return f"<RemoteStore({self.path})>"
 
     async def get(
-        self, key: str, byte_range: tuple[int | None, int | None] | None = None
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         path = _dereference_path(self.path, key)
 
