@@ -25,7 +25,8 @@ class RemoteStore(Store):
     supports_listing: bool = True
 
     _fs: AsyncFileSystem
-    exceptions = tuple[type[Exception], ...]
+    path: str
+    exceptions: tuple[type[Exception], ...]
 
     def __init__(
         self,
@@ -90,7 +91,7 @@ class RemoteStore(Store):
             )
             return value
 
-        except self.exceptions:  # type: ignore[misc]
+        except self.exceptions:
             return None
 
     async def set(
@@ -111,8 +112,9 @@ class RemoteStore(Store):
         path = _dereference_path(self.path, key)
         try:
             await self._fs._rm(path)
-        # dear mypy: yes, I can add a tuple to a tuple
-        except (FileNotFoundError,) + self.exceptions:  # type: ignore[operator]
+        except FileNotFoundError:
+            pass
+        except self.exceptions:
             pass
 
     async def exists(self, key: str) -> bool:
