@@ -3,7 +3,7 @@ from typing import Any, Generic, TypeVar
 import pytest
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store.core import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
 
@@ -91,7 +91,7 @@ class StoreTests(Generic[S]):
         """
         data_buf = Buffer.from_bytes(data)
         self.set(store, key, data_buf)
-        observed = await store.get(key, byte_range=byte_range)
+        observed = await store.get(key, prototype=default_buffer_prototype, byte_range=byte_range)
         start, length = _normalize_interval_index(data_buf, interval=byte_range)
         expected = data_buf[start : start + length]
         assert_bytes_equal(observed, expected)
@@ -125,7 +125,9 @@ class StoreTests(Generic[S]):
             self.set(store, key, Buffer.from_bytes(bytes(key, encoding="utf-8")))
 
         # read back just part of it
-        observed_maybe = await store.get_partial_values(key_ranges=key_ranges)
+        observed_maybe = await store.get_partial_values(
+            prototype=default_buffer_prototype, key_ranges=key_ranges
+        )
 
         observed: list[Buffer] = []
         expected: list[Buffer] = []
@@ -136,7 +138,7 @@ class StoreTests(Generic[S]):
 
         for idx in range(len(observed)):
             key, byte_range = key_ranges[idx]
-            result = await store.get(key, byte_range=byte_range)
+            result = await store.get(key, prototype=default_buffer_prototype, byte_range=byte_range)
             assert result is not None
             expected.append(result)
 

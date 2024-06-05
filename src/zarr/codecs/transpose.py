@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
+from zarr.array_spec import ArraySpec
 from zarr.buffer import NDBuffer
 from zarr.codecs.registry import register_codec
-from zarr.common import JSON, ArraySpec, ChunkCoordsLike, parse_named_configuration
+from zarr.common import JSON, ChunkCoordsLike, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing import TYPE_CHECKING
@@ -64,13 +65,12 @@ class TransposeCodec(ArrayArrayCodec):
         return self
 
     def resolve_metadata(self, chunk_spec: ArraySpec) -> ArraySpec:
-        from zarr.common import ArraySpec
-
         return ArraySpec(
             shape=tuple(chunk_spec.shape[self.order[i]] for i in range(chunk_spec.ndim)),
             dtype=chunk_spec.dtype,
             fill_value=chunk_spec.fill_value,
             order=chunk_spec.order,
+            prototype=chunk_spec.prototype,
         )
 
     async def _decode_single(
@@ -85,7 +85,7 @@ class TransposeCodec(ArrayArrayCodec):
     async def _encode_single(
         self,
         chunk_array: NDBuffer,
-        chunk_spec: ArraySpec,
+        _chunk_spec: ArraySpec,
     ) -> NDBuffer | None:
         chunk_array = chunk_array.transpose(self.order)
         return chunk_array
