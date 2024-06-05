@@ -50,7 +50,7 @@ def test_group_children(store: MemoryStore | LocalStore) -> None:
     # add an extra object under a directory-like prefix in the domain of the group.
     # this creates a directory with a random key in it
     # this should not show up as a member
-    sync(store.set(f"{path}/extra_directory/extra_object-2", b"000000"))
+    sync(store.set(f"{path}/extra_directory/extra_object-2", Buffer.from_bytes(b"000000")))
     members_observed = group.members
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
@@ -80,7 +80,7 @@ def test_group(store: MemoryStore | LocalStore) -> None:
     assert arr.dtype == data.dtype
 
     # TODO: update this once the array api settles down
-    # assert arr.chunk_shape == (2, 2)
+    assert arr.chunks == (2, 2)
 
     bar2 = foo["bar"]
     assert dict(bar2.attrs) == {"baz": "qux"}
@@ -369,7 +369,26 @@ async def test_asyncgroup_update_attributes(
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
-async def test_group_init(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+def test_group_init(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = sync(AsyncGroup.create(store=store, zarr_format=zarr_format))
     group = Group(agroup)
     assert group._async_group == agroup
+
+
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+def test_group_name_properties(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    root = Group.create(store=store, zarr_format=zarr_format)
+    assert root.path == ""
+    assert root.name == "/"
+    assert root.basename == ""
+
+    foo = root.create_group("foo")
+    assert foo.path == "foo"
+    assert foo.name == "/foo"
+    assert foo.basename == "foo"
+
+    bar = root.create_group("foo/bar")
+    assert bar.path == "foo/bar"
+    assert bar.name == "/foo/bar"
+    assert bar.basename == "bar"

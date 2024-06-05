@@ -8,14 +8,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
+from zarr.array_spec import ArraySpec
 from zarr.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.codecs.registry import register_codec
-from zarr.common import parse_enum, parse_named_configuration
+from zarr.common import JSON, parse_enum, parse_named_configuration
 
 if TYPE_CHECKING:
     from typing_extensions import Self
-
-    from zarr.common import JSON, ArraySpec
 
 
 class Endian(Enum):
@@ -81,7 +80,9 @@ class BytesCodec(ArrayBytesCodec):
             as_nd_array_like = as_array_like
         else:
             as_nd_array_like = np.asanyarray(as_array_like)
-        chunk_array = NDBuffer.from_ndarray_like(as_nd_array_like.view(dtype=dtype))
+        chunk_array = chunk_spec.prototype.nd_buffer.from_ndarray_like(
+            as_nd_array_like.view(dtype=dtype)
+        )
 
         # ensure correct chunk shape
         if chunk_array.shape != chunk_spec.shape:
@@ -93,7 +94,7 @@ class BytesCodec(ArrayBytesCodec):
     async def _encode_single(
         self,
         chunk_array: NDBuffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> Buffer | None:
         assert isinstance(chunk_array, NDBuffer)
         if chunk_array.dtype.itemsize > 1:
@@ -103,10 +104,10 @@ class BytesCodec(ArrayBytesCodec):
                 new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)  # type: ignore[arg-type]
                 chunk_array = chunk_array.astype(new_dtype)
 
-        as_nd_array_like = chunk_array.as_ndarray_like()
-        # Flatten the nd-array (only copy if needed)
-        as_nd_array_like = as_nd_array_like.ravel().view(dtype="b")
-        return Buffer.from_array_like(as_nd_array_like)
+        nd_array = chunk_array.as_ndarray_like()
+        # Flatten the nd-array (only copy if needed) and reinterpret as bytes
+        nd_array = nd_array.ravel().view(dtype="b")
+        return chunk_spec.prototype.buffer.from_array_like(nd_array)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length
