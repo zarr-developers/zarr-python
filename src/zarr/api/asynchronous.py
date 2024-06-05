@@ -12,7 +12,7 @@ from zarr.abc.codec import Codec
 from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
 from zarr.chunk_key_encodings import ChunkKeyEncoding
-from zarr.common import JSON, MEMORY_ORDER, ChunkCoords, OpenMode, ZarrFormat
+from zarr.common import JSON, ChunkCoords, MemoryOrder, OpenMode, ZarrFormat
 from zarr.group import AsyncGroup
 from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import (
@@ -20,13 +20,12 @@ from zarr.store import (
     make_store_path,
 )
 
-ShapeLike = tuple[int, ...]  # TODO: support int for shape
 # TODO: this type could use some more thought, noqa to avoid "Variable "asynchronous.ArrayLike" is not valid as a type"
 ArrayLike = Union[AsyncArray | Array | npt.NDArray[Any]]  # noqa
 PathLike = str
 
 
-def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ShapeLike | None, ChunkCoords | None]:
+def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
     """helper function to get the shape and chunks from an array-like object"""
     shape = None
     chunks = None
@@ -44,32 +43,37 @@ def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ShapeLike | None, ChunkCoords
     return shape, chunks
 
 
-def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> None:
+def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
     """set default values for shape and chunks if they are not present in the array-like object"""
+
+    new = kwargs.copy()
+
     shape, chunks = _get_shape_chunks(a)
     if shape is not None:
-        kwargs.setdefault("shape", shape)
+        new["shape"] = shape
     if chunks is not None:
-        kwargs.setdefault("chunks", chunks)
+        new["chunks"] = chunks
 
     if hasattr(a, "dtype"):
-        kwargs.setdefault("dtype", a.dtype)
+        new["dtype"] = a.dtype
 
     if isinstance(a, AsyncArray):
-        kwargs.setdefault("order", a.order)
+        new["order"] = a.order
         if isinstance(a.metadata, ArrayV2Metadata):
-            kwargs.setdefault("compressor", a.metadata.compressor)
-            kwargs.setdefault("filters", a.metadata.filters)
+            new["compressor"] = a.metadata.compressor
+            new["filters"] = a.metadata.filters
 
         if isinstance(a.metadata, ArrayV3Metadata):
-            kwargs.setdefault("codecs", a.metadata.codecs)
+            new["codecs"] = a.metadata.codecs
         else:
             raise ValueError(f"Unsupported zarr format: {a.metadata.zarr_format}")
     else:
         # TODO: set default values compressor/codecs
         # to do this, we may need to evaluate if this is a v2 or v3 array
-        # kwargs.setdefault("compressor", "default")
+        # new["compressor"] = "default"
         pass
+
+    return new
 
 
 def _handle_zarr_version_or_format(
@@ -524,13 +528,13 @@ async def open_group(
 
 
 async def create(
-    shape: ShapeLike,
+    shape: ChunkCoords,
     *,  # Note: this is a change from v2
-    chunks: ShapeLike | None = None,  # TODO: v2 allowed chunks=True
+    chunks: ChunkCoords | None = None,  # TODO: v2 allowed chunks=True
     dtype: npt.DTypeLike | None = None,
     compressor: dict[str, JSON] | None = None,  # TODO: default and type change
     fill_value: Any = 0,  # TODO: need type
-    order: MEMORY_ORDER | None = None,  # TODO: default change
+    order: MemoryOrder | None = None,  # TODO: default change
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
     overwrite: bool = False,
@@ -699,7 +703,7 @@ async def create(
     )
 
 
-async def empty(shape: ShapeLike, **kwargs: Any) -> AsyncArray:
+async def empty(shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
     """Create an empty array.
 
     Parameters
@@ -733,12 +737,12 @@ async def empty_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
     Array
         The new array.
     """
-    _like_args(a, kwargs)
-    return await empty(**kwargs)
+    like_kwargs = _like_args(a, kwargs)
+    return await empty(**like_kwargs)
 
 
 # TODO: add type annotations for fill_value and kwargs
-async def full(shape: ShapeLike, fill_value: Any, **kwargs: Any) -> AsyncArray:
+async def full(shape: ChunkCoords, fill_value: Any, **kwargs: Any) -> AsyncArray:
     """Create an array, with `fill_value` being used as the default value for
     uninitialized portions of the array.
 
@@ -775,13 +779,13 @@ async def full_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
     Array
         The new array.
     """
-    _like_args(a, kwargs)
+    like_kwargs = _like_args(a, kwargs)
     if isinstance(a, AsyncArray):
         kwargs.setdefault("fill_value", a.metadata.fill_value)
-    return await full(**kwargs)
+    return await full(**like_kwargs)
 
 
-async def ones(shape: ShapeLike, **kwargs: Any) -> AsyncArray:
+async def ones(shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
     """Create an array, with one being used as the default value for
     uninitialized portions of the array.
 
@@ -815,8 +819,8 @@ async def ones_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
     Array
         The new array.
     """
-    _like_args(a, kwargs)
-    return await ones(**kwargs)
+    like_kwargs = _like_args(a, kwargs)
+    return await ones(**like_kwargs)
 
 
 async def open_array(
@@ -881,13 +885,13 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AsyncArray:
     AsyncArray
         The opened array.
     """
-    _like_args(a, kwargs)
+    like_kwargs = _like_args(a, kwargs)
     if isinstance(a, (AsyncArray | Array)):
         kwargs.setdefault("fill_value", a.metadata.fill_value)
-    return await open_array(path=path, **kwargs)
+    return await open_array(path=path, **like_kwargs)
 
 
-async def zeros(shape: ShapeLike, **kwargs: Any) -> AsyncArray:
+async def zeros(shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
     """Create an array, with zero being used as the default value for
     uninitialized portions of the array.
 
@@ -921,5 +925,5 @@ async def zeros_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
     Array
         The new array.
     """
-    _like_args(a, kwargs)
-    return await zeros(**kwargs)
+    like_kwargs = _like_args(a, kwargs)
+    return await zeros(**like_kwargs)

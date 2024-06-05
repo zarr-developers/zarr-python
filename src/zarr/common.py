@@ -34,7 +34,7 @@ SliceSelection = tuple[slice, ...]
 Selection = slice | SliceSelection
 ZarrFormat = Literal[2, 3]
 JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
-MEMORY_ORDER = Literal["C", "F"]
+MemoryOrder = Literal["C", "F"]
 OpenMode = Literal["r", "r+", "a", "w", "w-"]
 
 

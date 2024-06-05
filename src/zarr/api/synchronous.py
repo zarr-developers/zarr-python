@@ -5,7 +5,7 @@ from typing import Any
 import zarr.api.asynchronous as async_api
 from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
-from zarr.common import JSON, OpenMode, ZarrFormat
+from zarr.common import JSON, ChunkCoords, OpenMode, ZarrFormat
 from zarr.group import Group
 from zarr.store import StoreLike
 from zarr.sync import sync
@@ -194,9 +194,8 @@ def create(*args: Any, **kwargs: Any) -> Array:
     return Array(sync(async_api.create(*args, **kwargs)))
 
 
-# TODO: move shapelike to common module
 # TODO: add type annotations for kwargs
-def empty(shape: async_api.ShapeLike, **kwargs: Any) -> Array:
+def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
     return Array(sync(async_api.empty(shape, **kwargs)))
 
 
@@ -207,7 +206,7 @@ def empty_like(a: async_api.ArrayLike, **kwargs: Any) -> Array:
 
 
 # TODO: add type annotations for kwargs and fill_value
-def full(shape: async_api.ShapeLike, fill_value: Any, **kwargs: Any) -> Array:
+def full(shape: ChunkCoords, fill_value: Any, **kwargs: Any) -> Array:
     return Array(sync(async_api.full(shape=shape, fill_value=fill_value, **kwargs)))
 
 
@@ -218,8 +217,7 @@ def full_like(a: async_api.ArrayLike, **kwargs: Any) -> Array:
 
 
 # TODO: add type annotations for kwargs
-# TODO: move ShapeLike to common module
-def ones(shape: async_api.ShapeLike, **kwargs: Any) -> Array:
+def ones(shape: ChunkCoords, **kwargs: Any) -> Array:
     return Array(sync(async_api.ones(shape, **kwargs)))
 
 
