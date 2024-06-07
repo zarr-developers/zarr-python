@@ -61,12 +61,6 @@ autoapi_dirs = ['../src/zarr']
 autoapi_add_toctree_entry = False
 autoapi_generate_api_docs = False
 autoapi_root = "api"
-autoapi_ignore = ["*v2*"]
-
-def skip_private_modules(app: sphinx.application.Sphinx, what: str, name: str, obj: Any, skip: bool, options: dict) -> bool:
-    if "._" in name:
-       return True
-    return False
 
 
 # Add any paths that contain templates here, relative to this directory.
@@ -179,9 +173,8 @@ html_theme_options = {
 html_logo = "_static/logo1.png"
 
 
-def setup(app):
+def setup(app: sphinx.application.Sphinx) -> None:
     app.add_css_file("custom.css")
-    app.connect("autoapi-skip-member", skip_private_modules)
 
 
 # The name of an image file (relative to this directory) to use as a favicon of
