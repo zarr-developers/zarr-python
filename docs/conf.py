@@ -53,8 +53,6 @@ extensions = [
     "sphinx_design",
 ]
 
-numpydoc_show_class_members = False
-numpydoc_class_members_toctree = False
 issues_github_path = "zarr-developers/zarr-python"
 
 autoapi_dirs = ['../src/zarr']
