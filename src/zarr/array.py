@@ -388,6 +388,10 @@ class AsyncArray:
         return self.metadata.attributes
 
     @property
+    def read_only(self) -> bool:
+        return bool(~self.store_path.store.writeable)
+
+    @property
     def path(self) -> str:
         """Storage path."""
         return self.store_path.path
@@ -692,6 +696,10 @@ class Array:
     @property
     def order(self) -> Literal["C", "F"]:
         return self._async_array.order
+
+    @property
+    def read_only(self) -> bool:
+        return self._async_array.read_only
 
     def __getitem__(self, selection: Selection) -> NDArrayLike:
         fields, pure_selection = pop_fields(selection)

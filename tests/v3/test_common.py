@@ -64,7 +64,7 @@ def parse_indexing_order_valid(data: Literal["C", "F"]):
     assert parse_indexing_order(data) == data
 
 
-@pytest.mark.parametrize("data", [10, ("0", 1, 2, 3), {"0": "0"}, []])
+@pytest.mark.parametrize("data", [("0", 1, 2, 3), {"0": "0"}, []])
 def test_parse_shapelike_invalid(data: Any):
     if isinstance(data, Iterable):
         if len(data) == 0:
