@@ -58,6 +58,7 @@ issues_github_path = "zarr-developers/zarr-python"
 autoapi_dirs = ['../src/zarr']
 autoapi_add_toctree_entry = False
 autoapi_generate_api_docs = False
+autoapi_member_order = "groupwise"
 autoapi_root = "api"
 
 
