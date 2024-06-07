@@ -15,6 +15,9 @@
 
 import os
 import sys
+from typing import Any
+
+import sphinx.application
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -22,6 +25,7 @@ import sys
 #
 # The short X.Y version.
 import zarr
+import sphinx
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -55,10 +59,11 @@ issues_github_path = "zarr-developers/zarr-python"
 
 autoapi_dirs = ['../src/zarr']
 autoapi_add_toctree_entry = False
+autoapi_generate_api_docs = False
 autoapi_root = "api"
 autoapi_ignore = ["*v2*"]
 
-def skip_private_modules(app, what: str, name: str, obj, skip: bool, options) -> bool:
+def skip_private_modules(app: sphinx.application.Sphinx, what: str, name: str, obj: Any, skip: bool, options: dict) -> bool:
     if "._" in name:
        return True
     return False

@@ -10,7 +10,7 @@ Zarr-Python
 
     getting_started
     tutorial
-    api/zarr/index
+    api/index
     spec
     release
     license
@@ -80,7 +80,7 @@ Zarr is a file storage format for chunked, compressed, N-dimensional arrays base
 
         +++
 
-        .. button-ref:: api/zarr/index
+        .. button-ref:: api/index
             :expand:
             :color: dark
             :click-parent:
