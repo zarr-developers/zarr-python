@@ -92,6 +92,7 @@ extra = [
 ]
 optional = [
     'lmdb',
+    'universal-pathlib',
 ]
 
 [project.urls]
