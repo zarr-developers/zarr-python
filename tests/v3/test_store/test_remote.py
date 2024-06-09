@@ -2,8 +2,9 @@ import os
 
 import pytest
 
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store import RemoteStore
+from zarr.testing.store import StoreTests
 
 s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
@@ -70,5 +71,28 @@ async def test_basic(s3):
     await store.set("foo", Buffer.from_bytes(data))
     assert await store.exists("foo")
     assert (await store.get("foo")).to_bytes() == data
-    out = await store.get_partial_values([("foo", (1, None))])
+    out = await store.get_partial_values(
+        prototype=default_buffer_prototype, key_ranges=[("foo", (1, None))]
+    )
     assert out[0].to_bytes() == data[1:]
+
+
+class TestRemoteStore(StoreTests[RemoteStore]):
+    store_cls = RemoteStore
+
+    @pytest.fixture(scope="function")
+    def store_kwargs(self) -> dict[str, str | bool]:
+        return {"mode": "w", "endpoint_url": endpoint_uri, "anon": False}
+
+    @pytest.fixture(scope="function")
+    def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
+        return self.store_cls(url=test_bucket_name, **store_kwargs)
+
+    def get(self, store: RemoteStore, key: str) -> Buffer:
+        return Buffer.from_bytes((store.root / key).read_bytes())
+
+    def set(self, store: RemoteStore, key: str, value: Buffer) -> None:
+        parent = (store.root / key).parent
+        if not parent.exists():
+            parent.mkdir(parents=True)
+        (store.root / key).write_bytes(value.to_bytes())
