@@ -4,9 +4,7 @@ import pytest
 
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store import RemoteStore
-from zarr.store.core import _normalize_interval_index
 from zarr.testing.store import StoreTests
-from zarr.testing.utils import assert_bytes_equal
 
 s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
@@ -44,7 +42,7 @@ def get_boto3_client():
     return session.create_client("s3", endpoint_url=endpoint_uri)
 
 
-@pytest.fixture()
+@pytest.fixture(autouse=True)
 def s3(s3_base):
     client = get_boto3_client()
     client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
@@ -112,27 +110,3 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
 
     def test_store_supports_listing(self, store: RemoteStore) -> None:
         assert True
-
-    @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
-    @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
-    @pytest.mark.parametrize("byte_range", (None, (0, None), (1, None), (1, 2), (None, 1)))
-    async def test_get(
-        self,
-        store: RemoteStore,
-        key: str,
-        data: bytes,
-        byte_range: None | tuple[int | None, int | None],
-        store_kwargs,
-    ) -> None:
-        """
-        Ensure that data can be read from the store using the store.get method.
-        """
-
-        s3fs.S3FileSystem.clear_instance_cache()
-        data_buf = Buffer.from_bytes(data)
-        self.set(store, key, data_buf)
-        store = self.store_cls(**store_kwargs)
-        observed = await store.get(key, prototype=default_buffer_prototype, byte_range=byte_range)
-        start, length = _normalize_interval_index(data_buf, interval=byte_range)
-        expected = data_buf[start : start + length]
-        assert_bytes_equal(observed, expected)
