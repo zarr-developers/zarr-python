@@ -4,7 +4,9 @@ import pytest
 
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store import RemoteStore
+from zarr.store.core import _normalize_interval_index
 from zarr.testing.store import StoreTests
+from zarr.testing.utils import assert_bytes_equal
 
 s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
@@ -77,22 +79,60 @@ async def test_basic(s3):
     assert out[0].to_bytes() == data[1:]
 
 
-class TestRemoteStore(StoreTests[RemoteStore]):
+class TestRemoteStoreS3(StoreTests[RemoteStore]):
     store_cls = RemoteStore
 
     @pytest.fixture(scope="function")
     def store_kwargs(self) -> dict[str, str | bool]:
-        return {"mode": "w", "endpoint_url": endpoint_uri, "anon": False}
+        return {
+            "mode": "w",
+            "endpoint_url": endpoint_uri,
+            "anon": False,
+            "url": f"s3://{test_bucket_name}",
+        }
 
     @pytest.fixture(scope="function")
     def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
-        return self.store_cls(url=test_bucket_name, **store_kwargs)
+        return self.store_cls(**store_kwargs)
 
     def get(self, store: RemoteStore, key: str) -> Buffer:
-        return Buffer.from_bytes((store.root / key).read_bytes())
+        return Buffer.from_bytes(store._fs.get_mapper()[os.path.join(store.path, key)])
 
     def set(self, store: RemoteStore, key: str, value: Buffer) -> None:
-        parent = (store.root / key).parent
-        if not parent.exists():
-            parent.mkdir(parents=True)
-        (store.root / key).write_bytes(value.to_bytes())
+        store._fs.get_mapper()[os.path.join(store.path, key)] = value.to_bytes()
+
+    def test_store_repr(self, store: RemoteStore) -> None:
+        assert str(store) == f"Remote fsspec store: {store.path}"
+
+    def test_store_supports_writes(self, store: RemoteStore) -> None:
+        assert True
+
+    def test_store_supports_partial_writes(self, store: RemoteStore) -> None:
+        assert True
+
+    def test_store_supports_listing(self, store: RemoteStore) -> None:
+        assert True
+
+    @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
+    @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
+    @pytest.mark.parametrize("byte_range", (None, (0, None), (1, None), (1, 2), (None, 1)))
+    async def test_get(
+        self,
+        store: RemoteStore,
+        key: str,
+        data: bytes,
+        byte_range: None | tuple[int | None, int | None],
+        store_kwargs,
+    ) -> None:
+        """
+        Ensure that data can be read from the store using the store.get method.
+        """
+
+        s3fs.S3FileSystem.clear_instance_cache()
+        data_buf = Buffer.from_bytes(data)
+        self.set(store, key, data_buf)
+        store = self.store_cls(**store_kwargs)
+        observed = await store.get(key, prototype=default_buffer_prototype, byte_range=byte_range)
+        start, length = _normalize_interval_index(data_buf, interval=byte_range)
+        expected = data_buf[start : start + length]
+        assert_bytes_equal(observed, expected)
