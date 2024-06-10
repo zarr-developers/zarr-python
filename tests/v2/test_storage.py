@@ -1300,7 +1300,7 @@ def s3(request):
     s3fs = pytest.importorskip("s3fs")
     pytest.importorskip("moto")
 
-    port = 5555
+    port = 5556
     endpoint_uri = "http://127.0.0.1:%d/" % port
     proc = subprocess.Popen(
         shlex.split("moto_server s3 -p %d" % port),
@@ -1319,6 +1319,7 @@ def s3(request):
         timeout -= 0.1  # pragma: no cover
         time.sleep(0.1)  # pragma: no cover
     s3so = dict(client_kwargs={"endpoint_url": endpoint_uri}, use_listings_cache=False)
+    s3fs.S3FileSystem.clear_instance_cache()
     s3 = s3fs.S3FileSystem(anon=False, **s3so)
     s3.mkdir("test")
     request.cls.s3so = s3so
