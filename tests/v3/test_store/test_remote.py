@@ -106,7 +106,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
         assert True
 
     def test_store_supports_partial_writes(self, store: RemoteStore) -> None:
-        assert True
+        assert False
 
     def test_store_supports_listing(self, store: RemoteStore) -> None:
         assert True
