@@ -4,6 +4,7 @@ import pytest
 
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store import RemoteStore
+from zarr.sync import sync
 from zarr.testing.store import StoreTests
 
 s3fs = pytest.importorskip("s3fs")
@@ -63,7 +64,7 @@ async def alist(it):
     return out
 
 
-async def test_basic(s3):
+async def test_basic():
     store = RemoteStore(f"s3://{test_bucket_name}", mode="w", endpoint_url=endpoint_uri, anon=False)
     assert not await alist(store.list())
     assert not await store.exists("foo")
@@ -94,10 +95,10 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
         return self.store_cls(**store_kwargs)
 
     def get(self, store: RemoteStore, key: str) -> Buffer:
-        return Buffer.from_bytes(store._fs.get_mapper()[os.path.join(store.path, key)])
+        return Buffer.from_bytes(sync(store._fs.cat(f"{store.path}/{key}")))
 
     def set(self, store: RemoteStore, key: str, value: Buffer) -> None:
-        store._fs.get_mapper()[os.path.join(store.path, key)] = value.to_bytes()
+        store._fs.write_bytes(f"{store.path}/{key}", value.to_bytes())
 
     def test_store_repr(self, store: RemoteStore) -> None:
         assert str(store) == f"Remote fsspec store: {store.path}"
