@@ -44,7 +44,7 @@ class RemoteStore(Store):
         ----------
         url: root of the datastore. In fsspec notation, this is usually like "protocol://path/to".
             Can also be a upath.UPath instance/
-        allowed_exceptions: when fetching data, these cases will be deemed to correspond to missinf
+        allowed_exceptions: when fetching data, these cases will be deemed to correspond to missing
             keys, rather than some other IO failure
         storage_options: passed on to fsspec to make the filesystem instance. If url is a UPath,
             this must not be used.
