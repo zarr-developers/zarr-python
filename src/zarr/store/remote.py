@@ -96,6 +96,10 @@ class RemoteStore(Store):
 
         except self.exceptions:
             return None
+        except OSError as e:
+            if "not satisfiable" in str(e):
+                return prototype.buffer.from_bytes(b"")
+            raise
 
     async def set(
         self,
@@ -139,6 +143,7 @@ class RemoteStore(Store):
             return []
         # TODO: expectations for exceptions or missing keys?
         res = await self._fs._cat_ranges(list(paths), starts, stops, on_error="return")
+        res = [b"" if (isinstance(r, OSError) and "not satisfiable" in str(r)) else r for r in res]
         for r in res:
             if isinstance(r, Exception) and not isinstance(r, self.exceptions):
                 raise r
