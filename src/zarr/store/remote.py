@@ -71,10 +71,10 @@ class RemoteStore(Store):
             raise TypeError("FileSystem needs to support async operations")
 
     def __str__(self) -> str:
-        return f"Remote fsspec store: {self.path}"
+        return f"Remote fsspec store: {type(self._fs).__name__} , {self.path}"
 
     def __repr__(self) -> str:
-        return f"<RemoteStore({self.path})>"
+        return f"<RemoteStore({type(self._fs).__name__} , {self.path})>"
 
     async def get(
         self,
@@ -130,10 +130,13 @@ class RemoteStore(Store):
         prototype: BufferPrototype,
         key_ranges: list[tuple[str, tuple[int | None, int | None]]],
     ) -> list[Buffer | None]:
-        paths, starts, stops = zip(
-            *((_dereference_path(self.path, k[0]), k[1][0], k[1][1]) for k in key_ranges),
-            strict=False,
-        )
+        if key_ranges:
+            paths, starts, stops = zip(
+                *((_dereference_path(self.path, k[0]), k[1][0], k[1][1]) for k in key_ranges),
+                strict=False,
+            )
+        else:
+            return []
         # TODO: expectations for exceptions or missing keys?
         res = await self._fs._cat_ranges(list(paths), starts, stops, on_error="return")
         for r in res:
@@ -151,8 +154,11 @@ class RemoteStore(Store):
             yield onefile
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
-        prefix = prefix.rstrip("/")
-        allfiles = await self._fs._ls(prefix, detail=False)
+        prefix = f"{self.path}/{prefix.rstrip('/')}"
+        try:
+            allfiles = await self._fs._ls(prefix, detail=False)
+        except FileNotFoundError:
+            return
         for onefile in (a.replace(prefix + "/", "") for a in allfiles):
             yield onefile
 

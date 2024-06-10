@@ -1,10 +1,10 @@
 import os
 
+import fsspec
 import pytest
 
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store import RemoteStore
-from zarr.sync import sync
 from zarr.testing.store import StoreTests
 
 s3fs = pytest.importorskip("s3fs")
@@ -43,7 +43,7 @@ def get_boto3_client():
     return session.create_client("s3", endpoint_url=endpoint_uri)
 
 
-@pytest.fixture(autouse=True, scope="session")
+@pytest.fixture(autouse=True, scope="function")
 def s3(s3_base):
     client = get_boto3_client()
     client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
@@ -92,16 +92,20 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
 
     @pytest.fixture(scope="function")
     def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
-        return self.store_cls(**store_kwargs)
+        self._fs, _ = fsspec.url_to_fs(asynchronous=False, **store_kwargs)
+        out = self.store_cls(asynchronous=True, **store_kwargs)
+        return out
 
     def get(self, store: RemoteStore, key: str) -> Buffer:
-        return Buffer.from_bytes(sync(store._fs.cat(f"{store.path}/{key}")))
+        return Buffer.from_bytes(self._fs.cat(f"{store.path}/{key}"))
 
     def set(self, store: RemoteStore, key: str, value: Buffer) -> None:
-        store._fs.write_bytes(f"{store.path}/{key}", value.to_bytes())
+        self._fs.write_bytes(f"{store.path}/{key}", value.to_bytes())
 
     def test_store_repr(self, store: RemoteStore) -> None:
-        assert str(store) == f"Remote fsspec store: {store.path}"
+        rep = str(store)
+        assert "fsspec" in rep
+        assert store.path in rep
 
     def test_store_supports_writes(self, store: RemoteStore) -> None:
         assert True

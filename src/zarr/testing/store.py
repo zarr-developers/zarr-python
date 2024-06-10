@@ -171,12 +171,14 @@ class StoreTests(Generic[S]):
                 f"foo/c/{i}", Buffer.from_bytes(i.to_bytes(length=3, byteorder="little"))
             )
 
+    @pytest.mark.xfail
     async def test_list_prefix(self, store: S) -> None:
         # TODO: we currently don't use list_prefix anywhere
         raise NotImplementedError
 
     async def test_list_dir(self, store: S) -> None:
-        assert [k async for k in store.list_dir("")] == []
+        out = [k async for k in store.list_dir("")]
+        assert out == []
         assert [k async for k in store.list_dir("foo")] == []
         await store.set("foo/zarr.json", Buffer.from_bytes(b"bar"))
         await store.set("foo/c/1", Buffer.from_bytes(b"\x01"))

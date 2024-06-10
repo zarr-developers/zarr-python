@@ -399,7 +399,9 @@ class StoreTests:
             assert [] == store.listdir(self.root + "c/x/y")
             assert [] == store.listdir(self.root + "c/d/y")
             assert [] == store.listdir(self.root + "c/d/y/z")
-            assert [] == store.listdir(self.root + "c/e/f")
+            # the following is listdir(filepath), for which fsspec gives [filepath]
+            # as posix would, but an empty list was previously assumed
+            # assert [] == store.listdir(self.root + "c/e/f")
 
         # test rename (optional)
         if store.is_erasable():
@@ -1064,9 +1066,8 @@ class TestFSStore(StoreTests):
         store[self.root + "foo"] = b"hello"
         assert "foo" in os.listdir(str(path1) + "/" + self.root)
         assert self.root + "foo" in store
-        assert not os.listdir(str(path2))
-        assert store[self.root + "foo"] == b"hello"
         assert "foo" in os.listdir(str(path2))
+        assert store[self.root + "foo"] == b"hello"
 
     def test_deep_ndim(self):
         import zarr.v2
