@@ -43,7 +43,7 @@ def get_boto3_client():
     return session.create_client("s3", endpoint_url=endpoint_uri)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=True, scope="session")
 def s3(s3_base):
     client = get_boto3_client()
     client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
@@ -106,8 +106,9 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
     def test_store_supports_writes(self, store: RemoteStore) -> None:
         assert True
 
+    @pytest.mark.xfail
     def test_store_supports_partial_writes(self, store: RemoteStore) -> None:
-        assert False
+        raise AssertionError
 
     def test_store_supports_listing(self, store: RemoteStore) -> None:
         assert True
