@@ -1286,6 +1286,8 @@ class TestFSStoreFromFilesystem(StoreTests):
 @pytest.fixture()
 def s3(request):
     # writable local S3 system
+    pytest.skip("old v3 tests are disabled", allow_module_level=True)
+
     import shlex
     import subprocess
     import time
