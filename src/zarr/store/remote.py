@@ -85,9 +85,18 @@ class RemoteStore(Store):
         path = _dereference_path(self.path, key)
 
         try:
+            if byte_range:
+                # fsspec uses start/end, not start/length
+                start, length = byte_range
+                if start is not None and length is not None:
+                    end = start + length
+                elif length is not None:
+                    end = length
+                else:
+                    end = None
             value: Buffer = prototype.buffer.from_bytes(
                 await (
-                    self._fs._cat_file(path, start=byte_range[0], end=byte_range[1])
+                    self._fs._cat_file(path, start=byte_range[0], end=end)
                     if byte_range
                     else self._fs._cat_file(path)
                 )
@@ -98,6 +107,7 @@ class RemoteStore(Store):
             return None
         except OSError as e:
             if "not satisfiable" in str(e):
+                # this is an s3-specific condition we probably don't want to leak
                 return prototype.buffer.from_bytes(b"")
             raise
 
@@ -136,13 +146,21 @@ class RemoteStore(Store):
     ) -> list[Buffer | None]:
         if key_ranges:
             paths, starts, stops = zip(
-                *((_dereference_path(self.path, k[0]), k[1][0], k[1][1]) for k in key_ranges),
+                *(
+                    (
+                        _dereference_path(self.path, k[0]),
+                        k[1][0],
+                        ((k[1][0] or 0) + k[1][1]) if k[1][1] is not None else None,
+                    )
+                    for k in key_ranges
+                ),
                 strict=False,
             )
         else:
             return []
         # TODO: expectations for exceptions or missing keys?
         res = await self._fs._cat_ranges(list(paths), starts, stops, on_error="return")
+        # the following is an s3-specific condition we probably don't want to leak
         res = [b"" if (isinstance(r, OSError) and "not satisfiable" in str(r)) else r for r in res]
         for r in res:
             if isinstance(r, Exception) and not isinstance(r, self.exceptions):
