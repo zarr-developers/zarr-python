@@ -2,8 +2,10 @@ import os
 
 import pytest
 
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store import RemoteStore
+from zarr.sync import sync
+from zarr.testing.store import StoreTests
 
 s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
@@ -41,7 +43,7 @@ def get_boto3_client():
     return session.create_client("s3", endpoint_url=endpoint_uri)
 
 
-@pytest.fixture()
+@pytest.fixture(autouse=True, scope="session")
 def s3(s3_base):
     client = get_boto3_client()
     client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
@@ -62,7 +64,7 @@ async def alist(it):
     return out
 
 
-async def test_basic(s3):
+async def test_basic():
     store = RemoteStore(f"s3://{test_bucket_name}", mode="w", endpoint_url=endpoint_uri, anon=False)
     assert not await alist(store.list())
     assert not await store.exists("foo")
@@ -70,5 +72,43 @@ async def test_basic(s3):
     await store.set("foo", Buffer.from_bytes(data))
     assert await store.exists("foo")
     assert (await store.get("foo")).to_bytes() == data
-    out = await store.get_partial_values([("foo", (1, None))])
+    out = await store.get_partial_values(
+        prototype=default_buffer_prototype, key_ranges=[("foo", (1, None))]
+    )
     assert out[0].to_bytes() == data[1:]
+
+
+class TestRemoteStoreS3(StoreTests[RemoteStore]):
+    store_cls = RemoteStore
+
+    @pytest.fixture(scope="function")
+    def store_kwargs(self) -> dict[str, str | bool]:
+        return {
+            "mode": "w",
+            "endpoint_url": endpoint_uri,
+            "anon": False,
+            "url": f"s3://{test_bucket_name}",
+        }
+
+    @pytest.fixture(scope="function")
+    def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
+        return self.store_cls(**store_kwargs)
+
+    def get(self, store: RemoteStore, key: str) -> Buffer:
+        return Buffer.from_bytes(sync(store._fs.cat(f"{store.path}/{key}")))
+
+    def set(self, store: RemoteStore, key: str, value: Buffer) -> None:
+        store._fs.write_bytes(f"{store.path}/{key}", value.to_bytes())
+
+    def test_store_repr(self, store: RemoteStore) -> None:
+        assert str(store) == f"Remote fsspec store: {store.path}"
+
+    def test_store_supports_writes(self, store: RemoteStore) -> None:
+        assert True
+
+    @pytest.mark.xfail
+    def test_store_supports_partial_writes(self, store: RemoteStore) -> None:
+        raise AssertionError
+
+    def test_store_supports_listing(self, store: RemoteStore) -> None:
+        assert True

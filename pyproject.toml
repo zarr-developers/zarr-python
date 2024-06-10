@@ -31,7 +31,8 @@ dependencies = [
     'crc32c',
     'zstandard',
     'typing_extensions',
-    'donfig'
+    'donfig',
+    'pytest'
 ]
 dynamic = [
   "version",
@@ -112,8 +113,11 @@ extra-dependencies = [
     "pytest-cov",
     "msgpack",
     "lmdb",
+    "s3fs",
     "pytest-asyncio",
-    "moto",
+    "moto[s3]",
+    "flask-cors",
+    "flask",
     "requests",
     "mypy"
 ]
