@@ -26,7 +26,7 @@ class RemoteStore(Store):
 
     _fs: AsyncFileSystem
     path: str
-    exceptions: tuple[type[Exception], ...]
+    allowed_exceptions: tuple[type[Exception], ...]
 
     def __init__(
         self,
@@ -65,7 +65,7 @@ class RemoteStore(Store):
             self._fs = url._fs
         else:
             raise ValueError("URL not understood, %s", url)
-        self.exceptions = allowed_exceptions
+        self.allowed_exceptions = allowed_exceptions
         # test instantiate file system
         if not self._fs.async_impl:
             raise TypeError("FileSystem needs to support async operations")
@@ -103,7 +103,7 @@ class RemoteStore(Store):
             )
             return value
 
-        except self.exceptions:
+        except self.allowed_exceptions:
             return None
         except OSError as e:
             if "not satisfiable" in str(e):
@@ -131,7 +131,7 @@ class RemoteStore(Store):
             await self._fs._rm(path)
         except FileNotFoundError:
             pass
-        except self.exceptions:
+        except self.allowed_exceptions:
             pass
 
     async def exists(self, key: str) -> bool:
@@ -163,7 +163,7 @@ class RemoteStore(Store):
         # the following is an s3-specific condition we probably don't want to leak
         res = [b"" if (isinstance(r, OSError) and "not satisfiable" in str(r)) else r for r in res]
         for r in res:
-            if isinstance(r, Exception) and not isinstance(r, self.exceptions):
+            if isinstance(r, Exception) and not isinstance(r, self.allowed_exceptions):
                 raise r
 
         return [None if isinstance(r, Exception) else prototype.buffer.from_bytes(r) for r in res]
