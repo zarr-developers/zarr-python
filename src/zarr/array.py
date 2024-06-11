@@ -856,6 +856,86 @@ class Array:
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
     ) -> NDArrayLike:
+        """Retrieve a selection of individual items, by providing the indices
+        (coordinates) for each selected item.
+
+        Parameters
+        ----------
+        selection : int or slice or tuple of int or slice
+            An integer (coordinate) or slice for each dimension of the array.
+        out : NDBuffer, optional
+            If given, load the selected data directly into this buffer.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
+        prototype : BufferPrototype, optional
+        The prototype of the buffer to use for the output data. If not provided, the default buffer prototype is used.
+
+        Returns
+        -------
+        NDArrayLike
+            A NumPy-like array containing the data for the requested block selection.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.arange(0, 100, dtype="uint16").reshape((10, 10))
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=(3, 3),
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+        Retrieve items by specifying their block coordinates::
+
+            >>> z.get_block_selection((1, slice(None)))
+            array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+        Which is equivalent to::
+
+            >>> z[3:6, :]
+            array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+        For convenience, the block selection functionality is also available via the
+        `blocks` property, e.g.::
+
+            >>> z.blocks[1]
+            array([[30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59]])
+
+        Notes
+        -----
+        Block indexing is a convenience indexing method to work on individual chunks
+        with chunk index slicing. It has the same concept as Dask's `Array.blocks`
+        indexing.
+
+        Slices are supported. However, only with a step size of one.
+
+        Block index arrays may be multidimensional to index multidimensional arrays.
+        For example::
+
+            >>> z.blocks[0, 1:3]
+            array([[ 3,  4,  5,  6,  7,  8],
+                   [13, 14, 15, 16, 17, 18],
+                   [23, 24, 25, 26, 27, 28]])
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
+        set_coordinate_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+
+        """
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._get_selection(

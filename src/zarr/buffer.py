@@ -232,7 +232,7 @@ class Buffer:
 
 
 class NDBuffer:
-    """A n-dimensional memory block
+    """An n-dimensional memory block
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
