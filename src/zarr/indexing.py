@@ -30,32 +30,22 @@ if TYPE_CHECKING:
     from zarr.buffer import NDArrayLike
     from zarr.chunk_grids import ChunkGrid
 
-BasicSelector = int | slice | EllipsisType
-BasicSelectorTuple = tuple[BasicSelector, ...]
-BasicSelection = BasicSelector | BasicSelectorTuple
-BasicSelectionNormalized = tuple[int | slice, ...]
-CoordinateSelector = list[int] | npt.NDArray[np.intp]
-CoordinateSelection = CoordinateSelector | tuple[CoordinateSelector, ...]
-CoordinateSelectionNormalized = tuple[npt.NDArray[np.intp], ...]
-BlockSelector = int | slice
-BlockSelection = BlockSelector | tuple[BlockSelector, ...]
-BlockSelectionNormalized = tuple[BlockSelector, ...]
-MaskSelection = npt.NDArray[np.bool_]
-OrthogonalSelector = int | slice | npt.NDArray[np.intp] | npt.NDArray[np.bool_]
-OrthogonalSelection = OrthogonalSelector | tuple[OrthogonalSelector, ...]
-OrthogonalSelectionNormalized = tuple[OrthogonalSelector, ...]
+IntOrSlice = int | slice
+IntOrSliceOrEllipsis = IntOrSlice | EllipsisType
+IntSequence = list[int] | npt.NDArray[np.intp]
+IntOrSliceOrArray = IntOrSlice | npt.NDArray[np.intp] | npt.NDArray[np.bool_]
 
+BasicSelection = IntOrSliceOrEllipsis | tuple[IntOrSliceOrEllipsis, ...]
+CoordinateSelection = IntSequence | tuple[IntSequence, ...]
+BlockSelection = IntOrSlice | tuple[IntOrSlice, ...]
+MaskSelection = npt.NDArray[np.bool_]
+OrthogonalSelection = IntOrSliceOrArray | tuple[IntOrSliceOrArray, ...]
 Selection = (
     BasicSelection | CoordinateSelection | BlockSelection | MaskSelection | OrthogonalSelection
 )
-SelectionNormalized = (
-    BasicSelectionNormalized
-    | CoordinateSelectionNormalized
-    | BlockSelectionNormalized
-    | MaskSelection
-    | OrthogonalSelectionNormalized
-)
-Selector = int | slice | npt.NDArray[np.intp] | npt.NDArray[np.bool_]
+CoordinateSelectionNormalized = tuple[npt.NDArray[np.intp], ...]
+SelectionNormalized = tuple[IntOrSliceOrArray, ...] | CoordinateSelectionNormalized | MaskSelection
+Selector = IntOrSlice | npt.NDArray[np.intp] | npt.NDArray[np.bool_]
 SelectionWithFields = Selection | str | Sequence[str]
 SelectorTuple = tuple[Selector, ...] | npt.NDArray[np.intp] | slice
 Fields = str | list[str] | tuple[str, ...]
@@ -1206,8 +1196,8 @@ def pop_fields(selection: SelectionWithFields) -> tuple[Fields | None, Selection
         return fields, selection
 
 
-def make_slice_selection(selection: Any) -> list[int | slice]:
-    ls: list[int | slice] = []
+def make_slice_selection(selection: Any) -> list[IntOrSlice]:
+    ls: list[IntOrSlice] = []
     for dim_selection in selection:
         if is_integer(dim_selection):
             ls.append(slice(int(dim_selection), int(dim_selection) + 1, 1))
