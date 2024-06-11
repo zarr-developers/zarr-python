@@ -34,6 +34,7 @@ SliceSelection = tuple[slice, ...]
 Selection = slice | SliceSelection
 ZarrFormat = Literal[2, 3]
 JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
+MemoryOrder = Literal["C", "F"]
 OpenMode = Literal["r", "r+", "a", "w", "w-"]
 
 
@@ -134,7 +135,9 @@ def parse_named_configuration(
     return name_parsed, configuration_parsed
 
 
-def parse_shapelike(data: Iterable[int]) -> tuple[int, ...]:
+def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
+    if isinstance(data, int):
+        return (data,)
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected an iterable. Got {data} instead.")
     data_tuple = tuple(data)

@@ -200,7 +200,7 @@ class AsyncGroup:
         key: str,
     ) -> AsyncArray | AsyncGroup:
         store_path = self.store_path / key
-        logger.warning("key=%s, store_path=%s", key, store_path)
+        logger.debug("key=%s, store_path=%s", key, store_path)
 
         # Note:
         # in zarr-python v2, we first check if `key` references an Array, else if `key` references
@@ -316,7 +316,7 @@ class AsyncGroup:
         self,
         path: str,
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
         # v3 only

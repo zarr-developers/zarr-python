@@ -29,6 +29,7 @@ from zarr.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
     ChunkCoords,
+    ZarrFormat,
     parse_dtype,
     parse_fill_value,
     parse_shapelike,
@@ -115,9 +116,10 @@ class DataType(Enum):
 @dataclass(frozen=True, kw_only=True)
 class ArrayMetadata(Metadata, ABC):
     shape: ChunkCoords
-    chunk_grid: ChunkGrid
     fill_value: Any
+    chunk_grid: ChunkGrid
     attributes: dict[str, JSON]
+    zarr_format: ZarrFormat
 
     @property
     @abstractmethod

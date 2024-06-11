@@ -4,7 +4,7 @@ import pytest
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer, default_buffer_prototype
-from zarr.store.core import _normalize_interval_index
+from zarr.store.utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
 
 S = TypeVar("S", bound=Store)
