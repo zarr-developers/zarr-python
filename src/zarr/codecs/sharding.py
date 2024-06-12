@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from functools import cached_property, lru_cache
+from functools import lru_cache
 from operator import itemgetter
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -329,7 +329,7 @@ class ShardingCodec(
         _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    @cached_property
+    @property
     def codec_pipeline(self) -> BatchedCodecPipeline:
         return BatchedCodecPipeline.from_list(self.codecs)
 
