@@ -1123,6 +1123,85 @@ class Array:
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
+        """Modify a selection of individual blocks, by providing the chunk indices
+        (coordinates) for each block to be modified.
+
+        Parameters
+        ----------
+        selection : int or slice or tuple of int or slice
+            An integer (coordinate) or slice for each dimension of the array.
+        value : NDArrayLike
+            A NumPy-like array containing the data to be stored in the block selection.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer used for setting the data. If not provided, the
+            default buffer prototype is used.
+
+        Examples
+        --------
+        Set up a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.zeros(0, 36, dtype="uint16").reshape((6, 6))
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=(2, 2),
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Set data for a selection of items::
+
+            >>> z.set_block_selection((1, 0), 1)
+            >>> z[...]
+            array([[0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0],
+                   [1, 1, 0, 0, 0, 0],
+                   [1, 1, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0]])
+
+        For convenience, this functionality is also available via the `blocks` property.
+        E.g.::
+
+            >>> z.blocks[2, 1] = 4
+            >>> z[...]
+            array([[0, 0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0, 0],
+                   [1, 1, 0, 0, 0, 0],
+                   [1, 1, 0, 0, 0, 0],
+                   [0, 0, 4, 4, 0, 0],
+                   [0, 0, 4, 4, 0, 0]])
+
+            >>> z.blocks[:, 2] = 7
+            >>> z[...]
+            array([[0, 0, 0, 0, 7, 7],
+                   [0, 0, 0, 0, 7, 7],
+                   [1, 1, 0, 0, 7, 7],
+                   [1, 1, 0, 0, 7, 7],
+                   [0, 0, 4, 4, 7, 7],
+                   [0, 0, 4, 4, 7, 7]])
+
+        Notes
+        -----
+        Block indexing is a convenience indexing method to work on individual chunks
+        with chunk index slicing. It has the same concept as Dask's `Array.blocks`
+        indexing.
+
+        Slices are supported. However, only with a step size of one.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
+        get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+
+        """
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
@@ -1136,6 +1215,8 @@ class Array:
 
     @property
     def blocks(self) -> BlockIndex:
+        """Shortcut for blocked chunked indexing, see :func:`get_block_selection` and
+        :func:`set_block_selection` for documentation and examples."""
         return BlockIndex(self)
 
     def resize(self, new_shape: ChunkCoords) -> Array:
