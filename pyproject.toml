@@ -119,7 +119,8 @@ extra-dependencies = [
     "flask-cors",
     "flask",
     "requests",
-    "mypy"
+    "mypy",
+    "universal_pathlib"
 ]
 features = ["extra"]
 

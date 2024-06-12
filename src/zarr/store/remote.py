@@ -52,8 +52,8 @@ class RemoteStore(Store):
         """
 
         super().__init__(mode=mode)
-        self._url = url
         if isinstance(url, str):
+            self._url = url
             self._fs, self.path = fsspec.url_to_fs(url, **storage_options)
         elif hasattr(url, "protocol") and hasattr(url, "fs"):
             # is UPath-like - but without importing
@@ -62,8 +62,10 @@ class RemoteStore(Store):
                     "If constructed with a UPath object, no additional "
                     "storage_options are allowed"
                 )
+
+            self._url = str(url)
             self.path = url.path
-            self._fs = url._fs
+            self._fs = url.fs
         else:
             raise ValueError("URL not understood, %s", url)
         self.allowed_exceptions = allowed_exceptions
