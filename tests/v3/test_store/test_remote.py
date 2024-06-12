@@ -103,9 +103,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
         self._fs.write_bytes(f"{store.path}/{key}", value.to_bytes())
 
     def test_store_repr(self, store: RemoteStore) -> None:
-        rep = str(store)
-        assert "fsspec" in rep
-        assert store.path in rep
+        assert str(store) == f"{store._url}"
 
     def test_store_supports_writes(self, store: RemoteStore) -> None:
         assert True

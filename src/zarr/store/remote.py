@@ -25,6 +25,7 @@ class RemoteStore(Store):
     supports_listing: bool = True
 
     _fs: AsyncFileSystem
+    _url: str
     path: str
     allowed_exceptions: tuple[type[Exception], ...]
 
@@ -51,7 +52,7 @@ class RemoteStore(Store):
         """
 
         super().__init__(mode=mode)
-
+        self._url = url
         if isinstance(url, str):
             self._fs, self.path = fsspec.url_to_fs(url, **storage_options)
         elif hasattr(url, "protocol") and hasattr(url, "fs"):
@@ -71,10 +72,10 @@ class RemoteStore(Store):
             raise TypeError("FileSystem needs to support async operations")
 
     def __str__(self) -> str:
-        return f"Remote fsspec store: {type(self._fs).__name__} , {self.path}"
+        return f"{self._url}"
 
     def __repr__(self) -> str:
-        return f"<RemoteStore({type(self._fs).__name__} , {self.path})>"
+        return f"<RemoteStore({type(self._fs).__name__}, {self.path})>"
 
     async def get(
         self,
