@@ -727,6 +727,119 @@ class Array:
         prototype: BufferPrototype = default_buffer_prototype,
         fields: Fields | None = None,
     ) -> NDArrayLike:
+        """Retrieve data for an item or region of the array.
+
+        Parameters
+        ----------
+        selection : tuple
+            A tuple specifying the requested item or region for each dimension of the
+            array. May be any combination of int and/or slice or ellipsis for multidimensional arrays.
+        out : NDBuffer, optional
+            If given, load the selected data directly into this buffer.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer to use for the output data. If not provided, the default buffer prototype is used.
+
+        Returns
+        -------
+        out : NDArrayLike
+            A NumPy-like array containing the data for the requested region.
+
+        Examples
+        --------
+        Setup a 1-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.arange(0, 100, dtype="uint16")
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=(3,),
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Retrieve a single item::
+
+            >>> z.get_basic_selection(5)
+            5
+
+        Retrieve a region via slicing::
+
+            >>> z.get_basic_selection(slice(5))
+            array([0, 1, 2, 3, 4])
+            >>> z.get_basic_selection(slice(-5, None))
+            array([95, 96, 97, 98, 99])
+            >>> z.get_basic_selection(slice(5, 10))
+            array([5, 6, 7, 8, 9])
+            >>> z.get_basic_selection(slice(5, 10, 2))
+            array([5, 7, 9])
+            >>> z.get_basic_selection(slice(None, None, 2))
+            array([  0,  2,  4, ..., 94, 96, 98])
+
+        Setup a 3-dimensional array::
+
+            >>> data = np.arange(1000).reshape(10, 10, 10)
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=(5, 5, 5),
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Retrieve an item::
+
+            >>> z.get_basic_selection((1, 2, 3))
+            123
+
+        Retrieve a region via slicing and Ellipsis::
+
+            >>> z.get_basic_selection((slice(1, 3), slice(1, 3), 0))
+            array([[110, 120],
+                   [210, 220]])
+            >>> z.get_basic_selection(0, (slice(1, 3), slice(None)))
+            array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                   [20, 21, 22, 23, 24, 25, 26, 27, 28, 29]])
+            >>> z.get_basic_selection((..., 5))
+            array([[  2  12  22  32  42  52  62  72  82  92]
+                   [102 112 122 132 142 152 162 172 182 192]
+                   ...
+                   [802 812 822 832 842 852 862 872 882 892]
+                   [902 912 922 932 942 952 962 972 982 992]]
+
+        TODO: check this example
+        For arrays with a structured dtype, specific fields can be retrieved, e.g.::
+
+            >>> a = np.array([(b'aaa', 1, 4.2),
+            ...               (b'bbb', 2, 8.4),
+            ...               (b'ccc', 3, 12.6)],
+            ...              dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
+            >>> z = zarr.v2.array(a)
+            >>> z.get_basic_selection(slice(2), fields='foo')
+            array([b'aaa', b'bbb'],
+                  dtype='|S3')
+
+        Notes
+        -----
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        This method provides the implementation for accessing data via the
+        square bracket notation (__getitem__). See :func:`__getitem__` for examples
+        using the alternative notation.
+
+        See Also
+        --------
+        set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        set_orthogonal_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+
+        """
+
         if self.shape == ():
             raise NotImplementedError
         else:
@@ -812,6 +925,73 @@ class Array:
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
     ) -> NDArrayLike:
+        """Retrieve a selection of individual items, by providing the indices
+        (coordinates) for each selected item.
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer (coordinate) array for each dimension of the array.
+        out : NDBuffer, optional
+            If given, load the selected data directly into this buffer.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer to use for the output data. If not provided, the default buffer prototype is used.
+
+        Returns
+        -------
+        out : NDArrayLike
+            A NumPy-like array containing the data for the requested coordinate selection.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.arange(0, 100, dtype="uint16").reshape((10, 10))
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=(3, 3),
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Retrieve items by specifying their coordinates::
+
+            >>> z.get_coordinate_selection(([1, 4], [1, 4]))
+            array([11, 44])
+
+        For convenience, the coordinate selection functionality is also available via the
+        `vindex` property, e.g.::
+
+            >>> z.vindex[[1, 4], [1, 4]]
+            array([11, 44])
+
+        Notes
+        -----
+        Coordinate indexing is also known as point selection, and is a form of vectorized
+        or inner indexing.
+
+        Slices are not supported. Coordinate arrays must be provided for all dimensions
+        of the array.
+
+        Coordinate arrays may be multidimensional, in which case the output array will
+        also be multidimensional. Coordinate arrays are broadcast against each other
+        before being applied. The shape of the output will be the same as the shape of
+        each coordinate array after broadcasting.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, set_coordinate_selection,
+        get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+
+        """
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
         out_array = sync(
             self._async_array._get_selection(
@@ -890,6 +1070,7 @@ class Array:
             >>>        dtype=data.dtype,
             >>>        )
             >>> z[:] = data
+
         Retrieve items by specifying their block coordinates::
 
             >>> z.get_block_selection((1, slice(None)))
