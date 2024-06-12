@@ -18,18 +18,18 @@ Release notes
    See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
    3.0 release.
 
-.. release_3.0.0.alpha:
+.. release_3.0.0-alpha:
 
-3.0.0.alpha
+3.0.0-alpha
 -----------
 
 .. warning::
-   Zarr-Python 3.0.0.alpha is a pre-release of the upcoming 3.0 release. This release is not feature complete or
+   Zarr-Python 3.0.0-alpha is a pre-release of the upcoming 3.0 release. This release is not feature complete or
    expected to be ready for production applications.
 
 .. note::
    The complete release notes for 3.0 have not been added to this document yet. See the
-   `3.0.0.alpha <https://github.com/zarr-developers/zarr-python/releases/tag/v3.0.0.alpha>`_ release on GitHub
+   `3.0.0-alpha <https://github.com/zarr-developers/zarr-python/releases/tag/v3.0.0-alpha>`_ release on GitHub
    for a record of changes included in this release.
 
 Enhancements
