@@ -702,6 +702,148 @@ class Array:
         return self._async_array.read_only
 
     def __getitem__(self, selection: Selection) -> NDArrayLike:
+        """Retrieve data for an item or region of the array.
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer index or slice or tuple of int/slice objects specifying the
+            requested item or region for each dimension of the array.
+
+        Returns
+        -------
+        out : NDArrayLike
+             A NumPy-like array containing the data for the requested region.
+
+        Examples
+        --------
+        Setup a 1-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.arange(100, dtype="uint16")
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=(10,),
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Retrieve a single item::
+
+            >>> z[5]
+            5
+
+        Retrieve a region via slicing::
+
+            >>> z[:5]
+            array([0, 1, 2, 3, 4])
+            >>> z[-5:]
+            array([95, 96, 97, 98, 99])
+            >>> z[5:10]
+            array([5, 6, 7, 8, 9])
+            >>> z[5:10:2]
+            array([5, 7, 9])
+            >>> z[::2]
+            array([ 0,  2,  4, ..., 94, 96, 98])
+
+        Load the entire array into memory::
+
+            >>> z[...]
+            array([ 0,  1,  2, ..., 97, 98, 99])
+
+        Setup a 2-dimensional array::
+
+            >>> data = np.arange(100, dtype="uint16").reshape(10, 10)
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=(10, 10),
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Retrieve an item::
+
+            >>> z[2, 2]
+            22
+
+        Retrieve a region via slicing::
+
+            >>> z[1:3, 1:3]
+            array([[11, 12],
+                   [21, 22]])
+            >>> z[1:3, :]
+            array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                   [20, 21, 22, 23, 24, 25, 26, 27, 28, 29]])
+            >>> z[:, 1:3]
+            array([[ 1,  2],
+                   [11, 12],
+                   [21, 22],
+                   [31, 32],
+                   [41, 42],
+                   [51, 52],
+                   [61, 62],
+                   [71, 72],
+                   [81, 82],
+                   [91, 92]])
+            >>> z[0:5:2, 0:5:2]
+            array([[ 0,  2,  4],
+                   [20, 22, 24],
+                   [40, 42, 44]])
+            >>> z[::2, ::2]
+            array([[ 0,  2,  4,  6,  8],
+                   [20, 22, 24, 26, 28],
+                   [40, 42, 44, 46, 48],
+                   [60, 62, 64, 66, 68],
+                   [80, 82, 84, 86, 88]])
+
+        Load the entire array into memory::
+
+            >>> z[...]
+            array([[ 0,  1,  2,  3,  4,  5,  6,  7,  8,  9],
+                   [10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                   [20, 21, 22, 23, 24, 25, 26, 27, 28, 29],
+                   [30, 31, 32, 33, 34, 35, 36, 37, 38, 39],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49],
+                   [50, 51, 52, 53, 54, 55, 56, 57, 58, 59],
+                   [60, 61, 62, 63, 64, 65, 66, 67, 68, 69],
+                   [70, 71, 72, 73, 74, 75, 76, 77, 78, 79],
+                   [80, 81, 82, 83, 84, 85, 86, 87, 88, 89],
+                   [90, 91, 92, 93, 94, 95, 96, 97, 98, 99]])
+
+        Notes
+        -----
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        For arrays with a structured dtype, see zarr v2 for examples of how to use
+        fields
+
+        Currently the implementation for __getitem__ is provided by
+        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        broadcast-compatible tuple of integer array indices), or by
+        :func:`set_basic_selection` otherwise.
+
+        Effectively, this means that the following indexing modes are supported:
+
+           - integer indexing
+           - slice indexing
+           - mixed slice and integer indexing
+           - boolean indexing
+           - fancy indexing (vectorized list of integers)
+
+        For specific indexing options including outer indexing, see the
+        methods listed under See Also.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        set_orthogonal_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __setitem__
+
+        """
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
             return self.vindex[cast(CoordinateSelection | MaskSelection, selection)]
@@ -710,7 +852,103 @@ class Array:
         else:
             return self.get_basic_selection(cast(BasicSelection, pure_selection), fields=fields)
 
+    # TODO is int or python lists as value supported? if so, adjust typing
     def __setitem__(self, selection: Selection, value: NDArrayLike) -> None:
+        """Modify data for an item or region of the array.
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer index or slice or tuple of int/slice specifying the requested
+            region for each dimension of the array.
+        value : NDArrayLike
+            A NumPy-like array containing the data to be stored in the selection.
+
+        Examples
+        --------
+        Setup a 1-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.zeros(100, dtype="uint16")
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=(2, 2),
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Set all array elements to the same scalar value::
+
+            >>> z[...] = 42
+            >>> z[...]
+            array([42, 42, 42, ..., 42, 42, 42])
+
+        Set a portion of the array::
+
+            >>> z[:10] = np.arange(10)
+            >>> z[-10:] = np.arange(10)[::-1]
+            >>> z[...]
+            array([ 0, 1, 2, ..., 2, 1, 0])
+
+        Setup a 2-dimensional array::
+
+            >>> data = np.zeros(0, 25, dtype="uint16").reshape(5, 5)
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=data.shape,
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Set all array elements to the same scalar value::
+
+            >>> z[...] = 42
+
+        Set a portion of the array::
+
+            >>> z[0, :] = np.arange(z.shape[1])
+            >>> z[:, 0] = np.arange(z.shape[0])
+            >>> z[...]
+            array([[ 0,  1,  2,  3,  4],
+                   [ 1, 42, 42, 42, 42],
+                   [ 2, 42, 42, 42, 42],
+                   [ 3, 42, 42, 42, 42],
+                   [ 4, 42, 42, 42, 42]])
+
+        Notes
+        -----
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        For arrays with a structured dtype, see zarr v2 for examples of how to use
+        fields
+
+        Currently the implementation for __setitem__ is provided by
+        :func:`vindex` if the indexing is pure fancy indexing (ie a
+        broadcast-compatible tuple of integer array indices), or by
+        :func:`set_basic_selection` otherwise.
+
+        Effectively, this means that the following indexing modes are supported:
+
+           - integer indexing
+           - slice indexing
+           - mixed slice and integer indexing
+           - boolean indexing
+           - fancy indexing (vectorized list of integers)
+
+        For specific indexing options including outer indexing, see the
+        methods listed under See Also.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        set_orthogonal_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__
+
+        """
         fields, pure_selection = pop_fields(selection)
         if is_pure_fancy_indexing(pure_selection, self.ndim):
             self.vindex[cast(CoordinateSelection | MaskSelection, selection)] = value
