@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping, MutableMapping
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from functools import lru_cache
+from functools import cached_property, lru_cache
 from operator import itemgetter
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -329,6 +329,10 @@ class ShardingCodec(
         _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
+    @cached_property
+    def codec_pipeline(self) -> BatchedCodecPipeline:
+        return BatchedCodecPipeline.from_list(self.codecs)
+
     def to_dict(self) -> dict[str, JSON]:
         return {
             "name": "sharding_indexed",
@@ -393,7 +397,7 @@ class ShardingCodec(
             return out
 
         # decoding chunks and writing them into the output buffer
-        await BatchedCodecPipeline.from_list(self.codecs).read(
+        await self.codec_pipeline.read(
             [
                 (
                     _ShardingByteGetter(shard_dict, chunk_coords),
@@ -461,7 +465,7 @@ class ShardingCodec(
                         shard_dict[chunk_coords] = chunk_bytes
 
         # decoding chunks and writing them into the output buffer
-        await BatchedCodecPipeline.from_list(self.codecs).read(
+        await self.codec_pipeline.read(
             [
                 (
                     _ShardingByteGetter(shard_dict, chunk_coords),
@@ -495,7 +499,7 @@ class ShardingCodec(
 
         shard_builder = _ShardBuilder.create_empty(chunks_per_shard)
 
-        await BatchedCodecPipeline.from_list(self.codecs).write(
+        await self.codec_pipeline.write(
             [
                 (
                     _ShardingByteSetter(shard_builder, chunk_coords),
@@ -538,7 +542,7 @@ class ShardingCodec(
             )
         )
 
-        await BatchedCodecPipeline.from_list(self.codecs).write(
+        await self.codec_pipeline.write(
             [
                 (
                     _ShardingByteSetter(shard_dict, chunk_coords),
