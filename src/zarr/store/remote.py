@@ -54,7 +54,8 @@ class RemoteStore(Store):
         super().__init__(mode=mode)
         if isinstance(url, str):
             self._url = url.rstrip("/")
-            self._fs, self.path = fsspec.url_to_fs(url, **storage_options)
+            self._fs, _path = fsspec.url_to_fs(url, **storage_options)
+            self.path = _path.rstrip("/")
         elif hasattr(url, "protocol") and hasattr(url, "fs"):
             # is UPath-like - but without importing
             if storage_options:
@@ -62,9 +63,10 @@ class RemoteStore(Store):
                     "If constructed with a UPath object, no additional "
                     "storage_options are allowed"
                 )
-
+            # n.b. UPath returns the url and path attributes with a trailing /, at least for s3
+            # that trailing / must be removed to compose with the store interface
             self._url = str(url).rstrip("/")
-            self.path = url.path
+            self.path = url.path.rstrip("/")
             self._fs = url.fs
         else:
             raise ValueError("URL not understood, %s", url)

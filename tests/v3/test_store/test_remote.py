@@ -95,14 +95,17 @@ async def test_basic():
 class TestRemoteStoreS3(StoreTests[RemoteStore]):
     store_cls = RemoteStore
 
-    @pytest.fixture(scope="function", params=(False, True))
+    @pytest.fixture(scope="function", params=("use_upath", "use_str"))
     def store_kwargs(self, request) -> dict[str, str | bool]:
         url = f"s3://{test_bucket_name}"
         anon = False
         mode = "w"
-        if request.param:
+        if request.param == "use_upath":
             return {"mode": mode, "url": UPath(url, endpoint_url=endpoint_url, anon=anon)}
-        return {"url": url, "mode": mode, "anon": anon, "endpoint_url": endpoint_url}
+        elif request.param == "use_str":
+            return {"url": url, "mode": mode, "anon": anon, "endpoint_url": endpoint_url}
+        else:
+            raise AssertionError
 
     @pytest.fixture(scope="function")
     def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
