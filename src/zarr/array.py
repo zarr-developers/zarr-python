@@ -1089,6 +1089,93 @@ class Array:
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
+        """Modify data for an item or region of the array.
+
+        Parameters
+        ----------
+        selection : tuple
+            A tuple specifying the requested item or region for each dimension of the
+            array. May be any combination of int and/or slice or ellipsis for multidimensional arrays.
+        value : NDArrayLike
+            Values to be stored into the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer used for setting the data. If not provided, the
+            default buffer prototype is used.
+
+        Examples
+        --------
+        Setup a 1-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.zeros(0, 100, dtype="uint16")
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=data.shape,
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Set all array elements to the same scalar value::
+
+            >>> z.set_basic_selection(..., 42)
+            >>> z[...]
+            array([42, 42, 42, ..., 42, 42, 42])
+
+        Set a portion of the array::
+
+            >>> z.set_basic_selection(slice(10), np.arange(10))
+            >>> z.set_basic_selection(slice(-10, None), np.arange(10)[::-1])
+            >>> z[...]
+            array([ 0, 1, 2, ..., 2, 1, 0])
+
+        Setup a 2-dimensional array::
+
+            >>> data = np.zeros(25, dtype="uint16").reshape((5, 5))
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=data.shape,
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Set all array elements to the same scalar value::
+
+            >>> z.set_basic_selection(..., 42)
+
+        Set a portion of the array::
+
+            >>> z.set_basic_selection((0, slice(None)), np.arange(z.shape[1]))
+            >>> z.set_basic_selection((slice(None), 0), np.arange(z.shape[0]))
+            >>> z[...]
+            array([[ 0,  1,  2,  3,  4],
+                   [ 1, 42, 42, 42, 42],
+                   [ 2, 42, 42, 42, 42],
+                   [ 3, 42, 42, 42, 42],
+                   [ 4, 42, 42, 42, 42]])
+
+        Notes
+        -----
+        For arrays with a structured dtype, see zarr v2 for examples of how to use
+        the `fields` parameter.
+
+        This method provides the underlying implementation for modifying data via square
+        bracket notation, see :func:`__setitem__` for equivalent examples using the
+        alternative notation.
+
+        See Also
+        --------
+        get_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        set_orthogonal_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+
+        """
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
@@ -1278,7 +1365,7 @@ class Array:
             For arrays with a structured dtype, one or more fields can be specified to
             extract data for.
         prototype : BufferPrototype, optional
-        The prototype of the buffer to use for the output data. If not provided, the default buffer prototype is used.
+            The prototype of the buffer to use for the output data. If not provided, the default buffer prototype is used.
 
         Returns
         -------
@@ -1383,7 +1470,7 @@ class Array:
 
             >>> import zarr
             >>> import numpy as np
-            >>> data = np.zeros(0, 36, dtype="uint16").reshape((6, 6))
+            >>> data = np.zeros(36, dtype="uint16").reshape((6, 6))
             >>> z = Array.create(
             >>>        StorePath(MemoryStore(mode="w")),
             >>>        shape=data.shape,
