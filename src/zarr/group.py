@@ -5,7 +5,7 @@ import json
 import logging
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field, replace
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy.typing as npt
 
@@ -37,7 +37,7 @@ logger = logging.getLogger("zarr.group")
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
     if data in (2, 3):
-        return data
+        return cast(Literal[2, 3], data)
     msg = msg = f"Invalid zarr_format. Expected one 2 or 3. Got {data}."
     raise ValueError(msg)
 
@@ -200,7 +200,7 @@ class AsyncGroup:
         key: str,
     ) -> AsyncArray | AsyncGroup:
         store_path = self.store_path / key
-        logger.warning("key=%s, store_path=%s", key, store_path)
+        logger.debug("key=%s, store_path=%s", key, store_path)
 
         # Note:
         # in zarr-python v2, we first check if `key` references an Array, else if `key` references
@@ -271,12 +271,33 @@ class AsyncGroup:
         await asyncio.gather(*awaitables)
 
     @property
+    def path(self) -> str:
+        """Storage path."""
+        return self.store_path.path
+
+    @property
+    def name(self) -> str:
+        """Group name following h5py convention."""
+        if self.path:
+            # follow h5py convention: add leading slash
+            name = self.path
+            if name[0] != "/":
+                name = "/" + name
+            return name
+        return "/"
+
+    @property
+    def basename(self) -> str:
+        """Final component of name."""
+        return self.name.split("/")[-1]
+
+    @property
     def attrs(self) -> dict[str, Any]:
         return self.metadata.attributes
 
     @property
-    def info(self):
-        return self.metadata.info
+    def info(self) -> None:
+        raise NotImplementedError
 
     async def create_group(
         self,
@@ -295,7 +316,7 @@ class AsyncGroup:
         self,
         path: str,
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
         # v3 only
@@ -462,6 +483,7 @@ class Group(SyncMixin):
         store: StoreLike,
         *,
         attributes: dict[str, Any] = {},  # noqa: B006, FIXME
+        zarr_format: ZarrFormat = 3,
         exists_ok: bool = False,
     ) -> Group:
         obj = sync(
@@ -469,6 +491,7 @@ class Group(SyncMixin):
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
+                zarr_format=zarr_format,
             ),
         )
 
@@ -522,12 +545,27 @@ class Group(SyncMixin):
         return self._async_group.metadata
 
     @property
+    def path(self) -> str:
+        """Storage path."""
+        return self._async_group.path
+
+    @property
+    def name(self) -> str:
+        """Group name following h5py convention."""
+        return self._async_group.name
+
+    @property
+    def basename(self) -> str:
+        """Final component of name."""
+        return self._async_group.basename
+
+    @property
     def attrs(self) -> Attributes:
         return Attributes(self)
 
     @property
-    def info(self):
-        return self._async_group.info
+    def info(self) -> None:
+        raise NotImplementedError
 
     def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
         self._sync(self._async_group.update_attributes(new_attributes))

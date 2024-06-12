@@ -6,11 +6,13 @@ from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, BufferPrototype
 from zarr.common import OpenMode, concurrent_map, to_thread
 
 
-def _get(path: Path, byte_range: tuple[int | None, int | None] | None) -> Buffer:
+def _get(
+    path: Path, prototype: BufferPrototype, byte_range: tuple[int | None, int | None] | None
+) -> Buffer:
     """
     Fetch a contiguous region of bytes from a file.
 
@@ -32,7 +34,7 @@ def _get(path: Path, byte_range: tuple[int | None, int | None] | None) -> Buffer
 
         end = (start + byte_range[1]) if byte_range[1] is not None else None
     else:
-        return Buffer.from_bytes(path.read_bytes())
+        return prototype.buffer.from_bytes(path.read_bytes())
     with path.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
         if start is not None:
@@ -43,8 +45,8 @@ def _get(path: Path, byte_range: tuple[int | None, int | None] | None) -> Buffer
         if end is not None:
             if end < 0:
                 end = size + end
-            return Buffer.from_bytes(f.read(end - f.tell()))
-        return Buffer.from_bytes(f.read())
+            return prototype.buffer.from_bytes(f.read(end - f.tell()))
+        return prototype.buffer.from_bytes(f.read())
 
 
 def _put(
@@ -87,18 +89,23 @@ class LocalStore(Store):
         return isinstance(other, type(self)) and self.root == other.root
 
     async def get(
-        self, key: str, byte_range: tuple[int | None, int | None] | None = None
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         assert isinstance(key, str)
         path = self.root / key
 
         try:
-            return await to_thread(_get, path, byte_range)
+            return await to_thread(_get, path, prototype, byte_range)
         except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
             return None
 
     async def get_partial_values(
-        self, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
+        self,
+        prototype: BufferPrototype,
+        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
     ) -> list[Buffer | None]:
         """
         Read byte ranges from multiple keys.
@@ -114,15 +121,12 @@ class LocalStore(Store):
         for key, byte_range in key_ranges:
             assert isinstance(key, str)
             path = self.root / key
-            args.append((_get, path, byte_range))
+            args.append((_get, path, prototype, byte_range))
         return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: Buffer) -> None:
         self._check_writable()
         assert isinstance(key, str)
-        if isinstance(value, bytes | bytearray):
-            # TODO: to support the v2 tests, we convert bytes to Buffer here
-            value = Buffer.from_bytes(value)
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
         path = self.root / key
@@ -134,10 +138,7 @@ class LocalStore(Store):
         for key, start, value in key_start_values:
             assert isinstance(key, str)
             path = self.root / key
-            if start is not None:
-                args.append((_put, path, value, start))
-            else:
-                args.append((_put, path, value))
+            args.append((_put, path, value, start))
         await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def delete(self, key: str) -> None:

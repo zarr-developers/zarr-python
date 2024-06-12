@@ -7,14 +7,13 @@ import numpy.typing as npt
 from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.abc.codec import BytesBytesCodec
+from zarr.array_spec import ArraySpec
 from zarr.buffer import Buffer, as_numpy_array_wrapper
 from zarr.codecs.registry import register_codec
-from zarr.common import parse_named_configuration, to_thread
+from zarr.common import JSON, parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
     from typing_extensions import Self
-
-    from zarr.common import JSON, ArraySpec
 
 
 def parse_zstd_level(data: JSON) -> int:
@@ -55,25 +54,29 @@ class ZstdCodec(BytesBytesCodec):
 
     def _compress(self, data: npt.NDArray[Any]) -> bytes:
         ctx = ZstdCompressor(level=self.level, write_checksum=self.checksum)
-        return ctx.compress(data)
+        return ctx.compress(data.tobytes())
 
     def _decompress(self, data: npt.NDArray[Any]) -> bytes:
         ctx = ZstdDecompressor()
-        return ctx.decompress(data)
+        return ctx.decompress(data.tobytes())
 
     async def _decode_single(
         self,
         chunk_bytes: Buffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await to_thread(as_numpy_array_wrapper, self._decompress, chunk_bytes)
+        return await to_thread(
+            as_numpy_array_wrapper, self._decompress, chunk_bytes, chunk_spec.prototype
+        )
 
     async def _encode_single(
         self,
         chunk_bytes: Buffer,
-        _chunk_spec: ArraySpec,
+        chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        return await to_thread(as_numpy_array_wrapper, self._compress, chunk_bytes)
+        return await to_thread(
+            as_numpy_array_wrapper, self._compress, chunk_bytes, chunk_spec.prototype
+        )
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

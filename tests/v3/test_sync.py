@@ -1,5 +1,4 @@
 import asyncio
-import time
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, patch
 
@@ -48,7 +47,7 @@ def test_sync_timeout() -> None:
     duration = 0.002
 
     async def foo() -> None:
-        time.sleep(duration)
+        await asyncio.sleep(duration)
 
     with pytest.raises(asyncio.TimeoutError):
         sync(foo(), timeout=duration / 2)

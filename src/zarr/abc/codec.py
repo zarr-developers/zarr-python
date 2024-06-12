@@ -16,8 +16,8 @@ from zarr.config import config
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.common import ArraySpec, SliceSelection
-
+    from zarr.array_spec import ArraySpec
+    from zarr.indexing import SelectorTuple
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
@@ -162,13 +162,13 @@ class ArrayBytesCodecPartialDecodeMixin:
     """Mixin for array-to-bytes codecs that implement partial decoding."""
 
     async def _decode_partial_single(
-        self, byte_getter: ByteGetter, selection: SliceSelection, chunk_spec: ArraySpec
+        self, byte_getter: ByteGetter, selection: SelectorTuple, chunk_spec: ArraySpec
     ) -> NDBuffer | None:
         raise NotImplementedError
 
     async def decode_partial(
         self,
-        batch_info: Iterable[tuple[ByteGetter, SliceSelection, ArraySpec]],
+        batch_info: Iterable[tuple[ByteGetter, SelectorTuple, ArraySpec]],
     ) -> Iterable[NDBuffer | None]:
         """Partially decodes a batch of chunks.
         This method determines parts of a chunk from the slice selection,
@@ -176,7 +176,7 @@ class ArrayBytesCodecPartialDecodeMixin:
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteGetter, SliceSelection, ArraySpec]]
+        batch_info : Iterable[tuple[ByteGetter, SelectorTuple, ArraySpec]]
             Ordered set of information about slices of encoded chunks.
             The slice selection determines which parts of the chunk will be fetched.
             The ByteGetter is used to fetch the necessary bytes.
@@ -203,14 +203,14 @@ class ArrayBytesCodecPartialEncodeMixin:
         self,
         byte_setter: ByteSetter,
         chunk_array: NDBuffer,
-        selection: SliceSelection,
+        selection: SelectorTuple,
         chunk_spec: ArraySpec,
     ) -> None:
         raise NotImplementedError
 
     async def encode_partial(
         self,
-        batch_info: Iterable[tuple[ByteSetter, NDBuffer, SliceSelection, ArraySpec]],
+        batch_info: Iterable[tuple[ByteSetter, NDBuffer, SelectorTuple, ArraySpec]],
     ) -> None:
         """Partially encodes a batch of chunks.
         This method determines parts of a chunk from the slice selection, encodes them and
@@ -220,7 +220,7 @@ class ArrayBytesCodecPartialEncodeMixin:
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteSetter, NDBuffer, SliceSelection, ArraySpec]]
+        batch_info : Iterable[tuple[ByteSetter, NDBuffer, SelectorTuple, ArraySpec]]
             Ordered set of information about slices of to-be-encoded chunks.
             The slice selection determines which parts of the chunk will be encoded.
             The ByteSetter is used to write the necessary bytes and fetch bytes for existing chunk data.
@@ -354,15 +354,16 @@ class CodecPipeline(Metadata):
     @abstractmethod
     async def read(
         self,
-        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SliceSelection, SliceSelection]],
+        batch_info: Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]],
         out: NDBuffer,
+        drop_axes: tuple[int, ...] = (),
     ) -> None:
         """Reads chunk data from the store, decodes it and writes it into an output array.
         Partial decoding may be utilized if the codecs and stores support it.
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteGetter, ArraySpec, SliceSelection, SliceSelection]]
+        batch_info : Iterable[tuple[ByteGetter, ArraySpec, SelectorTuple, SelectorTuple]]
             Ordered set of information about the chunks.
             The first slice selection determines which parts of the chunk will be fetched.
             The second slice selection determines where in the output array the chunk data will be written.
@@ -375,8 +376,9 @@ class CodecPipeline(Metadata):
     @abstractmethod
     async def write(
         self,
-        batch_info: Iterable[tuple[ByteSetter, ArraySpec, SliceSelection, SliceSelection]],
+        batch_info: Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]],
         value: NDBuffer,
+        drop_axes: tuple[int, ...] = (),
     ) -> None:
         """Encodes chunk data and writes it to the store.
         Merges with existing chunk data by reading first, if necessary.
@@ -384,7 +386,7 @@ class CodecPipeline(Metadata):
 
         Parameters
         ----------
-        batch_info : Iterable[tuple[ByteSetter, ArraySpec, SliceSelection, SliceSelection]]
+        batch_info : Iterable[tuple[ByteSetter, ArraySpec, SelectorTuple, SelectorTuple]]
             Ordered set of information about the chunks.
             The first slice selection determines which parts of the chunk will be encoded.
             The second slice selection determines where in the value array the chunk data is located.

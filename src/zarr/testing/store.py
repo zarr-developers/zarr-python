@@ -3,8 +3,8 @@ from typing import Any, Generic, TypeVar
 import pytest
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer
-from zarr.store.core import _normalize_interval_index
+from zarr.buffer import Buffer, default_buffer_prototype
+from zarr.store.utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
 
 S = TypeVar("S", bound=Store)
@@ -47,7 +47,7 @@ class StoreTests(Generic[S]):
         assert store.writeable
 
         with pytest.raises(AttributeError):
-            store.mode = "w"  # type: ignore
+            store.mode = "w"  # type: ignore[misc]
 
         # read-only
         kwargs = {**store_kwargs, "mode": "r"}
@@ -91,7 +91,7 @@ class StoreTests(Generic[S]):
         """
         data_buf = Buffer.from_bytes(data)
         self.set(store, key, data_buf)
-        observed = await store.get(key, byte_range=byte_range)
+        observed = await store.get(key, prototype=default_buffer_prototype, byte_range=byte_range)
         start, length = _normalize_interval_index(data_buf, interval=byte_range)
         expected = data_buf[start : start + length]
         assert_bytes_equal(observed, expected)
@@ -125,7 +125,9 @@ class StoreTests(Generic[S]):
             self.set(store, key, Buffer.from_bytes(bytes(key, encoding="utf-8")))
 
         # read back just part of it
-        observed_maybe = await store.get_partial_values(key_ranges=key_ranges)
+        observed_maybe = await store.get_partial_values(
+            prototype=default_buffer_prototype, key_ranges=key_ranges
+        )
 
         observed: list[Buffer] = []
         expected: list[Buffer] = []
@@ -136,7 +138,7 @@ class StoreTests(Generic[S]):
 
         for idx in range(len(observed)):
             key, byte_range = key_ranges[idx]
-            result = await store.get(key, byte_range=byte_range)
+            result = await store.get(key, prototype=default_buffer_prototype, byte_range=byte_range)
             assert result is not None
             expected.append(result)
 
@@ -169,12 +171,14 @@ class StoreTests(Generic[S]):
                 f"foo/c/{i}", Buffer.from_bytes(i.to_bytes(length=3, byteorder="little"))
             )
 
+    @pytest.mark.xfail
     async def test_list_prefix(self, store: S) -> None:
         # TODO: we currently don't use list_prefix anywhere
         raise NotImplementedError
 
     async def test_list_dir(self, store: S) -> None:
-        assert [k async for k in store.list_dir("")] == []
+        out = [k async for k in store.list_dir("")]
+        assert out == []
         assert [k async for k in store.list_dir("foo")] == []
         await store.set("foo/zarr.json", Buffer.from_bytes(b"bar"))
         await store.set("foo/c/1", Buffer.from_bytes(b"\x01"))

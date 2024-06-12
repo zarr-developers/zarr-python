@@ -6,8 +6,9 @@ import numcodecs
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
+from zarr.array_spec import ArraySpec
 from zarr.buffer import Buffer, NDBuffer
-from zarr.common import JSON, ArraySpec, to_thread
+from zarr.common import JSON, to_thread
 
 
 @dataclass(frozen=True)
@@ -21,9 +22,6 @@ class V2Compressor(ArrayBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
-        if chunk_bytes is None:
-            return None
-
         if self.compressor is not None:
             compressor = numcodecs.get_codec(self.compressor)
             chunk_numpy_array = ensure_ndarray(
