@@ -60,7 +60,7 @@ from zarr.indexing import (
     pop_fields,
 )
 from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
-from zarr.store import StoreLike, StorePath, make_store_path
+from zarr.store import StoreLike, StorePath, make_store_path, MemoryStore
 from zarr.sync import sync
 
 
@@ -811,21 +811,12 @@ class Array:
                    [802 812 822 832 842 852 862 872 882 892]
                    [902 912 922 932 942 952 962 972 982 992]]
 
-        TODO: check this example
-        For arrays with a structured dtype, specific fields can be retrieved, e.g.::
-
-            >>> a = np.array([(b'aaa', 1, 4.2),
-            ...               (b'bbb', 2, 8.4),
-            ...               (b'ccc', 3, 12.6)],
-            ...              dtype=[('foo', 'S3'), ('bar', 'i4'), ('baz', 'f8')])
-            >>> z = zarr.v2.array(a)
-            >>> z.get_basic_selection(slice(2), fields='foo')
-            array([b'aaa', b'bbb'],
-                  dtype='|S3')
-
         Notes
         -----
         Slices with step > 1 are supported, but slices with negative step are not.
+
+        For arrays with a structured dtype, see zarr v2 for examples of how to use
+        the `fields` parameter.
 
         This method provides the implementation for accessing data via the
         square bracket notation (__getitem__). See :func:`__getitem__` for examples
