@@ -21,9 +21,8 @@ from zarr.codecs import (
     TransposeCodec,
     ZstdCodec,
 )
-from zarr.common import Selection
 from zarr.config import config
-from zarr.indexing import morton_order_iter
+from zarr.indexing import morton_order_iter, Selection
 from zarr.store import MemoryStore, StorePath
 from zarr.testing.utils import assert_bytes_equal
 

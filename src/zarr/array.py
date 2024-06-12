@@ -30,7 +30,6 @@ from zarr.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
     ChunkCoords,
-    Selection,
     ZarrFormat,
     concurrent_map,
     product,
@@ -51,6 +50,7 @@ from zarr.indexing import (
     OIndex,
     OrthogonalIndexer,
     OrthogonalSelection,
+    Selection,
     VIndex,
     check_fields,
     check_no_multi_fields,
@@ -460,7 +460,7 @@ class AsyncArray:
         return out_buffer.as_ndarray_like()
 
     async def getitem(
-        self, selection: Selection, *, prototype: BufferPrototype = default_buffer_prototype
+        self, selection: BasicSelection, *, prototype: BufferPrototype = default_buffer_prototype
     ) -> NDArrayLike:
         indexer = BasicIndexer(
             selection,
@@ -520,7 +520,7 @@ class AsyncArray:
 
     async def setitem(
         self,
-        selection: Selection,
+        selection: BasicSelection,
         value: NDArrayLike,
         prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:

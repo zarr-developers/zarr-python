@@ -1196,8 +1196,8 @@ def pop_fields(selection: SelectionWithFields) -> tuple[Fields | None, Selection
         return fields, selection
 
 
-def make_slice_selection(selection: Any) -> list[IntOrSlice]:
-    ls: list[IntOrSlice] = []
+def make_slice_selection(selection: Any) -> list[slice]:
+    ls: list[slice] = []
     for dim_selection in selection:
         if is_integer(dim_selection):
             ls.append(slice(int(dim_selection), int(dim_selection) + 1, 1))
