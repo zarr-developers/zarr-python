@@ -53,7 +53,7 @@ class RemoteStore(Store):
 
         super().__init__(mode=mode)
         if isinstance(url, str):
-            self._url = url
+            self._url = url.rstrip("/")
             self._fs, self.path = fsspec.url_to_fs(url, **storage_options)
         elif hasattr(url, "protocol") and hasattr(url, "fs"):
             # is UPath-like - but without importing
@@ -63,7 +63,7 @@ class RemoteStore(Store):
                     "storage_options are allowed"
                 )
 
-            self._url = str(url)
+            self._url = str(url).rstrip("/")
             self.path = url.path
             self._fs = url.fs
         else:
