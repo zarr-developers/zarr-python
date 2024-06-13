@@ -1187,6 +1187,113 @@ class Array:
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
     ) -> NDArrayLike:
+        """Retrieve data by making a selection for each dimension of the array. For
+        example, if an array has 2 dimensions, allows selecting specific rows and/or
+        columns. The selection for each dimension can be either an integer (indexing a
+        single item), a slice, an array of integers, or a Boolean array where True
+        values indicate a selection.
+
+        Parameters
+        ----------
+        selection : tuple
+            A selection for each dimension of the array. May be any combination of int,
+            slice, integer array or Boolean array.
+        out : NDBuffer, optional
+            If given, load the selected data directly into this buffer.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer to use for the output data. If not provided, the default buffer prototype is used.
+
+        Returns
+        -------
+        out : NDArrayLike
+            A NumPy-like array containing the data for the requested selection.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.arange(100).reshape(10, 10)
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=data.shape,
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Retrieve rows and columns via any combination of int, slice, integer array and/or
+        Boolean array::
+
+            >>> z.get_orthogonal_selection(([1, 4], slice(None)))
+            array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49]])
+            >>> z.get_orthogonal_selection((slice(None), [1, 4]))
+            array([[ 1,  4],
+                   [11, 14],
+                   [21, 24],
+                   [31, 34],
+                   [41, 44],
+                   [51, 54],
+                   [61, 64],
+                   [71, 74],
+                   [81, 84],
+                   [91, 94]])
+            >>> z.get_orthogonal_selection(([1, 4], [1, 4]))
+            array([[11, 14],
+                   [41, 44]])
+            >>> sel = np.zeros(z.shape[0], dtype=bool)
+            >>> sel[1] = True
+            >>> sel[4] = True
+            >>> z.get_orthogonal_selection((sel, sel))
+            array([[11, 14],
+                   [41, 44]])
+
+        For convenience, the orthogonal selection functionality is also available via the
+        `oindex` property, e.g.::
+
+            >>> z.oindex[[1, 4], :]
+            array([[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                   [40, 41, 42, 43, 44, 45, 46, 47, 48, 49]])
+            >>> z.oindex[:, [1, 4]]
+            array([[ 1,  4],
+                   [11, 14],
+                   [21, 24],
+                   [31, 34],
+                   [41, 44],
+                   [51, 54],
+                   [61, 64],
+                   [71, 74],
+                   [81, 84],
+                   [91, 94]])
+            >>> z.oindex[[1, 4], [1, 4]]
+            array([[11, 14],
+                   [41, 44]])
+            >>> sel = np.zeros(z.shape[0], dtype=bool)
+            >>> sel[1] = True
+            >>> sel[4] = True
+            >>> z.oindex[sel, sel]
+            array([[11, 14],
+                   [41, 44]])
+
+        Notes
+        -----
+        Orthogonal indexing is also known as outer indexing.
+
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, set_orthogonal_selection,
+        get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+
+        """
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._get_selection(
@@ -1202,6 +1309,104 @@ class Array:
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
+        """Modify data via a selection for each dimension of the array.
+
+        Parameters
+        ----------
+        selection : tuple
+            A selection for each dimension of the array. May be any combination of int,
+            slice, integer array or Boolean array.
+        value : NDArrayLike
+            A NumPy-like array containing the data to be stored in the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer used for setting the data. If not provided, the
+            default buffer prototype is used.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.zeros(25, dtype="uint16").reshape((5, 5))
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=data.shape,
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+
+        Set data for a selection of rows::
+
+            >>> z.set_orthogonal_selection(([1, 4], slice(None)), 1)
+            >>> z[...]
+            array([[0, 0, 0, 0, 0],
+                   [1, 1, 1, 1, 1],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [1, 1, 1, 1, 1]])
+
+        Set data for a selection of columns::
+
+            >>> z.set_orthogonal_selection((slice(None), [1, 4]), 2)
+            >>> z[...]
+            array([[0, 2, 0, 0, 2],
+                   [1, 2, 1, 1, 2],
+                   [0, 2, 0, 0, 2],
+                   [0, 2, 0, 0, 2],
+                   [1, 2, 1, 1, 2]])
+
+        Set data for a selection of rows and columns::
+
+            >>> z.set_orthogonal_selection(([1, 4], [1, 4]), 3)
+            >>> z[...]
+            array([[0, 2, 0, 0, 2],
+                   [1, 3, 1, 1, 3],
+                   [0, 2, 0, 0, 2],
+                   [0, 2, 0, 0, 2],
+                   [1, 3, 1, 1, 3]])
+
+        Set data from a 2D array::
+
+            >>> values = np.arange(10).reshape(2, 5)
+            >>> z.set_orthogonal_selection(([0, 3], ...), values)
+            >>> z[...]
+            array([[0, 1, 2, 3, 4],
+                   [1, 3, 1, 1, 3],
+                   [0, 2, 0, 0, 2],
+                   [5, 6, 7, 8, 9],
+                   [1, 3, 1, 1, 3]])
+
+        For convenience, this functionality is also available via the `oindex` property.
+        E.g.::
+
+            >>> z.oindex[[1, 4], [1, 4]] = 4
+            >>> z[...]
+            array([[0, 1, 2, 3, 4],
+                   [1, 4, 1, 1, 4],
+                   [0, 2, 0, 0, 2],
+                   [5, 6, 7, 8, 9],
+                   [1, 4, 1, 1, 4]])
+
+        Notes
+        -----
+        Orthogonal indexing is also known as outer indexing.
+
+        Slices with step > 1 are supported, but slices with negative step are not.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_coordinate_selection, set_coordinate_selection, get_orthogonal_selection,
+        get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+
+        """
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
@@ -1453,7 +1658,7 @@ class Array:
 
         Parameters
         ----------
-        selection : int or slice or tuple of int or slice
+        selection : tuple
             An integer (coordinate) or slice for each dimension of the array.
         value : NDArrayLike
             A NumPy-like array containing the data to be stored in the block selection.
