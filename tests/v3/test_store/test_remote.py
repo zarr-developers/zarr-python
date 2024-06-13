@@ -107,8 +107,8 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
             return {"mode": mode, "url": UPath(url, endpoint_url=endpoint_url, anon=anon)}
         elif request.param == "use_str":
             return {"url": url, "mode": mode, "anon": anon, "endpoint_url": endpoint_url}
-        else:
-            raise AssertionError
+
+        raise AssertionError
 
     @pytest.fixture(scope="function")
     def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
