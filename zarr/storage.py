@@ -210,6 +210,8 @@ def rmdir(store: StoreLike, path: Path = None):
     if hasattr(store, "rmdir") and store.is_erasable():  # type: ignore
         # pass through
         store.rmdir(path)
+    elif hasattr(store, 'fs') and hasattr(store.fs, 'rmdir'):
+        store.fs.rmdir(path)
     else:
         # slow version, delete one key at a time
         if store_version == 2:
