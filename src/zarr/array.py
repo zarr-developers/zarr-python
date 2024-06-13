@@ -1420,6 +1420,71 @@ class Array:
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
     ) -> NDArrayLike:
+        """Retrieve a selection of individual items, by providing a Boolean array of the
+        same shape as the array against which the selection is being made, where True
+        values indicate a selected item.
+
+        Parameters
+        ----------
+        selection : ndarray, bool
+            A Boolean array of the same shape as the array against which the selection is
+            being made.
+        out : NDBuffer, optional
+            If given, load the selected data directly into this buffer.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to
+            extract data for.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer to use for the output data. If not provided, the default buffer prototype is used.
+
+        Returns
+        -------
+        out : NDArrayLike
+            A NumPy-like array containing the data for the requested selection.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.arange(100).reshape(10, 10)
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=data.shape,
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Retrieve items by specifying a mask::
+
+            >>> sel = np.zeros_like(z, dtype=bool)
+            >>> sel[1, 1] = True
+            >>> sel[4, 4] = True
+            >>> z.get_mask_selection(sel)
+            array([11, 44])
+
+        For convenience, the mask selection functionality is also available via the
+        `vindex` property, e.g.::
+
+            >>> z.vindex[sel]
+            array([11, 44])
+
+        Notes
+        -----
+        Mask indexing is a form of vectorized or inner indexing, and is equivalent to
+        coordinate indexing. Internally the mask array is converted to coordinate
+        arrays by calling `np.nonzero`.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, set_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
+        set_coordinate_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+        """
+
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._get_selection(
@@ -1435,6 +1500,74 @@ class Array:
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
+        """Modify a selection of individual items, by providing a Boolean array of the
+        same shape as the array against which the selection is being made, where True
+        values indicate a selected item.
+
+        Parameters
+        ----------
+        selection : ndarray, bool
+            A Boolean array of the same shape as the array against which the selection is
+            being made.
+        value : scalar or array-like
+            Value to be stored into the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.zeros(25, dtype="uint16").reshape((5, 5))
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=data.shape,
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Set data for a selection of items::
+
+            >>> sel = np.zeros_like(z, dtype=bool)
+            >>> sel[1, 1] = True
+            >>> sel[4, 4] = True
+            >>> z.set_mask_selection(sel, 1)
+            >>> z[...]
+            array([[0, 0, 0, 0, 0],
+                   [0, 1, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 1]])
+
+        For convenience, this functionality is also available via the `vindex` property.
+        E.g.::
+
+            >>> z.vindex[sel] = 2
+            >>> z[...]
+            array([[0, 0, 0, 0, 0],
+                   [0, 2, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 2]])
+
+        Notes
+        -----
+        Mask indexing is a form of vectorized or inner indexing, and is equivalent to
+        coordinate indexing. Internally the mask array is converted to coordinate
+        arrays by calling `np.nonzero`.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
+        set_coordinate_selection, get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+
+        """
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
