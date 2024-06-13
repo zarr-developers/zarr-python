@@ -6,6 +6,7 @@ from upath import UPath
 
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store import RemoteStore
+from zarr.sync import sync
 from zarr.testing.store import StoreTests
 
 s3fs = pytest.importorskip("s3fs")
@@ -62,10 +63,12 @@ def s3(s3_base):
     client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
     s3fs.S3FileSystem.clear_instance_cache()
     s3 = s3fs.S3FileSystem(anon=False, client_kwargs={"endpoint_url": endpoint_url})
+    session = sync(s3.set_session())
     s3.invalidate_cache()
     yield s3
     requests.post(f"{endpoint_url}/moto-api/reset")
     client.close()
+    sync(session.close())
 
 
 # ### end from s3fs ### #
