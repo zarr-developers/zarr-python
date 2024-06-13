@@ -1935,10 +1935,15 @@ class Array:
 
     @property
     def vindex(self) -> VIndex:
+        """Shortcut for vectorized (inner) indexing, see :func:`get_coordinate_selection`,
+        :func:`set_coordinate_selection`, :func:`get_mask_selection` and
+        :func:`set_mask_selection` for documentation and examples."""
         return VIndex(self)
 
     @property
     def oindex(self) -> OIndex:
+        """Shortcut for orthogonal (outer) indexing, see :func:`get_orthogonal_selection` and
+        :func:`set_orthogonal_selection` for documentation and examples."""
         return OIndex(self)
 
     @property
