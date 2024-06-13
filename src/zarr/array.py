@@ -1665,6 +1665,71 @@ class Array:
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
+        """Modify a selection of individual items, by providing the indices (coordinates)
+        for each item to be modified.
+
+        Parameters
+        ----------
+        selection : tuple
+            An integer (coordinate) array for each dimension of the array.
+        value : scalar or array-like
+            Value to be stored into the array.
+        fields : str or sequence of str, optional
+            For arrays with a structured dtype, one or more fields can be specified to set
+            data for.
+
+        Examples
+        --------
+        Setup a 2-dimensional array::
+
+            >>> import zarr
+            >>> import numpy as np
+            >>> data = np.zeros(0, 25, dtype="uint16").reshape(5, 5)
+            >>> z = Array.create(
+            >>>        StorePath(MemoryStore(mode="w")),
+            >>>        shape=data.shape,
+            >>>        chunk_shape=data.shape,
+            >>>        dtype=data.dtype,
+            >>>        )
+            >>> z[:] = data
+
+        Set data for a selection of items::
+
+            >>> z.set_coordinate_selection(([1, 4], [1, 4]), 1)
+            >>> z[...]
+            array([[0, 0, 0, 0, 0],
+                   [0, 1, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 1]])
+
+        For convenience, this functionality is also available via the `vindex` property.
+        E.g.::
+
+            >>> z.vindex[[1, 4], [1, 4]] = 2
+            >>> z[...]
+            array([[0, 0, 0, 0, 0],
+                   [0, 2, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 0],
+                   [0, 0, 0, 0, 2]])
+
+        Notes
+        -----
+        Coordinate indexing is also known as point selection, and is a form of vectorized
+        or inner indexing.
+
+        Slices are not supported. Coordinate arrays must be provided for all dimensions
+        of the array.
+
+        See Also
+        --------
+        get_basic_selection, set_basic_selection, get_mask_selection, set_mask_selection,
+        get_orthogonal_selection, set_orthogonal_selection, get_coordinate_selection,
+        get_block_selection, set_block_selection,
+        vindex, oindex, blocks, __getitem__, __setitem__
+
+        """
         # setup indexer
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
 
