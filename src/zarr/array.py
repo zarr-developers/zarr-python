@@ -206,10 +206,12 @@ class AsyncArray:
 
         codecs: tuple[dict[str, JSON] | Codec, ...]
         _pre_compressor: dict[str, JSON] | ArrayBytesCodec
+
         if pre_compressor is None:
             _pre_compressor = BytesCodec()
         else:
             _pre_compressor = pre_compressor
+
         codecs = (*filters, _pre_compressor, *compressors)
 
         if fill_value is None:
