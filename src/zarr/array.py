@@ -40,7 +40,6 @@ from zarr.indexing import (
     BasicSelection,
     BlockIndex,
     BlockIndexer,
-    BlockSelection,
     CoordinateIndexer,
     CoordinateSelection,
     Fields,
@@ -497,10 +496,7 @@ class AsyncArray:
             # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
             if not hasattr(value, "dtype") or value.dtype.name != self.metadata.dtype.name:
                 value = np.array(value, dtype=self.metadata.dtype, order="A")
-
-        #now the value should be ndarray like
-        assert isinstance(value, NDArrayLike)
-
+        value = cast(NDArrayLike, value)
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass
         # Buffer and NDBuffer between components.
@@ -1752,7 +1748,7 @@ class Array:
 
     def get_block_selection(
         self,
-        selection: BlockSelection,
+        selection: BasicSelection,
         *,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
@@ -1848,7 +1844,7 @@ class Array:
 
     def set_block_selection(
         self,
-        selection: BlockSelection,
+        selection: BasicSelection,
         value: npt.ArrayLike,
         *,
         fields: Fields | None = None,

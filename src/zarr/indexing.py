@@ -30,22 +30,20 @@ if TYPE_CHECKING:
     from zarr.array import Array
     from zarr.chunk_grids import ChunkGrid
 
-IntOrSlice = int | slice
-IntOrSliceOrEllipsis = IntOrSlice | EllipsisType
 IntSequence = list[int] | npt.NDArray[np.intp]
-IntOrSliceOrArray = IntOrSlice | npt.NDArray[np.intp] | npt.NDArray[np.bool_]
+ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
+BasicSelector = int | slice | EllipsisType
+Selector = BasicSelector | ArrayOfIntOrBool
 
-BasicSelection = IntOrSliceOrEllipsis | tuple[IntOrSliceOrEllipsis, ...]
+BasicSelection = BasicSelector | tuple[BasicSelector, ...]  # also used for BlockIndex
 CoordinateSelection = IntSequence | tuple[IntSequence, ...]
-BlockSelection = IntOrSlice | tuple[IntOrSlice, ...]
 MaskSelection = npt.NDArray[np.bool_]
-OrthogonalSelection = IntOrSliceOrArray | tuple[IntOrSliceOrArray, ...]
+OrthogonalSelection = Selector | tuple[Selector, ...]
 Selection = (
-    BasicSelection | CoordinateSelection | BlockSelection | MaskSelection | OrthogonalSelection
+    BasicSelection | CoordinateSelection | MaskSelection | OrthogonalSelection
 )
 CoordinateSelectionNormalized = tuple[npt.NDArray[np.intp], ...]
-SelectionNormalized = tuple[IntOrSliceOrArray, ...] | CoordinateSelectionNormalized | MaskSelection
-Selector = IntOrSlice | npt.NDArray[np.intp] | npt.NDArray[np.bool_]
+SelectionNormalized = tuple[Selector, ...] | ArrayOfIntOrBool
 SelectionWithFields = Selection | str | Sequence[str]
 SelectorTuple = tuple[Selector, ...] | npt.NDArray[np.intp] | slice
 Fields = str | list[str] | tuple[str, ...]
@@ -851,7 +849,7 @@ class BlockIndexer(Indexer):
     shape: ChunkCoords
     drop_axes: ChunkCoords
 
-    def __init__(self, selection: BlockSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
+    def __init__(self, selection: BasicSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
         chunk_shape = get_chunk_shape(chunk_grid)
 
         # handle ellipsis
@@ -930,18 +928,18 @@ class BlockIndexer(Indexer):
 class BlockIndex:
     array: Array
 
-    def __getitem__(self, selection: BlockSelection) -> NDArrayLike:
+    def __getitem__(self, selection: BasicSelection) -> NDArrayLike:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
-        return self.array.get_block_selection(cast(BlockSelection, new_selection), fields=fields)
+        return self.array.get_block_selection(cast(BasicSelection, new_selection), fields=fields)
 
-    def __setitem__(self, selection: BlockSelection, value: npt.ArrayLike) -> None:
+    def __setitem__(self, selection: BasicSelection, value: npt.ArrayLike) -> None:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.set_block_selection(
-            cast(BlockSelection, new_selection), value, fields=fields
+            cast(BasicSelection, new_selection), value, fields=fields
         )
 
 
