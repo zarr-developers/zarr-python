@@ -477,7 +477,7 @@ class AsyncArray:
     async def _set_selection(
         self,
         indexer: Indexer,
-        value: NDArrayLike,
+        value: npt.ArrayLike,
         *,
         prototype: BufferPrototype,
         fields: Fields | None = None,
@@ -495,8 +495,11 @@ class AsyncArray:
             # assert (
             #     value.shape == indexer.shape
             # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
-            if value.dtype.name != self.metadata.dtype.name:
-                value = value.astype(self.metadata.dtype, order="A")
+            if not hasattr(value, "dtype") or value.dtype.name != self.metadata.dtype.name:
+                value = np.array(value, dtype=self.metadata.dtype, order="A")
+
+        #now the value should be ndarray like
+        assert isinstance(value, NDArrayLike)
 
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass
@@ -521,7 +524,7 @@ class AsyncArray:
     async def setitem(
         self,
         selection: BasicSelection,
-        value: NDArrayLike,
+        value: npt.ArrayLike,
         prototype: BufferPrototype = default_buffer_prototype,
     ) -> None:
         indexer = BasicIndexer(
@@ -712,8 +715,8 @@ class Array:
 
         Returns
         -------
-        out : NDArrayLike
-             A NumPy-like array containing the data for the requested region.
+        NDArrayLike
+             An array-like containing the data for the requested region.
 
         Examples
         --------
@@ -852,8 +855,7 @@ class Array:
         else:
             return self.get_basic_selection(cast(BasicSelection, pure_selection), fields=fields)
 
-    # TODO is int or python lists as value supported? if so, adjust typing
-    def __setitem__(self, selection: Selection, value: NDArrayLike) -> None:
+    def __setitem__(self, selection: Selection, value: npt.ArrayLike) -> None:
         """Modify data for an item or region of the array.
 
         Parameters
@@ -861,8 +863,8 @@ class Array:
         selection : tuple
             An integer index or slice or tuple of int/slice specifying the requested
             region for each dimension of the array.
-        value : NDArrayLike
-            A NumPy-like array containing the data to be stored in the selection.
+        value : npt.ArrayLike
+            An array-like containing the data to be stored in the selection.
 
         Examples
         --------
@@ -982,8 +984,8 @@ class Array:
 
         Returns
         -------
-        out : NDArrayLike
-            A NumPy-like array containing the data for the requested region.
+        NDArrayLike
+            An array-like containing the data for the requested region.
 
         Examples
         --------
@@ -1084,7 +1086,7 @@ class Array:
     def set_basic_selection(
         self,
         selection: BasicSelection,
-        value: NDArrayLike,
+        value: npt.ArrayLike,
         *,
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
@@ -1096,8 +1098,8 @@ class Array:
         selection : tuple
             A tuple specifying the requested item or region for each dimension of the
             array. May be any combination of int and/or slice or ellipsis for multidimensional arrays.
-        value : NDArrayLike
-            Values to be stored into the array.
+        value : npt.ArrayLike
+            An array-like containing values to be stored into the array.
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to set
             data for.
@@ -1208,8 +1210,8 @@ class Array:
 
         Returns
         -------
-        out : NDArrayLike
-            A NumPy-like array containing the data for the requested selection.
+        NDArrayLike
+            An array-like containing the data for the requested selection.
 
         Examples
         --------
@@ -1304,7 +1306,7 @@ class Array:
     def set_orthogonal_selection(
         self,
         selection: OrthogonalSelection,
-        value: NDArrayLike,
+        value: npt.ArrayLike,
         *,
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
@@ -1316,8 +1318,8 @@ class Array:
         selection : tuple
             A selection for each dimension of the array. May be any combination of int,
             slice, integer array or Boolean array.
-        value : NDArrayLike
-            A NumPy-like array containing the data to be stored in the array.
+        value : npt.ArrayLike
+            An array-like array containing the data to be stored in the array.
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to set
             data for.
@@ -1439,8 +1441,8 @@ class Array:
 
         Returns
         -------
-        out : NDArrayLike
-            A NumPy-like array containing the data for the requested selection.
+        NDArrayLike
+            An array-like containing the data for the requested selection.
 
         Examples
         --------
@@ -1495,7 +1497,7 @@ class Array:
     def set_mask_selection(
         self,
         mask: MaskSelection,
-        value: NDArrayLike,
+        value: npt.ArrayLike,
         *,
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
@@ -1509,8 +1511,8 @@ class Array:
         selection : ndarray, bool
             A Boolean array of the same shape as the array against which the selection is
             being made.
-        value : scalar or array-like
-            Value to be stored into the array.
+        value : npt.ArrayLike
+            An array-like containing values to be stored into the array.
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to set
             data for.
@@ -1578,7 +1580,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
-    ) -> NDArrayLike:
+    ) -> NDArrayLike :
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
 
@@ -1596,8 +1598,8 @@ class Array:
 
         Returns
         -------
-        out : NDArrayLike
-            A NumPy-like array containing the data for the requested coordinate selection.
+        NDArrayLike
+            An array-like containing the data for the requested coordinate selection.
 
         Examples
         --------
@@ -1653,14 +1655,15 @@ class Array:
             )
         )
 
-        # restore shape
-        out_array = out_array.reshape(indexer.sel_shape)
+        if(hasattr(out_array, "shape")):
+            # restore shape
+            out_array = np.array(out_array).reshape(indexer.sel_shape)
         return out_array
 
     def set_coordinate_selection(
         self,
         selection: CoordinateSelection,
-        value: NDArrayLike,
+        value: npt.ArrayLike ,
         *,
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
@@ -1672,8 +1675,8 @@ class Array:
         ----------
         selection : tuple
             An integer (coordinate) array for each dimension of the array.
-        value : scalar or array-like
-            Value to be stored into the array.
+        value : npt.ArrayLike
+            An array-like containing values to be stored into the array.
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to set
             data for.
@@ -1743,7 +1746,7 @@ class Array:
                 # Handle types like `list` or `tuple`
                 value = np.array(value)  # TODO replace with agnostic
         if hasattr(value, "shape") and len(value.shape) > 1:
-            value = value.reshape(-1)
+            value = np.array(value).reshape(-1)
 
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
@@ -1773,7 +1776,7 @@ class Array:
         Returns
         -------
         NDArrayLike
-            A NumPy-like array containing the data for the requested block selection.
+            An array-like containing the data for the requested block selection.
 
         Examples
         --------
@@ -1846,7 +1849,7 @@ class Array:
     def set_block_selection(
         self,
         selection: BlockSelection,
-        value: NDArrayLike,
+        value: npt.ArrayLike,
         *,
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
@@ -1858,8 +1861,8 @@ class Array:
         ----------
         selection : tuple
             An integer (coordinate) or slice for each dimension of the array.
-        value : NDArrayLike
-            A NumPy-like array containing the data to be stored in the block selection.
+        value : npt.ArrayLike
+            An array-like containing the data to be stored in the block selection.
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to set
             data for.

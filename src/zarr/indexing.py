@@ -23,11 +23,11 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
+from zarr.buffer import NDArrayLike
 from zarr.common import ChunkCoords, product
 
 if TYPE_CHECKING:
     from zarr.array import Array
-    from zarr.buffer import NDArrayLike
     from zarr.chunk_grids import ChunkGrid
 
 IntOrSlice = int | slice
@@ -836,7 +836,7 @@ class OIndex:
             cast(OrthogonalSelection, new_selection), fields=fields
         )
 
-    def __setitem__(self, selection: OrthogonalSelection, value: NDArrayLike) -> None:
+    def __setitem__(self, selection: OrthogonalSelection, value: npt.ArrayLike) -> None:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
@@ -936,7 +936,7 @@ class BlockIndex:
         new_selection = replace_lists(new_selection)
         return self.array.get_block_selection(cast(BlockSelection, new_selection), fields=fields)
 
-    def __setitem__(self, selection: BlockSelection, value: NDArrayLike) -> None:
+    def __setitem__(self, selection: BlockSelection, value: npt.ArrayLike) -> None:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
@@ -1128,7 +1128,7 @@ class VIndex:
             raise VindexInvalidSelectionError(new_selection)
 
     def __setitem__(
-        self, selection: CoordinateSelection | MaskSelection, value: NDArrayLike
+        self, selection: CoordinateSelection | MaskSelection, value: npt.ArrayLike
     ) -> None:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
