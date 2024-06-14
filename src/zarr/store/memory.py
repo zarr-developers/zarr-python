@@ -3,9 +3,9 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, MutableMapping
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, BufferPrototype
 from zarr.common import OpenMode, concurrent_map
-from zarr.store.core import _normalize_interval_index
+from zarr.store.utils import _normalize_interval_index
 
 
 # TODO: this store could easily be extended to wrap any MutableMapping store from v2
@@ -30,7 +30,10 @@ class MemoryStore(Store):
         return f"MemoryStore({str(self)!r})"
 
     async def get(
-        self, key: str, byte_range: tuple[int | None, int | None] | None = None
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         assert isinstance(key, str)
         try:
@@ -41,9 +44,15 @@ class MemoryStore(Store):
             return None
 
     async def get_partial_values(
-        self, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
+        self,
+        prototype: BufferPrototype,
+        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
     ) -> list[Buffer | None]:
-        vals = await concurrent_map(key_ranges, self.get, limit=None)
+        # All the key-ranges arguments goes with the same prototype
+        async def _get(key: str, byte_range: tuple[int, int | None]) -> Buffer | None:
+            return await self.get(key, prototype=prototype, byte_range=byte_range)
+
+        vals = await concurrent_map(key_ranges, _get, limit=None)
         return vals
 
     async def exists(self, key: str) -> bool:
@@ -52,9 +61,6 @@ class MemoryStore(Store):
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         self._check_writable()
         assert isinstance(key, str)
-        if isinstance(value, bytes | bytearray):  # type:ignore[unreachable]
-            # TODO: to support the v2 tests, we convert bytes to Buffer here
-            value = Buffer.from_bytes(value)  # type:ignore[unreachable]
         if not isinstance(value, Buffer):
             raise TypeError(f"Expected Buffer. Got {type(value)}.")
 

@@ -8,32 +8,31 @@ from enum import Enum
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
 
 from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.metadata import Metadata
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
 
 if TYPE_CHECKING:
-    from typing import Literal
-
     from typing_extensions import Self
 
 import numcodecs.abc
 
+from zarr.array_spec import ArraySpec
 from zarr.common import (
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
-    ArraySpec,
     ChunkCoords,
+    ZarrFormat,
     parse_dtype,
     parse_fill_value,
     parse_shapelike,
@@ -120,9 +119,10 @@ class DataType(Enum):
 @dataclass(frozen=True, kw_only=True)
 class ArrayMetadata(Metadata, ABC):
     shape: ChunkCoords
-    chunk_grid: ChunkGrid
     fill_value: Any
+    chunk_grid: ChunkGrid
     attributes: dict[str, JSON]
+    zarr_format: ZarrFormat
 
     @property
     @abstractmethod
@@ -140,7 +140,9 @@ class ArrayMetadata(Metadata, ABC):
         pass
 
     @abstractmethod
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+    ) -> ArraySpec:
         pass
 
     @abstractmethod
@@ -201,6 +203,7 @@ class ArrayV3Metadata(ArrayMetadata):
             dtype=data_type_parsed,
             fill_value=fill_value_parsed,
             order="C",  # TODO: order is not needed here.
+            prototype=default_buffer_prototype,  # TODO: prototype is not needed here.
         )
         codecs_parsed = parse_codecs(codecs).evolve_from_array_spec(array_spec)
 
@@ -242,7 +245,9 @@ class ArrayV3Metadata(ArrayMetadata):
     def codec_pipeline(self) -> CodecPipeline:
         return self.codecs
 
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+    ) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
         ), "Currently, only regular chunk grid is supported"
@@ -251,6 +256,7 @@ class ArrayV3Metadata(ArrayMetadata):
             dtype=self.dtype,
             fill_value=self.fill_value,
             order=order,
+            prototype=prototype,
         )
 
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
@@ -279,7 +285,7 @@ class ArrayV3Metadata(ArrayMetadata):
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format_v3(data.pop("zarr_format"))  # type: ignore[arg-type]
         # check that the node_type attribute is correct
-        _ = parse_node_type_array(data.pop("node_type"))  # type: ignore[arg-type]
+        _ = parse_node_type_array(data.pop("node_type"))
 
         data["dimension_names"] = data.pop("dimension_names", None)
 
@@ -415,12 +421,15 @@ class ArrayV2Metadata(ArrayMetadata):
 
         return zarray_dict
 
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+    ) -> ArraySpec:
         return ArraySpec(
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
             order=order,
+            prototype=prototype,
         )
 
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
@@ -457,20 +466,20 @@ def parse_attributes(data: None | dict[str, JSON]) -> dict[str, JSON]:
 # that takes 2 arguments
 def parse_zarr_format_v3(data: Literal[3]) -> Literal[3]:
     if data == 3:
-        return data
+        return 3
     raise ValueError(f"Invalid value. Expected 3. Got {data}.")
 
 
 # todo: move to its own module and drop _v2 suffix
 def parse_zarr_format_v2(data: Literal[2]) -> Literal[2]:
     if data == 2:
-        return data
+        return 2
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_node_type_array(data: Literal["array"]) -> Literal["array"]:
+def parse_node_type_array(data: Any) -> Literal["array"]:
     if data == "array":
-        return data
+        return "array"
     raise ValueError(f"Invalid value. Expected 'array'. Got {data}.")
 
 
