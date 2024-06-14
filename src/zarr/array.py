@@ -1930,6 +1930,42 @@ class Array:
         return BlockIndex(self)
 
     def resize(self, new_shape: ChunkCoords) -> Array:
+        """
+        Change the shape of the array by growing or shrinking one or more
+        dimensions.
+
+        This method does not modify the original Array object. Instead, it returns a new Array
+        with the specified shape.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> z = zarr.zeros(shape=(10000, 10000),
+        >>>                chunk_shape=(1000, 1000),
+        >>>                store=StorePath(MemoryStore(mode="w")),
+        >>>                dtype="i4",)
+        >>> z.shape
+        (10000, 10000)
+        >>> z = z.resize(20000, 1000)
+        >>> z.shape
+        (20000, 1000)
+        >>> z2 = z.resize(50, 50)
+        >>> z.shape
+        (20000, 1000)
+        >>> z2.shape
+        (50, 50)
+
+        Notes
+        -----
+        When resizing an array, the data are not rearranged in any way.
+
+        If one or more dimensions are shrunk, any chunks falling outside the
+        new array shape will be deleted from the underlying store.
+        However, it is noteworthy that the chunks partially falling inside the new array
+        (i.e. boundary chunks) will remain intact, and therefore,
+        the data falling outside the new array but inside the boundary chunks
+        would be restored by a subsequent resize operation that grows the array size.
+        """
         return type(self)(
             sync(
                 self._async_array.resize(new_shape),
