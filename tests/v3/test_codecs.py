@@ -22,7 +22,7 @@ from zarr.codecs import (
     ZstdCodec,
 )
 from zarr.config import config
-from zarr.indexing import morton_order_iter, Selection
+from zarr.indexing import Selection, morton_order_iter
 from zarr.store import MemoryStore, StorePath
 from zarr.testing.utils import assert_bytes_equal
 

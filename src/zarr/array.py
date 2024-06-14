@@ -60,7 +60,7 @@ from zarr.indexing import (
     pop_fields,
 )
 from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
-from zarr.store import StoreLike, StorePath, make_store_path, MemoryStore
+from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
 
