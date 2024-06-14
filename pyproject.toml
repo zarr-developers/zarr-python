@@ -60,6 +60,9 @@ jupyter = [
     'ipytree>=0.2.2',
     'ipywidgets>=8.0.0',
 ]
+gpu = [
+    "cupy-cuda12x>=13.0.0",
+]
 docs = [
     'sphinx',
     'sphinx-autobuild>=2021.3.14',

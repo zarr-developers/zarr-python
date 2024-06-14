@@ -501,7 +501,7 @@ class GpuBuffer(Buffer):
         if hasattr(array_like, "__cuda_array_interface__"):
             self._data = cp.asarray(array_like)
         else:
-            #raise ArgumentError("GpuBuffer only supports inputs that implement the '__cuda_array_interface__' protocol")
+            # raise ArgumentError("GpuBuffer only supports inputs that implement the '__cuda_array_interface__' protocol")
             # Slow copy based path for arrays that don't support the __cuda_array_interface__
             # TODO: Add a fast zero-copy path for arrays that support the dlpack protocol
             buffer = Buffer(array_like)
@@ -748,7 +748,6 @@ class GpuNDBuffer(NDBuffer):
 
     def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None) -> Self:
         return self.__class__(self._data.transpose(axes))
-
 
 
 class BufferPrototype(NamedTuple):
