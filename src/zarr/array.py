@@ -118,9 +118,9 @@ class AsyncArray:
         chunks: ChunkCoords | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
-        compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
         filters: Iterable[dict[str, JSON] | ArrayArrayCodec] = (),
-        post_compressors: Iterable[dict[str, JSON] | BytesBytesCodec] = (),
+        pre_compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
+        compressors: Iterable[dict[str, JSON] | BytesBytesCodec] = (),
         # runtime
         exists_ok: bool = False,
     ) -> AsyncArray:
@@ -150,8 +150,8 @@ class AsyncArray:
                 fill_value=fill_value,
                 chunk_key_encoding=chunk_key_encoding,
                 filters=filters,
-                compressor=compressor,
-                post_compressors=post_compressors,
+                pre_compressor=pre_compressor,
+                compressors=compressors,
                 dimension_names=dimension_names,
                 attributes=attributes,
                 exists_ok=exists_ok,
@@ -172,7 +172,7 @@ class AsyncArray:
                 fill_value=fill_value,
                 order=order,
                 filters=filters,
-                compressor=compressor,
+                compressor=pre_compressor,
                 attributes=attributes,
                 exists_ok=exists_ok,
             )
@@ -194,9 +194,9 @@ class AsyncArray:
             | tuple[Literal["v2"], Literal[".", "/"]]
             | None
         ) = None,
-        compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
+        pre_compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
         filters: Iterable[dict[str, JSON] | ArrayArrayCodec] = (),
-        post_compressors: Iterable[dict[str, JSON] | BytesBytesCodec] = (),
+        compressors: Iterable[dict[str, JSON] | BytesBytesCodec] = (),
         dimension_names: Iterable[str] | None = None,
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
@@ -205,12 +205,12 @@ class AsyncArray:
             assert not await (store_path / ZARR_JSON).exists()
 
         codecs: tuple[dict[str, JSON] | Codec, ...]
-        _compressor: dict[str, JSON] | ArrayBytesCodec
-        if compressor is None:
-            _compressor = BytesCodec()
+        _pre_compressor: dict[str, JSON] | ArrayBytesCodec
+        if pre_compressor is None:
+            _pre_compressor = BytesCodec()
         else:
-            _compressor = compressor
-        codecs = (*filters, _compressor, *post_compressors)
+            _pre_compressor = pre_compressor
+        codecs = (*filters, _pre_compressor, *compressors)
 
         if fill_value is None:
             if dtype == np.dtype("bool"):
@@ -615,9 +615,9 @@ class Array:
                 chunks=chunks,
                 dimension_separator=dimension_separator,
                 order=order,
-                compressor=compressor,
+                pre_compressor=compressor,
                 filters=filters,
-                post_compressors=post_compressors,
+                compressors=post_compressors,
                 exists_ok=exists_ok,
             ),
         )

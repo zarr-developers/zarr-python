@@ -112,14 +112,9 @@ async def test_codecs_use_of_prototype():
         chunk_shape=(5, 5),
         dtype=expect.dtype,
         fill_value=0,
-        codecs=[
-            TransposeCodec(order=(1, 0)),
-            BytesCodec(),
-            BloscCodec(),
-            Crc32cCodec(),
-            GzipCodec(),
-            ZstdCodec(),
-        ],
+        filters=[TransposeCodec(order=(1, 0))],
+        pre_compressor=BytesCodec(),
+        compressors=(BloscCodec(), Crc32cCodec(), GzipCodec(), ZstdCodec()),
     )
     expect[:] = np.arange(100).reshape(10, 10)
 

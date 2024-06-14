@@ -8,10 +8,11 @@ from typing import Any, Literal, Union, cast
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import ArrayArrayCodec, Codec
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
 from zarr.chunk_key_encodings import ChunkKeyEncoding
+from zarr.codecs.bytes import BytesCodec
 from zarr.common import JSON, ChunkCoords, MemoryOrder, OpenMode, ZarrFormat
 from zarr.group import AsyncGroup
 from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata
@@ -19,6 +20,8 @@ from zarr.store import (
     StoreLike,
     make_store_path,
 )
+
+default_pre_compressor = BytesCodec()
 
 # TODO: this type could use some more thought, noqa to avoid "Variable "asynchronous.ArrayLike" is not valid as a type"
 ArrayLike = Union[AsyncArray | Array | npt.NDArray[Any]]  # noqa
@@ -532,7 +535,9 @@ async def create(
     *,  # Note: this is a change from v2
     chunks: ChunkCoords | None = None,  # TODO: v2 allowed chunks=True
     dtype: npt.DTypeLike | None = None,
-    compressor: dict[str, JSON] | None = None,  # TODO: default and type change
+    compressor: dict[str, JSON] | BytesBytesCodec | None = None,  # TODO: default and type change
+    filters: Iterable[dict[str, JSON] | ArrayArrayCodec] = (),
+    pre_compressor: dict[str, JSON] | ArrayBytesCodec = default_pre_compressor,
     fill_value: Any = 0,  # TODO: need type
     order: MemoryOrder | None = None,  # TODO: default change
     store: str | StoreLike | None = None,
@@ -540,7 +545,6 @@ async def create(
     overwrite: bool = False,
     path: PathLike | None = None,
     chunk_store: StoreLike | None = None,
-    filters: Iterable[dict[str, JSON] | ArrayArrayCodec] = (),
     cache_metadata: bool | None = None,
     cache_attrs: bool | None = None,
     read_only: bool | None = None,
@@ -682,15 +686,23 @@ async def create(
     if path is not None:
         store_path = store_path / path
 
+    compressor_out: tuple[dict[str, JSON] | BytesBytesCodec, ...]
+    # normalize compressor to a tuple
+    if compressor is None:
+        compressor_out = ()
+    else:
+        compressor_out = (compressor,)
+
     return await AsyncArray.create(
         store_path,
         shape=shape,
         chunks=chunks,
         dtype=dtype,
-        compressor=compressor,
+        compressors=compressor_out,
+        filters=filters,
+        pre_compressor=pre_compressor,
         fill_value=fill_value,
         exists_ok=overwrite,  # TODO: name change
-        filters=filters,
         dimension_separator=dimension_separator,
         zarr_format=zarr_format,
         chunk_shape=chunk_shape,

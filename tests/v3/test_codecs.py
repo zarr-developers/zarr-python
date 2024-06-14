@@ -250,7 +250,7 @@ async def test_order(
             dtype=data.dtype,
             fill_value=0,
             chunk_key_encoding=("v2", "."),
-            compressor=compressor,
+            pre_compressor=compressor,
             filters=filters,
         )
 
@@ -361,7 +361,7 @@ async def test_transpose(
             dtype=data.dtype,
             fill_value=0,
             chunk_key_encoding=("v2", "."),
-            compressor=compressor,
+            pre_compressor=compressor,
             filters=filters,
         )
 
@@ -629,7 +629,7 @@ async def test_delete_empty_shards(store: Store):
         chunk_shape=(8, 16),
         dtype="uint16",
         fill_value=1,
-        compressor=ShardingCodec(chunk_shape=(8, 8)),
+        pre_compressor=ShardingCodec(chunk_shape=(8, 8)),
     )
     await _AsyncArrayProxy(a)[:, :].set(np.zeros((16, 16)))
     await _AsyncArrayProxy(a)[8:, :].set(np.ones((8, 16)))
@@ -688,7 +688,7 @@ async def test_zarr_compat_F(store: Store):
         dtype=data.dtype,
         chunk_key_encoding=("v2", "."),
         fill_value=1,
-        compressor=BytesCodec(),
+        pre_compressor=BytesCodec(),
         filters=(TransposeCodec(order=order_from_dim("F", data.ndim)),),
     )
 
@@ -789,7 +789,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]):
         dtype=data.dtype,
         fill_value=0,
         chunk_key_encoding=("v2", "."),
-        compressor=BytesCodec(endian=endian),
+        pre_compressor=BytesCodec(endian=endian),
     )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
@@ -824,7 +824,7 @@ async def test_endian_write(
         dtype="uint16",
         fill_value=0,
         chunk_key_encoding=("v2", "."),
-        compressor=BytesCodec(endian=dtype_store_endian),
+        pre_compressor=BytesCodec(endian=dtype_store_endian),
     )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
@@ -949,8 +949,8 @@ async def test_blosc_evolve(store: Store):
         chunk_shape=(16, 16),
         dtype="uint8",
         fill_value=0,
-        compressor=BytesCodec(),
-        post_compressors=(BloscCodec(),),
+        pre_compressor=BytesCodec(),
+        compressors=(BloscCodec(),),
     )
 
     zarr_json = json.loads((await (store / "blosc_evolve_u1" / "zarr.json").get()).to_bytes())
@@ -964,8 +964,8 @@ async def test_blosc_evolve(store: Store):
         chunk_shape=(16, 16),
         dtype="uint16",
         fill_value=0,
-        compressor=BytesCodec(),
-        post_compressors=(BloscCodec(),),
+        pre_compressor=BytesCodec(),
+        compressors=(BloscCodec(),),
     )
 
     zarr_json = json.loads((await (store / "blosc_evolve_u2" / "zarr.json").get()).to_bytes())
@@ -979,7 +979,7 @@ async def test_blosc_evolve(store: Store):
         chunk_shape=(16, 16),
         dtype="uint16",
         fill_value=0,
-        compressor=ShardingCodec(chunk_shape=(16, 16), codecs=[BytesCodec(), BloscCodec()]),
+        pre_compressor=ShardingCodec(chunk_shape=(16, 16), codecs=[BytesCodec(), BloscCodec()]),
     )
 
     zarr_json = json.loads((await (store / "sharding_blosc_evolve" / "zarr.json").get()).to_bytes())
