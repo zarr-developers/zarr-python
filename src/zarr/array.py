@@ -867,15 +867,12 @@ class Array:
         Setup a 1-dimensional array::
 
             >>> import zarr
-            >>> import numpy as np
-            >>> data = np.zeros(100, dtype="uint16")
-            >>> z = Array.create(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunk_shape=(2, 2),
-            >>>        dtype=data.dtype,
-            >>>        )
-            >>> z[:] = data
+            >>> z = zarr.zeros(
+            >>>        shape=(100,),
+            >>>        store=StorePath(MemoryStore(mode="w")),
+            >>>        chunk_shape=(5,),
+            >>>        dtype="i4",
+            >>>       )
 
         Set all array elements to the same scalar value::
 
@@ -892,14 +889,12 @@ class Array:
 
         Setup a 2-dimensional array::
 
-            >>> data = np.zeros(0, 25, dtype="uint16").reshape(5, 5)
-            >>> z = Array.create(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunk_shape=data.shape,
-            >>>        dtype=data.dtype,
-            >>>        )
-            >>> z[:] = data
+            >>> z = zarr.zeros(
+            >>>        shape=(5, 5),
+            >>>        store=StorePath(MemoryStore(mode="w")),
+            >>>        chunk_shape=(5, 5),
+            >>>        dtype="i4",
+            >>>       )
 
         Set all array elements to the same scalar value::
 
@@ -989,7 +984,7 @@ class Array:
 
             >>> import zarr
             >>> import numpy as np
-            >>> data = np.arange(0, 100, dtype="uint16")
+            >>> data = np.arange(100, dtype="uint16")
             >>> z = Array.create(
             >>>        StorePath(MemoryStore(mode="w")),
             >>>        shape=data.shape,
@@ -1108,15 +1103,12 @@ class Array:
         Setup a 1-dimensional array::
 
             >>> import zarr
-            >>> import numpy as np
-            >>> data = np.zeros(0, 100, dtype="uint16")
-            >>> z = Array.create(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunk_shape=data.shape,
-            >>>        dtype=data.dtype,
-            >>>        )
-            >>> z[:] = data
+            >>> z = zarr.zeros(
+            >>>        shape=(100,),
+            >>>        store=StorePath(MemoryStore(mode="w")),
+            >>>        chunk_shape=(100,),
+            >>>        dtype="i4",
+            >>>       )
 
         Set all array elements to the same scalar value::
 
@@ -1133,14 +1125,12 @@ class Array:
 
         Setup a 2-dimensional array::
 
-            >>> data = np.zeros(25, dtype="uint16").reshape((5, 5))
-            >>> z = Array.create(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunk_shape=data.shape,
-            >>>        dtype=data.dtype,
-            >>>        )
-            >>> z[:] = data
+            >>> z = zarr.zeros(
+            >>>        shape=(5, 5),
+            >>>        store=StorePath(MemoryStore(mode="w")),
+            >>>        chunk_shape=(5, 5),
+            >>>        dtype="i4",
+            >>>       )
 
         Set all array elements to the same scalar value::
 
@@ -1328,15 +1318,12 @@ class Array:
         Setup a 2-dimensional array::
 
             >>> import zarr
-            >>> import numpy as np
-            >>> data = np.zeros(25, dtype="uint16").reshape((5, 5))
-            >>> z = Array.create(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunk_shape=data.shape,
-            >>>        dtype=data.dtype,
-            >>>        )
-            >>> z[:] = data
+            >>> z = zarr.zeros(
+            >>>        shape=(5, 5),
+            >>>        store=StorePath(MemoryStore(mode="w")),
+            >>>        chunk_shape=(5, 5),
+            >>>        dtype="i4",
+            >>>       )
 
 
         Set data for a selection of rows::
@@ -1518,15 +1505,12 @@ class Array:
         Setup a 2-dimensional array::
 
             >>> import zarr
-            >>> import numpy as np
-            >>> data = np.zeros(25, dtype="uint16").reshape((5, 5))
-            >>> z = Array.create(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunk_shape=data.shape,
-            >>>        dtype=data.dtype,
-            >>>        )
-            >>> z[:] = data
+            >>> z = zarr.zeros(
+            >>>        shape=(5, 5),
+            >>>        store=StorePath(MemoryStore(mode="w")),
+            >>>        chunk_shape=(5, 5),
+            >>>        dtype="i4",
+            >>>       )
 
         Set data for a selection of items::
 
@@ -1682,15 +1666,12 @@ class Array:
         Setup a 2-dimensional array::
 
             >>> import zarr
-            >>> import numpy as np
-            >>> data = np.zeros(0, 25, dtype="uint16").reshape(5, 5)
-            >>> z = Array.create(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
-            >>>        chunk_shape=data.shape,
-            >>>        dtype=data.dtype,
-            >>>        )
-            >>> z[:] = data
+            >>> z = zarr.zeros(
+            >>>        shape=(5, 5),
+            >>>        store=StorePath(MemoryStore(mode="w")),
+            >>>        chunk_shape=(5, 5),
+            >>>        dtype="i4",
+            >>>       )
 
         Set data for a selection of items::
 
@@ -1871,15 +1852,12 @@ class Array:
         Set up a 2-dimensional array::
 
             >>> import zarr
-            >>> import numpy as np
-            >>> data = np.zeros(36, dtype="uint16").reshape((6, 6))
-            >>> z = Array.create(
-            >>>        StorePath(MemoryStore(mode="w")),
-            >>>        shape=data.shape,
+            >>> z = zarr.zeros(
+            >>>        shape=(6, 6),
+            >>>        store=StorePath(MemoryStore(mode="w")),
             >>>        chunk_shape=(2, 2),
-            >>>        dtype=data.dtype,
-            >>>        )
-            >>> z[:] = data
+            >>>        dtype="i4",
+            >>>       )
 
         Set data for a selection of items::
 
