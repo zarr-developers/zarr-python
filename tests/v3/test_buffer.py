@@ -8,7 +8,14 @@ import numpy.typing as npt
 import pytest
 
 from zarr.array import AsyncArray
-from zarr.buffer import ArrayLike, Buffer, BufferPrototype, NDArrayLike, NDBuffer
+from zarr.buffer import (
+    ArrayLike,
+    Buffer,
+    BufferPrototype,
+    NDArrayLike,
+    NDBuffer,
+    gpu_buffer_prototype,
+)
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
@@ -20,6 +27,11 @@ from zarr.store.memory import MemoryStore
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+try:
+    import cupy as cp
+except ImportError:
+    cp = None
 
 
 class MyNDArrayLike(np.ndarray):
@@ -104,6 +116,31 @@ async def test_async_array_prototype():
     got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=my_prototype)
     assert isinstance(got, MyNDArrayLike)
     assert np.array_equal(expect, got)
+
+
+@pytest.mark.skipif(cp is None, reason="requires cupy")
+@pytest.mark.asyncio
+async def test_async_array_gpu_prototype():
+    """Test the use of the GPU buffer prototype"""
+
+    expect = cp.zeros((9, 9), dtype="uint16", order="F")
+    a = await AsyncArray.create(
+        StorePath(MemoryStore(mode="w")) / "test_async_array_gpu_prototype",
+        shape=expect.shape,
+        chunk_shape=(5, 5),
+        dtype=expect.dtype,
+        fill_value=0,
+    )
+    expect[1:4, 3:6] = cp.ones((3, 3))
+
+    await a.setitem(
+        selection=(slice(1, 4), slice(3, 6)),
+        value=cp.ones((3, 3)),
+        prototype=gpu_buffer_prototype,
+    )
+    got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=gpu_buffer_prototype)
+    assert isinstance(got, cp.ndarray)
+    assert cp.array_equal(expect, got)
 
 
 @pytest.mark.asyncio

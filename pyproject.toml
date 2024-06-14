@@ -61,7 +61,7 @@ jupyter = [
     'ipywidgets>=8.0.0',
 ]
 gpu = [
-    "cupy-cuda12x>=13.0.0",
+    "cupy>=13.0.0",
 ]
 docs = [
     'sphinx',
