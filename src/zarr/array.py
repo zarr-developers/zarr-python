@@ -1560,7 +1560,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,
-    ) -> NDArrayLike :
+    ) -> NDArrayLike:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
 
@@ -1635,7 +1635,7 @@ class Array:
             )
         )
 
-        if(hasattr(out_array, "shape")):
+        if hasattr(out_array, "shape"):
             # restore shape
             out_array = np.array(out_array).reshape(indexer.sel_shape)
         return out_array
@@ -1643,7 +1643,7 @@ class Array:
     def set_coordinate_selection(
         self,
         selection: CoordinateSelection,
-        value: npt.ArrayLike ,
+        value: npt.ArrayLike,
         *,
         fields: Fields | None = None,
         prototype: BufferPrototype = default_buffer_prototype,

@@ -39,9 +39,7 @@ BasicSelection = BasicSelector | tuple[BasicSelector, ...]  # also used for Bloc
 CoordinateSelection = IntSequence | tuple[IntSequence, ...]
 MaskSelection = npt.NDArray[np.bool_]
 OrthogonalSelection = Selector | tuple[Selector, ...]
-Selection = (
-    BasicSelection | CoordinateSelection | MaskSelection | OrthogonalSelection
-)
+Selection = BasicSelection | CoordinateSelection | MaskSelection | OrthogonalSelection
 CoordinateSelectionNormalized = tuple[npt.NDArray[np.intp], ...]
 SelectionNormalized = tuple[Selector, ...] | ArrayOfIntOrBool
 SelectionWithFields = Selection | str | Sequence[str]
