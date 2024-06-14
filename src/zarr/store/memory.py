@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, MutableMapping
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype
+from zarr.buffer import Buffer, BufferPrototype, GpuBuffer
 from zarr.common import OpenMode, concurrent_map
 from zarr.store.utils import _normalize_interval_index
 
@@ -101,3 +101,63 @@ class MemoryStore(Store):
             for key in self._store_dict:
                 if key.startswith(prefix + "/") and key != prefix:
                     yield key.removeprefix(prefix + "/").split("/")[0]
+
+
+class GpuMemoryStore(MemoryStore):
+    _store_dict: MutableMapping[str, Buffer]
+
+    def __init__(
+        self, store_dict: MutableMapping[str, Buffer] | None = None, *, mode: OpenMode = "r"
+    ):
+        super().__init__(mode=mode)
+        self._store_dict = {}
+        if store_dict:
+            self._store_dict = {k: GpuBuffer.from_buffer(store_dict[k]) for k in iter(store_dict)}
+
+    def __str__(self) -> str:
+        return f"gpumemory://{id(self._store_dict)}"
+
+    def __repr__(self) -> str:
+        return f"GpuMemoryStore({str(self)!r})"
+
+    async def get(
+        self,
+        key: str,
+        prototype: BufferPrototype,
+        byte_range: tuple[int | None, int | None] | None = None,
+    ) -> Buffer | None:
+        assert isinstance(key, str)
+        try:
+            value = self._store_dict[key]
+            start, length = _normalize_interval_index(value, byte_range)
+            return value[start : start + length]
+        except KeyError:
+            return None
+
+    async def get_partial_values(
+        self,
+        prototype: BufferPrototype,
+        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+    ) -> list[Buffer | None]:
+        # All the key-ranges arguments goes with the same prototype
+        async def _get(key: str, byte_range: tuple[int, int | None]) -> Buffer | None:
+            # Q: use prototype here to convert to bespoke buffer class? If so, how?
+            return await self.get(key, prototype=prototype, byte_range=byte_range)
+
+        vals = await concurrent_map(key_ranges, _get, limit=None)
+        return vals
+
+    async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        self._check_writable()
+        assert isinstance(key, str)
+        if not isinstance(value, Buffer):
+            raise TypeError(f"Expected Buffer. Got {type(value)}.")
+
+        # Convert to GpuBuffer
+        gpu_value = value if isinstance(value, GpuBuffer) else GpuBuffer.from_buffer(value)
+        if byte_range is not None:
+            buf = self._store_dict[key]
+            buf[byte_range[0] : byte_range[1]] = gpu_value
+            self._store_dict[key] = buf
+        else:
+            self._store_dict[key] = gpu_value
