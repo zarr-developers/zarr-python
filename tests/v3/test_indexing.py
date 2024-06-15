@@ -1264,6 +1264,8 @@ def _test_get_mask_selection(a, z, selection):
     assert_array_equal(expect, actual)
     actual = z.vindex[selection]
     assert_array_equal(expect, actual)
+    actual = z[selection]
+    assert_array_equal(expect, actual)
 
 
 mask_selections_1d_bad = [
@@ -1336,6 +1338,10 @@ def _test_set_mask_selection(v, a, z, selection):
     z[:] = 0
     z.vindex[selection] = v[selection]
     assert_array_equal(a, z[:])
+    z[:] = 0
+    z[selection] = v[selection]
+    assert_array_equal(a, z[:])
+
 
 
 def test_set_mask_selection_1d(store: StorePath):
