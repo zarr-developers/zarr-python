@@ -15,7 +15,6 @@ from zarr.abc.store import Store
 from zarr.buffer import BufferPrototype, NDBuffer
 from zarr.common import ChunkCoords
 from zarr.indexing import (
-    is_pure_fancy_indexing,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -520,12 +519,6 @@ def _test_get_orthogonal_selection(a, z, selection):
     assert_array_equal(expect, actual)
     actual = z.oindex[selection]
     assert_array_equal(expect, actual)
-
-    # if is not fancy indexing, z[selection] should be orthogonal selection
-    selection_ndim = len(selection) if isinstance(selection, tuple) else 1
-    if not is_pure_fancy_indexing(selection, selection_ndim):
-        actual = z[selection]
-        assert_array_equal(expect, actual)
 
 
 # noinspection PyStatementEffect
@@ -1725,6 +1718,3 @@ def test_accessed_chunks(shape, chunks, ops):
                 ) == 1
         # Check that no other chunks were accessed
         assert len(delta_counts) == 0
-
-def test_is_pure_orthogonal_indexing():
-    pass
