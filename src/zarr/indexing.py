@@ -107,6 +107,10 @@ def is_integer(x: Any) -> TypeGuard[int]:
     """
     return isinstance(x, numbers.Integral)
 
+def is_bool(x: Any) -> TypeGuard[int]:
+    """True if x is a boolean (both pure Python or NumPy)."""
+    return type(x) in [bool, np.bool_]
+
 
 def is_integer_list(x: Any) -> TypeGuard[list[int]]:
     """True if x is a list of integers.
@@ -116,6 +120,15 @@ def is_integer_list(x: Any) -> TypeGuard[list[int]]:
     bubble up anyway.
     """
     return isinstance(x, list) and len(x) > 0 and is_integer(x[0])
+
+def is_bool_list(x: Any) -> TypeGuard[list[int]]:
+    """True if x is a list of boolean.
+
+    This function assumes ie *does not check* that all elements of the list
+    have the same type. Mixed type lists will result in other errors that will
+    bubble up anyway.
+    """
+    return isinstance(x, list) and len(x) > 0 and is_bool(x[0])
 
 
 def is_integer_array(x: Any, ndim: int | None = None) -> TypeGuard[npt.NDArray[np.intp]]:
@@ -131,6 +144,8 @@ def is_bool_array(x: Any, ndim: int | None = None) -> TypeGuard[npt.NDArray[np.b
         t = t and hasattr(x, "shape") and len(x.shape) == ndim
     return t
 
+def is_int_or_bool_iterable(x: Any) -> bool:
+    return is_integer_list(x) or is_integer_array(x) or is_bool_array(x) or is_bool_list(x)
 
 def is_scalar(value: Any, dtype: np.dtype[Any]) -> bool:
     if np.isscalar(value):
@@ -180,20 +195,20 @@ def is_pure_orthogonal_indexing(selection: Selection, ndim: int) -> TypeGuard[Or
     if not ndim:
         return False
 
-    # Case 1: Selection is a single iterable of integers
-    if is_integer_list(selection) or is_integer_array(selection, ndim=1):
+    if not isinstance(selection, tuple):
+        selection = (selection,)
+
+    # Case 1: Selection contains of iterable of integers or boolean
+    if all(is_int_or_bool_iterable(s) for s in selection):
         return True
 
-    # Case two: selection contains either zero or one integer iterables.
+    # Case 2: selection contains either zero or one integer iterables.
     # All other selection elements are slices or integers
     return (
         isinstance(selection, tuple)
         and len(selection) == ndim
-        and sum(is_integer_list(elem) or is_integer_array(elem) for elem in selection) <= 1
-        and all(
-            is_integer_list(elem) or is_integer_array(elem) or isinstance(elem, int | slice)
-            for elem in selection
-        )
+        and sum(is_int_or_bool_iterable(s) for s in selection) <= 1
+        and all(is_int_or_bool_iterable(s) or isinstance(s, int | slice) for s in selection)
     )
 
 
