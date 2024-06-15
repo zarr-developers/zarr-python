@@ -158,7 +158,7 @@ def is_scalar(value: Any, dtype: np.dtype[Any]) -> bool:
 
 
 def is_pure_fancy_indexing(selection: Any, ndim: int) -> bool:
-    """Check whether a selection contains only scalars or integer array-likes.
+    """Check whether a selection contains only scalars or integer/bool array-likes.
 
     Parameters
     ----------
@@ -171,9 +171,14 @@ def is_pure_fancy_indexing(selection: Any, ndim: int) -> bool:
         True if the selection is a pure fancy indexing expression (ie not mixed
         with boolean or slices).
     """
+    if is_bool_array(selection):
+        # is mask selection
+        return True
+
     if ndim == 1:
-        if is_integer_list(selection) or is_integer_array(selection):
+        if is_integer_list(selection) or is_integer_array(selection) or is_bool_list(selection):
             return True
+
         # if not, we go through the normal path below, because a 1-tuple
         # of integers is also allowed.
     no_slicing = (

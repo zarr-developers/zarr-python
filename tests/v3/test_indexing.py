@@ -1730,7 +1730,7 @@ def test_accessed_chunks(shape, chunks, ops):
     [
         # basic selection
         ...,
-        1, ...,
+        (1, ...),
         slice(None),
         (1,3),
         ([1, 2, 3],9),
