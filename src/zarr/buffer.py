@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import warnings
 from collections.abc import Callable, Iterable, Sequence
 from typing import (
     TYPE_CHECKING,
@@ -489,7 +490,7 @@ class GpuBuffer(Buffer):
 
     def __init__(self, array_like: ArrayLike):
         if cp is None:
-            raise RuntimeError("Cannot use GpuBuffer without cupy")
+            raise ImportError("Cannot use GpuBuffer without cupy. Please install cupy.")
 
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
@@ -501,9 +502,17 @@ class GpuBuffer(Buffer):
         if hasattr(array_like, "__cuda_array_interface__"):
             self._data = cp.asarray(array_like)
         else:
-            # raise ArgumentError("GpuBuffer only supports inputs that implement the '__cuda_array_interface__' protocol")
             # Slow copy based path for arrays that don't support the __cuda_array_interface__
             # TODO: Add a fast zero-copy path for arrays that support the dlpack protocol
+            msg = (
+                "Creating a GpuBuffer with an array that does not support the "
+                "__cuda_array_interface__ for zero-copy transfers, "
+                "falling back to slow copy based path"
+            )
+            warnings.warn(
+                msg,
+                stacklevel=2,
+            )
             buffer = Buffer(array_like)
             self._data = cp.asarray(buffer.as_numpy_array())
 
@@ -568,7 +577,9 @@ class GpuBuffer(Buffer):
         -------
             NumPy array of this buffer (might be a data copy)
         """
-        return cp.asnumpy(self._data)
+        from typing import cast
+
+        return cast(npt.NDArray[Any], cp.asnumpy(self._data))
 
     def __add__(self, other: Buffer) -> Self:
         """Concatenate two buffers"""
@@ -609,7 +620,7 @@ class GpuNDBuffer(NDBuffer):
 
     def __init__(self, array: NDArrayLike):
         if cp is None:
-            raise RuntimeError("Cannot use GpuNDBuffer without cupy")
+            raise ImportError("Cannot use GpuNDBuffer without cupy. Please install cupy.")
 
         # assert array.ndim > 0
         assert array.dtype != object
@@ -622,6 +633,15 @@ class GpuNDBuffer(NDBuffer):
         else:
             # Slow copy based path for arrays that don't support the __cuda_array_interface__
             # TODO: Add a fast zero-copy path for arrays that support the dlpack protocol
+            msg = (
+                "Creating a GpuNDBuffer with an array that does not support the "
+                "__cuda_array_interface__ for zero-copy transfers, "
+                "falling back to slow copy based path"
+            )
+            warnings.warn(
+                msg,
+                stacklevel=2,
+            )
             nd_buffer = NDBuffer(array)
             self._data = cp.asarray(nd_buffer.as_numpy_array())
 
@@ -714,7 +734,9 @@ class GpuNDBuffer(NDBuffer):
         -------
             NumPy array of this buffer (might be a data copy)
         """
-        return cp.asnumpy(self._data)
+        from typing import cast
+
+        return cast(npt.NDArray[Any], cp.asnumpy(self._data))
 
     @property
     def dtype(self) -> np.dtype[Any]:
