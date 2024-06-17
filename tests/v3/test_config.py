@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from zarr.abc.codec import CodecPipeline
@@ -43,3 +45,12 @@ def test_config_codec_pipeline_class():
     # Camel case works, too
     config.set({"codec_pipeline.name": "MockCodecPipeline"})
     assert config.codec_pipeline_class == MockCodecPipeline
+
+
+def test_config_codec_pipeline_class_in_env():
+    class MockEnvCodecPipeline(CodecPipeline):
+        pass
+
+    os.environ[("ZARR_PYTHON_CODEC_PIPELINE__NAME")] = "mock_env_codec_pipeline"
+    config.refresh()
+    assert config.codec_pipeline_class == MockEnvCodecPipeline
