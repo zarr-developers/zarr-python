@@ -1343,7 +1343,6 @@ def _test_set_mask_selection(v, a, z, selection):
     assert_array_equal(a, z[:])
 
 
-
 def test_set_mask_selection_1d(store: StorePath):
     # setup
     v = np.arange(1050, dtype=int)
@@ -1725,6 +1724,7 @@ def test_accessed_chunks(shape, chunks, ops):
         # Check that no other chunks were accessed
         assert len(delta_counts) == 0
 
+
 @pytest.mark.parametrize(
     "selection",
     [
@@ -1732,20 +1732,21 @@ def test_accessed_chunks(shape, chunks, ops):
         [...],
         [1, ...],
         [slice(None)],
-        [1,3],
-        [(1,3)],
-        [[1, 2, 3],9],
+        [1, 3],
+        [(1, 3)],
+        [[1, 2, 3], 9],
         [np.arange(1000)],
         [slice(5, 15)],
         [slice(2, 4), 4],
-        [[1,3]],
+        [[1, 3]],
         # mask selection
-        [np.tile([True, False], (1000,5))],
+        [np.tile([True, False], (1000, 5))],
         [np.full((1000, 10), False)],
         # coordinate selection
         [[1, 2, 3, 4], [5, 6, 7, 8]],
         [[100, 200, 300], [4, 5, 6]],
-])
+    ],
+)
 def test_indexing_equals_numpy(store, selection):
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
@@ -1753,14 +1754,16 @@ def test_indexing_equals_numpy(store, selection):
     actual = z[*selection]
     assert_array_equal(expected, actual, err_msg=f"selection: {selection}")
 
+
 @pytest.mark.parametrize(
     "selection",
     [
         [np.tile([True, False], 500), np.tile([True, False], 5)],
         [np.full(1000, False), np.tile([True, False], 5)],
         [np.full(1000, True), np.full(10, True)],
-        [np.full(1000, True), [True, False]*5],
-    ])
+        [np.full(1000, True), [True, False] * 5],
+    ],
+)
 def test_orthogonal_bool_indexing_like_numpy_ix(store, selection):
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))

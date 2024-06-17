@@ -107,6 +107,7 @@ def is_integer(x: Any) -> TypeGuard[int]:
     """
     return isinstance(x, numbers.Integral)
 
+
 def is_bool(x: Any) -> TypeGuard[int]:
     """True if x is a boolean (both pure Python or NumPy)."""
     return type(x) in [bool, np.bool_]
@@ -120,6 +121,7 @@ def is_integer_list(x: Any) -> TypeGuard[list[int]]:
     bubble up anyway.
     """
     return isinstance(x, list) and len(x) > 0 and is_integer(x[0])
+
 
 def is_bool_list(x: Any) -> TypeGuard[list[int]]:
     """True if x is a list of boolean.
@@ -144,8 +146,10 @@ def is_bool_array(x: Any, ndim: int | None = None) -> TypeGuard[npt.NDArray[np.b
         t = t and hasattr(x, "shape") and len(x.shape) == ndim
     return t
 
+
 def is_int_or_bool_iterable(x: Any) -> bool:
     return is_integer_list(x) or is_integer_array(x) or is_bool_array(x) or is_bool_list(x)
+
 
 def is_scalar(value: Any, dtype: np.dtype[Any]) -> bool:
     if np.isscalar(value):
