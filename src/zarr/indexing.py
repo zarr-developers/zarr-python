@@ -204,17 +204,16 @@ def is_pure_orthogonal_indexing(selection: Selection, ndim: int) -> TypeGuard[Or
     if not ndim:
         return False
 
-    if not isinstance(selection, tuple):
-        return False
+    selection = (selection,) if not isinstance(selection, tuple) else selection
 
     # Case 1: Selection contains of iterable of integers or boolean
-    if all(is_int_or_bool_iterable(s) for s in selection):
+    if len(selection) == ndim and all(is_int_or_bool_iterable(s) for s in selection):
         return True
 
     # Case 2: selection contains either zero or one integer iterables.
     # All other selection elements are slices or integers
     return (
-        len(selection) == ndim
+        len(selection) <= ndim
         and sum(is_int_or_bool_iterable(s) for s in selection) <= 1
         and all(is_int_or_bool_iterable(s) or isinstance(s, int | slice) for s in selection)
     )

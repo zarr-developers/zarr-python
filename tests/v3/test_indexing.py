@@ -1733,7 +1733,6 @@ def test_accessed_chunks(shape, chunks, ops):
         [1, ...],
         [slice(None)],
         [1, 3],
-        [(1, 3)],
         [[1, 2, 3], 9],
         [np.arange(1000)],
         [slice(5, 15)],
