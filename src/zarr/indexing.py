@@ -101,11 +101,8 @@ def ceildiv(a: float, b: float) -> int:
 
 
 def is_integer(x: Any) -> TypeGuard[int]:
-    """True if x is an integer (both pure Python or NumPy).
-
-    Note that Python's bool is considered an integer too.
-    """
-    return isinstance(x, numbers.Integral)
+    """True if x is an integer (both pure Python or NumPy)."""
+    return isinstance(x, numbers.Integral) and not is_bool(x)
 
 
 def is_bool(x: Any) -> TypeGuard[int]:
