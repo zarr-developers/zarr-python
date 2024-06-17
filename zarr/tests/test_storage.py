@@ -406,7 +406,9 @@ class StoreTests:
             assert [] == store.listdir(self.root + "c/x/y")
             assert [] == store.listdir(self.root + "c/d/y")
             assert [] == store.listdir(self.root + "c/d/y/z")
-            assert [] == store.listdir(self.root + "c/e/f")
+            # https://github.com/zarr-developers/zarr-python/issues/1819 and #1679
+            # fsspec changed from returning [] to returning ["f"] around 2024.3
+            assert store.listdir(self.root + "c/e/f") in ([], ["f"])
 
         # test rename (optional)
         if store.is_erasable():
@@ -1152,9 +1154,8 @@ class TestFSStore(StoreTests):
         store[self.root + "foo"] = b"hello"
         assert "foo" in os.listdir(str(path1) + "/" + self.root)
         assert self.root + "foo" in store
-        assert not os.listdir(str(path2))
-        assert store[self.root + "foo"] == b"hello"
         assert "foo" in os.listdir(str(path2))
+        assert store[self.root + "foo"] == b"hello"
 
     def test_deep_ndim(self):
         import zarr
