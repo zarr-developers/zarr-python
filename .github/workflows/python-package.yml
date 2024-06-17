@@ -17,9 +17,14 @@ jobs:
       matrix:
         python-version: ['3.10', '3.11', '3.12']
         numpy_version: ['>=2.1', '==1.24.*']
+        condadeps: 'bsddb3 pip nodejs'
         exclude:
           - python-version: '3.12'
             numpy_version: '==1.24.*'
+        include:
+          - python-version: '3.12'
+            numpy_version: '>=2.1'
+            condadeps: 'bsddb3 pip nodejs zlib-ng'
     services:
       redis:
         image: redis
@@ -50,7 +55,7 @@ jobs:
     - name: Create Conda environment with the rights deps
       shell: "bash -l {0}"
       run: |
-        conda create -n zarr-env python==${{matrix.python-version}} bsddb3 pip nodejs
+        conda create -n zarr-env python==${{matrix.python-version}} ${{matrix.condadeps}}
         conda activate zarr-env
         npm install -g azurite
     - name: Install dependencies
