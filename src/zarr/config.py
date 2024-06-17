@@ -1,8 +1,39 @@
 from __future__ import annotations
 
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
-from donfig import Config
+from donfig import Config as DConfig
+
+if TYPE_CHECKING:
+    from zarr.abc.codec import CodecPipeline
+
+
+class BadConfigError(ValueError):
+    _msg = "bad Config: %r"
+
+
+class Config(DConfig):  # type: ignore[misc]
+    @property
+    def codec_pipeline_class(self) -> type[CodecPipeline]:
+        from zarr.abc.codec import CodecPipeline
+
+        name = self.get("codec_pipeline.name")
+        name_camel_case = name.replace("_", " ").title().replace(" ", "")
+        selected_pipelines = [
+            p for p in CodecPipeline.__subclasses__() if p.__name__ in (name, name_camel_case)
+        ]
+
+        if not selected_pipelines:
+            raise BadConfigError(
+                f'No subclass of CodecPipeline with name "{name}" or "{name_camel_case}" found.'
+            )
+        if len(selected_pipelines) > 1:
+            raise BadConfigError(
+                f'Multiple subclasses of CodecPipeline with name "{name}" or '
+                f'"{name_camel_case}" found: {selected_pipelines}.'
+            )
+        return selected_pipelines[0]
+
 
 config = Config(
     "zarr",
@@ -10,7 +41,7 @@ config = Config(
         {
             "array": {"order": "C"},
             "async": {"concurrency": None, "timeout": None},
-            "codec_pipeline": {"batch_size": 1},
+            "codec_pipeline": {"name": "batched_codec_pipeline", "batch_size": 1},
         }
     ],
 )

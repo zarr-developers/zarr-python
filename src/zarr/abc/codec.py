@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from zarr.array_spec import ArraySpec
+    from zarr.common import JSON
     from zarr.indexing import SelectorTuple
     from zarr.metadata import ArrayMetadata
 
@@ -383,6 +384,15 @@ class CodecPipeline(Metadata):
         value : NDBuffer
         """
         ...
+
+    @classmethod
+    def from_dict(cls, data: Iterable[JSON | Codec]) -> Self:
+        """
+        Create an instance of the model from a dictionary
+        """
+        ...
+
+        return cls(**data)
 
 
 async def batching_helper(

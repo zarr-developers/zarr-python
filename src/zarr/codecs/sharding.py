@@ -23,7 +23,6 @@ from zarr.buffer import Buffer, BufferPrototype, NDBuffer, default_buffer_protot
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
-from zarr.codecs.pipeline import BatchedCodecPipeline
 from zarr.codecs.registry import register_codec
 from zarr.common import (
     ChunkCoords,
@@ -33,6 +32,7 @@ from zarr.common import (
     parse_shapelike,
     product,
 )
+from zarr.config import config
 from zarr.indexing import BasicIndexer, SelectorTuple, c_order_iter, get_indexer, morton_order_iter
 from zarr.metadata import ArrayMetadata, parse_codecs
 
@@ -314,12 +314,12 @@ class ShardingCodec(
         codecs_parsed = (
             parse_codecs(codecs)
             if codecs is not None
-            else BatchedCodecPipeline.from_list([BytesCodec()])
+            else config.codec_pipeline_class.from_list([BytesCodec()])
         )
         index_codecs_parsed = (
             parse_codecs(index_codecs)
             if index_codecs is not None
-            else BatchedCodecPipeline.from_list([BytesCodec(), Crc32cCodec()])
+            else config.codec_pipeline_class.from_list([BytesCodec(), Crc32cCodec()])
         )
         index_location_parsed = (
             parse_index_location(index_location)

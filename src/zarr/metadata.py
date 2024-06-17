@@ -373,9 +373,9 @@ class ArrayV2Metadata(ArrayMetadata):
 
     @property
     def codec_pipeline(self) -> CodecPipeline:
-        from zarr.codecs import BatchedCodecPipeline
+        from zarr.config import config
 
-        return BatchedCodecPipeline.from_list(
+        return config.codec_pipeline_class.from_list(
             [V2Filters(self.filters or []), V2Compressor(self.compressor)]
         )
 
@@ -501,8 +501,8 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
 
 
 def parse_codecs(data: Iterable[Codec | JSON]) -> CodecPipeline:
-    from zarr.codecs import BatchedCodecPipeline
+    from zarr.config import config
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")
-    return BatchedCodecPipeline.from_dict(data)
+    return config.codec_pipeline_class.from_dict(data)
