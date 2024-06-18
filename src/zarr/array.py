@@ -727,17 +727,14 @@ class Array:
         prototype: BufferPrototype = default_buffer_prototype,
         fields: Fields | None = None,
     ) -> NDArrayLike:
-        if self.shape == ():
-            raise NotImplementedError
-        else:
-            return sync(
-                self._async_array._get_selection(
-                    BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
-                    out=out,
-                    fields=fields,
-                    prototype=prototype,
-                )
+        return sync(
+            self._async_array._get_selection(
+                BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
+                out=out,
+                fields=fields,
+                prototype=prototype,
             )
+        )
 
     def set_basic_selection(
         self,

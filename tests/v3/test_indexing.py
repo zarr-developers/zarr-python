@@ -42,7 +42,7 @@ def zarr_array_from_numpy_array(
         chunk_shape=chunk_shape or a.shape,
         chunk_key_encoding=("v2", "."),
     )
-    z[:] = a
+    z[()] = a
     return z
 
 
@@ -111,42 +111,55 @@ def test_replace_ellipsis():
     )
 
 
-@pytest.mark.xfail(reason="zero-dimension arrays are not supported in v3")
-def test_get_basic_selection_0d(store: StorePath):
+@pytest.mark.parametrize(
+    "value, dtype",
+    [
+        (42, "uint8"),
+        pytest.param(
+            (b"aaa", 1, 4.2), [("foo", "S3"), ("bar", "i4"), ("baz", "f8")], marks=pytest.mark.xfail
+        ),
+    ],
+)
+@pytest.mark.parametrize("use_out", (True, False))
+def test_get_basic_selection_0d(store: StorePath, use_out: bool, value: Any, dtype: Any) -> None:
     # setup
-    a = np.array(42)
+    a = np.array(value, dtype=dtype)
     z = zarr_array_from_numpy_array(store, a)
 
     assert_array_equal(a, z.get_basic_selection(Ellipsis))
     assert_array_equal(a, z[...])
-    assert 42 == z.get_basic_selection(())
-    assert 42 == z[()]
+    assert value == z.get_basic_selection(())
+    assert value == z[()]
 
-    # test out param
-    b = NDBuffer.from_numpy_array(np.zeros_like(a))
-    z.get_basic_selection(Ellipsis, out=b)
-    assert_array_equal(a, b)
+    if use_out:
+        # test out param
+        b = NDBuffer.from_numpy_array(np.zeros_like(a))
+        z.get_basic_selection(Ellipsis, out=b)
+        assert_array_equal(a, b.as_ndarray_like())
+
+    # uncomment the structured array tests when we can make them pass, or delete them
+    # when we formally decide not to support structured dtypes
 
     # test structured array
-    value = (b"aaa", 1, 4.2)
-    a = np.array(value, dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
-    z = zarr_array_from_numpy_array(store, a)
-    z[()] = value
-    assert_array_equal(a, z.get_basic_selection(Ellipsis))
-    assert_array_equal(a, z[...])
-    assert a[()] == z.get_basic_selection(())
-    assert a[()] == z[()]
-    assert b"aaa" == z.get_basic_selection((), fields="foo")
-    assert b"aaa" == z["foo"]
-    assert a[["foo", "bar"]] == z.get_basic_selection((), fields=["foo", "bar"])
-    assert a[["foo", "bar"]] == z["foo", "bar"]
-    # test out param
-    b = NDBuffer.from_numpy_array(np.zeros_like(a))
-    z.get_basic_selection(Ellipsis, out=b)
-    assert_array_equal(a, b)
-    c = NDBuffer.from_numpy_array(np.zeros_like(a[["foo", "bar"]]))
-    z.get_basic_selection(Ellipsis, out=c, fields=["foo", "bar"])
-    assert_array_equal(a[["foo", "bar"]], c)
+    # value = (b"aaa", 1, 4.2)
+    # a = np.array(value, dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
+    # z = zarr_array_from_numpy_array(store, a)
+    # z[()] = value
+    # assert_array_equal(a, z.get_basic_selection(Ellipsis))
+    # assert_array_equal(a, z[...])
+    # assert a[()] == z.get_basic_selection(())
+    # assert a[()] == z[()]
+    # assert b"aaa" == z.get_basic_selection((), fields="foo")
+    # assert b"aaa" == z["foo"]
+    # assert a[["foo", "bar"]] == z.get_basic_selection((), fields=["foo", "bar"])
+    # assert a[["foo", "bar"]] == z["foo", "bar"]
+    # # test out param
+    # b = NDBuffer.from_numpy_array(np.zeros_like(a))
+    # z.get_basic_selection(Ellipsis, out=b)
+    # assert_array_equal(a, b)
+    # c = NDBuffer.from_numpy_array(np.zeros_like(a[["foo", "bar"]]))
+    # z.get_basic_selection(Ellipsis, out=c, fields=["foo", "bar"])
+    # assert_array_equal(a[["foo", "bar"]], c)
 
 
 basic_selections_1d = [
