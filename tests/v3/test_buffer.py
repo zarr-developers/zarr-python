@@ -173,3 +173,34 @@ async def test_codecs_use_of_prototype():
     got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=my_prototype)
     assert isinstance(got, MyNDArrayLike)
     assert np.array_equal(expect, got)
+
+
+@pytest.mark.skipif(cp is None, reason="requires cupy")
+@pytest.mark.asyncio
+async def test_codecs_use_of_gpu_prototype():
+    expect = cp.zeros((10, 10), dtype="uint16", order="F")
+    a = await AsyncArray.create(
+        StorePath(MemoryStore(mode="w")) / "test_codecs_use_of_gpu_prototype",
+        shape=expect.shape,
+        chunk_shape=(5, 5),
+        dtype=expect.dtype,
+        fill_value=0,
+        codecs=[
+            TransposeCodec(order=(1, 0)),
+            BytesCodec(),
+            BloscCodec(),
+            Crc32cCodec(),
+            GzipCodec(),
+            ZstdCodec(),
+        ],
+    )
+    expect[:] = cp.arange(100).reshape(10, 10)
+
+    await a.setitem(
+        selection=(slice(0, 10), slice(0, 10)),
+        value=expect[:],
+        prototype=gpu_buffer_prototype,
+    )
+    got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=gpu_buffer_prototype)
+    assert isinstance(got, cp.ndarray)
+    assert cp.array_equal(expect, got)
