@@ -32,6 +32,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
     from typing import Any, Literal
 
+    from typing_extensions import Self
+
 logger = logging.getLogger("zarr.group")
 
 
@@ -97,7 +99,7 @@ class GroupMetadata(Metadata):
         object.__setattr__(self, "zarr_format", zarr_format_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
+    def from_dict(cls, data: dict[str, Any]) -> Self:
         assert data.pop("node_type", None) in ("group", None)
         return cls(**data)
 
@@ -181,10 +183,10 @@ class AsyncGroup:
             assert zarr_json_bytes is not None
             group_metadata = json.loads(zarr_json_bytes.to_bytes())
 
-        return cls.from_dict(store_path, group_metadata)
+        return await cls.from_dict(store_path, group_metadata)
 
     @classmethod
-    def from_dict(
+    async def from_dict(
         cls,
         store_path: StorePath,
         data: dict[str, Any],
@@ -215,9 +217,9 @@ class AsyncGroup:
             else:
                 zarr_json = json.loads(zarr_json_bytes.to_bytes())
             if zarr_json["node_type"] == "group":
-                return type(self).from_dict(store_path, zarr_json)
+                return await type(self).from_dict(store_path, zarr_json)
             elif zarr_json["node_type"] == "array":
-                return AsyncArray.from_dict(store_path, zarr_json)
+                return await AsyncArray.from_dict(store_path, zarr_json)
             else:
                 raise ValueError(f"unexpected node_type: {zarr_json['node_type']}")
         elif self.metadata.zarr_format == 2:
@@ -240,7 +242,7 @@ class AsyncGroup:
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
                 zarr_json = {**zarray, "attributes": zattrs}
-                return AsyncArray.from_dict(store_path, zarray)
+                return sync(AsyncArray.from_dict(store_path, zarray))
             else:
                 zgroup = (
                     json.loads(zgroup_bytes.to_bytes())
@@ -248,7 +250,7 @@ class AsyncGroup:
                     else {"zarr_format": self.metadata.zarr_format}
                 )
                 zarr_json = {**zgroup, "attributes": zattrs}
-                return type(self).from_dict(store_path, zarr_json)
+                return await type(self).from_dict(store_path, zarr_json)
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 

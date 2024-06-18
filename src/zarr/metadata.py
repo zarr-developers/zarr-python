@@ -16,6 +16,7 @@ from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
+from zarr.codecs.bytes import BytesCodec
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -167,7 +168,7 @@ class ArrayV3Metadata(ArrayMetadata):
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
     codecs: CodecPipeline
-    attributes: dict[str, Any] = field(default_factory=dict)
+    attributes: dict[str, JSON] = field(default_factory=dict)
     dimension_names: tuple[str, ...] | None = None
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["array"] = field(default="array", init=False)
@@ -180,9 +181,9 @@ class ArrayV3Metadata(ArrayMetadata):
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
-        codecs: Iterable[Codec | JSON],
-        attributes: None | dict[str, JSON],
-        dimension_names: None | Iterable[str],
+        codecs: Iterable[Codec | JSON] = (BytesCodec(),),
+        attributes: None | dict[str, JSON] = None,
+        dimension_names: None | Iterable[str] = None,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
@@ -277,18 +278,19 @@ class ArrayV3Metadata(ArrayMetadata):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
-        # TODO: Remove the type: ignores[] comments below and use a TypedDict to type `data`
+    def from_dict(cls: type[Self], data: dict[str, JSON]) -> Self:
+        data_copy = data.copy()
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v3(data.pop("zarr_format"))  # type: ignore[arg-type]
+        _ = parse_zarr_format_v3(data_copy.pop("zarr_format"))
         # check that the node_type attribute is correct
-        _ = parse_node_type_array(data.pop("node_type"))  # type: ignore[arg-type]
+        _ = parse_node_type_array(data_copy.pop("node_type"))
 
-        data["dimension_names"] = data.pop("dimension_names", None)
+        data_copy["dimension_names"] = data_copy.pop("dimension_names", None)
 
-        return cls(**data)  # type: ignore[arg-type]
+        # TODO: Remove the ignores and use a TypedDict to type `data`
+        return cls(**data_copy)  # type: ignore[arg-type]
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()
 
         if not isinstance(out_dict, dict):
@@ -401,11 +403,12 @@ class ArrayV2Metadata(ArrayMetadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
+        data_copy = data.copy()
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v2(data.pop("zarr_format"))
-        return cls(**data)
+        _ = parse_zarr_format_v2(data_copy.pop("zarr_format"))
+        return cls(**data_copy)
 
-    def to_dict(self) -> JSON:
+    def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
 
         assert isinstance(zarray_dict, dict)
@@ -461,22 +464,22 @@ def parse_attributes(data: None | dict[str, JSON]) -> dict[str, JSON]:
 # todo: move to its own module and drop _v3 suffix
 # todo: consider folding all the literal parsing into a single function
 # that takes 2 arguments
-def parse_zarr_format_v3(data: Literal[3]) -> Literal[3]:
+def parse_zarr_format_v3(data: Any) -> Literal[3]:
     if data == 3:
-        return data
+        return 3
     raise ValueError(f"Invalid value. Expected 3. Got {data}.")
 
 
 # todo: move to its own module and drop _v2 suffix
-def parse_zarr_format_v2(data: Literal[2]) -> Literal[2]:
+def parse_zarr_format_v2(data: Any) -> Literal[2]:
     if data == 2:
-        return data
+        return 2
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_node_type_array(data: Literal["array"]) -> Literal["array"]:
+def parse_node_type_array(data: Any) -> Literal["array"]:
     if data == "array":
-        return data
+        return "array"
     raise ValueError(f"Invalid value. Expected 'array'. Got {data}.")
 
 
