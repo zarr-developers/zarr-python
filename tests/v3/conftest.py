@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from types import ModuleType
 from typing import TYPE_CHECKING
 
+from zarr import config
 from zarr.common import ZarrFormat
 from zarr.group import AsyncGroup
 
@@ -90,3 +91,10 @@ def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
     """Fixture to parametrize over numpy-like libraries"""
 
     yield pytest.importorskip(request.param)
+
+
+@pytest.fixture(autouse=True)
+def reset_config():
+    config.reset()
+    yield
+    config.reset()
