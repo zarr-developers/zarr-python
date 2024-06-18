@@ -166,7 +166,7 @@ class Buffer:
         to return a buffer instance of the subclass specified by its
         BufferPrototype argument.
 
-        Typically, this only copy data if the data has to be moved between
+        Typically, this only copies data if the data has to be moved between
         memory types, such as from host to device memory.
 
         Parameters
