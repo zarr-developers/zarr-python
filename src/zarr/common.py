@@ -137,17 +137,21 @@ def parse_named_configuration(
 
 def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
     if isinstance(data, int):
+        if data < 0:
+            raise ValueError(f"Expected a non-negative integer. Got {data} instead")
         return (data,)
-    if not isinstance(data, Iterable):
-        raise TypeError(f"Expected an iterable. Got {data} instead.")
-    data_tuple = tuple(data)
-    if len(data_tuple) == 0:
-        raise ValueError("Expected at least one element. Got 0.")
+    try:
+        data_tuple = tuple(data)
+    except TypeError as e:
+        msg = f"Expected an integer or an iterable of integers. Got {data} instead."
+        raise TypeError(msg) from e
+
     if not all(isinstance(v, int) for v in data_tuple):
-        msg = f"Expected an iterable of integers. Got {type(data)} instead."
+        msg = f"Expected an iterable of integers. Got {data} instead."
         raise TypeError(msg)
-    if not all(lambda v: v > 0 for v in data_tuple):
-        raise ValueError(f"All values must be greater than 0. Got {data}.")
+    if not all(v > -1 for v in data_tuple):
+        msg = f"Expected all values to be non-negative. Got {data} instead."
+        raise ValueError(msg)
     return data_tuple
 
 
