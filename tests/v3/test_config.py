@@ -56,7 +56,7 @@ def test_config_codec_pipeline_class():
     class MockEnvCodecPipeline(CodecPipeline):
         pass
 
-    os.environ[("ZARR_PYTHON_CODEC_PIPELINE__NAME")] = "MockEnvCodecPipeline"
+    os.environ["ZARR_PYTHON_CODEC_PIPELINE__NAME"] = "MockEnvCodecPipeline"
     config.refresh()
     assert config.codec_pipeline_class == MockEnvCodecPipeline
 
@@ -71,6 +71,6 @@ def test_config_codec_implementation():
     register_codec("blosc", MockBloscCodec)
     assert get_codec_class("blosc") == MockBloscCodec
 
-    os.environ[("ZARR_PYTHON_CODECS__BLOSC__NAME")] = "BloscCodec"
+    os.environ["ZARR_PYTHON_CODECS__BLOSC__NAME"] = "BloscCodec"
     assert get_codec_class("blosc", reload_config=True) == BloscCodec
 

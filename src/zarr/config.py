@@ -25,24 +25,19 @@ class Config(DConfig):  # type: ignore[misc]
     -  Calls ``ast.literal_eval`` on the value
 
     """
+
     @property
     def codec_pipeline_class(self) -> type[CodecPipeline]:
         from zarr.abc.codec import CodecPipeline
 
         name = self.get("codec_pipeline.name")
-        name_camel_case = camel_case(name)
-        selected_pipelines = [
-            p for p in CodecPipeline.__subclasses__() if p.__name__ in (name, name_camel_case)
-        ]
+        selected_pipelines = [p for p in CodecPipeline.__subclasses__() if p.__name__ == name]
 
         if not selected_pipelines:
-            raise BadConfigError(
-                f'No subclass of CodecPipeline with name "{name}" or "{name_camel_case}" found.'
-            )
+            raise BadConfigError(f'No subclass of CodecPipeline with name "{name}" found.')
         if len(selected_pipelines) > 1:
             raise BadConfigError(
-                f'Multiple subclasses of CodecPipeline with name "{name}" or '
-                f'"{name_camel_case}" found: {selected_pipelines}.'
+                f'Multiple subclasses of CodecPipeline with name "{name}" found: {selected_pipelines}.'
             )
         return selected_pipelines[0]
 
@@ -74,6 +69,3 @@ def parse_indexing_order(data: Any) -> Literal["C", "F"]:
         return cast(Literal["C", "F"], data)
     msg = f"Expected one of ('C', 'F'), got {data} instead."
     raise ValueError(msg)
-
-def camel_case(string: str) -> str:
-    return string.replace("_", " ").title().replace(" ", "")

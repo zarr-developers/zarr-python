@@ -8,7 +8,7 @@ if TYPE_CHECKING:
 from importlib.metadata import EntryPoint
 from importlib.metadata import entry_points as get_entry_points
 
-from zarr.config import camel_case, config
+from zarr.config import config
 
 __codec_registry: dict[str, type[Codec]] = {}
 __lazy_load_codecs: dict[str, EntryPoint] = {}
@@ -36,8 +36,7 @@ def register_codec(key: str, codec_cls: type[Codec]) -> None:
     if selected_codec is None:
         raise ValueError(f"Codec '{key}' not found in config.")
     name = selected_codec.get("name")
-    name_camel_case = camel_case(name)
-    if codec_cls.__name__ in (name, name_camel_case):
+    if codec_cls.__name__ == name:
         __codec_registry[key] = codec_cls
 
 
