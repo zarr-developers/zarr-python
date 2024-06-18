@@ -16,6 +16,7 @@ from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
+from zarr.codecs.registry import get_pipeline_class
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -38,7 +39,6 @@ from zarr.config import parse_indexing_order
 
 # For type checking
 _bool = bool
-
 
 __all__ = ["ArrayMetadata"]
 
@@ -373,9 +373,7 @@ class ArrayV2Metadata(ArrayMetadata):
 
     @property
     def codec_pipeline(self) -> CodecPipeline:
-        from zarr.config import config
-
-        return config.codec_pipeline_class.from_list(
+        return get_pipeline_class().from_list(
             [V2Filters(self.filters or []), V2Compressor(self.compressor)]
         )
 
@@ -501,8 +499,6 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
 
 
 def parse_codecs(data: Iterable[Codec | JSON]) -> CodecPipeline:
-    from zarr.config import config
-
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")
-    return config.codec_pipeline_class.from_dict(data)
+    return get_pipeline_class().from_dict(data)

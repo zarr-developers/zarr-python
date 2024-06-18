@@ -1,19 +1,19 @@
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from zarr.abc.codec import Codec
+    from zarr.abc.codec import Codec, CodecPipeline
 
 from importlib.metadata import EntryPoint
 from importlib.metadata import entry_points as get_entry_points
 
-from zarr.config import config
+from zarr.config import BadConfigError, config
 
-__codec_registry: dict[str, type[Codec]] = {}
+__codec_registry: dict[str, dict[str, type[Codec]]] = {}
 __lazy_load_codecs: dict[str, EntryPoint] = {}
-
-all_codecs = {}
+__pipeline_registry: dict[str, type[CodecPipeline]] = {}
 
 
 def _collect_entrypoints() -> dict[str, EntryPoint]:
@@ -25,33 +25,51 @@ def _collect_entrypoints() -> dict[str, EntryPoint]:
 
 def _reload_config() -> None:
     config.refresh()
-    for codec_cls, key in all_codecs.items():
-        register_codec(key, codec_cls)
 
 
 def register_codec(key: str, codec_cls: type[Codec]) -> None:
-    all_codecs[codec_cls] = key
+    registered_codecs = __codec_registry.get(key, {})
+    registered_codecs[codec_cls.__name__] = codec_cls
+    __codec_registry[key] = registered_codecs
 
-    selected_codec = config.get("codecs", {}).get(key)
-    if selected_codec is None:
-        raise ValueError(f"Codec '{key}' not found in config.")
-    name = selected_codec.get("name")
-    if codec_cls.__name__ == name:
-        __codec_registry[key] = codec_cls
+
+def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
+    __pipeline_registry[pipe_cls.__name__] = pipe_cls
+
+
+def get_pipeline_class(reload_config=False) -> type[CodecPipeline]:
+    if reload_config:
+        _reload_config()
+    name = config.get("codec_pipeline.name")
+    pipeline_class = __pipeline_registry.get(name)
+    if pipeline_class:
+        return pipeline_class
+    raise BadConfigError(
+        f"Pipeline class '{name}' not found in registered pipelines: {list(__pipeline_registry.keys())}."
+    )
 
 
 def get_codec_class(key: str, reload_config=False) -> type[Codec]:
     if reload_config:
         _reload_config()
-    item = __codec_registry.get(key)
-    if item is None:
-        if key in __lazy_load_codecs:
-            # logger.debug("Auto loading codec '%s' from entrypoint", codec_id)
-            cls = __lazy_load_codecs[key].load()
-            register_codec(key, cls)
-            item = __codec_registry.get(key)
-    if item:
-        return item
+
+    if key in __lazy_load_codecs:
+        # logger.debug("Auto loading codec '%s' from entrypoint", codec_id)
+        cls = __lazy_load_codecs[key].load()
+        register_codec(key, cls)
+
+    codec_classes = __codec_registry.get(key)
+
+    config_entry = config.get("codecs", {}).get(key)
+    if config_entry is None:
+        warnings.warn(f"Codec '{key}' not configured in config. Selecting any implementation.")
+        return codec_classes.values()[-1]
+
+    name = config_entry.get("name")
+    selected_codec_cls = codec_classes[name]
+
+    if selected_codec_cls:
+        return selected_codec_cls
     raise KeyError(key)
 
 

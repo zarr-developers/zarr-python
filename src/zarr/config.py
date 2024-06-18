@@ -26,21 +26,6 @@ class Config(DConfig):  # type: ignore[misc]
 
     """
 
-    @property
-    def codec_pipeline_class(self) -> type[CodecPipeline]:
-        from zarr.abc.codec import CodecPipeline
-
-        name = self.get("codec_pipeline.name")
-        selected_pipelines = [p for p in CodecPipeline.__subclasses__() if p.__name__ == name]
-
-        if not selected_pipelines:
-            raise BadConfigError(f'No subclass of CodecPipeline with name "{name}" found.')
-        if len(selected_pipelines) > 1:
-            raise BadConfigError(
-                f'Multiple subclasses of CodecPipeline with name "{name}" found: {selected_pipelines}.'
-            )
-        return selected_pipelines[0]
-
 
 config = Config(
     "zarr_python",
