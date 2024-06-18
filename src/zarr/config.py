@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import Any, Literal, cast
 
 from donfig import Config as DConfig
-
-if TYPE_CHECKING:
-    from zarr.abc.codec import CodecPipeline
 
 
 class BadConfigError(ValueError):
@@ -25,6 +22,10 @@ class Config(DConfig):  # type: ignore[misc]
     -  Calls ``ast.literal_eval`` on the value
 
     """
+
+    def reset(self) -> None:
+        self.clear()
+        self.refresh()
 
 
 config = Config(

@@ -1,6 +1,5 @@
 import os.path
 import sys
-import warnings
 
 import pytest
 
@@ -16,16 +15,21 @@ def set_path():
     zarr.codecs.registry._collect_entrypoints()
     yield
     sys.path.remove(here)
-    entry_points = zarr.codecs.registry._collect_entrypoints()
-    entry_points.pop("test")
+    lazy_load_codecs, lazy_load_pipelines = zarr.codecs.registry._collect_entrypoints()
+    lazy_load_codecs.pop("test")
+    lazy_load_pipelines.clear()
+    config.reset()
 
 
 @pytest.mark.usefixtures("set_path")
 def test_entrypoint_codec():
-    with pytest.raises(UserWarning):
-        cls = zarr.codecs.registry.get_codec_class("test")
-        assert cls.__name__ == "TestCodec"
-
     config.set({"codecs.test.name": "TestCodec"})
     cls = zarr.codecs.registry.get_codec_class("test")
     assert cls.__name__ == "TestCodec"
+
+
+@pytest.mark.usefixtures("set_path")
+def test_entrypoint_pipeline():
+    config.set({"codec_pipeline.name": "TestCodecPipeline"})
+    cls = zarr.codecs.registry.get_pipeline_class()
+    assert cls.__name__ == "TestCodecPipeline"

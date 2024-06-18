@@ -1,6 +1,6 @@
 from numpy import ndarray
 
-from zarr.abc.codec import ArrayBytesCodec
+from zarr.abc.codec import ArrayBytesCodec, CodecPipeline
 from zarr.array_spec import ArraySpec
 from zarr.common import BytesLike
 
@@ -24,3 +24,14 @@ class TestCodec(ArrayBytesCodec):
 
     def compute_encoded_size(self, input_byte_length: int, chunk_spec: ArraySpec) -> int:
         return input_byte_length
+
+
+class TestCodecPipeline(CodecPipeline):
+    def __init__(self, batch_size: int = 1):
+        pass
+
+    async def encode(self, chunk_array: ndarray, chunk_spec: ArraySpec) -> BytesLike:
+        pass
+
+    async def decode(self, chunk_bytes: BytesLike, chunk_spec: ArraySpec) -> ndarray:
+        pass

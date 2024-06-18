@@ -1,2 +1,4 @@
 [zarr.codecs]
 test = package_with_entrypoint:TestCodec
+[zarr]
+codec_pipeline = package_with_entrypoint:TestCodecPipeline

@@ -27,6 +27,7 @@ def get_config() -> Config:
 
     return config
 
+
 class _Codec(Generic[CodecInput, CodecOutput], Metadata):
     """Generic base class for codecs.
     Please use ArrayArrayCodec, ArrayBytesCodec or BytesBytesCodec for subclassing.

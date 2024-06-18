@@ -42,7 +42,7 @@ def test_config_defaults_can_be_overridden():
         assert config.get("array.order") == "F"
 
 
-def test_config_codec_pipeline_class(reset_config):
+def test_config_codec_pipeline_class():
     # has default value
     assert get_pipeline_class().__name__ != ""
 
@@ -70,7 +70,7 @@ def test_config_codec_pipeline_class(reset_config):
         assert get_pipeline_class(reload_config=True) == MockEnvCodecPipeline
 
 
-def test_config_codec_implementation(reset_config):
+def test_config_codec_implementation():
     assert get_codec_class("blosc").__name__ == config.defaults[0]["codecs"]["blosc"]["name"]
 
     class MockBloscCodec(BloscCodec):

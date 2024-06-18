@@ -14,13 +14,17 @@ from zarr.config import BadConfigError, config
 __codec_registry: dict[str, dict[str, type[Codec]]] = {}
 __lazy_load_codecs: dict[str, EntryPoint] = {}
 __pipeline_registry: dict[str, type[CodecPipeline]] = {}
+__lazy_load_pipelines: list[EntryPoint] = []
 
 
-def _collect_entrypoints() -> dict[str, EntryPoint]:
+def _collect_entrypoints() -> tuple[dict[str, EntryPoint], list[EntryPoint]]:
     entry_points = get_entry_points()
     for e in entry_points.select(group="zarr.codecs"):
         __lazy_load_codecs[e.name] = e
-    return __lazy_load_codecs
+    for e in entry_points.select(group="zarr"):
+        if e.name == "codec_pipeline":
+            __lazy_load_pipelines.append(e)
+    return __lazy_load_codecs, __lazy_load_pipelines
 
 
 def _reload_config() -> None:
@@ -40,6 +44,10 @@ def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
 def get_pipeline_class(reload_config: bool = False) -> type[CodecPipeline]:
     if reload_config:
         _reload_config()
+    for e in __lazy_load_pipelines:
+        __lazy_load_pipelines.remove(e)
+        register_pipeline(e.load())
+
     name = config.get("codec_pipeline.name")
     pipeline_class = __pipeline_registry.get(name)
     if pipeline_class:
@@ -64,7 +72,9 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
 
     config_entry = config.get("codecs", {}).get(key)
     if config_entry is None:
-        warnings.warn(f"Codec '{key}' not configured in config. Selecting any implementation.")
+        warnings.warn(
+            f"Codec '{key}' not configured in config. Selecting any implementation.", stacklevel=2
+        )
         return list(codec_classes.values())[-1]
 
     name = config_entry.get("name")
