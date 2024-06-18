@@ -8,7 +8,6 @@ from zarr.abc.metadata import Metadata
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, NDBuffer
 from zarr.common import concurrent_map
-from zarr.config import config
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -21,6 +20,11 @@ if TYPE_CHECKING:
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 
+
+def get_config():
+    from zarr.config import config
+
+    return config
 
 class _Codec(Generic[CodecInput, CodecOutput], Metadata):
     """Generic base class for codecs.
@@ -186,7 +190,7 @@ class ArrayBytesCodecPartialDecodeMixin:
                 for byte_getter, selection, chunk_spec in batch_info
             ],
             self._decode_partial_single,
-            config.get("async.concurrency"),
+            get_config().get("async.concurrency"),
         )
 
 
@@ -226,7 +230,7 @@ class ArrayBytesCodecPartialEncodeMixin:
                 for byte_setter, chunk_array, selection, chunk_spec in batch_info
             ],
             self._encode_partial_single,
-            config.get("async.concurrency"),
+            get_config().get("async.concurrency"),
         )
 
 
@@ -402,7 +406,7 @@ async def batching_helper(
     return await concurrent_map(
         [(chunk_array, chunk_spec) for chunk_array, chunk_spec in batch_info],
         noop_for_none(func),
-        config.get("async.concurrency"),
+        get_config().get("async.concurrency"),
     )
 
 
