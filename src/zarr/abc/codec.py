@@ -8,6 +8,7 @@ from zarr.abc.metadata import Metadata
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, NDBuffer
 from zarr.common import concurrent_map
+from zarr.config import Config
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -21,7 +22,7 @@ CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 
 
-def get_config():
+def get_config() -> Config:
     from zarr.config import config
 
     return config

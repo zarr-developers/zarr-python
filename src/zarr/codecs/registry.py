@@ -37,7 +37,7 @@ def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
     __pipeline_registry[pipe_cls.__name__] = pipe_cls
 
 
-def get_pipeline_class(reload_config=False) -> type[CodecPipeline]:
+def get_pipeline_class(reload_config: bool = False) -> type[CodecPipeline]:
     if reload_config:
         _reload_config()
     name = config.get("codec_pipeline.name")
@@ -49,7 +49,7 @@ def get_pipeline_class(reload_config=False) -> type[CodecPipeline]:
     )
 
 
-def get_codec_class(key: str, reload_config=False) -> type[Codec]:
+def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
     if reload_config:
         _reload_config()
 
@@ -58,12 +58,14 @@ def get_codec_class(key: str, reload_config=False) -> type[Codec]:
         cls = __lazy_load_codecs[key].load()
         register_codec(key, cls)
 
-    codec_classes = __codec_registry.get(key)
+    codec_classes = __codec_registry[key]
+    if not codec_classes:
+        raise KeyError(key)
 
     config_entry = config.get("codecs", {}).get(key)
     if config_entry is None:
         warnings.warn(f"Codec '{key}' not configured in config. Selecting any implementation.")
-        return codec_classes.values()[-1]
+        return list(codec_classes.values())[-1]
 
     name = config_entry.get("name")
     selected_codec_cls = codec_classes[name]
