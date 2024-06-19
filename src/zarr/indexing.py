@@ -97,23 +97,13 @@ def is_bool(x: Any) -> TypeGuard[bool|np.bool_]:
 
 
 def is_integer_list(x: Any) -> TypeGuard[list[int]]:
-    """True if x is a list of integers.
-
-    This function assumes ie *does not check* that all elements of the list
-    have the same type. Mixed type lists will result in other errors that will
-    bubble up anyway.
-    """
-    return isinstance(x, list) and len(x) > 0 and is_integer(x[0])
+    """True if x is a list of integers."""
+    return isinstance(x, list) and len(x) > 0 and all(is_integer(i) for i in x)
 
 
 def is_bool_list(x: Any) -> TypeGuard[list[bool|np.bool_]]:
-    """True if x is a list of boolean.
-
-    This function assumes ie *does not check* that all elements of the list
-    have the same type. Mixed type lists will result in other errors that will
-    bubble up anyway.
-    """
-    return isinstance(x, list) and len(x) > 0 and is_bool(x[0])
+    """True if x is a list of boolean."""
+    return isinstance(x, list) and len(x) > 0 and all(is_bool(i) for i in x)
 
 
 def is_integer_array(x: Any, ndim: int | None = None) -> TypeGuard[npt.NDArray[np.intp]]:
