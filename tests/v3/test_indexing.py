@@ -191,7 +191,6 @@ basic_selections_1d = [
     slice(50, 150, 10),
 ]
 
-
 basic_selections_1d_bad = [
     # only positive step supported
     slice(None, None, -1),
@@ -291,7 +290,6 @@ basic_selections_2d = [
     (Ellipsis, slice(None)),
     (Ellipsis, slice(None), slice(None)),
 ]
-
 
 basic_selections_2d_bad = [
     # bad stuff
@@ -1749,8 +1747,9 @@ def test_accessed_chunks(shape, chunks, ops):
 def test_indexing_equals_numpy(store, selection):
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
-    expected = a[*selection]
-    actual = z[*selection]
+    # note: in python 3.10 a[*selection] is no valid unpacking syntax
+    expected = a[(*selection,)]
+    actual = z[(*selection,)]
     assert_array_equal(expected, actual, err_msg=f"selection: {selection}")
 
 
@@ -1767,5 +1766,6 @@ def test_orthogonal_bool_indexing_like_numpy_ix(store, selection):
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
     expected = a[np.ix_(*selection)]
-    actual = z[*selection]
+    # note: in python 3.10 z[*selection] is no valid unpacking syntax
+    actual = z[(*selection,)]
     assert_array_equal(expected, actual, err_msg=f"{selection=}")
