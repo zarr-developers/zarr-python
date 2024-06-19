@@ -91,7 +91,7 @@ def is_integer(x: Any) -> TypeGuard[int]:
     return isinstance(x, numbers.Integral) and not is_bool(x)
 
 
-def is_bool(x: Any) -> TypeGuard[bool|np.bool_]:
+def is_bool(x: Any) -> TypeGuard[bool | np.bool_]:
     """True if x is a boolean (both pure Python or NumPy)."""
     return type(x) in [bool, np.bool_]
 
@@ -101,7 +101,7 @@ def is_integer_list(x: Any) -> TypeGuard[list[int]]:
     return isinstance(x, list) and len(x) > 0 and all(is_integer(i) for i in x)
 
 
-def is_bool_list(x: Any) -> TypeGuard[list[bool|np.bool_]]:
+def is_bool_list(x: Any) -> TypeGuard[list[bool | np.bool_]]:
     """True if x is a list of boolean."""
     return isinstance(x, list) and len(x) > 0 and all(is_bool(i) for i in x)
 
