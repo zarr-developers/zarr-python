@@ -82,7 +82,7 @@ def test_parse_shapelike_invalid_single_value() -> None:
         parse_shapelike(-1)
 
 
-@pytest.mark.parametrize("data", ["shape", ("0", 1, 2, 3), {"0": "0"}, ((1, 2), (2, 2))])
+@pytest.mark.parametrize("data", ["shape", ("0", 1, 2, 3), {"0": "0"}, ((1, 2), (2, 2)), (4.0, 2)])
 def test_parse_shapelike_invalid_iterable_types(data: Any) -> None:
     """
     Test that we get the expected error message when passing in an iterable containing
@@ -92,7 +92,7 @@ def test_parse_shapelike_invalid_iterable_types(data: Any) -> None:
         parse_shapelike(data)
 
 
-@pytest.mark.parametrize("data", [(1, 2, 3, -1), (-10,), (4.0, 2)])
+@pytest.mark.parametrize("data", [(1, 2, 3, -1), (-10,)])
 def test_parse_shapelike_invalid_iterable_values(data: Any) -> None:
     """
     Test that we get the expected error message when passing in an iterable containing negative
