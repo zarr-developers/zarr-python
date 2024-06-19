@@ -120,7 +120,7 @@ def is_integer_list(x: Any) -> TypeGuard[list[int]]:
     return isinstance(x, list) and len(x) > 0 and is_integer(x[0])
 
 
-def is_bool_list(x: Any) -> TypeGuard[list[int]]:
+def is_bool_list(x: Any) -> TypeGuard[list[bool]]:
     """True if x is a list of boolean.
 
     This function assumes ie *does not check* that all elements of the list
