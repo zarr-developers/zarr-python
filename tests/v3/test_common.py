@@ -92,7 +92,7 @@ def test_parse_shapelike_invalid_iterable_types(data: Any) -> None:
         parse_shapelike(data)
 
 
-@pytest.mark.parametrize("data", [(1, 2, 3, -1), (-10,)])
+@pytest.mark.parametrize("data", [(1, 2, 3, -1), (-10,), (4.0, 2)])
 def test_parse_shapelike_invalid_iterable_values(data: Any) -> None:
     """
     Test that we get the expected error message when passing in an iterable containing negative
