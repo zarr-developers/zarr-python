@@ -23,39 +23,25 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
+from zarr.buffer import NDArrayLike
 from zarr.common import ChunkCoords, product
 
 if TYPE_CHECKING:
     from zarr.array import Array
-    from zarr.buffer import NDArrayLike
     from zarr.chunk_grids import ChunkGrid
 
+IntSequence = list[int] | npt.NDArray[np.intp]
+ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
 BasicSelector = int | slice | EllipsisType
-BasicSelectorTuple = tuple[BasicSelector, ...]
-BasicSelection = BasicSelector | BasicSelectorTuple
-BasicSelectionNormalized = tuple[int | slice, ...]
-CoordinateSelector = list[int] | npt.NDArray[np.intp]
-CoordinateSelection = CoordinateSelector | tuple[CoordinateSelector, ...]
-CoordinateSelectionNormalized = tuple[npt.NDArray[np.intp], ...]
-BlockSelector = int | slice
-BlockSelection = BlockSelector | tuple[BlockSelector, ...]
-BlockSelectionNormalized = tuple[BlockSelector, ...]
-MaskSelection = npt.NDArray[np.bool_]
-OrthogonalSelector = int | slice | npt.NDArray[np.intp] | npt.NDArray[np.bool_]
-OrthogonalSelection = OrthogonalSelector | tuple[OrthogonalSelector, ...]
-OrthogonalSelectionNormalized = tuple[OrthogonalSelector, ...]
+Selector = BasicSelector | ArrayOfIntOrBool
 
-Selection = (
-    BasicSelection | CoordinateSelection | BlockSelection | MaskSelection | OrthogonalSelection
-)
-SelectionNormalized = (
-    BasicSelectionNormalized
-    | CoordinateSelectionNormalized
-    | BlockSelectionNormalized
-    | MaskSelection
-    | OrthogonalSelectionNormalized
-)
-Selector = int | slice | npt.NDArray[np.intp] | npt.NDArray[np.bool_]
+BasicSelection = BasicSelector | tuple[BasicSelector, ...]  # also used for BlockIndex
+CoordinateSelection = IntSequence | tuple[IntSequence, ...]
+MaskSelection = npt.NDArray[np.bool_]
+OrthogonalSelection = Selector | tuple[Selector, ...]
+Selection = BasicSelection | CoordinateSelection | MaskSelection | OrthogonalSelection
+CoordinateSelectionNormalized = tuple[npt.NDArray[np.intp], ...]
+SelectionNormalized = tuple[Selector, ...] | ArrayOfIntOrBool
 SelectionWithFields = Selection | str | Sequence[str]
 SelectorTuple = tuple[Selector, ...] | npt.NDArray[np.intp] | slice
 Fields = str | list[str] | tuple[str, ...]
@@ -869,7 +855,7 @@ class OIndex:
             cast(OrthogonalSelection, new_selection), fields=fields
         )
 
-    def __setitem__(self, selection: OrthogonalSelection, value: NDArrayLike) -> None:
+    def __setitem__(self, selection: OrthogonalSelection, value: npt.ArrayLike) -> None:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
@@ -884,7 +870,7 @@ class BlockIndexer(Indexer):
     shape: ChunkCoords
     drop_axes: ChunkCoords
 
-    def __init__(self, selection: BlockSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
+    def __init__(self, selection: BasicSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
         chunk_shape = get_chunk_shape(chunk_grid)
 
         # handle ellipsis
@@ -963,18 +949,18 @@ class BlockIndexer(Indexer):
 class BlockIndex:
     array: Array
 
-    def __getitem__(self, selection: BlockSelection) -> NDArrayLike:
+    def __getitem__(self, selection: BasicSelection) -> NDArrayLike:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
-        return self.array.get_block_selection(cast(BlockSelection, new_selection), fields=fields)
+        return self.array.get_block_selection(cast(BasicSelection, new_selection), fields=fields)
 
-    def __setitem__(self, selection: BlockSelection, value: NDArrayLike) -> None:
+    def __setitem__(self, selection: BasicSelection, value: npt.ArrayLike) -> None:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
         return self.array.set_block_selection(
-            cast(BlockSelection, new_selection), value, fields=fields
+            cast(BasicSelection, new_selection), value, fields=fields
         )
 
 
@@ -1161,7 +1147,7 @@ class VIndex:
             raise VindexInvalidSelectionError(new_selection)
 
     def __setitem__(
-        self, selection: CoordinateSelection | MaskSelection, value: NDArrayLike
+        self, selection: CoordinateSelection | MaskSelection, value: npt.ArrayLike
     ) -> None:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
@@ -1229,8 +1215,8 @@ def pop_fields(selection: SelectionWithFields) -> tuple[Fields | None, Selection
         return fields, selection
 
 
-def make_slice_selection(selection: Any) -> list[int | slice]:
-    ls: list[int | slice] = []
+def make_slice_selection(selection: Any) -> list[slice]:
+    ls: list[slice] = []
     for dim_selection in selection:
         if is_integer(dim_selection):
             ls.append(slice(int(dim_selection), int(dim_selection) + 1, 1))
