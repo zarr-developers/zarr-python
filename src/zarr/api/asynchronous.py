@@ -322,7 +322,7 @@ async def tree(*args: Any, **kwargs: Any) -> None:
     raise NotImplementedError
 
 
-async def array(data: NDArrayLike, **kwargs: Any) -> AsyncArray:
+async def array(data: npt.ArrayLike, **kwargs: Any) -> AsyncArray:
     """Create an array filled with `data`.
 
     Parameters
