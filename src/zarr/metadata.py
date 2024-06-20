@@ -200,7 +200,7 @@ class ArrayV3Metadata(ArrayMetadata):
             dtype=data_type_parsed,
             fill_value=fill_value_parsed,
             order="C",  # TODO: order is not needed here.
-            prototype=default_buffer_prototype,  # TODO: prototype is not needed here.
+            prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
         codecs_parsed = parse_codecs(codecs).evolve_from_array_spec(array_spec)
 

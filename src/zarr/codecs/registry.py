@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from zarr.abc.codec import Codec, CodecPipeline
+    from zarr.buffer import Buffer, NDBuffer
 
 from importlib.metadata import EntryPoint
 from importlib.metadata import entry_points as get_entry_points
@@ -15,6 +16,10 @@ __codec_registry: dict[str, dict[str, type[Codec]]] = {}
 __lazy_load_codecs: dict[str, EntryPoint] = {}
 __pipeline_registry: dict[str, type[CodecPipeline]] = {}
 __lazy_load_pipelines: list[EntryPoint] = []
+__buffer_registry: dict[str, type[Buffer]] = {}
+__lazy_load_buffer: list[EntryPoint] = []
+__ndbuffer_registry: dict[str, type[NDBuffer]] = {}
+__lazy_load_ndbuffer: list[EntryPoint] = []
 
 
 def _collect_entrypoints() -> tuple[dict[str, EntryPoint], list[EntryPoint]]:
@@ -41,20 +46,12 @@ def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
     __pipeline_registry[pipe_cls.__name__] = pipe_cls
 
 
-def get_pipeline_class(reload_config: bool = False) -> type[CodecPipeline]:
-    if reload_config:
-        _reload_config()
-    for e in __lazy_load_pipelines:
-        __lazy_load_pipelines.remove(e)
-        register_pipeline(e.load())
+def register_ndbuffer(cls: type[NDBuffer]) -> None:
+    __ndbuffer_registry[cls.__name__] = cls
 
-    name = config.get("codec_pipeline.name")
-    pipeline_class = __pipeline_registry.get(name)
-    if pipeline_class:
-        return pipeline_class
-    raise BadConfigError(
-        f"Pipeline class '{name}' not found in registered pipelines: {list(__pipeline_registry.keys())}."
-    )
+
+def register_buffer(cls: type[Buffer]) -> None:
+    __buffer_registry[cls.__name__] = cls
 
 
 def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
@@ -83,6 +80,54 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
     if selected_codec_cls:
         return selected_codec_cls
     raise KeyError(key)
+
+
+def get_pipeline_class(reload_config: bool = False) -> type[CodecPipeline]:
+    if reload_config:
+        _reload_config()
+    for e in __lazy_load_pipelines:
+        __lazy_load_pipelines.remove(e)
+        register_pipeline(e.load())
+
+    name = config.get("codec_pipeline.name")
+    pipeline_class = __pipeline_registry.get(name)
+    if pipeline_class:
+        return pipeline_class
+    raise BadConfigError(
+        f"Pipeline class '{name}' not found in registered pipelines: {list(__pipeline_registry.keys())}."
+    )
+
+
+def get_buffer_class(reload_config: bool = False) -> type[Buffer]:
+    if reload_config:
+        _reload_config()
+    for e in __lazy_load_buffer:
+        __lazy_load_buffer.remove(e)
+        register_buffer(e.load())
+
+    name = config.get("buffer.name")
+    buffer_class = __buffer_registry.get(name)
+    if buffer_class:
+        return buffer_class
+    raise BadConfigError(
+        f"Buffer class '{name}' not found in registered buffers: {list(__buffer_registry.keys())}."
+    )
+
+
+def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
+    if reload_config:
+        _reload_config()
+    for e in __lazy_load_ndbuffer:
+        __lazy_load_ndbuffer.remove(e)
+        register_ndbuffer(e.load())
+
+    name = config.get("ndbuffer.name")
+    ndbuffer_class = __ndbuffer_registry.get(name)
+    if ndbuffer_class:
+        return ndbuffer_class
+    raise BadConfigError(
+        f"NDBuffer class '{name}' not found in registered buffers: {list(__ndbuffer_registry.keys())}."
+    )
 
 
 _collect_entrypoints()

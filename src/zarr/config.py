@@ -45,6 +45,8 @@ config = Config(
                 "sharding_indexed": {"name": "ShardingCodec"},
                 "transpose": {"name": "TransposeCodec"},
             },
+            "buffer": {"name": "Buffer"},
+            "ndbuffer": {"name": "NDBuffer"},
         }
     ],
 )

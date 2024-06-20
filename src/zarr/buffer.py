@@ -15,6 +15,12 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
+from zarr.codecs.registry import (
+    get_buffer_class,
+    get_ndbuffer_class,
+    register_buffer,
+    register_ndbuffer,
+)
 from zarr.common import ChunkCoords
 
 if TYPE_CHECKING:
@@ -326,7 +332,7 @@ class NDBuffer:
         -------
             New buffer representing `array_like`
         """
-        return cls.from_ndarray_like(np.asanyarray(array_like))
+        return cls.from_ndarray_like(np.asanyarray(array_like))  # TODO
 
     def as_ndarray_like(self) -> NDArrayLike:
         """Returns the underlying array (host or device memory) of this buffer
@@ -454,4 +460,9 @@ class BufferPrototype(NamedTuple):
 
 
 # The default buffer prototype used throughout the Zarr codebase.
-default_buffer_prototype = BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
+def default_buffer_prototype() -> BufferPrototype:
+    return BufferPrototype(buffer=get_buffer_class(), nd_buffer=get_ndbuffer_class())
+
+
+register_buffer(Buffer)
+register_ndbuffer(NDBuffer)

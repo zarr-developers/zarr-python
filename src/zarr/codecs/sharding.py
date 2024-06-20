@@ -66,7 +66,7 @@ class _ShardingByteGetter(ByteGetter):
     ) -> Buffer | None:
         assert byte_range is None, "byte_range is not supported within shards"
         assert (
-            prototype is default_buffer_prototype
+            prototype is default_buffer_prototype()
         ), "prototype is not supported within shards currently"
         return self.shard_dict.get(self.chunk_coords)
 
@@ -621,7 +621,7 @@ class ShardingCodec(
             dtype=np.dtype("<u8"),
             fill_value=MAX_UINT_64,
             order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
-            prototype=default_buffer_prototype,
+            prototype=default_buffer_prototype(),
         )
 
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:
@@ -649,11 +649,11 @@ class ShardingCodec(
         shard_index_size = self._shard_index_size(chunks_per_shard)
         if self.index_location == ShardingCodecIndexLocation.start:
             index_bytes = await byte_getter.get(
-                prototype=default_buffer_prototype, byte_range=(0, shard_index_size)
+                prototype=default_buffer_prototype(), byte_range=(0, shard_index_size)
             )
         else:
             index_bytes = await byte_getter.get(
-                prototype=default_buffer_prototype, byte_range=(-shard_index_size, None)
+                prototype=default_buffer_prototype(), byte_range=(-shard_index_size, None)
             )
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes, chunks_per_shard)

@@ -13,12 +13,15 @@ from zarr.buffer import NDBuffer
 from zarr.codecs import BatchedCodecPipeline, BloscCodec, BytesCodec
 from zarr.codecs.registry import (
     get_codec_class,
+    get_ndbuffer_class,
     get_pipeline_class,
     register_codec,
+    register_ndbuffer,
     register_pipeline,
 )
 from zarr.config import BadConfigError, config
 from zarr.indexing import SelectorTuple
+from zarr.testing.buffer import MyNDArrayLike, MyNDBuffer
 
 
 @pytest.fixture()
@@ -135,3 +138,29 @@ def test_config_codec_implementation(store):
 
     with mock.patch.dict(os.environ, {"ZARR_PYTHON_CODECS__BLOSC__NAME": "BloscCodec"}):
         assert get_codec_class("blosc", reload_config=True) == BloscCodec
+
+
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+def test_config_ndbuffer_implementation(store):
+    # has default value
+    assert get_ndbuffer_class().__name__ == config.defaults[0]["ndbuffer"]["name"]
+
+    # set custom ndbuffer with MyNDArrayLike implementation
+    register_ndbuffer(MyNDBuffer)
+    config.set({"ndbuffer.name": "MyNDBuffer"})
+    assert get_ndbuffer_class() == MyNDBuffer
+    arr = Array.create(
+        store=store,
+        shape=(100,),
+        chunks=(10,),
+        zarr_format=3,
+        dtype="i4",
+    )
+    got = arr[:]
+    print(type(got))
+    assert isinstance(got, MyNDArrayLike)
+
+
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+def test_config_buffer_implementation(store):
+    pass

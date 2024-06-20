@@ -79,11 +79,12 @@ class RemoteStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         path = _dereference_path(self.path, key)
-
+        if prototype is None:
+            prototype = default_buffer_prototype()
         try:
             if byte_range:
                 # fsspec uses start/end, not start/length
