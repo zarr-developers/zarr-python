@@ -34,6 +34,7 @@ config = Config(
         {
             "array": {"order": "C"},
             "async": {"concurrency": None, "timeout": None},
+            "json_indent": 2,
             "codec_pipeline": {"name": "BatchedCodecPipeline", "batch_size": 1},
             "codecs": {
                 "blosc": {"name": "BloscCodec"},
@@ -47,6 +48,7 @@ config = Config(
             },
             "buffer": {"name": "Buffer"},
             "ndbuffer": {"name": "NDBuffer"},
+            "codec_pipeline": {"batch_size": 1},
         }
     ],
 )
