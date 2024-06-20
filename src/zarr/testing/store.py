@@ -125,7 +125,9 @@ class StoreTests(Generic[S]):
             self.set(store, key, Buffer.from_bytes(bytes(key, encoding="utf-8")))
 
         # read back just part of it
-        observed_maybe = await store.get_partial_values(prototype=Buffer, key_ranges=key_ranges)
+        observed_maybe = await store.get_partial_values(
+            prototype=default_buffer_prototype(), key_ranges=key_ranges
+        )
 
         observed: list[Buffer] = []
         expected: list[Buffer] = []

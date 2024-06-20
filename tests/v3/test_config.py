@@ -43,6 +43,8 @@ def test_config_defaults_set() -> None:
             "async": {"concurrency": None, "timeout": None},
             "json_indent": 2,
             "codec_pipeline": {"name": "BatchedCodecPipeline", "batch_size": 1},
+            "buffer": {"name": "Buffer"},
+            "ndbuffer": {"name": "NDBuffer"},
             "codecs": {
                 "blosc": {"name": "BloscCodec"},
                 "gzip": {"name": "GzipCodec"},
