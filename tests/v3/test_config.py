@@ -11,7 +11,9 @@ from zarr.abc.store import ByteSetter
 from zarr.array_spec import ArraySpec
 from zarr.buffer import NDBuffer
 from zarr.codecs import BatchedCodecPipeline, BloscCodec, BytesCodec
-from zarr.codecs.registry import (
+from zarr.config import BadConfigError, config
+from zarr.indexing import SelectorTuple
+from zarr.registry import (
     get_codec_class,
     get_ndbuffer_class,
     get_pipeline_class,
@@ -19,8 +21,6 @@ from zarr.codecs.registry import (
     register_ndbuffer,
     register_pipeline,
 )
-from zarr.config import BadConfigError, config
-from zarr.indexing import SelectorTuple
 from zarr.testing.buffer import MyNDArrayLike, MyNDBuffer
 
 

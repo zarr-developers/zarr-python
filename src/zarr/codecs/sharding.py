@@ -23,7 +23,6 @@ from zarr.buffer import Buffer, BufferPrototype, NDBuffer, default_buffer_protot
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
-from zarr.codecs.registry import get_pipeline_class, register_codec
 from zarr.common import (
     ChunkCoords,
     ChunkCoordsLike,
@@ -34,6 +33,7 @@ from zarr.common import (
 )
 from zarr.indexing import BasicIndexer, SelectorTuple, c_order_iter, get_indexer, morton_order_iter
 from zarr.metadata import ArrayMetadata, parse_codecs
+from zarr.registry import get_pipeline_class, register_codec
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator

@@ -17,11 +17,11 @@ from zarr.abc.codec import (
 )
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, BufferPrototype, NDBuffer
-from zarr.codecs.registry import get_codec_class, register_pipeline
 from zarr.common import JSON, concurrent_map, parse_named_configuration
 from zarr.config import config
 from zarr.indexing import SelectorTuple, is_scalar, is_total_slice
 from zarr.metadata import ArrayMetadata
+from zarr.registry import get_codec_class, register_pipeline
 
 if TYPE_CHECKING:
     from typing_extensions import Self

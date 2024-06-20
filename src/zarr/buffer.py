@@ -15,13 +15,13 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.codecs.registry import (
+from zarr.common import ChunkCoords
+from zarr.registry import (
     get_buffer_class,
     get_ndbuffer_class,
     register_buffer,
     register_ndbuffer,
 )
-from zarr.common import ChunkCoords
 
 if TYPE_CHECKING:
     from typing_extensions import Self
