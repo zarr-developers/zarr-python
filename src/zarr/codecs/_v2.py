@@ -9,6 +9,7 @@ from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
 from zarr.array_spec import ArraySpec
 from zarr.buffer import Buffer, NDBuffer
 from zarr.common import JSON, to_thread
+from zarr.registry import get_ndbuffer_class
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,7 @@ class V2Compressor(ArrayBytesCodec):
         if str(chunk_numpy_array.dtype) != chunk_spec.dtype:
             chunk_numpy_array = chunk_numpy_array.view(chunk_spec.dtype)
 
-        return NDBuffer.from_numpy_array(chunk_numpy_array)
+        return get_ndbuffer_class().from_numpy_array(chunk_numpy_array)
 
     async def _encode_single(
         self,
@@ -86,7 +87,7 @@ class V2Filters(ArrayArrayCodec):
                 order=chunk_spec.order,
             )
 
-        return NDBuffer.from_ndarray_like(chunk_ndarray)
+        return get_ndbuffer_class().from_ndarray_like(chunk_ndarray)
 
     async def _encode_single(
         self,
@@ -99,7 +100,7 @@ class V2Filters(ArrayArrayCodec):
             filter = numcodecs.get_codec(filter_metadata)
             chunk_ndarray = await to_thread(filter.encode, chunk_ndarray)
 
-        return NDBuffer.from_ndarray_like(chunk_ndarray)
+        return get_ndbuffer_class().from_ndarray_like(chunk_ndarray)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

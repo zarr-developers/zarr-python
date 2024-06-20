@@ -33,7 +33,7 @@ from zarr.common import (
 )
 from zarr.indexing import BasicIndexer, SelectorTuple, c_order_iter, get_indexer, morton_order_iter
 from zarr.metadata import ArrayMetadata, parse_codecs
-from zarr.registry import get_pipeline_class, register_codec
+from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -599,7 +599,7 @@ class ShardingCodec(
                 await self.index_codecs.encode(
                     [
                         (
-                            NDBuffer.from_numpy_array(index.offsets_and_lengths),
+                            get_ndbuffer_class().from_numpy_array(index.offsets_and_lengths),
                             self._get_index_chunk_spec(index.chunks_per_shard),
                         )
                     ],

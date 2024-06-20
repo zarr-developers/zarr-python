@@ -332,7 +332,7 @@ class NDBuffer:
         -------
             New buffer representing `array_like`
         """
-        return cls.from_ndarray_like(np.asanyarray(array_like))  # TODO
+        return cls.from_ndarray_like(np.asanyarray(array_like))
 
     def as_ndarray_like(self) -> NDArrayLike:
         """Returns the underlying array (host or device memory) of this buffer

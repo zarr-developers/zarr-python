@@ -12,7 +12,7 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from zarr.abc.store import Store
-from zarr.buffer import BufferPrototype, NDBuffer
+from zarr.buffer import BufferPrototype
 from zarr.common import ChunkCoords
 from zarr.indexing import (
     make_slice_selection,
@@ -21,6 +21,7 @@ from zarr.indexing import (
     oindex_set,
     replace_ellipsis,
 )
+from zarr.registry import get_ndbuffer_class
 from zarr.store.core import StorePath
 from zarr.store.memory import MemoryStore
 
@@ -123,7 +124,7 @@ def test_get_basic_selection_0d(store: StorePath):
     assert 42 == z[()]
 
     # test out param
-    b = NDBuffer.from_numpy_array(np.zeros_like(a))
+    b = get_ndbuffer_class().from_numpy_array(np.zeros_like(a))
     z.get_basic_selection(Ellipsis, out=b)
     assert_array_equal(a, b)
 
@@ -141,10 +142,10 @@ def test_get_basic_selection_0d(store: StorePath):
     assert a[["foo", "bar"]] == z.get_basic_selection((), fields=["foo", "bar"])
     assert a[["foo", "bar"]] == z["foo", "bar"]
     # test out param
-    b = NDBuffer.from_numpy_array(np.zeros_like(a))
+    b = get_ndbuffer_class().from_numpy_array(np.zeros_like(a))
     z.get_basic_selection(Ellipsis, out=b)
     assert_array_equal(a, b)
-    c = NDBuffer.from_numpy_array(np.zeros_like(a[["foo", "bar"]]))
+    c = get_ndbuffer_class().from_numpy_array(np.zeros_like(a[["foo", "bar"]]))
     z.get_basic_selection(Ellipsis, out=c, fields=["foo", "bar"])
     assert_array_equal(a[["foo", "bar"]], c)
 
@@ -232,7 +233,7 @@ def _test_get_basic_selection(a, z, selection):
     assert_array_equal(expect, actual)
 
     # test out param
-    b = NDBuffer.from_numpy_array(np.empty(shape=expect.shape, dtype=expect.dtype))
+    b = get_ndbuffer_class().from_numpy_array(np.empty(shape=expect.shape, dtype=expect.dtype))
     z.get_basic_selection(selection, out=b)
     assert_array_equal(expect, b.as_numpy_array())
 
@@ -1382,7 +1383,7 @@ def test_get_selection_out(store: StorePath):
     ]
     for selection in selections:
         expect = a[selection]
-        out = NDBuffer.from_numpy_array(np.empty(expect.shape))
+        out = get_ndbuffer_class().from_numpy_array(np.empty(expect.shape))
         z.get_basic_selection(selection, out=out)
         assert_array_equal(expect, out.as_numpy_array()[:])
 
@@ -1412,7 +1413,7 @@ def test_get_selection_out(store: StorePath):
         ]
         for selection in selections:
             expect = oindex(a, selection)
-            out = NDBuffer.from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
+            out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
             z.get_orthogonal_selection(selection, out=out)
             assert_array_equal(expect, out.as_numpy_array()[:])
 
@@ -1434,7 +1435,7 @@ def test_get_selection_out(store: StorePath):
         ]
         for selection in selections:
             expect = a[selection]
-            out = NDBuffer.from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
+            out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
             z.get_coordinate_selection(selection, out=out)
             assert_array_equal(expect, out.as_numpy_array()[:])
 
