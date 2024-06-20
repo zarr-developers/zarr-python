@@ -16,8 +16,8 @@ from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs._v2 import V2Compressor, V2Filters
-from zarr.registry import get_pipeline_class
 from zarr.config import config
+from zarr.registry import get_pipeline_class
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -401,7 +401,9 @@ class ArrayV2Metadata(ArrayMetadata):
             ZARRAY_JSON: prototype.buffer.from_bytes(
                 json.dumps(zarray_dict, default=_json_convert, indent=json_indent).encode()
             ),
-            ZATTRS_JSON: prototype.buffer.from_bytes(json.dumps(zattrs_dict, indent=json_indent).encode()),
+            ZATTRS_JSON: prototype.buffer.from_bytes(
+                json.dumps(zattrs_dict, indent=json_indent).encode()
+            ),
         }
 
     @classmethod

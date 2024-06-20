@@ -48,7 +48,6 @@ config = Config(
             },
             "buffer": {"name": "Buffer"},
             "ndbuffer": {"name": "NDBuffer"},
-            "codec_pipeline": {"batch_size": 1},
         }
     ],
 )

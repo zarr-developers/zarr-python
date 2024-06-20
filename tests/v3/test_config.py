@@ -1,5 +1,6 @@
 import os
 from collections.abc import Iterable
+from typing import Any
 from unittest import mock
 from unittest.mock import Mock
 
@@ -26,11 +27,6 @@ from zarr.registry import (
 )
 from zarr.testing.buffer import MyBuffer, MyNDArrayLike, MyNDBuffer, StoreExpectingMyBuffer
 
-from typing import Any
-
-import pytest
-
-from zarr.config import config
 
 @pytest.fixture()
 def reset_config():
