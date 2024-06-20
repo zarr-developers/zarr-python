@@ -475,7 +475,7 @@ class AsyncArray:
         return await self._get_selection(indexer, prototype=prototype)
 
     async def _save_metadata(self, metadata: ArrayMetadata) -> None:
-        to_save = metadata.to_buffer_dict()
+        to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await gather(*awaitables)
 

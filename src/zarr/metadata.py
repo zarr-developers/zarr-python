@@ -147,7 +147,7 @@ class ArrayMetadata(Metadata, ABC):
         pass
 
     @abstractmethod
-    def to_buffer_dict(self) -> dict[str, Buffer]:
+    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         pass
 
     @abstractmethod
@@ -259,7 +259,7 @@ class ArrayV3Metadata(ArrayMetadata):
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
-    def to_buffer_dict(self) -> dict[str, Buffer]:
+    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         def _json_convert(o: np.dtype[Any] | Enum | Codec) -> str | dict[str, Any]:
             if isinstance(o, np.dtype):
                 return str(o)
@@ -273,7 +273,9 @@ class ArrayV3Metadata(ArrayMetadata):
             raise TypeError
 
         return {
-            ZARR_JSON: Buffer.from_bytes(json.dumps(self.to_dict(), default=_json_convert).encode())
+            ZARR_JSON: prototype.buffer.from_bytes(
+                json.dumps(self.to_dict(), default=_json_convert).encode()
+            )
         }
 
     @classmethod
@@ -377,7 +379,7 @@ class ArrayV2Metadata(ArrayMetadata):
             [V2Filters(self.filters or []), V2Compressor(self.compressor)]
         )
 
-    def to_buffer_dict(self) -> dict[str, Buffer]:
+    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         def _json_convert(
             o: np.dtype[Any],
         ) -> str | list[tuple[str, str] | tuple[str, str, tuple[int, ...]]]:
@@ -393,8 +395,10 @@ class ArrayV2Metadata(ArrayMetadata):
         zattrs_dict = zarray_dict.pop("attributes", {})
         assert isinstance(zattrs_dict, dict)
         return {
-            ZARRAY_JSON: Buffer.from_bytes(json.dumps(zarray_dict, default=_json_convert).encode()),
-            ZATTRS_JSON: Buffer.from_bytes(json.dumps(zattrs_dict).encode()),
+            ZARRAY_JSON: prototype.buffer.from_bytes(
+                json.dumps(zarray_dict, default=_json_convert).encode()
+            ),
+            ZATTRS_JSON: prototype.buffer.from_bytes(json.dumps(zattrs_dict).encode()),
         }
 
     @classmethod

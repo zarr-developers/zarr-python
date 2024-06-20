@@ -12,7 +12,7 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.store.core import StorePath
-from zarr.testing.buffer import MyBuffer, MyNDArrayLike, MyNDBuffer, MyStore
+from zarr.testing.buffer import MyBuffer, MyNDArrayLike, MyNDBuffer, StoreExpectingMyBuffer
 
 
 def test_nd_array_like(xp):
@@ -27,7 +27,7 @@ async def test_async_array_prototype():
 
     expect = np.zeros((9, 9), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(MyStore(mode="w")) / "test_async_array_prototype",
+        StorePath(StoreExpectingMyBuffer(mode="w")) / "test_async_array_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
@@ -51,7 +51,7 @@ async def test_async_array_prototype():
 async def test_codecs_use_of_prototype():
     expect = np.zeros((10, 10), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(MyStore(mode="w")) / "test_codecs_use_of_prototype",
+        StorePath(StoreExpectingMyBuffer(mode="w")) / "test_codecs_use_of_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,

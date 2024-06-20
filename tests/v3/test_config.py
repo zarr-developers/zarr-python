@@ -3,25 +3,28 @@ from collections.abc import Iterable
 from unittest import mock
 from unittest.mock import Mock
 
+import numpy as np
 import pytest
 
-from zarr import Array
+from zarr import Array, zeros
 from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter
 from zarr.array_spec import ArraySpec
 from zarr.buffer import NDBuffer
-from zarr.codecs import BatchedCodecPipeline, BloscCodec, BytesCodec
+from zarr.codecs import BatchedCodecPipeline, BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
 from zarr.config import BadConfigError, config
 from zarr.indexing import SelectorTuple
 from zarr.registry import (
+    get_buffer_class,
     get_codec_class,
     get_ndbuffer_class,
     get_pipeline_class,
+    register_buffer,
     register_codec,
     register_ndbuffer,
     register_pipeline,
 )
-from zarr.testing.buffer import MyNDArrayLike, MyNDBuffer
+from zarr.testing.buffer import MyBuffer, MyNDArrayLike, MyNDBuffer, StoreExpectingMyBuffer
 
 
 @pytest.fixture()
@@ -161,6 +164,36 @@ def test_config_ndbuffer_implementation(store):
     assert isinstance(got, MyNDArrayLike)
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-def test_config_buffer_implementation(store):
-    pass
+def test_config_buffer_implementation():
+    # has default value
+    assert get_buffer_class().__name__ == config.defaults[0]["buffer"]["name"]
+
+    arr = zeros(shape=(100), store=StoreExpectingMyBuffer(mode="w"))
+
+    # AssertionError of StoreExpectingMyBuffer when not using my buffer
+    with pytest.raises(AssertionError):
+        arr[:] = np.arange(100)
+
+    register_buffer(MyBuffer)
+    config.set({"buffer.name": "MyBuffer"})
+    assert get_buffer_class() == MyBuffer
+
+    # no error using MyBuffer
+    arr[:] = np.arange(100)
+
+    arr_sharding = zeros(
+        shape=(100, 10),
+        store=StoreExpectingMyBuffer(mode="w"),
+        codecs=[ShardingCodec(chunk_shape=(10, 10))],
+    )
+    arr_sharding[:] = np.arange(1000).reshape(100, 10)
+
+    arr_Crc32c = zeros(
+        shape=(100, 10),
+        store=StoreExpectingMyBuffer(mode="w"),
+        codecs=[BytesCodec(), Crc32cCodec()],
+    )
+    arr_Crc32c[:] = np.arange(1000).reshape(100, 10)
+
+
+pass

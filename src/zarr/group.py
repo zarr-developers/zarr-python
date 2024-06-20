@@ -14,7 +14,7 @@ from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
 from zarr.array import Array, AsyncArray
 from zarr.attributes import Attributes
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_key_encodings import ChunkKeyEncoding
 from zarr.common import (
     JSON,
@@ -78,15 +78,15 @@ class GroupMetadata(Metadata):
     zarr_format: ZarrFormat = 3
     node_type: Literal["group"] = field(default="group", init=False)
 
-    def to_buffer_dict(self) -> dict[str, Buffer]:
+    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         if self.zarr_format == 3:
-            return {ZARR_JSON: Buffer.from_bytes(json.dumps(self.to_dict()).encode())}
+            return {ZARR_JSON: prototype.buffer.from_bytes(json.dumps(self.to_dict()).encode())}
         else:
             return {
-                ZGROUP_JSON: Buffer.from_bytes(
+                ZGROUP_JSON: prototype.buffer.from_bytes(
                     json.dumps({"zarr_format": self.zarr_format}).encode()
                 ),
-                ZATTRS_JSON: Buffer.from_bytes(json.dumps(self.attributes).encode()),
+                ZATTRS_JSON: prototype.buffer.from_bytes(json.dumps(self.attributes).encode()),
             }
 
     def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3):
@@ -266,7 +266,7 @@ class AsyncGroup:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
     async def _save_metadata(self) -> None:
-        to_save = self.metadata.to_buffer_dict()
+        to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 
@@ -529,7 +529,7 @@ class Group(SyncMixin):
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        to_save = new_metadata.to_buffer_dict()
+        to_save = new_metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 

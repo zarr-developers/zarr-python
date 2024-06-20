@@ -40,7 +40,7 @@ class MyNDBuffer(NDBuffer):
         return ret
 
 
-class MyStore(MemoryStore):
+class StoreExpectingMyBuffer(MemoryStore):
     """Example of a custom Store that expect MyBuffer for all its non-metadata
 
     We assume that keys containing "json" is metadata
