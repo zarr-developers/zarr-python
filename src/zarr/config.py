@@ -11,6 +11,7 @@ config = Config(
             "array": {"order": "C"},
             "async": {"concurrency": None, "timeout": None},
             "codec_pipeline": {"batch_size": 1},
+            "json_indent": 2,
         }
     ],
 )

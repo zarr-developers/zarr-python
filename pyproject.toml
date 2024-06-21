@@ -27,10 +27,12 @@ dependencies = [
     'numpy>=1.24',
     'fasteners',
     'numcodecs>=0.10.0',
+    'fsspec>2024',
     'crc32c',
     'zstandard',
     'typing_extensions',
-    'donfig'
+    'donfig',
+    'pytest'
 ]
 dynamic = [
   "version",
@@ -111,7 +113,12 @@ extra-dependencies = [
     "pytest-cov",
     "msgpack",
     "lmdb",
+    "s3fs",
     "pytest-asyncio",
+    "moto[s3]",
+    "flask-cors",
+    "flask",
+    "requests",
     "mypy"
 ]
 features = ["extra"]
