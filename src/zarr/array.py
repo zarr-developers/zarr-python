@@ -17,7 +17,7 @@ from typing import Any, Literal, cast
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
 from zarr.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
@@ -112,14 +112,14 @@ class AsyncArray:
             | tuple[Literal["v2"], Literal[".", "/"]]
             | None
         ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
         chunks: ChunkCoords | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        filters: Iterable[dict[str, JSON] | ArrayArrayCodec] = (),
+        pre_compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
+        compressors: Iterable[dict[str, JSON] | BytesBytesCodec] = (),
         # runtime
         exists_ok: bool = False,
     ) -> AsyncArray:
@@ -141,14 +141,6 @@ class AsyncArray:
                 raise ValueError(
                     "order cannot be used for arrays with version 3. Use a transpose codec instead."
                 )
-            if filters is not None:
-                raise ValueError(
-                    "filters cannot be used for arrays with version 3. Use array-to-array codecs instead."
-                )
-            if compressor is not None:
-                raise ValueError(
-                    "compressor cannot be used for arrays with version 3. Use bytes-to-bytes codecs instead."
-                )
             return await cls._create_v3(
                 store_path,
                 shape=shape,
@@ -156,16 +148,14 @@ class AsyncArray:
                 chunk_shape=chunk_shape,
                 fill_value=fill_value,
                 chunk_key_encoding=chunk_key_encoding,
-                codecs=codecs,
+                filters=filters,
+                pre_compressor=pre_compressor,
+                compressors=compressors,
                 dimension_names=dimension_names,
                 attributes=attributes,
                 exists_ok=exists_ok,
             )
         elif zarr_format == 2:
-            if codecs is not None:
-                raise ValueError(
-                    "codecs cannot be used for arrays with version 2. Use filters and compressor instead."
-                )
             if chunk_key_encoding is not None:
                 raise ValueError(
                     "chunk_key_encoding cannot be used for arrays with version 2. Use dimension_separator instead."
@@ -181,7 +171,7 @@ class AsyncArray:
                 fill_value=fill_value,
                 order=order,
                 filters=filters,
-                compressor=compressor,
+                compressor=pre_compressor,
                 attributes=attributes,
                 exists_ok=exists_ok,
             )
@@ -203,7 +193,9 @@ class AsyncArray:
             | tuple[Literal["v2"], Literal[".", "/"]]
             | None
         ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        pre_compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
+        filters: Iterable[dict[str, JSON] | ArrayArrayCodec] = (),
+        compressors: Iterable[dict[str, JSON] | BytesBytesCodec] = (),
         dimension_names: Iterable[str] | None = None,
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
@@ -211,7 +203,15 @@ class AsyncArray:
         if not exists_ok:
             assert not await (store_path / ZARR_JSON).exists()
 
-        codecs = list(codecs) if codecs is not None else [BytesCodec()]
+        codecs: tuple[dict[str, JSON] | Codec, ...]
+        _pre_compressor: dict[str, JSON] | ArrayBytesCodec
+
+        if pre_compressor is None:
+            _pre_compressor = BytesCodec()
+        else:
+            _pre_compressor = pre_compressor
+
+        codecs = (*filters, _pre_compressor, *compressors)
 
         if fill_value is None:
             if dtype == np.dtype("bool"):
@@ -257,8 +257,8 @@ class AsyncArray:
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: None | int | float = None,
         order: Literal["C", "F"] | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        filters: Iterable[dict[str, JSON] | Codec] = (),
+        compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray:
@@ -283,11 +283,7 @@ class AsyncArray:
             compressor=(
                 numcodecs.get_codec(compressor).get_config() if compressor is not None else None
             ),
-            filters=(
-                [numcodecs.get_codec(filter).get_config() for filter in filters]
-                if filters is not None
-                else None
-            ),
+            filters=tuple(numcodecs.get_codec(filter).get_config() for filter in filters),
             attributes=attributes,
         )
         array = cls(metadata=metadata, store_path=store_path)
@@ -595,14 +591,14 @@ class Array:
             | tuple[Literal["v2"], Literal[".", "/"]]
             | None
         ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
         chunks: ChunkCoords | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
+        compressor: dict[str, JSON] | ArrayBytesCodec | None = None,
+        filters: Iterable[dict[str, JSON] | ArrayArrayCodec] = (),
+        post_compressors: Iterable[dict[str, JSON] | BytesBytesCodec] = (),
         # runtime
         exists_ok: bool = False,
     ) -> Array:
@@ -616,13 +612,13 @@ class Array:
                 fill_value=fill_value,
                 chunk_shape=chunk_shape,
                 chunk_key_encoding=chunk_key_encoding,
-                codecs=codecs,
                 dimension_names=dimension_names,
                 chunks=chunks,
                 dimension_separator=dimension_separator,
                 order=order,
+                pre_compressor=compressor,
                 filters=filters,
-                compressor=compressor,
+                compressors=post_compressors,
                 exists_ok=exists_ok,
             ),
         )

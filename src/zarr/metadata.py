@@ -5,7 +5,10 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -286,7 +289,7 @@ class ArrayV3Metadata(ArrayMetadata):
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format_v3(data.pop("zarr_format"))  # type: ignore[arg-type]
         # check that the node_type attribute is correct
-        _ = parse_node_type_array(data.pop("node_type"))  # type: ignore[arg-type]
+        _ = parse_node_type_array(data.pop("node_type"))
 
         data["dimension_names"] = data.pop("dimension_names", None)
 
@@ -334,7 +337,7 @@ class ArrayV2Metadata(ArrayMetadata):
         order: Literal["C", "F"],
         dimension_separator: Literal[".", "/"] = ".",
         compressor: dict[str, JSON] | None = None,
-        filters: list[dict[str, JSON]] | None = None,
+        filters: Iterable[dict[str, JSON]] | None = None,
         attributes: dict[str, JSON] | None = None,
     ):
         """
@@ -470,26 +473,28 @@ def parse_attributes(data: None | dict[str, JSON]) -> dict[str, JSON]:
 # that takes 2 arguments
 def parse_zarr_format_v3(data: Literal[3]) -> Literal[3]:
     if data == 3:
-        return data
+        return 3
     raise ValueError(f"Invalid value. Expected 3. Got {data}.")
 
 
 # todo: move to its own module and drop _v2 suffix
 def parse_zarr_format_v2(data: Literal[2]) -> Literal[2]:
     if data == 2:
-        return data
+        return 2
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_node_type_array(data: Literal["array"]) -> Literal["array"]:
+def parse_node_type_array(data: Any) -> Literal["array"]:
     if data == "array":
-        return data
+        return "array"
     raise ValueError(f"Invalid value. Expected 'array'. Got {data}.")
 
 
 # todo: real validation
-def parse_filters(data: list[dict[str, JSON]] | None) -> list[dict[str, JSON]] | None:
-    return data
+def parse_filters(data: Any) -> tuple[dict[str, JSON]] | None:
+    if isinstance(data, Iterable):
+        result = tuple(data)
+    return cast(tuple[dict[str, JSON]], result)
 
 
 # todo: real validation
