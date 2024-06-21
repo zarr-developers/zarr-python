@@ -22,14 +22,21 @@ __ndbuffer_registry: dict[str, type[NDBuffer]] = {}
 __lazy_load_ndbuffer: list[EntryPoint] = []
 
 
-def _collect_entrypoints() -> tuple[dict[str, EntryPoint], list[EntryPoint]]:
+def _collect_entrypoints() -> (
+    tuple[dict[str, EntryPoint], list[EntryPoint], list[EntryPoint], list[EntryPoint]]
+):
     entry_points = get_entry_points()
     for e in entry_points.select(group="zarr.codecs"):
         __lazy_load_codecs[e.name] = e
     for e in entry_points.select(group="zarr"):
         if e.name == "codec_pipeline":
             __lazy_load_pipelines.append(e)
-    return __lazy_load_codecs, __lazy_load_pipelines
+        if e.name == "buffer":
+            __lazy_load_buffer.append(e)
+        if e.name == "ndbuffer":
+            __lazy_load_ndbuffer.append(e)
+
+    return __lazy_load_codecs, __lazy_load_pipelines, __lazy_load_buffer, __lazy_load_ndbuffer
 
 
 def _reload_config() -> None:
@@ -88,7 +95,6 @@ def get_pipeline_class(reload_config: bool = False) -> type[CodecPipeline]:
     for e in __lazy_load_pipelines:
         __lazy_load_pipelines.remove(e)
         register_pipeline(e.load())
-
     name = config.get("codec_pipeline.name")
     pipeline_class = __pipeline_registry.get(name)
     if pipeline_class:
@@ -104,7 +110,6 @@ def get_buffer_class(reload_config: bool = False) -> type[Buffer]:
     for e in __lazy_load_buffer:
         __lazy_load_buffer.remove(e)
         register_buffer(e.load())
-
     name = config.get("buffer.name")
     buffer_class = __buffer_registry.get(name)
     if buffer_class:
@@ -120,7 +125,6 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
     for e in __lazy_load_ndbuffer:
         __lazy_load_ndbuffer.remove(e)
         register_ndbuffer(e.load())
-
     name = config.get("ndbuffer.name")
     ndbuffer_class = __ndbuffer_registry.get(name)
     if ndbuffer_class:

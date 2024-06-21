@@ -15,9 +15,9 @@ def set_path():
     zarr.registry._collect_entrypoints()
     yield
     sys.path.remove(here)
-    lazy_load_codecs, lazy_load_pipelines = zarr.registry._collect_entrypoints()
-    lazy_load_codecs.pop("test")
-    lazy_load_pipelines.clear()
+    lazy_load_lists = zarr.registry._collect_entrypoints()
+    for lazy_load_list in lazy_load_lists:
+        lazy_load_list.clear()
     config.reset()
 
 
@@ -33,3 +33,10 @@ def test_entrypoint_pipeline():
     config.set({"codec_pipeline.name": "TestCodecPipeline"})
     cls = zarr.registry.get_pipeline_class()
     assert cls.__name__ == "TestCodecPipeline"
+
+
+@pytest.mark.usefixtures("set_path")
+def test_entrypoint_buffer():
+    config.set({"buffer.name": "TestBuffer", "ndbuffer.name": "TestNDBuffer"})
+    assert zarr.registry.get_buffer_class().__name__ == "TestBuffer"
+    assert zarr.registry.get_ndbuffer_class().__name__ == "TestNDBuffer"
