@@ -12,7 +12,7 @@ import json
 from asyncio import gather
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
-from typing import Any, Literal, TypedDict, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -72,12 +72,6 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
         elif data["zarr_format"] == 2:
             return ArrayV2Metadata.from_dict(data)
     raise TypeError
-
-
-class ArrayInterface(TypedDict):
-    shape: tuple[int, ...]
-    typestr: str
-    version: Literal[3]
 
 
 @dataclass(frozen=True)
