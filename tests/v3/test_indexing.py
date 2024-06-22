@@ -42,7 +42,7 @@ def zarr_array_from_numpy_array(
         chunk_shape=chunk_shape or a.shape,
         chunk_key_encoding=("v2", "."),
     )
-    z[:] = a
+    z[()] = a
     return z
 
 
@@ -111,42 +111,55 @@ def test_replace_ellipsis():
     )
 
 
-@pytest.mark.xfail(reason="zero-dimension arrays are not supported in v3")
-def test_get_basic_selection_0d(store: StorePath):
+@pytest.mark.parametrize(
+    "value, dtype",
+    [
+        (42, "uint8"),
+        pytest.param(
+            (b"aaa", 1, 4.2), [("foo", "S3"), ("bar", "i4"), ("baz", "f8")], marks=pytest.mark.xfail
+        ),
+    ],
+)
+@pytest.mark.parametrize("use_out", (True, False))
+def test_get_basic_selection_0d(store: StorePath, use_out: bool, value: Any, dtype: Any) -> None:
     # setup
-    a = np.array(42)
-    z = zarr_array_from_numpy_array(store, a)
+    arr_np = np.array(value, dtype=dtype)
+    arr_z = zarr_array_from_numpy_array(store, arr_np)
 
-    assert_array_equal(a, z.get_basic_selection(Ellipsis))
-    assert_array_equal(a, z[...])
-    assert 42 == z.get_basic_selection(())
-    assert 42 == z[()]
+    assert_array_equal(arr_np, arr_z.get_basic_selection(Ellipsis))
+    assert_array_equal(arr_np, arr_z[...])
+    assert value == arr_z.get_basic_selection(())
+    assert value == arr_z[()]
 
-    # test out param
-    b = NDBuffer.from_numpy_array(np.zeros_like(a))
-    z.get_basic_selection(Ellipsis, out=b)
-    assert_array_equal(a, b)
+    if use_out:
+        # test out param
+        b = NDBuffer.from_numpy_array(np.zeros_like(arr_np))
+        arr_z.get_basic_selection(Ellipsis, out=b)
+        assert_array_equal(arr_np, b.as_ndarray_like())
+
+    # todo: uncomment the structured array tests when we can make them pass,
+    # or delete them if we formally decide not to support structured dtypes.
 
     # test structured array
-    value = (b"aaa", 1, 4.2)
-    a = np.array(value, dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
-    z = zarr_array_from_numpy_array(store, a)
-    z[()] = value
-    assert_array_equal(a, z.get_basic_selection(Ellipsis))
-    assert_array_equal(a, z[...])
-    assert a[()] == z.get_basic_selection(())
-    assert a[()] == z[()]
-    assert b"aaa" == z.get_basic_selection((), fields="foo")
-    assert b"aaa" == z["foo"]
-    assert a[["foo", "bar"]] == z.get_basic_selection((), fields=["foo", "bar"])
-    assert a[["foo", "bar"]] == z["foo", "bar"]
-    # test out param
-    b = NDBuffer.from_numpy_array(np.zeros_like(a))
-    z.get_basic_selection(Ellipsis, out=b)
-    assert_array_equal(a, b)
-    c = NDBuffer.from_numpy_array(np.zeros_like(a[["foo", "bar"]]))
-    z.get_basic_selection(Ellipsis, out=c, fields=["foo", "bar"])
-    assert_array_equal(a[["foo", "bar"]], c)
+    # value = (b"aaa", 1, 4.2)
+    # a = np.array(value, dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
+    # z = zarr_array_from_numpy_array(store, a)
+    # z[()] = value
+    # assert_array_equal(a, z.get_basic_selection(Ellipsis))
+    # assert_array_equal(a, z[...])
+    # assert a[()] == z.get_basic_selection(())
+    # assert a[()] == z[()]
+    # assert b"aaa" == z.get_basic_selection((), fields="foo")
+    # assert b"aaa" == z["foo"]
+    # assert a[["foo", "bar"]] == z.get_basic_selection((), fields=["foo", "bar"])
+    # assert a[["foo", "bar"]] == z["foo", "bar"]
+    # # test out param
+    # b = NDBuffer.from_numpy_array(np.zeros_like(a))
+    # z.get_basic_selection(Ellipsis, out=b)
+    # assert_array_equal(a, b)
+    # c = NDBuffer.from_numpy_array(np.zeros_like(a[["foo", "bar"]]))
+    # z.get_basic_selection(Ellipsis, out=c, fields=["foo", "bar"])
+    # assert_array_equal(a[["foo", "bar"]], c)
 
 
 basic_selections_1d = [
@@ -466,51 +479,46 @@ def test_fancy_indexing_doesnt_mix_with_implicit_slicing(store: StorePath):
         np.testing.assert_array_equal(z2[..., [1, 2, 3]], 0)
 
 
-@pytest.mark.xfail(reason="zero-dimension arrays are not supported in v3")
-def test_set_basic_selection_0d(store: StorePath):
-    # setup
-    v = np.array(42)
-    a = np.zeros_like(v)
-    z = zarr_array_from_numpy_array(store, v)
-    assert_array_equal(a, z[:])
+@pytest.mark.parametrize(
+    "value, dtype",
+    [
+        (42, "uint8"),
+        pytest.param(
+            (b"aaa", 1, 4.2), [("foo", "S3"), ("bar", "i4"), ("baz", "f8")], marks=pytest.mark.xfail
+        ),
+    ],
+)
+def test_set_basic_selection_0d(
+    store: StorePath, value: Any, dtype: str | list[tuple[str, str]]
+) -> None:
+    arr_np = np.array(value, dtype=dtype)
+    arr_np_zeros = np.zeros_like(arr_np, dtype=dtype)
+    arr_z = zarr_array_from_numpy_array(store, arr_np_zeros)
+    assert_array_equal(arr_np_zeros, arr_z)
 
-    # tests
-    z.set_basic_selection(Ellipsis, v)
-    assert_array_equal(v, z[:])
-    z[...] = 0
-    assert_array_equal(a, z[:])
-    z[...] = v
-    assert_array_equal(v, z[:])
+    arr_z.set_basic_selection(Ellipsis, value)
+    assert_array_equal(value, arr_z)
+    arr_z[...] = 0
+    assert_array_equal(arr_np_zeros, arr_z)
+    arr_z[...] = value
+    assert_array_equal(value, arr_z)
 
-    # test structured array
-    value = (b"aaa", 1, 4.2)
-    v = np.array(value, dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")])
-    a = np.zeros_like(v)
-    z = zarr_array_from_numpy_array(store, a)
+    # todo: uncomment the structured array tests when we can make them pass,
+    # or delete them if we formally decide not to support structured dtypes.
 
-    # tests
-    z.set_basic_selection(Ellipsis, v)
-    assert_array_equal(v, z[:])
-    z.set_basic_selection(Ellipsis, a)
-    assert_array_equal(a, z[:])
-    z[...] = v
-    assert_array_equal(v, z[:])
-    z[...] = a
-    assert_array_equal(a, z[:])
-    # with fields
-    z.set_basic_selection(Ellipsis, v["foo"], fields="foo")
-    assert v["foo"] == z["foo"]
-    assert a["bar"] == z["bar"]
-    assert a["baz"] == z["baz"]
-    z["bar"] = v["bar"]
-    assert v["foo"] == z["foo"]
-    assert v["bar"] == z["bar"]
-    assert a["baz"] == z["baz"]
-    # multiple field assignment not supported
-    with pytest.raises(IndexError):
-        z.set_basic_selection(Ellipsis, v[["foo", "bar"]], fields=["foo", "bar"])
-    with pytest.raises(IndexError):
-        z[..., "foo", "bar"] = v[["foo", "bar"]]
+    # arr_z.set_basic_selection(Ellipsis, v["foo"], fields="foo")
+    # assert v["foo"] == arr_z["foo"]
+    # assert arr_np_zeros["bar"] == arr_z["bar"]
+    # assert arr_np_zeros["baz"] == arr_z["baz"]
+    # arr_z["bar"] = v["bar"]
+    # assert v["foo"] == arr_z["foo"]
+    # assert v["bar"] == arr_z["bar"]
+    # assert arr_np_zeros["baz"] == arr_z["baz"]
+    # # multiple field assignment not supported
+    # with pytest.raises(IndexError):
+    #     arr_z.set_basic_selection(Ellipsis, v[["foo", "bar"]], fields=["foo", "bar"])
+    # with pytest.raises(IndexError):
+    #     arr_z[..., "foo", "bar"] = v[["foo", "bar"]]
 
 
 def _test_get_orthogonal_selection(a, z, selection):

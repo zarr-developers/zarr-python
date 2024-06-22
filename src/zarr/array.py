@@ -487,7 +487,7 @@ class AsyncArray:
 
         # check value shape
         if np.isscalar(value):
-            value = np.asanyarray(value)
+            value = np.asanyarray(value, dtype=self.metadata.dtype)
         else:
             if not hasattr(value, "shape"):
                 value = np.asarray(value, self.metadata.dtype)
@@ -699,6 +699,24 @@ class Array:
     @property
     def read_only(self) -> bool:
         return self._async_array.read_only
+
+    def __array__(
+        self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
+    ) -> NDArrayLike:
+        """
+        This method is used by numpy when converting zarr.Array into a numpy array.
+        For more information, see https://numpy.org/devdocs/user/basics.interoperability.html#the-array-method
+        """
+        if copy is False:
+            msg = "`copy=False` is not supported. This method always creates a copy."
+            raise ValueError(msg)
+
+        arr_np = self[...]
+
+        if dtype is not None:
+            arr_np = arr_np.astype(dtype)
+
+        return arr_np
 
     def __getitem__(self, selection: Selection) -> NDArrayLike:
         """Retrieve data for an item or region of the array.
@@ -1062,17 +1080,14 @@ class Array:
 
         """
 
-        if self.shape == ():
-            raise NotImplementedError
-        else:
-            return sync(
-                self._async_array._get_selection(
-                    BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
-                    out=out,
-                    fields=fields,
-                    prototype=prototype,
-                )
+        return sync(
+            self._async_array._get_selection(
+                BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
+                out=out,
+                fields=fields,
+                prototype=prototype,
             )
+        )
 
     def set_basic_selection(
         self,
