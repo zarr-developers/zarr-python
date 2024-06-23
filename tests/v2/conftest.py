@@ -1,5 +1,5 @@
-import pathlib
 import pytest
+import pathlib
 
 
 @pytest.fixture(params=[str, pathlib.Path])

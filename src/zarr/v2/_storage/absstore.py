@@ -58,7 +58,7 @@ class ABSStore(Store):
     -----
     In order to use this store, you must install the Microsoft Azure Storage SDK for Python,
     ``azure-storage-blob>=12.5.0``.
-    """  # noqa: E501
+    """
 
     def __init__(
         self,

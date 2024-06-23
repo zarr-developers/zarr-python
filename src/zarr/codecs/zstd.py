@@ -1,19 +1,19 @@
 from __future__ import annotations
-from typing import TYPE_CHECKING
+
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
-
+import numpy.typing as npt
 from zstandard import ZstdCompressor, ZstdDecompressor
 
 from zarr.abc.codec import BytesBytesCodec
+from zarr.array_spec import ArraySpec
+from zarr.buffer import Buffer, as_numpy_array_wrapper
 from zarr.codecs.registry import register_codec
-from zarr.common import parse_named_configuration, to_thread
+from zarr.common import JSON, parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
-    from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.config import RuntimeConfiguration
-    from zarr.common import BytesLike, JSON, ArraySpec
 
 
 def parse_zstd_level(data: JSON) -> int:
@@ -45,36 +45,38 @@ class ZstdCodec(BytesBytesCodec):
         object.__setattr__(self, "checksum", checksum_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "zstd")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
 
-    def _compress(self, data: bytes) -> bytes:
+    def _compress(self, data: npt.NDArray[Any]) -> bytes:
         ctx = ZstdCompressor(level=self.level, write_checksum=self.checksum)
-        return ctx.compress(data)
+        return ctx.compress(data.tobytes())
 
-    def _decompress(self, data: bytes) -> bytes:
+    def _decompress(self, data: npt.NDArray[Any]) -> bytes:
         ctx = ZstdDecompressor()
-        return ctx.decompress(data)
+        return ctx.decompress(data.tobytes())
 
-    async def decode(
+    async def _decode_single(
         self,
-        chunk_bytes: bytes,
-        _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
-    ) -> BytesLike:
-        return await to_thread(self._decompress, chunk_bytes)
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer:
+        return await to_thread(
+            as_numpy_array_wrapper, self._decompress, chunk_bytes, chunk_spec.prototype
+        )
 
-    async def encode(
+    async def _encode_single(
         self,
-        chunk_bytes: bytes,
-        _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[BytesLike]:
-        return await to_thread(self._compress, chunk_bytes)
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        return await to_thread(
+            as_numpy_array_wrapper, self._compress, chunk_bytes, chunk_spec.prototype
+        )
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

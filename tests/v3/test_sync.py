@@ -1,12 +1,10 @@
-from collections.abc import AsyncGenerator
 import asyncio
-import time
-from unittest.mock import patch, AsyncMock
-
-from zarr.sync import sync, _get_loop, _get_lock, SyncError, SyncMixin
-from zarr.config import SyncConfiguration
+from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock, patch
 
 import pytest
+
+from zarr.sync import SyncError, SyncMixin, _get_lock, _get_loop, sync
 
 
 @pytest.fixture(params=[True, False])
@@ -49,7 +47,7 @@ def test_sync_timeout() -> None:
     duration = 0.002
 
     async def foo() -> None:
-        time.sleep(duration)
+        await asyncio.sleep(duration)
 
     with pytest.raises(asyncio.TimeoutError):
         sync(foo(), timeout=duration / 2)
@@ -113,7 +111,6 @@ def test_sync_mixin(sync_loop) -> None:
     class SyncFoo(SyncMixin):
         def __init__(self, async_foo: AsyncFoo) -> None:
             self._async_foo = async_foo
-            self._sync_configuration = SyncConfiguration(asyncio_loop=sync_loop)
 
         def foo(self) -> str:
             return self._sync(self._async_foo.foo())
