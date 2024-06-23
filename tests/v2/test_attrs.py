@@ -1,3 +1,8 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from typing import Any
+
 import json
 import pathlib
 
@@ -35,13 +40,11 @@ class TestAttributes:
         d = json.loads(str(store[attrs_key], "utf-8"))
         assert dict(foo="bar", baz=42) == d
 
-    def test_utf8_encoding(self):
-        test_root = pathlib.Path(__file__).parent.parent
-        fixdir = test_root / "fixture"
-
-        # fixture data
-        fixture = group(store=DirectoryStore(str(fixdir)))
-        assert fixture["utf8attrs"].attrs.asdict() == dict(foo="た")
+    def test_utf8_encoding(self, tmpdir: Any) -> None:
+        g = group(store=DirectoryStore(str(tmpdir)), path='utf8attrs')
+        attrs = {"foo": "た"}
+        g.attrs.put(attrs)
+        assert g.attrs.asdict() == attrs
 
     def test_get_set_del_contains(self):
         store = _init_store()
