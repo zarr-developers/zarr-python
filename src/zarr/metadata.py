@@ -16,6 +16,7 @@ from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.codecs.registry import get_codec_class
+from zarr.config import config
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -266,8 +267,11 @@ class ArrayV3Metadata(ArrayMetadata):
                 return config
             raise TypeError
 
+        json_indent = config.get("json_indent")
         return {
-            ZARR_JSON: Buffer.from_bytes(json.dumps(self.to_dict(), default=_json_convert).encode())
+            ZARR_JSON: Buffer.from_bytes(
+                json.dumps(self.to_dict(), default=_json_convert, indent=json_indent).encode()
+            )
         }
 
     @classmethod
@@ -380,9 +384,12 @@ class ArrayV2Metadata(ArrayMetadata):
         assert isinstance(zarray_dict, dict)
         zattrs_dict = zarray_dict.pop("attributes", {})
         assert isinstance(zattrs_dict, dict)
+        json_indent = config.get("json_indent")
         return {
-            ZARRAY_JSON: Buffer.from_bytes(json.dumps(zarray_dict, default=_json_convert).encode()),
-            ZATTRS_JSON: Buffer.from_bytes(json.dumps(zattrs_dict).encode()),
+            ZARRAY_JSON: Buffer.from_bytes(
+                json.dumps(zarray_dict, default=_json_convert, indent=json_indent).encode()
+            ),
+            ZATTRS_JSON: Buffer.from_bytes(json.dumps(zattrs_dict, indent=json_indent).encode()),
         }
 
     @classmethod
