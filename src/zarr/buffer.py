@@ -64,6 +64,8 @@ class NDArrayLike(Protocol):
 
     def __setitem__(self, key: slice, value: Any) -> None: ...
 
+    def __array__(self) -> npt.NDArray[Any]: ...
+
     def reshape(
         self, shape: ChunkCoords | Literal[-1], *, order: Literal["A", "C", "F"] = ...
     ) -> Self: ...
@@ -232,7 +234,7 @@ class Buffer:
 
 
 class NDBuffer:
-    """A n-dimensional memory block
+    """An n-dimensional memory block
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
