@@ -2460,7 +2460,6 @@ def test_normalize_store_arg(tmpdir):
         store = normalize_store_arg(fsspec.get_mapper("file://" + path))
         assert isinstance(store, FSStore)
 
-
 # todo: delete this
 def test_meta_prefix_6853(tmpdir):
     """
