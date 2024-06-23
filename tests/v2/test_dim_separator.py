@@ -2,6 +2,7 @@ import pathlib
 
 import pytest
 from numpy.testing import assert_array_equal
+from functools import partial
 
 import zarr.v2
 from zarr.v2.core import Array
@@ -28,7 +29,7 @@ needs_fsspec = pytest.mark.skipif(not have_fsspec, reason="needs fsspec")
         pytest.param("fs_default", marks=needs_fsspec),
     )
 )
-def dataset(tmpdir, request):
+def dataset(tmpdir, request) -> None:
     """
     Generate a variety of different Zarrs using
     different store implementations as well as
@@ -40,11 +41,30 @@ def dataset(tmpdir, request):
     kwargs = {}
 
     if which.startswith("static"):
-        test_root = pathlib.Path(__file__).parent.parent
+        test_root = pathlib.Path(__file__).parent 
         suffix = which[len("static_") :]
-        static = test_root / "fixture" / suffix
-        return str(static)
+        static = test_root / "fixture" / "dimension_separator" / suffix
 
+        # this commented block will generate the static fixtures. 
+        # if not static.exists():  # pragma: no cover
+        #     if "nested" in which:
+        #         # No way to reproduce the nested_legacy file via code
+        #         generator = NestedDirectoryStore
+        #     else:
+        #         if "legacy" in suffix:
+        #             # No dimension_separator metadata included
+        #             generator = DirectoryStore
+        #         else:
+        #             # Explicit dimension_separator metadata included
+        #             generator = partial(DirectoryStore, dimension_separator=".")
+
+        #     # store the data - should be one-time operation
+        #     s = generator(str(static))
+        #     a = zarr.v2.open(store=s, mode="w", shape=(2, 2), dtype="<i8")
+        #     a[:] = [[1, 2], [3, 4]]
+
+        return str(static)
+    
     if which.startswith("directory"):
         store_class = DirectoryStore
     elif which.startswith("nested"):

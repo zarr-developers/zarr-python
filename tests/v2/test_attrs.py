@@ -4,7 +4,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 import json
-import pathlib
+
 
 import pytest
 
