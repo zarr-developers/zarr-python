@@ -40,9 +40,9 @@ def dataset(tmpdir, request):
     kwargs = {}
 
     if which.startswith("static"):
-        test_root = pathlib.Path(__file__).parent.parent
+        test_root = pathlib.Path(__file__).parent 
         suffix = which[len("static_") :]
-        static = test_root / "fixture" / suffix
+        static = test_root / "fixture" / "dimension_separator" / suffix
         return str(static)
 
     if which.startswith("directory"):
