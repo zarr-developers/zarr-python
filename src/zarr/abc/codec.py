@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable, Iterable
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
+
+import numpy as np
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, NDBuffer
-from zarr.common import concurrent_map
-from zarr.config import Config
+from zarr.chunk_grids import ChunkGrid
+from zarr.common import ChunkCoords, concurrent_map
+from zarr.config import Config, config
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -16,15 +19,12 @@ if TYPE_CHECKING:
     from zarr.array_spec import ArraySpec
     from zarr.common import JSON
     from zarr.indexing import SelectorTuple
-    from zarr.metadata import ArrayMetadata
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 
 
 def get_config() -> Config:
-    from zarr.config import config
-
     return config
 
 
@@ -82,13 +82,18 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         """
         return self
 
-    def validate(self, array_metadata: ArrayMetadata) -> None:
+    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
         """Validates that the codec configuration is compatible with the array metadata.
         Raises errors when the codec configuration is not compatible.
 
         Parameters
         ----------
-        array_metadata : ArrayMetadata
+        shape: ChunkCoords
+            The array shape
+        dtype: np.dtype[Any]
+            The array data type
+        chunk_grid: ChunkGrid
+            The array chunk grid
         """
         ...
 
@@ -282,13 +287,18 @@ class CodecPipeline(Metadata):
     def supports_partial_encode(self) -> bool: ...
 
     @abstractmethod
-    def validate(self, array_metadata: ArrayMetadata) -> None:
+    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
         """Validates that all codec configurations are compatible with the array metadata.
         Raises errors when a codec configuration is not compatible.
 
         Parameters
         ----------
-        array_metadata : ArrayMetadata
+        shape: ChunkCoords
+            The array shape
+        dtype: np.dtype[Any]
+            The array data type
+        chunk_grid: ChunkGrid
+            The array chunk grid
         """
         ...
 

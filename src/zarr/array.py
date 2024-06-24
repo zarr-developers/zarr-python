@@ -11,19 +11,21 @@ import json
 # 1. Was splitting the array into two classes really necessary?
 from asyncio import gather
 from collections.abc import Iterable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec
+from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
 from zarr.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
 from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
+from zarr.codecs._v2 import V2Compressor, V2Filters
+from zarr.codecs.pipeline import BatchedCodecPipeline
 from zarr.common import (
     JSON,
     ZARR_JSON,
@@ -63,8 +65,8 @@ from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
 
-def parse_array_metadata(data: Any) -> ArrayMetadata:
-    if isinstance(data, ArrayMetadata):
+def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
+    if isinstance(data, ArrayV2Metadata | ArrayV3Metadata):
         return data
     elif isinstance(data, dict):
         if data["zarr_format"] == 3:
@@ -74,10 +76,22 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
     raise TypeError
 
 
+def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> BatchedCodecPipeline:
+    if isinstance(metadata, ArrayV3Metadata):
+        return BatchedCodecPipeline.from_list(metadata.codecs)
+    elif isinstance(metadata, ArrayV2Metadata):
+        return BatchedCodecPipeline.from_list(
+            [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
+        )
+    else:
+        raise AssertionError
+
+
 @dataclass(frozen=True)
 class AsyncArray:
     metadata: ArrayMetadata
     store_path: StorePath
+    codec_pipeline: CodecPipeline = field(init=False)
     order: Literal["C", "F"]
 
     def __init__(
@@ -92,6 +106,7 @@ class AsyncArray:
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
         object.__setattr__(self, "order", order_parsed)
+        object.__setattr__(self, "codec_pipeline", create_codec_pipeline(metadata=metadata_parsed))
 
     @classmethod
     async def create(
@@ -443,7 +458,7 @@ class AsyncArray:
             )
         if product(indexer.shape) > 0:
             # reading chunks and decoding them
-            await self.metadata.codec_pipeline.read(
+            await self.codec_pipeline.read(
                 [
                     (
                         self.store_path / self.metadata.encode_chunk_key(chunk_coords),
@@ -492,7 +507,7 @@ class AsyncArray:
 
         # check value shape
         if np.isscalar(value):
-            value = np.asanyarray(value)
+            value = np.asanyarray(value, dtype=self.metadata.dtype)
         else:
             if not hasattr(value, "shape"):
                 value = np.asarray(value, self.metadata.dtype)
@@ -508,7 +523,7 @@ class AsyncArray:
         value_buffer = prototype.nd_buffer.from_ndarray_like(value)
 
         # merging with existing data and encoding chunks
-        await self.metadata.codec_pipeline.write(
+        await self.codec_pipeline.write(
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
@@ -706,6 +721,24 @@ class Array:
     @property
     def read_only(self) -> bool:
         return self._async_array.read_only
+
+    def __array__(
+        self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
+    ) -> NDArrayLike:
+        """
+        This method is used by numpy when converting zarr.Array into a numpy array.
+        For more information, see https://numpy.org/devdocs/user/basics.interoperability.html#the-array-method
+        """
+        if copy is False:
+            msg = "`copy=False` is not supported. This method always creates a copy."
+            raise ValueError(msg)
+
+        arr_np = self[...]
+
+        if dtype is not None:
+            arr_np = arr_np.astype(dtype)
+
+        return arr_np
 
     def __getitem__(self, selection: Selection) -> NDArrayLike:
         """Retrieve data for an item or region of the array.
@@ -1071,17 +1104,14 @@ class Array:
 
         if prototype is None:
             prototype = default_buffer_prototype()
-        if self.shape == ():
-            raise NotImplementedError
-        else:
-            return sync(
-                self._async_array._get_selection(
-                    BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
-                    out=out,
-                    fields=fields,
-                    prototype=prototype,
-                )
+        return sync(
+            self._async_array._get_selection(
+                BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
+                out=out,
+                fields=fields,
+                prototype=prototype,
             )
+        )
 
     def set_basic_selection(
         self,
