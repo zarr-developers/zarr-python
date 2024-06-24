@@ -14,7 +14,8 @@ from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
-    Codec, CodecPipeline,
+    Codec,
+    CodecPipeline,
 )
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.array_spec import ArraySpec
@@ -584,7 +585,9 @@ class ShardingCodec(
     ) -> _ShardIndex:
         index_array = next(
             iter(
-                await get_pipeline_class().from_list(self.index_codecs).decode(
+                await get_pipeline_class()
+                .from_list(self.index_codecs)
+                .decode(
                     [(index_bytes, self._get_index_chunk_spec(chunks_per_shard))],
                 )
             )

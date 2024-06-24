@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-
 # Notes on what I've changed here:
 # 1. Split Array into AsyncArray and Array
 # 3. Added .size and .attrs methods
@@ -25,7 +24,6 @@ from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
-from zarr.registry import get_pipeline_class
 from zarr.common import (
     JSON,
     ZARR_JSON,
@@ -61,6 +59,7 @@ from zarr.indexing import (
     pop_fields,
 )
 from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
+from zarr.registry import get_pipeline_class
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 

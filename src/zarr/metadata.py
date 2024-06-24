@@ -16,7 +16,7 @@ from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.config import config
-from zarr.registry import get_pipeline_class, get_codec_class
+from zarr.registry import get_codec_class, get_pipeline_class
 
 if TYPE_CHECKING:
     from typing_extensions import Self
