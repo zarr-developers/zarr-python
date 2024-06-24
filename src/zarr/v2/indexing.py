@@ -989,7 +989,7 @@ class PartialChunkIterator:
     arr_shape : shape of chunk to select data from
 
     Attributes
-    -----------
+    ----------
     arr_shape
     selection
 
