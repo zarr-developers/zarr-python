@@ -109,6 +109,7 @@ class LocalStore(Store):
     ) -> list[Buffer | None]:
         """
         Read byte ranges from multiple keys.
+
         Parameters
         ----------
         key_ranges: List[Tuple[str, Tuple[int, int]]]
