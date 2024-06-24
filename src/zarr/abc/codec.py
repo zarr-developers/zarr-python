@@ -265,7 +265,7 @@ class CodecPipeline(Metadata):
 
     @classmethod
     @abstractmethod
-    def from_list(cls, codecs: list[Codec]) -> Self:
+    def from_list(cls, codecs: Iterable[Codec]) -> Self:
         """Creates a codec pipeline from a list of codecs.
 
         Parameters

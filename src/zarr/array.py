@@ -25,7 +25,7 @@ from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
-from zarr.codecs.pipeline import BatchedCodecPipeline
+from zarr.registry import get_pipeline_class
 from zarr.common import (
     JSON,
     ZARR_JSON,
@@ -76,11 +76,11 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
     raise TypeError
 
 
-def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> BatchedCodecPipeline:
+def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
-        return BatchedCodecPipeline.from_list(metadata.codecs)
+        return get_pipeline_class().from_list(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
-        return BatchedCodecPipeline.from_list(
+        return get_pipeline_class().from_list(
             [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
         )
     else:

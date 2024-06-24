@@ -14,7 +14,7 @@ from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
-    Codec,
+    Codec, CodecPipeline,
 )
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.array_spec import ArraySpec
@@ -32,7 +32,7 @@ from zarr.common import (
 )
 from zarr.indexing import BasicIndexer, SelectorTuple, c_order_iter, get_indexer, morton_order_iter
 from zarr.metadata import parse_codecs
-from zarr.registry import get_ndbuffer_class, register_codec
+from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -337,8 +337,8 @@ class ShardingCodec(
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     @property
-    def codec_pipeline(self) -> BatchedCodecPipeline:
-        return BatchedCodecPipeline.from_list(self.codecs)
+    def codec_pipeline(self) -> CodecPipeline:
+        return get_pipeline_class().from_list(self.codecs)
 
     def to_dict(self) -> dict[str, JSON]:
         return {
@@ -584,7 +584,7 @@ class ShardingCodec(
     ) -> _ShardIndex:
         index_array = next(
             iter(
-                await BatchedCodecPipeline.from_list(self.index_codecs).decode(
+                await get_pipeline_class().from_list(self.index_codecs).decode(
                     [(index_bytes, self._get_index_chunk_spec(chunks_per_shard))],
                 )
             )
@@ -595,7 +595,9 @@ class ShardingCodec(
     async def _encode_shard_index(self, index: _ShardIndex) -> Buffer:
         index_bytes = next(
             iter(
-                await BatchedCodecPipeline.from_list(self.index_codecs).encode(
+                await get_pipeline_class()
+                .from_list(self.index_codecs)
+                .encode(
                     [
                         (
                             get_ndbuffer_class().from_numpy_array(index.offsets_and_lengths),
@@ -610,8 +612,12 @@ class ShardingCodec(
         return index_bytes
 
     def _shard_index_size(self, chunks_per_shard: ChunkCoords) -> int:
-        return BatchedCodecPipeline.from_list(self.index_codecs).compute_encoded_size(
-            16 * product(chunks_per_shard), self._get_index_chunk_spec(chunks_per_shard)
+        return (
+            get_pipeline_class()
+            .from_list(self.index_codecs)
+            .compute_encoded_size(
+                16 * product(chunks_per_shard), self._get_index_chunk_spec(chunks_per_shard)
+            )
         )
 
     def _get_index_chunk_spec(self, chunks_per_shard: ChunkCoords) -> ArraySpec:
