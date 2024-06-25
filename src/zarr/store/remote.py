@@ -25,6 +25,7 @@ class RemoteStore(Store):
     supports_listing: bool = True
 
     _fs: AsyncFileSystem
+    _url: str
     path: str
     allowed_exceptions: tuple[type[Exception], ...]
 
@@ -51,9 +52,10 @@ class RemoteStore(Store):
         """
 
         super().__init__(mode=mode)
-
         if isinstance(url, str):
-            self._fs, self.path = fsspec.url_to_fs(url, **storage_options)
+            self._url = url.rstrip("/")
+            self._fs, _path = fsspec.url_to_fs(url, **storage_options)
+            self.path = _path.rstrip("/")
         elif hasattr(url, "protocol") and hasattr(url, "fs"):
             # is UPath-like - but without importing
             if storage_options:
@@ -61,8 +63,11 @@ class RemoteStore(Store):
                     "If constructed with a UPath object, no additional "
                     "storage_options are allowed"
                 )
-            self.path = url.path
-            self._fs = url._fs
+            # n.b. UPath returns the url and path attributes with a trailing /, at least for s3
+            # that trailing / must be removed to compose with the store interface
+            self._url = str(url).rstrip("/")
+            self.path = url.path.rstrip("/")
+            self._fs = url.fs
         else:
             raise ValueError("URL not understood, %s", url)
         self.allowed_exceptions = allowed_exceptions
@@ -71,10 +76,10 @@ class RemoteStore(Store):
             raise TypeError("FileSystem needs to support async operations")
 
     def __str__(self) -> str:
-        return f"Remote fsspec store: {type(self._fs).__name__} , {self.path}"
+        return f"{self._url}"
 
     def __repr__(self) -> str:
-        return f"<RemoteStore({type(self._fs).__name__} , {self.path})>"
+        return f"<RemoteStore({type(self._fs).__name__}, {self.path})>"
 
     async def get(
         self,

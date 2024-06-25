@@ -125,17 +125,14 @@ class BloscCodec(BytesBytesCodec):
         }
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
+        dtype = array_spec.dtype
         new_codec = self
         if new_codec.typesize is None:
-            new_codec = replace(new_codec, typesize=array_spec.dtype.itemsize)
+            new_codec = replace(new_codec, typesize=dtype.itemsize)
         if new_codec.shuffle is None:
             new_codec = replace(
                 new_codec,
-                shuffle=(
-                    BloscShuffle.bitshuffle
-                    if array_spec.dtype.itemsize == 1
-                    else BloscShuffle.shuffle
-                ),
+                shuffle=(BloscShuffle.bitshuffle if dtype.itemsize == 1 else BloscShuffle.shuffle),
             )
 
         return new_codec
