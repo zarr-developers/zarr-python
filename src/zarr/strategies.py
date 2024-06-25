@@ -17,16 +17,14 @@ _attr_values = st.recursive(
     max_leaves=3,
 )
 
-# No '/' in array names?
-# No '.' in paths?
-zarr_key_chars = st.sampled_from("-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz")
+# From https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html#node-names
+zarr_key_chars = st.sampled_from(
+    ".-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
+)
 
 # The following should be public strategies
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
 paths = st.none() | st.text(zarr_key_chars, min_size=1) | st.just("/")
-array_names = st.text(zarr_key_chars | st.just("."), min_size=1).filter(
-    lambda t: not t.startswith((".", ".."))
-)
 np_arrays = npst.arrays(
     # FIXME: re-enable timedeltas once we figure out the fill_value issue.
     dtype=npst.scalar_dtypes().filter(lambda x: x.kind != "m"),
@@ -34,6 +32,15 @@ np_arrays = npst.arrays(
 )
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
 compressors = st.sampled_from([None, "default"])
+
+# 1. must not be the empty string ("")
+# 2. must not be the empty string ("")
+# 3. must not include the character "/"
+# 4. must not be a string composed only of period characters, e.g. "." or ".."
+# 5. must not start with the reserved prefix "__"
+array_names = st.text(zarr_key_chars, min_size=1).filter(
+    lambda t: t not in (".", "..") and not t.startswith("__")
+)
 
 
 @st.composite  # type: ignore[misc]
