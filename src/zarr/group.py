@@ -25,6 +25,7 @@ from zarr.common import (
     ChunkCoords,
     ZarrFormat,
 )
+from zarr.config import config
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import SyncMixin, sync
 
@@ -79,14 +80,21 @@ class GroupMetadata(Metadata):
     node_type: Literal["group"] = field(default="group", init=False)
 
     def to_buffer_dict(self) -> dict[str, Buffer]:
+        json_indent = config.get("json_indent")
         if self.zarr_format == 3:
-            return {ZARR_JSON: Buffer.from_bytes(json.dumps(self.to_dict()).encode())}
+            return {
+                ZARR_JSON: Buffer.from_bytes(
+                    json.dumps(self.to_dict(), indent=json_indent).encode()
+                )
+            }
         else:
             return {
                 ZGROUP_JSON: Buffer.from_bytes(
-                    json.dumps({"zarr_format": self.zarr_format}).encode()
+                    json.dumps({"zarr_format": self.zarr_format}, indent=json_indent).encode()
                 ),
-                ZATTRS_JSON: Buffer.from_bytes(json.dumps(self.attributes).encode()),
+                ZATTRS_JSON: Buffer.from_bytes(
+                    json.dumps(self.attributes, indent=json_indent).encode()
+                ),
             }
 
     def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3):
@@ -200,7 +208,7 @@ class AsyncGroup:
         key: str,
     ) -> AsyncArray | AsyncGroup:
         store_path = self.store_path / key
-        logger.warning("key=%s, store_path=%s", key, store_path)
+        logger.debug("key=%s, store_path=%s", key, store_path)
 
         # Note:
         # in zarr-python v2, we first check if `key` references an Array, else if `key` references
@@ -316,7 +324,7 @@ class AsyncGroup:
         self,
         path: str,
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
         # v3 only

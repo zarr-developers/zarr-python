@@ -27,10 +27,12 @@ dependencies = [
     'numpy>=1.24',
     'fasteners',
     'numcodecs>=0.10.0',
+    'fsspec>2024',
     'crc32c',
     'zstandard',
     'typing_extensions',
-    'donfig'
+    'donfig',
+    'pytest'
 ]
 dynamic = [
   "version",
@@ -61,7 +63,7 @@ jupyter = [
 docs = [
     'sphinx',
     'sphinx-autobuild>=2021.3.14',
-    'sphinx-automodapi',
+    'sphinx-autoapi',
     'sphinx_design',
     'sphinx-issues',
     'sphinx-copybutton',
@@ -104,6 +106,7 @@ build.hooks.vcs.version-file = "src/zarr/_version.py"
 [tool.hatch.envs.test]
 dependencies = [
     "numpy~={matrix:numpy}",
+    "universal_pathlib"
 ]
 extra-dependencies = [
     "coverage",
@@ -111,9 +114,14 @@ extra-dependencies = [
     "pytest-cov",
     "msgpack",
     "lmdb",
+    "s3fs",
     "pytest-asyncio",
+    "moto[s3]",
+    "flask-cors",
+    "flask",
+    "requests",
     "mypy",
-    "hypothesis",
+    "hypothesis"
 ]
 features = ["extra"]
 
@@ -140,7 +148,7 @@ features = ['docs']
 
 [tool.hatch.envs.docs.scripts]
 build = "cd docs && make html"
-serve = "sphinx-autobuild docs docs/_build --ignore 'docs/_autoapi/**/*' --host 0.0.0.0"
+serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
 [tool.ruff]
 line-length = 100

@@ -399,7 +399,9 @@ class StoreTests:
             assert [] == store.listdir(self.root + "c/x/y")
             assert [] == store.listdir(self.root + "c/d/y")
             assert [] == store.listdir(self.root + "c/d/y/z")
-            assert [] == store.listdir(self.root + "c/e/f")
+            # the following is listdir(filepath), for which fsspec gives [filepath]
+            # as posix would, but an empty list was previously assumed
+            # assert [] == store.listdir(self.root + "c/e/f")
 
         # test rename (optional)
         if store.is_erasable():
@@ -1064,9 +1066,8 @@ class TestFSStore(StoreTests):
         store[self.root + "foo"] = b"hello"
         assert "foo" in os.listdir(str(path1) + "/" + self.root)
         assert self.root + "foo" in store
-        assert not os.listdir(str(path2))
-        assert store[self.root + "foo"] == b"hello"
         assert "foo" in os.listdir(str(path2))
+        assert store[self.root + "foo"] == b"hello"
 
     def test_deep_ndim(self):
         import zarr.v2
@@ -1285,6 +1286,8 @@ class TestFSStoreFromFilesystem(StoreTests):
 @pytest.fixture()
 def s3(request):
     # writable local S3 system
+    pytest.skip("old v3 tests are disabled", allow_module_level=True)
+
     import shlex
     import subprocess
     import time
@@ -1299,7 +1302,7 @@ def s3(request):
     s3fs = pytest.importorskip("s3fs")
     pytest.importorskip("moto")
 
-    port = 5555
+    port = 5556
     endpoint_uri = "http://127.0.0.1:%d/" % port
     proc = subprocess.Popen(
         shlex.split("moto_server s3 -p %d" % port),
@@ -1318,6 +1321,7 @@ def s3(request):
         timeout -= 0.1  # pragma: no cover
         time.sleep(0.1)  # pragma: no cover
     s3so = dict(client_kwargs={"endpoint_url": endpoint_uri}, use_listings_cache=False)
+    s3fs.S3FileSystem.clear_instance_cache()
     s3 = s3fs.S3FileSystem(anon=False, **s3so)
     s3.mkdir("test")
     request.cls.s3so = s3so

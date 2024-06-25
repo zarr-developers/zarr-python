@@ -5,7 +5,6 @@ import contextvars
 import functools
 import operator
 from collections.abc import Iterable
-from dataclasses import dataclass
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -31,10 +30,9 @@ ZATTRS_JSON = ".zattrs"
 BytesLike = bytes | bytearray | memoryview
 ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
-SliceSelection = tuple[slice, ...]
-Selection = slice | SliceSelection
 ZarrFormat = Literal[2, 3]
 JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
+MemoryOrder = Literal["C", "F"]
 OpenMode = Literal["r", "r+", "a", "w", "w-"]
 
 
@@ -91,31 +89,6 @@ def parse_enum(data: JSON, cls: type[E]) -> E:
     raise ValueError(f"Value must be one of {list(enum_names(cls))!r}. Got {data} instead.")
 
 
-@dataclass(frozen=True)
-class ArraySpec:
-    shape: ChunkCoords
-    dtype: np.dtype[Any]
-    fill_value: Any
-    order: Literal["C", "F"]
-
-    def __init__(
-        self, shape: ChunkCoords, dtype: np.dtype[Any], fill_value: Any, order: Literal["C", "F"]
-    ) -> None:
-        shape_parsed = parse_shapelike(shape)
-        dtype_parsed = parse_dtype(dtype)
-        fill_value_parsed = parse_fill_value(fill_value)
-        order_parsed = parse_order(order)
-
-        object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "dtype", dtype_parsed)
-        object.__setattr__(self, "fill_value", fill_value_parsed)
-        object.__setattr__(self, "order", order_parsed)
-
-    @property
-    def ndim(self) -> int:
-        return len(self.shape)
-
-
 def parse_name(data: JSON, expected: str | None = None) -> str:
     if isinstance(data, str):
         if expected is None or data == expected:
@@ -160,17 +133,23 @@ def parse_named_configuration(
     return name_parsed, configuration_parsed
 
 
-def parse_shapelike(data: Iterable[int]) -> tuple[int, ...]:
-    if not isinstance(data, Iterable):
-        raise TypeError(f"Expected an iterable. Got {data} instead.")
-    data_tuple = tuple(data)
-    if len(data_tuple) == 0:
-        raise ValueError("Expected at least one element. Got 0.")
+def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
+    if isinstance(data, int):
+        if data < 0:
+            raise ValueError(f"Expected a non-negative integer. Got {data} instead")
+        return (data,)
+    try:
+        data_tuple = tuple(data)
+    except TypeError as e:
+        msg = f"Expected an integer or an iterable of integers. Got {data} instead."
+        raise TypeError(msg) from e
+
     if not all(isinstance(v, int) for v in data_tuple):
-        msg = f"Expected an iterable of integers. Got {type(data)} instead."
+        msg = f"Expected an iterable of integers. Got {data} instead."
         raise TypeError(msg)
-    if not all(lambda v: v > 0 for v in data_tuple):
-        raise ValueError(f"All values must be greater than 0. Got {data}.")
+    if not all(v > -1 for v in data_tuple):
+        msg = f"Expected all values to be non-negative. Got {data} instead."
+        raise ValueError(msg)
     return data_tuple
 
 

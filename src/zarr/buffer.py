@@ -6,6 +6,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
+    NamedTuple,
     Protocol,
     SupportsIndex,
     runtime_checkable,
@@ -63,6 +64,8 @@ class NDArrayLike(Protocol):
 
     def __setitem__(self, key: slice, value: Any) -> None: ...
 
+    def __array__(self) -> npt.NDArray[Any]: ...
+
     def reshape(
         self, shape: ChunkCoords | Literal[-1], *, order: Literal["A", "C", "F"] = ...
     ) -> Self: ...
@@ -77,15 +80,15 @@ class NDArrayLike(Protocol):
 
     def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None) -> Self: ...
 
-    def ravel(self, order: Literal["K", "A", "C", "F"] = "C") -> Self: ...
+    def ravel(self, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
 
     def all(self) -> bool: ...
 
     def __eq__(self, other: Any) -> Self:  # type: ignore[explicit-override, override]
         """Element-wise equal
 
-        Notice
-        ------
+        Notes
+        -----
         Type checkers such as mypy complains because the return type isn't a bool like
         its supertype "object", which violates the Liskov substitution principle.
         This is true, but since NumPy's ndarray is defined as an element-wise equal,
@@ -103,56 +106,6 @@ def check_item_key_is_1d_contiguous(key: Any) -> None:
         raise ValueError("slice must be contiguous")
 
 
-class Factory:
-    class Create(Protocol):
-        def __call__(
-            self,
-            *,
-            shape: Iterable[int],
-            dtype: npt.DTypeLike,
-            order: Literal["C", "F"],
-            fill_value: Any | None,
-        ) -> NDBuffer:
-            """Factory function to create a new NDBuffer (or subclass)
-
-            Callables implementing the `Factory.Create` protocol must create a new
-            instance of NDBuffer (or subclass) given the following parameters.
-
-            Parameters
-            ----------
-            shape
-                The shape of the new buffer
-            dtype
-                The datatype of each element in the new buffer
-            order
-                Whether to store multi-dimensional data in row-major (C-style) or
-                column-major (Fortran-style) order in memory.
-            fill_value
-                If not None, fill the new buffer with a scalar value.
-
-            Return
-            ------
-                A new NDBuffer or subclass instance
-            """
-
-    class NDArrayLike(Protocol):
-        def __call__(self, ndarray_like: NDArrayLike) -> NDBuffer:
-            """Factory function to coerce an array into a NDBuffer (or subclass)
-
-            Callables implementing the `Factory.NDArrayLike` protocol must return
-            an instance of NDBuffer (or subclass) given an ndarray-like object.
-
-            Parameters
-            ----------
-            ndarray_like
-                ndarray-like object
-
-            Return
-            ------
-                A NDBuffer or subclass instance that represents `ndarray_like`
-            """
-
-
 class Buffer:
     """A flat contiguous memory block
 
@@ -164,8 +117,8 @@ class Buffer:
     array-like instance can be copied/converted to a regular Numpy array
     (host memory).
 
-    Note
-    ----
+    Notes
+    -----
     This buffer is untyped, so all indexing and sizes are in bytes.
 
     Parameters
@@ -185,26 +138,49 @@ class Buffer:
     def create_zero_length(cls) -> Self:
         """Create an empty buffer with length zero
 
-        Return
-        ------
+        Returns
+        -------
             New empty 0-length buffer
         """
         return cls(np.array([], dtype="b"))
 
     @classmethod
     def from_array_like(cls, array_like: ArrayLike) -> Self:
-        """Create a new buffer of a array-like object
+        """Create a new buffer of an array-like object
 
         Parameters
         ----------
         array_like
             array-like object that must be 1-dim, contiguous, and byte dtype.
 
-        Return
-        ------
+        Returns
+        -------
             New buffer representing `array_like`
         """
         return cls(array_like)
+
+    @classmethod
+    def from_buffer(cls, buffer: Buffer) -> Self:
+        """Create a new buffer of an existing Buffer
+
+        This is useful if you want to ensure that an existing buffer is
+        of the correct subclass of Buffer. E.g., MemoryStore uses this
+        to return a buffer instance of the subclass specified by its
+        BufferPrototype argument.
+
+        Typically, this only copies data if the data has to be moved between
+        memory types, such as from host to device memory.
+
+        Parameters
+        ----------
+        buffer
+            buffer object.
+
+        Returns
+        -------
+            A new buffer representing the content of the input buffer
+        """
+        return cls.from_array_like(buffer.as_array_like())
 
     @classmethod
     def from_bytes(cls, bytes_like: BytesLike) -> Self:
@@ -215,46 +191,46 @@ class Buffer:
         bytes_like
            bytes-like object
 
-        Return
-        ------
+        Returns
+        -------
             New buffer representing `bytes_like`
         """
         return cls.from_array_like(np.frombuffer(bytes_like, dtype="b"))
 
     def as_array_like(self) -> ArrayLike:
-        """Return the underlying array (host or device memory) of this buffer
+        """Returns the underlying array (host or device memory) of this buffer
 
         This will never copy data.
 
-        Return
-        ------
+        Returns
+        -------
             The underlying 1d array such as a NumPy or CuPy array.
         """
         return self._data
 
     def as_numpy_array(self) -> npt.NDArray[Any]:
-        """Return the buffer as a NumPy array (host memory).
+        """Returns the buffer as a NumPy array (host memory).
 
-        Warning
-        -------
+        Notes
+        -----
         Might have to copy data, consider using `.as_array_like()` instead.
 
-        Return
-        ------
+        Returns
+        -------
             NumPy array of this buffer (might be a data copy)
         """
         return np.asanyarray(self._data)
 
     def to_bytes(self) -> bytes:
-        """Return the buffer as `bytes` (host memory).
+        """Returns the buffer as `bytes` (host memory).
 
-        Warning
-        -------
+        Warnings
+        --------
         Will always copy data, only use this method for small buffers such as metadata
         buffers. If possible, use `.as_numpy_array()` or `.as_array_like()` instead.
 
-        Return
-        ------
+        Returns
+        -------
             `bytes` of this buffer (data copy)
         """
         return bytes(self.as_numpy_array())
@@ -281,7 +257,7 @@ class Buffer:
 
 
 class NDBuffer:
-    """A n-dimensional memory block
+    """An n-dimensional memory block
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
 
@@ -291,8 +267,8 @@ class NDBuffer:
     ndarray-like instance can be copied/converted to a regular Numpy array
     (host memory).
 
-    Note
-    ----
+    Notes
+    -----
     The two buffer classes Buffer and NDBuffer are very similar. In fact, Buffer
     is a special case of NDBuffer where dim=1, stride=1, and dtype="b". However,
     in order to use Python's type system to differentiate between the contiguous
@@ -333,12 +309,12 @@ class NDBuffer:
         fill_value
             If not None, fill the new buffer with a scalar value.
 
-        Return
-        ------
+        Returns
+        -------
             New buffer representing a new ndarray_like object
 
-        Developer Notes
-        ---------------
+        Notes
+        -----
         A subclass can overwrite this method to create a ndarray-like object
         other then the default Numpy array.
         """
@@ -356,8 +332,8 @@ class NDBuffer:
         ndarray_like
             ndarray-like object
 
-        Return
-        ------
+        Returns
+        -------
             New buffer representing `ndarray_like`
         """
         return cls(ndarray_like)
@@ -371,32 +347,32 @@ class NDBuffer:
         array_like
             Object that can be coerced into a Numpy array
 
-        Return
-        ------
+        Returns
+        -------
             New buffer representing `array_like`
         """
         return cls.from_ndarray_like(np.asanyarray(array_like))
 
     def as_ndarray_like(self) -> NDArrayLike:
-        """Return the underlying array (host or device memory) of this buffer
+        """Returns the underlying array (host or device memory) of this buffer
 
         This will never copy data.
 
-        Return
-        ------
+        Returns
+        -------
             The underlying array such as a NumPy or CuPy array.
         """
         return self._data
 
     def as_numpy_array(self) -> npt.NDArray[Any]:
-        """Return the buffer as a NumPy array (host memory).
+        """Returns the buffer as a NumPy array (host memory).
 
-        Warning
-        -------
+        Warnings
+        --------
         Might have to copy data, consider using `.as_ndarray_like()` instead.
 
-        Return
-        ------
+        Returns
+        -------
             NumPy array of this buffer (might be a data copy)
         """
         return np.asanyarray(self._data)
@@ -457,7 +433,9 @@ class NDBuffer:
         return self.__class__(self._data.transpose(axes))
 
 
-def as_numpy_array_wrapper(func: Callable[[npt.NDArray[Any]], bytes], buf: Buffer) -> Buffer:
+def as_numpy_array_wrapper(
+    func: Callable[[npt.NDArray[Any]], bytes], buf: Buffer, prototype: BufferPrototype
+) -> Buffer:
     """Converts the input of `func` to a numpy array and the output back to `Buffer`.
 
     This function is useful when calling a `func` that only support host memory such
@@ -473,9 +451,32 @@ def as_numpy_array_wrapper(func: Callable[[npt.NDArray[Any]], bytes], buf: Buffe
     buf
         The buffer that will be converted to a Numpy array before given as
         input to `func`.
+    prototype
+        The prototype of the output buffer.
 
-    Return
-    ------
+    Returns
+    -------
         The result of `func` converted to a `Buffer`
     """
-    return Buffer.from_bytes(func(buf.as_numpy_array()))
+    return prototype.buffer.from_bytes(func(buf.as_numpy_array()))
+
+
+class BufferPrototype(NamedTuple):
+    """Prototype of the Buffer and NDBuffer class
+
+    The protocol must be pickable.
+
+    Attributes
+    ----------
+    buffer
+        The Buffer class to use when Zarr needs to create new Buffer.
+    nd_buffer
+        The NDBuffer class to use when Zarr needs to create new NDBuffer.
+    """
+
+    buffer: type[Buffer]
+    nd_buffer: type[NDBuffer]
+
+
+# The default buffer prototype used throughout the Zarr codebase.
+default_buffer_prototype = BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)

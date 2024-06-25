@@ -5,34 +5,35 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec, CodecPipeline
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
 from zarr.abc.metadata import Metadata
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
-from zarr.codecs._v2 import V2Compressor, V2Filters
+from zarr.codecs.registry import get_codec_class
+from zarr.config import config
 
 if TYPE_CHECKING:
-    from typing import Literal
-
     from typing_extensions import Self
 
 import numcodecs.abc
 
+from zarr.array_spec import ArraySpec
 from zarr.common import (
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
-    ArraySpec,
     ChunkCoords,
+    ZarrFormat,
     parse_dtype,
     parse_fill_value,
+    parse_named_configuration,
     parse_shapelike,
 )
 from zarr.config import parse_indexing_order
@@ -117,9 +118,10 @@ class DataType(Enum):
 @dataclass(frozen=True, kw_only=True)
 class ArrayMetadata(Metadata, ABC):
     shape: ChunkCoords
-    chunk_grid: ChunkGrid
     fill_value: Any
+    chunk_grid: ChunkGrid
     attributes: dict[str, JSON]
+    zarr_format: ZarrFormat
 
     @property
     @abstractmethod
@@ -131,13 +133,10 @@ class ArrayMetadata(Metadata, ABC):
     def ndim(self) -> int:
         pass
 
-    @property
     @abstractmethod
-    def codec_pipeline(self) -> CodecPipeline:
-        pass
-
-    @abstractmethod
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+    ) -> ArraySpec:
         pass
 
     @abstractmethod
@@ -164,7 +163,7 @@ class ArrayV3Metadata(ArrayMetadata):
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
-    codecs: CodecPipeline
+    codecs: tuple[Codec, ...]
     attributes: dict[str, Any] = field(default_factory=dict)
     dimension_names: tuple[str, ...] | None = None
     zarr_format: Literal[3] = field(default=3, init=False)
@@ -178,7 +177,7 @@ class ArrayV3Metadata(ArrayMetadata):
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
-        codecs: Iterable[Codec | JSON],
+        codecs: Iterable[Codec | dict[str, JSON]],
         attributes: None | dict[str, JSON],
         dimension_names: None | Iterable[str],
     ) -> None:
@@ -192,14 +191,16 @@ class ArrayV3Metadata(ArrayMetadata):
         dimension_names_parsed = parse_dimension_names(dimension_names)
         fill_value_parsed = parse_fill_value(fill_value)
         attributes_parsed = parse_attributes(attributes)
+        codecs_parsed_partial = parse_codecs(codecs)
 
         array_spec = ArraySpec(
             shape=shape_parsed,
             dtype=data_type_parsed,
             fill_value=fill_value_parsed,
             order="C",  # TODO: order is not needed here.
+            prototype=default_buffer_prototype,  # TODO: prototype is not needed here.
         )
-        codecs_parsed = parse_codecs(codecs).evolve_from_array_spec(array_spec)
+        codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type_parsed)
@@ -225,7 +226,8 @@ class ArrayV3Metadata(ArrayMetadata):
             )
         if self.fill_value is None:
             raise ValueError("`fill_value` is required.")
-        self.codecs.validate(self)
+        for codec in self.codecs:
+            codec.validate(shape=self.shape, dtype=self.data_type, chunk_grid=self.chunk_grid)
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -235,11 +237,9 @@ class ArrayV3Metadata(ArrayMetadata):
     def ndim(self) -> int:
         return len(self.shape)
 
-    @property
-    def codec_pipeline(self) -> CodecPipeline:
-        return self.codecs
-
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+    ) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
         ), "Currently, only regular chunk grid is supported"
@@ -248,6 +248,7 @@ class ArrayV3Metadata(ArrayMetadata):
             dtype=self.dtype,
             fill_value=self.fill_value,
             order=order,
+            prototype=prototype,
         )
 
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
@@ -266,8 +267,11 @@ class ArrayV3Metadata(ArrayMetadata):
                 return config
             raise TypeError
 
+        json_indent = config.get("json_indent")
         return {
-            ZARR_JSON: Buffer.from_bytes(json.dumps(self.to_dict(), default=_json_convert).encode())
+            ZARR_JSON: Buffer.from_bytes(
+                json.dumps(self.to_dict(), default=_json_convert, indent=json_indent).encode()
+            )
         }
 
     @classmethod
@@ -365,14 +369,6 @@ class ArrayV2Metadata(ArrayMetadata):
     def chunks(self) -> ChunkCoords:
         return self.chunk_grid.chunk_shape
 
-    @property
-    def codec_pipeline(self) -> CodecPipeline:
-        from zarr.codecs import BatchedCodecPipeline
-
-        return BatchedCodecPipeline.from_list(
-            [V2Filters(self.filters or []), V2Compressor(self.compressor)]
-        )
-
     def to_buffer_dict(self) -> dict[str, Buffer]:
         def _json_convert(
             o: np.dtype[Any],
@@ -388,9 +384,12 @@ class ArrayV2Metadata(ArrayMetadata):
         assert isinstance(zarray_dict, dict)
         zattrs_dict = zarray_dict.pop("attributes", {})
         assert isinstance(zattrs_dict, dict)
+        json_indent = config.get("json_indent")
         return {
-            ZARRAY_JSON: Buffer.from_bytes(json.dumps(zarray_dict, default=_json_convert).encode()),
-            ZATTRS_JSON: Buffer.from_bytes(json.dumps(zattrs_dict).encode()),
+            ZARRAY_JSON: Buffer.from_bytes(
+                json.dumps(zarray_dict, default=_json_convert, indent=json_indent).encode()
+            ),
+            ZATTRS_JSON: Buffer.from_bytes(json.dumps(zattrs_dict, indent=json_indent).encode()),
         }
 
     @classmethod
@@ -412,12 +411,15 @@ class ArrayV2Metadata(ArrayMetadata):
 
         return zarray_dict
 
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords, order: Literal["C", "F"]) -> ArraySpec:
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+    ) -> ArraySpec:
         return ArraySpec(
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
             order=order,
+            prototype=prototype,
         )
 
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
@@ -491,9 +493,27 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def parse_codecs(data: Iterable[Codec | JSON]) -> CodecPipeline:
+def create_pipeline(data: Iterable[Codec | JSON]) -> CodecPipeline:
     from zarr.codecs import BatchedCodecPipeline
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")
     return BatchedCodecPipeline.from_dict(data)
+
+
+def parse_codecs(data: Iterable[Codec | dict[str, JSON]]) -> tuple[Codec, ...]:
+    out: tuple[Codec, ...] = ()
+
+    if not isinstance(data, Iterable):
+        raise TypeError(f"Expected iterable, got {type(data)}")
+
+    for c in data:
+        if isinstance(
+            c, ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
+        ):  # Can't use Codec here because of mypy limitation
+            out += (c,)
+        else:
+            name_parsed, _ = parse_named_configuration(c, require_configuration=False)
+            out += (get_codec_class(name_parsed).from_dict(c),)
+
+    return out

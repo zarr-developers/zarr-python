@@ -21,9 +21,8 @@ from zarr.codecs import (
     TransposeCodec,
     ZstdCodec,
 )
-from zarr.common import Selection
 from zarr.config import config
-from zarr.indexing import morton_order_iter
+from zarr.indexing import Selection, morton_order_iter
 from zarr.store import MemoryStore, StorePath
 from zarr.testing.utils import assert_bytes_equal
 
@@ -404,6 +403,23 @@ async def test_transpose(
         )
         z[:, :] = data
         assert await (store / "transpose/0.0").get() == await (store / "transpose_zarr/0.0").get()
+
+
+@pytest.mark.parametrize("order", [[1, 2, 0], [1, 2, 3, 0], [3, 2, 4, 0, 1]])
+def test_transpose_non_self_inverse(store: Store, order):
+    shape = [i + 3 for i in range(len(order))]
+    data = np.arange(0, np.prod(shape), dtype="uint16").reshape(shape)
+    a = Array.create(
+        store / "transpose_non_self_inverse",
+        shape=data.shape,
+        chunk_shape=data.shape,
+        dtype=data.dtype,
+        fill_value=0,
+        codecs=[TransposeCodec(order=order), BytesCodec()],
+    )
+    a[:, :] = data
+    read_data = a[:, :]
+    assert np.array_equal(data, read_data)
 
 
 def test_transpose_invalid(
