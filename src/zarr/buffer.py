@@ -164,7 +164,7 @@ class Buffer:
         """Create a new buffer of an existing Buffer
 
         This is useful if you want to ensure that an existing buffer is
-        of the correct subclass of Buffer. E.g., MemoryStore use this
+        of the correct subclass of Buffer. E.g., MemoryStore uses this
         to return a buffer instance of the subclass specified by its
         BufferPrototype argument.
 
@@ -178,7 +178,7 @@ class Buffer:
 
         Returns
         -------
-            New buffer representing buffer
+            A new buffer representing the content of the input buffer
         """
         return cls.from_array_like(buffer.as_array_like())
 
