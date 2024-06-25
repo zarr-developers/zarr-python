@@ -26,9 +26,11 @@ _attr_values = st.recursive(
 zarr_key_chars = st.sampled_from(
     ".-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
 )
-array_names = st.text(zarr_key_chars, min_size=1)
+array_names = st.text(zarr_key_chars, min_size=1).filter(lambda t: t not in (".", ".."))
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
-paths = st.none() | st.text(zarr_key_chars, min_size=1) | st.just("/")
+paths = st.lists(st.text(zarr_key_chars, min_size=1), min_size=1).map(
+    lambda x: "/".join(x)
+) | st.just("/")
 np_arrays = npst.arrays(
     # FIXME: re-enable timedeltas once we figure out the fill_value issue.
     dtype=npst.scalar_dtypes().filter(lambda x: x.kind != "m"),
@@ -74,26 +76,27 @@ def arrays(
     # compressor = draw(compressors)
 
     # TODO: clean this up
-    if path is None and name is None:
-        array_path = None
-        array_name = None
-    elif path is None and name is not None:
-        array_path = f"{name}"
-        array_name = f"/{name}"
-    elif path is not None and name is None:
-        array_path = path
-        array_name = None
-    elif path == "/":
-        assert name is not None
-        array_path = name
-        array_name = "/" + name
-    else:
-        assert name is not None
-        array_path = f"{path}/{name}"
-        array_name = "/" + array_path
+    # if path is None and name is None:
+    #     array_path = None
+    #     array_name = None
+    # elif path is None and name is not None:
+    #     array_path = f"{name}"
+    #     array_name = f"/{name}"
+    # elif path is not None and name is None:
+    #     array_path = path
+    #     array_name = None
+    # elif path == "/":
+    #     assert name is not None
+    #     array_path = name
+    #     array_name = "/" + name
+    # else:
+    #     assert name is not None
+    #     array_path = f"{path}/{name}"
+    #     array_name = "/" + array_path
 
     expected_attrs = {} if attributes is None else attributes
 
+    array_path = path + ("/" if not path.endswith("/") else "") + name
     root = Group.create(store)
     a = root.create_array(
         array_path,
@@ -109,8 +112,8 @@ def arrays(
     assert isinstance(a, Array)
     assert nparray.shape == a.shape
     # assert chunks == a.chunks  # TODO: adapt for v2, v3
-    assert array_path == a.path
-    assert array_name == a.name
+    assert array_path == a.path, (path, name, array_path, a.name, a.path)
+    assert array_path == a.name, (path, name, array_path, a.name, a.path)
     # assert a.basename is None  # TODO
     # assert a.store == normalize_store_arg(store)
     assert dict(a.attrs) == expected_attrs
