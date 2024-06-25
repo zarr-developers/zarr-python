@@ -68,7 +68,10 @@ class MyStore(MemoryStore):
     ) -> Buffer | None:
         if "json" not in key:
             assert prototype.buffer is MyBuffer
-        return await super().get(key, byte_range)
+        ret = await super().get(key=key, prototype=prototype, byte_range=byte_range)
+        if ret is not None:
+            assert isinstance(ret, prototype.buffer)
+        return ret
 
 
 def test_nd_array_like(xp):
