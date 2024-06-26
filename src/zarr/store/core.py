@@ -79,6 +79,8 @@ def make_store_path(store_like: StoreLike | None, *, mode: OpenMode | None = Non
         if mode is None:
             mode = "w"  # exception to the default mode = 'r'
         return StorePath(MemoryStore(mode=mode))
+    elif isinstance(store_like, Path):
+        return StorePath(LocalStore(store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
         return StorePath(LocalStore(Path(store_like), mode=mode or "r"))
     raise TypeError
