@@ -12,63 +12,7 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.store.core import StorePath
-from zarr.store.memory import MemoryStore
 from zarr.testing.buffer import MyBuffer, MyNDArrayLike, MyNDBuffer, StoreExpectingMyBuffer
-
-if TYPE_CHECKING:
-    from typing_extensions import Self
-
-
-class MyNDArrayLike(np.ndarray):
-    """An example of a ndarray-like class"""
-
-
-class MyBuffer(Buffer):
-    """Example of a custom Buffer that handles ArrayLike"""
-
-
-class MyNDBuffer(NDBuffer):
-    """Example of a custom NDBuffer that handles MyNDArrayLike"""
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        shape: Iterable[int],
-        dtype: npt.DTypeLike,
-        order: Literal[C, F] = "C",
-        fill_value: Any | None = None,
-    ) -> Self:
-        """Overwrite `NDBuffer.create` to create an MyNDArrayLike instance"""
-        ret = cls(MyNDArrayLike(shape=shape, dtype=dtype, order=order))
-        if fill_value is not None:
-            ret.fill(fill_value)
-        return ret
-
-
-class MyStore(MemoryStore):
-    """Example of a custom Store that expect MyBuffer for all its non-metadata
-
-    We assume that keys containing "json" is metadata
-    """
-
-    async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
-        if "json" not in key:
-            assert isinstance(value, MyBuffer)
-        await super().set(key, value, byte_range)
-
-    async def get(
-        self,
-        key: str,
-        prototype: BufferPrototype,
-        byte_range: tuple[int, int | None] | None = None,
-    ) -> Buffer | None:
-        if "json" not in key:
-            assert prototype.buffer is MyBuffer
-        ret = await super().get(key=key, prototype=prototype, byte_range=byte_range)
-        if ret is not None:
-            assert isinstance(ret, prototype.buffer)
-        return ret
 
 
 def test_nd_array_like(xp):

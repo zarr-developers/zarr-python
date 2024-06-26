@@ -1016,14 +1016,13 @@ class CoordinateIndexer(Indexer):
         # broadcast selection - this will raise error if array dimensions don't match
         selection_broadcast = tuple(np.broadcast_arrays(*selection_normalized))
         chunks_multi_index_broadcast = np.broadcast_arrays(*chunks_multi_index)
-        cast(list[np.ndarray[Any, np.dtype[Any]]], chunks_multi_index_broadcast)
 
         # remember shape of selection, because we will flatten indices for processing
         sel_shape = selection_broadcast[0].shape if selection_broadcast[0].shape else (1,)
 
         # flatten selection
         selection_broadcast = tuple(dim_sel.reshape(-1) for dim_sel in selection_broadcast)
-        chunks_multi_index_broadcast = tuple(
+        chunks_multi_index_broadcast = list(
             [dim_chunks.reshape(-1) for dim_chunks in chunks_multi_index_broadcast]
         )
 

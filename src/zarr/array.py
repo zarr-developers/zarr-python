@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+
 # Notes on what I've changed here:
 # 1. Split Array into AsyncArray and Array
 # 3. Added .size and .attrs methods
@@ -94,10 +95,10 @@ class AsyncArray:
     order: Literal["C", "F"]
 
     def __init__(
-            self,
-            metadata: ArrayMetadata,
-            store_path: StorePath,
-            order: Literal["C", "F"] | None = None,
+        self,
+        metadata: ArrayMetadata,
+        store_path: StorePath,
+        order: Literal["C", "F"] | None = None,
     ):
         metadata_parsed = parse_array_metadata(metadata)
         order_parsed = parse_indexing_order(order or config.get("array.order"))
@@ -109,33 +110,33 @@ class AsyncArray:
 
     @classmethod
     async def create(
-            cls,
-            store: StoreLike,
-            *,
-            # v2 and v3
-            shape: ChunkCoords,
-            dtype: npt.DTypeLike,
-            zarr_format: ZarrFormat = 3,
-            fill_value: Any | None = None,
-            attributes: dict[str, JSON] | None = None,
-            # v3 only
-            chunk_shape: ChunkCoords | None = None,
-            chunk_key_encoding: (
-                    ChunkKeyEncoding
-                    | tuple[Literal["default"], Literal[".", "/"]]
-                    | tuple[Literal["v2"], Literal[".", "/"]]
-                    | None
-            ) = None,
-            codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-            dimension_names: Iterable[str] | None = None,
-            # v2 only
-            chunks: ChunkCoords | None = None,
-            dimension_separator: Literal[".", "/"] | None = None,
-            order: Literal["C", "F"] | None = None,
-            filters: list[dict[str, JSON]] | None = None,
-            compressor: dict[str, JSON] | None = None,
-            # runtime
-            exists_ok: bool = False,
+        cls,
+        store: StoreLike,
+        *,
+        # v2 and v3
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike,
+        zarr_format: ZarrFormat = 3,
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ChunkCoords | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        exists_ok: bool = False,
     ) -> AsyncArray:
         store_path = make_store_path(store)
 
@@ -204,23 +205,23 @@ class AsyncArray:
 
     @classmethod
     async def _create_v3(
-            cls,
-            store_path: StorePath,
-            *,
-            shape: ChunkCoords,
-            dtype: npt.DTypeLike,
-            chunk_shape: ChunkCoords,
-            fill_value: Any | None = None,
-            chunk_key_encoding: (
-                    ChunkKeyEncoding
-                    | tuple[Literal["default"], Literal[".", "/"]]
-                    | tuple[Literal["v2"], Literal[".", "/"]]
-                    | None
-            ) = None,
-            codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-            dimension_names: Iterable[str] | None = None,
-            attributes: dict[str, JSON] | None = None,
-            exists_ok: bool = False,
+        cls,
+        store_path: StorePath,
+        *,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike,
+        chunk_shape: ChunkCoords,
+        fill_value: Any | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        attributes: dict[str, JSON] | None = None,
+        exists_ok: bool = False,
     ) -> AsyncArray:
         if not exists_ok:
             assert not await (store_path / ZARR_JSON).exists()
@@ -262,19 +263,19 @@ class AsyncArray:
 
     @classmethod
     async def _create_v2(
-            cls,
-            store_path: StorePath,
-            *,
-            shape: ChunkCoords,
-            dtype: npt.DTypeLike,
-            chunks: ChunkCoords,
-            dimension_separator: Literal[".", "/"] | None = None,
-            fill_value: None | int | float = None,
-            order: Literal["C", "F"] | None = None,
-            filters: list[dict[str, JSON]] | None = None,
-            compressor: dict[str, JSON] | None = None,
-            attributes: dict[str, JSON] | None = None,
-            exists_ok: bool = False,
+        cls,
+        store_path: StorePath,
+        *,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike,
+        chunks: ChunkCoords,
+        dimension_separator: Literal[".", "/"] | None = None,
+        fill_value: None | int | float = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        attributes: dict[str, JSON] | None = None,
+        exists_ok: bool = False,
     ) -> AsyncArray:
         import numcodecs
 
@@ -310,9 +311,9 @@ class AsyncArray:
 
     @classmethod
     def from_dict(
-            cls,
-            store_path: StorePath,
-            data: dict[str, JSON],
+        cls,
+        store_path: StorePath,
+        data: dict[str, JSON],
     ) -> AsyncArray:
         metadata = parse_array_metadata(data)
         async_array = cls(metadata=metadata, store_path=store_path)
@@ -320,9 +321,9 @@ class AsyncArray:
 
     @classmethod
     async def open(
-            cls,
-            store: StoreLike,
-            zarr_format: ZarrFormat | None = 3,
+        cls,
+        store: StoreLike,
+        zarr_format: ZarrFormat | None = 3,
     ) -> AsyncArray:
         store_path = make_store_path(store)
 
@@ -428,12 +429,12 @@ class AsyncArray:
         return None
 
     async def _get_selection(
-            self,
-            indexer: Indexer,
-            *,
-            prototype: BufferPrototype,
-            out: NDBuffer | None = None,
-            fields: Fields | None = None,
+        self,
+        indexer: Indexer,
+        *,
+        prototype: BufferPrototype,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
     ) -> NDArrayLike:
         # check fields are sensible
         out_dtype = check_fields(fields, self.dtype)
@@ -473,10 +474,10 @@ class AsyncArray:
         return out_buffer.as_ndarray_like()
 
     async def getitem(
-            self,
-            selection: BasicSelection,
-            *,
-            prototype: BufferPrototype | None = None,
+        self,
+        selection: BasicSelection,
+        *,
+        prototype: BufferPrototype | None = None,
     ) -> NDArrayLike:
         if prototype is None:
             prototype = default_buffer_prototype()
@@ -493,12 +494,12 @@ class AsyncArray:
         await gather(*awaitables)
 
     async def _set_selection(
-            self,
-            indexer: Indexer,
-            value: npt.ArrayLike,
-            *,
-            prototype: BufferPrototype,
-            fields: Fields | None = None,
+        self,
+        indexer: Indexer,
+        value: npt.ArrayLike,
+        *,
+        prototype: BufferPrototype,
+        fields: Fields | None = None,
     ) -> None:
         # check fields are sensible
         check_fields(fields, self.dtype)
@@ -537,10 +538,10 @@ class AsyncArray:
         )
 
     async def setitem(
-            self,
-            selection: BasicSelection,
-            value: npt.ArrayLike,
-            prototype: BufferPrototype | None = None,
+        self,
+        selection: BasicSelection,
+        value: npt.ArrayLike,
+        prototype: BufferPrototype | None = None,
     ) -> None:
         if prototype is None:
             prototype = default_buffer_prototype()
@@ -552,7 +553,7 @@ class AsyncArray:
         return await self._set_selection(indexer, value, prototype=prototype)
 
     async def resize(
-            self, new_shape: ChunkCoords, delete_outside_chunks: bool = True
+        self, new_shape: ChunkCoords, delete_outside_chunks: bool = True
     ) -> AsyncArray:
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = self.metadata.update_shape(new_shape)
@@ -562,6 +563,7 @@ class AsyncArray:
         new_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(new_shape))
 
         if delete_outside_chunks:
+
             async def _delete_key(key: str) -> None:
                 await (self.store_path / key).delete()
 
@@ -598,33 +600,33 @@ class Array:
 
     @classmethod
     def create(
-            cls,
-            store: StoreLike,
-            *,
-            # v2 and v3
-            shape: ChunkCoords,
-            dtype: npt.DTypeLike,
-            zarr_format: ZarrFormat = 3,
-            fill_value: Any | None = None,
-            attributes: dict[str, JSON] | None = None,
-            # v3 only
-            chunk_shape: ChunkCoords | None = None,
-            chunk_key_encoding: (
-                    ChunkKeyEncoding
-                    | tuple[Literal["default"], Literal[".", "/"]]
-                    | tuple[Literal["v2"], Literal[".", "/"]]
-                    | None
-            ) = None,
-            codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-            dimension_names: Iterable[str] | None = None,
-            # v2 only
-            chunks: ChunkCoords | None = None,
-            dimension_separator: Literal[".", "/"] | None = None,
-            order: Literal["C", "F"] | None = None,
-            filters: list[dict[str, JSON]] | None = None,
-            compressor: dict[str, JSON] | None = None,
-            # runtime
-            exists_ok: bool = False,
+        cls,
+        store: StoreLike,
+        *,
+        # v2 and v3
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike,
+        zarr_format: ZarrFormat = 3,
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ChunkCoords | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        exists_ok: bool = False,
     ) -> Array:
         async_array = sync(
             AsyncArray.create(
@@ -650,17 +652,17 @@ class Array:
 
     @classmethod
     def from_dict(
-            cls,
-            store_path: StorePath,
-            data: dict[str, JSON],
+        cls,
+        store_path: StorePath,
+        data: dict[str, JSON],
     ) -> Array:
         async_array = AsyncArray.from_dict(store_path=store_path, data=data)
         return cls(async_array)
 
     @classmethod
     def open(
-            cls,
-            store: StoreLike,
+        cls,
+        store: StoreLike,
     ) -> Array:
         async_array = sync(AsyncArray.open(store))
         return cls(async_array)
@@ -721,7 +723,7 @@ class Array:
         return self._async_array.read_only
 
     def __array__(
-            self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
+        self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
     ) -> NDArrayLike:
         """
         This method is used by numpy when converting zarr.Array into a numpy array.
@@ -989,12 +991,12 @@ class Array:
             self.set_basic_selection(cast(BasicSelection, pure_selection), value, fields=fields)
 
     def get_basic_selection(
-            self,
-            selection: BasicSelection = Ellipsis,
-            *,
-            out: NDBuffer | None = None,
-            prototype: BufferPrototype | None = None,
-            fields: Fields | None = None,
+        self,
+        selection: BasicSelection = Ellipsis,
+        *,
+        out: NDBuffer | None = None,
+        prototype: BufferPrototype | None = None,
+        fields: Fields | None = None,
     ) -> NDArrayLike:
         """Retrieve data for an item or region of the array.
 
@@ -1112,12 +1114,12 @@ class Array:
         )
 
     def set_basic_selection(
-            self,
-            selection: BasicSelection,
-            value: npt.ArrayLike,
-            *,
-            fields: Fields | None = None,
-            prototype: BufferPrototype | None = None,
+        self,
+        selection: BasicSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
     ) -> None:
         """Modify data for an item or region of the array.
 
@@ -1207,12 +1209,12 @@ class Array:
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     def get_orthogonal_selection(
-            self,
-            selection: OrthogonalSelection,
-            *,
-            out: NDBuffer | None = None,
-            fields: Fields | None = None,
-            prototype: BufferPrototype | None = None,
+        self,
+        selection: OrthogonalSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
     ) -> NDArrayLike:
         """Retrieve data by making a selection for each dimension of the array. For
         example, if an array has 2 dimensions, allows selecting specific rows and/or
@@ -1331,12 +1333,12 @@ class Array:
         )
 
     def set_orthogonal_selection(
-            self,
-            selection: OrthogonalSelection,
-            value: npt.ArrayLike,
-            *,
-            fields: Fields | None = None,
-            prototype: BufferPrototype | None = None,
+        self,
+        selection: OrthogonalSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
     ) -> None:
         """Modify data via a selection for each dimension of the array.
 
@@ -1441,12 +1443,12 @@ class Array:
         )
 
     def get_mask_selection(
-            self,
-            mask: MaskSelection,
-            *,
-            out: NDBuffer | None = None,
-            fields: Fields | None = None,
-            prototype: BufferPrototype | None = None,
+        self,
+        mask: MaskSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
     ) -> NDArrayLike:
         """Retrieve a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
@@ -1523,12 +1525,12 @@ class Array:
         )
 
     def set_mask_selection(
-            self,
-            mask: MaskSelection,
-            value: npt.ArrayLike,
-            *,
-            fields: Fields | None = None,
-            prototype: BufferPrototype | None = None,
+        self,
+        mask: MaskSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
     ) -> None:
         """Modify a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
@@ -1601,12 +1603,12 @@ class Array:
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     def get_coordinate_selection(
-            self,
-            selection: CoordinateSelection,
-            *,
-            out: NDBuffer | None = None,
-            fields: Fields | None = None,
-            prototype: BufferPrototype | None = None,
+        self,
+        selection: CoordinateSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
     ) -> NDArrayLike:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
@@ -1690,12 +1692,12 @@ class Array:
         return out_array
 
     def set_coordinate_selection(
-            self,
-            selection: CoordinateSelection,
-            value: npt.ArrayLike,
-            *,
-            fields: Fields | None = None,
-            prototype: BufferPrototype | None = None,
+        self,
+        selection: CoordinateSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
     ) -> None:
         """Modify a selection of individual items, by providing the indices (coordinates)
         for each item to be modified.
@@ -1779,12 +1781,12 @@ class Array:
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     def get_block_selection(
-            self,
-            selection: BasicSelection,
-            *,
-            out: NDBuffer | None = None,
-            fields: Fields | None = None,
-            prototype: BufferPrototype | None = None,
+        self,
+        selection: BasicSelection,
+        *,
+        out: NDBuffer | None = None,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
     ) -> NDArrayLike:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
@@ -1877,12 +1879,12 @@ class Array:
         )
 
     def set_block_selection(
-            self,
-            selection: BasicSelection,
-            value: npt.ArrayLike,
-            *,
-            fields: Fields | None = None,
-            prototype: BufferPrototype | None = None,
+        self,
+        selection: BasicSelection,
+        value: npt.ArrayLike,
+        *,
+        fields: Fields | None = None,
+        prototype: BufferPrototype | None = None,
     ) -> None:
         """Modify a selection of individual blocks, by providing the chunk indices
         (coordinates) for each block to be modified.
