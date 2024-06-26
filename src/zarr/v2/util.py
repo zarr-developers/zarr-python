@@ -786,4 +786,4 @@ class ConstantMap(Mapping[KeyType, ValueType]):
         return key in self._keys
 
     def __repr__(self) -> str:
-        return repr({k: v for k, v in self.items()})
+        return repr(dict(self.items()))
