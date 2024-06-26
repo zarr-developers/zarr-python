@@ -152,7 +152,7 @@ class Buffer:
 
     @classmethod
     def from_array_like(cls, array_like: ArrayLike) -> Self:
-        """Create a new buffer of a array-like object
+        """Create a new buffer of an array-like object
 
         Parameters
         ----------
@@ -164,6 +164,29 @@ class Buffer:
             New buffer representing `array_like`
         """
         return cls(array_like)
+
+    @classmethod
+    def from_buffer(cls, buffer: Buffer) -> Self:
+        """Create a new buffer of an existing Buffer
+
+        This is useful if you want to ensure that an existing buffer is
+        of the correct subclass of Buffer. E.g., MemoryStore uses this
+        to return a buffer instance of the subclass specified by its
+        BufferPrototype argument.
+
+        Typically, this only copies data if the data has to be moved between
+        memory types, such as from host to device memory.
+
+        Parameters
+        ----------
+        buffer
+            buffer object.
+
+        Returns
+        -------
+            A new buffer representing the content of the input buffer
+        """
+        return cls.from_array_like(buffer.as_array_like())
 
     @classmethod
     def from_bytes(cls, bytes_like: BytesLike) -> Self:

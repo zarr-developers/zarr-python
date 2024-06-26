@@ -5,7 +5,28 @@ from numpy.testing import assert_array_equal
 import zarr
 from zarr import Array, Group
 from zarr.abc.store import Store
-from zarr.api.synchronous import load, open, open_group, save, save_array, save_group
+from zarr.api.synchronous import create, load, open, open_group, save, save_array, save_group
+
+
+def test_create_array(memory_store: Store) -> None:
+    store = memory_store
+
+    # create array
+    z = create(shape=100, store=store)
+    assert isinstance(z, Array)
+    assert z.shape == (100,)
+
+    # create array, overwrite, specify chunk shape
+    z = create(shape=200, chunk_shape=20, store=store, overwrite=True)
+    assert isinstance(z, Array)
+    assert z.shape == (200,)
+    assert z.chunks == (20,)
+
+    # create array, overwrite, specify chunk shape via chunks param
+    z = create(shape=400, chunks=40, store=store, overwrite=True)
+    assert isinstance(z, Array)
+    assert z.shape == (400,)
+    assert z.chunks == (40,)
 
 
 def test_open_array(memory_store: Store) -> None:
