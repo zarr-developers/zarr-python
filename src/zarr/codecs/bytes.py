@@ -97,12 +97,15 @@ class BytesCodec(ArrayBytesCodec):
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
         assert isinstance(chunk_array, NDBuffer)
-        if chunk_array.dtype.itemsize > 1:
-            if self.endian is not None and self.endian != chunk_array.byteorder:
-                # type-ignore is a numpy bug
-                # see https://github.com/numpy/numpy/issues/26473
-                new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)  # type: ignore[arg-type]
-                chunk_array = chunk_array.astype(new_dtype)
+        if (
+            chunk_array.dtype.itemsize > 1
+            and self.endian is not None
+            and self.endian != chunk_array.byteorder
+        ):
+            # type-ignore is a numpy bug
+            # see https://github.com/numpy/numpy/issues/26473
+            new_dtype = chunk_array.dtype.newbyteorder(self.endian.name)  # type: ignore[arg-type]
+            chunk_array = chunk_array.astype(new_dtype)
 
         nd_array = chunk_array.as_ndarray_like()
         # Flatten the nd-array (only copy if needed) and reinterpret as bytes

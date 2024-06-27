@@ -680,12 +680,11 @@ def copy_store(
 
             # decide what to do
             do_copy = True
-            if if_exists != "replace":
-                if dest_key in dest:
-                    if if_exists == "raise":
-                        raise CopyError("key {!r} exists in destination".format(dest_key))
-                    elif if_exists == "skip":
-                        do_copy = False
+            if if_exists != "replace" and dest_key in dest:
+                if if_exists == "raise":
+                    raise CopyError("key {!r} exists in destination".format(dest_key))
+                elif if_exists == "skip":
+                    do_copy = False
 
             # take action
             if do_copy:
