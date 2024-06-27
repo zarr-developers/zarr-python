@@ -76,8 +76,14 @@ class LocalStore(Store):
         if isinstance(root, str):
             root = Path(root)
         assert isinstance(root, Path)
-
         self.root = root
+
+        if not self.create_if_not_exists and not root.exists():
+            raise KeyError(f"LocalStore: {root} does not exist")
+        if self.error_if_exists and root.exists():
+            raise FileExistsError(f"LocalStore: {root} already exists")
+        if self.overwrite_if_exists and root.exists():
+            shutil.rmtree(root)
 
     def __str__(self) -> str:
         return f"file://{self.root}"

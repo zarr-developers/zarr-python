@@ -49,15 +49,10 @@ class StoreTests(Generic[S]):
         with pytest.raises(AttributeError):
             store.mode = "w"  # type: ignore[misc]
 
-        # read-only
-        kwargs = {**store_kwargs, "mode": "r"}
-        read_store = self.store_cls(**kwargs)
-        assert read_store.mode == "r", read_store.mode
-        assert not read_store.writeable
-
     async def test_not_writable_store_raises(self, store_kwargs: dict[str, Any]) -> None:
         kwargs = {**store_kwargs, "mode": "r"}
         store = self.store_cls(**kwargs)
+        assert store.mode == "r", store.mode
         assert not store.writeable
 
         # set

@@ -22,7 +22,19 @@ class Store(ABC):
     @property
     def writeable(self) -> bool:
         """Is the store writeable?"""
+        return self.mode in ("r+", "a", "w", "w-")
+
+    @property
+    def create_if_not_exists(self) -> bool:
         return self.mode in ("a", "w", "w-")
+
+    @property
+    def overwrite_if_exists(self) -> bool:
+        return self.mode == "w"
+
+    @property
+    def error_if_exists(self) -> bool:
+        return self.mode == "w-"
 
     def _check_writable(self) -> None:
         if not self.writeable:

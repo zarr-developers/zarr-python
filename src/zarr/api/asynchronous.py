@@ -195,9 +195,9 @@ async def open(
         store_path = store_path / path
 
     try:
-        return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
+        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
     except KeyError:
-        return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
+        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
 
 async def open_consolidated(*args: Any, **kwargs: Any) -> AsyncGroup:
@@ -682,7 +682,7 @@ async def create(
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    mode = cast(OpenMode, "r" if read_only else "w")
+    mode = kwargs.pop("mode", cast(OpenMode, "r" if read_only else "w"))
     store_path = make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
@@ -863,13 +863,19 @@ async def open_array(
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
     except KeyError as e:
-        if store_path.store.writeable:
+        if store_path.store.create_if_not_exists:
             pass
         else:
             raise e
 
     # if array was not found, create it
-    return await create(store=store, path=path, zarr_format=zarr_format, **kwargs)
+    return await create(
+        store=store_path,
+        path=path,
+        zarr_format=zarr_format,
+        overwrite=store_path.store.overwrite_if_exists,
+        **kwargs,
+    )
 
 
 async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AsyncArray:
