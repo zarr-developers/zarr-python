@@ -1022,8 +1022,8 @@ class CoordinateIndexer(Indexer):
 
         # flatten selection
         selection_broadcast = tuple(dim_sel.reshape(-1) for dim_sel in selection_broadcast)
-        chunks_multi_index_broadcast = list(
-            dim_chunks.reshape(-1) for dim_chunks in chunks_multi_index_broadcast
+        chunks_multi_index_broadcast = tuple(
+            [dim_chunks.reshape(-1) for dim_chunks in chunks_multi_index_broadcast]
         )
 
         # ravel chunk indices
