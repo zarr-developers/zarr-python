@@ -25,12 +25,11 @@ def register_codec(key: str, codec_cls: type[Codec]) -> None:
 
 def get_codec_class(key: str) -> type[Codec]:
     item = __codec_registry.get(key)
-    if item is None:
-        if key in __lazy_load_codecs:
-            # logger.debug("Auto loading codec '%s' from entrypoint", codec_id)
-            cls = __lazy_load_codecs[key].load()
-            register_codec(key, cls)
-            item = __codec_registry.get(key)
+    if item is None and key in __lazy_load_codecs:
+        # logger.debug("Auto loading codec '%s' from entrypoint", codec_id)
+        cls = __lazy_load_codecs[key].load()
+        register_codec(key, cls)
+        item = __codec_registry.get(key)
     if item:
         return item
     raise KeyError(key)

@@ -428,10 +428,9 @@ class TreeNode:
         self.level = level
 
     def get_children(self):
-        if hasattr(self.obj, "values"):
-            if self.level is None or self.depth < self.level:
-                depth = self.depth + 1
-                return [TreeNode(o, depth=depth, level=self.level) for o in self.obj.values()]
+        if hasattr(self.obj, "values") and (self.level is None or self.depth < self.level):
+            depth = self.depth + 1
+            return [TreeNode(o, depth=depth, level=self.level) for o in self.obj.values()]
         return []
 
     def get_text(self):
