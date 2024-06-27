@@ -183,10 +183,7 @@ extend-select = [
     "RUF",
 ]
 ignore = [
-    "RUF003",
     "RUF005",
-    "RUF012",
-    "RUF015",
 ]
 
 [tool.mypy]
