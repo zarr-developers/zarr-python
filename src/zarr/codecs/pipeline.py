@@ -315,9 +315,7 @@ class BatchedCodecPipeline(CodecPipeline):
             )
         else:
             chunk_array = existing_chunk_array.copy()  # make a writable copy
-        if chunk_selection == ():
-            chunk_value = value
-        elif is_scalar(value.as_ndarray_like(), chunk_spec.dtype):
+        if chunk_selection == () or is_scalar(value.as_ndarray_like(), chunk_spec.dtype):
             chunk_value = value
         else:
             chunk_value = value[out_selection]
