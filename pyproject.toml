@@ -29,7 +29,6 @@ dependencies = [
     'numcodecs>=0.10.0',
     'fsspec>2024',
     'crc32c',
-    'universal-pathlib',
     'zstandard',
     'typing_extensions',
     'donfig',
@@ -79,6 +78,7 @@ extra = [
 ]
 optional = [
     'lmdb',
+    'universal-pathlib',
 ]
 
 [project.urls]
