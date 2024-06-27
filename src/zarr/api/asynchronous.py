@@ -646,7 +646,11 @@ async def create(
     if zarr_format == 2 and chunks is None:
         chunks = shape
     if zarr_format == 3 and chunk_shape is None:
-        chunk_shape = shape
+        if chunks is not None:
+            chunk_shape = chunks
+            chunks = None
+        else:
+            chunk_shape = shape
 
     if order is not None:
         warnings.warn(
