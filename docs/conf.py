@@ -177,7 +177,7 @@ def autoapi_skip_modules(app: sphinx.application.Sphinx, what: str, name: str, o
     """
     Return True if a module should be skipped in th API docs.
     """
-    parts = name.split("_")
+    parts = name.split(".")
     if what == "module" and any((part.startswith("_") or part == "v2") for part in parts):
         return True
     return False
