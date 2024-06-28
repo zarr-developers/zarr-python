@@ -534,7 +534,7 @@ def slice_to_range(s: slice, l: int):  # noqa: E741
 
 
 def ix_(selection, shape):
-    """Convert an orthogonal selection to a numpy advanced (fancy) selection, like numpy.ix_
+    """Convert an orthogonal selection to a numpy advanced (fancy) selection, like ``numpy.ix_``
     but with support for slices and single ints."""
 
     # normalisation

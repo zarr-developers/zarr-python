@@ -17,8 +17,7 @@ ZARR_FORMAT = 2
 
 # FLOAT_FILLS = {"NaN": np.nan, "Infinity": np.PINF, "-Infinity": np.NINF}
 
-_v3_core_types = set("".join(d) for d in itertools.product("<>", ("u", "i", "f"), ("2", "4", "8")))
-_v3_core_types = {"bool", "i1", "u1"} | _v3_core_types
+_v3_core_types = {"bool", "i1", "u1"} | set("".join(d) for d in itertools.product("<>", ("u", "i", "f"), ("2", "4", "8")))
 
 # The set of complex types allowed ({"<c8", "<c16", ">c8", ">c16"})
 _v3_complex_types = set(f"{end}c{_bytes}" for end, _bytes in itertools.product("<>", ("8", "16")))
