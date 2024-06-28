@@ -67,6 +67,7 @@ from zarr.sync import sync
 # Array and AsyncArray are defined in the base ``zarr`` namespace
 __all__ = ["parse_array_metadata", "create_codec_pipeline"]
 
+
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
     if isinstance(data, ArrayV2Metadata | ArrayV3Metadata):
         return data
