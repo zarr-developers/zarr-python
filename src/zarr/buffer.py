@@ -152,22 +152,6 @@ class Buffer:
         return cls(np.array([], dtype="b"))
 
     @classmethod
-    def from_buffer(cls, buffer: Buffer) -> Self:
-        """Create a Buffer given another arbitrary Buffer
-
-        Returns
-        -------
-            New Buffer representing the same data as `buffer`
-
-
-        Note
-        ----
-        Subclassed of Buffer must override this method to implement
-        more optimal conversions that avoid copies where possible
-        """
-        return cls(buffer.as_numpy_array())
-
-    @classmethod
     def from_array_like(cls, array_like: ArrayLike) -> Self:
         """Create a new buffer of an array-like object
 
@@ -202,8 +186,13 @@ class Buffer:
         Returns
         -------
             A new buffer representing the content of the input buffer
+
+        Note
+        ----
+        Subclasses of `Buffer` must override this method to implement
+        more optimal conversions that avoid copies where possible
         """
-        return cls.from_array_like(buffer.as_array_like())
+        return cls.from_array_like(buffer.as_numpy_array())
 
     @classmethod
     def from_bytes(cls, bytes_like: BytesLike) -> Self:
