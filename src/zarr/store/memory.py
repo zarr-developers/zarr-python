@@ -125,32 +125,6 @@ class GpuMemoryStore(MemoryStore):
     def __repr__(self) -> str:
         return f"GpuMemoryStore({str(self)!r})"
 
-    async def get(
-        self,
-        key: str,
-        prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
-    ) -> Buffer | None:
-        assert isinstance(key, str)
-        try:
-            value = self._store_dict[key]
-            start, length = _normalize_interval_index(value, byte_range)
-            return prototype.buffer.from_buffer(value[start : start + length])
-        except KeyError:
-            return None
-
-    async def get_partial_values(
-        self,
-        prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
-    ) -> list[Buffer | None]:
-        # All the key-ranges arguments goes with the same prototype
-        async def _get(key: str, byte_range: tuple[int, int | None]) -> Buffer | None:
-            return await self.get(key, prototype=prototype, byte_range=byte_range)
-
-        vals = await concurrent_map(key_ranges, _get, limit=None)
-        return vals
-
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         self._check_writable()
         assert isinstance(key, str)
