@@ -104,13 +104,18 @@ class MemoryStore(Store):
 
 
 class GpuMemoryStore(MemoryStore):
+    """A GPU only memory store that stores every chunk in GPU memory irrespective
+    of the original location. This guarantees that chunks will always be in GPU
+    memory for downstream processing. For location agnostic use cases, it would
+    be better to use `MemoryStore` instead.
+    """
+
     _store_dict: MutableMapping[str, Buffer]
 
     def __init__(
         self, store_dict: MutableMapping[str, Buffer] | None = None, *, mode: OpenMode = "r"
     ):
         super().__init__(mode=mode)
-        self._store_dict = {}
         if store_dict:
             self._store_dict = {k: GpuBuffer.from_buffer(store_dict[k]) for k in iter(store_dict)}
 
@@ -130,7 +135,7 @@ class GpuMemoryStore(MemoryStore):
         try:
             value = self._store_dict[key]
             start, length = _normalize_interval_index(value, byte_range)
-            return value[start : start + length]
+            return prototype.buffer.from_buffer(value[start : start + length])
         except KeyError:
             return None
 
@@ -141,7 +146,6 @@ class GpuMemoryStore(MemoryStore):
     ) -> list[Buffer | None]:
         # All the key-ranges arguments goes with the same prototype
         async def _get(key: str, byte_range: tuple[int, int | None]) -> Buffer | None:
-            # Q: use prototype here to convert to bespoke buffer class? If so, how?
             return await self.get(key, prototype=prototype, byte_range=byte_range)
 
         vals = await concurrent_map(key_ranges, _get, limit=None)
@@ -155,9 +159,4 @@ class GpuMemoryStore(MemoryStore):
 
         # Convert to GpuBuffer
         gpu_value = value if isinstance(value, GpuBuffer) else GpuBuffer.from_buffer(value)
-        if byte_range is not None:
-            buf = self._store_dict[key]
-            buf[byte_range[0] : byte_range[1]] = gpu_value
-            self._store_dict[key] = buf
-        else:
-            self._store_dict[key] = gpu_value
+        await super().set(key, gpu_value, byte_range=byte_range)

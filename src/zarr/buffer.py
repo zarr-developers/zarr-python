@@ -152,6 +152,22 @@ class Buffer:
         return cls(np.array([], dtype="b"))
 
     @classmethod
+    def from_buffer(cls, buffer: Buffer) -> Self:
+        """Create a Buffer given another arbitrary Buffer
+
+        Returns
+        -------
+            New Buffer representing the same data as `buffer`
+
+
+        Note
+        ----
+        Subclassed of Buffer must override this method to implement
+        more optimal conversions that avoid copies where possible
+        """
+        return cls(buffer.as_numpy_array())
+
+    @classmethod
     def from_array_like(cls, array_like: ArrayLike) -> Self:
         """Create a new buffer of an array-like object
 
@@ -525,6 +541,8 @@ class GpuBuffer(Buffer):
     @classmethod
     def from_buffer(cls, buffer: Buffer) -> Self:
         """Create an GpuBuffer given an arbitrary Buffer
+        This will try to be zero-copy if `buffer` is already on the
+        GPU and will trigger a copy if not.
 
         Returns
         -------
