@@ -15,6 +15,9 @@
 
 import os
 import sys
+from typing import Any
+
+import sphinx.application
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -22,6 +25,7 @@ import sys
 #
 # The short X.Y version.
 import zarr
+import sphinx
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
@@ -42,19 +46,21 @@ extensions = [
     "sphinx.ext.autosummary",
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
-    "sphinx_automodapi.automodapi",
+    'autoapi.extension',
     "numpydoc",
     "sphinx_issues",
     "sphinx_copybutton",
     "sphinx_design",
 ]
 
-numpydoc_show_class_members = False
-numpydoc_class_members_toctree = False
 issues_github_path = "zarr-developers/zarr-python"
 
-automodapi_inheritance_diagram = False
-automodapi_toctreedirnm = "_autoapi"
+autoapi_dirs = ['../src/zarr']
+autoapi_add_toctree_entry = False
+autoapi_generate_api_docs = False
+autoapi_member_order = "groupwise"
+autoapi_root = "api"
+
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -166,8 +172,7 @@ html_theme_options = {
 html_logo = "_static/logo1.png"
 
 
-# Add custom css
-def setup(app):
+def setup(app: sphinx.application.Sphinx) -> None:
     app.add_css_file("custom.css")
 
 

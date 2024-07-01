@@ -39,7 +39,7 @@ class MemoryStore(Store):
         try:
             value = self._store_dict[key]
             start, length = _normalize_interval_index(value, byte_range)
-            return value[start : start + length]
+            return prototype.buffer.from_buffer(value[start : start + length])
         except KeyError:
             return None
 
