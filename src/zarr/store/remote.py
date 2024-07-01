@@ -69,7 +69,7 @@ class RemoteStore(Store):
             self.path = url.path.rstrip("/")
             self._fs = url.fs
         else:
-            raise ValueError("URL not understood, %s", url)
+            raise ValueError(f"URL not understood, {url}")
         self.allowed_exceptions = allowed_exceptions
         # test instantiate file system
         if not self._fs.async_impl:

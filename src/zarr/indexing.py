@@ -87,21 +87,23 @@ def ceildiv(a: float, b: float) -> int:
 
 
 def is_integer(x: Any) -> TypeGuard[int]:
-    """True if x is an integer (both pure Python or NumPy).
+    """True if x is an integer (both pure Python or NumPy)."""
+    return isinstance(x, numbers.Integral) and not is_bool(x)
 
-    Note that Python's bool is considered an integer too.
-    """
-    return isinstance(x, numbers.Integral)
+
+def is_bool(x: Any) -> TypeGuard[bool | np.bool_]:
+    """True if x is a boolean (both pure Python or NumPy)."""
+    return type(x) in [bool, np.bool_]
 
 
 def is_integer_list(x: Any) -> TypeGuard[list[int]]:
-    """True if x is a list of integers.
+    """True if x is a list of integers."""
+    return isinstance(x, list) and len(x) > 0 and all(is_integer(i) for i in x)
 
-    This function assumes ie *does not check* that all elements of the list
-    have the same type. Mixed type lists will result in other errors that will
-    bubble up anyway.
-    """
-    return isinstance(x, list) and len(x) > 0 and is_integer(x[0])
+
+def is_bool_list(x: Any) -> TypeGuard[list[bool | np.bool_]]:
+    """True if x is a list of boolean."""
+    return isinstance(x, list) and len(x) > 0 and all(is_bool(i) for i in x)
 
 
 def is_integer_array(x: Any, ndim: int | None = None) -> TypeGuard[npt.NDArray[np.intp]]:
@@ -118,6 +120,10 @@ def is_bool_array(x: Any, ndim: int | None = None) -> TypeGuard[npt.NDArray[np.b
     return t
 
 
+def is_int_or_bool_iterable(x: Any) -> bool:
+    return is_integer_list(x) or is_integer_array(x) or is_bool_array(x) or is_bool_list(x)
+
+
 def is_scalar(value: Any, dtype: np.dtype[Any]) -> bool:
     if np.isscalar(value):
         return True
@@ -129,7 +135,7 @@ def is_scalar(value: Any, dtype: np.dtype[Any]) -> bool:
 
 
 def is_pure_fancy_indexing(selection: Any, ndim: int) -> bool:
-    """Check whether a selection contains only scalars or integer array-likes.
+    """Check whether a selection contains only scalars or integer/bool array-likes.
 
     Parameters
     ----------
@@ -142,9 +148,14 @@ def is_pure_fancy_indexing(selection: Any, ndim: int) -> bool:
         True if the selection is a pure fancy indexing expression (ie not mixed
         with boolean or slices).
     """
+    if is_bool_array(selection):
+        # is mask selection
+        return True
+
     if ndim == 1:
-        if is_integer_list(selection) or is_integer_array(selection):
+        if is_integer_list(selection) or is_integer_array(selection) or is_bool_list(selection):
             return True
+
         # if not, we go through the normal path below, because a 1-tuple
         # of integers is also allowed.
     no_slicing = (
@@ -166,19 +177,21 @@ def is_pure_orthogonal_indexing(selection: Selection, ndim: int) -> TypeGuard[Or
     if not ndim:
         return False
 
-    # Case 1: Selection is a single iterable of integers
-    if is_integer_list(selection) or is_integer_array(selection, ndim=1):
+    selection_normalized = (selection,) if not isinstance(selection, tuple) else selection
+
+    # Case 1: Selection contains of iterable of integers or boolean
+    if len(selection_normalized) == ndim and all(
+        is_int_or_bool_iterable(s) for s in selection_normalized
+    ):
         return True
 
-    # Case two: selection contains either zero or one integer iterables.
+    # Case 2: selection contains either zero or one integer iterables.
     # All other selection elements are slices or integers
     return (
-        isinstance(selection, tuple)
-        and len(selection) == ndim
-        and sum(is_integer_list(elem) or is_integer_array(elem) for elem in selection) <= 1
+        len(selection_normalized) <= ndim
+        and sum(is_int_or_bool_iterable(s) for s in selection_normalized) <= 1
         and all(
-            is_integer_list(elem) or is_integer_array(elem) or isinstance(elem, int | slice)
-            for elem in selection
+            is_int_or_bool_iterable(s) or isinstance(s, int | slice) for s in selection_normalized
         )
     )
 
