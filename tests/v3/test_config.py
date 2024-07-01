@@ -191,21 +191,23 @@ def test_config_buffer_implementation():
     assert get_buffer_class() == MyBuffer
 
     # no error using MyBuffer
+    data = np.arange(100)
     arr[:] = np.arange(100)
+    assert np.array_equal(arr[:], data)
 
+    data2d = np.arange(1000).reshape(100, 10)
     arr_sharding = zeros(
         shape=(100, 10),
         store=StoreExpectingMyBuffer(mode="w"),
         codecs=[ShardingCodec(chunk_shape=(10, 10))],
     )
-    arr_sharding[:] = np.arange(1000).reshape(100, 10)
+    arr_sharding[:] = data2d
+    assert np.array_equal(arr_sharding[:], data2d)
 
     arr_Crc32c = zeros(
         shape=(100, 10),
         store=StoreExpectingMyBuffer(mode="w"),
         codecs=[BytesCodec(), Crc32cCodec()],
     )
-    arr_Crc32c[:] = np.arange(1000).reshape(100, 10)
-
-
-pass
+    arr_Crc32c[:] = data2d
+    assert np.array_equal(arr_Crc32c[:], data2d)

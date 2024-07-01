@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from zarr.array import AsyncArray
-from zarr.buffer import ArrayLike, BufferPrototype, NDArrayLike
+from zarr.buffer import ArrayLike, BufferPrototype, NDArrayLike, numpy_buffer_prototype
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
@@ -77,3 +77,10 @@ async def test_codecs_use_of_prototype():
     got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=my_prototype)
     assert isinstance(got, MyNDArrayLike)
     assert np.array_equal(expect, got)
+
+
+def test_numpy_buffer_prototype():
+    buffer = numpy_buffer_prototype().buffer.create_zero_length()
+    ndbuffer = numpy_buffer_prototype().nd_buffer.create(shape=(1, 2), dtype=np.dtype("int64"))
+    assert isinstance(buffer.as_array_like(), np.ndarray)
+    assert isinstance(ndbuffer.as_ndarray_like(), np.ndarray)

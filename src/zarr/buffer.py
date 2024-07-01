@@ -489,5 +489,10 @@ def default_buffer_prototype() -> BufferPrototype:
     return BufferPrototype(buffer=get_buffer_class(), nd_buffer=get_ndbuffer_class())
 
 
+# The numpy prototype used for E.g. when reading the shard index
+def numpy_buffer_prototype() -> BufferPrototype:
+    return BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
+
+
 register_buffer(Buffer)
 register_ndbuffer(NDBuffer)

@@ -19,7 +19,13 @@ from zarr.abc.codec import (
 )
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer, BufferPrototype, NDBuffer, default_buffer_prototype
+from zarr.buffer import (
+    Buffer,
+    BufferPrototype,
+    NDBuffer,
+    default_buffer_prototype,
+    numpy_buffer_prototype,
+)
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
@@ -629,7 +635,7 @@ class ShardingCodec(
             dtype=np.dtype("<u8"),
             fill_value=MAX_UINT_64,
             order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
-            prototype=default_buffer_prototype(),
+            prototype=numpy_buffer_prototype(),
         )
 
     def _get_chunk_spec(self, shard_spec: ArraySpec) -> ArraySpec:
@@ -657,11 +663,11 @@ class ShardingCodec(
         shard_index_size = self._shard_index_size(chunks_per_shard)
         if self.index_location == ShardingCodecIndexLocation.start:
             index_bytes = await byte_getter.get(
-                prototype=default_buffer_prototype(), byte_range=(0, shard_index_size)
+                prototype=numpy_buffer_prototype(), byte_range=(0, shard_index_size)
             )
         else:
             index_bytes = await byte_getter.get(
-                prototype=default_buffer_prototype(), byte_range=(-shard_index_size, None)
+                prototype=numpy_buffer_prototype(), byte_range=(-shard_index_size, None)
             )
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes, chunks_per_shard)
