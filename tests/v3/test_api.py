@@ -52,7 +52,7 @@ def test_open_array(memory_store: Store) -> None:
     assert z.read_only
 
     # path not found
-    with pytest.raises(KeyError):
+    with pytest.raises(FileNotFoundError):
         open(store="doesnotexist", mode="r")
 
 
@@ -98,7 +98,7 @@ def test_open_with_mode_r(tmppath) -> None:
     # 'r' means read only (must exist)
     import zarr
 
-    with pytest.raises(KeyError):
+    with pytest.raises(FileNotFoundError):
         zarr.open(store=tmppath, mode="r")
     zarr.ones(store=tmppath, shape=(3, 3))
     z2 = zarr.open(store=tmppath, mode="r")
@@ -111,7 +111,7 @@ def test_open_with_mode_r_plus(tmppath) -> None:
     # 'r+' means read/write (must exist)
     import zarr
 
-    with pytest.raises(KeyError):
+    with pytest.raises(FileNotFoundError):
         zarr.open(store=tmppath, mode="r+")
     zarr.ones(store=tmppath, shape=(3, 3))
     z2 = zarr.open(store=tmppath, mode="r+")

@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator, MutableMapping
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import OpenMode, concurrent_map
+from zarr.common import OpenModeLiteral, concurrent_map
 from zarr.store.utils import _normalize_interval_index
 
 
@@ -18,7 +18,7 @@ class MemoryStore(Store):
     _store_dict: MutableMapping[str, Buffer]
 
     def __init__(
-        self, store_dict: MutableMapping[str, Buffer] | None = None, *, mode: OpenMode = "r"
+        self, store_dict: MutableMapping[str, Buffer] | None = None, *, mode: OpenModeLiteral = "r"
     ):
         super().__init__(mode=mode)
         self._store_dict = store_dict or {}

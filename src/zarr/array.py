@@ -348,7 +348,7 @@ class AsyncArray:
                 # alternatively, we could warn and favor v3
                 raise ValueError("Both zarr.json and .zarray objects exist")
             if zarr_json_bytes is None and zarray_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)  # filenotfounderror?
             # set zarr_format based on which keys were found
             if zarr_json_bytes is not None:
                 zarr_format = 3
@@ -403,7 +403,7 @@ class AsyncArray:
 
     @property
     def read_only(self) -> bool:
-        return not bool(self.store_path.store.writeable)
+        return not bool(self.store_path.store.mode.is_writable)
 
     @property
     def path(self) -> str:
