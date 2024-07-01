@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from typing import NamedTuple, Protocol, Self, runtime_checkable
+from typing import NamedTuple, Protocol, runtime_checkable
+
+from typing_extensions import Self
 
 from zarr.buffer import Buffer, BufferPrototype
 from zarr.common import BytesLike, OpenModeLiteral
