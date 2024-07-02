@@ -134,7 +134,7 @@ Enhancements
 Typing
 ~~~~~~
 
-*Resolve Mypy erorrs in v3 branch.
+* Resolve Mypy erorrs in v3 branch.
   By :user:`Daniel Jahn <DahnJ>` :issue:`1692`.
 
 *Allow dmypy to be run on v3 branch.
