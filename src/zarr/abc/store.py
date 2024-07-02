@@ -1,31 +1,44 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from typing import Protocol, runtime_checkable
+from typing import NamedTuple, Protocol, runtime_checkable
+
+from typing_extensions import Self
 
 from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import BytesLike, OpenMode
+from zarr.common import BytesLike, OpenModeLiteral
+
+
+class OpenMode(NamedTuple):
+    overwrite: bool
+    can_create: bool
+    can_open_existing: bool
+    is_writable: bool
+
+    @classmethod
+    def from_str(cls, mode: str) -> Self:
+        if mode not in ("r", "r+", "a", "w", "w-"):
+            raise ValueError("mode must be one of 'r', 'r+', 'w', 'w-', 'a'")
+        return cls(
+            overwrite=mode == "w",
+            can_create=mode in ("a", "w", "w-"),
+            can_open_existing=mode in ("r", "r+", "a"),
+            is_writable=mode in ("r+", "a", "w", "w-"),
+        )
 
 
 class Store(ABC):
     _mode: OpenMode
 
-    def __init__(self, mode: OpenMode = "r"):
-        if mode not in ("r", "r+", "w", "w-", "a"):
-            raise ValueError("mode must be one of 'r', 'r+', 'w', 'w-', 'a'")
-        self._mode = mode
+    def __init__(self, mode: OpenModeLiteral = "r"):
+        self._mode = OpenMode.from_str(mode)
 
     @property
     def mode(self) -> OpenMode:
         """Access mode of the store."""
         return self._mode
 
-    @property
-    def writeable(self) -> bool:
-        """Is the store writeable?"""
-        return self.mode in ("a", "w", "w-")
-
     def _check_writable(self) -> None:
-        if not self.writeable:
+        if not self.mode.is_writable:
             raise ValueError("store mode does not support writing")
 
     @abstractmethod

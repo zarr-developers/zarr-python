@@ -332,11 +332,11 @@ class AsyncArray:
                 (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
             )
             if zarray_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
         elif zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
         elif zarr_format is None:
             zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
                 (store_path / ZARR_JSON).get(),
@@ -348,7 +348,7 @@ class AsyncArray:
                 # alternatively, we could warn and favor v3
                 raise ValueError("Both zarr.json and .zarray objects exist")
             if zarr_json_bytes is None and zarray_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
             # set zarr_format based on which keys were found
             if zarr_json_bytes is not None:
                 zarr_format = 3
@@ -403,7 +403,7 @@ class AsyncArray:
 
     @property
     def read_only(self) -> bool:
-        return bool(not self.store_path.store.writeable)
+        return not bool(self.store_path.store.mode.is_writable)
 
     @property
     def path(self) -> str:

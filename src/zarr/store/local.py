@@ -7,7 +7,7 @@ from pathlib import Path
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import OpenMode, concurrent_map, to_thread
+from zarr.common import OpenModeLiteral, concurrent_map, to_thread
 
 
 def _get(
@@ -71,13 +71,20 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, mode: OpenMode = "r"):
+    def __init__(self, root: Path | str, *, mode: OpenModeLiteral = "r"):
         super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
         assert isinstance(root, Path)
-
         self.root = root
+
+        if root.exists():
+            if self.mode.can_open_existing:
+                pass
+            elif self.mode.overwrite:
+                shutil.rmtree(root)
+            else:
+                raise FileExistsError(f"LocalStore: {root} already exists")
 
     def __str__(self) -> str:
         return f"file://{self.root}"

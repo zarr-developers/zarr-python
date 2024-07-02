@@ -2,7 +2,7 @@ from typing import Any, Generic, TypeVar
 
 import pytest
 
-from zarr.abc.store import Store
+from zarr.abc.store import OpenMode, Store
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store.utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
@@ -43,22 +43,17 @@ class StoreTests(Generic[S]):
         assert isinstance(store, self.store_cls)
 
     def test_store_mode(self, store: S, store_kwargs: dict[str, Any]) -> None:
-        assert store.mode == "w", store.mode
-        assert store.writeable
+        assert store.mode == OpenMode.from_str("w")
+        assert store.mode.is_writable
 
         with pytest.raises(AttributeError):
-            store.mode = "w"  # type: ignore[misc]
-
-        # read-only
-        kwargs = {**store_kwargs, "mode": "r"}
-        read_store = self.store_cls(**kwargs)
-        assert read_store.mode == "r", read_store.mode
-        assert not read_store.writeable
+            store.mode = OpenMode.from_str("w")  # type: ignore[misc]
 
     async def test_not_writable_store_raises(self, store_kwargs: dict[str, Any]) -> None:
         kwargs = {**store_kwargs, "mode": "r"}
         store = self.store_cls(**kwargs)
-        assert not store.writeable
+        assert store.mode == OpenMode.from_str("r")
+        assert not store.mode.is_writable
 
         # set
         with pytest.raises(ValueError):
@@ -102,7 +97,7 @@ class StoreTests(Generic[S]):
         """
         Ensure that data can be written to the store using the store.set method.
         """
-        assert store.writeable
+        assert store.mode.is_writable
         data_buf = Buffer.from_bytes(data)
         await store.set(key, data_buf)
         observed = self.get(store, key)

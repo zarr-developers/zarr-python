@@ -169,7 +169,7 @@ class AsyncGroup:
                 # alternatively, we could warn and favor v3
                 raise ValueError("Both zarr.json and .zgroup objects exist")
             if zarr_json_bytes is None and zgroup_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
             # set zarr_format based on which keys were found
             if zarr_json_bytes is not None:
                 zarr_format = 3
