@@ -31,7 +31,7 @@ class StoreTests(Generic[S]):
         raise NotImplementedError
 
     @pytest.fixture(scope="function")
-    def store_kwargs(self) -> dict[str, Any]:
+    def store_kwargs(self, *args: Any) -> dict[str, Any]:
         return {"mode": "w"}
 
     @pytest.fixture(scope="function")
