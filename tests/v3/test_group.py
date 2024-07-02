@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pickle
 from typing import TYPE_CHECKING, Any
 
 from zarr.array import AsyncArray
@@ -391,3 +392,26 @@ def test_group_name_properties(store: LocalStore | MemoryStore, zarr_format: Zar
     assert bar.path == "foo/bar"
     assert bar.name == "/foo/bar"
     assert bar.basename == "bar"
+
+
+@pytest.mark.parametrize("store", ("memory", "local"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_serizalizable_async_group(
+    store: LocalStore | MemoryStore, zarr_format: ZarrFormat
+) -> None:
+    expected = await AsyncGroup.create(
+        store=store, attributes={"foo": 999}, zarr_format=zarr_format
+    )
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+    assert actual == expected
+
+
+@pytest.mark.parametrize("store", ("memory", "local"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+def test_serizalizable_sync_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    expected = Group.create(store=store, attributes={"foo": 999}, zarr_format=zarr_format)
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+
+    assert actual == expected

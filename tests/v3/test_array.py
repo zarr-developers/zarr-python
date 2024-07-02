@@ -1,6 +1,9 @@
+import pickle
+
+import numpy as np
 import pytest
 
-from zarr.array import Array
+from zarr.array import Array, AsyncArray
 from zarr.common import ZarrFormat
 from zarr.group import Group
 from zarr.store import LocalStore, MemoryStore
@@ -34,3 +37,36 @@ def test_array_name_properties_with_group(
     assert spam.path == "bar/spam"
     assert spam.name == "/bar/spam"
     assert spam.basename == "spam"
+
+
+@pytest.mark.parametrize("store", ("memory", "local"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_serizalizable_async_array(
+    store: LocalStore | MemoryStore, zarr_format: ZarrFormat
+) -> None:
+    expected = await AsyncArray.create(
+        store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
+    )
+    # await expected.setitems(list(range(100)))
+
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+
+    assert actual == expected
+    # np.testing.assert_array_equal(await actual.getitem(slice(None)), await expected.getitem(slice(None)))
+    # TODO: uncomment the parts of this test that will be impacted by the config/prototype changes in flight
+
+
+@pytest.mark.parametrize("store", ("memory", "local"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+def test_serizalizable_sync_array(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    expected = Array.create(
+        store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
+    )
+    expected[:] = list(range(100))
+
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+
+    assert actual == expected
+    np.testing.assert_array_equal(actual[:], expected[:])

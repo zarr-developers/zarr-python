@@ -29,6 +29,25 @@ class MemoryStore(Store):
     def __repr__(self) -> str:
         return f"MemoryStore({str(self)!r})"
 
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, type(self))
+            and self._store_dict == other._store_dict
+            and self.mode == other.mode
+        )
+
+    def __setstate__(self, state: tuple[MutableMapping[str, Buffer], OpenMode]) -> None:
+        # warnings.warn(
+        #     f"unpickling {type(self)} may produce unexpected behavior and should only be used for testing and/or debugging"
+        # )
+        self._store_dict, self._mode = state
+
+    def __getstate__(self) -> tuple[MutableMapping[str, Buffer], OpenMode]:
+        # warnings.warn(
+        #     f"pickling {type(self)} may produce unexpected behavior and should only be used for testing and/or debugging"
+        # )
+        return self._store_dict, self._mode
+
     async def get(
         self,
         key: str,

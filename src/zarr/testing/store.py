@@ -1,3 +1,4 @@
+import pickle
 from typing import Any, Generic, TypeVar
 
 import pytest
@@ -41,6 +42,19 @@ class StoreTests(Generic[S]):
     def test_store_type(self, store: S) -> None:
         assert isinstance(store, Store)
         assert isinstance(store, self.store_cls)
+
+    def test_store_eq(self, store: S, store_kwargs: dict[str, Any]) -> None:
+        # check self equality
+        assert store == store
+
+        # check store equality with same inputs
+        # asserting this is important for being able to compare (de)serialized stores
+        store2 = self.store_cls(**store_kwargs)
+        assert store == store2
+
+    def test_serizalizable_store(self, store: S) -> None:
+        foo = pickle.dumps(store)
+        assert pickle.loads(foo) == store
 
     def test_store_mode(self, store: S, store_kwargs: dict[str, Any]) -> None:
         assert store.mode == "w", store.mode
