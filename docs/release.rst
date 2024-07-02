@@ -38,59 +38,158 @@ Enhancements
 * Implement listing of the sub-arrays and sub-groups for a V3 ``Group``.
   By :user:`Davis Bennett <d-v-b>` :issue:`1726`.
 
-Bootstrap v3 branch with zarrita by @jhamman in #1584
-Extensible codecs for V3 by @normanrz in #1588
-Don't import from tests by @d-v-b in #1601
-Listable V3 Stores by @jhamman in #1634
-Codecs without array metadata by @normanrz in #1632
-fix sync group class methods by @jhamman in #1652
-implement eq for LocalStore by @Charoula-Kyriakides in #1792
-V3 reorg by @jhamman in #1809
-[v3] Sync with futures by @d-v-b in #1804
-implement group.members by @d-v-b in #1726
-Remove implicit groups by @jhamman in #1827
-feature(store): list_* -> AsyncGenerators by @jhamman in #1844
-Test codec entrypoints by @normanrz in #1835
-Remove extra v3 sync module by @maxrjones in #1856
-Use donfig for V3 configuration by @maxrjones in #1855
-groundwork for V3 group tests by @d-v-b in #1743
-[v3] First step to generalizes ndarray and bytes by @madsbk in #1826
-Reworked codec pipelines by @normanrz in #1670
-Followup on codecs by @normanrz in #1889
-Protocols for Buffer and NDBuffer by @madsbk in #1899
-[V3] Expand store tests by @d-v-b in #1900
-[v3] Feature: Store open mode by @jhamman in #1911
-fix(types): Group.info -> NotImplementedError by @jhamman in #1936
-feature(typing): add py.typed file to package root by @jhamman in #1935
-Support all indexing variants by @normanrz in #1917
-Feature: group and array name properties by @jhamman in #1940
-implement .chunks on v3 arrays by @rabernat in #1929
-Fixes bug in transpose by @normanrz in #1949
-Buffer Prototype Argument by @madsbk in #1910
-Feature: Top level V3 API by @jhamman in #1884
-Basic working FsspecStore by @martindurant in #1785
+*Bootstrap v3 branch with zarrita.
+  By :user:`Joe Hamman <jhamman>` :issue:`1584`.
+
+*Extensible codecs for V3.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1588`.
+
+*Don't import from tests.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1601`.
+
+*Listable V3 Stores.
+  By :user:`Joe Hamman <jhamman>` :issue:`1634`.
+
+*Codecs without array metadata.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1632`.
+
+*fix sync group class methods.
+  By :user:`Joe Hamman <jhamman>` :issue:`1652`.
+
+*implement eq for LocalStore.
+  By :user:`Charoula Kyriakides <Charoula-Kyriakides>` :issue:`1792`.
+
+*V3 reorg.
+  By :user:`Joe Hamman <jhamman>` :issue:`1809`.
+
+*[v3] Sync with futures.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1804`.
+
+*implement group.members.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1726`.
+
+*Remove implicit groups.
+  By :user:`Joe Hamman <jhamman>` :issue:`1827`.
+
+*feature(store): list_* -> AsyncGenerators.
+  By :user:`Joe Hamman <jhamman>` :issue:`1844`.
+
+*Test codec entrypoints.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1835`.
+
+*Remove extra v3 sync module.
+  By :user:`Max Jones <maxrjones>` :issue:`1856`.
+
+*Use donfig for V3 configuration.
+  By :user:`Max Jones <maxrjones>` :issue:`1655`.
+
+*groundwork for V3 group tests.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1743`.
+
+*[v3] First step to generalizes ndarray and bytes.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1826`.
+
+*Reworked codec pipelines.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1670`.
+
+*Followup on codecs.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1889`.
+
+*Protocols for Buffer and NDBuffer.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1899`.
+
+*[V3] Expand store tests.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1900`.
+
+*[v3] Feature: Store open mode.
+  By :user:`Joe Hamman <jhamman>` :issue:`1911`.
+
+*fix(types): Group.info -> NotImplementedError.
+  By :user:`Joe Hamman <jhamman>` :issue:`1936`.
+
+*feature(typing): add py.typed file to package root.
+  By :user:`Joe Hamman <jhamman>` :issue:`1935`.
+
+*Support all indexing variants.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1917`.
+
+*Feature: group and array name properties.
+  By :user:`Joe Hamman <jhamman>` :issue:`1940`.
+
+*implement .chunks on v3 arrays.
+  By :user:`Ryan Abernathey <rabernat>` :issue:`1929`.
+
+*Fixes bug in transpose.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1949`.
+
+*Buffer Prototype Argument.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1910`.
+
+*Feature: Top level V3 API.
+  By :user:`Joe Hamman <jhamman>` :issue:`1884`.
+
+*Basic working FsspecStore.
+  By :user:`Martin Durant <martindurant>`; :issue:`1785`.
 
 Typing
 ~~~~~~
-Resolve Mypy erorrs in v3 branch by @DahnJ in #1692
-Allow dmypy to be run on v3 branch by @dstansby in #1780
-Remove unused typing ignore comments by @dstansby in #1781
-Check untyped defs on v3 by @dstansby in #1784
-[v3] Enable some more strict mypy options by @dstansby in #1793
-[v3] Disallow generic Any typing by @dstansby in #1794
-Disallow incomplete type definitions by @dstansby in #1814
-Disallow untyped calls by @dstansby in #1811
-Fix some untyped calls by @dstansby in #1865
-Disallow untyped defs by @dstansby in #1834
-Add more typing to zarr.group by @dstansby in #1870
-Fix any generics in zarr.array by @dstansby in #1861
-Remove some unused mypy overrides by @dstansby in #1894
-Finish typing zarr.metadata by @dstansby in #1880
-Disallow implicit re-exports by @dstansby in #1908
-Make typing strict by @dstansby in #1879
-Enable extra mypy error codes by @dstansby in #1909
-Enable warn_unreachable for mypy by @dstansby in #1937
-Fix final typing errors by @dstansby in #1939
+
+*Resolve Mypy erorrs in v3 branch.
+  By :user:`Daniel Jahn <DahnJ>` :issue:`1692`.
+
+*Allow dmypy to be run on v3 branch.
+  By :user:`David Stansby <dstansby>` :issue:`1780`.
+
+*Remove unused typing ignore comments.
+  By :user:`David Stansby <dstansby>` :issue:`1781`.
+
+*Check untyped defs on v3.
+  By :user:`David Stansby <dstansby>` :issue:`1784`.
+
+*[v3] Enable some more strict mypy options.
+  By :user:`David Stansby <dstansby>` :issue:`1793`.
+
+*[v3] Disallow generic Any typing.
+  By :user:`David Stansby <dstansby>` :issue:`1794`.
+
+*Disallow incomplete type definitions.
+  By :user:`David Stansby <dstansby>` :issue:`1814`.
+
+*Disallow untyped calls.
+  By :user:`David Stansby <dstansby>` :issue:`1811`.
+
+*Fix some untyped calls.
+  By :user:`David Stansby <dstansby>` :issue:`1865`.
+
+*Disallow untyped defs.
+  By :user:`David Stansby <dstansby>` :issue:`1834`.
+
+*Add more typing to zarr.group.
+  By :user:`David Stansby <dstansby>` :issue:`1870`.
+
+*Fix any generics in zarr.array.
+  By :user:`David Stansby <dstansby>` :issue:`1861`.
+
+*Remove some unused mypy overrides.
+  By :user:`David Stansby <dstansby>` :issue:`1894`.
+
+*Finish typing zarr.metadata.
+  By :user:`David Stansby <dstansby>` :issue:`1880`.
+
+*Disallow implicit re-exports.
+  By :user:`David Stansby <dstansby>` :issue:`1908`.
+
+*Make typing strict.
+  By :user:`David Stansby <dstansby>` :issue:`1879`.
+
+*Enable extra mypy error codes.
+  By :user:`David Stansby <dstansby>` :issue:`1909`.
+
+*Enable warn_unreachable for mypy.
+ By :user:`David Stansby <dstansby>` :issue:`1937`.
+
+*Fix final typing errors.
+  By :user:`David Stansby <dstansby>` :issue:`1939`.
 
 Maintenance
 ~~~~~~~~~~~
@@ -99,52 +198,110 @@ Maintenance
   The dependency relationship is now reversed: the test suite imports this class from ``zarr-python``.
   By :user:`Davis Bennett <d-v-b>` :issue:`1601`.
 
-[V3] Update minimum supported Python and Numpy versions by @jhamman in #1638
-use src layout and use hatch for packaging by @d-v-b in #1592
-temporarily disable mypy in v3 directory by @jhamman in #1649
-create hatch test env by @rabernat in #1650
-removed unused environments and workflows by @rabernat in #1651
-Add env variables to sprint setup instructions by @maxrjones in #1654
-Add test matrix for V3 by @maxrjones in #1656
-Remove attrs by @d-v-b in #1660
-Specify hatch envs using GitHub actions matrix for v3 tests by @maxrjones in #1728
-black -> ruff format + cleanup by @Saransh-cpp in #1639
-Remove old v3 by @d-v-b in #1742
-V3 update pre commit by @jhamman in #1808
-remove windows testing on v3 branch by @jhamman in #1817
-fix: add mypy to test dependencies by @d-v-b in #1789
-chore(ci): add numpy 2 release candidate to test matrix by @jhamman in #1828
-fix dependencies by @normanrz in #1840
-Add pytest to mypy dependencies by @dstansby in #1846
-chore(pre-commit): update pre-commit versions and remove attrs dep mypy section by @jhamman in #1848
-Enable some ruff rules (RUF) and fix issues by @DimitriPapadopoulos in #1869
-Configure Ruff to apply flake8-bugbear/isort/pyupgrade by @normanrz in #1890
-chore(ci): remove mypy from test action in favor of pre-commit action by @jhamman in #1887
-Enable ruff/flake8-raise rules (RSE) and fix issues by @DimitriPapadopoulos in #1872
-Apply assorted ruff/refurb rules (FURB) by @DimitriPapadopoulos in #1873
-Enable ruff/flake8-implicit-str-concat rules (ISC) and fix issues by @DimitriPapadopoulos in #1868
-Add numpy to mypy pre-commit check env by @dstansby in #1893
-remove fixture files from src by @d-v-b in #1897
-Fix list of packages in mypy pre-commit environment by @dstansby in #1907
-Run sphinx directly on readthedocs by @dstansby in #1919
-Apply preview ruff rules by @DimitriPapadopoulos in #1942
-Enable and apply ruff rule RUF009 by @DimitriPapadopoulos in #1941
+* [V3] Update minimum supported Python and Numpy versions. 
+  By :user:`Joe Hamman <jhamman>` :issue:`1638`
+
+* use src layout and use hatch for packaging.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1592`.
+
+* temporarily disable mypy in v3 directory. 
+  By :user:`Joe Hamman <jhamman>` :issue:`1649`.
+
+* create hatch test env.
+  By :user:`Ryan Abernathey <rabernat>` :issue:`1650`.
+
+* removed unused environments and workflows.
+  By :user:`Ryan Abernathey <rabernat>` :issue:`1651`.
+
+* Add env variables to sprint setup instructions.
+  By :user:`Max Jones <maxrjones>` :issue:`1654`.
+
+* Add test matrix for V3.
+  By :user:`Max Jones <maxrjones>` :issue:`1656`.
+
+* Remove attrs.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1660`.
+
+* Specify hatch envs using GitHub actions matrix for v3 tests.
+  By :user:`Max Jones <maxrjones>` :issue:`1728`.
+
+* black -> ruff format + cleanup.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1639`.
+
+* Remove old v3.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1742`.
+
+* V3 update pre commit.
+  By :user:`Joe Hamman <jhamman>` :issue:`1808`.
+
+* remove windows testing on v3 branch.
+  By :user:`Joe Hamman <jhamman>` :issue:`1817`.
+
+* fix: add mypy to test dependencies.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1789`.
+
+* chore(ci): add numpy 2 release candidate to test matrix.
+  By :user:`Joe Hamman <jhamman>` :issue:`1828`.
+
+* fix dependencies.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1840`.
+
+* Add pytest to mypy dependencies.
+  By :user:`David Stansby <dstansby>` :issue:`1846`.
+
+* chore(pre-commit): update pre-commit versions and remove attrs dep mypy section.
+  By :user:`Joe Hamman <jhamman>` :issue:`1848`.
+
+* Enable some ruff rules (RUF) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1869`.
+
+* Configure Ruff to apply flake8-bugbear/isort/pyupgrade.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1890`.
+
+* chore(ci): remove mypy from test action in favor of pre-commit action.
+  By :user:`Joe Hamman <jhamman>` :issue:`1887`.
+
+* Enable ruff/flake8-raise rules (RSE) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1872`.
+
+* Apply assorted ruff/refurb rules (FURB).
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1873`.
+
+* Enable ruff/flake8-implicit-str-concat rules (ISC) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1868`.
+
+* Add numpy to mypy pre-commit check env.
+  By :user:`David Stansby <dstansby>` :issue:`1893`.
+
+* remove fixture files from src.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1897`.
+
+* Fix list of packages in mypy pre-commit environment.
+  By :user:`David Stansby <dstansby>` :issue:`1907`.
+
+* Run sphinx directly on readthedocs.
+  By :user:`David Stansby <dstansby>` :issue:`1919`.
+
+* Apply preview ruff rules.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1942`.
+
+* Enable and apply ruff rule RUF009.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1941`.
 
 Documentation
 ~~~~~~~~~~~~~
-Specify docs hatch env for v3 branch by @maxrjones in #1655
-Development installation/contributing docs updates by @aldenks in #1643
-chore: update project settings per scientific python repo-review by @jhamman in #1863
 
-doc: update release notes for 3.0.0.alpha by @jhamman in #1959
+* Specify docs hatch env for v3 branch. 
+  By :user:`Max Jones <maxrjones>` :issue:`1655`.
 
+* Development installation/contributing docs updates. 
+  By :user:`Alden Keefe Sampson <aldenks>` :issue:`1643`.
 
-TODO
-~~~~
+* chore: update project settings per scientific python repo-review.
+  By :user:`Joe Hamman <jhamman>` :issue:`1863`.
 
-
-
-
+* doc: update release notes for 3.0.0.alpha.
+  By :user:`Joe Hamman <jhamman>` :issue:`1959`.
 
 .. _release_2.18.2:
 
