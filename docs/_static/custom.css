@@ -117,7 +117,3 @@ html[data-theme=dark] .sd-card .sd-card-footer {
 html[data-theme=dark] h1 {
   color: var(--pst-color-primary);
 }
-
-html[data-theme=dark] h3 {
-  color: #0a6774;
-}
