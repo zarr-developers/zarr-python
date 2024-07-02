@@ -71,7 +71,7 @@ Enhancements
 * Remove implicit groups.
   By :user:`Joe Hamman <jhamman>` :issue:`1827`.
 
-* feature(store): list_* -> AsyncGenerators.
+* feature(store): ``list_*`` -> AsyncGenerators.
   By :user:`Joe Hamman <jhamman>` :issue:`1844`.
 
 * Test codec entrypoints.
@@ -134,7 +134,7 @@ Enhancements
 Typing
 ~~~~~~
 
-* Resolve Mypy erorrs in v3 branch.
+* Resolve Mypy errors in v3 branch.
   By :user:`Daniel Jahn <DahnJ>` :issue:`1692`.
 
 * Allow dmypy to be run on v3 branch.
