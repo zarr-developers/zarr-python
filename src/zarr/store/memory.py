@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, MutableMapping
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype
+from zarr.buffer import Buffer, BufferPrototype, GpuBuffer
 from zarr.common import OpenMode, concurrent_map
 from zarr.store.utils import _normalize_interval_index
 
@@ -101,3 +101,36 @@ class MemoryStore(Store):
             for key in self._store_dict:
                 if key.startswith(prefix + "/") and key != prefix:
                     yield key.removeprefix(prefix + "/").split("/")[0]
+
+
+class GpuMemoryStore(MemoryStore):
+    """A GPU only memory store that stores every chunk in GPU memory irrespective
+    of the original location. This guarantees that chunks will always be in GPU
+    memory for downstream processing. For location agnostic use cases, it would
+    be better to use `MemoryStore` instead.
+    """
+
+    _store_dict: MutableMapping[str, Buffer]
+
+    def __init__(
+        self, store_dict: MutableMapping[str, Buffer] | None = None, *, mode: OpenMode = "r"
+    ):
+        super().__init__(mode=mode)
+        if store_dict:
+            self._store_dict = {k: GpuBuffer.from_buffer(store_dict[k]) for k in iter(store_dict)}
+
+    def __str__(self) -> str:
+        return f"gpumemory://{id(self._store_dict)}"
+
+    def __repr__(self) -> str:
+        return f"GpuMemoryStore({str(self)!r})"
+
+    async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        self._check_writable()
+        assert isinstance(key, str)
+        if not isinstance(value, Buffer):
+            raise TypeError(f"Expected Buffer. Got {type(value)}.")
+
+        # Convert to GpuBuffer
+        gpu_value = value if isinstance(value, GpuBuffer) else GpuBuffer.from_buffer(value)
+        await super().set(key, gpu_value, byte_range=byte_range)

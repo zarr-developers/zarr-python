@@ -60,6 +60,9 @@ jupyter = [
     'ipytree>=0.2.2',
     'ipywidgets>=8.0.0',
 ]
+gpu = [
+    "cupy>=13.0.0",
+]
 docs = [
     'sphinx',
     'sphinx-autobuild>=2021.3.14',
@@ -220,4 +223,5 @@ filterwarnings = [
     "error:::zarr.*",
     "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
+    "ignore:Creating a Gpu*:UserWarning",
 ]
