@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pickle
+
 import pytest
 
 from zarr.buffer import Buffer
@@ -38,3 +40,13 @@ class TestMemoryStore(StoreTests[MemoryStore]):
 
     def test_list_prefix(self, store: MemoryStore) -> None:
         assert True
+
+    def test_serizalizable_store(self, store: MemoryStore) -> None:
+        with pytest.raises(NotImplementedError):
+            store.__getstate__()
+
+        with pytest.raises(NotImplementedError):
+            store.__setstate__({})
+
+        with pytest.raises(NotImplementedError):
+            pickle.dumps(store)

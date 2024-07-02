@@ -255,6 +255,11 @@ class Buffer:
             np.concatenate((np.asanyarray(self._data), np.asanyarray(other_array)))
         )
 
+    def __eq__(self, other: object) -> bool:
+        # Note: this was needed to support comparing MemoryStore instances with Buffer values in them
+        # if/when we stopped putting buffers in memory stores, this can be removed
+        return isinstance(other, type(self)) and self.to_bytes() == other.to_bytes()
+
 
 class NDBuffer:
     """An n-dimensional memory block

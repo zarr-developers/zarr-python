@@ -29,6 +29,19 @@ class MemoryStore(Store):
     def __repr__(self) -> str:
         return f"MemoryStore({str(self)!r})"
 
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, type(self))
+            and self._store_dict == other._store_dict
+            and self.mode == other.mode
+        )
+
+    def __setstate__(self, state: tuple[MutableMapping[str, Buffer], OpenMode]) -> None:
+        raise NotImplementedError(f"{type(self)} cannot be pickled")
+
+    def __getstate__(self) -> tuple[MutableMapping[str, Buffer], OpenMode]:
+        raise NotImplementedError(f"{type(self)} cannot be pickled")
+
     async def get(
         self,
         key: str,
