@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
 import fsspec
+from upath import UPath
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer, BufferPrototype
@@ -12,7 +13,6 @@ from zarr.store.core import _dereference_path
 
 if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
-    from upath import UPath
 
     from zarr.buffer import Buffer
     from zarr.common import BytesLike
