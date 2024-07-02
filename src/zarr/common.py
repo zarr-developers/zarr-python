@@ -98,7 +98,7 @@ def parse_name(data: JSON, expected: str | None = None) -> str:
         raise TypeError(f"Expected a string, got an instance of {type(data)}.")
 
 
-def parse_configuration(data: JSON) -> JSON:
+def parse_configuration(data: JSON) -> dict[str, JSON]:
     if not isinstance(data, dict):
         raise TypeError(f"Expected dict, got {type(data)}")
     return data
