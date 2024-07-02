@@ -21,6 +21,7 @@ from zarr.indexing import (
     oindex_set,
     replace_ellipsis,
 )
+from zarr.registry import get_ndbuffer_class
 from zarr.store.core import StorePath
 from zarr.store.memory import MemoryStore
 
@@ -1393,7 +1394,7 @@ def test_get_selection_out(store: StorePath):
     ]
     for selection in selections:
         expect = a[selection]
-        out = NDBuffer.from_numpy_array(np.empty(expect.shape))
+        out = get_ndbuffer_class().from_numpy_array(np.empty(expect.shape))
         z.get_basic_selection(selection, out=out)
         assert_array_equal(expect, out.as_numpy_array()[:])
 
@@ -1423,7 +1424,7 @@ def test_get_selection_out(store: StorePath):
         ]
         for selection in selections:
             expect = oindex(a, selection)
-            out = NDBuffer.from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
+            out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
             z.get_orthogonal_selection(selection, out=out)
             assert_array_equal(expect, out.as_numpy_array()[:])
 
@@ -1445,7 +1446,7 @@ def test_get_selection_out(store: StorePath):
         ]
         for selection in selections:
             expect = a[selection]
-            out = NDBuffer.from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
+            out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
             z.get_coordinate_selection(selection, out=out)
             assert_array_equal(expect, out.as_numpy_array()[:])
 

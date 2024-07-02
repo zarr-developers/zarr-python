@@ -11,16 +11,21 @@ from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, NDBuffer
 from zarr.chunk_grids import ChunkGrid
 from zarr.common import ChunkCoords, concurrent_map
-from zarr.config import config
+from zarr.config import Config, config
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
     from zarr.array_spec import ArraySpec
+    from zarr.common import JSON
     from zarr.indexing import SelectorTuple
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
+
+
+def get_config() -> Config:
+    return config
 
 
 class _Codec(Generic[CodecInput, CodecOutput], Metadata):
@@ -189,7 +194,7 @@ class ArrayBytesCodecPartialDecodeMixin:
         return await concurrent_map(
             list(batch_info),
             self._decode_partial_single,
-            config.get("async.concurrency"),
+            get_config().get("async.concurrency"),
         )
 
 
@@ -226,7 +231,7 @@ class ArrayBytesCodecPartialEncodeMixin:
         await concurrent_map(
             list(batch_info),
             self._encode_partial_single,
-            config.get("async.concurrency"),
+            get_config().get("async.concurrency"),
         )
 
 
@@ -254,7 +259,7 @@ class CodecPipeline(Metadata):
 
     @classmethod
     @abstractmethod
-    def from_list(cls, codecs: list[Codec]) -> Self:
+    def from_list(cls, codecs: Iterable[Codec]) -> Self:
         """Creates a codec pipeline from a list of codecs.
 
         Parameters
@@ -390,6 +395,15 @@ class CodecPipeline(Metadata):
         """
         ...
 
+    @classmethod
+    def from_dict(cls, data: Iterable[JSON | Codec]) -> Self:
+        """
+        Create an instance of the model from a dictionary
+        """
+        ...
+
+        return cls(**data)
+
 
 async def batching_helper(
     func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
@@ -398,7 +412,7 @@ async def batching_helper(
     return await concurrent_map(
         list(batch_info),
         noop_for_none(func),
-        config.get("async.concurrency"),
+        get_config().get("async.concurrency"),
     )
 
 

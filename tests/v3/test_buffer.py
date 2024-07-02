@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, Literal
-
 import numpy as np
-import numpy.typing as npt
 import pytest
 
 from zarr.array import AsyncArray
-from zarr.buffer import ArrayLike, Buffer, BufferPrototype, NDArrayLike, NDBuffer
+from zarr.buffer import ArrayLike, BufferPrototype, NDArrayLike, numpy_buffer_prototype
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
@@ -16,62 +12,7 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.store.core import StorePath
-from zarr.store.memory import MemoryStore
-
-if TYPE_CHECKING:
-    from typing_extensions import Self
-
-
-class MyNDArrayLike(np.ndarray):
-    """An example of a ndarray-like class"""
-
-
-class MyBuffer(Buffer):
-    """Example of a custom Buffer that handles ArrayLike"""
-
-
-class MyNDBuffer(NDBuffer):
-    """Example of a custom NDBuffer that handles MyNDArrayLike"""
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        shape: Iterable[int],
-        dtype: npt.DTypeLike,
-        order: Literal["C", "F"] = "C",
-        fill_value: Any | None = None,
-    ) -> Self:
-        """Overwrite `NDBuffer.create` to create an MyNDArrayLike instance"""
-        ret = cls(MyNDArrayLike(shape=shape, dtype=dtype, order=order))
-        if fill_value is not None:
-            ret.fill(fill_value)
-        return ret
-
-
-class MyStore(MemoryStore):
-    """Example of a custom Store that expect MyBuffer for all its non-metadata
-
-    We assume that keys containing "json" is metadata
-    """
-
-    async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
-        if "json" not in key:
-            assert isinstance(value, MyBuffer)
-        await super().set(key, value, byte_range)
-
-    async def get(
-        self,
-        key: str,
-        prototype: BufferPrototype,
-        byte_range: tuple[int, int | None] | None = None,
-    ) -> Buffer | None:
-        if "json" not in key:
-            assert prototype.buffer is MyBuffer
-        ret = await super().get(key=key, prototype=prototype, byte_range=byte_range)
-        if ret is not None:
-            assert isinstance(ret, prototype.buffer)
-        return ret
+from zarr.testing.buffer import MyBuffer, MyNDArrayLike, MyNDBuffer, StoreExpectingMyBuffer
 
 
 def test_nd_array_like(xp):
@@ -86,7 +27,7 @@ async def test_async_array_prototype():
 
     expect = np.zeros((9, 9), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(MyStore(mode="w")) / "test_async_array_prototype",
+        StorePath(StoreExpectingMyBuffer(mode="w")) / "test_async_array_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
@@ -110,7 +51,7 @@ async def test_async_array_prototype():
 async def test_codecs_use_of_prototype():
     expect = np.zeros((10, 10), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(MyStore(mode="w")) / "test_codecs_use_of_prototype",
+        StorePath(StoreExpectingMyBuffer(mode="w")) / "test_codecs_use_of_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
@@ -136,3 +77,10 @@ async def test_codecs_use_of_prototype():
     got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=my_prototype)
     assert isinstance(got, MyNDArrayLike)
     assert np.array_equal(expect, got)
+
+
+def test_numpy_buffer_prototype():
+    buffer = numpy_buffer_prototype().buffer.create_zero_length()
+    ndbuffer = numpy_buffer_prototype().nd_buffer.create(shape=(1, 2), dtype=np.dtype("int64"))
+    assert isinstance(buffer.as_array_like(), np.ndarray)
+    assert isinstance(ndbuffer.as_ndarray_like(), np.ndarray)

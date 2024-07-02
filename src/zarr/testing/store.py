@@ -91,7 +91,7 @@ class StoreTests(Generic[S]):
         """
         data_buf = Buffer.from_bytes(data)
         self.set(store, key, data_buf)
-        observed = await store.get(key, prototype=default_buffer_prototype, byte_range=byte_range)
+        observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
         start, length = _normalize_interval_index(data_buf, interval=byte_range)
         expected = data_buf[start : start + length]
         assert_bytes_equal(observed, expected)
@@ -126,7 +126,7 @@ class StoreTests(Generic[S]):
 
         # read back just part of it
         observed_maybe = await store.get_partial_values(
-            prototype=default_buffer_prototype, key_ranges=key_ranges
+            prototype=default_buffer_prototype(), key_ranges=key_ranges
         )
 
         observed: list[Buffer] = []
@@ -138,7 +138,9 @@ class StoreTests(Generic[S]):
 
         for idx in range(len(observed)):
             key, byte_range = key_ranges[idx]
-            result = await store.get(key, prototype=default_buffer_prototype, byte_range=byte_range)
+            result = await store.get(
+                key, prototype=default_buffer_prototype(), byte_range=byte_range
+            )
             assert result is not None
             expected.append(result)
 
