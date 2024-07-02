@@ -394,7 +394,7 @@ def test_group_name_properties(store: LocalStore | MemoryStore, zarr_format: Zar
     assert bar.basename == "bar"
 
 
-@pytest.mark.parametrize("store", ("memory", "local"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_serizalizable_async_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
@@ -407,7 +407,7 @@ async def test_serizalizable_async_group(
     assert actual == expected
 
 
-@pytest.mark.parametrize("store", ("memory", "local"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 def test_serizalizable_sync_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     expected = Group.create(store=store, attributes={"foo": 999}, zarr_format=zarr_format)

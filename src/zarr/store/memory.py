@@ -37,16 +37,10 @@ class MemoryStore(Store):
         )
 
     def __setstate__(self, state: tuple[MutableMapping[str, Buffer], OpenMode]) -> None:
-        # warnings.warn(
-        #     f"unpickling {type(self)} may produce unexpected behavior and should only be used for testing and/or debugging"
-        # )
-        self._store_dict, self._mode = state
+        raise NotImplementedError(f"{type(self)} cannot be pickled")
 
     def __getstate__(self) -> tuple[MutableMapping[str, Buffer], OpenMode]:
-        # warnings.warn(
-        #     f"pickling {type(self)} may produce unexpected behavior and should only be used for testing and/or debugging"
-        # )
-        return self._store_dict, self._mode
+        raise NotImplementedError(f"{type(self)} cannot be pickled")
 
     async def get(
         self,

@@ -39,7 +39,7 @@ def test_array_name_properties_with_group(
     assert spam.basename == "spam"
 
 
-@pytest.mark.parametrize("store", ("memory", "local"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_serizalizable_async_array(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
@@ -57,7 +57,7 @@ async def test_serizalizable_async_array(
     # TODO: uncomment the parts of this test that will be impacted by the config/prototype changes in flight
 
 
-@pytest.mark.parametrize("store", ("memory", "local"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 def test_serizalizable_sync_array(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     expected = Array.create(
