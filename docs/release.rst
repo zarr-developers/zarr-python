@@ -38,97 +38,97 @@ Enhancements
 * Implement listing of the sub-arrays and sub-groups for a V3 ``Group``.
   By :user:`Davis Bennett <d-v-b>` :issue:`1726`.
 
-*Bootstrap v3 branch with zarrita.
+* Bootstrap v3 branch with zarrita.
   By :user:`Joe Hamman <jhamman>` :issue:`1584`.
 
-*Extensible codecs for V3.
+* Extensible codecs for V3.
   By :user:`Norman Rzepka <normanrz>` :issue:`1588`.
 
-*Don't import from tests.
+* Don't import from tests.
   By :user:`Davis Bennett <d-v-b>` :issue:`1601`.
 
-*Listable V3 Stores.
+* Listable V3 Stores.
   By :user:`Joe Hamman <jhamman>` :issue:`1634`.
 
-*Codecs without array metadata.
+* Codecs without array metadata.
   By :user:`Norman Rzepka <normanrz>` :issue:`1632`.
 
-*fix sync group class methods.
+* fix sync group class methods.
   By :user:`Joe Hamman <jhamman>` :issue:`1652`.
 
-*implement eq for LocalStore.
+* implement eq for LocalStore.
   By :user:`Charoula Kyriakides <Charoula-Kyriakides>` :issue:`1792`.
 
-*V3 reorg.
+* V3 reorg.
   By :user:`Joe Hamman <jhamman>` :issue:`1809`.
 
-*[v3] Sync with futures.
+* [v3] Sync with futures.
   By :user:`Davis Bennett <d-v-b>` :issue:`1804`.
 
-*implement group.members.
+* implement group.members.
   By :user:`Davis Bennett <d-v-b>` :issue:`1726`.
 
-*Remove implicit groups.
+* Remove implicit groups.
   By :user:`Joe Hamman <jhamman>` :issue:`1827`.
 
-*feature(store): list_* -> AsyncGenerators.
+* feature(store): list_* -> AsyncGenerators.
   By :user:`Joe Hamman <jhamman>` :issue:`1844`.
 
-*Test codec entrypoints.
+* Test codec entrypoints.
   By :user:`Norman Rzepka <normanrz>` :issue:`1835`.
 
-*Remove extra v3 sync module.
+* Remove extra v3 sync module.
   By :user:`Max Jones <maxrjones>` :issue:`1856`.
 
-*Use donfig for V3 configuration.
+* Use donfig for V3 configuration.
   By :user:`Max Jones <maxrjones>` :issue:`1655`.
 
-*groundwork for V3 group tests.
+* groundwork for V3 group tests.
   By :user:`Davis Bennett <d-v-b>` :issue:`1743`.
 
-*[v3] First step to generalizes ndarray and bytes.
+* [v3] First step to generalizes ndarray and bytes.
   By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1826`.
 
-*Reworked codec pipelines.
+* Reworked codec pipelines.
   By :user:`Norman Rzepka <normanrz>` :issue:`1670`.
 
-*Followup on codecs.
+* Followup on codecs.
   By :user:`Norman Rzepka <normanrz>` :issue:`1889`.
 
-*Protocols for Buffer and NDBuffer.
+* Protocols for Buffer and NDBuffer.
   By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1899`.
 
-*[V3] Expand store tests.
+* [V3] Expand store tests.
   By :user:`Davis Bennett <d-v-b>` :issue:`1900`.
 
-*[v3] Feature: Store open mode.
+* [v3] Feature: Store open mode.
   By :user:`Joe Hamman <jhamman>` :issue:`1911`.
 
-*fix(types): Group.info -> NotImplementedError.
+* fix(types): Group.info -> NotImplementedError.
   By :user:`Joe Hamman <jhamman>` :issue:`1936`.
 
-*feature(typing): add py.typed file to package root.
+* feature(typing): add py.typed file to package root.
   By :user:`Joe Hamman <jhamman>` :issue:`1935`.
 
-*Support all indexing variants.
+* Support all indexing variants.
   By :user:`Norman Rzepka <normanrz>` :issue:`1917`.
 
-*Feature: group and array name properties.
+* Feature: group and array name properties.
   By :user:`Joe Hamman <jhamman>` :issue:`1940`.
 
-*implement .chunks on v3 arrays.
+* implement .chunks on v3 arrays.
   By :user:`Ryan Abernathey <rabernat>` :issue:`1929`.
 
-*Fixes bug in transpose.
+* Fixes bug in transpose.
   By :user:`Norman Rzepka <normanrz>` :issue:`1949`.
 
-*Buffer Prototype Argument.
+* Buffer Prototype Argument.
   By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1910`.
 
-*Feature: Top level V3 API.
+* Feature: Top level V3 API.
   By :user:`Joe Hamman <jhamman>` :issue:`1884`.
 
-*Basic working FsspecStore.
+* Basic working FsspecStore.
   By :user:`Martin Durant <martindurant>`; :issue:`1785`.
 
 Typing
@@ -137,58 +137,58 @@ Typing
 * Resolve Mypy erorrs in v3 branch.
   By :user:`Daniel Jahn <DahnJ>` :issue:`1692`.
 
-*Allow dmypy to be run on v3 branch.
+* Allow dmypy to be run on v3 branch.
   By :user:`David Stansby <dstansby>` :issue:`1780`.
 
-*Remove unused typing ignore comments.
+* Remove unused typing ignore comments.
   By :user:`David Stansby <dstansby>` :issue:`1781`.
 
-*Check untyped defs on v3.
+* Check untyped defs on v3.
   By :user:`David Stansby <dstansby>` :issue:`1784`.
 
-*[v3] Enable some more strict mypy options.
+* [v3] Enable some more strict mypy options.
   By :user:`David Stansby <dstansby>` :issue:`1793`.
 
-*[v3] Disallow generic Any typing.
+* [v3] Disallow generic Any typing.
   By :user:`David Stansby <dstansby>` :issue:`1794`.
 
-*Disallow incomplete type definitions.
+* Disallow incomplete type definitions.
   By :user:`David Stansby <dstansby>` :issue:`1814`.
 
-*Disallow untyped calls.
+* Disallow untyped calls.
   By :user:`David Stansby <dstansby>` :issue:`1811`.
 
-*Fix some untyped calls.
+* Fix some untyped calls.
   By :user:`David Stansby <dstansby>` :issue:`1865`.
 
-*Disallow untyped defs.
+* Disallow untyped defs.
   By :user:`David Stansby <dstansby>` :issue:`1834`.
 
-*Add more typing to zarr.group.
+* Add more typing to zarr.group.
   By :user:`David Stansby <dstansby>` :issue:`1870`.
 
-*Fix any generics in zarr.array.
+* Fix any generics in zarr.array.
   By :user:`David Stansby <dstansby>` :issue:`1861`.
 
-*Remove some unused mypy overrides.
+* Remove some unused mypy overrides.
   By :user:`David Stansby <dstansby>` :issue:`1894`.
 
-*Finish typing zarr.metadata.
+* Finish typing zarr.metadata.
   By :user:`David Stansby <dstansby>` :issue:`1880`.
 
-*Disallow implicit re-exports.
+* Disallow implicit re-exports.
   By :user:`David Stansby <dstansby>` :issue:`1908`.
 
-*Make typing strict.
+* Make typing strict.
   By :user:`David Stansby <dstansby>` :issue:`1879`.
 
-*Enable extra mypy error codes.
+* Enable extra mypy error codes.
   By :user:`David Stansby <dstansby>` :issue:`1909`.
 
-*Enable warn_unreachable for mypy.
+* Enable warn_unreachable for mypy.
  By :user:`David Stansby <dstansby>` :issue:`1937`.
 
-*Fix final typing errors.
+* Fix final typing errors.
   By :user:`David Stansby <dstansby>` :issue:`1939`.
 
 Maintenance
