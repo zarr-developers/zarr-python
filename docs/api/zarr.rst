@@ -1,5 +1,0 @@
-zarr
-====
-
-.. autoapimodule:: zarr
-    :members:
