@@ -186,7 +186,7 @@ Typing
   By :user:`David Stansby <dstansby>` :issue:`1909`.
 
 * Enable warn_unreachable for mypy.
- By :user:`David Stansby <dstansby>` :issue:`1937`.
+  By :user:`David Stansby <dstansby>` :issue:`1937`.
 
 * Fix final typing errors.
   By :user:`David Stansby <dstansby>` :issue:`1939`.
