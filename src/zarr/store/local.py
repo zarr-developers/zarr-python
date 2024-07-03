@@ -7,7 +7,7 @@ from pathlib import Path
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import OpenModeLiteral, concurrent_map, to_thread
+from zarr.common import AccessModeLiteral, concurrent_map, to_thread
 
 
 def _get(
@@ -71,7 +71,7 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, mode: OpenModeLiteral = "r"):
+    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r"):
         super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)

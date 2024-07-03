@@ -12,7 +12,7 @@ from zarr.abc.codec import Codec
 from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
 from zarr.chunk_key_encodings import ChunkKeyEncoding
-from zarr.common import JSON, ChunkCoords, MemoryOrder, OpenModeLiteral, ZarrFormat
+from zarr.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.group import AsyncGroup
 from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import (
@@ -158,7 +158,7 @@ async def load(
 async def open(
     *,
     store: StoreLike | None = None,
-    mode: OpenModeLiteral | None = None,  # type and value changed
+    mode: AccessModeLiteral | None = None,  # type and value changed
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -451,7 +451,7 @@ async def group(
 async def open_group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,
-    mode: OpenModeLiteral | None = None,  # not used
+    mode: AccessModeLiteral | None = None,  # not used
     cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any = None,  # not used
     path: str | None = None,
@@ -682,7 +682,7 @@ async def create(
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    mode = kwargs.pop("mode", cast(OpenModeLiteral, "r" if read_only else "w"))
+    mode = kwargs.pop("mode", cast(AccessModeLiteral, "r" if read_only else "w"))
     store_path = make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path

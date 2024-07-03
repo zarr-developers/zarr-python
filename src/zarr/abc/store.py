@@ -1,21 +1,23 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
+from dataclasses import dataclass
 from typing import NamedTuple, Protocol, runtime_checkable
 
 from typing_extensions import Self
 
 from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import BytesLike, OpenModeLiteral
+from zarr.common import AccessModeLiteral, BytesLike
 
 
-class OpenMode(NamedTuple):
+@dataclass
+class AccessMode(NamedTuple):
     overwrite: bool
     can_create: bool
     can_open_existing: bool
     is_writable: bool
 
     @classmethod
-    def from_str(cls, mode: str) -> Self:
+    def from_literal(cls, mode: AccessModeLiteral) -> Self:
         if mode not in ("r", "r+", "a", "w", "w-"):
             raise ValueError("mode must be one of 'r', 'r+', 'w', 'w-', 'a'")
         return cls(
@@ -27,13 +29,13 @@ class OpenMode(NamedTuple):
 
 
 class Store(ABC):
-    _mode: OpenMode
+    _mode: AccessMode
 
-    def __init__(self, mode: OpenModeLiteral = "r"):
-        self._mode = OpenMode.from_str(mode)
+    def __init__(self, mode: AccessModeLiteral = "r"):
+        self._mode = AccessMode.from_literal(mode)
 
     @property
-    def mode(self) -> OpenMode:
+    def mode(self) -> AccessMode:
         """Access mode of the store."""
         return self._mode
 

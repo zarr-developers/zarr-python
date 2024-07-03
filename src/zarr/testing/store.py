@@ -2,7 +2,7 @@ from typing import Any, Generic, TypeVar
 
 import pytest
 
-from zarr.abc.store import OpenMode, Store
+from zarr.abc.store import AccessMode, Store
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store.utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
@@ -43,16 +43,16 @@ class StoreTests(Generic[S]):
         assert isinstance(store, self.store_cls)
 
     def test_store_mode(self, store: S, store_kwargs: dict[str, Any]) -> None:
-        assert store.mode == OpenMode.from_str("w")
+        assert store.mode == AccessMode.from_literal("w")
         assert store.mode.is_writable
 
         with pytest.raises(AttributeError):
-            store.mode = OpenMode.from_str("w")  # type: ignore[misc]
+            store.mode = AccessMode.from_literal("w")  # type: ignore[misc]
 
     async def test_not_writable_store_raises(self, store_kwargs: dict[str, Any]) -> None:
         kwargs = {**store_kwargs, "mode": "r"}
         store = self.store_cls(**kwargs)
-        assert store.mode == OpenMode.from_str("r")
+        assert store.mode == AccessMode.from_literal("r")
         assert not store.mode.is_writable
 
         # set

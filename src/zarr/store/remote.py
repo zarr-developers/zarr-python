@@ -7,7 +7,7 @@ import fsspec
 
 from zarr.abc.store import Store
 from zarr.buffer import BufferPrototype
-from zarr.common import OpenModeLiteral
+from zarr.common import AccessModeLiteral
 from zarr.store.core import _dereference_path
 
 if TYPE_CHECKING:
@@ -32,7 +32,7 @@ class RemoteStore(Store):
     def __init__(
         self,
         url: UPath | str,
-        mode: OpenModeLiteral = "r",
+        mode: AccessModeLiteral = "r",
         allowed_exceptions: tuple[type[Exception], ...] = (
             FileNotFoundError,
             IsADirectoryError,

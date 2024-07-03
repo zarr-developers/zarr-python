@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from zarr.abc.store import OpenMode, Store
+from zarr.abc.store import AccessMode, Store
 from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
-from zarr.common import OpenModeLiteral
+from zarr.common import AccessModeLiteral
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
 
@@ -67,15 +67,15 @@ StoreLike = Store | StorePath | Path | str
 
 
 def make_store_path(
-    store_like: StoreLike | None, *, mode: OpenModeLiteral | None = None
+    store_like: StoreLike | None, *, mode: AccessModeLiteral | None = None
 ) -> StorePath:
     if isinstance(store_like, StorePath):
         if mode is not None:
-            assert OpenMode.from_str(mode) == store_like.store.mode
+            assert AccessMode.from_literal(mode) == store_like.store.mode
         return store_like
     elif isinstance(store_like, Store):
         if mode is not None:
-            assert OpenMode.from_str(mode) == store_like.mode
+            assert AccessMode.from_literal(mode) == store_like.mode
         return StorePath(store_like)
     elif store_like is None:
         if mode is None:
