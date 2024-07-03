@@ -21,6 +21,7 @@ from zarr.codecs import (
     TransposeCodec,
     ZstdCodec,
 )
+from zarr.common import MemoryOrder
 from zarr.config import config
 from zarr.indexing import Selection, morton_order_iter
 from zarr.store import MemoryStore, StorePath
@@ -43,7 +44,7 @@ class _AsyncArraySelectionProxy:
     async def get(self) -> np.ndarray:
         return await self.array.getitem(self.selection)
 
-    async def set(self, value: np.ndarray):
+    async def set(self, value: np.ndarray) -> None:
         return await self.array.setitem(self.selection, value)
 
 
@@ -57,7 +58,7 @@ def sample_data() -> np.ndarray:
     return np.arange(0, 128 * 128 * 128, dtype="uint16").reshape((128, 128, 128), order="F")
 
 
-def order_from_dim(order: Literal["F", "C"], ndim: int) -> tuple[int, ...]:
+def order_from_dim(order: MemoryOrder, ndim: int) -> tuple[int, ...]:
     if order == "F":
         return tuple(ndim - x - 1 for x in range(ndim))
     else:
@@ -67,7 +68,7 @@ def order_from_dim(order: Literal["F", "C"], ndim: int) -> tuple[int, ...]:
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding(
     store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
-):
+) -> None:
     a = Array.create(
         store / "sample",
         shape=sample_data.shape,
@@ -97,7 +98,7 @@ def test_sharding(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding_partial(
     store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
-):
+) -> None:
     a = Array.create(
         store / "sample",
         shape=tuple(a + 10 for a in sample_data.shape),
@@ -130,7 +131,7 @@ def test_sharding_partial(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding_partial_read(
     store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
-):
+) -> None:
     a = Array.create(
         store / "sample",
         shape=tuple(a + 10 for a in sample_data.shape),
@@ -157,7 +158,7 @@ def test_sharding_partial_read(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 def test_sharding_partial_overwrite(
     store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
-):
+) -> None:
     data = sample_data[:10, :10, :10]
 
     a = Array.create(
@@ -203,7 +204,7 @@ def test_nested_sharding(
     sample_data: np.ndarray,
     outer_index_location: ShardingCodecIndexLocation,
     inner_index_location: ShardingCodecIndexLocation,
-):
+) -> None:
     a = Array.create(
         store / "l4_sample" / "color" / "1",
         shape=sample_data.shape,
@@ -235,12 +236,12 @@ def test_nested_sharding(
 @pytest.mark.parametrize("with_sharding", [True, False])
 async def test_order(
     store: Store,
-    input_order: Literal["F", "C"],
-    store_order: Literal["F", "C"],
-    runtime_write_order: Literal["F", "C"],
-    runtime_read_order: Literal["F", "C"],
+    input_order: MemoryOrder,
+    store_order: MemoryOrder,
+    runtime_write_order: MemoryOrder,
+    runtime_read_order: MemoryOrder,
     with_sharding: bool,
-):
+) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((32, 8), order=input_order)
 
     codecs_: list[Codec] = (
@@ -303,11 +304,11 @@ async def test_order(
 @pytest.mark.parametrize("with_sharding", [True, False])
 def test_order_implicit(
     store: Store,
-    input_order: Literal["F", "C"],
-    runtime_write_order: Literal["F", "C"],
-    runtime_read_order: Literal["F", "C"],
+    input_order: MemoryOrder,
+    runtime_write_order: MemoryOrder,
+    runtime_read_order: MemoryOrder,
     with_sharding: bool,
-):
+) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16), order=input_order)
 
     codecs_: list[Codec] | None = [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
@@ -345,11 +346,11 @@ def test_order_implicit(
 @pytest.mark.parametrize("with_sharding", [True, False])
 async def test_transpose(
     store: Store,
-    input_order: Literal["F", "C"],
-    runtime_write_order: Literal["F", "C"],
-    runtime_read_order: Literal["F", "C"],
+    input_order: MemoryOrder,
+    runtime_write_order: MemoryOrder,
+    runtime_read_order: MemoryOrder,
     with_sharding: bool,
-):
+) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((1, 32, 8), order=input_order)
 
     codecs_: list[Codec] = (
@@ -406,7 +407,7 @@ async def test_transpose(
 
 
 @pytest.mark.parametrize("order", [[1, 2, 0], [1, 2, 3, 0], [3, 2, 4, 0, 1]])
-def test_transpose_non_self_inverse(store: Store, order):
+def test_transpose_non_self_inverse(store: Store, order: list[int]) -> None:
     shape = [i + 3 for i in range(len(order))]
     data = np.arange(0, np.prod(shape), dtype="uint16").reshape(shape)
     a = Array.create(
@@ -424,7 +425,7 @@ def test_transpose_non_self_inverse(store: Store, order):
 
 def test_transpose_invalid(
     store: Store,
-):
+) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((1, 32, 8))
 
     for order in [(1, 0), (3, 2, 1), (3, 3, 1)]:
@@ -440,7 +441,7 @@ def test_transpose_invalid(
             )
 
 
-def test_open(store: Store):
+def test_open(store: Store) -> None:
     a = Array.create(
         store / "open",
         shape=(16, 16),
@@ -452,7 +453,7 @@ def test_open(store: Store):
     assert a.metadata == b.metadata
 
 
-def test_open_sharding(store: Store):
+def test_open_sharding(store: Store) -> None:
     a = Array.create(
         store / "open_sharding",
         shape=(16, 16),
@@ -474,7 +475,7 @@ def test_open_sharding(store: Store):
     assert a.metadata == b.metadata
 
 
-def test_simple(store: Store):
+def test_simple(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
     a = Array.create(
@@ -489,7 +490,7 @@ def test_simple(store: Store):
     assert np.array_equal(data, a[:, :])
 
 
-def test_fill_value(store: Store):
+def test_fill_value(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
     a = Array.create(
@@ -524,7 +525,7 @@ def test_fill_value(store: Store):
     assert np.array_equiv(4, c[:, :])
 
 
-def test_morton(store: Store):
+def test_morton(store: Store) -> None:
     assert list(morton_order_iter((2, 2))) == [(0, 0), (1, 0), (0, 1), (1, 1)]
     assert list(morton_order_iter((2, 2, 2))) == [
         (0, 0, 0),
@@ -556,7 +557,7 @@ def test_morton(store: Store):
     ]
 
 
-def test_write_partial_chunks(store: Store):
+def test_write_partial_chunks(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
     a = Array.create(
@@ -570,7 +571,7 @@ def test_write_partial_chunks(store: Store):
     assert np.array_equal(a[0:16, 0:16], data)
 
 
-def test_write_full_chunks(store: Store):
+def test_write_full_chunks(store: Store) -> None:
     data = np.arange(0, 16 * 16, dtype="uint16").reshape((16, 16))
 
     a = Array.create(
@@ -593,7 +594,7 @@ def test_write_full_chunks(store: Store):
     assert np.all(a[16:20, 16:20] == 1)
 
 
-def test_write_partial_sharded_chunks(store: Store):
+def test_write_partial_sharded_chunks(store: Store) -> None:
     data = np.arange(0, 16 * 16, dtype="uint16").reshape((16, 16))
 
     a = Array.create(
@@ -616,7 +617,7 @@ def test_write_partial_sharded_chunks(store: Store):
     assert np.array_equal(a[0:16, 0:16], data)
 
 
-async def test_delete_empty_chunks(store: Store):
+async def test_delete_empty_chunks(store: Store) -> None:
     data = np.ones((16, 16))
 
     a = await AsyncArray.create(
@@ -632,7 +633,7 @@ async def test_delete_empty_chunks(store: Store):
     assert await (store / "delete_empty_chunks/c0/0").get() is None
 
 
-async def test_delete_empty_shards(store: Store):
+async def test_delete_empty_shards(store: Store) -> None:
     a = await AsyncArray.create(
         store / "delete_empty_shards",
         shape=(16, 16),
@@ -657,7 +658,7 @@ async def test_delete_empty_shards(store: Store):
     assert chunk_bytes is not None and len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
 
 
-async def test_zarr_compat(store: Store):
+async def test_zarr_compat(store: Store) -> None:
     data = np.zeros((16, 18), dtype="uint16")
 
     a = await AsyncArray.create(
@@ -688,7 +689,7 @@ async def test_zarr_compat(store: Store):
     assert_bytes_equal(z2._store["1.1"], await (store / "zarr_compat3/1.1").get())
 
 
-async def test_zarr_compat_F(store: Store):
+async def test_zarr_compat_F(store: Store) -> None:
     data = np.zeros((16, 18), dtype="uint16", order="F")
 
     a = await AsyncArray.create(
@@ -721,7 +722,7 @@ async def test_zarr_compat_F(store: Store):
     assert_bytes_equal(z2._store["1.1"], await (store / "zarr_compatF3/1.1").get())
 
 
-async def test_dimension_names(store: Store):
+async def test_dimension_names(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
     await AsyncArray.create(
@@ -752,7 +753,7 @@ async def test_dimension_names(store: Store):
     assert "dimension_names" not in json.loads(zarr_json_buffer.to_bytes())
 
 
-def test_gzip(store: Store):
+def test_gzip(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
     a = Array.create(
@@ -769,7 +770,7 @@ def test_gzip(store: Store):
 
 
 @pytest.mark.parametrize("checksum", [True, False])
-def test_zstd(store: Store, checksum: bool):
+def test_zstd(store: Store, checksum: bool) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
     a = Array.create(
@@ -786,7 +787,7 @@ def test_zstd(store: Store, checksum: bool):
 
 
 @pytest.mark.parametrize("endian", ["big", "little"])
-async def test_endian(store: Store, endian: Literal["big", "little"]):
+async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
     a = await AsyncArray.create(
@@ -821,7 +822,7 @@ async def test_endian_write(
     store: Store,
     dtype_input_endian: Literal[">u2", "<u2"],
     dtype_store_endian: Literal["big", "little"],
-):
+) -> None:
     data = np.arange(0, 256, dtype=dtype_input_endian).reshape((16, 16))
 
     a = await AsyncArray.create(
@@ -850,7 +851,7 @@ async def test_endian_write(
     assert_bytes_equal(await (store / "endian/0.0").get(), z._store["0.0"])
 
 
-def test_invalid_metadata(store: Store):
+def test_invalid_metadata(store: Store) -> None:
     with pytest.raises(ValueError):
         Array.create(
             store / "invalid_chunk_shape",
@@ -935,7 +936,7 @@ def test_invalid_metadata(store: Store):
         )
 
 
-async def test_resize(store: Store):
+async def test_resize(store: Store) -> None:
     data = np.zeros((16, 18), dtype="uint16")
 
     a = await AsyncArray.create(
@@ -961,7 +962,7 @@ async def test_resize(store: Store):
     assert await (store / "resize" / "1.1").get() is None
 
 
-async def test_blosc_evolve(store: Store):
+async def test_blosc_evolve(store: Store) -> None:
     await AsyncArray.create(
         store / "blosc_evolve_u1",
         shape=(16, 16),
@@ -1005,7 +1006,7 @@ async def test_blosc_evolve(store: Store):
     assert blosc_configuration_json["shuffle"] == "shuffle"
 
 
-def test_exists_ok(store: Store):
+def test_exists_ok(store: Store) -> None:
     Array.create(
         store / "exists_ok",
         shape=(16, 16),
@@ -1028,7 +1029,7 @@ def test_exists_ok(store: Store):
     )
 
 
-def test_update_attributes_array(store: Store):
+def test_update_attributes_array(store: Store) -> None:
     data = np.zeros((16, 18), dtype="uint16")
 
     a = Array.create(
