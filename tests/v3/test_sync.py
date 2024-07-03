@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from zarr.sync import RuntimeSyncError, SyncError, SyncMixin, _get_lock, _get_loop, sync
+from zarr.sync import SyncError, SyncMixin, _get_lock, _get_loop, sync
 
 
 @pytest.fixture(params=[True, False])
@@ -67,7 +67,7 @@ def test_sync_raises_if_loop_is_closed() -> None:
 
     foo = AsyncMock(return_value="foo")
     with patch.object(loop, "is_closed", return_value=True):
-        with pytest.raises(RuntimeSyncError):
+        with pytest.raises(RuntimeError):
             sync(foo(), loop=loop)
     foo.assert_not_awaited()
 

@@ -9,7 +9,6 @@ from zarr.abc.store import Store
 from zarr.buffer import BufferPrototype
 from zarr.common import AccessModeLiteral
 from zarr.store.core import _dereference_path
-from zarr.sync import RuntimeSyncError
 
 if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
@@ -88,8 +87,6 @@ class RemoteStore(Store):
         try:
             return bool(self._fs.exists(self.path))
         except self.allowed_exceptions:
-            return False
-        except RuntimeSyncError:
             return False
 
     def __str__(self) -> str:
