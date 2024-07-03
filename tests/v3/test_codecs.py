@@ -21,11 +21,18 @@ from zarr.codecs import (
     TransposeCodec,
     ZstdCodec,
 )
-from zarr.common import MemoryOrder
+from zarr.common import ChunkCoords, MemoryOrder
 from zarr.config import config
 from zarr.indexing import Selection, morton_order_iter
 from zarr.store import MemoryStore, StorePath
 from zarr.testing.utils import assert_bytes_equal
+
+
+@dataclass
+class ArrayRequest:
+    shape: ChunkCoords
+    dtype: str
+    order: MemoryOrder
 
 
 @dataclass(frozen=True)
@@ -54,8 +61,13 @@ def store() -> Iterator[Store]:
 
 
 @pytest.fixture
-def sample_data() -> np.ndarray:
-    return np.arange(0, 128 * 128 * 128, dtype="uint16").reshape((128, 128, 128), order="F")
+def data(request: pytest.FixtureRequest) -> np.ndarray:
+    array_request: ArrayRequest = request.param
+    return (
+        np.arange(np.prod(array_request.shape))
+        .reshape(array_request.shape, order=array_request.order)
+        .astype(array_request.dtype)
+    )
 
 
 def order_from_dim(order: MemoryOrder, ndim: int) -> tuple[int, ...]:
@@ -66,20 +78,30 @@ def order_from_dim(order: MemoryOrder, ndim: int) -> tuple[int, ...]:
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize(
+    "data",
+    [
+        ArrayRequest(shape=(128,) * 1, dtype="uint8", order="C"),
+        ArrayRequest(shape=(128,) * 2, dtype="uint8", order="C"),
+        ArrayRequest(shape=(128,) * 3, dtype="uint16", order="F"),
+    ],
+    indirect=["data"],
+)
+@pytest.mark.parametrize("offset", [0, 10])
 def test_sharding(
-    store: Store, sample_data: np.ndarray, index_location: ShardingCodecIndexLocation
+    store: Store, data: np.ndarray, index_location: ShardingCodecIndexLocation, offset: int
 ) -> None:
     a = Array.create(
         store / "sample",
-        shape=sample_data.shape,
-        chunk_shape=(64, 64, 64),
-        dtype=sample_data.dtype,
-        fill_value=0,
+        shape=tuple(s + offset for s in data.shape),
+        chunk_shape=(64,) * data.ndim,
+        dtype=data.dtype,
+        fill_value=6,
         codecs=[
             ShardingCodec(
-                chunk_shape=(32, 32, 32),
+                chunk_shape=(32,) * data.ndim,
                 codecs=[
-                    TransposeCodec(order=order_from_dim("F", sample_data.ndim)),
+                    TransposeCodec(order=order_from_dim("F", data.ndim)),
                     BytesCodec(),
                     BloscCodec(cname="lz4"),
                 ],
@@ -87,12 +109,16 @@ def test_sharding(
             )
         ],
     )
+    write_region = tuple(slice(offset, None) for dim in range(data.ndim))
+    a[write_region] = data
 
-    a[:, :, :] = sample_data
+    if offset > 0:
+        empty_region = tuple(slice(0, offset) for dim in range(data.ndim))
+        assert np.all(a[empty_region] == a.metadata.fill_value)
 
-    read_data = a[0 : sample_data.shape[0], 0 : sample_data.shape[1], 0 : sample_data.shape[2]]
-    assert sample_data.shape == read_data.shape
-    assert np.array_equal(sample_data, read_data)
+    read_data = a[write_region]
+    assert data.shape == read_data.shape
+    assert np.array_equal(data, read_data)
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
