@@ -79,7 +79,7 @@ class LocalStore(Store):
         self.root = root
 
         if root.exists():
-            if self.mode.can_open_existing:
+            if self.mode.update or self.mode.readonly:
                 pass
             elif self.mode.overwrite:
                 shutil.rmtree(root)

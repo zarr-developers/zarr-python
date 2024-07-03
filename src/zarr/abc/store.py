@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass
 from typing import NamedTuple, Protocol, runtime_checkable
 
 from typing_extensions import Self
@@ -9,23 +8,22 @@ from zarr.buffer import Buffer, BufferPrototype
 from zarr.common import AccessModeLiteral, BytesLike
 
 
-@dataclass
 class AccessMode(NamedTuple):
+    readonly: bool
     overwrite: bool
-    can_create: bool
-    can_open_existing: bool
-    is_writable: bool
+    create: bool
+    update: bool
 
     @classmethod
     def from_literal(cls, mode: AccessModeLiteral) -> Self:
-        if mode not in ("r", "r+", "a", "w", "w-"):
-            raise ValueError("mode must be one of 'r', 'r+', 'w', 'w-', 'a'")
-        return cls(
-            overwrite=mode == "w",
-            can_create=mode in ("a", "w", "w-"),
-            can_open_existing=mode in ("r", "r+", "a"),
-            is_writable=mode in ("r+", "a", "w", "w-"),
-        )
+        if mode in ("r", "r+", "a", "w", "w-"):
+            return cls(
+                readonly=mode == "r",
+                overwrite=mode == "w",
+                create=mode in ("a", "w", "w-"),
+                update=mode in ("r+", "a"),
+            )
+        raise ValueError("mode must be one of 'r', 'r+', 'w', 'w-', 'a'")
 
 
 class Store(ABC):
@@ -40,7 +38,7 @@ class Store(ABC):
         return self._mode
 
     def _check_writable(self) -> None:
-        if not self.mode.is_writable:
+        if self.mode.readonly:
             raise ValueError("store mode does not support writing")
 
     @abstractmethod

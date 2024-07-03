@@ -403,7 +403,7 @@ class AsyncArray:
 
     @property
     def read_only(self) -> bool:
-        return not bool(self.store_path.store.mode.is_writable)
+        return self.store_path.store.mode.readonly
 
     @property
     def path(self) -> str:

@@ -44,7 +44,7 @@ class StoreTests(Generic[S]):
 
     def test_store_mode(self, store: S, store_kwargs: dict[str, Any]) -> None:
         assert store.mode == AccessMode.from_literal("w")
-        assert store.mode.is_writable
+        assert not store.mode.readonly
 
         with pytest.raises(AttributeError):
             store.mode = AccessMode.from_literal("w")  # type: ignore[misc]
@@ -53,7 +53,7 @@ class StoreTests(Generic[S]):
         kwargs = {**store_kwargs, "mode": "r"}
         store = self.store_cls(**kwargs)
         assert store.mode == AccessMode.from_literal("r")
-        assert not store.mode.is_writable
+        assert store.mode.readonly
 
         # set
         with pytest.raises(ValueError):
@@ -97,7 +97,7 @@ class StoreTests(Generic[S]):
         """
         Ensure that data can be written to the store using the store.set method.
         """
-        assert store.mode.is_writable
+        assert not store.mode.readonly
         data_buf = Buffer.from_bytes(data)
         await store.set(key, data_buf)
         observed = self.get(store, key)
