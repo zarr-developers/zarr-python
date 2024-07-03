@@ -74,15 +74,14 @@ class RemoteStore(Store):
             raise TypeError("FileSystem needs to support async operations")
         super().__init__(mode=mode)
 
-
-def clear(self) -> None:
-    self._check_writable()
-    try:
-        self._fs.rm(self.path, recursive=True)
-    except FileNotFoundError:
-        pass
-    except self.allowed_exceptions:
-        pass
+    def clear(self) -> None:
+        self._check_writable()
+        try:
+            self._fs.rm(self.path, recursive=True)
+        except FileNotFoundError:
+            pass
+        except self.allowed_exceptions:
+            pass
 
 
 def _exists(self) -> bool:
