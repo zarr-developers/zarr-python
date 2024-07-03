@@ -1,3 +1,5 @@
+import pickle
+
 import numpy as np
 import pytest
 
@@ -314,3 +316,8 @@ async def test_delete_empty_shards(store: Store) -> None:
     assert await store.get(f"{path}/c/1/0", prototype=default_buffer_prototype) is None
     chunk_bytes = await store.get(f"{path}/c/0/0", prototype=default_buffer_prototype)
     assert chunk_bytes is not None and len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
+
+
+def test_pickle() -> None:
+    codec = ShardingCodec(chunk_shape=(8, 8))
+    assert pickle.loads(pickle.dumps(codec)) == codec
