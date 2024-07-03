@@ -31,6 +31,10 @@ class SyncError(Exception):
     pass
 
 
+class RuntimeSyncError(RuntimeError):
+    pass
+
+
 def _get_lock() -> threading.Lock:
     """Allocate or return a threading lock.
 
@@ -72,7 +76,7 @@ def sync(
     if not isinstance(loop, asyncio.AbstractEventLoop):
         raise TypeError(f"loop cannot be of type {type(loop)}")
     if loop.is_closed():
-        raise RuntimeError("Loop is not running")
+        raise RuntimeSyncError("Loop is not running")
     try:
         loop0 = asyncio.events.get_running_loop()
         if loop0 is loop:
