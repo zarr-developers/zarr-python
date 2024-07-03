@@ -32,6 +32,20 @@ class Store(ABC):
     def __init__(self, mode: AccessModeLiteral = "r"):
         self._mode = AccessMode.from_literal(mode)
 
+        if self._exists():
+            if self.mode.update or self.mode.readonly:
+                pass
+            elif self.mode.overwrite:
+                self.clear()
+            else:
+                raise FileExistsError("Store already exists")
+
+    @abstractmethod
+    def _exists(self) -> bool: ...
+
+    @abstractmethod
+    def clear(self) -> None: ...
+
     @property
     def mode(self) -> AccessMode:
         """Access mode of the store."""

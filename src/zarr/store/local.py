@@ -72,19 +72,18 @@ class LocalStore(Store):
     root: Path
 
     def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r"):
-        super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
         assert isinstance(root, Path)
         self.root = root
+        super().__init__(mode=mode)
 
-        if root.exists():
-            if self.mode.update or self.mode.readonly:
-                pass
-            elif self.mode.overwrite:
-                shutil.rmtree(root)
-            else:
-                raise FileExistsError(f"LocalStore: {root} already exists")
+    def clear(self) -> None:
+        self._check_writable()
+        shutil.rmtree(self.root)
+
+    def _exists(self) -> bool:
+        return self.root.exists()
 
     def __str__(self) -> str:
         return f"file://{self.root}"

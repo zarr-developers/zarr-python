@@ -23,8 +23,14 @@ class MemoryStore(Store):
         *,
         mode: AccessModeLiteral = "r",
     ):
-        super().__init__(mode=mode)
         self._store_dict = store_dict or {}
+        super().__init__(mode=mode)
+
+    def _exists(self) -> bool:
+        return not self._store_dict
+
+    def clear(self) -> None:
+        self._store_dict.clear()
 
     def __str__(self) -> str:
         return f"memory://{id(self._store_dict)}"
