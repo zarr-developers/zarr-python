@@ -17,18 +17,11 @@ from zarr.codecs import (
     ShardingCodec,
     TransposeCodec,
 )
-from zarr.common import ChunkCoords, MemoryOrder
+from zarr.common import MemoryOrder
 from zarr.config import config
 from zarr.indexing import Selection, morton_order_iter
 from zarr.store import StorePath
 from zarr.testing.utils import assert_bytes_equal
-
-
-@dataclass
-class ArrayRequest:
-    shape: ChunkCoords
-    dtype: str
-    order: MemoryOrder
 
 
 @dataclass(frozen=True)
@@ -49,16 +42,6 @@ class _AsyncArraySelectionProxy:
 
     async def set(self, value: np.ndarray) -> None:
         return await self.array.setitem(self.selection, value)
-
-
-@pytest.fixture
-def array_fixture(request: pytest.FixtureRequest) -> np.ndarray:
-    array_request: ArrayRequest = request.param
-    return (
-        np.arange(np.prod(array_request.shape))
-        .reshape(array_request.shape, order=array_request.order)
-        .astype(array_request.dtype)
-    )
 
 
 def order_from_dim(order: MemoryOrder, ndim: int) -> tuple[int, ...]:

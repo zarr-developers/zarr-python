@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from _pytest.compat import LEGACY_PATH
 
 from zarr.abc.store import Store
-from zarr.common import ZarrFormat
+from zarr.common import ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.group import AsyncGroup
 
 if TYPE_CHECKING:
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 import pathlib
 from dataclasses import dataclass, field
 
+import numpy as np
 import pytest
 
 from zarr.store import LocalStore, MemoryStore, StorePath
@@ -93,3 +94,20 @@ def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
     """Fixture to parametrize over numpy-like libraries"""
 
     yield pytest.importorskip(request.param)
+
+
+@dataclass
+class ArrayRequest:
+    shape: ChunkCoords
+    dtype: str
+    order: MemoryOrder
+
+
+@pytest.fixture
+def array_fixture(request: pytest.FixtureRequest) -> np.ndarray:
+    array_request: ArrayRequest = request.param
+    return (
+        np.arange(np.prod(array_request.shape))
+        .reshape(array_request.shape, order=array_request.order)
+        .astype(array_request.dtype)
+    )

@@ -15,7 +15,8 @@ from zarr.codecs import (
 )
 from zarr.store.core import StorePath
 
-from .test_codecs import ArrayRequest, _AsyncArrayProxy, order_from_dim
+from ..conftest import ArrayRequest
+from .test_codecs import _AsyncArrayProxy, order_from_dim
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
