@@ -66,7 +66,7 @@ class StorePath:
 StoreLike = Store | StorePath | Path | str
 
 
-def make_store_path(
+async def make_store_path(
     store_like: StoreLike | None, *, mode: AccessModeLiteral | None = None
 ) -> StorePath:
     if isinstance(store_like, StorePath):
@@ -80,9 +80,9 @@ def make_store_path(
     elif store_like is None:
         if mode is None:
             mode = "w"  # exception to the default mode = 'r'
-        return StorePath(MemoryStore(mode=mode))
+        return StorePath(await MemoryStore(mode=mode).open())
     elif isinstance(store_like, Path):
-        return StorePath(LocalStore(store_like, mode=mode or "r"))
+        return StorePath(await LocalStore(store_like, mode=mode or "r").open())
     elif isinstance(store_like, str):
-        return StorePath(LocalStore(Path(store_like), mode=mode or "r"))
+        return StorePath(await LocalStore(Path(store_like), mode=mode or "r").open())
     raise TypeError

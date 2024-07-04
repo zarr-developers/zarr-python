@@ -32,6 +32,7 @@ class Store(ABC):
     def __init__(self, mode: AccessModeLiteral = "r"):
         self._mode = AccessMode.from_literal(mode)
 
+    async def open(self):
         if self._exists():
             if self.mode.update or self.mode.readonly:
                 pass
@@ -39,6 +40,7 @@ class Store(ABC):
                 self.clear()
             else:
                 raise FileExistsError("Store already exists")
+        return self
 
     @abstractmethod
     def _exists(self) -> bool: ...

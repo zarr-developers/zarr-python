@@ -127,7 +127,7 @@ class AsyncGroup:
         exists_ok: bool = False,
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
         if not exists_ok:
             if zarr_format == 3:
                 assert not await (store_path / ZARR_JSON).exists()
@@ -146,7 +146,7 @@ class AsyncGroup:
         store: StoreLike,
         zarr_format: Literal[2, 3, None] = 3,
     ) -> AsyncGroup:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
 
         if zarr_format == 2:
             zgroup_bytes, zattrs_bytes = await asyncio.gather(

@@ -23,8 +23,8 @@ class MemoryStore(Store):
         *,
         mode: AccessModeLiteral = "r",
     ):
-        self._store_dict = store_dict or {}
         super().__init__(mode=mode)
+        self._store_dict = store_dict or {}
 
     def _exists(self) -> bool:
         return not self._store_dict

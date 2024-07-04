@@ -72,11 +72,11 @@ class LocalStore(Store):
     root: Path
 
     def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r"):
+        super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
         assert isinstance(root, Path)
         self.root = root
-        super().__init__(mode=mode)
 
     def clear(self) -> None:
         self._check_writable()

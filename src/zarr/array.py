@@ -138,7 +138,7 @@ class AsyncArray:
         # runtime
         exists_ok: bool = False,
     ) -> AsyncArray:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
 
         if chunk_shape is None:
             if chunks is None:
@@ -325,7 +325,7 @@ class AsyncArray:
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
     ) -> AsyncArray:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
 
         if zarr_format == 2:
             zarray_bytes, zattrs_bytes = await gather(

@@ -134,7 +134,7 @@ async def test_asyncgroup_create(
     )
 
     assert agroup.metadata == GroupMetadata(zarr_format=zarr_format, attributes=attributes)
-    assert agroup.store_path == make_store_path(store)
+    assert agroup.store_path == await make_store_path(store)
 
     if not exists_ok:
         with pytest.raises(AssertionError):

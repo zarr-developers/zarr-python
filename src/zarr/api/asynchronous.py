@@ -189,7 +189,7 @@ async def open(
         Return type depends on what exists in the given store.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-    store_path = make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode)
 
     if path is not None:
         store_path = store_path / path
@@ -267,7 +267,7 @@ async def save_array(
         or _default_zarr_version()
     )
 
-    store_path = make_store_path(store, mode="w")
+    store_path = await make_store_path(store, mode="w")
     if path is not None:
         store_path = store_path / path
     new = await AsyncArray.create(
@@ -421,7 +421,7 @@ async def group(
         or _default_zarr_version()
     )
 
-    store_path = make_store_path(store)
+    store_path = await make_store_path(store)
     if path is not None:
         store_path = store_path / path
 
@@ -512,7 +512,7 @@ async def open_group(
     if storage_options is not None:
         warnings.warn("storage_options is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    store_path = make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
 
@@ -683,7 +683,7 @@ async def create(
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
     mode = kwargs.pop("mode", cast(AccessModeLiteral, "r" if read_only else "w"))
-    store_path = make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
 
@@ -854,7 +854,7 @@ async def open_array(
         The opened array.
     """
 
-    store_path = make_store_path(store)
+    store_path = await make_store_path(store)
     if path is not None:
         store_path = store_path / path
 

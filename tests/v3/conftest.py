@@ -18,15 +18,15 @@ from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.remote import RemoteStore
 
 
-def parse_store(
+async def parse_store(
     store: Literal["local", "memory", "remote"], path: str
 ) -> LocalStore | MemoryStore | RemoteStore:
     if store == "local":
-        return LocalStore(path, mode="w")
+        return await LocalStore(path, mode="w").open()
     if store == "memory":
-        return MemoryStore(mode="w")
+        return await MemoryStore(mode="w").open()
     if store == "remote":
-        return RemoteStore(mode="w")
+        return await RemoteStore(mode="w").open()
     raise AssertionError
 
 
@@ -37,31 +37,31 @@ def path_type(request):
 
 # todo: harmonize this with local_store fixture
 @pytest.fixture
-def store_path(tmpdir):
-    store = LocalStore(str(tmpdir), mode="w")
+async def store_path(tmpdir):
+    store = await LocalStore(str(tmpdir), mode="w").open()
     p = StorePath(store)
     return p
 
 
 @pytest.fixture(scope="function")
-def local_store(tmpdir):
-    return LocalStore(str(tmpdir), mode="w")
+async def local_store(tmpdir):
+    return await LocalStore(str(tmpdir), mode="w").open()
 
 
 @pytest.fixture(scope="function")
-def remote_store():
-    return RemoteStore(mode="w")
+async def remote_store():
+    return await RemoteStore(mode="w").open()
 
 
 @pytest.fixture(scope="function")
-def memory_store():
-    return MemoryStore(mode="w")
+async def memory_store():
+    return await MemoryStore(mode="w").open()
 
 
 @pytest.fixture(scope="function")
-def store(request: str, tmpdir):
+async def store(request: str, tmpdir):
     param = request.param
-    return parse_store(param, str(tmpdir))
+    return await parse_store(param, str(tmpdir))
 
 
 @dataclass
@@ -75,7 +75,7 @@ class AsyncGroupRequest:
 async def async_group(request: pytest.FixtureRequest, tmpdir) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
-    store = parse_store(param.store, str(tmpdir))
+    store = await parse_store(param.store, str(tmpdir))
     agroup = await AsyncGroup.create(
         store,
         attributes=param.attributes,
