@@ -246,9 +246,9 @@ class ArrayV3Metadata(ArrayMetadataBase):
     def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
         # TODO: Remove the type: ignores[] comments below and use a TypedDict to type `data`
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format(data.pop("zarr_format"))  # type: ignore[arg-type]
+        _ = parse_zarr_format(data.pop("zarr_format"))
         # check that the node_type attribute is correct
-        _ = parse_node_type_array(data.pop("node_type"))  # type: ignore[arg-type]
+        _ = parse_node_type_array(data.pop("node_type"))
 
         data["dimension_names"] = data.pop("dimension_names", None)
 
