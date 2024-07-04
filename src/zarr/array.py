@@ -77,15 +77,6 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
     raise TypeError
 
 
-def auto_fill_value(fill_value: Any, dtype: np.dtype) -> Any:
-    if fill_value is None:
-        if dtype == np.dtype("bool"):
-            return False
-        else:
-            return 0
-    return fill_value
-
-
 def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> BatchedCodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
         return BatchedCodecPipeline.from_list(metadata.codecs)
