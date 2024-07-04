@@ -63,7 +63,7 @@ jupyter = [
 docs = [
     'sphinx',
     'sphinx-autobuild>=2021.3.14',
-    'sphinx-automodapi',
+    'sphinx-autoapi',
     'sphinx_design',
     'sphinx-issues',
     'sphinx-copybutton',
@@ -106,6 +106,7 @@ build.hooks.vcs.version-file = "src/zarr/_version.py"
 [tool.hatch.envs.test]
 dependencies = [
     "numpy~={matrix:numpy}",
+    "universal_pathlib"
 ]
 extra-dependencies = [
     "coverage",
@@ -124,13 +125,13 @@ extra-dependencies = [
 features = ["extra"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11"]
-numpy = ["1.24", "1.26", "2.0.0rc1"]
+python = ["3.10", "3.11", "3.12"]
+numpy = ["1.24", "1.26", "2.0"]
 version = ["minimal"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11"]
-numpy = ["1.24", "1.26", "2.0.0rc1"]
+python = ["3.10", "3.11", "3.12"]
+numpy = ["1.24", "1.26", "2.0"]
 features = ["optional"]
 
 [tool.hatch.envs.test.scripts]
@@ -145,7 +146,7 @@ features = ['docs']
 
 [tool.hatch.envs.docs.scripts]
 build = "cd docs && make html"
-serve = "sphinx-autobuild docs docs/_build --ignore 'docs/_autoapi/**/*' --host 0.0.0.0"
+serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
 [tool.ruff]
 line-length = 100
@@ -182,10 +183,7 @@ extend-select = [
     "RUF",
 ]
 ignore = [
-    "RUF003",
     "RUF005",
-    "RUF012",
-    "RUF015",
 ]
 
 [tool.mypy]

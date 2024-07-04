@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
+from zarr.buffer import Buffer, BufferPrototype
 from zarr.common import OpenMode
 from zarr.store.core import _dereference_path
 
@@ -25,6 +25,7 @@ class RemoteStore(Store):
     supports_listing: bool = True
 
     _fs: AsyncFileSystem
+    _url: str
     path: str
     allowed_exceptions: tuple[type[Exception], ...]
 
@@ -51,9 +52,10 @@ class RemoteStore(Store):
         """
 
         super().__init__(mode=mode)
-
         if isinstance(url, str):
-            self._fs, self.path = fsspec.url_to_fs(url, **storage_options)
+            self._url = url.rstrip("/")
+            self._fs, _path = fsspec.url_to_fs(url, **storage_options)
+            self.path = _path.rstrip("/")
         elif hasattr(url, "protocol") and hasattr(url, "fs"):
             # is UPath-like - but without importing
             if storage_options:
@@ -61,25 +63,28 @@ class RemoteStore(Store):
                     "If constructed with a UPath object, no additional "
                     "storage_options are allowed"
                 )
-            self.path = url.path
-            self._fs = url._fs
+            # n.b. UPath returns the url and path attributes with a trailing /, at least for s3
+            # that trailing / must be removed to compose with the store interface
+            self._url = str(url).rstrip("/")
+            self.path = url.path.rstrip("/")
+            self._fs = url.fs
         else:
-            raise ValueError("URL not understood, %s", url)
+            raise ValueError(f"URL not understood, {url}")
         self.allowed_exceptions = allowed_exceptions
         # test instantiate file system
         if not self._fs.async_impl:
             raise TypeError("FileSystem needs to support async operations")
 
     def __str__(self) -> str:
-        return f"Remote fsspec store: {type(self._fs).__name__} , {self.path}"
+        return f"{self._url}"
 
     def __repr__(self) -> str:
-        return f"<RemoteStore({type(self._fs).__name__} , {self.path})>"
+        return f"<RemoteStore({type(self._fs).__name__}, {self.path})>"
 
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         path = _dereference_path(self.path, key)
@@ -94,7 +99,7 @@ class RemoteStore(Store):
                     end = length
                 else:
                     end = None
-            value: Buffer = prototype.buffer.from_bytes(
+            value = prototype.buffer.from_bytes(
                 await (
                     self._fs._cat_file(path, start=byte_range[0], end=end)
                     if byte_range

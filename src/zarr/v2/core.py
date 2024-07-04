@@ -8,11 +8,11 @@ from functools import reduce
 from typing import Any
 
 import numpy as np
-from numcodecs.compat import ensure_bytes
+from numcodecs import AsType, get_codec
+from numcodecs.compat import ensure_bytes, ensure_ndarray_like
 
 from zarr.v2._storage.store import _prefix_to_attrs_key
 from zarr.v2.attrs import Attributes
-from zarr.v2.codecs import AsType, get_codec
 from zarr.v2.context import Context
 from zarr.v2.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
 from zarr.v2.indexing import (
@@ -56,7 +56,6 @@ from zarr.v2.util import (
     normalize_shape,
     normalize_storage_path,
     PartialReadBuffer,
-    ensure_ndarray_like,
 )
 
 __all__ = ["Array"]
