@@ -192,10 +192,7 @@ class ArrayBytesCodecPartialDecodeMixin:
         Iterable[NDBuffer | None]
         """
         return await concurrent_map(
-            [
-                (byte_getter, selection, chunk_spec)
-                for byte_getter, selection, chunk_spec in batch_info
-            ],
+            list(batch_info),
             self._decode_partial_single,
             get_config().get("async.concurrency"),
         )
@@ -232,10 +229,7 @@ class ArrayBytesCodecPartialEncodeMixin:
             The chunk spec contains information about the chunk.
         """
         await concurrent_map(
-            [
-                (byte_setter, chunk_array, selection, chunk_spec)
-                for byte_setter, chunk_array, selection, chunk_spec in batch_info
-            ],
+            list(batch_info),
             self._encode_partial_single,
             get_config().get("async.concurrency"),
         )
@@ -416,7 +410,7 @@ async def batching_helper(
     batch_info: Iterable[tuple[CodecInput | None, ArraySpec]],
 ) -> list[CodecOutput | None]:
     return await concurrent_map(
-        [(chunk_array, chunk_spec) for chunk_array, chunk_spec in batch_info],
+        list(batch_info),
         noop_for_none(func),
         get_config().get("async.concurrency"),
     )
