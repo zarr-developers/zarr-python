@@ -101,6 +101,8 @@ class RemoteStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
+        if not self._is_open:
+            await self._open()
         path = _dereference_path(self.path, key)
 
         try:
@@ -136,6 +138,8 @@ class RemoteStore(Store):
         value: Buffer,
         byte_range: tuple[int, int] | None = None,
     ) -> None:
+        if not self._is_open:
+            await self._open()
         self._check_writable()
         path = _dereference_path(self.path, key)
         # write data

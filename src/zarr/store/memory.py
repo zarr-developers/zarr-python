@@ -44,6 +44,8 @@ class MemoryStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
+        if not self._is_open:
+            await self._open()
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
@@ -68,6 +70,8 @@ class MemoryStore(Store):
         return key in self._store_dict
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        if not self._is_open:
+            await self._open()
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):

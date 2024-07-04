@@ -100,6 +100,8 @@ class LocalStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
+        if not self._is_open:
+            await self._open()
         assert isinstance(key, str)
         path = self.root / key
 
@@ -132,6 +134,8 @@ class LocalStore(Store):
         return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: Buffer) -> None:
+        if not self._is_open:
+            await self._open()
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):

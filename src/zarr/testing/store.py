@@ -35,8 +35,8 @@ class StoreTests(Generic[S]):
         return {"mode": "w"}
 
     @pytest.fixture(scope="function")
-    def store(self, store_kwargs: dict[str, Any]) -> Store:
-        return self.store_cls(**store_kwargs)
+    async def store(self, store_kwargs: dict[str, Any]) -> Store:
+        return await self.store_cls.open(**store_kwargs)
 
     def test_store_type(self, store: S) -> None:
         assert isinstance(store, Store)
@@ -51,7 +51,7 @@ class StoreTests(Generic[S]):
 
     async def test_not_writable_store_raises(self, store_kwargs: dict[str, Any]) -> None:
         kwargs = {**store_kwargs, "mode": "r"}
-        store = self.store_cls(**kwargs)
+        store = await self.store_cls.open(**kwargs)
         assert store.mode == AccessMode.from_literal("r")
         assert store.mode.readonly
 

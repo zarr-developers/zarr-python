@@ -30,7 +30,7 @@ def test_create_array(memory_store: Store) -> None:
     assert z.chunks == (40,)
 
 
-def test_open_array(memory_store: Store) -> None:
+async def test_open_array(memory_store: Store) -> None:
     store = memory_store
 
     # open array, create if doesn't exist
@@ -45,7 +45,8 @@ def test_open_array(memory_store: Store) -> None:
     assert z.shape == (200,)
 
     # open array, read-only
-    ro_store = type(store)(store_dict=store._store_dict, mode="r")
+    store_cls = type(store)
+    ro_store = await store_cls.open(store_dict=store._store_dict, mode="r")
     z = open(store=ro_store)
     assert isinstance(z, Array)
     assert z.shape == (200,)
@@ -56,7 +57,7 @@ def test_open_array(memory_store: Store) -> None:
         open(store="doesnotexist", mode="r")
 
 
-def test_open_group(memory_store: Store) -> None:
+async def test_open_group(memory_store: Store) -> None:
     store = memory_store
 
     # open group, create if doesn't exist
@@ -71,7 +72,8 @@ def test_open_group(memory_store: Store) -> None:
     # assert "foo" not in g
 
     # open group, read-only
-    ro_store = type(store)(store_dict=store._store_dict, mode="r")
+    store_cls = type(store)
+    ro_store = await store_cls.open(store_dict=store._store_dict, mode="r")
     g = open_group(store=ro_store)
     assert isinstance(g, Group)
     # assert g.read_only

@@ -48,8 +48,8 @@ class _AsyncArraySelectionProxy:
 
 
 @pytest.fixture
-def store() -> Iterator[Store]:
-    yield StorePath(MemoryStore(mode="w"))
+async def store() -> Iterator[Store]:
+    yield StorePath(await MemoryStore.open(mode="w"))
 
 
 @pytest.fixture

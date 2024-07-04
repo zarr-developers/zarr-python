@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from typing import NamedTuple, Protocol, runtime_checkable
+from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from typing_extensions import Self
 
@@ -28,11 +28,20 @@ class AccessMode(NamedTuple):
 
 class Store(ABC):
     _mode: AccessMode
+    _is_open: bool
 
-    def __init__(self, mode: AccessModeLiteral = "r"):
+    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any):
+        """use open classmethod to create instances of this class."""
+        self._is_open = False
         self._mode = AccessMode.from_literal(mode)
 
-    async def open(self):
+    @classmethod
+    async def open(cls, *args: Any, **kwargs: Any) -> Self:
+        store = cls(*args, **kwargs)
+        await store._open()
+        return store
+
+    async def _open(self) -> None:
         if self._exists():
             if self.mode.update or self.mode.readonly:
                 pass
@@ -40,7 +49,11 @@ class Store(ABC):
                 self.clear()
             else:
                 raise FileExistsError("Store already exists")
-        return self
+        self._is_open = True
+
+    async def ensure_open(self) -> None:
+        if not self._is_open:
+            await self._open()
 
     @abstractmethod
     def _exists(self) -> bool: ...
@@ -202,8 +215,9 @@ class Store(ABC):
         """
         ...
 
-    def close(self) -> None:  # noqa: B027
+    def close(self) -> None:
         """Close the store."""
+        self._is_open = False
         pass
 
 

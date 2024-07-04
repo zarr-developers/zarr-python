@@ -22,11 +22,11 @@ async def parse_store(
     store: Literal["local", "memory", "remote"], path: str
 ) -> LocalStore | MemoryStore | RemoteStore:
     if store == "local":
-        return await LocalStore(path, mode="w").open()
+        return await LocalStore.open(path, mode="w")
     if store == "memory":
-        return await MemoryStore(mode="w").open()
+        return await MemoryStore.open(mode="w")
     if store == "remote":
-        return await RemoteStore(mode="w").open()
+        return await RemoteStore.open(mode="w")
     raise AssertionError
 
 
@@ -38,24 +38,24 @@ def path_type(request):
 # todo: harmonize this with local_store fixture
 @pytest.fixture
 async def store_path(tmpdir):
-    store = await LocalStore(str(tmpdir), mode="w").open()
+    store = await LocalStore.open(str(tmpdir), mode="w")
     p = StorePath(store)
     return p
 
 
 @pytest.fixture(scope="function")
 async def local_store(tmpdir):
-    return await LocalStore(str(tmpdir), mode="w").open()
+    return await LocalStore.open(str(tmpdir), mode="w")
 
 
 @pytest.fixture(scope="function")
 async def remote_store():
-    return await RemoteStore(mode="w").open()
+    return await RemoteStore.open(mode="w")
 
 
 @pytest.fixture(scope="function")
 async def memory_store():
-    return await MemoryStore(mode="w").open()
+    return await MemoryStore.open(mode="w")
 
 
 @pytest.fixture(scope="function")

@@ -76,13 +76,14 @@ async def make_store_path(
     elif isinstance(store_like, Store):
         if mode is not None:
             assert AccessMode.from_literal(mode) == store_like.mode
+        await store_like.ensure_open()
         return StorePath(store_like)
     elif store_like is None:
         if mode is None:
             mode = "w"  # exception to the default mode = 'r'
-        return StorePath(await MemoryStore(mode=mode).open())
+        return StorePath(await MemoryStore.open(mode=mode))
     elif isinstance(store_like, Path):
-        return StorePath(await LocalStore(store_like, mode=mode or "r").open())
+        return StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
-        return StorePath(await LocalStore(Path(store_like), mode=mode or "r").open())
+        return StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
     raise TypeError
