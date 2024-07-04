@@ -12,7 +12,12 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.store.core import StorePath
-from zarr.testing.buffer import MyBuffer, MyNDArrayLike, MyNDBuffer, StoreExpectingMyBuffer
+from zarr.testing.buffer import (
+    NDBufferUsingTestNDArrayLike,
+    StoreExpectingTestBuffer,
+    TestBuffer,
+    TestNDArrayLike,
+)
 
 
 def test_nd_array_like(xp):
@@ -27,7 +32,7 @@ async def test_async_array_prototype():
 
     expect = np.zeros((9, 9), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(StoreExpectingMyBuffer(mode="w")) / "test_async_array_prototype",
+        StorePath(StoreExpectingTestBuffer(mode="w")) / "test_async_array_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
@@ -35,7 +40,7 @@ async def test_async_array_prototype():
     )
     expect[1:4, 3:6] = np.ones((3, 3))
 
-    my_prototype = BufferPrototype(buffer=MyBuffer, nd_buffer=MyNDBuffer)
+    my_prototype = BufferPrototype(buffer=TestBuffer, nd_buffer=NDBufferUsingTestNDArrayLike)
 
     await a.setitem(
         selection=(slice(1, 4), slice(3, 6)),
@@ -43,7 +48,7 @@ async def test_async_array_prototype():
         prototype=my_prototype,
     )
     got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=my_prototype)
-    assert isinstance(got, MyNDArrayLike)
+    assert isinstance(got, TestNDArrayLike)
     assert np.array_equal(expect, got)
 
 
@@ -51,7 +56,7 @@ async def test_async_array_prototype():
 async def test_codecs_use_of_prototype():
     expect = np.zeros((10, 10), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(StoreExpectingMyBuffer(mode="w")) / "test_codecs_use_of_prototype",
+        StorePath(StoreExpectingTestBuffer(mode="w")) / "test_codecs_use_of_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
@@ -67,7 +72,7 @@ async def test_codecs_use_of_prototype():
     )
     expect[:] = np.arange(100).reshape(10, 10)
 
-    my_prototype = BufferPrototype(buffer=MyBuffer, nd_buffer=MyNDBuffer)
+    my_prototype = BufferPrototype(buffer=TestBuffer, nd_buffer=NDBufferUsingTestNDArrayLike)
 
     await a.setitem(
         selection=(slice(0, 10), slice(0, 10)),
@@ -75,7 +80,7 @@ async def test_codecs_use_of_prototype():
         prototype=my_prototype,
     )
     got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=my_prototype)
-    assert isinstance(got, MyNDArrayLike)
+    assert isinstance(got, TestNDArrayLike)
     assert np.array_equal(expect, got)
 
 

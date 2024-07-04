@@ -13,7 +13,7 @@ class Config(DConfig):  # type: ignore[misc]
     """Will collect configuration from config files and environment variables
 
     Example environment variables:
-    Grabs environment variables of the form "DASK_FOO__BAR_BAZ=123" and
+    Grabs environment variables of the form "ZARR_PYTHON_FOO__BAR_BAZ=123" and
     turns these into config variables of the form ``{"foo": {"bar-baz": 123}}``
     It transforms the key and value in the following way:
 

@@ -1,6 +1,6 @@
 [zarr.codecs]
-test = package_with_entrypoint:TestCodec
+test = package_with_entrypoint:TestEntrypointCodec
 [zarr]
-codec_pipeline = package_with_entrypoint:TestCodecPipeline
-buffer = package_with_entrypoint:TestBuffer
-ndbuffer = package_with_entrypoint:TestNDBuffer
+codec_pipeline = package_with_entrypoint:TestEntrypointCodecPipeline
+buffer = package_with_entrypoint:TestEntrypointBuffer
+ndbuffer = package_with_entrypoint:TestEntrypointNDBuffer

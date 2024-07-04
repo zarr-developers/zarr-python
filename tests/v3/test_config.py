@@ -25,14 +25,12 @@ from zarr.registry import (
     register_ndbuffer,
     register_pipeline,
 )
-from zarr.testing.buffer import MyBuffer, MyNDArrayLike, MyNDBuffer, StoreExpectingMyBuffer
-
-
-@pytest.fixture()
-def reset_config():
-    config.reset()
-    yield
-    config.reset()
+from zarr.testing.buffer import (
+    NDBufferUsingTestNDArrayLike,
+    StoreExpectingTestBuffer,
+    TestBuffer,
+    TestNDArrayLike,
+)
 
 
 def test_config_defaults_set() -> None:
@@ -161,9 +159,9 @@ def test_config_ndbuffer_implementation(store):
     assert get_ndbuffer_class().__name__ == config.defaults[0]["ndbuffer"]["name"]
 
     # set custom ndbuffer with MyNDArrayLike implementation
-    register_ndbuffer(MyNDBuffer)
-    config.set({"ndbuffer.name": "MyNDBuffer"})
-    assert get_ndbuffer_class() == MyNDBuffer
+    register_ndbuffer(NDBufferUsingTestNDArrayLike)
+    config.set({"ndbuffer.name": "NDBufferUsingTestNDArrayLike"})
+    assert get_ndbuffer_class() == NDBufferUsingTestNDArrayLike
     arr = Array.create(
         store=store,
         shape=(100,),
@@ -173,22 +171,22 @@ def test_config_ndbuffer_implementation(store):
     )
     got = arr[:]
     print(type(got))
-    assert isinstance(got, MyNDArrayLike)
+    assert isinstance(got, TestNDArrayLike)
 
 
 def test_config_buffer_implementation():
     # has default value
     assert get_buffer_class().__name__ == config.defaults[0]["buffer"]["name"]
 
-    arr = zeros(shape=(100), store=StoreExpectingMyBuffer(mode="w"))
+    arr = zeros(shape=(100), store=StoreExpectingTestBuffer(mode="w"))
 
     # AssertionError of StoreExpectingMyBuffer when not using my buffer
     with pytest.raises(AssertionError):
         arr[:] = np.arange(100)
 
-    register_buffer(MyBuffer)
-    config.set({"buffer.name": "MyBuffer"})
-    assert get_buffer_class() == MyBuffer
+    register_buffer(TestBuffer)
+    config.set({"buffer.name": "TestBuffer"})
+    assert get_buffer_class() == TestBuffer
 
     # no error using MyBuffer
     data = np.arange(100)
@@ -198,7 +196,7 @@ def test_config_buffer_implementation():
     data2d = np.arange(1000).reshape(100, 10)
     arr_sharding = zeros(
         shape=(100, 10),
-        store=StoreExpectingMyBuffer(mode="w"),
+        store=StoreExpectingTestBuffer(mode="w"),
         codecs=[ShardingCodec(chunk_shape=(10, 10))],
     )
     arr_sharding[:] = data2d
@@ -206,7 +204,7 @@ def test_config_buffer_implementation():
 
     arr_Crc32c = zeros(
         shape=(100, 10),
-        store=StoreExpectingMyBuffer(mode="w"),
+        store=StoreExpectingTestBuffer(mode="w"),
         codecs=[BytesCodec(), Crc32cCodec()],
     )
     arr_Crc32c[:] = data2d

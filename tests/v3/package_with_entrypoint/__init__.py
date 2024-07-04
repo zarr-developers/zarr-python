@@ -8,7 +8,7 @@ from zarr.buffer import Buffer, NDBuffer
 from zarr.common import BytesLike
 
 
-class TestCodec(ArrayBytesCodec):
+class TestEntrypointCodec(ArrayBytesCodec):
     is_fixed_size = True
 
     async def encode(
@@ -27,7 +27,7 @@ class TestCodec(ArrayBytesCodec):
         return input_byte_length
 
 
-class TestCodecPipeline(CodecPipeline):
+class TestEntrypointCodecPipeline(CodecPipeline):
     def __init__(self, batch_size: int = 1):
         pass
 
@@ -42,9 +42,9 @@ class TestCodecPipeline(CodecPipeline):
         pass
 
 
-class TestBuffer(Buffer):
+class TestEntrypointBuffer(Buffer):
     pass
 
 
-class TestNDBuffer(NDBuffer):
+class TestEntrypointNDBuffer(NDBuffer):
     pass
