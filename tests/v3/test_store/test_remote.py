@@ -82,9 +82,7 @@ async def alist(it):
 
 
 async def test_basic():
-    store = await RemoteStore.open(
-        f"s3://{test_bucket_name}", mode="w", endpoint_url=endpoint_url, anon=False
-    )
+    store = RemoteStore(f"s3://{test_bucket_name}", mode="w", endpoint_url=endpoint_url, anon=False)
     assert not await alist(store.list())
     assert not await store.exists("foo")
     data = b"hello"
