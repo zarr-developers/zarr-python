@@ -78,11 +78,11 @@ class LocalStore(Store):
         assert isinstance(root, Path)
         self.root = root
 
-    def clear(self) -> None:
+    async def clear(self) -> None:
         self._check_writable()
         shutil.rmtree(self.root)
 
-    def _exists(self) -> bool:
+    async def root_exists(self) -> bool:
         return self.root.exists()
 
     def __str__(self) -> str:

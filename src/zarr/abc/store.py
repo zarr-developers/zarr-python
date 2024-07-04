@@ -42,11 +42,11 @@ class Store(ABC):
         return store
 
     async def _open(self) -> None:
-        if self._exists():
+        if await self.root_exists():
             if self.mode.update or self.mode.readonly:
                 pass
             elif self.mode.overwrite:
-                self.clear()
+                await self.clear()
             else:
                 raise FileExistsError("Store already exists")
         self._is_open = True
@@ -56,10 +56,10 @@ class Store(ABC):
             await self._open()
 
     @abstractmethod
-    def _exists(self) -> bool: ...
+    async def root_exists(self) -> bool: ...
 
     @abstractmethod
-    def clear(self) -> None: ...
+    async def clear(self) -> None: ...
 
     @property
     def mode(self) -> AccessMode:

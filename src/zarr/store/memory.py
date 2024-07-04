@@ -26,10 +26,10 @@ class MemoryStore(Store):
         super().__init__(mode=mode)
         self._store_dict = store_dict or {}
 
-    def _exists(self) -> bool:
+    async def root_exists(self) -> bool:
         return not self._store_dict
 
-    def clear(self) -> None:
+    async def clear(self) -> None:
         self._store_dict.clear()
 
     def __str__(self) -> str:
