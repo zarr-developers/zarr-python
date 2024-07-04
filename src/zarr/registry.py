@@ -21,10 +21,17 @@ __lazy_load_buffer: list[EntryPoint] = []
 __ndbuffer_registry: dict[str, type[NDBuffer]] = {}
 __lazy_load_ndbuffer: list[EntryPoint] = []
 
+"""
+The registry module is responsible for managing implementations of codecs, pipelines, buffers and ndbuffers and 
+collecting them from entrypoints.
+The implementation used is determined by the config
+"""
+
 
 def _collect_entrypoints() -> (
     tuple[dict[str, EntryPoint], list[EntryPoint], list[EntryPoint], list[EntryPoint]]
 ):
+    """Collects codecs, pipelines, buffers and ndbuffers from entrypoints"""
     entry_points = get_entry_points()
     for e in entry_points.select(group="zarr.codecs"):
         __lazy_load_codecs[e.name] = e
