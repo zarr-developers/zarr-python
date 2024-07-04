@@ -2227,38 +2227,38 @@ def test_format_compatibility():
     np.random.seed(42)
 
     arrays_chunks = [
-        (np.arange(1111, dtype="<i1"), 600),
-        (np.arange(1111, dtype="<i2"), 600),
-        (np.arange(1111, dtype="<i4"), 600),
-        (np.arange(1111, dtype="<i8"), 600),
+        (np.arange(1111, dtype="<i1"), 100),
+        (np.arange(1111, dtype="<i2"), 100),
+        (np.arange(1111, dtype="<i4"), 100),
+        (np.arange(1111, dtype="<i8"), 1000),
         (np.random.randint(0, 200, size=2222, dtype="u1").astype("<u1"), 100),
-        (np.random.randint(0, 2000, size=2222, dtype="u2").astype("<u2"), 1000),
-        (np.random.randint(0, 2000, size=2222, dtype="u4").astype("<u4"), 1000),
-        (np.random.randint(0, 2000, size=2222, dtype="u8").astype("<u8"), 1000),
-        (np.linspace(0, 1, 3333, dtype="<f2"), 600),
-        (np.linspace(0, 1, 3333, dtype="<f4"), 600),
-        (np.linspace(0, 1, 3333, dtype="<f8"), 600),
-        (np.random.normal(loc=0, scale=1, size=4444).astype("<f2"), 3000),
-        (np.random.normal(loc=0, scale=1, size=4444).astype("<f4"), 3000),
-        (np.random.normal(loc=0, scale=1, size=4444).astype("<f8"), 3000),
-        (np.random.choice([b"A", b"C", b"G", b"T"], size=5555, replace=True).astype("S"), 3000),
+        (np.random.randint(0, 2000, size=2222, dtype="u2").astype("<u2"), 100),
+        (np.random.randint(0, 2000, size=2222, dtype="u4").astype("<u4"), 100),
+        (np.random.randint(0, 2000, size=2222, dtype="u8").astype("<u8"), 100),
+        (np.linspace(0, 1, 3333, dtype="<f2"), 100),
+        (np.linspace(0, 1, 3333, dtype="<f4"), 100),
+        (np.linspace(0, 1, 3333, dtype="<f8"), 100),
+        (np.random.normal(loc=0, scale=1, size=4444).astype("<f2"), 100),
+        (np.random.normal(loc=0, scale=1, size=4444).astype("<f4"), 100),
+        (np.random.normal(loc=0, scale=1, size=4444).astype("<f8"), 100),
+        (np.random.choice([b"A", b"C", b"G", b"T"], size=5555, replace=True).astype("S"), 100),
         (
             np.random.choice(["foo", "bar", "baz", "quux"], size=5555, replace=True).astype("<U"),
-            3000,
+            100,
         ),
         (
             np.random.choice([0, 1 / 3, 1 / 7, 1 / 9, np.nan], size=5555, replace=True).astype(
                 "<f8"
             ),
-            3000,
+            100,
         ),
-        (np.random.randint(0, 2, size=5555, dtype=bool), 3000),
-        (np.arange(20000, dtype="<i4").reshape(2000, 10, order="C"), (2000, 5)),
-        (np.arange(20000, dtype="<i4").reshape(200, 100, order="F"), (200, 50)),
-        (np.arange(20000, dtype="<i4").reshape(200, 10, 10, order="C"), (200, 10, 5)),
-        (np.arange(20000, dtype="<i4").reshape(20, 100, 10, order="F"), (20, 100, 5)),
-        (np.arange(20000, dtype="<i4").reshape(20, 10, 10, 10, order="C"), (20, 10, 10, 5)),
-        (np.arange(20000, dtype="<i4").reshape(20, 10, 10, 10, order="F"), (20, 10, 10, 5)),
+        (np.random.randint(0, 2, size=5555, dtype=bool), 100),
+        (np.arange(20000, dtype="<i4").reshape(2000, 10, order="C"), (100, 3)),
+        (np.arange(20000, dtype="<i4").reshape(200, 100, order="F"), (100, 30)),
+        (np.arange(20000, dtype="<i4").reshape(200, 10, 10, order="C"), (100, 3, 3)),
+        (np.arange(20000, dtype="<i4").reshape(20, 100, 10, order="F"), (10, 30, 3)),
+        (np.arange(20000, dtype="<i4").reshape(20, 10, 10, 10, order="C"), (10, 3, 3, 3)),
+        (np.arange(20000, dtype="<i4").reshape(20, 10, 10, 10, order="F"), (10, 3, 3, 3)),
     ]
 
     compressors = [
@@ -2280,9 +2280,9 @@ def test_format_compatibility():
         for j, compressor in enumerate(compressors):
             path = "{}/{}".format(i, j)
 
-            #if path not in fixture:  # pragma: no cover
+            if path not in fixture:  # pragma: no cover
                 # store the data - should be one-time operation
-            #    fixture.array(path, data=arr, chunks=chunks, order=order, compressor=compressor)
+                fixture.array(path, data=arr, chunks=chunks, order=order, compressor=compressor)
 
             # setup array
             z = fixture[path]
@@ -2457,12 +2457,13 @@ def test_normalize_store_arg(tmpdir):
         assert isinstance(store, FSStore)
 
 
-def test_meta_prefix_6853(tmpdir):
-    fixture = pathlib.Path(str(tmpdir)) / "fixture"
+def test_meta_prefix_6853():
+    fixture = pathlib.Path(zarr.v2.__file__).resolve().parent.parent / "fixture"
     meta = fixture / "meta"
-    s = DirectoryStore(str(meta), dimension_separator=".")
-    a = zarr.v2.open(store=s, mode="w", shape=(2, 2), dtype="<i8")
-    a[:] = [[1, 2], [3, 4]]
+    if not meta.exists():  # pragma: no cover
+        s = DirectoryStore(str(meta), dimension_separator=".")
+        a = zarr.v2.open(store=s, mode="w", shape=(2, 2), dtype="<i8")
+        a[:] = [[1, 2], [3, 4]]
 
     fixtures = group(store=DirectoryStore(str(fixture)))
     assert list(fixtures.arrays())
