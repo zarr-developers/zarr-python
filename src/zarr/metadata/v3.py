@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, overload
 
 import numcodecs
 
@@ -35,6 +36,9 @@ from zarr.metadata.common import (
     parse_shapelike,
 )
 
+BOOL = np.bool_
+BOOL_DTYPE = np.dtypes.BoolDType
+
 INTEGER_DTYPE = (
     np.dtypes.Int8DType
     | np.dtypes.Int16DType
@@ -46,6 +50,7 @@ INTEGER_DTYPE = (
 INTEGER = np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64
 FLOAT_DTYPE = np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float64DType
 FLOAT = np.float16 | np.float32 | np.float64
+COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
 COMPLEX = np.complex64 | np.complex128
 
 
@@ -59,87 +64,29 @@ def parse_dimension_names(data: Any) -> tuple[str, ...] | None:
     raise TypeError(msg)
 
 
-# todo: decide how strict we want to be, since np.bool_ is very permissive.
-def parse_bool(value: Any, dtype: np.dtypes.BoolDType) -> np.bool_:
-    if value is None:
-        return np.bool_(False)
-    try:
-        return np.bool_(value)
-    except (TypeError, ValueError) as e:
-        msg = f"Invalid type. " f"Got {value} with type {type(value)}, expected a boolean."
-        raise TypeError(msg) from e
+@overload
+def parse_fill_value(fill_value: Any, dtype: BOOL_DTYPE) -> BOOL: ...
 
 
-def parse_integer(value: Any, dtype: np.dtype) -> INTEGER:
-    if value is None:
+@overload
+def parse_fill_value(fill_value: Any, dtype: INTEGER_DTYPE) -> INTEGER: ...
+@overload
+def parse_fill_value(fill_value: Any, dtype: FLOAT_DTYPE) -> FLOAT: ...
+
+
+@overload
+def parse_fill_value(fill_value: Any, dtype: COMPLEX_DTYPE) -> COMPLEX: ...
+
+
+def parse_fill_value(
+    fill_value: Any, dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE
+) -> BOOL | INTEGER | FLOAT | COMPLEX:
+    if fill_value is None:
         return dtype.type(0)
-    try:
-        as_float = float(value)
-    except (ValueError, TypeError) as e:
-        msg = (
-            f"Could not interpret {value} as a float, which is "
-            f"required for converting it to the data type {dtype}."
-        )
-        raise TypeError(msg) from e
-
-    if not as_float.is_integer():
-        msg = (
-            f"Could not interpret {value} as an integer, and so it is incompatible "
-            f"with the provided data type {dtype}"
-        )
+    if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
+        msg = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}"
         raise TypeError(msg)
-
-    iinfo = np.iinfo(dtype)
-
-    if as_float < iinfo.min:
-        msg = (
-            f"The provided value {value} is less than {iinfo.min} "
-            f"(the the smallest value expressible by the data type {dtype})"
-        )
-        raise ValueError(msg)
-    if as_float > iinfo.max:
-        msg = (
-            f"The provided value {value} is larger than {iinfo.max} "
-            f"(the the largest value expressible by the data type {dtype})"
-        )
-        raise ValueError(msg)
-    return dtype.type(value)
-
-
-def parse_float(value: Any, dtype: Any) -> FLOAT:
-    if value is None:
-        return dtype.type(0)
-    try:
-        return dtype.type(value)
-    except TypeError as e:
-        msg = (
-            f"Could not interpret {value} as a floating point number, which is "
-            f"required for converting it to the data type {dtype}."
-        )
-        raise TypeError(msg) from e
-
-
-def parse_complex(value: Any, dtype: np.dtype) -> COMPLEX:
-    if value is None:
-        return dtype.type(0)
-    return value
-
-
-def parse_fill_value(fill_value: Any, dtype: np.dtype) -> np.bool_ | INTEGER | FLOAT | COMPLEX:
-    if dtype == np.bool_:
-        return parse_bool(fill_value, dtype)
-
-    if dtype in (np.int8, np.int16, np.int32, np.int64, np.uint8, np.uint16, np.uint32, np.uint64):
-        return parse_integer(fill_value, dtype=dtype)
-
-    if dtype in (np.float16, np.float32, np.float64):
-        return parse_float(fill_value, dtype=dtype)
-
-    if dtype in (np.complex64, np.complex128):
-        return parse_complex(fill_value, dtype=dtype)
-
-    msg = "Data type {dtype} is not supported.."
-    raise ValueError(msg)
+    return dtype.type(fill_value)
 
 
 def parse_zarr_format(data: Any) -> Literal[3]:
@@ -200,8 +147,9 @@ class ArrayV3Metadata(ArrayMetadataBase):
         dimension_names: None | Iterable[str],
     ) -> None:
         """
-        Because the class is a frozen dataclass, we set attributes using object.__setattr__
+        Create an instance of ArrayMetadata, which models the metadata for a version 3 Zarr array.
         """
+        # Because the class is a frozen dataclass, we set attributes using object.__setattr__
         shape_parsed = parse_shapelike(shape)
         data_type_parsed = parse_dtype(data_type)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)

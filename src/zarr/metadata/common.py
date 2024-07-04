@@ -4,7 +4,7 @@ import itertools
 import operator
 from collections.abc import Iterable, Iterator
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.common import (
     ChunkCoords,
@@ -193,12 +193,14 @@ def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
     return data_tuple
 
 
-def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
+def parse_dtype(data: Any) -> np.dtype[Any]:
     # todo: real validation
     return np.dtype(data)
 
 
 def parse_order(data: Any) -> Literal["C", "F"]:
-    if data in ("C", "F"):
-        return cast(Literal["C", "F"], data)
+    if data == "C":
+        return "C"
+    if data == "F":
+        return "F"
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")

@@ -75,7 +75,7 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
 
 @dataclass(frozen=True)
 class GroupMetadata(Metadata):
-    attributes: dict[str, Any] = field(default_factory=dict)
+    attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: ZarrFormat = 3
     node_type: Literal["group"] = field(default="group", init=False)
 

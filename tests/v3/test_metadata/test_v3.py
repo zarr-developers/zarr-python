@@ -12,10 +12,8 @@ if TYPE_CHECKING:
 import pytest
 
 from zarr.metadata.v3 import (
-    parse_bool,
     parse_dimension_names,
     parse_fill_value,
-    parse_integer,
     parse_zarr_format,
 )
 
@@ -58,9 +56,9 @@ def test_parse_zarr_format_valid() -> None:
     assert parse_zarr_format(3) == 3
 
 
-@pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
+@pytest.mark.parametrize("data", [None, 2, "3", (1,)])
 def test_parse_zarr_format_invalid(data: Any) -> None:
-    with pytest.raises(ValueError, match=f"Invalid value. Expected 3. Got {data}"):
+    with pytest.raises(ValueError, match=re.escape(f"Invalid value. Expected 3. Got {data}.")):
         parse_zarr_format(data)
 
 
@@ -74,53 +72,37 @@ def test_parse_auto_fill_value(dtype_str: str) -> None:
     assert parse_fill_value(fill_value, dtype) == dtype.type(0)
 
 
-@pytest.mark.parametrize("fill_value", [1, 1.1, "a", (1,)])
-@pytest.mark.parametrize("dtype", bool_dtypes)
-def test_parse_fill_value_bool(fill_value: Any, dtype: str) -> None:
+@pytest.mark.parametrize("fill_value", [0, 1.11, False, True])
+@pytest.mark.parametrize("dtype_str", dtypes)
+def test_parse_fill_value_valid(fill_value: Any, dtype_str: str) -> None:
     """
-    Test that any value is cast to bool
-    """
-    assert parse_bool(fill_value, dtype=dtype) == np.bool_(fill_value)
-
-
-@pytest.mark.parametrize("fill_value", [1.0, 100, True, np.uint(10)])
-@pytest.mark.parametrize("dtype_str", int_dtypes)
-def test_parse_fill_value_valid_int(fill_value: Any, dtype_str: str) -> None:
-    """
-    Test that integer-like values are cast to `dtype`
-    """
-
-    dtype = np.dtype(dtype_str)
-    assert parse_integer(fill_value, dtype=dtype) == dtype.type(fill_value)
-
-
-@pytest.mark.parametrize("fill_value", [1.1, -4.5])
-@pytest.mark.parametrize("dtype_str", int_dtypes)
-def test_parse_fill_value_invalid_int_float(fill_value: Any, dtype_str: str) -> None:
-    """
-    Test that floats get rejected by parse_integer
+    Test that parse_fill_value(fill-value, dtype) casts fill_value to the given dtype.
     """
     dtype = np.dtype(dtype_str)
-
-    match = (
-        f"Could not interpret {fill_value} as an integer, and so it is incompatible "
-        f"with the provided data type {dtype}"
-    )
-    with pytest.raises(TypeError, match=match):
-        parse_integer(fill_value, dtype=dtype)
+    assert parse_fill_value(fill_value, dtype) == dtype.type(fill_value)
 
 
-@pytest.mark.parametrize("fill_value", ["a", (1,)])
-@pytest.mark.parametrize("dtype_str", int_dtypes)
-def test_parse_fill_value_invalid_int_obj(fill_value: Any, dtype_str: str) -> None:
+@pytest.mark.parametrize("fill_value", ["not a valid value"])
+@pytest.mark.parametrize("dtype_str", [*int_dtypes, *float_dtypes, *complex_dtypes])
+def test_parse_fill_value_invalid_value(fill_value: Any, dtype_str: str) -> None:
     """
-    Test that non-numeric types get rejected by parse_integer
+    Test that parse_fill_value(fill-value, dtype) raises ValueError for invalid values.
+
+    This test excludes bool because the bool constructor takes anything.
     """
     dtype = np.dtype(dtype_str)
+    with pytest.raises(ValueError):
+        parse_fill_value(fill_value, dtype)
 
-    match = (
-        f"Could not interpret {fill_value} as a float, which is "
-        f"required for converting it to the data type {dtype}."
-    )
-    with pytest.raises(TypeError, match=re.escape(match)):
-        parse_integer(fill_value, dtype=dtype)
+
+@pytest.mark.parametrize("fill_value", [{"foo": 10}, (1, 23, 4)])
+@pytest.mark.parametrize("dtype_str", [*int_dtypes, *float_dtypes, *complex_dtypes])
+def test_parse_fill_value_invalid_type(fill_value: Any, dtype_str: str) -> None:
+    """
+    Test that parse_fill_value(fill-value, dtype) raises TypeError for invalid types.
+
+    This test excludes bool because the bool constructor takes anything.
+    """
+    dtype = np.dtype(dtype_str)
+    with pytest.raises(TypeError):
+        parse_fill_value(fill_value, dtype)
