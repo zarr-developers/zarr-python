@@ -509,7 +509,7 @@ def test_fill_value(store: Store):
         dtype=np.dtype("bool"),
     )
 
-    assert b.metadata.fill_value == False
+    assert b.metadata.fill_value == False  # noqa E712
     assert np.array_equiv(False, b[:, :])
 
     c = Array.create(
