@@ -21,7 +21,6 @@ from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
 from zarr.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
-from zarr.chunk_grids import RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -60,7 +59,9 @@ from zarr.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
+from zarr.metadata.common import ArrayMetadataBase, RegularChunkGrid
+from zarr.metadata.v2 import ArrayV2Metadata
+from zarr.metadata.v3 import ArrayV3Metadata
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
@@ -76,6 +77,15 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
     raise TypeError
 
 
+def auto_fill_value(fill_value: Any, dtype: np.dtype) -> Any:
+    if fill_value is None:
+        if dtype == np.dtype("bool"):
+            return False
+        else:
+            return 0
+    return fill_value
+
+
 def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> BatchedCodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
         return BatchedCodecPipeline.from_list(metadata.codecs)
@@ -89,14 +99,14 @@ def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> Batche
 
 @dataclass(frozen=True)
 class AsyncArray:
-    metadata: ArrayMetadata
+    metadata: ArrayMetadataBase
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
     order: Literal["C", "F"]
 
     def __init__(
         self,
-        metadata: ArrayMetadata,
+        metadata: ArrayMetadataBase,
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
     ):
@@ -227,12 +237,6 @@ class AsyncArray:
             assert not await (store_path / ZARR_JSON).exists()
 
         codecs = list(codecs) if codecs is not None else [BytesCodec()]
-
-        if fill_value is None:
-            if dtype == np.dtype("bool"):
-                fill_value = False
-            else:
-                fill_value = 0
 
         if chunk_key_encoding is None:
             chunk_key_encoding = ("default", "/")
@@ -483,7 +487,7 @@ class AsyncArray:
         )
         return await self._get_selection(indexer, prototype=prototype)
 
-    async def _save_metadata(self, metadata: ArrayMetadata) -> None:
+    async def _save_metadata(self, metadata: ArrayMetadataBase) -> None:
         to_save = metadata.to_buffer_dict()
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await gather(*awaitables)
@@ -700,7 +704,7 @@ class Array:
         return self._async_array.basename
 
     @property
-    def metadata(self) -> ArrayMetadata:
+    def metadata(self) -> ArrayMetadataBase:
         return self._async_array.metadata
 
     @property

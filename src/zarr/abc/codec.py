@@ -9,15 +9,15 @@ import numpy as np
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, NDBuffer
-from zarr.chunk_grids import ChunkGrid
 from zarr.common import ChunkCoords, concurrent_map
 from zarr.config import config
+from zarr.metadata.common import ChunkGrid
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.array_spec import ArraySpec
     from zarr.indexing import SelectorTuple
+    from zarr.metadata.common import ArraySpec
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)

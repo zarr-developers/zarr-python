@@ -12,15 +12,12 @@ from typing import (
     Literal,
     ParamSpec,
     TypeVar,
-    cast,
     overload,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
 
-import numpy as np
-import numpy.typing as npt
 
 ZARR_JSON = "zarr.json"
 ZARRAY_JSON = ".zarray"
@@ -133,37 +130,6 @@ def parse_named_configuration(
     return name_parsed, configuration_parsed
 
 
-def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
-    if isinstance(data, int):
-        if data < 0:
-            raise ValueError(f"Expected a non-negative integer. Got {data} instead")
-        return (data,)
-    try:
-        data_tuple = tuple(data)
-    except TypeError as e:
-        msg = f"Expected an integer or an iterable of integers. Got {data} instead."
-        raise TypeError(msg) from e
-
-    if not all(isinstance(v, int) for v in data_tuple):
-        msg = f"Expected an iterable of integers. Got {data} instead."
-        raise TypeError(msg)
-    if not all(v > -1 for v in data_tuple):
-        msg = f"Expected all values to be non-negative. Got {data} instead."
-        raise ValueError(msg)
-    return data_tuple
-
-
-def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
-    # todo: real validation
-    return np.dtype(data)
-
-
 def parse_fill_value(data: Any) -> Any:
     # todo: real validation
     return data
-
-
-def parse_order(data: Any) -> Literal["C", "F"]:
-    if data in ("C", "F"):
-        return cast(Literal["C", "F"], data)
-    raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")

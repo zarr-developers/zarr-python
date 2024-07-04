@@ -14,7 +14,8 @@ from zarr.buffer import NDArrayLike
 from zarr.chunk_key_encodings import ChunkKeyEncoding
 from zarr.common import JSON, ChunkCoords, MemoryOrder, OpenMode, ZarrFormat
 from zarr.group import AsyncGroup
-from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.metadata.v2 import ArrayV2Metadata
+from zarr.metadata.v3 import ArrayV3Metadata
 from zarr.store import (
     StoreLike,
     make_store_path,

@@ -28,7 +28,7 @@ from zarr.common import ChunkCoords, product
 
 if TYPE_CHECKING:
     from zarr.array import Array
-    from zarr.chunk_grids import ChunkGrid
+    from zarr.metadata.common import ChunkGrid
 
 IntSequence = list[int] | npt.NDArray[np.intp]
 ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
@@ -197,7 +197,7 @@ def is_pure_orthogonal_indexing(selection: Selection, ndim: int) -> TypeGuard[Or
 
 
 def get_chunk_shape(chunk_grid: ChunkGrid) -> ChunkCoords:
-    from zarr.chunk_grids import RegularChunkGrid
+    from zarr.metadata.common import RegularChunkGrid
 
     assert isinstance(
         chunk_grid, RegularChunkGrid

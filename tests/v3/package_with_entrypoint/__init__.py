@@ -1,8 +1,8 @@
 from numpy import ndarray
 
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.array_spec import ArraySpec
 from zarr.common import BytesLike
+from zarr.metadata.common import ArraySpec
 
 
 class TestCodec(ArrayBytesCodec):

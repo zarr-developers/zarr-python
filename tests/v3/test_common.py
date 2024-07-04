@@ -3,13 +3,15 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
+from zarr.metadata.common import parse_shapelike
+
 if TYPE_CHECKING:
     from typing import Any, Literal
 
 import numpy as np
 import pytest
 
-from zarr.common import parse_name, parse_shapelike, product
+from zarr.common import parse_name, product
 from zarr.config import parse_indexing_order
 
 
