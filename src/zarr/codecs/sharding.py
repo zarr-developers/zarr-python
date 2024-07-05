@@ -324,6 +324,22 @@ class ShardingCodec(
         object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
 
+    # todo: typedict return type
+    def __getstate__(self) -> dict[str, Any]:
+        return self.to_dict()
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        config = state["configuration"]
+        object.__setattr__(self, "chunk_shape", parse_shapelike(config["chunk_shape"]))
+        object.__setattr__(self, "codecs", parse_codecs(config["codecs"]))
+        object.__setattr__(self, "index_codecs", parse_codecs(config["index_codecs"]))
+        object.__setattr__(self, "index_location", parse_index_location(config["index_location"]))
+
+        # Use instance-local lru_cache to avoid memory leaks
+        object.__setattr__(self, "_get_chunk_spec", lru_cache()(self._get_chunk_spec))
+        object.__setattr__(self, "_get_index_chunk_spec", lru_cache()(self._get_index_chunk_spec))
+        object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
+
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
