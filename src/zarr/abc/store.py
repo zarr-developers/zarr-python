@@ -31,7 +31,6 @@ class Store(ABC):
     _is_open: bool
 
     def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any):
-        """use open classmethod to create instances of this class."""
         self._is_open = False
         self._mode = AccessMode.from_literal(mode)
 
