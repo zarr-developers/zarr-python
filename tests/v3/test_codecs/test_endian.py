@@ -34,7 +34,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     readback_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, readback_data)
 
-    # Compare with zarr-python
+    # Compare with v2
     z = zarr.v2.create(
         shape=data.shape,
         chunks=(16, 16),
