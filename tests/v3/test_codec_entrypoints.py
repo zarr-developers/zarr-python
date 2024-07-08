@@ -15,9 +15,9 @@ def set_path():
     zarr.registry._collect_entrypoints()
     yield
     sys.path.remove(here)
-    lazy_load_lists = zarr.registry._collect_entrypoints()
-    for lazy_load_list in lazy_load_lists:
-        lazy_load_list.clear()
+    registries = zarr.registry._collect_entrypoints()
+    for registry in registries:
+        registry.lazy_load_list.clear()
     config.reset()
 
 
