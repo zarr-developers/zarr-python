@@ -46,19 +46,22 @@ config = Config(
             "array": {"order": "C"},
             "async": {"concurrency": None, "timeout": None},
             "json_indent": 2,
-            "codec_pipeline": {"name": "BatchedCodecPipeline", "batch_size": 1},
-            "codecs": {
-                "blosc": {"name": "BloscCodec"},
-                "gzip": {"name": "GzipCodec"},
-                "zstd": {"name": "ZstdCodec"},
-                "bytes": {"name": "BytesCodec"},
-                "endian": {"name": "BytesCodec"},  # compatibility with earlier versions of ZEP1
-                "crc32c": {"name": "Crc32cCodec"},
-                "sharding_indexed": {"name": "ShardingCodec"},
-                "transpose": {"name": "TransposeCodec"},
+            "codec_pipeline": {
+                "path": "zarr.codecs.pipeline.BatchedCodecPipeline",
+                "batch_size": 1,
             },
-            "buffer": {"name": "Buffer"},
-            "ndbuffer": {"name": "NDBuffer"},
+            "codecs": {
+                "blosc": "zarr.codecs.blosc.BloscCodec",
+                "gzip": "zarr.codecs.gzip.GzipCodec",
+                "zstd": "zarr.codecs.zstd.ZstdCodec",
+                "bytes": "zarr.codecs.bytes.BytesCodec",
+                "endian": "zarr.codecs.bytes.BytesCodec",  # compatibility with earlier versions of ZEP1
+                "crc32c": "zarr.codecs.crc32c_.Crc32cCodec",
+                "sharding_indexed": "zarr.codecs.sharding.ShardingCodec",
+                "transpose": "zarr.codecs.transpose.TransposeCodec",
+            },
+            "buffer": "zarr.buffer.Buffer",
+            "ndbuffer": "zarr.buffer.NDBuffer",
         }
     ],
 )

@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
+import zarr
 from zarr import Array, zeros
 from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter
@@ -16,6 +17,7 @@ from zarr.codecs import BatchedCodecPipeline, BloscCodec, BytesCodec, Crc32cCode
 from zarr.config import BadConfigError, config
 from zarr.indexing import SelectorTuple
 from zarr.registry import (
+    fully_qualified_name,
     get_buffer_class,
     get_codec_class,
     get_ndbuffer_class,
@@ -40,18 +42,21 @@ def test_config_defaults_set() -> None:
             "array": {"order": "C"},
             "async": {"concurrency": None, "timeout": None},
             "json_indent": 2,
-            "codec_pipeline": {"name": "BatchedCodecPipeline", "batch_size": 1},
-            "buffer": {"name": "Buffer"},
-            "ndbuffer": {"name": "NDBuffer"},
+            "codec_pipeline": {
+                "path": "zarr.codecs.pipeline.BatchedCodecPipeline",
+                "batch_size": 1,
+            },
+            "buffer": "zarr.buffer.Buffer",
+            "ndbuffer": "zarr.buffer.NDBuffer",
             "codecs": {
-                "blosc": {"name": "BloscCodec"},
-                "gzip": {"name": "GzipCodec"},
-                "zstd": {"name": "ZstdCodec"},
-                "bytes": {"name": "BytesCodec"},
-                "endian": {"name": "BytesCodec"},  # compatibility with earlier versions of ZEP1
-                "crc32c": {"name": "Crc32cCodec"},
-                "sharding_indexed": {"name": "ShardingCodec"},
-                "transpose": {"name": "TransposeCodec"},
+                "blosc": "zarr.codecs.blosc.BloscCodec",
+                "gzip": "zarr.codecs.gzip.GzipCodec",
+                "zstd": "zarr.codecs.zstd.ZstdCodec",
+                "bytes": "zarr.codecs.bytes.BytesCodec",
+                "endian": "zarr.codecs.bytes.BytesCodec",
+                "crc32c": "zarr.codecs.crc32c_.Crc32cCodec",
+                "sharding_indexed": "zarr.codecs.sharding.ShardingCodec",
+                "transpose": "zarr.codecs.transpose.TransposeCodec",
             },
         }
     ]
@@ -72,13 +77,22 @@ def test_config_defaults_can_be_overridden(key: str, old_val: Any, new_val: Any)
         assert config.get(key) == new_val
 
 
+def test_fully_qualified_name():
+    class MockClass:
+        pass
+
+    assert "v3.test_config.test_fully_qualified_name.<locals>.MockClass" == fully_qualified_name(
+        MockClass
+    )
+
+
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 def test_config_codec_pipeline_class(store):
     # has default value
     assert get_pipeline_class().__name__ != ""
 
-    config.set({"codec_pipeline.name": "BatchedCodecPipeline"})
-    assert get_pipeline_class() == BatchedCodecPipeline
+    config.set({"codec_pipeline.name": "zarr.codecs.pipeline.BatchedCodecPipeline"})
+    assert get_pipeline_class() == zarr.codecs.pipeline.BatchedCodecPipeline
 
     _mock = Mock()
 
@@ -92,7 +106,8 @@ def test_config_codec_pipeline_class(store):
             _mock.call()
 
     register_pipeline(MockCodecPipeline)
-    config.set({"codec_pipeline.name": "MockCodecPipeline"})
+    config.set({"codec_pipeline.path": fully_qualified_name(MockCodecPipeline)})
+
     assert get_pipeline_class() == MockCodecPipeline
 
     # test if codec is used
@@ -108,7 +123,7 @@ def test_config_codec_pipeline_class(store):
     _mock.call.assert_called()
 
     with pytest.raises(BadConfigError):
-        config.set({"codec_pipeline.name": "wrong_name"})
+        config.set({"codec_pipeline.path": "wrong_name"})
         get_pipeline_class()
 
     class MockEnvCodecPipeline(CodecPipeline):
@@ -116,14 +131,16 @@ def test_config_codec_pipeline_class(store):
 
     register_pipeline(MockEnvCodecPipeline)
 
-    with mock.patch.dict(os.environ, {"ZARR_CODEC_PIPELINE__NAME": "MockEnvCodecPipeline"}):
+    with mock.patch.dict(
+        os.environ, {"ZARR_CODEC_PIPELINE__PATH": fully_qualified_name(MockEnvCodecPipeline)}
+    ):
         assert get_pipeline_class(reload_config=True) == MockEnvCodecPipeline
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 def test_config_codec_implementation(store):
     # has default value
-    assert get_codec_class("blosc").__name__ == config.defaults[0]["codecs"]["blosc"]["name"]
+    assert fully_qualified_name(get_codec_class("blosc")) == config.defaults[0]["codecs"]["blosc"]
 
     _mock = Mock()
 
@@ -133,7 +150,7 @@ def test_config_codec_implementation(store):
         ) -> CodecOutput | None:
             _mock.call()
 
-    config.set({"codecs.blosc.name": "MockBloscCodec"})
+    config.set({"codecs.blosc": fully_qualified_name(MockBloscCodec)})
     register_codec("blosc", MockBloscCodec)
     assert get_codec_class("blosc") == MockBloscCodec
 
@@ -149,18 +166,18 @@ def test_config_codec_implementation(store):
     arr[:] = range(100)
     _mock.call.assert_called()
 
-    with mock.patch.dict(os.environ, {"ZARR_CODECS__BLOSC__NAME": "BloscCodec"}):
+    with mock.patch.dict(os.environ, {"ZARR_CODECS__BLOSC": fully_qualified_name(BloscCodec)}):
         assert get_codec_class("blosc", reload_config=True) == BloscCodec
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 def test_config_ndbuffer_implementation(store):
     # has default value
-    assert get_ndbuffer_class().__name__ == config.defaults[0]["ndbuffer"]["name"]
+    assert fully_qualified_name(get_ndbuffer_class()) == config.defaults[0]["ndbuffer"]
 
-    # set custom ndbuffer with MyNDArrayLike implementation
+    # set custom ndbuffer with TestNDArrayLike implementation
     register_ndbuffer(NDBufferUsingTestNDArrayLike)
-    config.set({"ndbuffer.name": "NDBufferUsingTestNDArrayLike"})
+    config.set({"ndbuffer": fully_qualified_name(NDBufferUsingTestNDArrayLike)})
     assert get_ndbuffer_class() == NDBufferUsingTestNDArrayLike
     arr = Array.create(
         store=store,
@@ -176,19 +193,19 @@ def test_config_ndbuffer_implementation(store):
 
 def test_config_buffer_implementation():
     # has default value
-    assert get_buffer_class().__name__ == config.defaults[0]["buffer"]["name"]
+    assert fully_qualified_name(get_buffer_class()) == config.defaults[0]["buffer"]
 
     arr = zeros(shape=(100), store=StoreExpectingTestBuffer(mode="w"))
 
-    # AssertionError of StoreExpectingMyBuffer when not using my buffer
+    # AssertionError of StoreExpectingTestBuffer when not using my buffer
     with pytest.raises(AssertionError):
         arr[:] = np.arange(100)
 
     register_buffer(TestBuffer)
-    config.set({"buffer.name": "TestBuffer"})
+    config.set({"buffer": fully_qualified_name(TestBuffer)})
     assert get_buffer_class() == TestBuffer
 
-    # no error using MyBuffer
+    # no error using TestBuffer
     data = np.arange(100)
     arr[:] = np.arange(100)
     assert np.array_equal(arr[:], data)
