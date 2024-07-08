@@ -4,8 +4,11 @@ from collections.abc import Iterator
 from types import ModuleType
 from typing import TYPE_CHECKING
 
+from _pytest.compat import LEGACY_PATH
+
 from zarr import config
-from zarr.common import ZarrFormat
+from zarr.abc.store import Store
+from zarr.common import ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.group import AsyncGroup
 
 if TYPE_CHECKING:
@@ -13,6 +16,7 @@ if TYPE_CHECKING:
 import pathlib
 from dataclasses import dataclass, field
 
+import numpy as np
 import pytest
 
 from zarr.store import LocalStore, MemoryStore, StorePath
@@ -27,40 +31,40 @@ def parse_store(
     if store == "memory":
         return MemoryStore(mode="w")
     if store == "remote":
-        return RemoteStore(mode="w")
+        return RemoteStore(url=path, mode="w")
     raise AssertionError
 
 
 @pytest.fixture(params=[str, pathlib.Path])
-def path_type(request):
+def path_type(request: pytest.FixtureRequest) -> Any:
     return request.param
 
 
 # todo: harmonize this with local_store fixture
 @pytest.fixture
-def store_path(tmpdir):
+def store_path(tmpdir: LEGACY_PATH) -> StorePath:
     store = LocalStore(str(tmpdir), mode="w")
     p = StorePath(store)
     return p
 
 
 @pytest.fixture(scope="function")
-def local_store(tmpdir):
+def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
     return LocalStore(str(tmpdir), mode="w")
 
 
 @pytest.fixture(scope="function")
-def remote_store():
-    return RemoteStore(mode="w")
+def remote_store(url: str) -> RemoteStore:
+    return RemoteStore(url, mode="w")
 
 
 @pytest.fixture(scope="function")
-def memory_store():
+def memory_store() -> MemoryStore:
     return MemoryStore(mode="w")
 
 
 @pytest.fixture(scope="function")
-def store(request: str, tmpdir):
+def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     param = request.param
     return parse_store(param, str(tmpdir))
 
@@ -73,7 +77,7 @@ class AsyncGroupRequest:
 
 
 @pytest.fixture(scope="function")
-async def async_group(request: pytest.FixtureRequest, tmpdir) -> AsyncGroup:
+async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
     store = parse_store(param.store, str(tmpdir))
@@ -98,3 +102,20 @@ def reset_config():
     config.reset()
     yield
     config.reset()
+
+
+@dataclass
+class ArrayRequest:
+    shape: ChunkCoords
+    dtype: str
+    order: MemoryOrder
+
+
+@pytest.fixture
+def array_fixture(request: pytest.FixtureRequest) -> np.ndarray:
+    array_request: ArrayRequest = request.param
+    return (
+        np.arange(np.prod(array_request.shape))
+        .reshape(array_request.shape, order=array_request.order)
+        .astype(array_request.dtype)
+    )
