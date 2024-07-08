@@ -13,7 +13,7 @@ class Config(DConfig):  # type: ignore[misc]
     """Will collect configuration from config files and environment variables
 
     Example environment variables:
-    Grabs environment variables of the form "ZARR_PYTHON_FOO__BAR_BAZ=123" and
+    Grabs environment variables of the form "ZARR_FOO__BAR_BAZ=123" and
     turns these into config variables of the form ``{"foo": {"bar-baz": 123}}``
     It transforms the key and value in the following way:
 
@@ -35,12 +35,12 @@ in the registry and then select them in the config.
 e.g. an implementation of the bytes codec in a class "NewBytesCodec", requires the value of codecs.bytes.name to be 
 "NewBytesCodec".
 Donfig can be configured programmatically, by environment variables, or from YAML files in standard locations
-e.g. export ZARR_PYTHON_CODECS__BYTES__NAME="NewBytesCodec"
+e.g. export ZARR_CODECS__BYTES__NAME="NewBytesCodec"
 (for more information see github.com/pytroll/donfig)
 Default values below point to the standard implementations of zarr-python
 """
 config = Config(
-    "zarr_python",
+    "zarr",
     defaults=[
         {
             "array": {"order": "C"},

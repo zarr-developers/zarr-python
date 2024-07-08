@@ -116,7 +116,7 @@ def test_config_codec_pipeline_class(store):
 
     register_pipeline(MockEnvCodecPipeline)
 
-    with mock.patch.dict(os.environ, {"ZARR_PYTHON_CODEC_PIPELINE__NAME": "MockEnvCodecPipeline"}):
+    with mock.patch.dict(os.environ, {"ZARR_CODEC_PIPELINE__NAME": "MockEnvCodecPipeline"}):
         assert get_pipeline_class(reload_config=True) == MockEnvCodecPipeline
 
 
@@ -149,7 +149,7 @@ def test_config_codec_implementation(store):
     arr[:] = range(100)
     _mock.call.assert_called()
 
-    with mock.patch.dict(os.environ, {"ZARR_PYTHON_CODECS__BLOSC__NAME": "BloscCodec"}):
+    with mock.patch.dict(os.environ, {"ZARR_CODECS__BLOSC__NAME": "BloscCodec"}):
         assert get_codec_class("blosc", reload_config=True) == BloscCodec
 
 
