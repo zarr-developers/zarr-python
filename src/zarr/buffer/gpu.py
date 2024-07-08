@@ -12,7 +12,8 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.buffer import ArrayLike, BufferPrototype, NDArrayLike, core
+from zarr.buffer import core
+from zarr.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
 
 if TYPE_CHECKING:
     from typing_extensions import Self
