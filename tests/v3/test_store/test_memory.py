@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from zarr.buffer import Buffer, GpuBuffer
+from zarr.buffer import Buffer, cpu, gpu
 from zarr.store.memory import GpuMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
 
@@ -12,8 +12,9 @@ except ImportError:
     cp = None
 
 
-class TestMemoryStore(StoreTests[MemoryStore]):
+class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     store_cls = MemoryStore
+    buffer_cls = cpu.Buffer
 
     def set(self, store: MemoryStore, key: str, value: Buffer) -> None:
         store._store_dict[key] = value
@@ -46,8 +47,9 @@ class TestMemoryStore(StoreTests[MemoryStore]):
 
 
 @pytest.mark.skipif(cp is None, reason="requires cupy")
-class TestGpuMemoryStore(StoreTests[GpuMemoryStore]):
+class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
     store_cls = GpuMemoryStore
+    buffer_cls = gpu.Buffer
 
     def set(self, store: GpuMemoryStore, key: str, value: Buffer) -> None:
         store._store_dict[key] = value
@@ -60,7 +62,7 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore]):
         return {"store_dict": request.param, "mode": "w"}
 
     @pytest.fixture(scope="function")
-    def store(self, store_kwargs: str | None | dict[str, GpuBuffer]) -> GpuMemoryStore:
+    def store(self, store_kwargs: str | None | dict[str, gpu.Buffer]) -> GpuMemoryStore:
         return self.store_cls(**store_kwargs)
 
     def test_store_repr(self, store: GpuMemoryStore) -> None:

@@ -12,7 +12,7 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.buffer import ArrayLike, Buffer, BufferPrototype, NDArrayLike, NDBuffer
+from zarr.buffer import ArrayLike, BufferPrototype, NDArrayLike, core
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -25,7 +25,7 @@ except ImportError:
     cp = None
 
 
-class GpuBuffer(Buffer):
+class Buffer(core.Buffer):
     """A flat contiguous memory block on the GPU
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
@@ -48,7 +48,9 @@ class GpuBuffer(Buffer):
 
     def __init__(self, array_like: ArrayLike):
         if cp is None:
-            raise ImportError("Cannot use GpuBuffer without cupy. Please install cupy.")
+            raise ImportError(
+                "Cannot use zarr.buffer.gpu.Buffer without cupy. Please install cupy."
+            )
 
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
@@ -59,7 +61,7 @@ class GpuBuffer(Buffer):
             # Slow copy based path for arrays that don't support the __cuda_array_interface__
             # TODO: Add a fast zero-copy path for arrays that support the dlpack protocol
             msg = (
-                "Creating a GpuBuffer with an array that does not support the "
+                "Creating a zarr.buffer.gpu.Buffer with an array that does not support the "
                 "__cuda_array_interface__ for zero-copy transfers, "
                 "falling back to slow copy based path"
             )
@@ -80,14 +82,14 @@ class GpuBuffer(Buffer):
         return cls(cp.array([], dtype="b"))
 
     @classmethod
-    def from_buffer(cls, buffer: Buffer) -> Self:
-        """Create an GpuBuffer given an arbitrary Buffer
+    def from_buffer(cls, buffer: core.Buffer) -> Self:
+        """Create an GPU Buffer given an arbitrary Buffer
         This will try to be zero-copy if `buffer` is already on the
         GPU and will trigger a copy if not.
 
         Returns
         -------
-            New GpuBuffer constructed from `buffer`
+            New GPU Buffer constructed from `buffer`
         """
         return cls(buffer.as_array_like())
 
@@ -98,17 +100,17 @@ class GpuBuffer(Buffer):
     def as_numpy_array(self) -> npt.NDArray[Any]:
         return cast(npt.NDArray[Any], cp.asnumpy(self._data))
 
-    def __add__(self, other: Buffer) -> Self:
+    def __add__(self, other: core.Buffer) -> Self:
         other_array = other.as_array_like()
         assert other_array.dtype == np.dtype("b")
-        gpu_other = GpuBuffer(other_array)
+        gpu_other = Buffer(other_array)
         gpu_other_array = gpu_other.as_array_like()
         return self.__class__(
             cp.concatenate((cp.asanyarray(self._data), cp.asanyarray(gpu_other_array)))
         )
 
 
-class GpuNDBuffer(NDBuffer):
+class NDBuffer(core.NDBuffer):
     """A n-dimensional memory block on the GPU
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
@@ -135,7 +137,9 @@ class GpuNDBuffer(NDBuffer):
 
     def __init__(self, array: NDArrayLike):
         if cp is None:
-            raise ImportError("Cannot use GpuNDBuffer without cupy. Please install cupy.")
+            raise ImportError(
+                "Cannot use zarr.buffer.gpu.NDBuffer without cupy. Please install cupy."
+            )
 
         # assert array.ndim > 0
         assert array.dtype != object
@@ -145,7 +149,7 @@ class GpuNDBuffer(NDBuffer):
             # Slow copy based path for arrays that don't support the __cuda_array_interface__
             # TODO: Add a fast zero-copy path for arrays that support the dlpack protocol
             msg = (
-                "Creating a GpuNDBuffer with an array that does not support the "
+                "Creating a zarr.buffer.gpu.NDBuffer with an array that does not support the "
                 "__cuda_array_interface__ for zero-copy transfers, "
                 "falling back to slow copy based path"
             )
@@ -201,12 +205,12 @@ class GpuNDBuffer(NDBuffer):
         return self.__class__(self._data.__getitem__(key))
 
     def __setitem__(self, key: Any, value: Any) -> None:
-        if isinstance(value, GpuNDBuffer):
+        if isinstance(value, NDBuffer):
             value = value._data
-        elif isinstance(value, NDBuffer):
-            gpu_value = GpuNDBuffer(value.as_ndarray_like())
+        elif isinstance(value, core.NDBuffer):
+            gpu_value = NDBuffer(value.as_ndarray_like())
             value = gpu_value._data
         self._data.__setitem__(key, value)
 
 
-buffer_prototype = BufferPrototype(buffer=GpuBuffer, nd_buffer=GpuNDBuffer)
+buffer_prototype = BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)

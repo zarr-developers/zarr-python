@@ -4,7 +4,7 @@ import fsspec
 import pytest
 from upath import UPath
 
-from zarr.buffer import Buffer, default_buffer_prototype
+from zarr.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.store import RemoteStore
 from zarr.sync import sync
 from zarr.testing.store import StoreTests
@@ -86,7 +86,7 @@ async def test_basic():
     assert not await alist(store.list())
     assert not await store.exists("foo")
     data = b"hello"
-    await store.set("foo", Buffer.from_bytes(data))
+    await store.set("foo", cpu.Buffer.from_bytes(data))
     assert await store.exists("foo")
     assert (await store.get("foo", prototype=default_buffer_prototype)).to_bytes() == data
     out = await store.get_partial_values(
@@ -95,8 +95,9 @@ async def test_basic():
     assert out[0].to_bytes() == data[1:]
 
 
-class TestRemoteStoreS3(StoreTests[RemoteStore]):
+class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     store_cls = RemoteStore
+    buffer_cls = cpu.Buffer
 
     @pytest.fixture(scope="function", params=("use_upath", "use_str"))
     def store_kwargs(self, request) -> dict[str, str | bool]:
@@ -129,7 +130,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
             anon=store._fs.anon,
             endpoint_url=store._fs.endpoint_url,
         )
-        return Buffer.from_bytes(fs.cat(f"{store.path}/{key}"))
+        return self.buffer_cls.from_bytes(fs.cat(f"{store.path}/{key}"))
 
     def set(self, store: RemoteStore, key: str, value: Buffer) -> None:
         #  make a new, synchronous instance of the filesystem because this test is run in sync code

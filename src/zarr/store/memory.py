@@ -3,8 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, MutableMapping
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.buffer.gpu import GpuBuffer
+from zarr.buffer import Buffer, BufferPrototype, gpu
 from zarr.common import OpenMode, concurrent_map
 from zarr.store.utils import _normalize_interval_index
 
@@ -118,7 +117,7 @@ class GpuMemoryStore(MemoryStore):
     ):
         super().__init__(mode=mode)
         if store_dict:
-            self._store_dict = {k: GpuBuffer.from_buffer(store_dict[k]) for k in iter(store_dict)}
+            self._store_dict = {k: gpu.Buffer.from_buffer(store_dict[k]) for k in iter(store_dict)}
 
     def __str__(self) -> str:
         return f"gpumemory://{id(self._store_dict)}"
@@ -132,6 +131,6 @@ class GpuMemoryStore(MemoryStore):
         if not isinstance(value, Buffer):
             raise TypeError(f"Expected Buffer. Got {type(value)}.")
 
-        # Convert to GpuBuffer
-        gpu_value = value if isinstance(value, GpuBuffer) else GpuBuffer.from_buffer(value)
+        # Convert to gpu.Buffer
+        gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
         await super().set(key, gpu_value, byte_range=byte_range)

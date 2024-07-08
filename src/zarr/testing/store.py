@@ -8,10 +8,12 @@ from zarr.store.utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
 
 S = TypeVar("S", bound=Store)
+B = TypeVar("B", bound=Buffer)
 
 
-class StoreTests(Generic[S]):
+class StoreTests(Generic[S, B]):
     store_cls: type[S]
+    buffer_cls: type[B]
 
     def set(self, store: S, key: str, value: Buffer) -> None:
         """
@@ -62,7 +64,7 @@ class StoreTests(Generic[S]):
 
         # set
         with pytest.raises(ValueError):
-            await store.set("foo", Buffer.from_bytes(b"bar"))
+            await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
 
         # delete
         with pytest.raises(ValueError):
@@ -89,7 +91,7 @@ class StoreTests(Generic[S]):
         """
         Ensure that data can be read from the store using the store.get method.
         """
-        data_buf = Buffer.from_bytes(data)
+        data_buf = self.buffer_cls.from_bytes(data)
         self.set(store, key, data_buf)
         observed = await store.get(key, prototype=default_buffer_prototype, byte_range=byte_range)
         start, length = _normalize_interval_index(data_buf, interval=byte_range)
@@ -103,7 +105,7 @@ class StoreTests(Generic[S]):
         Ensure that data can be written to the store using the store.set method.
         """
         assert store.writeable
-        data_buf = Buffer.from_bytes(data)
+        data_buf = self.buffer_cls.from_bytes(data)
         await store.set(key, data_buf)
         observed = self.get(store, key)
         assert_bytes_equal(observed, data_buf)
@@ -122,7 +124,7 @@ class StoreTests(Generic[S]):
     ) -> None:
         # put all of the data
         for key, _ in key_ranges:
-            self.set(store, key, Buffer.from_bytes(bytes(key, encoding="utf-8")))
+            self.set(store, key, self.buffer_cls.from_bytes(bytes(key, encoding="utf-8")))
 
         # read back just part of it
         observed_maybe = await store.get_partial_values(
@@ -148,18 +150,18 @@ class StoreTests(Generic[S]):
 
     async def test_exists(self, store: S) -> None:
         assert not await store.exists("foo")
-        await store.set("foo/zarr.json", Buffer.from_bytes(b"bar"))
+        await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
         assert await store.exists("foo/zarr.json")
 
     async def test_delete(self, store: S) -> None:
-        await store.set("foo/zarr.json", Buffer.from_bytes(b"bar"))
+        await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
         assert await store.exists("foo/zarr.json")
         await store.delete("foo/zarr.json")
         assert not await store.exists("foo/zarr.json")
 
     async def test_list(self, store: S) -> None:
         assert [k async for k in store.list()] == []
-        await store.set("foo/zarr.json", Buffer.from_bytes(b"bar"))
+        await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
         keys = [k async for k in store.list()]
         assert keys == ["foo/zarr.json"], keys
 
@@ -168,7 +170,7 @@ class StoreTests(Generic[S]):
             key = f"foo/c/{i}"
             expected.append(key)
             await store.set(
-                f"foo/c/{i}", Buffer.from_bytes(i.to_bytes(length=3, byteorder="little"))
+                f"foo/c/{i}", self.buffer_cls.from_bytes(i.to_bytes(length=3, byteorder="little"))
             )
 
     @pytest.mark.xfail
@@ -180,8 +182,8 @@ class StoreTests(Generic[S]):
         out = [k async for k in store.list_dir("")]
         assert out == []
         assert [k async for k in store.list_dir("foo")] == []
-        await store.set("foo/zarr.json", Buffer.from_bytes(b"bar"))
-        await store.set("foo/c/1", Buffer.from_bytes(b"\x01"))
+        await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
+        await store.set("foo/c/1", self.buffer_cls.from_bytes(b"\x01"))
 
         keys = [k async for k in store.list_dir("foo")]
         assert set(keys) == set(["zarr.json", "c"]), keys
