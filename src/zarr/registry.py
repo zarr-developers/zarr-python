@@ -17,7 +17,7 @@ T = TypeVar("T")
 
 
 class Registry(Generic[T], dict[str, type[T]]):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.lazy_load_list: list[EntryPoint] = []
 

@@ -26,7 +26,7 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
     )
 
     zarr_json = json.loads(
-        (await store.get(f"{path}/zarr.json", prototype=default_buffer_prototype)).to_bytes()
+        (await store.get(f"{path}/zarr.json", prototype=default_buffer_prototype())).to_bytes()
     )
     blosc_configuration_json = zarr_json["codecs"][1]["configuration"]
     assert blosc_configuration_json["typesize"] == typesize
@@ -47,7 +47,7 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
     )
 
     zarr_json = json.loads(
-        (await store.get(f"{path2}/zarr.json", prototype=default_buffer_prototype)).to_bytes()
+        (await store.get(f"{path2}/zarr.json", prototype=default_buffer_prototype())).to_bytes()
     )
     blosc_configuration_json = zarr_json["codecs"][0]["configuration"]["codecs"][1]["configuration"]
     assert blosc_configuration_json["typesize"] == typesize
