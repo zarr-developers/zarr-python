@@ -22,7 +22,11 @@ from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
 from zarr.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
 from zarr.chunk_grids import RegularChunkGrid
-from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.chunk_key_encodings import (
+    ChunkKeyEncoding,
+    DefaultChunkKeyEncoding,
+    V2ChunkKeyEncoding,
+)
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
 from zarr.codecs.pipeline import BatchedCodecPipeline
@@ -76,7 +80,9 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
     raise TypeError
 
 
-def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> BatchedCodecPipeline:
+def create_codec_pipeline(
+    metadata: ArrayV2Metadata | ArrayV3Metadata,
+) -> BatchedCodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
         return BatchedCodecPipeline.from_list(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
@@ -474,7 +480,10 @@ class AsyncArray:
         return out_buffer.as_ndarray_like()
 
     async def getitem(
-        self, selection: BasicSelection, *, prototype: BufferPrototype = default_buffer_prototype
+        self,
+        selection: BasicSelection,
+        *,
+        prototype: BufferPrototype = default_buffer_prototype,
     ) -> NDArrayLike:
         indexer = BasicIndexer(
             selection,
@@ -502,7 +511,12 @@ class AsyncArray:
 
         # check value shape
         if np.isscalar(value):
-            value = np.asanyarray(value, dtype=self.metadata.dtype)
+            array_like = prototype.buffer.create_zero_length().as_array_like()
+            if isinstance(array_like, np._typing._SupportsArrayFunc):
+                # TODO: need to handle array types that don't support __array_function__
+                # like PyTorch and JAX
+                array_like_ = cast(np._typing._SupportsArrayFunc, array_like)
+            value = np.asanyarray(value, dtype=self.metadata.dtype, like=array_like_)
         else:
             if not hasattr(value, "shape"):
                 value = np.asarray(value, self.metadata.dtype)
@@ -510,7 +524,11 @@ class AsyncArray:
             #     value.shape == indexer.shape
             # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
             if not hasattr(value, "dtype") or value.dtype.name != self.metadata.dtype.name:
-                value = np.array(value, dtype=self.metadata.dtype, order="A")
+                if hasattr(value, "astype"):
+                    # Handle things that are already NDArrayLike more efficiently
+                    value = value.astype(dtype=self.metadata.dtype, order="A")
+                else:
+                    value = np.array(value, dtype=self.metadata.dtype, order="A")
         value = cast(NDArrayLike, value)
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass

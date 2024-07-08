@@ -10,7 +10,8 @@ from numcodecs.blosc import Blosc
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer, as_numpy_array_wrapper
+from zarr.buffer import Buffer
+from zarr.buffer.cpu import as_numpy_array_wrapper
 from zarr.codecs.registry import register_codec
 from zarr.common import JSON, parse_enum, parse_named_configuration, to_thread
 

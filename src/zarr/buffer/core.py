@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import sys
-import warnings
-from collections.abc import Callable, Iterable, Sequence
+from abc import ABC, abstractmethod
+from collections.abc import Iterable, Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -10,7 +10,6 @@ from typing import (
     NamedTuple,
     Protocol,
     SupportsIndex,
-    cast,
     runtime_checkable,
 )
 
@@ -24,11 +23,6 @@ if TYPE_CHECKING:
 
     from zarr.codecs.bytes import Endian
     from zarr.common import BytesLike
-
-try:
-    import cupy as cp
-except ImportError:
-    cp = None
 
 
 @runtime_checkable
@@ -113,7 +107,7 @@ def check_item_key_is_1d_contiguous(key: Any) -> None:
         raise ValueError("slice must be contiguous")
 
 
-class Buffer:
+class Buffer(ABC):
     """A flat contiguous memory block
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
@@ -142,6 +136,7 @@ class Buffer:
         self._data = array_like
 
     @classmethod
+    @abstractmethod
     def create_zero_length(cls) -> Self:
         """Create an empty buffer with length zero
 
@@ -149,7 +144,7 @@ class Buffer:
         -------
             New empty 0-length buffer
         """
-        return cls(np.array([], dtype="b"))
+        ...
 
     @classmethod
     def from_array_like(cls, array_like: ArrayLike) -> Self:
@@ -167,6 +162,7 @@ class Buffer:
         return cls(array_like)
 
     @classmethod
+    @abstractmethod
     def from_buffer(cls, buffer: Buffer) -> Self:
         """Create a new buffer of an existing Buffer
 
@@ -192,9 +188,10 @@ class Buffer:
         Subclasses of `Buffer` must override this method to implement
         more optimal conversions that avoid copies where possible
         """
-        return cls.from_array_like(buffer.as_numpy_array())
+        ...
 
     @classmethod
+    @abstractmethod
     def from_bytes(cls, bytes_like: BytesLike) -> Self:
         """Create a new buffer of a bytes-like object (host memory)
 
@@ -207,7 +204,7 @@ class Buffer:
         -------
             New buffer representing `bytes_like`
         """
-        return cls.from_array_like(np.frombuffer(bytes_like, dtype="b"))
+        ...
 
     def as_array_like(self) -> ArrayLike:
         """Returns the underlying array (host or device memory) of this buffer
@@ -220,6 +217,7 @@ class Buffer:
         """
         return self._data
 
+    @abstractmethod
     def as_numpy_array(self) -> npt.NDArray[Any]:
         """Returns the buffer as a NumPy array (host memory).
 
@@ -231,7 +229,7 @@ class Buffer:
         -------
             NumPy array of this buffer (might be a data copy)
         """
-        return np.asanyarray(self._data)
+        ...
 
     def to_bytes(self) -> bytes:
         """Returns the buffer as `bytes` (host memory).
@@ -258,14 +256,10 @@ class Buffer:
     def __len__(self) -> int:
         return self._data.size
 
+    @abstractmethod
     def __add__(self, other: Buffer) -> Self:
         """Concatenate two buffers"""
-
-        other_array = other.as_array_like()
-        assert other_array.dtype == np.dtype("b")
-        return self.__class__(
-            np.concatenate((np.asanyarray(self._data), np.asanyarray(other_array)))
-        )
+        ...
 
 
 class NDBuffer:
@@ -299,6 +293,7 @@ class NDBuffer:
         self._data = array
 
     @classmethod
+    @abstractmethod
     def create(
         cls,
         *,
@@ -330,10 +325,7 @@ class NDBuffer:
         A subclass can overwrite this method to create a ndarray-like object
         other then the default Numpy array.
         """
-        ret = cls(np.empty(shape=tuple(shape), dtype=dtype, order=order))
-        if fill_value is not None:
-            ret.fill(fill_value)
-        return ret
+        ...
 
     @classmethod
     def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
@@ -351,6 +343,7 @@ class NDBuffer:
         return cls(ndarray_like)
 
     @classmethod
+    @abstractmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
         """Create a new buffer of Numpy array-like object
 
@@ -363,7 +356,7 @@ class NDBuffer:
         -------
             New buffer representing `array_like`
         """
-        return cls.from_ndarray_like(np.asanyarray(array_like))
+        ...
 
     def as_ndarray_like(self) -> NDArrayLike:
         """Returns the underlying array (host or device memory) of this buffer
@@ -376,6 +369,7 @@ class NDBuffer:
         """
         return self._data
 
+    @abstractmethod
     def as_numpy_array(self) -> npt.NDArray[Any]:
         """Returns the buffer as a NumPy array (host memory).
 
@@ -387,7 +381,7 @@ class NDBuffer:
         -------
             NumPy array of this buffer (might be a data copy)
         """
-        return np.asanyarray(self._data)
+        ...
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -418,13 +412,11 @@ class NDBuffer:
     def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K") -> Self:
         return self.__class__(self._data.astype(dtype=dtype, order=order))
 
-    def __getitem__(self, key: Any) -> Self:
-        return self.__class__(np.asanyarray(self._data.__getitem__(key)))
+    @abstractmethod
+    def __getitem__(self, key: Any) -> Self: ...
 
-    def __setitem__(self, key: Any, value: Any) -> None:
-        if isinstance(value, NDBuffer):
-            value = value._data
-        self._data.__setitem__(key, value)
+    @abstractmethod
+    def __setitem__(self, key: Any, value: Any) -> None: ...
 
     def __len__(self) -> int:
         return self._data.__len__()
@@ -445,218 +437,6 @@ class NDBuffer:
         return self.__class__(self._data.transpose(axes))
 
 
-def as_numpy_array_wrapper(
-    func: Callable[[npt.NDArray[Any]], bytes], buf: Buffer, prototype: BufferPrototype
-) -> Buffer:
-    """Converts the input of `func` to a numpy array and the output back to `Buffer`.
-
-    This function is useful when calling a `func` that only support host memory such
-    as `GZip.decode` and `Blosc.decode`. In this case, use this wrapper to convert
-    the input `buf` to a Numpy array and convert the result back into a `Buffer`.
-
-    Parameters
-    ----------
-    func
-        The callable that will be called with the converted `buf` as input.
-        `func` must return bytes, which will be converted into a `Buffer`
-        before returned.
-    buf
-        The buffer that will be converted to a Numpy array before given as
-        input to `func`.
-    prototype
-        The prototype of the output buffer.
-
-    Returns
-    -------
-        The result of `func` converted to a `Buffer`
-    """
-    return prototype.buffer.from_bytes(func(buf.as_numpy_array()))
-
-
-class GpuBuffer(Buffer):
-    """A flat contiguous memory block on the GPU
-
-    We use Buffer throughout Zarr to represent a contiguous block of memory.
-
-    A Buffer is backed by a underlying array-like instance that represents
-    the memory. The memory type is unspecified; can be regular host memory,
-    CUDA device memory, or something else. The only requirement is that the
-    array-like instance can be copied/converted to a regular Numpy array
-    (host memory).
-
-    Note
-    ----
-    This buffer is untyped, so all indexing and sizes are in bytes.
-
-    Parameters
-    ----------
-    array_like
-        array-like object that must be 1-dim, contiguous, and byte dtype.
-    """
-
-    def __init__(self, array_like: ArrayLike):
-        if cp is None:
-            raise ImportError("Cannot use GpuBuffer without cupy. Please install cupy.")
-
-        if array_like.ndim != 1:
-            raise ValueError("array_like: only 1-dim allowed")
-        if array_like.dtype != np.dtype("b"):
-            raise ValueError("array_like: only byte dtype allowed")
-
-        if not hasattr(array_like, "__cuda_array_interface__"):
-            # Slow copy based path for arrays that don't support the __cuda_array_interface__
-            # TODO: Add a fast zero-copy path for arrays that support the dlpack protocol
-            msg = (
-                "Creating a GpuBuffer with an array that does not support the "
-                "__cuda_array_interface__ for zero-copy transfers, "
-                "falling back to slow copy based path"
-            )
-            warnings.warn(
-                msg,
-                stacklevel=2,
-            )
-        self._data = cp.asarray(array_like)
-
-    @classmethod
-    def create_zero_length(cls) -> Self:
-        """Create an empty buffer with length zero
-
-        Returns
-        -------
-            New empty 0-length buffer
-        """
-        return cls(cp.array([], dtype="b"))
-
-    @classmethod
-    def from_buffer(cls, buffer: Buffer) -> Self:
-        """Create an GpuBuffer given an arbitrary Buffer
-        This will try to be zero-copy if `buffer` is already on the
-        GPU and will trigger a copy if not.
-
-        Returns
-        -------
-            New GpuBuffer constructed from `buffer`
-        """
-        return cls(buffer.as_array_like())
-
-    @classmethod
-    def from_bytes(cls, bytes_like: BytesLike) -> Self:
-        return cls.from_array_like(cp.frombuffer(bytes_like, dtype="b"))
-
-    def as_numpy_array(self) -> npt.NDArray[Any]:
-        return cast(npt.NDArray[Any], cp.asnumpy(self._data))
-
-    def __add__(self, other: Buffer) -> Self:
-        other_array = other.as_array_like()
-        assert other_array.dtype == np.dtype("b")
-        gpu_other = GpuBuffer(other_array)
-        gpu_other_array = gpu_other.as_array_like()
-        return self.__class__(
-            cp.concatenate((cp.asanyarray(self._data), cp.asanyarray(gpu_other_array)))
-        )
-
-
-class GpuNDBuffer(NDBuffer):
-    """A n-dimensional memory block on the GPU
-
-    We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
-
-    A NDBuffer is backed by a underlying ndarray-like instance that represents
-    the memory. The memory type is unspecified; can be regular host memory,
-    CUDA device memory, or something else. The only requirement is that the
-    ndarray-like instance can be copied/converted to a regular Numpy array
-    (host memory).
-
-    Note
-    ----
-    The two buffer classes Buffer and NDBuffer are very similar. In fact, Buffer
-    is a special case of NDBuffer where dim=1, stride=1, and dtype="b". However,
-    in order to use Python's type system to differentiate between the contiguous
-    Buffer and the n-dim (non-contiguous) NDBuffer, we keep the definition of the
-    two classes separate.
-
-    Parameters
-    ----------
-    ndarray_like
-        ndarray-like object that is convertible to a regular Numpy array.
-    """
-
-    def __init__(self, array: NDArrayLike):
-        if cp is None:
-            raise ImportError("Cannot use GpuNDBuffer without cupy. Please install cupy.")
-
-        # assert array.ndim > 0
-        assert array.dtype != object
-        self._data = array
-
-        if not hasattr(array, "__cuda_array_interface__"):
-            # Slow copy based path for arrays that don't support the __cuda_array_interface__
-            # TODO: Add a fast zero-copy path for arrays that support the dlpack protocol
-            msg = (
-                "Creating a GpuNDBuffer with an array that does not support the "
-                "__cuda_array_interface__ for zero-copy transfers, "
-                "falling back to slow copy based path"
-            )
-            warnings.warn(
-                msg,
-                stacklevel=2,
-            )
-        self._data = cp.asarray(array)
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        shape: Iterable[int],
-        dtype: npt.DTypeLike,
-        order: Literal["C", "F"] = "C",
-        fill_value: Any | None = None,
-    ) -> Self:
-        ret = cls(cp.empty(shape=tuple(shape), dtype=dtype, order=order))
-        if fill_value is not None:
-            ret.fill(fill_value)
-        return ret
-
-    @classmethod
-    def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
-        """Create a new buffer of Numpy array-like object
-
-        Parameters
-        ----------
-        array_like
-            Object that can be coerced into a Numpy array
-
-        Returns
-        -------
-            New buffer representing `array_like`
-        """
-        return cls(cp.asarray(array_like))
-
-    def as_numpy_array(self) -> npt.NDArray[Any]:
-        """Returns the buffer as a NumPy array (host memory).
-
-        Warning
-        -------
-        Might have to copy data, consider using `.as_ndarray_like()` instead.
-
-        Returns
-        -------
-            NumPy array of this buffer (might be a data copy)
-        """
-        return cast(npt.NDArray[Any], cp.asnumpy(self._data))
-
-    def __getitem__(self, key: Any) -> Self:
-        return self.__class__(self._data.__getitem__(key))
-
-    def __setitem__(self, key: Any, value: Any) -> None:
-        if isinstance(value, GpuNDBuffer):
-            value = value._data
-        elif isinstance(value, NDBuffer):
-            gpu_value = GpuNDBuffer(value.as_ndarray_like())
-            value = gpu_value._data
-        self._data.__setitem__(key, value)
-
-
 class BufferPrototype(NamedTuple):
     """Prototype of the Buffer and NDBuffer class
 
@@ -672,8 +452,3 @@ class BufferPrototype(NamedTuple):
 
     buffer: type[Buffer]
     nd_buffer: type[NDBuffer]
-
-
-# The default buffer prototype used throughout the Zarr codebase.
-default_buffer_prototype = BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
-gpu_buffer_prototype = BufferPrototype(buffer=GpuBuffer, nd_buffer=GpuNDBuffer)

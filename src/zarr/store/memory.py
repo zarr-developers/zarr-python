@@ -3,7 +3,8 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, MutableMapping
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype, GpuBuffer
+from zarr.buffer import Buffer, BufferPrototype
+from zarr.buffer.gpu import GpuBuffer
 from zarr.common import OpenMode, concurrent_map
 from zarr.store.utils import _normalize_interval_index
 

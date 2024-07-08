@@ -13,8 +13,8 @@ from zarr.buffer import (
     Buffer,
     BufferPrototype,
     NDArrayLike,
-    NDBuffer,
-    gpu_buffer_prototype,
+    cpu,
+    gpu,
 )
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
@@ -38,11 +38,11 @@ class MyNDArrayLike(np.ndarray):
     """An example of a ndarray-like class"""
 
 
-class MyBuffer(Buffer):
+class MyBuffer(cpu.Buffer):
     """Example of a custom Buffer that handles ArrayLike"""
 
 
-class MyNDBuffer(NDBuffer):
+class MyNDBuffer(cpu.NDBuffer):
     """Example of a custom NDBuffer that handles MyNDArrayLike"""
 
     @classmethod
@@ -136,9 +136,9 @@ async def test_async_array_gpu_prototype():
     await a.setitem(
         selection=(slice(1, 4), slice(3, 6)),
         value=cp.ones((3, 3)),
-        prototype=gpu_buffer_prototype,
+        prototype=gpu.buffer_prototype,
     )
-    got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=gpu_buffer_prototype)
+    got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=gpu.buffer_prototype)
     assert isinstance(got, cp.ndarray)
     assert cp.array_equal(expect, got)
 
@@ -199,8 +199,8 @@ async def test_codecs_use_of_gpu_prototype():
     await a.setitem(
         selection=(slice(0, 10), slice(0, 10)),
         value=expect[:],
-        prototype=gpu_buffer_prototype,
+        prototype=gpu.buffer_prototype,
     )
-    got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=gpu_buffer_prototype)
+    got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype)
     assert isinstance(got, cp.ndarray)
     assert cp.array_equal(expect, got)
