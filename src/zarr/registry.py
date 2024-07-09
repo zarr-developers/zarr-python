@@ -37,16 +37,18 @@ The implementation used is determined by the config
 def _collect_entrypoints() -> list[Registry[Any]]:
     """Collects codecs, pipelines, buffers and ndbuffers from entrypoints"""
     entry_points = get_entry_points()
-    for e in entry_points.select(group="zarr.codecs"):
-        __codec_registries[e.name].lazy_load_list.append(e)
-    for e in entry_points.select(group="zarr"):
-        if e.name == "codec_pipeline":
+    for e in entry_points:
+        if e.matches(group="zarr", name="codec_pipeline") or e.matches(group="zarr.codec_pipeline"):
             __pipeline_registry.lazy_load_list.append(e)
-        if e.name == "buffer":
+        if e.matches(group="zarr", name="buffer") or e.matches(group="zarr.buffer"):
             __buffer_registry.lazy_load_list.append(e)
-        if e.name == "ndbuffer":
+        if e.matches(group="zarr", name="ndbuffer") or e.matches(group="zarr.ndbuffer"):
             __ndbuffer_registry.lazy_load_list.append(e)
-
+        if e.matches(group="zarr.codecs"):
+            __codec_registries[e.name].lazy_load_list.append(e)
+        if e.group.startswith("zarr.codecs."):
+            codec_name = e.group.split(".")[2]
+            __codec_registries[codec_name].lazy_load_list.append(e)
     return [
         *__codec_registries.values(),
         __pipeline_registry,

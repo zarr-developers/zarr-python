@@ -46,5 +46,9 @@ class TestEntrypointBuffer(Buffer):
     pass
 
 
+class AnotherTestEntrypointBuffer(Buffer):
+    pass
+
+
 class TestEntrypointNDBuffer(NDBuffer):
     pass

@@ -2,5 +2,7 @@
 test = package_with_entrypoint:TestEntrypointCodec
 [zarr]
 codec_pipeline = package_with_entrypoint:TestEntrypointCodecPipeline
-buffer = package_with_entrypoint:TestEntrypointBuffer
 ndbuffer = package_with_entrypoint:TestEntrypointNDBuffer
+[zarr.buffer]
+test_buffer = package_with_entrypoint:TestEntrypointBuffer
+another_buffer = package_with_entrypoint:AnotherTestEntrypointBuffer
