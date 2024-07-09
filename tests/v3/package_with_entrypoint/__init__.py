@@ -5,6 +5,7 @@ from numpy import ndarray
 from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecPipeline
 from zarr.array_spec import ArraySpec
 from zarr.buffer import Buffer, NDBuffer
+from zarr.codecs import BytesCodec
 from zarr.common import BytesLike
 
 
@@ -46,9 +47,19 @@ class TestEntrypointBuffer(Buffer):
     pass
 
 
-class AnotherTestEntrypointBuffer(Buffer):
-    pass
-
-
 class TestEntrypointNDBuffer(NDBuffer):
     pass
+
+
+class TestEntrypointGroup:
+    class Codec(BytesCodec):
+        pass
+
+    class Buffer(Buffer):
+        pass
+
+    class NDBuffer(NDBuffer):
+        pass
+
+    class Pipeline(CodecPipeline):
+        pass

@@ -22,10 +22,11 @@ def set_path():
 
 
 @pytest.mark.usefixtures("set_path")
-def test_entrypoint_codec():
-    config.set({"codecs.test": "package_with_entrypoint.TestEntrypointCodec"})
-    cls = zarr.registry.get_codec_class("test")
-    assert cls.__name__ == "TestEntrypointCodec"
+@pytest.mark.parametrize("codec_name", ["TestEntrypointCodec", "TestEntrypointGroup.Codec"])
+def test_entrypoint_codec(codec_name):
+    config.set({"codecs.test": "package_with_entrypoint." + codec_name})
+    cls_test = zarr.registry.get_codec_class("test")
+    assert cls_test.__qualname__ == codec_name
 
 
 @pytest.mark.usefixtures("set_path")
@@ -36,12 +37,13 @@ def test_entrypoint_pipeline():
 
 
 @pytest.mark.usefixtures("set_path")
-def test_entrypoint_buffer():
+@pytest.mark.parametrize("buffer_name", ["TestEntrypointBuffer", "TestEntrypointGroup.Buffer"])
+def test_entrypoint_buffer(buffer_name):
     config.set(
         {
-            "buffer": "package_with_entrypoint.TestEntrypointBuffer",
+            "buffer": "package_with_entrypoint." + buffer_name,
             "ndbuffer": "package_with_entrypoint.TestEntrypointNDBuffer",
         }
     )
-    assert zarr.registry.get_buffer_class().__name__ == "TestEntrypointBuffer"
+    assert zarr.registry.get_buffer_class().__qualname__ == buffer_name
     assert zarr.registry.get_ndbuffer_class().__name__ == "TestEntrypointNDBuffer"

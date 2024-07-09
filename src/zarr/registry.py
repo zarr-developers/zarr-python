@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import warnings
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 
 if TYPE_CHECKING:
     from zarr.abc.codec import Codec, CodecPipeline
     from zarr.buffer import Buffer, NDBuffer
 
-from importlib.metadata import EntryPoint
+from importlib.metadata import EntryPoint, EntryPoints
 from importlib.metadata import entry_points as get_entry_points
 
 from zarr.config import BadConfigError, config
@@ -20,6 +20,14 @@ class Registry(Generic[T], dict[str, type[T]]):
     def __init__(self) -> None:
         super().__init__()
         self.lazy_load_list: list[EntryPoint] = []
+
+    def lazy_load(self) -> None:
+        for e in self.lazy_load_list:
+            self.register(e.load())
+        self.lazy_load_list.clear()
+
+    def register(self, cls: type[T]) -> None:
+        self[fully_qualified_name(cls)] = cls
 
 
 __codec_registries: dict[str, Registry[Codec]] = defaultdict(Registry)
@@ -36,8 +44,7 @@ The implementation used is determined by the config
 
 def _collect_entrypoints() -> list[Registry[Any]]:
     """Collects codecs, pipelines, buffers and ndbuffers from entrypoints"""
-    entry_points = get_entry_points()
-    for e in entry_points:
+    for e in cast(EntryPoints, get_entry_points()):
         if e.matches(group="zarr", name="codec_pipeline") or e.matches(group="zarr.codec_pipeline"):
             __pipeline_registry.lazy_load_list.append(e)
         if e.matches(group="zarr", name="buffer") or e.matches(group="zarr.buffer"):
@@ -67,21 +74,21 @@ def fully_qualified_name(cls: type) -> str:
 
 
 def register_codec(key: str, codec_cls: type[Codec]) -> None:
-    registry = __codec_registries.get(key, Registry())
-    registry[fully_qualified_name(codec_cls)] = codec_cls
-    __codec_registries[key] = registry
+    if key not in __codec_registries.keys():
+        __codec_registries[key] = Registry()
+    __codec_registries[key].register(codec_cls)
 
 
 def register_pipeline(pipe_cls: type[CodecPipeline]) -> None:
-    __pipeline_registry[fully_qualified_name(pipe_cls)] = pipe_cls
+    __pipeline_registry.register(pipe_cls)
 
 
 def register_ndbuffer(cls: type[NDBuffer]) -> None:
-    __ndbuffer_registry[fully_qualified_name(cls)] = cls
+    __ndbuffer_registry.register(cls)
 
 
 def register_buffer(cls: type[Buffer]) -> None:
-    __buffer_registry[fully_qualified_name(cls)] = cls
+    __buffer_registry.register(cls)
 
 
 def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
@@ -90,9 +97,7 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
 
     if key in __codec_registries:
         # logger.debug("Auto loading codec '%s' from entrypoint", codec_id)
-        for lazy_load_item in __codec_registries[key].lazy_load_list:
-            cls = lazy_load_item.load()
-            register_codec(key, cls)
+        __codec_registries[key].lazy_load()
 
     codec_classes = __codec_registries[key]
     if not codec_classes:
@@ -114,9 +119,7 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
 def get_pipeline_class(reload_config: bool = False) -> type[CodecPipeline]:
     if reload_config:
         _reload_config()
-    for e in __pipeline_registry.lazy_load_list:
-        __pipeline_registry.lazy_load_list.remove(e)
-        register_pipeline(e.load())
+    __pipeline_registry.lazy_load()
     path = config.get("codec_pipeline.path")
     pipeline_class = __pipeline_registry.get(path)
     if pipeline_class:
@@ -129,9 +132,8 @@ def get_pipeline_class(reload_config: bool = False) -> type[CodecPipeline]:
 def get_buffer_class(reload_config: bool = False) -> type[Buffer]:
     if reload_config:
         _reload_config()
-    for e in __buffer_registry.lazy_load_list:
-        __buffer_registry.lazy_load_list.remove(e)
-        register_buffer(e.load())
+    __buffer_registry.lazy_load()
+
     path = config.get("buffer")
     buffer_class = __buffer_registry.get(path)
     if buffer_class:
@@ -144,9 +146,7 @@ def get_buffer_class(reload_config: bool = False) -> type[Buffer]:
 def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
     if reload_config:
         _reload_config()
-    for e in __ndbuffer_registry.lazy_load_list:
-        __ndbuffer_registry.lazy_load_list.remove(e)
-        register_ndbuffer(e.load())
+    __ndbuffer_registry.lazy_load()
     path = config.get("ndbuffer")
     ndbuffer_class = __ndbuffer_registry.get(path)
     if ndbuffer_class:
