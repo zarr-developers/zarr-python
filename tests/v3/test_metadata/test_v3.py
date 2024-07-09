@@ -128,7 +128,7 @@ def test_parse_fill_value_complex_invalid(fill_value: Any, dtype_str: str) -> No
 @pytest.mark.parametrize("dtype_str", [*int_dtypes, *float_dtypes, *complex_dtypes])
 def test_parse_fill_value_invalid_type(fill_value: Any, dtype_str: str) -> None:
     """
-    Test that parse_fill_value(fill-value, dtype) raises TypeError for invalid non-sequential types.
+    Test that parse_fill_value(fill_value, dtype) raises TypeError for invalid non-sequential types.
     This test excludes bool because the bool constructor takes anything.
     """
     dtype = np.dtype(dtype_str)
