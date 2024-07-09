@@ -23,8 +23,7 @@ import numpy as np
 
 from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_key_encodings import ChunkKeyEncoding
-from zarr.codecs.registry import get_codec_class
-from zarr.common import JSON, ZARR_JSON, ChunkCoords, parse_named_configuration
+from zarr.common import JSON, ZARR_JSON, ChunkCoords
 from zarr.config import config
 from zarr.metadata.common import (
     ArrayMetadataBase,
@@ -32,6 +31,7 @@ from zarr.metadata.common import (
     ChunkGrid,
     RegularChunkGrid,
     parse_attributes,
+    parse_codecs,
     parse_dtype,
     parse_shapelike,
 )
@@ -101,28 +101,8 @@ def parse_node_type_array(data: Any) -> Literal["array"]:
     raise ValueError(f"Invalid value. Expected 'array'. Got {data}.")
 
 
-def parse_codecs(data: Any) -> tuple[Codec, ...]:
-    from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
-
-    out: tuple[Codec, ...] = ()
-
-    if not isinstance(data, Iterable):
-        raise TypeError(f"Expected iterable, got {type(data)}")
-
-    for c in data:
-        if isinstance(
-            c, ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
-        ):  # Can't use Codec here because of mypy limitation
-            out += (c,)
-        else:
-            name_parsed, _ = parse_named_configuration(c, require_configuration=False)
-            out += (get_codec_class(name_parsed).from_dict(c),)
-
-    return out
-
-
 @dataclass(frozen=True, kw_only=True)
-class ArrayV3Metadata(ArrayMetadataBase):
+class ArrayMetadata(ArrayMetadataBase):
     shape: ChunkCoords
     data_type: np.dtype[Any]
     chunk_grid: ChunkGrid
@@ -243,7 +223,7 @@ class ArrayV3Metadata(ArrayMetadataBase):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
+    def from_dict(cls, data: dict[str, JSON]) -> ArrayMetadata:
         # TODO: Remove the type: ignores[] comments below and use a TypedDict to type `data`
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(data.pop("zarr_format"))

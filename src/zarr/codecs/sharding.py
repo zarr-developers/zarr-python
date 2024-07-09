@@ -31,7 +31,6 @@ from zarr.common import (
 )
 from zarr.indexing import BasicIndexer, SelectorTuple, c_order_iter, get_indexer, morton_order_iter
 from zarr.metadata.common import ArraySpec, ChunkGrid, RegularChunkGrid, parse_shapelike
-from zarr.metadata.v3 import parse_codecs
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
@@ -307,6 +306,9 @@ class ShardingCodec(
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
         index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end,
     ) -> None:
+        # hack to avoid circular import. todo: fix this structurally
+        from zarr.metadata.common import parse_codecs
+
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
         index_codecs_parsed = parse_codecs(index_codecs)

@@ -43,7 +43,7 @@ def parse_compressor(data: dict[str, JSON] | None) -> dict[str, JSON] | None:
     return data
 
 
-def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
+def parse_metadata(data: ArrayMetadata) -> ArrayMetadata:
     if (l_chunks := len(data.chunks)) != (l_shape := len(data.shape)):
         msg = (
             f"The `shape` and `chunks` attributes must have the same length. "
@@ -54,7 +54,7 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
 
 
 @dataclass(frozen=True, kw_only=True)
-class ArrayV2Metadata(ArrayMetadataBase):
+class ArrayMetadata(ArrayMetadataBase):
     shape: ChunkCoords
     chunk_grid: RegularChunkGrid
     data_type: np.dtype[Any]
@@ -143,7 +143,7 @@ class ArrayV2Metadata(ArrayMetadataBase):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
+    def from_dict(cls, data: dict[str, Any]) -> ArrayMetadata:
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(data.pop("zarr_format"))
         return cls(**data)

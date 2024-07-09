@@ -6,6 +6,8 @@ from collections.abc import Iterable, Iterator
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Literal
 
+from zarr.abc.codec import Codec
+from zarr.codecs.registry import get_codec_class
 from zarr.common import (
     ChunkCoords,
     ChunkCoordsLike,
@@ -204,3 +206,23 @@ def parse_order(data: Any) -> Literal["C", "F"]:
     if data == "F":
         return "F"
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
+
+
+def parse_codecs(data: Any) -> tuple[Codec, ...]:
+    from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+
+    out: tuple[Codec, ...] = ()
+
+    if not isinstance(data, Iterable):
+        raise TypeError(f"Expected iterable, got {type(data)}")
+
+    for c in data:
+        if isinstance(
+            c, ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
+        ):  # Can't use Codec here because of mypy limitation
+            out += (c,)
+        else:
+            name_parsed, _ = parse_named_configuration(c, require_configuration=False)
+            out += (get_codec_class(name_parsed).from_dict(c),)
+
+    return out

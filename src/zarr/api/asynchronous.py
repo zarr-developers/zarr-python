@@ -8,14 +8,14 @@ from typing import Any, Literal, Union, cast
 import numpy as np
 import numpy.typing as npt
 
+import zarr.metadata.v2 as v2
+import zarr.metadata.v3 as v3
 from zarr.abc.codec import Codec
 from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
 from zarr.chunk_key_encodings import ChunkKeyEncoding
 from zarr.common import JSON, ChunkCoords, MemoryOrder, OpenMode, ZarrFormat
 from zarr.group import AsyncGroup
-from zarr.metadata.v2 import ArrayV2Metadata
-from zarr.metadata.v3 import ArrayV3Metadata
 from zarr.store import (
     StoreLike,
     make_store_path,
@@ -60,11 +60,11 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
 
     if isinstance(a, AsyncArray):
         new["order"] = a.order
-        if isinstance(a.metadata, ArrayV2Metadata):
+        if isinstance(a.metadata, v2.ArrayMetadata):
             new["compressor"] = a.metadata.compressor
             new["filters"] = a.metadata.filters
 
-        if isinstance(a.metadata, ArrayV3Metadata):
+        if isinstance(a.metadata, v3.ArrayMetadata):
             new["codecs"] = a.metadata.codecs
         else:
             raise ValueError(f"Unsupported zarr format: {a.metadata.zarr_format}")

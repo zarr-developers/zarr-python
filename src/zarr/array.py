@@ -17,6 +17,8 @@ from typing import Any, Literal, cast
 import numpy as np
 import numpy.typing as npt
 
+import zarr.metadata.v2 as v2
+import zarr.metadata.v3 as v3
 from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
@@ -59,28 +61,28 @@ from zarr.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.metadata.common import ArrayMetadataBase, RegularChunkGrid
-from zarr.metadata.v2 import ArrayV2Metadata
-from zarr.metadata.v3 import ArrayV3Metadata
+from zarr.metadata.common import RegularChunkGrid
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.sync import sync
 
 
-def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
-    if isinstance(data, ArrayV2Metadata | ArrayV3Metadata):
+def parse_array_metadata(data: Any) -> v2.ArrayMetadata | v3.ArrayMetadata:
+    if isinstance(data, v2.ArrayMetadata | v3.ArrayMetadata):
         return data
     elif isinstance(data, dict):
         if data["zarr_format"] == 3:
-            return ArrayV3Metadata.from_dict(data)
+            return v3.ArrayMetadata.from_dict(data)
         elif data["zarr_format"] == 2:
-            return ArrayV2Metadata.from_dict(data)
+            return v2.ArrayMetadata.from_dict(data)
     raise TypeError
 
 
-def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> BatchedCodecPipeline:
-    if isinstance(metadata, ArrayV3Metadata):
+def create_codec_pipeline(
+    metadata: v2.ArrayMetadata | v3.ArrayMetadata,
+) -> BatchedCodecPipeline:
+    if isinstance(metadata, v3.ArrayMetadata):
         return BatchedCodecPipeline.from_list(metadata.codecs)
-    elif isinstance(metadata, ArrayV2Metadata):
+    elif isinstance(metadata, v2.ArrayMetadata):
         return BatchedCodecPipeline.from_list(
             [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
         )
@@ -90,14 +92,14 @@ def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> Batche
 
 @dataclass(frozen=True)
 class AsyncArray:
-    metadata: ArrayMetadataBase
+    metadata: v2.ArrayMetadata | v3.ArrayMetadata
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
     order: Literal["C", "F"]
 
     def __init__(
         self,
-        metadata: ArrayMetadataBase,
+        metadata: v2.ArrayMetadata | v3.ArrayMetadata,
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
     ):
@@ -240,7 +242,7 @@ class AsyncArray:
                 else DefaultChunkKeyEncoding(separator=chunk_key_encoding[1])
             )
 
-        metadata = ArrayV3Metadata(
+        metadata = v3.ArrayMetadata(
             shape=shape,
             data_type=dtype,
             chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
@@ -283,7 +285,7 @@ class AsyncArray:
         if dimension_separator is None:
             dimension_separator = "."
 
-        metadata = ArrayV2Metadata(
+        metadata = v2.ArrayMetadata(
             shape=shape,
             dtype=np.dtype(dtype),
             chunks=chunks,
@@ -358,13 +360,13 @@ class AsyncArray:
             zarray_dict = json.loads(zarray_bytes.to_bytes())
             zattrs_dict = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
             zarray_dict["attributes"] = zattrs_dict
-            return cls(store_path=store_path, metadata=ArrayV2Metadata.from_dict(zarray_dict))
+            return cls(store_path=store_path, metadata=v2.ArrayMetadata.from_dict(zarray_dict))
         else:
             # V3 arrays are comprised of a zarr.json object
             assert zarr_json_bytes is not None
             return cls(
                 store_path=store_path,
-                metadata=ArrayV3Metadata.from_dict(json.loads(zarr_json_bytes.to_bytes())),
+                metadata=v3.ArrayMetadata.from_dict(json.loads(zarr_json_bytes.to_bytes())),
             )
 
     @property
@@ -478,7 +480,7 @@ class AsyncArray:
         )
         return await self._get_selection(indexer, prototype=prototype)
 
-    async def _save_metadata(self, metadata: ArrayMetadataBase) -> None:
+    async def _save_metadata(self, metadata: v2.ArrayMetadata | v3.ArrayMetadata) -> None:
         to_save = metadata.to_buffer_dict()
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await gather(*awaitables)
@@ -695,7 +697,7 @@ class Array:
         return self._async_array.basename
 
     @property
-    def metadata(self) -> ArrayMetadataBase:
+    def metadata(self) -> v2.ArrayMetadata | v3.ArrayMetadata:
         return self._async_array.metadata
 
     @property
