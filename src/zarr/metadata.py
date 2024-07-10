@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -32,7 +32,6 @@ from zarr.common import (
     ChunkCoords,
     ZarrFormat,
     parse_dtype,
-    parse_fill_value,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -189,7 +188,7 @@ class ArrayV3Metadata(ArrayMetadata):
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
-        fill_value_parsed = parse_fill_value(fill_value)
+        fill_value_parsed = parse_fill_value_v3(fill_value, dtype=data_type_parsed)
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
 
@@ -255,9 +254,18 @@ class ArrayV3Metadata(ArrayMetadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self) -> dict[str, Buffer]:
-        def _json_convert(o: np.dtype[Any] | Enum | Codec) -> str | dict[str, Any]:
+        def _json_convert(o: Any) -> Any:
             if isinstance(o, np.dtype):
                 return str(o)
+            if np.isscalar(o):
+                # convert numpy scalar to python type, and pass
+                # python types through
+                out = getattr(o, "item", lambda: o)()
+                if isinstance(out, complex):
+                    # python complex types are not JSON serializable, so we use the
+                    # serialization defined in the zarr v3 spec
+                    return [out.real, out.imag]
+                return out
             if isinstance(o, Enum):
                 return o.name
             # this serializes numcodecs compressors
@@ -341,7 +349,7 @@ class ArrayV2Metadata(ArrayMetadata):
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
         filters_parsed = parse_filters(filters)
-        fill_value_parsed = parse_fill_value(fill_value)
+        fill_value_parsed = parse_fill_value_v2(fill_value, dtype=data_type_parsed)
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
@@ -371,13 +379,17 @@ class ArrayV2Metadata(ArrayMetadata):
 
     def to_buffer_dict(self) -> dict[str, Buffer]:
         def _json_convert(
-            o: np.dtype[Any],
-        ) -> str | list[tuple[str, str] | tuple[str, str, tuple[int, ...]]]:
+            o: Any,
+        ) -> Any:
             if isinstance(o, np.dtype):
                 if o.fields is None:
                     return o.str
                 else:
                     return o.descr
+            if np.isscalar(o):
+                # convert numpy scalar to python type, and pass
+                # python types through
+                return getattr(o, "item", lambda: o)()
             raise TypeError
 
         zarray_dict = self.to_dict()
@@ -517,3 +529,105 @@ def parse_codecs(data: Iterable[Codec | dict[str, JSON]]) -> tuple[Codec, ...]:
             out += (get_codec_class(name_parsed).from_dict(c),)
 
     return out
+
+
+def parse_fill_value_v2(fill_value: Any, dtype: np.dtype[Any]) -> Any:
+    """
+    Parse a potential fill value into a value that is compatible with the provided dtype.
+
+    This is a light wrapper around zarr.v2.util.normalize_fill_value.
+
+    Parameters
+    ----------
+    fill_value: Any
+        A potential fill value.
+    dtype: np.dtype[Any]
+        A numpy dtype.
+
+    Returns
+        An instance of `dtype`, or `None`, or any python object (in the case of an object dtype)
+    """
+    from zarr.v2.util import normalize_fill_value
+
+    return normalize_fill_value(fill_value=fill_value, dtype=dtype)
+
+
+BOOL = np.bool_
+BOOL_DTYPE = np.dtypes.BoolDType
+
+INTEGER_DTYPE = (
+    np.dtypes.Int8DType
+    | np.dtypes.Int16DType
+    | np.dtypes.Int32DType
+    | np.dtypes.Int64DType
+    | np.dtypes.UByteDType
+    | np.dtypes.UInt16DType
+    | np.dtypes.UInt32DType
+    | np.dtypes.UInt64DType
+)
+
+INTEGER = np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64
+FLOAT_DTYPE = np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float64DType
+FLOAT = np.float16 | np.float32 | np.float64
+COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
+COMPLEX = np.complex64 | np.complex128
+# todo: r* dtypes
+
+
+@overload
+def parse_fill_value_v3(fill_value: Any, dtype: BOOL_DTYPE) -> BOOL: ...
+
+
+@overload
+def parse_fill_value_v3(fill_value: Any, dtype: INTEGER_DTYPE) -> INTEGER: ...
+
+
+@overload
+def parse_fill_value_v3(fill_value: Any, dtype: FLOAT_DTYPE) -> FLOAT: ...
+
+
+@overload
+def parse_fill_value_v3(fill_value: Any, dtype: COMPLEX_DTYPE) -> COMPLEX: ...
+
+
+def parse_fill_value_v3(
+    fill_value: Any, dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE
+) -> BOOL | INTEGER | FLOAT | COMPLEX:
+    """
+    Parse `fill_value`, a potential fill value, into an instance of `dtype`, a data type.
+    If `fill_value` is `None`, then this function will return the result of casting the value 0
+    to the provided data type. Otherwise, `fill_value` will be cast to the provided data type.
+
+    Note that some numpy dtypes use very permissive casting rules. For example,
+    `np.bool_({'not remotely a bool'})` returns `True`. Thus this function should not be used for
+    validating that the provided fill value is a valid instance of the data type.
+
+    Parameters
+    ----------
+    fill_value: Any
+        A potential fill value.
+    dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE
+        A numpy data type that models a data type defined in the Zarr V3 specification.
+
+    Returns
+    -------
+    A scalar instance of `dtype`
+    """
+    if fill_value is None:
+        return dtype.type(0)
+    if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
+        if dtype in (np.complex64, np.complex128):
+            dtype = cast(COMPLEX_DTYPE, dtype)
+            if len(fill_value) == 2:
+                # complex datatypes serialize to JSON arrays with two elements
+                return dtype.type(complex(*fill_value))
+            else:
+                msg = (
+                    f"Got an invalid fill value for complex data type {dtype}."
+                    f"Expected a sequence with 2 elements, but {fill_value} has "
+                    f"length {len(fill_value)}."
+                )
+                raise ValueError(msg)
+        msg = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}."
+        raise TypeError(msg)
+    return dtype.type(fill_value)

@@ -715,6 +715,10 @@ class Array:
     def read_only(self) -> bool:
         return self._async_array.read_only
 
+    @property
+    def fill_value(self) -> Any:
+        return self.metadata.fill_value
+
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
     ) -> NDArrayLike:
