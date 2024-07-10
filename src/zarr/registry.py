@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import warnings
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 if TYPE_CHECKING:
     from zarr.abc.codec import Codec, CodecPipeline
     from zarr.buffer import Buffer, NDBuffer
 
-from importlib.metadata import EntryPoint, EntryPoints
+from importlib.metadata import EntryPoint
 from importlib.metadata import entry_points as get_entry_points
 
 from zarr.config import BadConfigError, config
@@ -43,19 +43,41 @@ The implementation used is determined by the config
 
 
 def _collect_entrypoints() -> list[Registry[Any]]:
-    """Collects codecs, pipelines, buffers and ndbuffers from entrypoints"""
-    for e in cast(EntryPoints, get_entry_points()):
-        if e.matches(group="zarr", name="codec_pipeline") or e.matches(group="zarr.codec_pipeline"):
-            __pipeline_registry.lazy_load_list.append(e)
-        if e.matches(group="zarr", name="buffer") or e.matches(group="zarr.buffer"):
-            __buffer_registry.lazy_load_list.append(e)
-        if e.matches(group="zarr", name="ndbuffer") or e.matches(group="zarr.ndbuffer"):
-            __ndbuffer_registry.lazy_load_list.append(e)
-        if e.matches(group="zarr.codecs"):
-            __codec_registries[e.name].lazy_load_list.append(e)
-        if e.group.startswith("zarr.codecs."):
-            codec_name = e.group.split(".")[2]
-            __codec_registries[codec_name].lazy_load_list.append(e)
+    """
+    Collects codecs, pipelines, buffers and ndbuffers from entrypoints.
+    Allowed syntax for entry_points.txt is e.g.
+
+        [zarr.codecs]
+        gzip = package:EntrypointGzipCodec1
+        [zarr.codecs.gzip]
+        some_name = package:EntrypointGzipCodec2
+        another = package:EntrypointGzipCodec3
+
+        [zarr]
+        buffer = package:TestBuffer1
+        [zarr.buffer]
+        xyz = package:TestBuffer2
+        abc = package:TestBuffer3
+        ...
+    """
+    entry_points = get_entry_points()
+    __pipeline_registry.lazy_load_list.extend(
+        entry_points.select(group="zarr", name="codec_pipeline")
+        + entry_points.select(group="zarr.codec_pipeline")
+    )
+    __buffer_registry.lazy_load_list.extend(
+        entry_points.select(group="zarr", name="buffer") + entry_points.select(group="zarr.buffer")
+    )
+    __ndbuffer_registry.lazy_load_list.extend(
+        entry_points.select(group="zarr", name="ndbuffer")
+        + entry_points.select(group="zarr.ndbuffer")
+    )
+    for e in entry_points.select(group="zarr.codecs"):
+        __codec_registries[e.name].lazy_load_list.append(e)
+    for group in entry_points.groups:
+        if group.startswith("zarr.codecs."):
+            codec_name = group.split(".")[2]
+            __codec_registries[codec_name].lazy_load_list.extend(entry_points.select(group=group))
     return [
         *__codec_registries.values(),
         __pipeline_registry,
