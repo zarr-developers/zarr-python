@@ -594,21 +594,20 @@ def parse_fill_value_v3(
     fill_value: Any, dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE
 ) -> BOOL | INTEGER | FLOAT | COMPLEX:
     """
-    Parse a potential fill value into a value that is compatible with the provided dtype.
-    If fill_value is None, then this function will return the result of casting the value 0
-    to the provided dtype. Otherwise, the provided `fill_value` will be cast to the provided
-    `dtype`.
+    Parse `fill_value`, a potential fill value, into an instance of `dtype`, a data type.
+    If `fill_value` is `None`, then this function will return the result of casting the value 0
+    to the provided data type. Otherwise, `fill_value` will be cast to the provided data type.
 
     Note that some numpy dtypes use very permissive casting rules. For example,
     `np.bool_({'not remotely a bool'})` returns `True`. Thus this function should not be used for
-    validating that the provided fill value is a valid instance of the dtype.
+    validating that the provided fill value is a valid instance of the data type.
 
     Parameters
     ----------
     fill_value: Any
         A potential fill value.
     dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE
-        A numpy datatype that models one of the datatypes defined in the Zarr V3 specification.
+        A numpy data type that models a data type defined in the Zarr V3 specification.
 
     Returns
     -------

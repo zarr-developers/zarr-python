@@ -74,7 +74,7 @@ def test_parse_auto_fill_value(dtype_str: str) -> None:
 @pytest.mark.parametrize("dtype_str", dtypes)
 def test_parse_fill_value_valid(fill_value: Any, dtype_str: str) -> None:
     """
-    Test that parse_fill_value(fill-value, dtype) casts fill_value to the given dtype.
+    Test that parse_fill_value(fill_value, dtype) casts fill_value to the given dtype.
     """
     dtype = np.dtype(dtype_str)
     assert parse_fill_value(fill_value, dtype) == dtype.type(fill_value)
@@ -149,8 +149,9 @@ def test_parse_fill_value_invalid_type(fill_value: Any, dtype_str: str) -> None:
 @pytest.mark.parametrize("dtype_str", [*int_dtypes, *float_dtypes])
 def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str) -> None:
     """
-    Test that parse_fill_value(fill-value, dtype) raises TypeError for invalid sequential types.
-    This test excludes bool because the bool constructor takes anything.
+    Test that parse_fill_value(fill_value, dtype) raises TypeError for invalid sequential types.
+    This test excludes bool because the bool constructor takes anything, and complex because
+    complex values can be created from length-2 sequences.
     """
     dtype = np.dtype(dtype_str)
     match = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}"
