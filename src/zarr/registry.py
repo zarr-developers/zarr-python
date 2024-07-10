@@ -61,16 +61,14 @@ def _collect_entrypoints() -> list[Registry[Any]]:
         ...
     """
     entry_points = get_entry_points()
+
+    __buffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.buffer"))
+    __buffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="buffer"))
+    __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr.ndbuffer"))
+    __ndbuffer_registry.lazy_load_list.extend(entry_points.select(group="zarr", name="ndbuffer"))
+    __pipeline_registry.lazy_load_list.extend(entry_points.select(group="zarr.codec_pipeline"))
     __pipeline_registry.lazy_load_list.extend(
         entry_points.select(group="zarr", name="codec_pipeline")
-        + entry_points.select(group="zarr.codec_pipeline")
-    )
-    __buffer_registry.lazy_load_list.extend(
-        entry_points.select(group="zarr", name="buffer") + entry_points.select(group="zarr.buffer")
-    )
-    __ndbuffer_registry.lazy_load_list.extend(
-        entry_points.select(group="zarr", name="ndbuffer")
-        + entry_points.select(group="zarr.ndbuffer")
     )
     for e in entry_points.select(group="zarr.codecs"):
         __codec_registries[e.name].lazy_load_list.append(e)
