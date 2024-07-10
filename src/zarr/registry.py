@@ -45,6 +45,7 @@ The implementation used is determined by the config
 def _collect_entrypoints() -> list[Registry[Any]]:
     """
     Collects codecs, pipelines, buffers and ndbuffers from entrypoints.
+    Entry points can either be single items or groups of items.
     Allowed syntax for entry_points.txt is e.g.
 
         [zarr.codecs]
