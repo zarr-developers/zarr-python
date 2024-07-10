@@ -473,6 +473,10 @@ class ShardingCodec(
             shard_dict = {}
             for chunk_coords in all_chunk_coords:
                 chunk_byte_slice = shard_index.get_chunk_slice(chunk_coords)
+                # the byte_getter wants the start index and total length to read
+                # but chunk_byte_slice is the start and end index
+                chunk_byte_slice = (chunk_byte_slice[0],
+                                    chunk_byte_slice[1] - chunk_byte_slice[0])
                 if chunk_byte_slice:
                     chunk_bytes = await byte_getter.get(
                         prototype=chunk_spec.prototype, byte_range=chunk_byte_slice
