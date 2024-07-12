@@ -283,7 +283,10 @@ class NDBuffer:
 
     def __init__(self, array: NDArrayLike):
         # assert array.ndim > 0
-        assert array.dtype != object
+
+        # Commented this out because string arrays have dtype object
+        # TODO: decide how to handle strings (e.g. numpy 2.0 StringDtype)
+        # assert array.dtype != object
         self._data = array
 
     @classmethod
