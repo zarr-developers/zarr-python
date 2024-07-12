@@ -44,7 +44,7 @@ class ArrowRecordBatchCodec(ArrayBytesCodec):
         assert isinstance(chunk_bytes, Buffer)
 
         # TODO: make this compatible with buffer prototype
-        arrow_buffer = pa.py_buffer(chunk_bytes.to_bytes())
+        arrow_buffer = memoryview(chunk_bytes.to_bytes())
         with pa.ipc.open_stream(arrow_buffer) as reader:
             batches = [b for b in reader]
         assert len(batches) == 1
