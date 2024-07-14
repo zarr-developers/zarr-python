@@ -403,7 +403,7 @@ class AsyncArray:
 
     @property
     def read_only(self) -> bool:
-        return bool(~self.store_path.store.writeable)
+        return bool(not self.store_path.store.writeable)
 
     @property
     def path(self) -> str:
@@ -714,6 +714,10 @@ class Array:
     @property
     def read_only(self) -> bool:
         return self._async_array.read_only
+
+    @property
+    def fill_value(self) -> Any:
+        return self.metadata.fill_value
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
