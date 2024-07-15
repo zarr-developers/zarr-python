@@ -10,6 +10,7 @@ from typing import (
     NamedTuple,
     Protocol,
     SupportsIndex,
+    cast,
     runtime_checkable,
 )
 
@@ -144,7 +145,11 @@ class Buffer(ABC):
         -------
             New empty 0-length buffer
         """
-        ...
+        if cls is Buffer:
+            raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
+        return cls(
+            cast(ArrayLike, None)
+        )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
     def from_array_like(cls, array_like: ArrayLike) -> Self:
@@ -188,7 +193,11 @@ class Buffer(ABC):
         Subclasses of `Buffer` must override this method to implement
         more optimal conversions that avoid copies where possible
         """
-        ...
+        if cls is Buffer:
+            raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
+        return cls(
+            cast(ArrayLike, None)
+        )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
     @abstractmethod
@@ -204,7 +213,11 @@ class Buffer(ABC):
         -------
             New buffer representing `bytes_like`
         """
-        ...
+        if cls is Buffer:
+            raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
+        return cls(
+            cast(ArrayLike, None)
+        )  # This line will never be reached, but it satisfies the type checker
 
     def as_array_like(self) -> ArrayLike:
         """Returns the underlying array (host or device memory) of this buffer
@@ -325,7 +338,13 @@ class NDBuffer:
         A subclass can overwrite this method to create a ndarray-like object
         other then the default Numpy array.
         """
-        ...
+        if cls is NDBuffer:
+            raise NotImplementedError(
+                "Cannot call abstract method on the abstract class 'NDBuffer'"
+            )
+        return cls(
+            cast(NDArrayLike, None)
+        )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
     def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
@@ -356,7 +375,13 @@ class NDBuffer:
         -------
             New buffer representing `array_like`
         """
-        ...
+        if cls is NDBuffer:
+            raise NotImplementedError(
+                "Cannot call abstract method on the abstract class 'NDBuffer'"
+            )
+        return cls(
+            cast(NDArrayLike, None)
+        )  # This line will never be reached, but it satisfies the type checker
 
     def as_ndarray_like(self) -> NDArrayLike:
         """Returns the underlying array (host or device memory) of this buffer

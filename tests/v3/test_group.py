@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from zarr.array import AsyncArray
-from zarr.buffer import Buffer
+from zarr.buffer import default_buffer_prototype
 from zarr.store.core import make_store_path
 from zarr.sync import sync
 
@@ -45,11 +45,16 @@ def test_group_children(store: MemoryStore | LocalStore) -> None:
 
     # add an extra object to the domain of the group.
     # the list of children should ignore this object.
-    sync(store.set(f"{path}/extra_object-1", Buffer.from_bytes(b"000000")))
+    sync(store.set(f"{path}/extra_object-1", default_buffer_prototype.buffer.from_bytes(b"000000")))
     # add an extra object under a directory-like prefix in the domain of the group.
     # this creates a directory with a random key in it
     # this should not show up as a member
-    sync(store.set(f"{path}/extra_directory/extra_object-2", Buffer.from_bytes(b"000000")))
+    sync(
+        store.set(
+            f"{path}/extra_directory/extra_object-2",
+            default_buffer_prototype.buffer.from_bytes(b"000000"),
+        )
+    )
     members_observed = group.members
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
