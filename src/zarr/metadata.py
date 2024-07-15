@@ -269,7 +269,7 @@ class ArrayV3Metadata(ArrayMetadata):
 
         json_indent = config.get("json_indent")
         return {
-            ZARR_JSON: Buffer.from_bytes(
+            ZARR_JSON: default_buffer_prototype.buffer.from_bytes(
                 json.dumps(self.to_dict(), default=_json_convert, indent=json_indent).encode()
             )
         }
@@ -386,10 +386,12 @@ class ArrayV2Metadata(ArrayMetadata):
         assert isinstance(zattrs_dict, dict)
         json_indent = config.get("json_indent")
         return {
-            ZARRAY_JSON: Buffer.from_bytes(
+            ZARRAY_JSON: default_buffer_prototype.buffer.from_bytes(
                 json.dumps(zarray_dict, default=_json_convert, indent=json_indent).encode()
             ),
-            ZATTRS_JSON: Buffer.from_bytes(json.dumps(zattrs_dict, indent=json_indent).encode()),
+            ZATTRS_JSON: default_buffer_prototype.buffer.from_bytes(
+                json.dumps(zattrs_dict, indent=json_indent).encode()
+            ),
         }
 
     @classmethod

@@ -14,7 +14,7 @@ from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
 from zarr.array import Array, AsyncArray
 from zarr.attributes import Attributes
-from zarr.buffer import Buffer
+from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.chunk_key_encodings import ChunkKeyEncoding
 from zarr.common import (
     JSON,
@@ -83,16 +83,16 @@ class GroupMetadata(Metadata):
         json_indent = config.get("json_indent")
         if self.zarr_format == 3:
             return {
-                ZARR_JSON: Buffer.from_bytes(
+                ZARR_JSON: default_buffer_prototype.buffer.from_bytes(
                     json.dumps(self.to_dict(), indent=json_indent).encode()
                 )
             }
         else:
             return {
-                ZGROUP_JSON: Buffer.from_bytes(
+                ZGROUP_JSON: default_buffer_prototype.buffer.from_bytes(
                     json.dumps({"zarr_format": self.zarr_format}, indent=json_indent).encode()
                 ),
-                ZATTRS_JSON: Buffer.from_bytes(
+                ZATTRS_JSON: default_buffer_prototype.buffer.from_bytes(
                     json.dumps(self.attributes, indent=json_indent).encode()
                 ),
             }
