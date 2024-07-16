@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from zarr.array import AsyncArray
+from zarr.array import Array, AsyncArray
 from zarr.buffer import Buffer
 from zarr.store.core import make_store_path
 from zarr.sync import sync
@@ -32,12 +32,12 @@ def test_group_children(store: MemoryStore | LocalStore) -> None:
         store_path=StorePath(store=store, path=path),
     )
     group = Group(agroup)
-    members_expected = {}
+    members_expected: dict[str, Array | Group] = {}
 
     members_expected["subgroup"] = group.create_group("subgroup")
     # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
     # too deep in the hierarchy
-    _ = members_expected["subgroup"].create_group("subsubgroup")
+    _ = members_expected["subgroup"].create_group("subsubgroup")  # type: ignore
 
     members_expected["subarray"] = group.create_array(
         "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
@@ -112,6 +112,107 @@ def test_group_create(store: MemoryStore | LocalStore, exists_ok: bool) -> None:
                 attributes=attributes,
                 exists_ok=exists_ok,
             )
+
+
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("exists_ok", (True, False))
+def test_group_open(
+    store: MemoryStore | LocalStore, zarr_format: ZarrFormat, exists_ok: bool
+) -> None:
+    """
+    Test the Group.open method.
+    """
+    spath = StorePath(store)
+    # attempt to open a group that does not exist
+    with pytest.raises(FileNotFoundError):
+        Group.open(store)
+
+    # create the group
+    attrs = {"path": "foo"}
+    group_created = Group.create(
+        store, attributes=attrs, zarr_format=zarr_format, exists_ok=exists_ok
+    )
+    assert group_created.attrs == attrs
+    assert group_created.metadata.zarr_format == zarr_format
+    assert group_created.store_path == spath
+
+    # attempt to create a new group in place, to test exists_ok
+    new_attrs = {"path": "bar"}
+    if not exists_ok:
+        with pytest.raises(AssertionError):
+            Group.create(store, attributes=attrs, zarr_format=zarr_format, exists_ok=exists_ok)
+    else:
+        group_created_again = Group.create(
+            store, attributes=new_attrs, zarr_format=zarr_format, exists_ok=exists_ok
+        )
+        assert group_created_again.attrs == new_attrs
+        assert group_created_again.metadata.zarr_format == zarr_format
+        assert group_created_again.store_path == spath
+
+
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_group_getitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test the Group.__getitem__ method.
+    """
+
+    group = Group.create(store, zarr_format=zarr_format)
+    subgroup = group.create_group(name="subgroup")
+    subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+
+    assert group["subgroup"] == subgroup
+    assert group["subarray"] == subarray
+    with pytest.raises(KeyError):
+        group["nope"]
+
+
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_group_delitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test the Group.__delitem__ method.
+    """
+
+    group = Group.create(store, zarr_format=zarr_format)
+    subgroup = group.create_group(name="subgroup")
+    subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+
+    assert group["subgroup"] == subgroup
+    assert group["subarray"] == subarray
+
+    del group["subgroup"]
+    with pytest.raises(KeyError):
+        group["subgroup"]
+
+    del group["subarray"]
+    with pytest.raises(KeyError):
+        group["subarray"]
+
+
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_group_iter(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test the Group.__iter__ method.
+    """
+
+    group = Group.create(store, zarr_format=zarr_format)
+    with pytest.raises(NotImplementedError):
+        [x for x in group]  # type: ignore
+
+
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_group_len(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test Group__len__.
+    """
+
+    group = Group.create(store, zarr_format=zarr_format)
+    with pytest.raises(NotImplementedError):
+        len(group)  # type: ignore
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
