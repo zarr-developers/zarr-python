@@ -98,8 +98,6 @@ def tmppath(tmpdir):
 
 def test_open_with_mode_r(tmppath) -> None:
     # 'r' means read only (must exist)
-    import zarr
-
     with pytest.raises(FileNotFoundError):
         zarr.open(store=tmppath, mode="r")
     zarr.ones(store=tmppath, shape=(3, 3))
@@ -111,8 +109,6 @@ def test_open_with_mode_r(tmppath) -> None:
 
 def test_open_with_mode_r_plus(tmppath) -> None:
     # 'r+' means read/write (must exist)
-    import zarr
-
     with pytest.raises(FileNotFoundError):
         zarr.open(store=tmppath, mode="r+")
     zarr.ones(store=tmppath, shape=(3, 3))
@@ -123,8 +119,6 @@ def test_open_with_mode_r_plus(tmppath) -> None:
 
 def test_open_with_mode_a(tmppath) -> None:
     # 'a' means read/write (create if doesn't exist)
-    import zarr
-
     zarr.open(store=tmppath, mode="a", shape=(3, 3))[...] = 1
     z2 = zarr.open(store=tmppath, mode="a")
     assert (z2[:] == 1).all()
@@ -133,8 +127,6 @@ def test_open_with_mode_a(tmppath) -> None:
 
 def test_open_with_mode_w(tmppath) -> None:
     # 'w' means create (overwrite if exists);
-    import zarr
-
     zarr.open(store=tmppath, mode="w", shape=(3, 3))[...] = 3
     z2 = zarr.open(store=tmppath, mode="w", shape=(3, 3))
     assert not (z2[:] == 3).all()
@@ -143,8 +135,6 @@ def test_open_with_mode_w(tmppath) -> None:
 
 def test_open_with_mode_w_minus(tmppath) -> None:
     # 'w-' means create  (fail if exists)
-    import zarr
-
     zarr.open(store=tmppath, mode="w-", shape=(3, 3))[...] = 1
     with pytest.raises(FileExistsError):
         zarr.open(store=tmppath, mode="w-")
