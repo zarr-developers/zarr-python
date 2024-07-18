@@ -41,7 +41,7 @@ class Store(ABC):
         return store
 
     async def _open(self) -> None:
-        if await self.root_exists():
+        if not await self.empty():
             if self.mode.update or self.mode.readonly:
                 pass
             elif self.mode.overwrite:
@@ -55,7 +55,7 @@ class Store(ABC):
             await self._open()
 
     @abstractmethod
-    async def root_exists(self) -> bool: ...
+    async def empty(self) -> bool: ...
 
     @abstractmethod
     async def clear(self) -> None: ...

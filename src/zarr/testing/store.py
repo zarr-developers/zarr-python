@@ -32,7 +32,7 @@ class StoreTests(Generic[S]):
 
     @pytest.fixture(scope="function")
     def store_kwargs(self) -> dict[str, Any]:
-        return {"mode": "w"}
+        return {"mode": "r+"}
 
     @pytest.fixture(scope="function")
     async def store(self, store_kwargs: dict[str, Any]) -> Store:
@@ -43,7 +43,7 @@ class StoreTests(Generic[S]):
         assert isinstance(store, self.store_cls)
 
     def test_store_mode(self, store: S, store_kwargs: dict[str, Any]) -> None:
-        assert store.mode == AccessMode.from_literal("w")
+        assert store.mode == AccessMode.from_literal("r+")
         assert not store.mode.readonly
 
         with pytest.raises(AttributeError):
@@ -151,6 +151,16 @@ class StoreTests(Generic[S]):
         assert await store.exists("foo/zarr.json")
         await store.delete("foo/zarr.json")
         assert not await store.exists("foo/zarr.json")
+
+    async def test_empty(self, store, store_kwargs, tmpdir) -> None:
+        assert await store.empty()
+        self.set(store, "key", Buffer.from_bytes(bytes("something", encoding="utf-8")))
+        assert not await store.empty()
+
+    async def test_clear(self, store) -> None:
+        self.set(store, "key", Buffer.from_bytes(bytes("something", encoding="utf-8")))
+        await store.clear()
+        assert await store.empty()
 
     async def test_list(self, store: S) -> None:
         assert [k async for k in store.list()] == []

@@ -104,7 +104,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
     def store_kwargs(self, request) -> dict[str, str | bool]:
         url = f"s3://{test_bucket_name}"
         anon = False
-        mode = "w"
+        mode = "r+"
         if request.param == "use_upath":
             return {"mode": mode, "url": UPath(url, endpoint_url=endpoint_url, anon=anon)}
         elif request.param == "use_str":

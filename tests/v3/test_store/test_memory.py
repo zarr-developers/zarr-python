@@ -18,7 +18,7 @@ class TestMemoryStore(StoreTests[MemoryStore]):
 
     @pytest.fixture(scope="function", params=[None, {}])
     def store_kwargs(self, request) -> dict[str, str | None | dict[str, Buffer]]:
-        return {"store_dict": request.param, "mode": "w"}
+        return {"store_dict": request.param, "mode": "r+"}
 
     @pytest.fixture(scope="function")
     def store(self, store_kwargs: str | None | dict[str, Buffer]) -> MemoryStore:

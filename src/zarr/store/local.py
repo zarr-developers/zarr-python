@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 import shutil
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -81,9 +82,14 @@ class LocalStore(Store):
     async def clear(self) -> None:
         self._check_writable()
         shutil.rmtree(self.root)
+        self.root.mkdir()
 
-    async def root_exists(self) -> bool:
-        return self.root.exists()
+    async def empty(self) -> bool:
+        try:
+            subpaths = os.listdir(self.root)
+            return not subpaths
+        except FileNotFoundError:
+            return True
 
     def __str__(self) -> str:
         return f"file://{self.root}"
