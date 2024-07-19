@@ -1,26 +1,77 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
-from zarr.array import Array, AsyncArray
-from zarr.buffer import Buffer
-from zarr.store.core import make_store_path
-from zarr.sync import sync
-
-if TYPE_CHECKING:
-    from zarr.common import ZarrFormat
-    from zarr.store import LocalStore, MemoryStore
+from typing import Any, cast
 
 import numpy as np
 import pytest
+from _pytest.compat import LEGACY_PATH
 
+from zarr.array import Array, AsyncArray
+from zarr.buffer import Buffer
+from zarr.common import ZarrFormat
+from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.group import AsyncGroup, Group, GroupMetadata
-from zarr.store import StorePath
+from zarr.store import LocalStore, MemoryStore, StorePath
+from zarr.store.core import make_store_path
+from zarr.sync import sync
+
+from .conftest import parse_store
 
 
-# todo: put RemoteStore in here
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-def test_group_children(store: MemoryStore | LocalStore) -> None:
+@pytest.fixture(params=["local", "memory"])
+def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> LocalStore | MemoryStore:
+    result = parse_store(request.param, str(tmpdir))
+    if not isinstance(result, MemoryStore | LocalStore):
+        raise TypeError("Wrong store class returned by test fixture!")
+    return result
+
+
+@pytest.fixture(params=[True, False])
+def exists_ok(request: pytest.FixtureRequest) -> bool:
+    result = request.param
+    if not isinstance(result, bool):
+        raise TypeError("Wrong type returned by test fixture.")
+    return result
+
+
+@pytest.fixture(params=[2, 3], ids=["zarr2", "zarr3"])
+def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
+    result = request.param
+    if result not in (2, 3):
+        raise ValueError("Wrong value returned from test fixture.")
+    return cast(ZarrFormat, result)
+
+
+def test_group_init(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test that initializing a group from an asyncgroup works.
+    """
+    agroup = sync(AsyncGroup.create(store=store, zarr_format=zarr_format))
+    group = Group(agroup)
+    assert group._async_group == agroup
+
+
+def test_group_name_properties(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test basic properties of groups
+    """
+    root = Group.create(store=store, zarr_format=zarr_format)
+    assert root.path == ""
+    assert root.name == "/"
+    assert root.basename == ""
+
+    foo = root.create_group("foo")
+    assert foo.path == "foo"
+    assert foo.name == "/foo"
+    assert foo.basename == "foo"
+
+    bar = root.create_group("foo/bar")
+    assert bar.path == "foo/bar"
+    assert bar.name == "/foo/bar"
+    assert bar.basename == "bar"
+
+
+def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
     """
     Test that `Group.members` returns correct values, i.e. the arrays and groups
     (explicit and implicit) contained in that group.
@@ -28,7 +79,7 @@ def test_group_children(store: MemoryStore | LocalStore) -> None:
 
     path = "group"
     agroup = AsyncGroup(
-        metadata=GroupMetadata(),
+        metadata=GroupMetadata(zarr_format=zarr_format),
         store_path=StorePath(store=store, path=path),
     )
     group = Group(agroup)
@@ -55,12 +106,15 @@ def test_group_children(store: MemoryStore | LocalStore) -> None:
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
 
-@pytest.mark.parametrize("store", (("local", "memory")), indirect=["store"])
-def test_group(store: MemoryStore | LocalStore) -> None:
+def test_group(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test basic Group routines.
+    """
     store_path = StorePath(store)
-    agroup = AsyncGroup(metadata=GroupMetadata(), store_path=store_path)
+    agroup = AsyncGroup(metadata=GroupMetadata(zarr_format=zarr_format), store_path=store_path)
     group = Group(agroup)
     assert agroup.metadata is group.metadata
+    assert agroup.store_path == group.store_path == store_path
 
     # create two groups
     foo = group.create_group("foo")
@@ -94,34 +148,29 @@ def test_group(store: MemoryStore | LocalStore) -> None:
     assert dict(bar3.attrs) == {"baz": "qux", "name": "bar"}
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("exists_ok", (True, False))
-def test_group_create(store: MemoryStore | LocalStore, exists_ok: bool) -> None:
+def test_group_create(
+    store: MemoryStore | LocalStore, exists_ok: bool, zarr_format: ZarrFormat
+) -> None:
     """
     Test that `Group.create` works as expected.
     """
     attributes = {"foo": 100}
-    group = Group.create(store, attributes=attributes, exists_ok=exists_ok)
+    group = Group.create(store, attributes=attributes, zarr_format=zarr_format, exists_ok=exists_ok)
 
     assert group.attrs == attributes
 
     if not exists_ok:
-        with pytest.raises(AssertionError):
+        with pytest.raises(ContainsGroupError):
             group = Group.create(
-                store,
-                attributes=attributes,
-                exists_ok=exists_ok,
+                store, attributes=attributes, exists_ok=exists_ok, zarr_format=zarr_format
             )
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize("exists_ok", (True, False))
 def test_group_open(
     store: MemoryStore | LocalStore, zarr_format: ZarrFormat, exists_ok: bool
 ) -> None:
     """
-    Test the Group.open method.
+    Test the `Group.open` method.
     """
     spath = StorePath(store)
     # attempt to open a group that does not exist
@@ -140,7 +189,7 @@ def test_group_open(
     # attempt to create a new group in place, to test exists_ok
     new_attrs = {"path": "bar"}
     if not exists_ok:
-        with pytest.raises(AssertionError):
+        with pytest.raises(ContainsGroupError):
             Group.create(store, attributes=attrs, zarr_format=zarr_format, exists_ok=exists_ok)
     else:
         group_created_again = Group.create(
@@ -151,11 +200,9 @@ def test_group_open(
         assert group_created_again.store_path == spath
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_group_getitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
     """
-    Test the Group.__getitem__ method.
+    Test the `Group.__getitem__` method.
     """
 
     group = Group.create(store, zarr_format=zarr_format)
@@ -168,11 +215,9 @@ def test_group_getitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
         group["nope"]
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_group_delitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
     """
-    Test the Group.__delitem__ method.
+    Test the `Group.__delitem__` method.
     """
 
     group = Group.create(store, zarr_format=zarr_format)
@@ -191,11 +236,9 @@ def test_group_delitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
         group["subarray"]
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_group_iter(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
     """
-    Test the Group.__iter__ method.
+    Test the `Group.__iter__` method.
     """
 
     group = Group.create(store, zarr_format=zarr_format)
@@ -203,11 +246,9 @@ def test_group_iter(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) ->
         [x for x in group]  # type: ignore
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_group_len(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
     """
-    Test Group__len__.
+    Test the `Group.__len__` method.
     """
 
     group = Group.create(store, zarr_format=zarr_format)
@@ -215,9 +256,103 @@ def test_group_len(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> 
         len(group)  # type: ignore
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
-@pytest.mark.parametrize("exists_ok", (True, False))
+def test_group_setitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test the `Group.__setitem__` method.
+    """
+    group = Group.create(store, zarr_format=zarr_format)
+    with pytest.raises(NotImplementedError):
+        group["key"] = 10
+
+
+def test_group_contains(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test the `Group.__contains__` method
+    """
+    group = Group.create(store, zarr_format=zarr_format)
+    assert "foo" not in group
+    _ = group.create_group(name="foo")
+    assert "foo" in group
+
+
+def test_group_subgroups(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test the behavior of `Group` methods for accessing subgroups, namely `Group.group_keys` and `Group.groups`
+    """
+    group = Group.create(store, zarr_format=zarr_format)
+    keys = ("foo", "bar")
+    subgroups_expected = tuple(group.create_group(k) for k in keys)
+    # create a sub-array as well
+    _ = group.create_array("array", shape=(10,))
+    subgroups_observed = group.groups()
+    assert set(group.group_keys()) == set(keys)
+    assert len(subgroups_observed) == len(subgroups_expected)
+    assert all(a in subgroups_observed for a in subgroups_expected)
+
+
+def test_group_subarrays(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test the behavior of `Group` methods for accessing subgroups, namely `Group.group_keys` and `Group.groups`
+    """
+    group = Group.create(store, zarr_format=zarr_format)
+    keys = ("foo", "bar")
+    subarrays_expected = tuple(group.create_array(k, shape=(10,)) for k in keys)
+    # create a sub-group as well
+    _ = group.create_group("group")
+    subarrays_observed = group.arrays()
+    assert set(group.array_keys()) == set(keys)
+    assert len(subarrays_observed) == len(subarrays_expected)
+    assert all(a in subarrays_observed for a in subarrays_expected)
+
+
+def test_group_update_attributes(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test the behavior of `Group.update_attributes`
+    """
+    attrs = {"foo": 100}
+    group = Group.create(store, zarr_format=zarr_format, attributes=attrs)
+    assert group.attrs == attrs
+    new_attrs = {"bar": 100}
+    new_group = group.update_attributes(new_attrs)
+    assert new_group.attrs == new_attrs
+
+
+async def test_group_update_attributes_async(
+    store: MemoryStore | LocalStore, zarr_format: ZarrFormat
+) -> None:
+    """
+    Test the behavior of `Group.update_attributes_async`
+    """
+    attrs = {"foo": 100}
+    group = Group.create(store, zarr_format=zarr_format, attributes=attrs)
+    assert group.attrs == attrs
+    new_attrs = {"bar": 100}
+    new_group = await group.update_attributes_async(new_attrs)
+    assert new_group.attrs == new_attrs
+
+
+def test_group_create_array(
+    store: MemoryStore | LocalStore, zarr_format: ZarrFormat, exists_ok: bool
+) -> None:
+    """
+    Test `Group.create_array`
+    """
+    group = Group.create(store, zarr_format=zarr_format)
+    shape = (10, 10)
+    dtype = "uint8"
+    data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
+
+    array = group.create_array(name="array", shape=shape, dtype=dtype, data=data)
+
+    if not exists_ok:
+        with pytest.raises(ContainsArrayError):
+            group.create_array(name="array", shape=shape, dtype=dtype, data=data)
+
+    assert array.shape == shape
+    assert array.dtype == np.dtype(dtype)
+    assert np.array_equal(array[:], data)
+
+
 async def test_asyncgroup_create(
     store: MemoryStore | LocalStore,
     exists_ok: bool,
@@ -238,7 +373,7 @@ async def test_asyncgroup_create(
     assert agroup.store_path == make_store_path(store)
 
     if not exists_ok:
-        with pytest.raises(AssertionError):
+        with pytest.raises(ContainsGroupError):
             agroup = await AsyncGroup.create(
                 store,
                 attributes=attributes,
@@ -247,8 +382,6 @@ async def test_asyncgroup_create(
             )
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_attrs(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     attributes = {"foo": 100}
     agroup = await AsyncGroup.create(store, zarr_format=zarr_format, attributes=attributes)
@@ -256,8 +389,6 @@ async def test_asyncgroup_attrs(store: LocalStore | MemoryStore, zarr_format: Za
     assert agroup.attrs == agroup.metadata.attributes == attributes
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_info(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = await AsyncGroup.create(  # noqa
         store,
@@ -267,8 +398,6 @@ async def test_asyncgroup_info(store: LocalStore | MemoryStore, zarr_format: Zar
     # assert agroup.info == agroup.metadata.info
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_open(
     store: LocalStore | MemoryStore,
     zarr_format: ZarrFormat,
@@ -290,14 +419,12 @@ async def test_asyncgroup_open(
     assert group_w == group_r
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_open_wrong_format(
     store: LocalStore | MemoryStore,
     zarr_format: ZarrFormat,
 ) -> None:
     _ = await AsyncGroup.create(store=store, exists_ok=False, zarr_format=zarr_format)
-
+    zarr_format_wrong: ZarrFormat
     # try opening with the wrong zarr format
     if zarr_format == 3:
         zarr_format_wrong = 2
@@ -312,7 +439,6 @@ async def test_asyncgroup_open_wrong_format(
 
 # todo: replace the dict[str, Any] type with something a bit more specific
 # should this be async?
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 @pytest.mark.parametrize(
     "data",
     (
@@ -335,8 +461,6 @@ def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, A
 # todo: replace this with a declarative API where we model a full hierarchy
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     """
     Create an `AsyncGroup`, then create members of that group, and ensure that we can access those
@@ -359,11 +483,6 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
         await agroup.getitem("foo")
 
 
-# todo: replace this with a declarative API where we model a full hierarchy
-
-
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     sub_array_path = "sub_array"
@@ -393,8 +512,6 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
         raise AssertionError
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_create_group(
     store: LocalStore | MemoryStore,
     zarr_format: ZarrFormat,
@@ -411,11 +528,8 @@ async def test_asyncgroup_create_group(
     assert subnode.metadata.zarr_format == zarr_format
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_create_array(
-    store: LocalStore | MemoryStore,
-    zarr_format: ZarrFormat,
+    store: LocalStore | MemoryStore, zarr_format: ZarrFormat, exists_ok: bool
 ) -> None:
     """
     Test that the AsyncGroup.create_array method works correctly. We ensure that array properties
@@ -423,6 +537,10 @@ async def test_asyncgroup_create_array(
     """
 
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+
+    if not exists_ok:
+        with pytest.raises(ContainsGroupError):
+            agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
 
     shape = (10,)
     dtype = "uint8"
@@ -449,8 +567,6 @@ async def test_asyncgroup_create_array(
     assert subnode.metadata.zarr_format == zarr_format
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_asyncgroup_update_attributes(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -465,30 +581,3 @@ async def test_asyncgroup_update_attributes(
 
     agroup_new_attributes = await agroup.update_attributes(attributes_new)
     assert agroup_new_attributes.attrs == attributes_new
-
-
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
-def test_group_init(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    agroup = sync(AsyncGroup.create(store=store, zarr_format=zarr_format))
-    group = Group(agroup)
-    assert group._async_group == agroup
-
-
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
-def test_group_name_properties(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    root = Group.create(store=store, zarr_format=zarr_format)
-    assert root.path == ""
-    assert root.name == "/"
-    assert root.basename == ""
-
-    foo = root.create_group("foo")
-    assert foo.path == "foo"
-    assert foo.name == "/foo"
-    assert foo.basename == "foo"
-
-    bar = root.create_group("foo/bar")
-    assert bar.path == "foo/bar"
-    assert bar.name == "/foo/bar"
-    assert bar.basename == "bar"
