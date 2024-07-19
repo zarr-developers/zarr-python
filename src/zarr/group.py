@@ -362,10 +362,7 @@ class AsyncGroup:
             The data type of the array.
         chunk_shape: tuple[int, ...] | None = None
             The shape of the chunks of the array. V3 only.
-        chunk_key_encoding: ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None = None
+        chunk_key_encoding: ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
             A specification of how the chunk keys are represented in storage.
         codecs: Iterable[Codec | dict[str, JSON]] | None = None
             An iterable of Codec or dict serializations thereof. The elements of
@@ -706,14 +703,11 @@ class Group(SyncMixin):
             The data type of the array.
         chunk_shape: tuple[int, ...] | None = None
             The shape of the chunks of the array. V3 only.
-        chunk_key_encoding: ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None = None
+        chunk_key_encoding: ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
             A specification of how the chunk keys are represented in storage.
         codecs: Iterable[Codec | dict[str, JSON]] | None = None
-            An iterable of Codec or dict serializations thereof. The elements of
-            this collection specify the transformation from array values to stored bytes.
+            An iterable of Codec or dict serializations thereof. The elements of this collection
+            specify the transformation from array values to stored bytes.
         dimension_names: Iterable[str] | None = None
             The names of the dimensions of the array. V3 only.
         chunks: ChunkCoords | None = None
@@ -831,10 +825,7 @@ class Group(SyncMixin):
             The data type of the array.
         chunk_shape: tuple[int, ...] | None = None
             The shape of the chunks of the array. V3 only.
-        chunk_key_encoding: ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None = None
+        chunk_key_encoding: ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
             A specification of how the chunk keys are represented in storage.
         codecs: Iterable[Codec | dict[str, JSON]] | None = None
             An iterable of Codec or dict serializations thereof. The elements of
