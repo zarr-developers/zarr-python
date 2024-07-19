@@ -27,7 +27,9 @@ from zarr.common import (
     ZarrFormat,
 )
 from zarr.config import config
+from zarr.errors import ContainsGroupError
 from zarr.store import StoreLike, StorePath, make_store_path
+from zarr.store.core import contains_group
 from zarr.sync import SyncMixin, sync
 
 if TYPE_CHECKING:
@@ -130,10 +132,8 @@ class AsyncGroup:
     ) -> AsyncGroup:
         store_path = make_store_path(store)
         if not exists_ok:
-            if zarr_format == 3:
-                assert not await (store_path / ZARR_JSON).exists()
-            elif zarr_format == 2:
-                assert not await (store_path / ZGROUP_JSON).exists()
+            if await contains_group(store_path=store_path, zarr_format=zarr_format):
+                raise ContainsGroupError(store_path.store, store_path.path)
         group = cls(
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
@@ -346,6 +346,7 @@ class AsyncGroup:
         compressor: dict[str, JSON] | None = None,
         # runtime
         exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
     ) -> AsyncArray:
         """
         Create a zarr array within this AsyncGroup.
@@ -409,6 +410,7 @@ class AsyncGroup:
             compressor=compressor,
             exists_ok=exists_ok,
             zarr_format=self.metadata.zarr_format,
+            data=data,
         )
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
@@ -451,6 +453,7 @@ class AsyncGroup:
         # would be nice to make these special keys accessible programmatically,
         # and scoped to specific zarr versions
         _skip_keys = ("zarr.json", ".zgroup", ".zattrs")
+
         async for key in self.store_path.store.list_dir(self.store_path.path):
             if key in _skip_keys:
                 continue
@@ -687,6 +690,7 @@ class Group(SyncMixin):
         compressor: dict[str, JSON] | None = None,
         # runtime
         exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
     ) -> Array:
         """
         Create a zarr array within this AsyncGroup.
@@ -727,7 +731,8 @@ class Group(SyncMixin):
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
             an error.
-
+        data: npt.ArrayLike | None = None
+            Array data to initialize the array with.
         Returns
         -------
 
@@ -751,6 +756,7 @@ class Group(SyncMixin):
                     filters,
                     compressor,
                     exists_ok,
+                    data,
                 )
             )
         )
