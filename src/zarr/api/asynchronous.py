@@ -8,8 +8,8 @@ from typing import Any, Literal, Union, cast
 import numpy as np
 import numpy.typing as npt
 
+from zarr._array import Array, AsyncArray
 from zarr.abc.codec import Codec
-from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
 from zarr.chunk_key_encodings import ChunkKeyEncoding
 from zarr.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat

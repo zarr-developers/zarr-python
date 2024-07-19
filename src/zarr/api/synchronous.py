@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import zarr.api.asynchronous as async_api
-from zarr.array import Array, AsyncArray
+from zarr._array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
 from zarr.common import JSON, AccessModeLiteral, ChunkCoords, ZarrFormat
 from zarr.group import Group

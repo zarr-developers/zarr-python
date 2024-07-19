@@ -3,8 +3,8 @@ import pickle
 import numpy as np
 import pytest
 
+from zarr import Array, AsyncArray
 from zarr.abc.store import Store
-from zarr.array import Array, AsyncArray
 from zarr.buffer import default_buffer_prototype
 from zarr.codecs import (
     BloscCodec,

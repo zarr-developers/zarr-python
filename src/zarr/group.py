@@ -10,10 +10,10 @@ from typing import TYPE_CHECKING, Literal, cast, overload
 import numpy.typing as npt
 from typing_extensions import deprecated
 
+from zarr._array import Array, AsyncArray
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
-from zarr.array import Array, AsyncArray
 from zarr.attributes import Attributes
 from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_key_encodings import ChunkKeyEncoding

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from zarr.common import JSON
 
 if TYPE_CHECKING:
-    from zarr.array import Array
+    from zarr._array import Array
     from zarr.group import Group
 
 

@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from _pytest.compat import LEGACY_PATH
 
-from zarr.array import Array, AsyncArray
+from zarr import Array, AsyncArray
 from zarr.buffer import Buffer
 from zarr.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError

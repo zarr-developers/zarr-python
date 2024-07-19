@@ -27,7 +27,7 @@ from zarr.buffer import NDArrayLike
 from zarr.common import ChunkCoords, product
 
 if TYPE_CHECKING:
-    from zarr.array import Array
+    from zarr._array import Array
     from zarr.chunk_grids import ChunkGrid
 
 IntSequence = list[int] | npt.NDArray[np.intp]
