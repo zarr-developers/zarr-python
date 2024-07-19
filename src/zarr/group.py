@@ -392,6 +392,7 @@ class AsyncGroup:
         -------
 
         AsyncArray
+
         """
         return await AsyncArray.create(
             self.store_path / path,
@@ -738,6 +739,7 @@ class Group(SyncMixin):
         -------
 
         Array
+
         """
         return Array(
             self._sync(
@@ -863,6 +865,7 @@ class Group(SyncMixin):
         -------
 
         Array
+
         """
         return Array(
             self._sync(
