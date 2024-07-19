@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import pytest
@@ -331,8 +331,12 @@ async def test_group_update_attributes_async(
     assert new_group.attrs == new_attrs
 
 
+@pytest.mark.parametrize("method", ["create_array", "array"])
 def test_group_create_array(
-    store: MemoryStore | LocalStore, zarr_format: ZarrFormat, exists_ok: bool
+    store: MemoryStore | LocalStore,
+    zarr_format: ZarrFormat,
+    exists_ok: bool,
+    method: Literal["create_array", "array"],
 ) -> None:
     """
     Test `Group.create_array`
@@ -342,12 +346,20 @@ def test_group_create_array(
     dtype = "uint8"
     data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
 
-    array = group.create_array(name="array", shape=shape, dtype=dtype, data=data)
+    if method == "create_array":
+        array = group.create_array(name="array", shape=shape, dtype=dtype, data=data)
+    elif method == "array":
+        array = group.array(name="array", shape=shape, dtype=dtype, data=data)
+    else:
+        raise AssertionError
 
     if not exists_ok:
-        with pytest.raises(ContainsArrayError):
-            group.create_array(name="array", shape=shape, dtype=dtype, data=data)
-
+        if method == "create_array":
+            with pytest.raises(ContainsArrayError):
+                group.create_array(name="array", shape=shape, dtype=dtype, data=data)
+        elif method == "array":
+            with pytest.raises(ContainsArrayError):
+                group.array(name="array", shape=shape, dtype=dtype, data=data)
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)

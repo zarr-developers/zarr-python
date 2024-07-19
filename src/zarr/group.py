@@ -668,6 +668,7 @@ class Group(SyncMixin):
     def create_array(
         self,
         name: str,
+        *,
         shape: ChunkCoords,
         dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
@@ -741,22 +742,22 @@ class Group(SyncMixin):
         return Array(
             self._sync(
                 self._async_group.create_array(
-                    name,
-                    shape,
-                    dtype,
-                    fill_value,
-                    attributes,
-                    chunk_shape,
-                    chunk_key_encoding,
-                    codecs,
-                    dimension_names,
-                    chunks,
-                    dimension_separator,
-                    order,
-                    filters,
-                    compressor,
-                    exists_ok,
-                    data,
+                    path=name,
+                    shape=shape,
+                    dtype=dtype,
+                    fill_value=fill_value,
+                    attributes=attributes,
+                    chunk_shape=chunk_shape,
+                    chunk_key_encoding=chunk_key_encoding,
+                    codecs=codecs,
+                    dimension_names=dimension_names,
+                    chunks=chunks,
+                    dimension_separator=dimension_separator,
+                    order=order,
+                    filters=filters,
+                    compressor=compressor,
+                    exists_ok=exists_ok,
+                    data=data,
                 )
             )
         )
@@ -792,6 +793,7 @@ class Group(SyncMixin):
     def array(
         self,
         name: str,
+        *,
         shape: ChunkCoords,
         dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
@@ -814,10 +816,11 @@ class Group(SyncMixin):
         compressor: dict[str, JSON] | None = None,
         # runtime
         exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
     ) -> Array:
         """
         Create a zarr array within this AsyncGroup.
-        This method lightly wraps AsyncArray.create.
+        This method lightly wraps `AsyncArray.create`.
 
         Parameters
         ----------
@@ -854,7 +857,8 @@ class Group(SyncMixin):
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
             an error.
-
+        data: npt.ArrayLike | None = None
+            Array data to initialize the array with.
         Returns
         -------
 
@@ -863,21 +867,22 @@ class Group(SyncMixin):
         return Array(
             self._sync(
                 self._async_group.create_array(
-                    name,
-                    shape,
-                    dtype,
-                    fill_value,
-                    attributes,
-                    chunk_shape,
-                    chunk_key_encoding,
-                    codecs,
-                    dimension_names,
-                    chunks,
-                    dimension_separator,
-                    order,
-                    filters,
-                    compressor,
-                    exists_ok,
+                    path=name,
+                    shape=shape,
+                    dtype=dtype,
+                    fill_value=fill_value,
+                    attributes=attributes,
+                    chunk_shape=chunk_shape,
+                    chunk_key_encoding=chunk_key_encoding,
+                    codecs=codecs,
+                    dimension_names=dimension_names,
+                    chunks=chunks,
+                    dimension_separator=dimension_separator,
+                    order=order,
+                    filters=filters,
+                    compressor=compressor,
+                    exists_ok=exists_ok,
+                    data=data,
                 )
             )
         )
