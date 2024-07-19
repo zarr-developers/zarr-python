@@ -349,12 +349,11 @@ class AsyncGroup:
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray:
         """
-        Create a zarr array within this AsyncGroup.
+        Create a Zarr array within this AsyncGroup.
         This method lightly wraps AsyncArray.create.
 
         Parameters
         ----------
-
         path: str
             The name of the array.
         shape: tuple[int, ...]
@@ -390,7 +389,6 @@ class AsyncGroup:
 
         Returns
         -------
-
         AsyncArray
 
         """
@@ -700,7 +698,6 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-
         name: str
             The name of the array.
         shape: tuple[int, ...]
@@ -735,9 +732,9 @@ class Group(SyncMixin):
             an error.
         data: npt.ArrayLike | None = None
             Array data to initialize the array with.
+
         Returns
         -------
-
         Array
 
         """
@@ -826,7 +823,6 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-
         name: str
             The name of the array.
         shape: tuple[int, ...]
@@ -861,6 +857,7 @@ class Group(SyncMixin):
             an error.
         data: npt.ArrayLike | None = None
             Array data to initialize the array with.
+
         Returns
         -------
 
