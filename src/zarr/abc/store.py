@@ -41,6 +41,8 @@ class Store(ABC):
         return store
 
     async def _open(self) -> None:
+        if self._is_open:
+            raise ValueError('store is already open')
         if not await self.empty():
             if self.mode.update or self.mode.readonly:
                 pass
