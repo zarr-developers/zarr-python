@@ -42,7 +42,7 @@ class Store(ABC):
 
     async def _open(self) -> None:
         if self._is_open:
-            raise ValueError('store is already open')
+            raise ValueError("store is already open")
         if not await self.empty():
             if self.mode.update or self.mode.readonly:
                 pass
@@ -52,7 +52,7 @@ class Store(ABC):
                 raise FileExistsError("Store already exists")
         self._is_open = True
 
-    async def ensure_open(self) -> None:
+    async def _ensure_open(self) -> None:
         if not self._is_open:
             await self._open()
 
