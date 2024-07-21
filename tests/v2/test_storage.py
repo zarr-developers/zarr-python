@@ -1070,8 +1070,6 @@ class TestFSStore(StoreTests):
         assert store[self.root + "foo"] == b"hello"
 
     def test_deep_ndim(self):
-        import zarr.v2
-
         store = self.create_store()
         path = None if self.version == 2 else "group1"
         foo = zarr.v2.open_group(store=store, path=path)
