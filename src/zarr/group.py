@@ -34,7 +34,7 @@ from zarr.sync import SyncMixin, sync
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
-    from typing import Any, Literal
+    from typing import Any
 
 logger = logging.getLogger("zarr.group")
 
