@@ -123,7 +123,7 @@ class AsyncGroup:
         cls,
         store: StoreLike,
         *,
-        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
+        attributes: dict[str, Any] | None = None,
         exists_ok: bool = False,
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
@@ -133,6 +133,7 @@ class AsyncGroup:
                 assert not await (store_path / ZARR_JSON).exists()
             elif zarr_format == 2:
                 assert not await (store_path / ZGROUP_JSON).exists()
+        attributes = attributes or {}
         group = cls(
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
@@ -311,8 +312,9 @@ class AsyncGroup:
         self,
         path: str,
         exists_ok: bool = False,
-        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
+        attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
+        attributes = attributes or {}
         return await type(self).create(
             self.store_path / path,
             attributes=attributes,
@@ -490,10 +492,11 @@ class Group(SyncMixin):
         cls,
         store: StoreLike,
         *,
-        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
+        attributes: dict[str, Any] | None = None,
         zarr_format: ZarrFormat = 3,
         exists_ok: bool = False,
     ) -> Group:
+        attributes = attributes or {}
         obj = sync(
             AsyncGroup.create(
                 store,
