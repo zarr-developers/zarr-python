@@ -36,37 +36,37 @@ _v3_datetime_types = set(
 def get_extended_dtype_info(dtype) -> dict:
     if dtype.str in _v3_complex_types:
         return dict(
-            extension="https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/extensions/complex-dtypes/v1.0.html",  # noqa
+            extension="https://zarr-specs.readthedocs.io/en/core-protocol-v3.0-dev/protocol/extensions/complex-dtypes/v1.0.html",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str == "|O":
         return dict(
-            extension="TODO: object array protocol URL",  # noqa
+            extension="TODO: object array protocol URL",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str.startswith("|S"):
         return dict(
-            extension="TODO: bytestring array protocol URL",  # noqa
+            extension="TODO: bytestring array protocol URL",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str.startswith("<U") or dtype.str.startswith(">U"):
         return dict(
-            extension="TODO: unicode array protocol URL",  # noqa
+            extension="TODO: unicode array protocol URL",
             type=dtype.str,
             fallback=None,
         )
     elif dtype.str.startswith("|V"):
         return dict(
-            extension="TODO: structured array protocol URL",  # noqa
+            extension="TODO: structured array protocol URL",
             type=dtype.descr,
             fallback=None,
         )
     elif dtype.str in _v3_datetime_types:
         return dict(
-            extension="https://zarr-specs.readthedocs.io/en/latest/extensions/data-types/datetime/v1.0.html",  # noqa
+            extension="https://zarr-specs.readthedocs.io/en/latest/extensions/data-types/datetime/v1.0.html",
             type=dtype.str,
             fallback=None,
         )
@@ -222,7 +222,7 @@ class Metadata2:
                 return -np.inf
             else:
                 return np.array(v, dtype=dtype)[()]
-        elif dtype.kind in "c":
+        elif dtype.kind == "c":
             v = (
                 cls.decode_fill_value(v[0], dtype.type().real.dtype),
                 cls.decode_fill_value(v[1], dtype.type().imag.dtype),
@@ -269,23 +269,23 @@ class Metadata2:
                 return "-Infinity"
             else:
                 return float(v)
-        elif dtype.kind in "ui":
+        elif dtype.kind in ("u", "i"):
             return int(v)
         elif dtype.kind == "b":
             return bool(v)
-        elif dtype.kind in "c":
+        elif dtype.kind == "c":
             c = cast(np.complex128, np.dtype(complex).type())
             v = (
                 cls.encode_fill_value(v.real, c.real.dtype, object_codec),
                 cls.encode_fill_value(v.imag, c.imag.dtype, object_codec),
             )
             return v
-        elif dtype.kind in "SV":
+        elif dtype.kind in ("S", "V"):
             v = str(base64.standard_b64encode(v), "ascii")
             return v
         elif dtype.kind == "U":
             return v
-        elif dtype.kind in "mM":
+        elif dtype.kind in ("m", "M"):
             return int(v.view("i8"))
         else:
             return v

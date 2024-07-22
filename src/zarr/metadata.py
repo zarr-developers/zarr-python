@@ -1,42 +1,47 @@
 from __future__ import annotations
-from enum import Enum
-from typing import TYPE_CHECKING, cast, Dict, Iterable, Any
-from dataclasses import dataclass, field
+
 import json
+from abc import ABC, abstractmethod
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field, replace
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Literal, cast, overload
+
 import numpy as np
 import numpy.typing as npt
 
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
+from zarr.abc.metadata import Metadata
+from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
-
+from zarr.codecs.registry import get_codec_class
+from zarr.config import config
 
 if TYPE_CHECKING:
-    from typing import Literal, Union, List, Optional, Tuple
-    from zarr.codecs.pipeline import CodecPipeline
+    from typing_extensions import Self
 
+import numcodecs.abc
 
-from zarr.abc.codec import Codec
-from zarr.abc.metadata import Metadata
-
+from zarr.array_spec import ArraySpec
 from zarr.common import (
     JSON,
-    ArraySpec,
+    ZARR_JSON,
+    ZARRAY_JSON,
+    ZATTRS_JSON,
     ChunkCoords,
+    ZarrFormat,
     parse_dtype,
-    parse_fill_value,
+    parse_named_configuration,
     parse_shapelike,
 )
-from zarr.config import RuntimeConfiguration, parse_indexing_order
-
-
-def runtime_configuration(
-    order: Literal["C", "F"], concurrency: Optional[int] = None
-) -> RuntimeConfiguration:
-    return RuntimeConfiguration(order=order, concurrency=concurrency)
-
+from zarr.config import parse_indexing_order
 
 # For type checking
 _bool = bool
+
+
+__all__ = ["ArrayMetadata"]
 
 
 class DataType(Enum):
@@ -109,31 +114,72 @@ class DataType(Enum):
         return DataType[dtype_to_data_type[dtype.str]]
 
 
-@dataclass(frozen=True)
-class ArrayMetadata(Metadata):
+@dataclass(frozen=True, kw_only=True)
+class ArrayMetadata(Metadata, ABC):
+    shape: ChunkCoords
+    fill_value: Any
+    chunk_grid: ChunkGrid
+    attributes: dict[str, JSON]
+    zarr_format: ZarrFormat
+
+    @property
+    @abstractmethod
+    def dtype(self) -> np.dtype[Any]:
+        pass
+
+    @property
+    @abstractmethod
+    def ndim(self) -> int:
+        pass
+
+    @abstractmethod
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+    ) -> ArraySpec:
+        pass
+
+    @abstractmethod
+    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+        pass
+
+    @abstractmethod
+    def to_buffer_dict(self) -> dict[str, Buffer]:
+        pass
+
+    @abstractmethod
+    def update_shape(self, shape: ChunkCoords) -> Self:
+        pass
+
+    @abstractmethod
+    def update_attributes(self, attributes: dict[str, JSON]) -> Self:
+        pass
+
+
+@dataclass(frozen=True, kw_only=True)
+class ArrayV3Metadata(ArrayMetadata):
     shape: ChunkCoords
     data_type: np.dtype[Any]
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
-    codecs: CodecPipeline
-    attributes: Dict[str, Any] = field(default_factory=dict)
-    dimension_names: Optional[Tuple[str, ...]] = None
+    codecs: tuple[Codec, ...]
+    attributes: dict[str, Any] = field(default_factory=dict)
+    dimension_names: tuple[str, ...] | None = None
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["array"] = field(default="array", init=False)
 
     def __init__(
         self,
         *,
-        shape,
-        data_type,
-        chunk_grid,
-        chunk_key_encoding,
-        fill_value,
-        codecs,
-        attributes,
-        dimension_names,
-    ):
+        shape: Iterable[int],
+        data_type: npt.DTypeLike,
+        chunk_grid: dict[str, JSON] | ChunkGrid,
+        chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
+        fill_value: Any,
+        codecs: Iterable[Codec | dict[str, JSON]],
+        attributes: None | dict[str, JSON],
+        dimension_names: None | Iterable[str],
+    ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
@@ -142,13 +188,18 @@ class ArrayMetadata(Metadata):
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
-        fill_value_parsed = parse_fill_value(fill_value)
+        fill_value_parsed = parse_fill_value_v3(fill_value, dtype=data_type_parsed)
         attributes_parsed = parse_attributes(attributes)
+        codecs_parsed_partial = parse_codecs(codecs)
 
         array_spec = ArraySpec(
-            shape=shape_parsed, dtype=data_type_parsed, fill_value=fill_value_parsed
+            shape=shape_parsed,
+            dtype=data_type_parsed,
+            fill_value=fill_value_parsed,
+            order="C",  # TODO: order is not needed here.
+            prototype=default_buffer_prototype,  # TODO: prototype is not needed here.
         )
-        codecs_parsed = parse_codecs(codecs).evolve(array_spec)
+        codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type_parsed)
@@ -174,7 +225,8 @@ class ArrayMetadata(Metadata):
             )
         if self.fill_value is None:
             raise ValueError("`fill_value` is required.")
-        self.codecs.validate(self)
+        for codec in self.codecs:
+            codec.validate(shape=self.shape, dtype=self.data_type, chunk_grid=self.chunk_grid)
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -184,7 +236,9 @@ class ArrayMetadata(Metadata):
     def ndim(self) -> int:
         return len(self.shape)
 
-    def get_chunk_spec(self, _chunk_coords: ChunkCoords) -> ArraySpec:
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+    ) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
         ), "Currently, only regular chunk grid is supported"
@@ -192,37 +246,55 @@ class ArrayMetadata(Metadata):
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
+            order=order,
+            prototype=prototype,
         )
 
-    def to_bytes(self) -> bytes:
-        def _json_convert(o):
+    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+        return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
+
+    def to_buffer_dict(self) -> dict[str, Buffer]:
+        def _json_convert(o: Any) -> Any:
             if isinstance(o, np.dtype):
                 return str(o)
+            if np.isscalar(o):
+                # convert numpy scalar to python type, and pass
+                # python types through
+                out = getattr(o, "item", lambda: o)()
+                if isinstance(out, complex):
+                    # python complex types are not JSON serializable, so we use the
+                    # serialization defined in the zarr v3 spec
+                    return [out.real, out.imag]
+                return out
             if isinstance(o, Enum):
                 return o.name
             # this serializes numcodecs compressors
             # todo: implement to_dict for codecs
-            elif hasattr(o, "get_config"):
-                return o.get_config()
+            elif isinstance(o, numcodecs.abc.Codec):
+                config: dict[str, Any] = o.get_config()
+                return config
             raise TypeError
 
-        return json.dumps(
-            self.to_dict(),
-            default=_json_convert,
-        ).encode()
+        json_indent = config.get("json_indent")
+        return {
+            ZARR_JSON: Buffer.from_bytes(
+                json.dumps(self.to_dict(), default=_json_convert, indent=json_indent).encode()
+            )
+        }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> ArrayMetadata:
+    def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
+        # TODO: Remove the type: ignores[] comments below and use a TypedDict to type `data`
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v3(data.pop("zarr_format"))
+        _ = parse_zarr_format_v3(data.pop("zarr_format"))  # type: ignore[arg-type]
         # check that the node_type attribute is correct
-        _ = parse_node_type_array(data.pop("node_type"))
+        _ = parse_node_type_array(data.pop("node_type"))  # type: ignore[arg-type]
 
-        dimension_names = data.pop("dimension_names", None)
+        data["dimension_names"] = data.pop("dimension_names", None)
 
-        return cls(**data, dimension_names=dimension_names)
+        return cls(**data)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         out_dict = super().to_dict()
 
         if not isinstance(out_dict, dict):
@@ -234,18 +306,24 @@ class ArrayMetadata(Metadata):
             out_dict.pop("dimension_names")
         return out_dict
 
+    def update_shape(self, shape: ChunkCoords) -> Self:
+        return replace(self, shape=shape)
 
-@dataclass(frozen=True)
-class ArrayV2Metadata(Metadata):
+    def update_attributes(self, attributes: dict[str, JSON]) -> Self:
+        return replace(self, attributes=attributes)
+
+
+@dataclass(frozen=True, kw_only=True)
+class ArrayV2Metadata(ArrayMetadata):
     shape: ChunkCoords
-    chunks: ChunkCoords
-    dtype: np.dtype[Any]
-    fill_value: Union[None, int, float] = 0
+    chunk_grid: RegularChunkGrid
+    data_type: np.dtype[Any]
+    fill_value: None | int | float = 0
     order: Literal["C", "F"] = "C"
-    filters: Optional[List[Dict[str, Any]]] = None
+    filters: list[dict[str, JSON]] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: Optional[Dict[str, Any]] = None
-    attributes: Optional[Dict[str, Any]] = cast(Dict[str, Any], field(default_factory=dict))
+    compressor: dict[str, JSON] | None = None
+    attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
     def __init__(
@@ -257,9 +335,9 @@ class ArrayV2Metadata(Metadata):
         fill_value: Any,
         order: Literal["C", "F"],
         dimension_separator: Literal[".", "/"] = ".",
-        compressor: Optional[Dict[str, Any]] = None,
-        filters: Optional[List[Dict[str, Any]]] = None,
-        attributes: Optional[Dict[str, JSON]] = None,
+        compressor: dict[str, JSON] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        attributes: dict[str, JSON] | None = None,
     ):
         """
         Metadata for a Zarr version 2 array.
@@ -269,14 +347,14 @@ class ArrayV2Metadata(Metadata):
         chunks_parsed = parse_shapelike(chunks)
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
-        dimension_separator_parsed = parse_separator(order)
+        dimension_separator_parsed = parse_separator(dimension_separator)
         filters_parsed = parse_filters(filters)
-        fill_value_parsed = parse_fill_value(fill_value)
+        fill_value_parsed = parse_fill_value_v2(fill_value, dtype=data_type_parsed)
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type_parsed)
-        object.__setattr__(self, "chunks", chunks_parsed)
+        object.__setattr__(self, "chunk_grid", RegularChunkGrid(chunk_shape=chunks_parsed))
         object.__setattr__(self, "compressor", compressor_parsed)
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "dimension_separator", dimension_separator_parsed)
@@ -291,71 +369,129 @@ class ArrayV2Metadata(Metadata):
     def ndim(self) -> int:
         return len(self.shape)
 
-    def to_bytes(self) -> bytes:
-        def _json_convert(o):
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return self.data_type
+
+    @property
+    def chunks(self) -> ChunkCoords:
+        return self.chunk_grid.chunk_shape
+
+    def to_buffer_dict(self) -> dict[str, Buffer]:
+        def _json_convert(
+            o: Any,
+        ) -> Any:
             if isinstance(o, np.dtype):
                 if o.fields is None:
                     return o.str
                 else:
                     return o.descr
+            if np.isscalar(o):
+                # convert numpy scalar to python type, and pass
+                # python types through
+                return getattr(o, "item", lambda: o)()
             raise TypeError
 
-        return json.dumps(self.to_dict(), default=_json_convert).encode()
+        zarray_dict = self.to_dict()
+        assert isinstance(zarray_dict, dict)
+        zattrs_dict = zarray_dict.pop("attributes", {})
+        assert isinstance(zattrs_dict, dict)
+        json_indent = config.get("json_indent")
+        return {
+            ZARRAY_JSON: Buffer.from_bytes(
+                json.dumps(zarray_dict, default=_json_convert, indent=json_indent).encode()
+            ),
+            ZATTRS_JSON: Buffer.from_bytes(json.dumps(zattrs_dict, indent=json_indent).encode()),
+        }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> ArrayV2Metadata:
+    def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format_v2(data.pop("zarr_format"))
         return cls(**data)
 
+    def to_dict(self) -> JSON:
+        zarray_dict = super().to_dict()
 
-def parse_dimension_names(data: Any) -> Tuple[str, ...] | None:
+        assert isinstance(zarray_dict, dict)
+
+        _ = zarray_dict.pop("chunk_grid")
+        zarray_dict["chunks"] = self.chunk_grid.chunk_shape
+
+        _ = zarray_dict.pop("data_type")
+        zarray_dict["dtype"] = self.data_type.str
+
+        return zarray_dict
+
+    def get_chunk_spec(
+        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+    ) -> ArraySpec:
+        return ArraySpec(
+            shape=self.chunk_grid.chunk_shape,
+            dtype=self.dtype,
+            fill_value=self.fill_value,
+            order=order,
+            prototype=prototype,
+        )
+
+    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
+        chunk_identifier = self.dimension_separator.join(map(str, chunk_coords))
+        return "0" if chunk_identifier == "" else chunk_identifier
+
+    def update_shape(self, shape: ChunkCoords) -> Self:
+        return replace(self, shape=shape)
+
+    def update_attributes(self, attributes: dict[str, JSON]) -> Self:
+        return replace(self, attributes=attributes)
+
+
+def parse_dimension_names(data: None | Iterable[str]) -> tuple[str, ...] | None:
     if data is None:
         return data
-    if isinstance(data, Iterable) and all([isinstance(x, str) for x in data]):
+    elif all(isinstance(x, str) for x in data):
         return tuple(data)
-    msg = f"Expected either None or a iterable of str, got {type(data)}"
-    raise TypeError(msg)
+    else:
+        msg = f"Expected either None or a iterable of str, got {type(data)}"
+        raise TypeError(msg)
 
 
 # todo: real validation
-def parse_attributes(data: Any) -> Dict[str, JSON]:
+def parse_attributes(data: None | dict[str, JSON]) -> dict[str, JSON]:
     if data is None:
         return {}
 
-    data_json = cast(Dict[str, JSON], data)
-    return data_json
+    return data
 
 
 # todo: move to its own module and drop _v3 suffix
 # todo: consider folding all the literal parsing into a single function
 # that takes 2 arguments
-def parse_zarr_format_v3(data: Any) -> Literal[3]:
+def parse_zarr_format_v3(data: Literal[3]) -> Literal[3]:
     if data == 3:
         return data
     raise ValueError(f"Invalid value. Expected 3. Got {data}.")
 
 
 # todo: move to its own module and drop _v2 suffix
-def parse_zarr_format_v2(data: Any) -> Literal[2]:
+def parse_zarr_format_v2(data: Literal[2]) -> Literal[2]:
     if data == 2:
         return data
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_node_type_array(data: Any) -> Literal["array"]:
+def parse_node_type_array(data: Literal["array"]) -> Literal["array"]:
     if data == "array":
         return data
     raise ValueError(f"Invalid value. Expected 'array'. Got {data}.")
 
 
 # todo: real validation
-def parse_filters(data: Any) -> List[Codec]:
+def parse_filters(data: list[dict[str, JSON]] | None) -> list[dict[str, JSON]] | None:
     return data
 
 
 # todo: real validation
-def parse_compressor(data: Any) -> Codec:
+def parse_compressor(data: dict[str, JSON] | None) -> dict[str, JSON] | None:
     return data
 
 
@@ -369,9 +505,129 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def parse_codecs(data: Iterable[Union[Codec, JSON]]) -> CodecPipeline:
-    from zarr.codecs.pipeline import CodecPipeline
+def create_pipeline(data: Iterable[Codec | JSON]) -> CodecPipeline:
+    from zarr.codecs import BatchedCodecPipeline
 
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")
-    return CodecPipeline.from_dict(data)
+    return BatchedCodecPipeline.from_dict(data)
+
+
+def parse_codecs(data: Iterable[Codec | dict[str, JSON]]) -> tuple[Codec, ...]:
+    out: tuple[Codec, ...] = ()
+
+    if not isinstance(data, Iterable):
+        raise TypeError(f"Expected iterable, got {type(data)}")
+
+    for c in data:
+        if isinstance(
+            c, ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
+        ):  # Can't use Codec here because of mypy limitation
+            out += (c,)
+        else:
+            name_parsed, _ = parse_named_configuration(c, require_configuration=False)
+            out += (get_codec_class(name_parsed).from_dict(c),)
+
+    return out
+
+
+def parse_fill_value_v2(fill_value: Any, dtype: np.dtype[Any]) -> Any:
+    """
+    Parse a potential fill value into a value that is compatible with the provided dtype.
+
+    This is a light wrapper around zarr.v2.util.normalize_fill_value.
+
+    Parameters
+    ----------
+    fill_value: Any
+        A potential fill value.
+    dtype: np.dtype[Any]
+        A numpy dtype.
+
+    Returns
+        An instance of `dtype`, or `None`, or any python object (in the case of an object dtype)
+    """
+    from zarr.v2.util import normalize_fill_value
+
+    return normalize_fill_value(fill_value=fill_value, dtype=dtype)
+
+
+BOOL = np.bool_
+BOOL_DTYPE = np.dtypes.BoolDType
+
+INTEGER_DTYPE = (
+    np.dtypes.Int8DType
+    | np.dtypes.Int16DType
+    | np.dtypes.Int32DType
+    | np.dtypes.Int64DType
+    | np.dtypes.UByteDType
+    | np.dtypes.UInt16DType
+    | np.dtypes.UInt32DType
+    | np.dtypes.UInt64DType
+)
+
+INTEGER = np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64
+FLOAT_DTYPE = np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float64DType
+FLOAT = np.float16 | np.float32 | np.float64
+COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
+COMPLEX = np.complex64 | np.complex128
+# todo: r* dtypes
+
+
+@overload
+def parse_fill_value_v3(fill_value: Any, dtype: BOOL_DTYPE) -> BOOL: ...
+
+
+@overload
+def parse_fill_value_v3(fill_value: Any, dtype: INTEGER_DTYPE) -> INTEGER: ...
+
+
+@overload
+def parse_fill_value_v3(fill_value: Any, dtype: FLOAT_DTYPE) -> FLOAT: ...
+
+
+@overload
+def parse_fill_value_v3(fill_value: Any, dtype: COMPLEX_DTYPE) -> COMPLEX: ...
+
+
+def parse_fill_value_v3(
+    fill_value: Any, dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE
+) -> BOOL | INTEGER | FLOAT | COMPLEX:
+    """
+    Parse `fill_value`, a potential fill value, into an instance of `dtype`, a data type.
+    If `fill_value` is `None`, then this function will return the result of casting the value 0
+    to the provided data type. Otherwise, `fill_value` will be cast to the provided data type.
+
+    Note that some numpy dtypes use very permissive casting rules. For example,
+    `np.bool_({'not remotely a bool'})` returns `True`. Thus this function should not be used for
+    validating that the provided fill value is a valid instance of the data type.
+
+    Parameters
+    ----------
+    fill_value: Any
+        A potential fill value.
+    dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE
+        A numpy data type that models a data type defined in the Zarr V3 specification.
+
+    Returns
+    -------
+    A scalar instance of `dtype`
+    """
+    if fill_value is None:
+        return dtype.type(0)
+    if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
+        if dtype in (np.complex64, np.complex128):
+            dtype = cast(COMPLEX_DTYPE, dtype)
+            if len(fill_value) == 2:
+                # complex datatypes serialize to JSON arrays with two elements
+                return dtype.type(complex(*fill_value))
+            else:
+                msg = (
+                    f"Got an invalid fill value for complex data type {dtype}."
+                    f"Expected a sequence with 2 elements, but {fill_value} has "
+                    f"length {len(fill_value)}."
+                )
+                raise ValueError(msg)
+        msg = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}."
+        raise TypeError(msg)
+    return dtype.type(fill_value)

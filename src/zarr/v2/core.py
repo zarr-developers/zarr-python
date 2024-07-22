@@ -8,11 +8,11 @@ from functools import reduce
 from typing import Any
 
 import numpy as np
-from numcodecs.compat import ensure_bytes
+from numcodecs import AsType, get_codec
+from numcodecs.compat import ensure_bytes, ensure_ndarray_like
 
 from zarr.v2._storage.store import _prefix_to_attrs_key
 from zarr.v2.attrs import Attributes
-from zarr.v2.codecs import AsType, get_codec
 from zarr.v2.context import Context
 from zarr.v2.errors import ArrayNotFoundError, ReadOnlyError, ArrayIndexError
 from zarr.v2.indexing import (
@@ -56,7 +56,6 @@ from zarr.v2.util import (
     normalize_shape,
     normalize_storage_path,
     PartialReadBuffer,
-    ensure_ndarray_like,
 )
 
 __all__ = ["Array"]
@@ -1465,7 +1464,7 @@ class Array:
 
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1557,7 +1556,7 @@ class Array:
 
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1630,7 +1629,7 @@ class Array:
 
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1723,7 +1722,7 @@ class Array:
         """
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         # refresh metadata
         if not self._cache_metadata:
@@ -1799,7 +1798,7 @@ class Array:
 
         # guard conditions
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         # refresh metadata
         if not self._cache_metadata:
@@ -2489,7 +2488,7 @@ class Array:
     def _write_op(self, f, *args, **kwargs):
         # guard condition
         if self._read_only:
-            raise ReadOnlyError()
+            raise ReadOnlyError
 
         return self._synchronized_op(f, *args, **kwargs)
 

@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional, Tuple, Union
+from typing import Any
 
-from zarr.common import BytesLike
 from zarr.abc.store import Store
+from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
+from zarr.common import OpenMode
 from zarr.store.local import LocalStore
+from zarr.store.memory import MemoryStore
 
 
 def _dereference_path(root: str, path: str) -> str:
     assert isinstance(root, str)
     assert isinstance(path, str)
     root = root.rstrip("/")
-    path = f"{root}/{path}" if root != "" else path
+    path = f"{root}/{path}" if root else path
     path = path.rstrip("/")
     return path
 
@@ -21,16 +23,18 @@ class StorePath:
     store: Store
     path: str
 
-    def __init__(self, store: Store, path: Optional[str] = None):
+    def __init__(self, store: Store, path: str | None = None):
         self.store = store
         self.path = path or ""
 
     async def get(
-        self, byte_range: Optional[Tuple[int, Optional[int]]] = None
-    ) -> Optional[BytesLike]:
-        return await self.store.get(self.path, byte_range)
+        self,
+        prototype: BufferPrototype = default_buffer_prototype,
+        byte_range: tuple[int, int | None] | None = None,
+    ) -> Buffer | None:
+        return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
-    async def set(self, value: BytesLike, byte_range: Optional[Tuple[int, int]] = None) -> None:
+    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         if byte_range is not None:
             raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)
@@ -48,7 +52,7 @@ class StorePath:
         return _dereference_path(str(self.store), self.path)
 
     def __repr__(self) -> str:
-        return f"StorePath({self.store.__class__.__name__}, {repr(str(self))})"
+        return f"StorePath({self.store.__class__.__name__}, {str(self)!r})"
 
     def __eq__(self, other: Any) -> bool:
         try:
@@ -59,14 +63,24 @@ class StorePath:
         return False
 
 
-StoreLike = Union[Store, StorePath, Path, str]
+StoreLike = Store | StorePath | Path | str
 
 
-def make_store_path(store_like: StoreLike) -> StorePath:
+def make_store_path(store_like: StoreLike | None, *, mode: OpenMode | None = None) -> StorePath:
     if isinstance(store_like, StorePath):
+        if mode is not None:
+            assert mode == store_like.store.mode
         return store_like
     elif isinstance(store_like, Store):
+        if mode is not None:
+            assert mode == store_like.mode
         return StorePath(store_like)
+    elif store_like is None:
+        if mode is None:
+            mode = "w"  # exception to the default mode = 'r'
+        return StorePath(MemoryStore(mode=mode))
+    elif isinstance(store_like, Path):
+        return StorePath(LocalStore(store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
-        return StorePath(LocalStore(Path(store_like)))
+        return StorePath(LocalStore(Path(store_like), mode=mode or "r"))
     raise TypeError

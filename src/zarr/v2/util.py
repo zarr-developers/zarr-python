@@ -307,7 +307,7 @@ def normalize_fill_value(fill_value, dtype: np.dtype[Any]):
 
         if not isinstance(fill_value, str):
             raise ValueError(
-                "fill_value {!r} is not valid for dtype {}; must be a " "unicode string".format(
+                "fill_value {!r} is not valid for dtype {}; must be a unicode string".format(
                     fill_value, dtype
                 )
             )
@@ -323,7 +323,7 @@ def normalize_fill_value(fill_value, dtype: np.dtype[Any]):
         except Exception as e:
             # re-raise with our own error message to be helpful
             raise ValueError(
-                "fill_value {!r} is not valid for dtype {}; nested " "exception: {}".format(
+                "fill_value {!r} is not valid for dtype {}; nested exception: {}".format(
                     fill_value, dtype, e
                 )
             )
@@ -428,10 +428,9 @@ class TreeNode:
         self.level = level
 
     def get_children(self):
-        if hasattr(self.obj, "values"):
-            if self.level is None or self.depth < self.level:
-                depth = self.depth + 1
-                return [TreeNode(o, depth=depth, level=self.level) for o in self.obj.values()]
+        if hasattr(self.obj, "values") and (self.level is None or self.depth < self.level):
+            depth = self.depth + 1
+            return [TreeNode(o, depth=depth, level=self.level) for o in self.obj.values()]
         return []
 
     def get_text(self):
@@ -444,7 +443,7 @@ class TreeNode:
         return type(self.obj).__name__
 
 
-class TreeTraversal(Traversal):
+class TreeTraversal(Traversal):  # type: ignore[misc]
     def get_children(self, node):
         return node.get_children()
 
@@ -786,4 +785,4 @@ class ConstantMap(Mapping[KeyType, ValueType]):
         return key in self._keys
 
     def __repr__(self) -> str:
-        return repr({k: v for k, v in self.items()})
+        return repr(dict(self.items()))

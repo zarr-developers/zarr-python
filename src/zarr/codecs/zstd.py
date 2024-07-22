@@ -1,20 +1,20 @@
 from __future__ import annotations
-from functools import cached_property
-from typing import TYPE_CHECKING
-from dataclasses import dataclass
 
+from dataclasses import dataclass
+from functools import cached_property
+from importlib.metadata import version
+from typing import TYPE_CHECKING
 
 from numcodecs.zstd import Zstd
 
 from zarr.abc.codec import BytesBytesCodec
+from zarr.array_spec import ArraySpec
+from zarr.buffer import Buffer, as_numpy_array_wrapper
 from zarr.codecs.registry import register_codec
-from zarr.common import parse_named_configuration, to_thread
+from zarr.common import JSON, parse_named_configuration, to_thread
 
 if TYPE_CHECKING:
-    from typing import Dict, Optional
     from typing_extensions import Self
-    from zarr.config import RuntimeConfiguration
-    from zarr.common import BytesLike, JSON, ArraySpec
 
 
 def parse_zstd_level(data: JSON) -> int:
@@ -39,6 +39,14 @@ class ZstdCodec(BytesBytesCodec):
     checksum: bool = False
 
     def __init__(self, *, level: int = 0, checksum: bool = False) -> None:
+        # numcodecs 0.13.0 introduces the checksum attribute for the zstd codec
+        _numcodecs_version = tuple(map(int, version("numcodecs").split(".")))
+        if _numcodecs_version < (0, 13, 0):  # pragma: no cover
+            raise RuntimeError(
+                "numcodecs version >= 0.13.0 is required to use the zstd codec. "
+                f"Version {_numcodecs_version} is currently installed."
+            )
+
         level_parsed = parse_zstd_level(level)
         checksum_parsed = parse_checksum(checksum)
 
@@ -46,11 +54,11 @@ class ZstdCodec(BytesBytesCodec):
         object.__setattr__(self, "checksum", checksum_parsed)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "zstd")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> Dict[str, JSON]:
+    def to_dict(self) -> dict[str, JSON]:
         return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
 
     @cached_property
@@ -58,21 +66,23 @@ class ZstdCodec(BytesBytesCodec):
         config_dict = {"level": self.level, "checksum": self.checksum}
         return Zstd.from_config(config_dict)
 
-    async def decode(
+    async def _decode_single(
         self,
-        chunk_bytes: bytes,
-        _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
-    ) -> BytesLike:
-        return await to_thread(self._zstd_codec.decode, chunk_bytes)
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer:
+        return await to_thread(
+            as_numpy_array_wrapper, self._zstd_codec.decode, chunk_bytes, chunk_spec.prototype
+        )
 
-    async def encode(
+    async def _encode_single(
         self,
-        chunk_bytes: bytes,
-        _chunk_spec: ArraySpec,
-        _runtime_configuration: RuntimeConfiguration,
-    ) -> Optional[BytesLike]:
-        return await to_thread(self._zstd_codec.encode, chunk_bytes)
+        chunk_bytes: Buffer,
+        chunk_spec: ArraySpec,
+    ) -> Buffer | None:
+        return await to_thread(
+            as_numpy_array_wrapper, self._zstd_codec.encode, chunk_bytes, chunk_spec.prototype
+        )
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError

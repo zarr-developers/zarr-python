@@ -16,7 +16,7 @@ from zarr.v2.storage import DirectoryStore, KVStore, atexit_rmtree, init_array, 
 from zarr.v2.sync import ProcessSynchronizer, ThreadSynchronizer
 
 # zarr_version fixture must be imported although not used directly here
-from .test_attrs import TestAttributes  # noqa
+from .test_attrs import TestAttributes
 from .test_core import TestArray
 from .test_hierarchy import TestGroup
 
@@ -43,9 +43,8 @@ class TestAttributesProcessSynchronizer(TestAttributes):
 
 def _append(arg):
     z, i = arg
-    import numpy
 
-    x = numpy.empty(1000, dtype="i4")
+    x = np.empty(1000, dtype="i4")
     x[:] = i
     shape = z.append(x)
     return shape
@@ -53,9 +52,8 @@ def _append(arg):
 
 def _set_arange(arg):
     z, i = arg
-    import numpy
 
-    x = numpy.arange(i * 1000, (i * 1000) + 1000, 1)
+    x = np.arange(i * 1000, (i * 1000) + 1000, 1)
     z[i * 1000 : (i * 1000) + 1000] = x
     return i
 
