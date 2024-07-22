@@ -21,7 +21,7 @@ from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
 from zarr.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
-from zarr.chunk_grids import RegularChunkGrid
+from zarr.chunk_grids import RegularChunkGrid, _guess_chunks
 from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -65,7 +65,6 @@ from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.core import contains_array
 from zarr.sync import sync
-from zarr.v2.util import guess_chunks
 
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
@@ -146,7 +145,7 @@ class AsyncArray:
 
         if chunk_shape is None:
             if chunks is None:
-                chunk_shape = chunks = guess_chunks(shape=shape, typesize=np.dtype(dtype).itemsize)
+                chunk_shape = chunks = _guess_chunks(shape=shape, typesize=np.dtype(dtype).itemsize)
             chunk_shape = chunks
         elif chunks is not None:
             raise ValueError("Only one of chunk_shape or chunks must be provided.")
