@@ -102,7 +102,7 @@ async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat
 
     Raises
     ------
-    ContainsArrayError, ContainsGroupError, InvalidHierarchyError
+    ContainsArrayError, ContainsGroupError, ContainsArrayAndGroupError
     """
     if zarr_format == 2:
         extant_node = await _contains_node_v2(store_path)
