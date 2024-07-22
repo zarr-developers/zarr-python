@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, OpenMode, ZarrFormat
+from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
 
@@ -87,13 +88,106 @@ def make_store_path(store_like: StoreLike | None, *, mode: OpenMode | None = Non
     raise TypeError
 
 
+async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:
+    """
+    Check if a store_path is safe for array / group creation.
+    Returns `None` or raises an exception.
+
+    Parameters
+    ----------
+    store_path: StorePath
+        The storage location to check.
+    zarr_format: ZarrFormat
+        The Zarr format to check.
+
+    Raises
+    ------
+    ContainsArrayError, ContainsGroupError, InvalidHierarchyError
+    """
+    if zarr_format == 2:
+        extant_node = await _contains_node_v2(store_path)
+    elif zarr_format == 3:
+        extant_node = await _contains_node_v3(store_path)
+
+    if extant_node == "array":
+        raise ContainsArrayError(store_path.store, store_path.path)
+    elif extant_node == "group":
+        raise ContainsGroupError(store_path.store, store_path.path)
+    elif extant_node == "nothing":
+        return
+    msg = f"Invalid value for extant_node: {extant_node}"  # type: ignore[unreachable]
+    raise ValueError(msg)
+
+
+async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", "nothing"]:
+    """
+    Check if a store_path contains nothing, an array, or a group. This function
+    returns the string "array", "group", or "nothing" to denote containing an array, a group, or
+    nothing.
+
+    Parameters
+    ----------
+    store_path: StorePath
+        The location in storage to check.
+
+    Returns
+    -------
+    Literal["array", "group", "nothing"]
+        A string representing the zarr node found at store_path.
+    """
+    result: Literal["array", "group", "nothing"] = "nothing"
+    extant_meta_bytes = await (store_path / ZARR_JSON).get()
+    # if no metadata document could be loaded, then we just return "nothing"
+    if extant_meta_bytes is not None:
+        try:
+            extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
+            # avoid constructing a full metadata document here in the name of speed.
+            if extant_meta_json["node_type"] == "array":
+                result = "array"
+            elif extant_meta_json["node_type"] == "group":
+                result = "group"
+        except (KeyError, json.JSONDecodeError):
+            # either of these errors is consistent with no array or group present.
+            pass
+    return result
+
+
+async def _contains_node_v2(store_path: StorePath) -> Literal["array", "group", "nothing"]:
+    """
+    Check if a store_path contains nothing, an array, a group, or both. If both an array and a
+    group are detected, a `ContainsArrayAndGroup` exception is raised. Otherwise, this function
+    returns the string "array", "group", or "nothing" to denote containing an array, a group, or
+    nothing.
+
+    Parameters
+    ----------
+    store_path: StorePath
+        The location in storage to check.
+
+    Returns
+    -------
+    Literal["array", "group", "nothing"]
+        A string representing the zarr node found at store_path.
+    """
+    _array = await contains_array(store_path=store_path, zarr_format=2)
+    _group = await contains_group(store_path=store_path, zarr_format=2)
+
+    if _array and _group:
+        raise ContainsArrayAndGroupError(store_path.store, store_path.path)
+    elif _array:
+        return "array"
+    elif _group:
+        return "group"
+    else:
+        return "nothing"
+
+
 async def contains_array(store_path: StorePath, zarr_format: ZarrFormat) -> bool:
     """
     Check if an array exists at a given StorePath.
 
     Parameters
     ----------
-
     store_path: StorePath
         The StorePath to check for an existing group.
     zarr_format:
@@ -101,9 +195,8 @@ async def contains_array(store_path: StorePath, zarr_format: ZarrFormat) -> bool
 
     Returns
     -------
-
     bool
-        True if the StorePath contains a group, False otherwise
+        True if the StorePath contains a group, False otherwise.
 
     """
     if zarr_format == 3:
@@ -119,7 +212,8 @@ async def contains_array(store_path: StorePath, zarr_format: ZarrFormat) -> bool
             except (ValueError, KeyError):
                 return False
     elif zarr_format == 2:
-        return await (store_path / ZARRAY_JSON).exists()
+        result = await (store_path / ZARRAY_JSON).exists()
+        return result
     msg = f"Invalid zarr_format provided. Got {zarr_format}, expected 2 or 3"
     raise ValueError(msg)
 
@@ -144,7 +238,17 @@ async def contains_group(store_path: StorePath, zarr_format: ZarrFormat) -> bool
 
     """
     if zarr_format == 3:
-        return await (store_path / ZARR_JSON).exists()
+        extant_meta_bytes = await (store_path / ZARR_JSON).get()
+        if extant_meta_bytes is None:
+            return False
+        else:
+            try:
+                extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
+                # we avoid constructing a full metadata document here in the name of speed.
+                result: bool = extant_meta_json["node_type"] == "group"
+                return result
+            except (ValueError, KeyError):
+                return False
     elif zarr_format == 2:
         return await (store_path / ZGROUP_JSON).exists()
     msg = f"Invalid zarr_format provided. Got {zarr_format}, expected 2 or 3"  # type: ignore[unreachable]

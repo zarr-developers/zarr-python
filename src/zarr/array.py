@@ -37,7 +37,6 @@ from zarr.common import (
     product,
 )
 from zarr.config import config, parse_indexing_order
-from zarr.errors import ContainsArrayError
 from zarr.indexing import (
     BasicIndexer,
     BasicSelection,
@@ -63,7 +62,9 @@ from zarr.indexing import (
 )
 from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import StoreLike, StorePath, make_store_path
-from zarr.store.core import contains_array
+from zarr.store.core import (
+    ensure_no_existing_node,
+)
 from zarr.sync import sync
 
 
@@ -233,8 +234,7 @@ class AsyncArray:
         exists_ok: bool = False,
     ) -> AsyncArray:
         if not exists_ok:
-            if await contains_array(store_path=store_path, zarr_format=3):
-                raise ContainsArrayError(store_path.store, store_path.path)
+            await ensure_no_existing_node(store_path, zarr_format=3)
 
         codecs = list(codecs) if codecs is not None else [BytesCodec()]
 
@@ -290,9 +290,7 @@ class AsyncArray:
         import numcodecs
 
         if not exists_ok:
-            if await contains_array(store_path=store_path, zarr_format=2):
-                raise ContainsArrayError(store_path.store, store_path.path)
-
+            await ensure_no_existing_node(store_path, zarr_format=2)
         if order is None:
             order = "C"
 

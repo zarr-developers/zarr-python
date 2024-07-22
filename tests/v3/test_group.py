@@ -365,6 +365,53 @@ def test_group_create_array(
     assert np.array_equal(array[:], data)
 
 
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("exists_ok", [True, False])
+@pytest.mark.parametrize("extant_node", ["array", "group"])
+def test_group_creation_existing_node(
+    store: LocalStore | MemoryStore,
+    zarr_format: ZarrFormat,
+    exists_ok: bool,
+    extant_node: Literal["array", "group"],
+) -> None:
+    """
+    Check that an existing array or group is handled as expected during group creation.
+    """
+    spath = StorePath(store)
+    group = Group.create(spath, zarr_format=zarr_format)
+    expected_exception: type[ContainsArrayError] | type[ContainsGroupError]
+    attributes = {"old": True}
+
+    if extant_node == "array":
+        expected_exception = ContainsArrayError
+        _ = group.create_array("extant", shape=(10,), dtype="uint8", attributes=attributes)
+    elif extant_node == "group":
+        expected_exception = ContainsGroupError
+        _ = group.create_group("extant", attributes=attributes)
+    else:
+        raise AssertionError
+
+    new_attributes = {"new": True}
+
+    if exists_ok:
+        node_new = Group.create(
+            spath / "extant",
+            attributes=new_attributes,
+            zarr_format=zarr_format,
+            exists_ok=exists_ok,
+        )
+        assert node_new.attrs == new_attributes
+    else:
+        with pytest.raises(expected_exception):
+            node_new = Group.create(
+                spath / "extant",
+                attributes=new_attributes,
+                zarr_format=zarr_format,
+                exists_ok=exists_ok,
+            )
+
+
 async def test_asyncgroup_create(
     store: MemoryStore | LocalStore,
     exists_ok: bool,
@@ -373,6 +420,7 @@ async def test_asyncgroup_create(
     """
     Test that `AsyncGroup.create` works as expected.
     """
+    spath = StorePath(store=store)
     attributes = {"foo": 100}
     agroup = await AsyncGroup.create(
         store,
@@ -387,7 +435,19 @@ async def test_asyncgroup_create(
     if not exists_ok:
         with pytest.raises(ContainsGroupError):
             agroup = await AsyncGroup.create(
-                store,
+                spath,
+                attributes=attributes,
+                exists_ok=exists_ok,
+                zarr_format=zarr_format,
+            )
+        # create an array at our target path
+        collision_name = "foo"
+        _ = await AsyncArray.create(
+            spath / collision_name, shape=(10,), dtype="uint8", zarr_format=zarr_format
+        )
+        with pytest.raises(ContainsArrayError):
+            _ = await AsyncGroup.create(
+                StorePath(store=store) / collision_name,
                 attributes=attributes,
                 exists_ok=exists_ok,
                 zarr_format=zarr_format,

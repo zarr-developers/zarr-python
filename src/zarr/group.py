@@ -27,9 +27,8 @@ from zarr.common import (
     ZarrFormat,
 )
 from zarr.config import config
-from zarr.errors import ContainsGroupError
 from zarr.store import StoreLike, StorePath, make_store_path
-from zarr.store.core import contains_group
+from zarr.store.core import ensure_no_existing_node
 from zarr.sync import SyncMixin, sync
 
 if TYPE_CHECKING:
@@ -132,8 +131,7 @@ class AsyncGroup:
     ) -> AsyncGroup:
         store_path = make_store_path(store)
         if not exists_ok:
-            if await contains_group(store_path=store_path, zarr_format=zarr_format):
-                raise ContainsGroupError(store_path.store, store_path.path)
+            await ensure_no_existing_node(store_path, zarr_format=zarr_format)
         group = cls(
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
