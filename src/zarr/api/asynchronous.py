@@ -862,7 +862,7 @@ async def open_array(
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         if store_path.store.mode.create:
             return await create(
                 store=store_path,
@@ -871,7 +871,7 @@ async def open_array(
                 overwrite=store_path.store.mode.overwrite,
                 **kwargs,
             )
-        raise e
+        raise
 
 
 async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AsyncArray:
