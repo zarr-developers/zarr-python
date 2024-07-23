@@ -66,7 +66,7 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
         if isinstance(a.metadata, ArrayV3Metadata):
             new["codecs"] = a.metadata.codecs
         else:
-            raise ValueError(f"Unsupported zarr format: {a.metadata.zarr_format}")
+            raise TypeError(f"Unsupported zarr format: {a.metadata.zarr_format}")
     else:
         # TODO: set default values compressor/codecs
         # to do this, we may need to evaluate if this is a v2 or v3 array

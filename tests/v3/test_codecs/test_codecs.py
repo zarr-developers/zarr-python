@@ -382,7 +382,7 @@ def test_invalid_metadata(store: Store) -> None:
             fill_value=0,
         )
     spath2 = StorePath(store, "invalid_endian")
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         Array.create(
             spath2,
             shape=(16, 16),
