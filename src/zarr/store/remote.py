@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype
 from zarr.common import OpenMode
 from zarr.store.core import _dereference_path
 
@@ -14,7 +13,7 @@ if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
     from upath import UPath
 
-    from zarr.buffer import Buffer
+    from zarr.buffer import Buffer, BufferPrototype
     from zarr.common import BytesLike
 
 
@@ -69,7 +68,7 @@ class RemoteStore(Store):
             self.path = url.path.rstrip("/")
             self._fs = url.fs
         else:
-            raise ValueError("URL not understood, %s", url)
+            raise ValueError(f"URL not understood, {url}")
         self.allowed_exceptions = allowed_exceptions
         # test instantiate file system
         if not self._fs.async_impl:
