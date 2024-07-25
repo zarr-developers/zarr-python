@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pytest
+from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.remote import RemoteStore
@@ -112,8 +113,6 @@ def array_fixture(request: pytest.FixtureRequest) -> np.ndarray:
         .astype(array_request.dtype)
     )
 
-
-from hypothesis import HealthCheck, Verbosity, settings
 
 settings.register_profile(
     "ci",
