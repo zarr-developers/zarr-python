@@ -42,8 +42,8 @@ compressors = st.sampled_from([None, "default"])
 
 @st.composite  # type: ignore[misc]
 def np_array_and_chunks(
-    draw: st.DrawFn, *, arrays: st.SearchStrategy = np_arrays
-) -> tuple[np.ndarray, tuple[int]]:
+    draw: st.DrawFn, *, arrays: st.SearchStrategy[np.ndarray] = np_arrays
+) -> tuple[np.ndarray, tuple[int]]:  # type: ignore[type-arg]
     """A hypothesis strategy to generate small sized random arrays.
 
     Returns: a tuple of the array and a suitable random chunking for it.
