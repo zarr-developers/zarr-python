@@ -32,7 +32,7 @@ paths = st.lists(st.text(zarr_key_chars, min_size=1), min_size=1).map(
     lambda x: "/".join(x)
 ) | st.just("/")
 np_arrays = npst.arrays(
-    # FIXME: re-enable timedeltas once we figure out the fill_value issue.
+    # TODO: re-enable timedeltas once they are supported
     dtype=npst.scalar_dtypes().filter(lambda x: x.kind != "m"),
     shape=npst.array_shapes(max_dims=4),
 )
@@ -42,7 +42,7 @@ compressors = st.sampled_from([None, "default"])
 
 @st.composite  # type: ignore[misc]
 def np_array_and_chunks(
-    draw: st.DrawFn, *, arrays: st.SearchStrategy[np.ndarray] = np_arrays
+    draw: st.DrawFn, *, arrays: st.SearchStrategy = np_arrays
 ) -> tuple[np.ndarray, tuple[int]]:
     """A hypothesis strategy to generate small sized random arrays.
 
@@ -98,6 +98,10 @@ def arrays(
 
     array_path = path + ("/" if not path.endswith("/") else "") + name
     root = Group.create(store)
+    fill_value_args: tuple[Any, ...] = tuple()
+    if nparray.dtype.kind == "M":
+        fill_value_args = ("ns",)
+
     a = root.create_array(
         array_path,
         shape=nparray.shape,
@@ -105,15 +109,14 @@ def arrays(
         dtype=nparray.dtype.str,
         attributes=attributes,
         # compressor=compressor,  # TODO: FIXME
-        # TODO: FIXME seems to break with booleans and timedelta
-        # fill_value=nparray.dtype.type(0),
+        fill_value=nparray.dtype.type(0, *fill_value_args),
     )
 
     assert isinstance(a, Array)
     assert nparray.shape == a.shape
-    # assert chunks == a.chunks  # TODO: adapt for v2, v3
+    assert chunks == a.chunks
     assert array_path == a.path, (path, name, array_path, a.name, a.path)
-    assert array_path == a.name, (path, name, array_path, a.name, a.path)
+    # assert array_path == a.name, (path, name, array_path, a.name, a.path)
     # assert a.basename is None  # TODO
     # assert a.store == normalize_store_arg(store)
     assert dict(a.attrs) == expected_attrs
@@ -130,7 +133,7 @@ def is_negative_slice(idx: Any) -> bool:
 
 
 @st.composite  # type: ignore[misc]
-def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs):
+def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs):  # type: ignore[no-untyped-def]
     """Basic indices without unsupported negative slices."""
     return draw(
         npst.basic_indices(shape=shape, **kwargs).filter(

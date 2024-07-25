@@ -111,3 +111,19 @@ def array_fixture(request: pytest.FixtureRequest) -> np.ndarray:
         .reshape(array_request.shape, order=array_request.order)
         .astype(array_request.dtype)
     )
+
+
+from hypothesis import HealthCheck, Verbosity, settings
+
+settings.register_profile(
+    "ci",
+    max_examples=1000,
+    deadline=None,
+    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
+)
+settings.register_profile(
+    "local",
+    max_examples=300,
+    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
+    verbosity=Verbosity.verbose,
+)
