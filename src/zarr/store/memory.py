@@ -95,8 +95,9 @@ class MemoryStore(Store):
             prefix = prefix[:-1]
 
         if prefix == "":
-            for key in self._store_dict:
-                yield key.split("/", maxsplit=1)[0]
+            keys_unique = set(k.split("/")[0] for k in self._store_dict.keys())
+            for key in keys_unique:
+                yield key
         else:
             for key in self._store_dict:
                 if key.startswith(prefix + "/") and key != prefix:

@@ -21,7 +21,7 @@ from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
 from zarr.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
-from zarr.chunk_grids import RegularChunkGrid
+from zarr.chunk_grids import RegularChunkGrid, _guess_chunks
 from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -62,6 +62,9 @@ from zarr.indexing import (
 from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.registry import get_pipeline_class
 from zarr.store import StoreLike, StorePath, make_store_path
+from zarr.store.core import (
+    ensure_no_existing_node,
+)
 from zarr.sync import sync
 
 
@@ -137,12 +140,13 @@ class AsyncArray:
         compressor: dict[str, JSON] | None = None,
         # runtime
         exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
     ) -> AsyncArray:
         store_path = make_store_path(store)
 
         if chunk_shape is None:
             if chunks is None:
-                raise ValueError("Either chunk_shape or chunks needs to be provided.")
+                chunk_shape = chunks = _guess_chunks(shape=shape, typesize=np.dtype(dtype).itemsize)
             chunk_shape = chunks
         elif chunks is not None:
             raise ValueError("Only one of chunk_shape or chunks must be provided.")
@@ -164,7 +168,7 @@ class AsyncArray:
                 raise ValueError(
                     "compressor cannot be used for arrays with version 3. Use bytes-to-bytes codecs instead."
                 )
-            return await cls._create_v3(
+            result = await cls._create_v3(
                 store_path,
                 shape=shape,
                 dtype=dtype,
@@ -187,7 +191,7 @@ class AsyncArray:
                 )
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with version 2.")
-            return await cls._create_v2(
+            result = await cls._create_v2(
                 store_path,
                 shape=shape,
                 dtype=dtype,
@@ -202,6 +206,12 @@ class AsyncArray:
             )
         else:
             raise ValueError(f"Insupported zarr_format. Got: {zarr_format}")
+
+        if data is not None:
+            # insert user-provided data
+            await result.setitem(..., data)
+
+        return result
 
     @classmethod
     async def _create_v3(
@@ -224,7 +234,7 @@ class AsyncArray:
         exists_ok: bool = False,
     ) -> AsyncArray:
         if not exists_ok:
-            assert not await (store_path / ZARR_JSON).exists()
+            await ensure_no_existing_node(store_path, zarr_format=3)
 
         codecs = list(codecs) if codecs is not None else [BytesCodec()]
 
@@ -280,8 +290,7 @@ class AsyncArray:
         import numcodecs
 
         if not exists_ok:
-            assert not await (store_path / ZARRAY_JSON).exists()
-
+            await ensure_no_existing_node(store_path, zarr_format=2)
         if order is None:
             order = "C"
 
@@ -721,6 +730,10 @@ class Array:
     @property
     def read_only(self) -> bool:
         return self._async_array.read_only
+
+    @property
+    def fill_value(self) -> Any:
+        return self.metadata.fill_value
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None

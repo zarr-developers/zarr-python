@@ -43,9 +43,8 @@ class TestAttributesProcessSynchronizer(TestAttributes):
 
 def _append(arg):
     z, i = arg
-    import numpy
 
-    x = numpy.empty(1000, dtype="i4")
+    x = np.empty(1000, dtype="i4")
     x[:] = i
     shape = z.append(x)
     return shape
@@ -53,9 +52,8 @@ def _append(arg):
 
 def _set_arange(arg):
     z, i = arg
-    import numpy
 
-    x = numpy.arange(i * 1000, (i * 1000) + 1000, 1)
+    x = np.arange(i * 1000, (i * 1000) + 1000, 1)
     z[i * 1000 : (i * 1000) + 1000] = x
     return i
 
