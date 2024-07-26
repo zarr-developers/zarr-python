@@ -129,7 +129,7 @@ class AsyncGroup:
         exists_ok: bool = False,
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=zarr_format)
         attributes = attributes or {}
@@ -146,7 +146,7 @@ class AsyncGroup:
         store: StoreLike,
         zarr_format: Literal[2, 3, None] = 3,
     ) -> AsyncGroup:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
 
         if zarr_format == 2:
             zgroup_bytes, zattrs_bytes = await asyncio.gather(
@@ -169,7 +169,7 @@ class AsyncGroup:
                 # alternatively, we could warn and favor v3
                 raise ValueError("Both zarr.json and .zgroup objects exist")
             if zarr_json_bytes is None and zgroup_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
             # set zarr_format based on which keys were found
             if zarr_json_bytes is not None:
                 zarr_format = 3

@@ -142,7 +142,7 @@ class AsyncArray:
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
 
         if chunk_shape is None:
             if chunks is None:
@@ -334,18 +334,18 @@ class AsyncArray:
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
     ) -> AsyncArray:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
 
         if zarr_format == 2:
             zarray_bytes, zattrs_bytes = await gather(
                 (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
             )
             if zarray_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
         elif zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
         elif zarr_format is None:
             zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
                 (store_path / ZARR_JSON).get(),
@@ -357,7 +357,7 @@ class AsyncArray:
                 # alternatively, we could warn and favor v3
                 raise ValueError("Both zarr.json and .zarray objects exist")
             if zarr_json_bytes is None and zarray_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
             # set zarr_format based on which keys were found
             if zarr_json_bytes is not None:
                 zarr_format = 3
@@ -412,7 +412,7 @@ class AsyncArray:
 
     @property
     def read_only(self) -> bool:
-        return bool(not self.store_path.store.writeable)
+        return self.store_path.store.mode.readonly
 
     @property
     def path(self) -> str:

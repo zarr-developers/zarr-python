@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 from typing import Any, Literal
 
-from zarr.abc.store import Store
+from zarr.abc.store import AccessMode, Store
 from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
-from zarr.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, OpenMode, ZarrFormat
+from zarr.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, AccessModeLiteral, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
@@ -68,23 +68,26 @@ class StorePath:
 StoreLike = Store | StorePath | Path | str
 
 
-def make_store_path(store_like: StoreLike | None, *, mode: OpenMode | None = None) -> StorePath:
+async def make_store_path(
+    store_like: StoreLike | None, *, mode: AccessModeLiteral | None = None
+) -> StorePath:
     if isinstance(store_like, StorePath):
         if mode is not None:
-            assert mode == store_like.store.mode
+            assert AccessMode.from_literal(mode) == store_like.store.mode
         return store_like
     elif isinstance(store_like, Store):
         if mode is not None:
-            assert mode == store_like.mode
+            assert AccessMode.from_literal(mode) == store_like.mode
+        await store_like._ensure_open()
         return StorePath(store_like)
     elif store_like is None:
         if mode is None:
             mode = "w"  # exception to the default mode = 'r'
-        return StorePath(MemoryStore(mode=mode))
+        return StorePath(await MemoryStore.open(mode=mode))
     elif isinstance(store_like, Path):
-        return StorePath(LocalStore(store_like, mode=mode or "r"))
+        return StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
-        return StorePath(LocalStore(Path(store_like), mode=mode or "r"))
+        return StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
     raise TypeError
 
 

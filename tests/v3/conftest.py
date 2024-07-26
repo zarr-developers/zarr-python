@@ -22,15 +22,15 @@ from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.remote import RemoteStore
 
 
-def parse_store(
+async def parse_store(
     store: Literal["local", "memory", "remote"], path: str
 ) -> LocalStore | MemoryStore | RemoteStore:
     if store == "local":
-        return LocalStore(path, mode="w")
+        return await LocalStore.open(path, mode="w")
     if store == "memory":
-        return MemoryStore(mode="w")
+        return await MemoryStore.open(mode="w")
     if store == "remote":
-        return RemoteStore(url=path, mode="w")
+        return await RemoteStore.open(url=path, mode="w")
     raise AssertionError
 
 
@@ -41,31 +41,31 @@ def path_type(request: pytest.FixtureRequest) -> Any:
 
 # todo: harmonize this with local_store fixture
 @pytest.fixture
-def store_path(tmpdir: LEGACY_PATH) -> StorePath:
-    store = LocalStore(str(tmpdir), mode="w")
+async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
+    store = await LocalStore.open(str(tmpdir), mode="w")
     p = StorePath(store)
     return p
 
 
 @pytest.fixture(scope="function")
-def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
-    return LocalStore(str(tmpdir), mode="w")
+async def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
+    return await LocalStore.open(str(tmpdir), mode="w")
 
 
 @pytest.fixture(scope="function")
-def remote_store(url: str) -> RemoteStore:
-    return RemoteStore(url, mode="w")
+async def remote_store(url: str) -> RemoteStore:
+    return await RemoteStore.open(url, mode="w")
 
 
 @pytest.fixture(scope="function")
-def memory_store() -> MemoryStore:
-    return MemoryStore(mode="w")
+async def memory_store() -> MemoryStore:
+    return await MemoryStore.open(mode="w")
 
 
 @pytest.fixture(scope="function")
-def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
+async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     param = request.param
-    return parse_store(param, str(tmpdir))
+    return await parse_store(param, str(tmpdir))
 
 
 @dataclass
@@ -79,7 +79,7 @@ class AsyncGroupRequest:
 async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
-    store = parse_store(param.store, str(tmpdir))
+    store = await parse_store(param.store, str(tmpdir))
     agroup = await AsyncGroup.create(
         store,
         attributes=param.attributes,

@@ -19,10 +19,10 @@ from .conftest import parse_store
 
 
 @pytest.fixture(params=["local", "memory"])
-def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> LocalStore | MemoryStore:
-    result = parse_store(request.param, str(tmpdir))
+async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> LocalStore | MemoryStore:
+    result = await parse_store(request.param, str(tmpdir))
     if not isinstance(result, MemoryStore | LocalStore):
-        raise TypeError("Wrong store class returned by test fixture!")
+        raise TypeError("Wrong store class returned by test fixture! got " + result + " instead")
     return result
 
 
@@ -430,7 +430,7 @@ async def test_asyncgroup_create(
     )
 
     assert agroup.metadata == GroupMetadata(zarr_format=zarr_format, attributes=attributes)
-    assert agroup.store_path == make_store_path(store)
+    assert agroup.store_path == await make_store_path(store)
 
     if not exists_ok:
         with pytest.raises(ContainsGroupError):
