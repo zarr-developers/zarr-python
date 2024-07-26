@@ -188,8 +188,12 @@ class StoreTests(Generic[S]):
         await store.set("foo/zarr.json", Buffer.from_bytes(b"bar"))
         await store.set("foo/c/1", Buffer.from_bytes(b"\x01"))
 
-        keys = [k async for k in store.list_dir("foo")]
-        assert set(keys) == set(["zarr.json", "c"]), keys
+        keys_expected = ["zarr.json", "c"]
+        keys_observed = [k async for k in store.list_dir("foo")]
 
-        keys = [k async for k in store.list_dir("foo/")]
-        assert set(keys) == set(["zarr.json", "c"]), keys
+        assert len(keys_observed) == len(keys_expected), keys_observed
+        assert set(keys_observed) == set(keys_expected), keys_observed
+
+        keys_observed = [k async for k in store.list_dir("foo/")]
+        assert len(keys_expected) == len(keys_observed), keys_observed
+        assert set(keys_observed) == set(keys_expected), keys_observed
