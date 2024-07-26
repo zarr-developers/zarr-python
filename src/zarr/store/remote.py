@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
     from upath import UPath
 
-    from zarr.buffer import Buffer
+    from zarr.buffer import Buffer, BufferPrototype
     from zarr.common import BytesLike
 
 
