@@ -44,7 +44,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     )
     z[:, :] = data
     assert_bytes_equal(
-        await store.get(f"{path}/0.0", prototype=default_buffer_prototype), z._store["0.0"]
+        await store.get(f"{path}/0.0", prototype=default_buffer_prototype()), z._store["0.0"]
     )
 
 
@@ -83,5 +83,5 @@ async def test_endian_write(
     )
     z[:, :] = data
     assert_bytes_equal(
-        await store.get(f"{path}/0.0", prototype=default_buffer_prototype), z._store["0.0"]
+        await store.get(f"{path}/0.0", prototype=default_buffer_prototype()), z._store["0.0"]
     )

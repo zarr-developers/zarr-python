@@ -31,9 +31,11 @@ class StorePath:
 
     async def get(
         self,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
         byte_range: tuple[int, int | None] | None = None,
     ) -> Buffer | None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
     async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:

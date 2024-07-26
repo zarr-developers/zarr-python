@@ -90,9 +90,9 @@ async def test_basic():
     data = b"hello"
     await store.set("foo", Buffer.from_bytes(data))
     assert await store.exists("foo")
-    assert (await store.get("foo", prototype=default_buffer_prototype)).to_bytes() == data
+    assert (await store.get("foo", prototype=default_buffer_prototype())).to_bytes() == data
     out = await store.get_partial_values(
-        prototype=default_buffer_prototype, key_ranges=[("foo", (1, None))]
+        prototype=default_buffer_prototype(), key_ranges=[("foo", (1, None))]
     )
     assert out[0].to_bytes() == data[1:]
 

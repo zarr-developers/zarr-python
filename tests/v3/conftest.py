@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from _pytest.compat import LEGACY_PATH
 
+from zarr import config
 from zarr.abc.store import Store
 from zarr.common import ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.group import AsyncGroup
@@ -94,6 +95,13 @@ def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
     """Fixture to parametrize over numpy-like libraries"""
 
     yield pytest.importorskip(request.param)
+
+
+@pytest.fixture(autouse=True)
+def reset_config():
+    config.reset()
+    yield
+    config.reset()
 
 
 @dataclass

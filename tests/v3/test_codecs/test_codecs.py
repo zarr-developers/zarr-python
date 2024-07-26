@@ -127,7 +127,7 @@ async def test_order(
         )
         z[:, :] = data
         assert_bytes_equal(
-            await store.get(f"{path}/0.0", prototype=default_buffer_prototype), z._store["0.0"]
+            await store.get(f"{path}/0.0", prototype=default_buffer_prototype()), z._store["0.0"]
         )
 
 
@@ -249,7 +249,7 @@ async def test_delete_empty_chunks(store: Store) -> None:
     await _AsyncArrayProxy(a)[:16, :16].set(np.zeros((16, 16)))
     await _AsyncArrayProxy(a)[:16, :16].set(data)
     assert np.array_equal(await _AsyncArrayProxy(a)[:16, :16].get(), data)
-    assert await store.get(f"{path}/c0/0", prototype=default_buffer_prototype) is None
+    assert await store.get(f"{path}/c0/0", prototype=default_buffer_prototype()) is None
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
@@ -280,16 +280,16 @@ async def test_zarr_compat(store: Store) -> None:
     assert np.array_equal(data, z2[:16, :18])
 
     assert_bytes_equal(
-        z2._store["0.0"], await store.get(f"{path}/0.0", prototype=default_buffer_prototype)
+        z2._store["0.0"], await store.get(f"{path}/0.0", prototype=default_buffer_prototype())
     )
     assert_bytes_equal(
-        z2._store["0.1"], await store.get(f"{path}/0.1", prototype=default_buffer_prototype)
+        z2._store["0.1"], await store.get(f"{path}/0.1", prototype=default_buffer_prototype())
     )
     assert_bytes_equal(
-        z2._store["1.0"], await store.get(f"{path}/1.0", prototype=default_buffer_prototype)
+        z2._store["1.0"], await store.get(f"{path}/1.0", prototype=default_buffer_prototype())
     )
     assert_bytes_equal(
-        z2._store["1.1"], await store.get(f"{path}/1.1", prototype=default_buffer_prototype)
+        z2._store["1.1"], await store.get(f"{path}/1.1", prototype=default_buffer_prototype())
     )
 
 
@@ -323,16 +323,16 @@ async def test_zarr_compat_F(store: Store) -> None:
     assert np.array_equal(data, z2[:16, :18])
 
     assert_bytes_equal(
-        z2._store["0.0"], await store.get(f"{path}/0.0", prototype=default_buffer_prototype)
+        z2._store["0.0"], await store.get(f"{path}/0.0", prototype=default_buffer_prototype())
     )
     assert_bytes_equal(
-        z2._store["0.1"], await store.get(f"{path}/0.1", prototype=default_buffer_prototype)
+        z2._store["0.1"], await store.get(f"{path}/0.1", prototype=default_buffer_prototype())
     )
     assert_bytes_equal(
-        z2._store["1.0"], await store.get(f"{path}/1.0", prototype=default_buffer_prototype)
+        z2._store["1.0"], await store.get(f"{path}/1.0", prototype=default_buffer_prototype())
     )
     assert_bytes_equal(
-        z2._store["1.1"], await store.get(f"{path}/1.1", prototype=default_buffer_prototype)
+        z2._store["1.1"], await store.get(f"{path}/1.1", prototype=default_buffer_prototype())
     )
 
 
@@ -365,7 +365,7 @@ async def test_dimension_names(store: Store) -> None:
     )
 
     assert (await AsyncArray.open(spath2)).metadata.dimension_names is None
-    zarr_json_buffer = await store.get(f"{path2}/zarr.json", prototype=default_buffer_prototype)
+    zarr_json_buffer = await store.get(f"{path2}/zarr.json", prototype=default_buffer_prototype())
     assert zarr_json_buffer is not None
     assert "dimension_names" not in json.loads(zarr_json_buffer.to_bytes())
 
@@ -473,14 +473,14 @@ async def test_resize(store: Store) -> None:
     )
 
     await _AsyncArrayProxy(a)[:16, :18].set(data)
-    assert await store.get(f"{path}/1.1", prototype=default_buffer_prototype) is not None
-    assert await store.get(f"{path}/0.0", prototype=default_buffer_prototype) is not None
-    assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype) is not None
-    assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype) is not None
+    assert await store.get(f"{path}/1.1", prototype=default_buffer_prototype()) is not None
+    assert await store.get(f"{path}/0.0", prototype=default_buffer_prototype()) is not None
+    assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
+    assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is not None
 
     a = await a.resize((10, 12))
     assert a.metadata.shape == (10, 12)
-    assert await store.get(f"{path}/0.0", prototype=default_buffer_prototype) is not None
-    assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype) is not None
-    assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype) is None
-    assert await store.get(f"{path}/1.1", prototype=default_buffer_prototype) is None
+    assert await store.get(f"{path}/0.0", prototype=default_buffer_prototype()) is not None
+    assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
+    assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is None
+    assert await store.get(f"{path}/1.1", prototype=default_buffer_prototype()) is None
