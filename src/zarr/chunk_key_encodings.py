@@ -38,7 +38,13 @@ class ChunkKeyEncoding(Metadata):
         if isinstance(data, ChunkKeyEncoding):
             return data
 
-        name_parsed, configuration_parsed = parse_named_configuration(data)
+        # configuration is optional for chunk key encodings
+        name_parsed, configuration_parsed = parse_named_configuration(
+            data, require_configuration=False
+        )
+        # normalize missing configuration to the default "/" separator.
+        if configuration_parsed is None:
+            configuration_parsed = {"separator": "/"}
         if name_parsed == "default":
             return DefaultChunkKeyEncoding(**configuration_parsed)  # type: ignore[arg-type]
         if name_parsed == "v2":

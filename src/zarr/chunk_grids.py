@@ -131,7 +131,7 @@ class RegularChunkGrid(ChunkGrid):
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "regular", "configuration": {"chunk_shape": list(self.chunk_shape)}}
+        return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
 
     def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
         return itertools.product(
