@@ -195,9 +195,9 @@ def test_metadata_to_dict(
     if dimension_names == "strings":
         dnames = tuple(map(str, range(len(shape))))
     elif dimension_names == "missing":
-        dnames = (None,) * len(shape)
-    elif dimension_names == "nones":
         dnames = None
+    elif dimension_names == "nones":
+        dnames = (None,) * len(shape)
 
     metadata_dict = {
         "zarr_format": 3,
