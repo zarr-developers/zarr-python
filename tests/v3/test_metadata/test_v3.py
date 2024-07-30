@@ -217,7 +217,7 @@ def test_metadata_to_dict(
 
     metadata = ArrayV3Metadata.from_dict(metadata_dict)
     observed = metadata.to_dict()
-    expected = metadata_dict
+    expected = metadata_dict.copy()
     if attributes is None:
         assert observed["attributes"] == {}
         observed.pop("attributes")

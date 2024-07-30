@@ -39,17 +39,19 @@ class ChunkKeyEncoding(Metadata):
             return data
 
         # configuration is optional for chunk key encodings
-        name_parsed, configuration_parsed = parse_named_configuration(
-            data, require_configuration=False
-        )
-        # normalize missing configuration to the default "/" separator.
-        if configuration_parsed is None:
-            configuration_parsed = {"separator": "/"}
+        name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)
         if name_parsed == "default":
-            return DefaultChunkKeyEncoding(**configuration_parsed)  # type: ignore[arg-type]
+            if config_parsed is None:
+                # for default, normalize missing configuration to use the "/" separator.
+                config_parsed = {"separator": "/"}
+            return DefaultChunkKeyEncoding(**config_parsed)  # type: ignore[arg-type]
         if name_parsed == "v2":
-            return V2ChunkKeyEncoding(**configuration_parsed)  # type: ignore[arg-type]
-        raise ValueError(f"Unknown chunk key encoding. Got {name_parsed}.")
+            if config_parsed is None:
+                # for v2, normalize missing configuration to use the "." separator.
+                config_parsed = {"separator": "."}
+            return V2ChunkKeyEncoding(**config_parsed)  # type: ignore[arg-type]
+        msg = f"Unknown chunk key encoding. Got {name_parsed}, expected one of ('v2', 'default')."
+        raise ValueError(msg)
 
     def to_dict(self) -> dict[str, JSON]:
         return {"name": self.name, "configuration": {"separator": self.separator}}
