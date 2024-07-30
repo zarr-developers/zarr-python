@@ -411,9 +411,11 @@ class ArrayV2Metadata(ArrayMetadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
+        # make a copy to protect the original from modification
+        _data = data.copy()
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v2(data.pop("zarr_format"))
-        return cls(**data)
+        _ = parse_zarr_format_v2(_data.pop("zarr_format"))
+        return cls(**_data)
 
     def to_dict(self) -> JSON:
         zarray_dict = super().to_dict()
