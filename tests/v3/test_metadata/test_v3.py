@@ -225,7 +225,7 @@ def test_metadata_to_dict(
         if chunk_key_encoding == "default":
             expected_cke_dict = DefaultChunkKeyEncoding(separator="/").to_dict()
         else:
-            expected_cke_dict = V2ChunkKeyEncoding(separator="/").to_dict()
+            expected_cke_dict = V2ChunkKeyEncoding(separator=".").to_dict()
         assert observed["chunk_key_encoding"] == expected_cke_dict
         observed.pop("chunk_key_encoding")
         expected.pop("chunk_key_encoding")
