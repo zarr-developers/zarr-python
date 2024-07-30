@@ -283,15 +283,19 @@ class ArrayV3Metadata(ArrayMetadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
+        # make a copy because we are modifying the dict
+        _data = data.copy()
         # TODO: Remove the type: ignores[] comments below and use a TypedDict to type `data`
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v3(data.pop("zarr_format"))  # type: ignore[arg-type]
+        _ = parse_zarr_format_v3(_data.pop("zarr_format"))  # type: ignore[arg-type]
         # check that the node_type attribute is correct
-        _ = parse_node_type_array(data.pop("node_type"))  # type: ignore[arg-type]
+        _ = parse_node_type_array(_data.pop("node_type"))  # type: ignore[arg-type]
 
-        data["dimension_names"] = data.pop("dimension_names", None)
-
-        return cls(**data)  # type: ignore[arg-type]
+        # dimension_names key is optional, normalize missing to `None`
+        _data["dimension_names"] = _data.pop("dimension_names", None)
+        # attributes key is optional, normalize missing to `None`
+        _data["attributes"] = _data.pop("attributes", None)
+        return cls(**_data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, Any]:
         out_dict = super().to_dict()
@@ -407,9 +411,11 @@ class ArrayV2Metadata(ArrayMetadata):
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
+        # make a copy to protect the original from modification
+        _data = data.copy()
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v2(data.pop("zarr_format"))
-        return cls(**data)
+        _ = parse_zarr_format_v2(_data.pop("zarr_format"))
+        return cls(**_data)
 
     def to_dict(self) -> JSON:
         zarray_dict = super().to_dict()
@@ -446,10 +452,10 @@ class ArrayV2Metadata(ArrayMetadata):
         return replace(self, attributes=attributes)
 
 
-def parse_dimension_names(data: None | Iterable[str]) -> tuple[str, ...] | None:
+def parse_dimension_names(data: None | Iterable[str | None]) -> tuple[str | None, ...] | None:
     if data is None:
         return data
-    elif all(isinstance(x, str) for x in data):
+    elif all(isinstance(x, type(None) | str) for x in data):
         return tuple(data)
     else:
         msg = f"Expected either None or a iterable of str, got {type(data)}"
