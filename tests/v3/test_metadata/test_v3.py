@@ -15,9 +15,8 @@ from collections.abc import Sequence
 import numpy as np
 import pytest
 
-from zarr.metadata import ArrayV3Metadata, parse_dimension_names
-from zarr.metadata import parse_fill_value_v3 as parse_fill_value
-from zarr.metadata import parse_zarr_format_v3 as parse_zarr_format
+from zarr.metadata import ArrayV3Metadata
+from zarr.metadata.v3 import parse_dimension_names, parse_fill_value, parse_zarr_format
 
 bool_dtypes = ("bool",)
 

@@ -38,7 +38,7 @@ from zarr.common import (
     product,
 )
 from zarr.indexing import BasicIndexer, SelectorTuple, c_order_iter, get_indexer, morton_order_iter
-from zarr.metadata import parse_codecs
+from zarr.metadata.v3 import parse_codecs
 from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
 if TYPE_CHECKING:

@@ -59,7 +59,7 @@ from zarr.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
+from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.registry import get_pipeline_class
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.core import (
@@ -92,14 +92,14 @@ def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecP
 
 @dataclass(frozen=True)
 class AsyncArray:
-    metadata: ArrayMetadata
+    metadata: ArrayV3Metadata | ArrayV2Metadata
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
     order: Literal["C", "F"]
 
     def __init__(
         self,
-        metadata: ArrayMetadata,
+        metadata: ArrayV2Metadata | ArrayV3Metadata,
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
     ):
@@ -497,7 +497,7 @@ class AsyncArray:
         )
         return await self._get_selection(indexer, prototype=prototype)
 
-    async def _save_metadata(self, metadata: ArrayMetadata) -> None:
+    async def _save_metadata(self, metadata: ArrayV2Metadata | ArrayV3Metadata) -> None:
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await gather(*awaitables)
@@ -716,7 +716,7 @@ class Array:
         return self._async_array.basename
 
     @property
-    def metadata(self) -> ArrayMetadata:
+    def metadata(self) -> ArrayV2Metadata | ArrayV3Metadata:
         return self._async_array.metadata
 
     @property
