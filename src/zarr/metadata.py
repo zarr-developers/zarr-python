@@ -10,12 +10,12 @@ from typing import TYPE_CHECKING, Any, Literal, cast, overload
 import numpy as np
 import numpy.typing as npt
 
+from zarr._config import config
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
 from zarr.abc.metadata import Metadata
 from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
-from zarr.config import config
 from zarr.registry import get_codec_class, get_pipeline_class
 
 if TYPE_CHECKING:
@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 import numcodecs.abc
 
+from zarr._config import parse_indexing_order
 from zarr.array_spec import ArraySpec
 from zarr.common import (
     JSON,
@@ -35,7 +36,6 @@ from zarr.common import (
     parse_named_configuration,
     parse_shapelike,
 )
-from zarr.config import parse_indexing_order
 
 # For type checking
 _bool = bool

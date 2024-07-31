@@ -8,13 +8,12 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr import Array, zeros
+from zarr import Array, BadConfigError, config, zeros
 from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter
 from zarr.array_spec import ArraySpec
 from zarr.buffer import NDBuffer
 from zarr.codecs import BatchedCodecPipeline, BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
-from zarr.config import BadConfigError, config
 from zarr.indexing import SelectorTuple
 from zarr.registry import (
     fully_qualified_name,

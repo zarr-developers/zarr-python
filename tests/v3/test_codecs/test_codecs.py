@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 import zarr.v2
+from zarr import config
 from zarr.abc.codec import Codec
 from zarr.abc.store import Store
 from zarr.array import Array, AsyncArray
@@ -18,7 +19,6 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.common import MemoryOrder
-from zarr.config import config
 from zarr.indexing import Selection, morton_order_iter
 from zarr.store import StorePath
 from zarr.testing.utils import assert_bytes_equal

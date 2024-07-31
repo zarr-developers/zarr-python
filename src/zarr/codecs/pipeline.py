@@ -8,6 +8,7 @@ from warnings import warn
 
 import numpy as np
 
+from zarr._config import config
 from zarr.abc.codec import (
     ArrayArrayCodec,
     ArrayBytesCodec,
@@ -21,7 +22,6 @@ from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, BufferPrototype, NDBuffer
 from zarr.chunk_grids import ChunkGrid
 from zarr.common import JSON, ChunkCoords, concurrent_map, parse_named_configuration
-from zarr.config import config
 from zarr.indexing import SelectorTuple, is_scalar, is_total_slice
 from zarr.registry import get_codec_class, register_pipeline
 

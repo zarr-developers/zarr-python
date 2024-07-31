@@ -17,6 +17,7 @@ from typing import Any, Literal, cast
 import numpy as np
 import numpy.typing as npt
 
+from zarr._config import config, parse_indexing_order
 from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
@@ -35,7 +36,6 @@ from zarr.common import (
     concurrent_map,
     product,
 )
-from zarr.config import config, parse_indexing_order
 from zarr.indexing import (
     BasicIndexer,
     BasicSelection,

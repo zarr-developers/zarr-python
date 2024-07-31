@@ -6,12 +6,12 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import numpy as np
 
+from zarr._config import config
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.buffer import Buffer, NDBuffer
 from zarr.chunk_grids import ChunkGrid
 from zarr.common import ChunkCoords, concurrent_map
-from zarr.config import config
 
 if TYPE_CHECKING:
     from typing_extensions import Self

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal, cast, overload
 import numpy.typing as npt
 from typing_extensions import deprecated
 
+from zarr._config import config
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
@@ -26,7 +27,6 @@ from zarr.common import (
     ChunkCoords,
     ZarrFormat,
 )
-from zarr.config import config
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.core import ensure_no_existing_node
 from zarr.sync import SyncMixin, sync

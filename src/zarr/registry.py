@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 from importlib.metadata import EntryPoint
 from importlib.metadata import entry_points as get_entry_points
 
-from zarr.config import BadConfigError, config
+from zarr._config import BadConfigError, config
 
 T = TypeVar("T")
 
@@ -36,7 +36,7 @@ __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
 
 """
-The registry module is responsible for managing implementations of codecs, pipelines, buffers and ndbuffers and 
+The registry module is responsible for managing implementations of codecs, pipelines, buffers and ndbuffers and
 collecting them from entrypoints.
 The implementation used is determined by the config
 """

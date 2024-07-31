@@ -12,7 +12,7 @@ from concurrent.futures import wait
 
 from typing_extensions import ParamSpec
 
-from zarr.config import config
+from zarr._config import config
 
 P = ParamSpec("P")
 T = TypeVar("T")
