@@ -3,10 +3,10 @@ from typing import Literal
 import numpy as np
 import pytest
 
+from zarr import Group
 from zarr.array import Array
 from zarr.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.group import Group
 from zarr.store import LocalStore, MemoryStore
 from zarr.store.core import StorePath
 

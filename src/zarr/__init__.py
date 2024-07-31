@@ -1,3 +1,4 @@
+from zarr._group import AsyncGroup, Group
 from zarr._version import version as __version__
 from zarr.api.synchronous import (
     array,
@@ -28,7 +29,6 @@ from zarr.api.synchronous import (
 )
 from zarr.array import Array, AsyncArray
 from zarr.config import config
-from zarr.group import AsyncGroup, Group
 
 # in case setuptools scm screw up and find version to be 0.0.0
 assert not __version__.startswith("0.0.0")

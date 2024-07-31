@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 from zarr.common import JSON
 
 if TYPE_CHECKING:
+    from zarr import Group
     from zarr.array import Array
-    from zarr.group import Group
 
 
 class Attributes(MutableMapping[str, JSON]):
