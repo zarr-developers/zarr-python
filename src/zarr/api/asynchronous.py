@@ -12,7 +12,7 @@ from zarr.abc.codec import Codec
 from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
 from zarr.chunk_key_encodings import ChunkKeyEncoding
-from zarr.common import JSON, ChunkCoords, MemoryOrder, OpenMode, ZarrFormat
+from zarr.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.group import AsyncGroup
 from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import (
@@ -158,7 +158,7 @@ async def load(
 async def open(
     *,
     store: StoreLike | None = None,
-    mode: OpenMode | None = None,  # type and value changed
+    mode: AccessModeLiteral | None = None,  # type and value changed
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -189,15 +189,15 @@ async def open(
         Return type depends on what exists in the given store.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-    store_path = make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode)
 
     if path is not None:
         store_path = store_path / path
 
     try:
-        return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
+        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
     except KeyError:
-        return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
+        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
 
 async def open_consolidated(*args: Any, **kwargs: Any) -> AsyncGroup:
@@ -267,7 +267,7 @@ async def save_array(
         or _default_zarr_version()
     )
 
-    store_path = make_store_path(store, mode="w")
+    store_path = await make_store_path(store, mode="w")
     if path is not None:
         store_path = store_path / path
     new = await AsyncArray.create(
@@ -421,7 +421,7 @@ async def group(
         or _default_zarr_version()
     )
 
-    store_path = make_store_path(store)
+    store_path = await make_store_path(store)
     if path is not None:
         store_path = store_path / path
 
@@ -451,7 +451,7 @@ async def group(
 async def open_group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,
-    mode: OpenMode | None = None,  # not used
+    mode: AccessModeLiteral | None = None,  # not used
     cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any = None,  # not used
     path: str | None = None,
@@ -512,7 +512,7 @@ async def open_group(
     if storage_options is not None:
         warnings.warn("storage_options is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    store_path = make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
 
@@ -682,8 +682,8 @@ async def create(
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    mode = cast(OpenMode, "r" if read_only else "w")
-    store_path = make_store_path(store, mode=mode)
+    mode = kwargs.pop("mode", cast(AccessModeLiteral, "r" if read_only else "w"))
+    store_path = await make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
 
@@ -854,7 +854,7 @@ async def open_array(
         The opened array.
     """
 
-    store_path = make_store_path(store)
+    store_path = await make_store_path(store)
     if path is not None:
         store_path = store_path / path
 
@@ -862,14 +862,16 @@ async def open_array(
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except KeyError as e:
-        if store_path.store.writeable:
-            pass
-        else:
-            raise e
-
-    # if array was not found, create it
-    return await create(store=store, path=path, zarr_format=zarr_format, **kwargs)
+    except FileNotFoundError as e:
+        if store_path.store.mode.create:
+            return await create(
+                store=store_path,
+                path=path,
+                zarr_format=zarr_format,
+                overwrite=store_path.store.mode.overwrite,
+                **kwargs,
+            )
+        raise e
 
 
 async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AsyncArray:

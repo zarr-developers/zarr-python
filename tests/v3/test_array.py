@@ -1,10 +1,63 @@
+from typing import Literal
+
 import numpy as np
 import pytest
 
 from zarr.array import Array
 from zarr.common import ZarrFormat
+from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.group import Group
 from zarr.store import LocalStore, MemoryStore
+from zarr.store.core import StorePath
+
+
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("exists_ok", [True, False])
+@pytest.mark.parametrize("extant_node", ["array", "group"])
+def test_array_creation_existing_node(
+    store: LocalStore | MemoryStore,
+    zarr_format: ZarrFormat,
+    exists_ok: bool,
+    extant_node: Literal["array", "group"],
+) -> None:
+    """
+    Check that an existing array or group is handled as expected during array creation.
+    """
+    spath = StorePath(store)
+    group = Group.create(spath, zarr_format=zarr_format)
+    expected_exception: type[ContainsArrayError] | type[ContainsGroupError]
+    if extant_node == "array":
+        expected_exception = ContainsArrayError
+        _ = group.create_array("extant", shape=(10,), dtype="uint8")
+    elif extant_node == "group":
+        expected_exception = ContainsGroupError
+        _ = group.create_group("extant")
+    else:
+        raise AssertionError
+
+    new_shape = (2, 2)
+    new_dtype = "float32"
+
+    if exists_ok:
+        arr_new = Array.create(
+            spath / "extant",
+            shape=new_shape,
+            dtype=new_dtype,
+            exists_ok=exists_ok,
+            zarr_format=zarr_format,
+        )
+        assert arr_new.shape == new_shape
+        assert arr_new.dtype == new_dtype
+    else:
+        with pytest.raises(expected_exception):
+            arr_new = Array.create(
+                spath / "extant",
+                shape=new_shape,
+                dtype=new_dtype,
+                exists_ok=exists_ok,
+                zarr_format=zarr_format,
+            )
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
