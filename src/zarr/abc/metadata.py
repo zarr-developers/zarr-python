@@ -13,7 +13,7 @@ from zarr.common import JSON
 
 @dataclass(frozen=True)
 class Metadata:
-    def to_dict(self) -> JSON:
+    def to_dict(self) -> dict[str, JSON]:
         """
         Recursively serialize this model to a dictionary.
         This method inspects the fields of self and calls `x.to_dict()` for any fields that
