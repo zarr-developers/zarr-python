@@ -205,6 +205,6 @@ class RemoteStore(Store):
             yield onefile
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        find_str = "/".join([self.path, prefix])
-        for onefile in await self._fs._find(find_str):
-            yield onefile.removeprefix(find_str)
+        glob_str = f"{self.path}/{prefix.rstrip('/')}**"
+        for onefile in await self._fs._glob(glob_str):
+            yield onefile

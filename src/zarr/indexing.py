@@ -4,14 +4,13 @@ import itertools
 import math
 import numbers
 import operator
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from functools import reduce
 from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
-    Any,
     NamedTuple,
     Protocol,
     TypeGuard,
@@ -27,6 +26,8 @@ from zarr.buffer import NDArrayLike
 from zarr.common import ChunkCoords, product
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from zarr.array import Array
     from zarr.chunk_grids import ChunkGrid
 
@@ -84,6 +85,29 @@ class Indexer(Protocol):
 
 def ceildiv(a: float, b: float) -> int:
     return math.ceil(a / b)
+
+
+def iter_grid(shape: Iterable[int]) -> Iterator[ChunkCoords]:
+    """
+    Iterate over the elements of grid.
+
+    Takes a grid shape expressed as an iterable of ints and
+    yields tuples bounded by that grid shape in lexicographic order.
+
+    Examples
+    --------
+    >>> tuple(iter_grid((1,)))
+    ((0,),)
+
+    >>> tuple(iter_grid((2,3)))
+    ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2))
+
+    Parameters
+    ----------
+    shape: Iterable[int]
+        The shape of the grid to iterate over.
+    """
+    yield from itertools.product(*(map(range, shape)))
 
 
 def is_integer(x: Any) -> TypeGuard[int]:

@@ -119,3 +119,12 @@ def array_fixture(request: pytest.FixtureRequest) -> np.ndarray:
         .reshape(array_request.shape, order=array_request.order)
         .astype(array_request.dtype)
     )
+
+
+@pytest.fixture(params=[2, 3])
+def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
+    if request.param == 2:
+        return 2
+    if request.param == 3:
+        return 3
+    raise ValueError("Invalid parameterization of this test fixture.")

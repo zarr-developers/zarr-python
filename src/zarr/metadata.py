@@ -142,6 +142,10 @@ class ArrayMetadata(Metadata, ABC):
         pass
 
     @abstractmethod
+    def decode_chunk_key(self, key: str) -> ChunkCoords:
+        pass
+
+    @abstractmethod
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         pass
 
@@ -251,6 +255,9 @@ class ArrayV3Metadata(ArrayMetadata):
 
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
+
+    def decode_chunk_key(self, key: str) -> ChunkCoords:
+        return self.chunk_key_encoding.decode_chunk_key(key)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         def _json_convert(o: Any) -> Any:
@@ -444,6 +451,9 @@ class ArrayV2Metadata(ArrayMetadata):
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         chunk_identifier = self.dimension_separator.join(map(str, chunk_coords))
         return "0" if chunk_identifier == "" else chunk_identifier
+
+    def decode_chunk_key(self, key: str) -> ChunkCoords:
+        return tuple(map(int, key.split(self.dimension_separator)))
 
     def update_shape(self, shape: ChunkCoords) -> Self:
         return replace(self, shape=shape)

@@ -3,16 +3,16 @@ from typing import Literal
 import numpy as np
 import pytest
 
-from zarr.array import Array
+from zarr.array import Array, nchunks_initialized
 from zarr.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.group import Group
 from zarr.store import LocalStore, MemoryStore
 from zarr.store.core import StorePath
+from zarr.sync import sync
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
 @pytest.mark.parametrize("exists_ok", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
 def test_array_creation_existing_node(
@@ -60,8 +60,7 @@ def test_array_creation_existing_node(
             )
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
 def test_array_name_properties_no_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -71,8 +70,7 @@ def test_array_name_properties_no_group(
     assert arr.basename is None
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
 def test_array_name_properties_with_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -136,3 +134,25 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
     assert arr.fill_value == np.dtype(dtype_str).type(fill_value)
     assert arr.fill_value.dtype == arr.dtype
+
+
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=True)
+def test_nchunks_initialized(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    """
+    Test that the nchunks_initialized function accurately reports the number of initialized chunks
+    in storage
+    """
+    num_chunks = 10
+    array = Array.create(
+        store=store, shape=(num_chunks,), chunks=(1,), dtype="uint8", zarr_format=zarr_format
+    )
+    assert array.nchunks == num_chunks
+    assert nchunks_initialized(array) == 0
+
+    for idx, region in enumerate(array._iter_chunk_regions):
+        array[region] = 1
+        assert nchunks_initialized(array) == idx + 1
+
+    for idx, key in enumerate(array._iter_chunk_keys):
+        sync((array.store_path / key).delete())
+        assert nchunks_initialized(array) == array.nchunks - (idx + 1)

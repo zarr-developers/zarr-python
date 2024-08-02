@@ -10,12 +10,13 @@ import json
 # Questions to consider:
 # 1. Was splitting the array into two classes really necessary?
 from asyncio import gather
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
+from typing_extensions import deprecated
 
 from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
@@ -52,11 +53,13 @@ from zarr.indexing import (
     OrthogonalSelection,
     Selection,
     VIndex,
+    ceildiv,
     check_fields,
     check_no_multi_fields,
     is_pure_fancy_indexing,
     is_pure_orthogonal_indexing,
     is_scalar,
+    iter_grid,
     pop_fields,
 )
 from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
@@ -65,7 +68,7 @@ from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.core import (
     ensure_no_existing_node,
 )
-from zarr.sync import sync
+from zarr.sync import collect_aiterator, sync
 
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
@@ -393,10 +396,12 @@ class AsyncArray:
     def chunks(self) -> ChunkCoords:
         if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
             return self.metadata.chunk_grid.chunk_shape
-        else:
-            raise ValueError(
-                f"chunk attribute is only available for RegularChunkGrid, this array has a {self.metadata.chunk_grid}"
-            )
+
+        msg = (
+            f"The `chunks` attribute is only defined for arrays using `RegularChunkGrid`."
+            f"This array has a {self.metadata.chunk_grid} instead."
+        )
+        raise NotImplementedError(msg)
 
     @property
     def size(self) -> int:
@@ -436,6 +441,59 @@ class AsyncArray:
         if self.name is not None:
             return self.name.split("/")[-1]
         return None
+
+    @property
+    @deprecated(
+        "cdata_shape is transitional and will be removed in an early zarr-python v3 release."
+    )
+    def cdata_shape(self) -> ChunkCoords:
+        """
+        The shape of the chunk grid for this array.
+        """
+        return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
+
+    @property
+    @deprecated("nchunks is transitional and will be removed in an early zarr-python v3 release.")
+    def nchunks(self) -> int:
+        """
+        The number of chunks in the stored representation of this array.
+        """
+        return product(self.cdata_shape)
+
+    @property
+    def _iter_chunks(self) -> Iterator[ChunkCoords]:
+        """
+        Produce an iterator over the coordinates of each chunk, in chunk grid space.
+        """
+        return iter_grid(self.cdata_shape)
+
+    @property
+    def _iter_chunk_keys(self) -> Iterator[str]:
+        """
+        Return an iterator over the keys of each chunk.
+        """
+        for k in self._iter_chunks:
+            yield self.metadata.encode_chunk_key(k)
+
+    @property
+    def _iter_chunk_regions(self) -> Iterator[tuple[slice, ...]]:
+        """
+        Iterate over the regions spanned by each chunk.
+        """
+        for cgrid_position in self._iter_chunks:
+            out: tuple[slice, ...] = ()
+            for c_pos, c_shape in zip(cgrid_position, self.chunks, strict=False):
+                start = c_pos * c_shape
+                stop = start + c_shape
+                out += (slice(start, stop, 1),)
+            yield out
+
+    @property
+    def nbytes(self) -> int:
+        """
+        The number of bytes that can be stored in this array.
+        """
+        return self.nchunks * self.dtype.itemsize
 
     async def _get_selection(
         self,
@@ -734,6 +792,52 @@ class Array:
     @property
     def fill_value(self) -> Any:
         return self.metadata.fill_value
+
+    @property
+    @deprecated(
+        "cdata_shape is transitional and will be removed in an early zarr-python v3 release."
+    )
+    def cdata_shape(self) -> ChunkCoords:
+        """
+        The shape of the chunk grid for this array.
+        """
+        return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
+
+    @property
+    @deprecated("nchunks is transitional and will be removed in an early zarr-python v3 release.")
+    def nchunks(self) -> int:
+        """
+        The number of chunks in the stored representation of this array.
+        """
+        return self._async_array.nchunks
+
+    @property
+    def _iter_chunks(self) -> Iterator[ChunkCoords]:
+        """
+        Produce an iterator over the coordinates of each chunk, in chunk grid space.
+        """
+        yield from self._async_array._iter_chunks
+
+    @property
+    def nbytes(self) -> int:
+        """
+        The number of bytes that can be stored in this array.
+        """
+        return self._async_array.nbytes
+
+    @property
+    def _iter_chunk_keys(self) -> Iterator[str]:
+        """
+        Return an iterator over the keys of each chunk.
+        """
+        yield from self._async_array._iter_chunk_keys
+
+    @property
+    def _iter_chunk_regions(self) -> Iterator[tuple[slice, ...]]:
+        """
+        Iterate over the regions spanned by each chunk.
+        """
+        yield from self._async_array._iter_chunk_regions
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
@@ -2056,3 +2160,27 @@ class Array:
         return sync(
             self._async_array.info(),
         )
+
+
+@deprecated(
+    "nchunks_initialized is transitional and will be removed in an early zarr-python v3 release."
+)
+def nchunks_initialized(array: Array) -> int:
+    return len(chunks_initialized(array))
+
+
+def chunks_initialized(array: Array) -> tuple[str, ...]:
+    """
+    Return the keys of all the chunks that exist in storage.
+    """
+    # todo: make this compose with the underlying async iterator
+    store_contents = list(
+        collect_aiterator(array.store_path.store.list_prefix(prefix=array.store_path.path))
+    )
+    out: list[str] = []
+
+    for chunk_key in array._iter_chunk_keys:
+        if chunk_key in store_contents:
+            out.append(chunk_key)
+
+    return tuple(out)
