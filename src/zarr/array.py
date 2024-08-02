@@ -461,7 +461,7 @@ class AsyncArray:
         return product(self.cdata_shape)
 
     @property
-    def _iter_chunks(self) -> Iterator[ChunkCoords]:
+    def _iter_chunk_coords(self) -> Iterator[ChunkCoords]:
         """
         Produce an iterator over the coordinates of each chunk, in chunk grid space.
         """
@@ -472,7 +472,7 @@ class AsyncArray:
         """
         Return an iterator over the keys of each chunk.
         """
-        for k in self._iter_chunks:
+        for k in self._iter_chunk_coords:
             yield self.metadata.encode_chunk_key(k)
 
     @property
@@ -480,7 +480,7 @@ class AsyncArray:
         """
         Iterate over the regions spanned by each chunk.
         """
-        for cgrid_position in self._iter_chunks:
+        for cgrid_position in self._iter_chunk_coords:
             out: tuple[slice, ...] = ()
             for c_pos, c_shape in zip(cgrid_position, self.chunks, strict=False):
                 start = c_pos * c_shape
@@ -816,7 +816,7 @@ class Array:
         """
         Produce an iterator over the coordinates of each chunk, in chunk grid space.
         """
-        yield from self._async_array._iter_chunks
+        yield from self._async_array._iter_chunk_coords
 
     @property
     def nbytes(self) -> int:
