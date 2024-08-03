@@ -6,7 +6,6 @@ from zarr.abc.store import AccessMode, Store
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store.utils import _normalize_interval_index
 from zarr.sync import _collect_aiterator
-from zarr.sync import _collect_aiterator
 from zarr.testing.utils import assert_bytes_equal
 
 S = TypeVar("S", bound=Store)
@@ -105,17 +104,17 @@ class StoreTests(Generic[S]):
         observed = self.get(store, key)
         assert_bytes_equal(observed, data_buf)
 
-    async def set_set_dict(self, store: S) -> None:
+    async def test_set_dict(self, store: S) -> None:
         """
         Test that a dict of key : value pairs can be inserted into the store via the
         `_set_dict` method.
         """
         keys = ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"]
         data_buf = [Buffer.from_bytes(k.encode()) for k in keys]
-        store_dict = dict(zip(keys, data_buf, strict=False))
+        store_dict = dict(zip(keys, data_buf, strict=True))
         await store._set_dict(store_dict)
         for k, v in store_dict.items():
-            assert self.get(store, k) == v
+            assert self.get(store, k).to_bytes() == v.to_bytes()
 
     @pytest.mark.parametrize(
         "key_ranges",
@@ -192,20 +191,12 @@ class StoreTests(Generic[S]):
         observed_sorted = sorted(observed)
         assert observed_sorted == expected_sorted
 
-        assert await _collect_aiterator(store.list()) == ()
-        prefix = "foo"
-        data = Buffer.from_bytes(b"")
-        store_dict = {
-            prefix + "/zarr.json": data,
-            **{prefix + f"/c/{idx}": data for idx in range(10)},
-        }
-        await store._set_dict(store_dict)
-        expected_sorted = sorted(store_dict.keys())
-        observed = await _collect_aiterator(store.list())
-        observed_sorted = sorted(observed)
-        assert observed_sorted == expected_sorted
-
     async def test_list_prefix(self, store: S) -> None:
+        """
+        Test that the `list_prefix` method works as intended. Given a prefix, it should return
+        all the keys in storage that start with this prefix. Keys should be returned with the shared
+        prefix removed.
+        """
         prefixes = ("", "a/", "a/b/", "a/b/c/")
         data = Buffer.from_bytes(b"")
         fname = "zarr.json"
@@ -213,28 +204,14 @@ class StoreTests(Generic[S]):
         await store._set_dict(store_dict)
         for p in prefixes:
             observed = tuple(sorted(await _collect_aiterator(store.list_prefix(p))))
-            expected = tuple(sorted(filter(lambda v: v.startswith(p), store_dict.keys())))
+            expected: tuple[str, ...] = ()
+            for k in store_dict.keys():
+                if k.startswith(p):
+                    expected += (k.removeprefix(p),)
+            expected = tuple(sorted(expected))
             assert observed == expected
 
     async def test_list_dir(self, store: S) -> None:
-        root = "foo"
-        store_dict = {
-            root + "/zarr.json": Buffer.from_bytes(b"bar"),
-            root + "/c/1": Buffer.from_bytes(b"\x01"),
-        }
-
-        assert await _collect_aiterator(store.list_dir("")) == ()
-        assert await _collect_aiterator(store.list_dir(root)) == ()
-
-        await store._set_dict(store_dict)
-
-        keys_observed = await _collect_aiterator(store.list_dir(root))
-        keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict.keys()}
-
-        assert sorted(keys_observed) == sorted(keys_expected)
-
-        keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
-        assert sorted(keys_expected) == sorted(keys_observed)
         root = "foo"
         store_dict = {
             root + "/zarr.json": Buffer.from_bytes(b"bar"),
