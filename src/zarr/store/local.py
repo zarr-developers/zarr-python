@@ -183,7 +183,9 @@ class LocalStore(Store):
                 yield str(p).replace(to_strip, "")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """Retrieve all keys in the store with a given prefix.
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
 
         Parameters
         ----------
