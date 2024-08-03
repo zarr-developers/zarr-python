@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from asyncio import gather
 from collections.abc import AsyncGenerator, Mapping
 from typing import Any, NamedTuple, Protocol, runtime_checkable
 
@@ -225,8 +226,7 @@ class Store(ABC):
         """
         Insert objects into storage as defined by a prefix: value mapping.
         """
-        for key, value in dict.items():
-            await self.set(key, value)
+        await gather(*(self.set(key, value) for key, value in dict.items()))
         return None
 
 
