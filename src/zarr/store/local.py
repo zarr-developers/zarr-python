@@ -196,7 +196,7 @@ class LocalStore(Store):
         to_strip = str(self.root) + "/"
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
-                yield str(p).replace(to_strip, "")
+                yield str(p).removeprefix(to_strip)
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         """
