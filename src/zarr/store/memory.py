@@ -101,7 +101,7 @@ class MemoryStore(Store):
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         for key in self._store_dict:
             if key.startswith(prefix):
-                yield key
+                yield key.removeprefix(prefix)
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         if prefix.endswith("/"):

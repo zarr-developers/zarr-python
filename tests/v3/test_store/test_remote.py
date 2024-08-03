@@ -1,12 +1,18 @@
+from __future__ import annotations
+
 import os
+from collections.abc import Generator
 
 import fsspec
 import pytest
+from botocore.client import BaseClient
+from botocore.session import Session
+from s3fs import S3FileSystem
 from upath import UPath
 
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store import RemoteStore
-from zarr.sync import sync
+from zarr.sync import _collect_aiterator, sync
 from zarr.testing.store import StoreTests
 
 s3fs = pytest.importorskip("s3fs")
@@ -22,7 +28,7 @@ endpoint_url = f"http://127.0.0.1:{port}/"
 
 
 @pytest.fixture(scope="module")
-def s3_base():
+def s3_base() -> Generator[None, None, None]:
     # writable local S3 system
 
     # This fixture is module-scoped, meaning that we can reuse the MotoServer across all tests
@@ -37,16 +43,14 @@ def s3_base():
     server.stop()
 
 
-def get_boto3_client():
-    from botocore.session import Session
-
+def get_boto3_client() -> BaseClient:
     # NB: we use the sync botocore client for setup
     session = Session()
     return session.create_client("s3", endpoint_url=endpoint_url)
 
 
 @pytest.fixture(autouse=True, scope="function")
-def s3(s3_base):
+def s3(s3_base: Generator[None, None, None]) -> Generator[S3FileSystem, None, None]:
     """
     Quoting Martin Durant:
     pytest-asyncio creates a new event loop for each async test.
@@ -71,21 +75,11 @@ def s3(s3_base):
     sync(session.close())
 
 
-# ### end from s3fs ### #
-
-
-async def alist(it):
-    out = []
-    async for a in it:
-        out.append(a)
-    return out
-
-
-async def test_basic():
+async def test_basic() -> None:
     store = await RemoteStore.open(
         f"s3://{test_bucket_name}", mode="w", endpoint_url=endpoint_url, anon=False
     )
-    assert not await alist(store.list())
+    assert await _collect_aiterator(store.list()) == ()
     assert not await store.exists("foo")
     data = b"hello"
     await store.set("foo", Buffer.from_bytes(data))
@@ -101,7 +95,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
     store_cls = RemoteStore
 
     @pytest.fixture(scope="function", params=("use_upath", "use_str"))
-    def store_kwargs(self, request) -> dict[str, str | bool]:
+    def store_kwargs(self, request: pytest.FixtureRequest) -> dict[str, str | bool | UPath]:  # type: ignore
         url = f"s3://{test_bucket_name}"
         anon = False
         mode = "r+"
@@ -113,8 +107,8 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
         raise AssertionError
 
     @pytest.fixture(scope="function")
-    def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
-        url = store_kwargs["url"]
+    async def store(self, store_kwargs: dict[str, str | bool | UPath]) -> RemoteStore:
+        url: str | UPath = store_kwargs["url"]
         mode = store_kwargs["mode"]
         if isinstance(url, UPath):
             out = self.store_cls(url=url, mode=mode)

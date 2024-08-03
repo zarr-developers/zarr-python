@@ -193,10 +193,6 @@ class LocalStore(Store):
         -------
         AsyncGenerator[str, None]
         """
-        for p in (self.root / prefix).rglob("*"):
-            if p.is_file():
-                yield str(p)
-
         to_strip = str(self.root) + "/"
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():

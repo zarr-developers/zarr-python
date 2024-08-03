@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Mapping
 from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from typing_extensions import Self
@@ -220,6 +220,14 @@ class Store(ABC):
         """Close the store."""
         self._is_open = False
         pass
+
+    async def _set_dict(self, dict: Mapping[str, Buffer]) -> None:
+        """
+        Insert objects into storage as defined by a prefix: value mapping.
+        """
+        for key, value in dict.items():
+            await self.set(key, value)
+        return None
 
 
 @runtime_checkable
