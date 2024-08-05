@@ -19,18 +19,18 @@ _attr_values = st.recursive(
 
 # From https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html#node-names
 # 1. must not be the empty string ("")
-# 2. must not be the empty string ("")
-# 3. must not include the character "/"
-# 4. must not be a string composed only of period characters, e.g. "." or ".."
-# 5. must not start with the reserved prefix "__"
+# 2. must not include the character "/"
+# 3. must not be a string composed only of period characters, e.g. "." or ".."
+# 4. must not start with the reserved prefix "__"
 zarr_key_chars = st.sampled_from(
-    ".-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
+    "_.-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
 )
-array_names = st.text(zarr_key_chars, min_size=1).filter(lambda t: t not in (".", ".."))
+node_names = st.text(zarr_key_chars, min_size=1).filter(
+    lambda t: t not in (".", "..") and not t.startswith("__")
+)
+array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
-paths = st.lists(st.text(zarr_key_chars, min_size=1), min_size=1).map(
-    lambda x: "/".join(x)
-) | st.just("/")
+paths = st.lists(node_names, min_size=1).map(lambda x: "/".join(x)) | st.just("/")
 np_arrays = npst.arrays(
     # TODO: re-enable timedeltas once they are supported
     dtype=npst.scalar_dtypes().filter(lambda x: x.kind != "m"),
