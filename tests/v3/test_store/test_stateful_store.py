@@ -1,6 +1,7 @@
 # Stateful tests for arbitrary Zarr stores.
 
 import pytest
+import string
 import hypothesis.strategies as st
 import zarr
 import asyncio
@@ -38,18 +39,29 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     async def store_list(self):
         paths = [path async for path in self.store.list()]
         return paths
+    
+    async def get_key(self, key ):
+        obs = await self.store.get(key, prototype= default_buffer_prototype())
+        return obs.to_bytes()
     # ------
 
     # rules for get, set
-    #TODO: st.just
-    @rule(key=st.just("a"), data=st.just(b"0"))
+    group_st = st.text(alphabet=string.ascii_letters + string.digits,min_size=1, max_size=10)
+    middle_st = st.one_of(st.just('c'), st.integers(min_value=0, max_value=100).map(str))
+    end_st = st.one_of(st.just('zarr.json'), st.integers(min_value=0, max_value=10).map(str))
+    key_st = st.tuples(group_st, middle_st, end_st).map('/'.join)
+    
+    int_st = st.integers(min_value=0, max_value=255)
+    data_st = st.lists(int_st, min_size=0).map(bytes)
+
+    @rule(key=key_st, data=data_st)
     def set(self, key:str, data: bytes) -> None:
         note(f"Setting {key!r} with {data}")
         assert not self.store.mode.readonly
         data_buf = Buffer.from_bytes(data)
         asyncio.run(self.store_set(key, data_buf))
         # TODO: does model need to contain Buffer or just data?
-        self.model[key] = data_buf
+        self.model[key] = data
 
     @invariant()
     def check_paths_equal(self) -> None:
@@ -57,13 +69,17 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         paths = asyncio.run(self.store_list())
         assert list(self.model.keys()) == paths
 
-    #@rule()
-    #def get(self, key:str, data:bytes) -> None:
-    #    data_buf = Buffer.from_bytes(data)
 
-    #    self.set(self.store, key, data_buf)
+    @precondition(lambda self: len(self.model.keys()) > 0)
+    @rule(data = st.data())#key=st.just("a"), data=st.just(b"0"))
+    def get(self, data) -> None:
 
-    #    self.model[key] = 
+        key = data.draw(st.sampled_from(sorted(self.model.keys())))
+        
+        store_value = asyncio.run(self.get_key(key))
+        assert self.model[key] == store_value
+    
+ 
 
 
 
