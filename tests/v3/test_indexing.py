@@ -15,6 +15,7 @@ import zarr
 from zarr.array import Array
 from zarr.buffer import Buffer, BufferPrototype, NDBuffer
 from zarr.common import ChunkCoords
+from zarr.group import Group
 from zarr.indexing import (
     BasicSelection,
     make_slice_selection,
@@ -1815,3 +1816,26 @@ def test_orthogonal_bool_indexing_like_numpy_ix(
     # note: in python 3.10 z[*selection] is not valid unpacking syntax
     actual = z[(*selection,)]
     assert_array_equal(expected, actual, err_msg=f"{selection=}")
+
+
+def test_indexing_after_close(store: StorePath) -> None:
+    """
+    Test that data is persisted after calling store.close, and subsequently invoking array[:].
+    Bug discovered here: https://github.com/zarr-developers/zarr-python/pull/1746#issuecomment-2269562717
+    """
+    root = Group.create(store)
+    value = 1
+    nparray = np.array([value], dtype=np.int8)
+
+    a = root.create_array(
+        "/0/0",
+        shape=nparray.shape,
+        chunks=(1,),
+        dtype=nparray.dtype.str,
+        attributes={},
+        fill_value=nparray.dtype.type(0),
+    )
+    a[:] = nparray
+    assert a[:] == value
+    store.store.close()
+    assert a[:] == value
