@@ -43,16 +43,32 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     async def get_key(self, key ):
         obs = await self.store.get(key, prototype= default_buffer_prototype())
         return obs.to_bytes()
+    
+    async def get_partial(self, key_ranges):
+
+        #read back part
+        obs_maybe = await self.store.get_partial_values(
+            prototype=default_buffer_prototype(), key_ranges=key_ranges
+        )
+
+        return obs_maybe 
+    
     # ------
 
     # rules for get, set
+    #strategy for key
     group_st = st.text(alphabet=string.ascii_letters + string.digits,min_size=1, max_size=10)
     middle_st = st.one_of(st.just('c'), st.integers(min_value=0, max_value=100).map(str))
     end_st = st.one_of(st.just('zarr.json'), st.integers(min_value=0, max_value=10).map(str))
     key_st = st.tuples(group_st, middle_st, end_st).map('/'.join)
     
+    #strategy for data
     int_st = st.integers(min_value=0, max_value=255)
     data_st = st.lists(int_st, min_size=0).map(bytes)
+
+    #strategy for key_ranges
+    inner_tuple_st = st.tuples(st.one_of(st.integers(), st.none()), st.one_of(st.integers(), st.none()))
+    key_range_st = st.tuples(st.one_of(key_st), inner_tuple_st)
 
     @rule(key=key_st, data=data_st)
     def set(self, key:str, data: bytes) -> None:
@@ -71,7 +87,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
 
     @precondition(lambda self: len(self.model.keys()) > 0)
-    @rule(data = st.data())#key=st.just("a"), data=st.just(b"0"))
+    @rule(data = st.data())
     def get(self, data) -> None:
 
         key = data.draw(st.sampled_from(sorted(self.model.keys())))
@@ -80,8 +96,36 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         assert self.model[key] == store_value
     
  
+    @rule(key_ranges = key_range_st)
+    def get_partial_data(self, key_ranges) -> None:
 
+        #for all keys in range, set key, buffer obj as pair to store
+        for key, _ in key_ranges:
+            self.store.set(key, Buffer.from_bytes(bytes(key, encoding='utf-8')))
 
+        #read back part
+        obs_maybe = asyncio.run(self.get_partial(key_ranges))
+
+        observed = []
+
+        for obs in obs_maybe:
+            assert result is not None
+            observed.append(obs)
+            
+        self.store.partial_vals = observed #this is wrong
+
+    @invariant()
+    def check_partial_values(self) -> None:
+
+        model_vals = []
+        for idx in range(len(self.store.partial_vals)):
+
+            key, byte_range = key_ranges[idx]
+            model_vals = self.model[key]
+
+        assert all(
+            obs.to_bytes() == exp.to_bytes() for obs, exp in zip(self.store.partial_vals, model_vals, strict=True)
+        )
 
 #ZarrStoreStateMachine.TestCase.settings = settings()#max_examples=300, deadline=None)
 StatefulStoreTest = ZarrStoreStateMachine.TestCase
