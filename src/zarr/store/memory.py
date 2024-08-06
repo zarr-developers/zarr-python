@@ -23,8 +23,8 @@ class MemoryStore(Store):
         *,
         mode: AccessModeLiteral = "r",
     ):
-        super().__init__(mode=mode)
         self._store_dict = store_dict or {}
+        super().__init__(mode=mode)
 
     async def empty(self) -> bool:
         return not self._store_dict
@@ -45,7 +45,7 @@ class MemoryStore(Store):
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         if not self._is_open:
-            await self._open()
+            raise RuntimeError("Store is closed. Cannot `get` from a closed store.")
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
@@ -71,7 +71,7 @@ class MemoryStore(Store):
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         if not self._is_open:
-            await self._open()
+            raise RuntimeError("Store is closed. Cannot `get` from a closed store.")
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):

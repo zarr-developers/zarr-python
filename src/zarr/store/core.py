@@ -80,7 +80,6 @@ async def make_store_path(
     elif isinstance(store_like, Store):
         if mode is not None:
             assert AccessMode.from_literal(mode) == store_like.mode
-        await store_like._ensure_open()
         return StorePath(store_like)
     elif store_like is None:
         if mode is None:

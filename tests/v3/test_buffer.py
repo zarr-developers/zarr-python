@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -20,19 +22,19 @@ from zarr.testing.buffer import (
 )
 
 
-def test_nd_array_like(xp):
+def test_nd_array_like(xp: Any) -> None:
     ary = xp.arange(10)
     assert isinstance(ary, ArrayLike)
     assert isinstance(ary, NDArrayLike)
 
 
 @pytest.mark.asyncio
-async def test_async_array_prototype():
+async def test_async_array_prototype() -> None:
     """Test the use of a custom buffer prototype"""
 
     expect = np.zeros((9, 9), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(StoreExpectingTestBuffer(mode="w")) / "test_async_array_prototype",
+        StorePath(await StoreExpectingTestBuffer.open(mode="w")) / "test_async_array_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
@@ -53,10 +55,10 @@ async def test_async_array_prototype():
 
 
 @pytest.mark.asyncio
-async def test_codecs_use_of_prototype():
+async def test_codecs_use_of_prototype() -> None:
     expect = np.zeros((10, 10), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(StoreExpectingTestBuffer(mode="w")) / "test_codecs_use_of_prototype",
+        StorePath(await StoreExpectingTestBuffer.open(mode="w")) / "test_codecs_use_of_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
@@ -84,7 +86,7 @@ async def test_codecs_use_of_prototype():
     assert np.array_equal(expect, got)
 
 
-def test_numpy_buffer_prototype():
+def test_numpy_buffer_prototype() -> None:
     buffer = numpy_buffer_prototype().buffer.create_zero_length()
     ndbuffer = numpy_buffer_prototype().nd_buffer.create(shape=(1, 2), dtype=np.dtype("int64"))
     assert isinstance(buffer.as_array_like(), np.ndarray)

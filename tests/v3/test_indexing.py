@@ -27,11 +27,12 @@ from zarr.indexing import (
 from zarr.registry import get_ndbuffer_class
 from zarr.store.core import StorePath
 from zarr.store.memory import MemoryStore
+from zarr.sync import sync
 
 
 @pytest.fixture
 def store() -> Iterator[StorePath]:
-    yield StorePath(MemoryStore(mode="w"))
+    yield StorePath(sync(MemoryStore.open(mode="w")))
 
 
 def zarr_array_from_numpy_array(
@@ -1838,4 +1839,5 @@ def test_indexing_after_close(store: StorePath) -> None:
     a[:] = nparray
     assert a[:] == value
     store.store.close()
-    assert a[:] == value
+    with pytest.raises(RuntimeError, match="Store is closed"):
+        assert a[:] == value
