@@ -55,7 +55,11 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
         await self.store.delete(path)
 
+    #async def listdir(self, group): #does listdir take group?
 
+    #    dir_ls = await self.store.list_dir(group)
+
+    #    return dir_ls
     # ------
 
     @rule(key=strategies.key_st, data=strategies.data_st)#, target=keys_bundle)
@@ -129,9 +133,35 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     def check_delete(self) -> None:
         #can/should this be the same as the invariant for set? 
         paths = asyncio.run(self.store_list())
-        note(f"Checking that paths are equal, {paths=}, model={self.model.keys()}")
+        note(f"After delete, checking that paths are equal, {paths=}, model={list(self.model.keys())}")
         assert list(self.model.keys()) == paths
 
+    #@precondition(lambda self: len(self.model.keys()) > 0)
+    #@rule(key = strategies.key_st, data=strategies.data_st)
+    #def listdir(self, key, data) -> None:
 
+        #assert not self.store.mode.readonly
+        #data_buf = Buffer.from_bytes(data)
+        #set keys on store
+        #asyncio.run(self.store_set(key, data_buf))
+        #set same keys on model
+        #self.model[key] = data
+        #list keys on store
+        #asyncio.run(self.listdir(key))
+
+        #self.model.listed_keys = list(self.model.keys())
+        #for store, set random keys
+
+        #for store, list all keys 
+        #for model, list all keys 
+
+
+    #@invariant()
+    #listdir not working
+    #def check_listdir(self):
+
+    #    store_keys = asyncio.run(self.list_dir())#need to pass a gruop to this
+    #    model_keys = self.model.listed_keys
+    #    assert store_keys == model_keys
 
 StatefulStoreTest = ZarrStoreStateMachine.TestCase
