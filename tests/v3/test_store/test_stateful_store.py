@@ -6,6 +6,7 @@ import string
 import hypothesis.strategies as st
 from hypothesis import note
 from hypothesis.stateful import (
+    Bundle,
     RuleBasedStateMachine,
     invariant,
     precondition,
@@ -22,6 +23,7 @@ from strategies_store import StoreStatefulStrategies, key_ranges
 strategies = StoreStatefulStrategies()
 
 class ZarrStoreStateMachine(RuleBasedStateMachine):
+    #keys_bundle = Bundle('keys_bundle')
     #TODO add arg/class for store type
     def __init__(self):
         super().__init__()
@@ -56,7 +58,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
     # ------
 
-    @rule(key=strategies.key_st, data=strategies.data_st)#st.binary(min_size=0, max_size=100))
+    @rule(key=strategies.key_st, data=strategies.data_st)#, target=keys_bundle)
     def set(self, key: str, data: bytes) -> None:
         note(f"Setting {key!r} with {data}")
         assert not self.store.mode.readonly
@@ -64,6 +66,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         asyncio.run(self.store_set(key, data_buf))
         # TODO: does model need to contain Buffer or just data?
         self.model[key] = data
+        #return key
 
     @invariant()
     def check_paths_equal(self) -> None:
@@ -73,6 +76,8 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
+    #@rule(key=keys_bundle)
+    #def get(self, key) -> None:
     def get(self, data) -> None:
 
         key = data.draw(st.sampled_from(sorted(self.model.keys())))
