@@ -16,20 +16,13 @@ from hypothesis.strategies import SearchStrategy
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store import MemoryStore
 
+from strategies_store import StoreStatefulStrategies, key_ranges
 
-def key_ranges(keys: SearchStrategy | None = None):
-    if keys is None:
-        group_st = st.text(alphabet=string.ascii_letters + string.digits, min_size=1, max_size=10)
-        keys = st.lists(group_st, min_size=1, max_size=5).map("/".join)
-    byte_ranges = st.tuples(
-        st.none() | st.integers(min_value=0), st.none() | st.integers(min_value=0)
-    )
-    key_tuple = st.tuples(keys, byte_ranges)
-    key_range_st = st.lists(key_tuple, min_size=1, max_size=10)
-    return key_range_st
 
+strategies = StoreStatefulStrategies()
 
 class ZarrStoreStateMachine(RuleBasedStateMachine):
+    #TODO add arg/class for store type
     def __init__(self):
         super().__init__()
         self.model = {}
@@ -54,32 +47,18 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         obs_maybe = await self.store.get_partial_values(
             prototype=default_buffer_prototype(), key_ranges=key_ranges
         )
-        note(f"async store key range: {key_ranges}")
         return obs_maybe
+
+    async def delete_key(self, path):
+
+        await self.store.delete(path)
+
 
     # ------
 
-    # rules for get, set
-    # strategy for key
-    # check out st.lists
-    # check out deepak's PR for additional rules in strategies
-    group_st = st.text(alphabet=string.ascii_letters + string.digits, min_size=1, max_size=10)
-    # key_st = st.lists(group_st, min_size=1, max_size=5).map('/'.join)
-
-    # key_range_st = key_ranges()
-
-    # strategy for data
-    data_st = st.binary(min_size=0, max_size=100)
-
-    # strategy for key_ranges
-    # inner_tuple_st = st.tuples(st.one_of(st.integers(), st.none()), st.one_of(st.integers(), st.none()))
-    # key_range_st = st.lists(st.tuples(st.one_of(key_st), inner_tuple_st))
-    key_st = st.lists(group_st, min_size=1, max_size=5).map("/".join)
-    data_st = st.binary(min_size=0)
-
-    @rule(key=key_st, data=data_st)
+    @rule(key=strategies.key_st, data=strategies.data_st)#st.binary(min_size=0, max_size=100))
     def set(self, key: str, data: bytes) -> None:
-        # note(f"rule(set): Setting {key!r} with {data}")
+        note(f"Setting {key!r} with {data}")
         assert not self.store.mode.readonly
         data_buf = Buffer.from_bytes(data)
         asyncio.run(self.store_set(key, data_buf))
@@ -88,49 +67,25 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
     @invariant()
     def check_paths_equal(self) -> None:
-        # note("inv: Checking that paths are equal")
+        note("Checking that paths are equal")
         paths = asyncio.run(self.store_list())
         assert list(self.model.keys()) == paths
 
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
     def get(self, data) -> None:
-        key = data.draw(st.sampled_from(sorted(self.model.keys())))
 
+        key = data.draw(st.sampled_from(sorted(self.model.keys())))
         store_value = asyncio.run(self.get_key(key))
         assert self.model[key] == store_value
 
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
     def get_partial_values(self, data) -> None:
-        """notes on what get_partial_values() does:
-        - takes self, key_ranges (list of tuples), BufferPrototype
-        - for key, byte_range in key_ranges,
-            - check that key is str
-            - make path (path = self.root / key)
-            - make tuple: (_get, path, prototype, byte_range)
-            - append tuple to args list
-            - pass args list to: await concurrent_map()
-            in concurrent_map():
-            - if limit=None, call asyncio.gather() and pass _get(item) for each item in args <- i think?
-                        a bit funny bc each item of args list is (_get, path, prototype, byte_range), so _get is in that item ?
-            - if limit != None, make asyncio.semaphore(limit) <- a synchronization primitive
-                - runs same get call on items eventually but with some async stuff
-        """
+        
         key_st = st.sampled_from(sorted(self.model.keys()))
         key_range = data.draw(key_ranges(keys=key_st))
 
-        # val = self.model[key]
-        # note(f'{val=}')
-        # vals_len = len(self.model[key])
-        # byte_range = data.draw(st.tuples(st.none() | st.integers(min_value=0), st.none()  | st.integers(min_value = 0)))
-        # key_range = [(key, byte_range) for key, byte_range in ]
-        # key_range = [(key, (byte_range))]
-        # want key_range (list of tuples):  [(key, (start, step)), (key, (start, step))....]
-
-        # note(f'get_partial (store) {key=}, {byte_range=}, vals: {self.model[key]}')
-
-        # read back part
         obs_maybe = asyncio.run(self.get_partial(key_range))
         observed = []
 
@@ -154,6 +109,24 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
             model_vals_ls,
         )
 
+    @precondition(lambda self: len(self.model.keys()) > 0)
+    @rule(data=st.data())
+    def delete(self,data) -> None:
 
-# ZarrStoreStateMachine.TestCase.settings = settings()#max_examples=300, deadline=None)
+        path_st = data.draw(st.sampled_from(sorted(self.model.keys())))
+        note(f'Deleting {path_st=}')
+
+        asyncio.run(self.delete_key(path_st))
+
+        del self.model[path_st]
+
+    @invariant()
+    def check_delete(self) -> None:
+        #can/should this be the same as the invariant for set? 
+        paths = asyncio.run(self.store_list())
+        note(f"Checking that paths are equal, {paths=}, model={self.model.keys()}")
+        assert list(self.model.keys()) == paths
+
+
+
 StatefulStoreTest = ZarrStoreStateMachine.TestCase
