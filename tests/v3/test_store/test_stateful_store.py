@@ -6,6 +6,7 @@ import string
 import hypothesis.strategies as st
 from hypothesis import note
 from hypothesis.stateful import (
+    Bundle,
     RuleBasedStateMachine,
     invariant,
     precondition,
@@ -16,11 +17,11 @@ from hypothesis.strategies import SearchStrategy
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store import MemoryStore
 
+group_st = st.text(alphabet=string.ascii_letters + string.digits, min_size=1, max_size=10)
+key_st = st.lists(group_st, min_size=1, max_size=5).map("/".join)
 
-def key_ranges(keys: SearchStrategy | None = None):
-    if keys is None:
-        group_st = st.text(alphabet=string.ascii_letters + string.digits, min_size=1, max_size=10)
-        keys = st.lists(group_st, min_size=1, max_size=5).map("/".join)
+
+def key_ranges(keys: SearchStrategy = key_st):
     byte_ranges = st.tuples(
         st.none() | st.integers(min_value=0), st.none() | st.integers(min_value=0)
     )
@@ -30,6 +31,8 @@ def key_ranges(keys: SearchStrategy | None = None):
 
 
 class ZarrStoreStateMachine(RuleBasedStateMachine):
+    keys_bundle = Bundle("keys_bundle")
+
     def __init__(self):
         super().__init__()
         self.model = {}
@@ -63,28 +66,22 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     # strategy for key
     # check out st.lists
     # check out deepak's PR for additional rules in strategies
-    group_st = st.text(alphabet=string.ascii_letters + string.digits, min_size=1, max_size=10)
     # key_st = st.lists(group_st, min_size=1, max_size=5).map('/'.join)
 
     # key_range_st = key_ranges()
-
-    # strategy for data
-    data_st = st.binary(min_size=0, max_size=100)
-
     # strategy for key_ranges
     # inner_tuple_st = st.tuples(st.one_of(st.integers(), st.none()), st.one_of(st.integers(), st.none()))
     # key_range_st = st.lists(st.tuples(st.one_of(key_st), inner_tuple_st))
-    key_st = st.lists(group_st, min_size=1, max_size=5).map("/".join)
-    data_st = st.binary(min_size=0)
 
-    @rule(key=key_st, data=data_st)
+    @rule(key=key_st, data=st.binary(min_size=0, max_size=100), target=keys_bundle)
     def set(self, key: str, data: bytes) -> None:
-        # note(f"rule(set): Setting {key!r} with {data}")
+        note(f"rule(set): Setting {key=} with {data=}")
         assert not self.store.mode.readonly
         data_buf = Buffer.from_bytes(data)
         asyncio.run(self.store_set(key, data_buf))
         # TODO: does model need to contain Buffer or just data?
         self.model[key] = data
+        return key
 
     @invariant()
     def check_paths_equal(self) -> None:
@@ -92,11 +89,9 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         paths = asyncio.run(self.store_list())
         assert list(self.model.keys()) == paths
 
-    @precondition(lambda self: len(self.model.keys()) > 0)
-    @rule(data=st.data())
-    def get(self, data) -> None:
-        key = data.draw(st.sampled_from(sorted(self.model.keys())))
-
+    @rule(key=keys_bundle)
+    def get(self, key) -> None:
+        note(f"get {key=}")
         store_value = asyncio.run(self.get_key(key))
         assert self.model[key] == store_value
 
