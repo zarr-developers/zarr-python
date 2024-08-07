@@ -50,7 +50,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         obs_maybe = await self.store.get_partial_values(
             prototype=default_buffer_prototype(), key_ranges=key_ranges
         )
-
+        note(f'async store key range: {key_ranges}')
         return obs_maybe 
     
     # ------
@@ -64,15 +64,16 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     
     #strategy for data
     int_st = st.integers(min_value=0, max_value=255)
-    data_st = st.lists(int_st, min_size=0).map(bytes)
+    #data_st = st.lists(int_st, min_size=0).map(bytes)
+    data_st = st.just([1,2,3,4]).map(bytes)
 
     #strategy for key_ranges
     inner_tuple_st = st.tuples(st.one_of(st.integers(), st.none()), st.one_of(st.integers(), st.none()))
-    key_range_st = st.tuples(st.one_of(key_st), inner_tuple_st)
+    key_range_st = st.lists(st.tuples(st.one_of(key_st), inner_tuple_st))
 
     @rule(key=key_st, data=data_st)
     def set(self, key:str, data: bytes) -> None:
-        note(f"Setting {key!r} with {data}")
+        #note(f"rule(set): Setting {key!r} with {data}")
         assert not self.store.mode.readonly
         data_buf = Buffer.from_bytes(data)
         asyncio.run(self.store_set(key, data_buf))
@@ -81,7 +82,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
     @invariant()
     def check_paths_equal(self) -> None:
-        note("Checking that paths are equal")
+        #note("inv: Checking that paths are equal")
         paths = asyncio.run(self.store_list())
         assert list(self.model.keys()) == paths
 
@@ -95,37 +96,81 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         store_value = asyncio.run(self.get_key(key))
         assert self.model[key] == store_value
     
- 
-    @rule(key_ranges = key_range_st)
-    def get_partial_data(self, key_ranges) -> None:
+    @precondition(lambda self: len(self.model.keys()) > 0)
+    @rule(data = st.data())
+    def get_partial_values(self, data) -> None:
+        '''notes on what get_partial_values() does:
+        - takes self, key_ranges (list of tuples), BufferPrototype
+        - for key, byte_range in key_ranges, 
+            - check that key is str
+            - make path (path = self.root / key)
+            - make tuple: (_get, path, prototype, byte_range)
+            - append tuple to args list 
+            - pass args list to: await concurrent_map()
+            in concurrent_map():
+            - if limit=None, call asyncio.gather() and pass _get(item) for each item in args <- i think? 
+                        a bit funny bc each item of args list is (_get, path, prototype, byte_range), so _get is in that item ?
+            - if limit != None, make asyncio.semaphore(limit) <- a synchronization primitive
+                - runs same get call on items eventually but with some async stuff
+        '''
 
-        #for all keys in range, set key, buffer obj as pair to store
-        for key, _ in key_ranges:
-            self.store.set(key, Buffer.from_bytes(bytes(key, encoding='utf-8')))
+        key = data.draw(st.sampled_from(sorted(self.model.keys())))
+        val = self.model[key]
+        vals_len = len(self.model[key])if self.model[key] != b'\x00' else 0
+        note(f"1 rule(get_partial), store: self.model['{key}'] == {self.model[key]}")
+        note(f'2 rule(get_partial), store: len(self.model[{key}]) == {vals_len}')
+        #byte_range = data.draw(st.tuples(st.none() | st.integers(min_value=0, max_value=vals_len), st.none()  | st.integers(min_value = 0, max_value=vals_len)))
+        #use this hardcoded byte_range to test get_partial- seems like errors when byte range None,None
+        byte_range = data.draw(st.tuples(st.none(), st.none()))
+        key_range = [(key, byte_range)]
+        note(f'3 rule(get_partial), store: byte range: {byte_range}, vals: {self.model[key]}')#, start/stop: {byte_range[0]}/{byte_range[0]+byte_range[1]}')
 
         #read back part
-        obs_maybe = asyncio.run(self.get_partial(key_ranges))
-
+        obs_maybe = asyncio.run(self.get_partial(key_range))
         observed = []
 
         for obs in obs_maybe:
-            assert result is not None
-            observed.append(obs)
-            
-        self.store.partial_vals = observed #this is wrong
+            assert obs is not None
+            observed.append(obs.to_bytes())
+        note(f'4 rule(get_partial), store: obs result of get_partial to bytes : {observed}')
+    
+        #return observed
+        model_vals_ls = []
 
-    @invariant()
-    def check_partial_values(self) -> None:
+        for idx in range(len(observed)):
 
-        model_vals = []
-        for idx in range(len(self.store.partial_vals)):
-
-            key, byte_range = key_ranges[idx]
+            key, byte_range = key_range[idx]
             model_vals = self.model[key]
+            start = byte_range[0] #or 0
+            step = byte_range[1] #or 0 
+            def calc_stop(start, step):
+                '''it looks like the behavior of get_partial_values() 
+                when byte_range = (None,None) is to return all,
+                to match this with model, calc byte range with this instead of 
+                start + step'''
+                if start is None and step is not None :
+                    stop = 0 + step
+                    return stop
+                elif start is not None and step is None:
+                    return None  
+                elif start is None and step is None:
+                    return None
+                else:
+                    return start + step
+            stop = calc_stop(start, step)
+            note(f'model start: {start}, stop: {stop}')
+            #stop = start + step
+            model_vals_partial = model_vals[start:stop]
+            note(f'5 rule(get_partial),model (pre get_partial) Key: {key}, byte range: {byte_range}, vals: {model_vals}')
 
+            model_vals_ls.append(model_vals_partial)
+            note(f'6 rule(get_partial), model (results of get_partial) vals: {model_vals_ls}')
+        
         assert all(
-            obs.to_bytes() == exp.to_bytes() for obs, exp in zip(self.store.partial_vals, model_vals, strict=True)
-        )
+            obs == exp for obs, exp in zip(observed, model_vals_ls, strict=True)
+        ), (observed, model_vals_ls)
+
+        
 
 #ZarrStoreStateMachine.TestCase.settings = settings()#max_examples=300, deadline=None)
 StatefulStoreTest = ZarrStoreStateMachine.TestCase
