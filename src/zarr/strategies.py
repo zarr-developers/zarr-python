@@ -123,7 +123,6 @@ def arrays(
 
     a[:] = nparray
 
-
     return a
 
 
