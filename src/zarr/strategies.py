@@ -123,7 +123,6 @@ def arrays(
 
     a[:] = nparray
 
-    store.close()
 
     return a
 
