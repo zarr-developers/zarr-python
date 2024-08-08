@@ -79,8 +79,8 @@ async def test_transpose(
         )
         z[:, :] = data
         assert await store.get(
-            "transpose/0.0", prototype=default_buffer_prototype
-        ) == await store.get("transpose_zarr/0.0", default_buffer_prototype)
+            "transpose/0.0", prototype=default_buffer_prototype()
+        ) == await store.get("transpose_zarr/0.0", default_buffer_prototype())
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])

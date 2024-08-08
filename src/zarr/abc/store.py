@@ -1,31 +1,74 @@
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator
-from typing import Protocol, runtime_checkable
+from typing import Any, NamedTuple, Protocol, runtime_checkable
+
+from typing_extensions import Self
 
 from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import BytesLike, OpenMode
+from zarr.common import AccessModeLiteral, BytesLike
+
+
+class AccessMode(NamedTuple):
+    readonly: bool
+    overwrite: bool
+    create: bool
+    update: bool
+
+    @classmethod
+    def from_literal(cls, mode: AccessModeLiteral) -> Self:
+        if mode in ("r", "r+", "a", "w", "w-"):
+            return cls(
+                readonly=mode == "r",
+                overwrite=mode == "w",
+                create=mode in ("a", "w", "w-"),
+                update=mode in ("r+", "a"),
+            )
+        raise ValueError("mode must be one of 'r', 'r+', 'w', 'w-', 'a'")
 
 
 class Store(ABC):
-    _mode: OpenMode
+    _mode: AccessMode
+    _is_open: bool
 
-    def __init__(self, mode: OpenMode = "r"):
-        if mode not in ("r", "r+", "w", "w-", "a"):
-            raise ValueError("mode must be one of 'r', 'r+', 'w', 'w-', 'a'")
-        self._mode = mode
+    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any):
+        self._is_open = False
+        self._mode = AccessMode.from_literal(mode)
+
+    @classmethod
+    async def open(cls, *args: Any, **kwargs: Any) -> Self:
+        store = cls(*args, **kwargs)
+        await store._open()
+        return store
+
+    async def _open(self) -> None:
+        if self._is_open:
+            raise ValueError("store is already open")
+        if not await self.empty():
+            if self.mode.update or self.mode.readonly:
+                pass
+            elif self.mode.overwrite:
+                await self.clear()
+            else:
+                raise FileExistsError("Store already exists")
+        self._is_open = True
+
+    async def _ensure_open(self) -> None:
+        if not self._is_open:
+            await self._open()
+
+    @abstractmethod
+    async def empty(self) -> bool: ...
+
+    @abstractmethod
+    async def clear(self) -> None: ...
 
     @property
-    def mode(self) -> OpenMode:
+    def mode(self) -> AccessMode:
         """Access mode of the store."""
         return self._mode
 
-    @property
-    def writeable(self) -> bool:
-        """Is the store writeable?"""
-        return self.mode in ("a", "w", "w-")
-
     def _check_writable(self) -> None:
-        if not self.writeable:
+        if self.mode.readonly:
             raise ValueError("store mode does not support writing")
 
     @abstractmethod
@@ -173,8 +216,9 @@ class Store(ABC):
         """
         ...
 
-    def close(self) -> None:  # noqa: B027
+    def close(self) -> None:
         """Close the store."""
+        self._is_open = False
         pass
 
 

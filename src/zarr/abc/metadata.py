@@ -30,7 +30,7 @@ class Metadata:
             elif isinstance(value, str):
                 out_dict[key] = value
             elif isinstance(value, Sequence):
-                out_dict[key] = [v.to_dict() if isinstance(v, Metadata) else v for v in value]
+                out_dict[key] = tuple(v.to_dict() if isinstance(v, Metadata) else v for v in value)
             else:
                 out_dict[key] = value
 

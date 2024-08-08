@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
+
+from zarr.abc.codec import Codec
+from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.codecs.bytes import BytesCodec
 
 if TYPE_CHECKING:
     from typing import Any
@@ -11,7 +15,7 @@ from collections.abc import Sequence
 import numpy as np
 import pytest
 
-from zarr.metadata import parse_dimension_names
+from zarr.metadata import ArrayV3Metadata, parse_dimension_names
 from zarr.metadata import parse_fill_value_v3 as parse_fill_value
 from zarr.metadata import parse_zarr_format_v3 as parse_zarr_format
 
@@ -157,3 +161,72 @@ def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str)
     match = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}"
     with pytest.raises(TypeError, match=re.escape(match)):
         parse_fill_value(fill_value, dtype)
+
+
+@pytest.mark.parametrize("chunk_grid", ["regular"])
+@pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
+@pytest.mark.parametrize("codecs", [[BytesCodec()]])
+@pytest.mark.parametrize("fill_value", [0, 1])
+@pytest.mark.parametrize("chunk_key_encoding", ["v2", "default"])
+@pytest.mark.parametrize("dimension_separator", [".", "/", None])
+@pytest.mark.parametrize("dimension_names", ["nones", "strings", "missing"])
+def test_metadata_to_dict(
+    chunk_grid: str,
+    codecs: list[Codec],
+    fill_value: Any,
+    chunk_key_encoding: Literal["v2", "default"],
+    dimension_separator: Literal[".", "/"] | None,
+    dimension_names: Literal["nones", "strings", "missing"],
+    attributes: None | dict[str, Any],
+) -> None:
+    shape = (1, 2, 3)
+    data_type = "uint8"
+    if chunk_grid == "regular":
+        cgrid = {"name": "regular", "configuration": {"chunk_shape": (1, 1, 1)}}
+
+    cke: dict[str, Any]
+    cke_name_dict = {"name": chunk_key_encoding}
+    if dimension_separator is not None:
+        cke = cke_name_dict | {"configuration": {"separator": dimension_separator}}
+    else:
+        cke = cke_name_dict
+    dnames: tuple[str | None, ...] | None
+
+    if dimension_names == "strings":
+        dnames = tuple(map(str, range(len(shape))))
+    elif dimension_names == "missing":
+        dnames = None
+    elif dimension_names == "nones":
+        dnames = (None,) * len(shape)
+
+    metadata_dict = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": shape,
+        "chunk_grid": cgrid,
+        "data_type": data_type,
+        "chunk_key_encoding": cke,
+        "codecs": tuple(c.to_dict() for c in codecs),
+        "fill_value": fill_value,
+    }
+
+    if attributes is not None:
+        metadata_dict["attributes"] = attributes
+    if dnames is not None:
+        metadata_dict["dimension_names"] = dnames
+
+    metadata = ArrayV3Metadata.from_dict(metadata_dict)
+    observed = metadata.to_dict()
+    expected = metadata_dict.copy()
+    if attributes is None:
+        assert observed["attributes"] == {}
+        observed.pop("attributes")
+    if dimension_separator is None:
+        if chunk_key_encoding == "default":
+            expected_cke_dict = DefaultChunkKeyEncoding(separator="/").to_dict()
+        else:
+            expected_cke_dict = V2ChunkKeyEncoding(separator=".").to_dict()
+        assert observed["chunk_key_encoding"] == expected_cke_dict
+        observed.pop("chunk_key_encoding")
+        expected.pop("chunk_key_encoding")
+    assert observed == expected

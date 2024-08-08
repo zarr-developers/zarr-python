@@ -15,8 +15,8 @@ from zarr.abc.metadata import Metadata
 from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
-from zarr.codecs.registry import get_codec_class
 from zarr.config import config
+from zarr.registry import get_codec_class, get_pipeline_class
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -39,7 +39,6 @@ from zarr.config import parse_indexing_order
 
 # For type checking
 _bool = bool
-
 
 __all__ = ["ArrayMetadata"]
 
@@ -143,7 +142,7 @@ class ArrayMetadata(Metadata, ABC):
         pass
 
     @abstractmethod
-    def to_buffer_dict(self) -> dict[str, Buffer]:
+    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         pass
 
     @abstractmethod
@@ -197,7 +196,7 @@ class ArrayV3Metadata(ArrayMetadata):
             dtype=data_type_parsed,
             fill_value=fill_value_parsed,
             order="C",  # TODO: order is not needed here.
-            prototype=default_buffer_prototype,  # TODO: prototype is not needed here.
+            prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
         codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]
 
@@ -253,7 +252,7 @@ class ArrayV3Metadata(ArrayMetadata):
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
-    def to_buffer_dict(self) -> dict[str, Buffer]:
+    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         def _json_convert(o: Any) -> Any:
             if isinstance(o, np.dtype):
                 return str(o)
@@ -277,22 +276,26 @@ class ArrayV3Metadata(ArrayMetadata):
 
         json_indent = config.get("json_indent")
         return {
-            ZARR_JSON: Buffer.from_bytes(
+            ZARR_JSON: prototype.buffer.from_bytes(
                 json.dumps(self.to_dict(), default=_json_convert, indent=json_indent).encode()
             )
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
+        # make a copy because we are modifying the dict
+        _data = data.copy()
         # TODO: Remove the type: ignores[] comments below and use a TypedDict to type `data`
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v3(data.pop("zarr_format"))  # type: ignore[arg-type]
+        _ = parse_zarr_format_v3(_data.pop("zarr_format"))  # type: ignore[arg-type]
         # check that the node_type attribute is correct
-        _ = parse_node_type_array(data.pop("node_type"))  # type: ignore[arg-type]
+        _ = parse_node_type_array(_data.pop("node_type"))  # type: ignore[arg-type]
 
-        data["dimension_names"] = data.pop("dimension_names", None)
-
-        return cls(**data)  # type: ignore[arg-type]
+        # dimension_names key is optional, normalize missing to `None`
+        _data["dimension_names"] = _data.pop("dimension_names", None)
+        # attributes key is optional, normalize missing to `None`
+        _data["attributes"] = _data.pop("attributes", None)
+        return cls(**_data)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, Any]:
         out_dict = super().to_dict()
@@ -377,7 +380,7 @@ class ArrayV2Metadata(ArrayMetadata):
     def chunks(self) -> ChunkCoords:
         return self.chunk_grid.chunk_shape
 
-    def to_buffer_dict(self) -> dict[str, Buffer]:
+    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         def _json_convert(
             o: Any,
         ) -> Any:
@@ -398,17 +401,21 @@ class ArrayV2Metadata(ArrayMetadata):
         assert isinstance(zattrs_dict, dict)
         json_indent = config.get("json_indent")
         return {
-            ZARRAY_JSON: Buffer.from_bytes(
+            ZARRAY_JSON: prototype.buffer.from_bytes(
                 json.dumps(zarray_dict, default=_json_convert, indent=json_indent).encode()
             ),
-            ZATTRS_JSON: Buffer.from_bytes(json.dumps(zattrs_dict, indent=json_indent).encode()),
+            ZATTRS_JSON: prototype.buffer.from_bytes(
+                json.dumps(zattrs_dict, indent=json_indent).encode()
+            ),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
+        # make a copy to protect the original from modification
+        _data = data.copy()
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v2(data.pop("zarr_format"))
-        return cls(**data)
+        _ = parse_zarr_format_v2(_data.pop("zarr_format"))
+        return cls(**_data)
 
     def to_dict(self) -> JSON:
         zarray_dict = super().to_dict()
@@ -445,10 +452,10 @@ class ArrayV2Metadata(ArrayMetadata):
         return replace(self, attributes=attributes)
 
 
-def parse_dimension_names(data: None | Iterable[str]) -> tuple[str, ...] | None:
+def parse_dimension_names(data: None | Iterable[str | None]) -> tuple[str | None, ...] | None:
     if data is None:
         return data
-    elif all(isinstance(x, str) for x in data):
+    elif all(isinstance(x, type(None) | str) for x in data):
         return tuple(data)
     else:
         msg = f"Expected either None or a iterable of str, got {type(data)}"
@@ -506,11 +513,9 @@ def parse_v2_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
 
 
 def create_pipeline(data: Iterable[Codec | JSON]) -> CodecPipeline:
-    from zarr.codecs import BatchedCodecPipeline
-
     if not isinstance(data, Iterable):
         raise TypeError(f"Expected iterable, got {type(data)}")
-    return BatchedCodecPipeline.from_dict(data)
+    return get_pipeline_class().from_dict(data)
 
 
 def parse_codecs(data: Iterable[Codec | dict[str, JSON]]) -> tuple[Codec, ...]:

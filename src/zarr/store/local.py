@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import io
+import os
 import shutil
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import OpenMode, concurrent_map, to_thread
+from zarr.common import AccessModeLiteral, concurrent_map, to_thread
 
 
 def _get(
@@ -71,13 +72,24 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, mode: OpenMode = "r"):
+    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r"):
         super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
         assert isinstance(root, Path)
-
         self.root = root
+
+    async def clear(self) -> None:
+        self._check_writable()
+        shutil.rmtree(self.root)
+        self.root.mkdir()
+
+    async def empty(self) -> bool:
+        try:
+            subpaths = os.listdir(self.root)
+            return not subpaths
+        except FileNotFoundError:
+            return True
 
     def __str__(self) -> str:
         return f"file://{self.root}"
@@ -94,6 +106,8 @@ class LocalStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
+        if not self._is_open:
+            await self._open()
         assert isinstance(key, str)
         path = self.root / key
 
@@ -126,6 +140,8 @@ class LocalStore(Store):
         return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: Buffer) -> None:
+        if not self._is_open:
+            await self._open()
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):

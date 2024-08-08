@@ -21,13 +21,14 @@ from zarr.indexing import (
     oindex_set,
     replace_ellipsis,
 )
+from zarr.registry import get_ndbuffer_class
 from zarr.store.core import StorePath
 from zarr.store.memory import MemoryStore
 
 
 @pytest.fixture
-def store() -> Iterator[Store]:
-    yield StorePath(MemoryStore(mode="w"))
+async def store() -> Iterator[Store]:
+    yield StorePath(await MemoryStore.open(mode="w"))
 
 
 def zarr_array_from_numpy_array(
@@ -47,9 +48,11 @@ def zarr_array_from_numpy_array(
 
 
 class CountingDict(MemoryStore):
-    def __init__(self):
-        super().__init__(mode="w")
-        self.counter = Counter()
+    @classmethod
+    async def open(cls):
+        store = await super().open(mode="w")
+        store.counter = Counter()
+        return store
 
     async def get(self, key, prototype: BufferPrototype, byte_range=None):
         key_suffix = "/".join(key.split("/")[1:])
@@ -1393,7 +1396,7 @@ def test_get_selection_out(store: StorePath):
     ]
     for selection in selections:
         expect = a[selection]
-        out = NDBuffer.from_numpy_array(np.empty(expect.shape))
+        out = get_ndbuffer_class().from_numpy_array(np.empty(expect.shape))
         z.get_basic_selection(selection, out=out)
         assert_array_equal(expect, out.as_numpy_array()[:])
 
@@ -1423,7 +1426,7 @@ def test_get_selection_out(store: StorePath):
         ]
         for selection in selections:
             expect = oindex(a, selection)
-            out = NDBuffer.from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
+            out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
             z.get_orthogonal_selection(selection, out=out)
             assert_array_equal(expect, out.as_numpy_array()[:])
 
@@ -1445,7 +1448,7 @@ def test_get_selection_out(store: StorePath):
         ]
         for selection in selections:
             expect = a[selection]
-            out = NDBuffer.from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
+            out = get_ndbuffer_class().from_numpy_array(np.zeros(expect.shape, dtype=expect.dtype))
             z.get_coordinate_selection(selection, out=out)
             assert_array_equal(expect, out.as_numpy_array()[:])
 
@@ -1679,7 +1682,7 @@ def test_numpy_int_indexing(store: StorePath):
         ),
     ],
 )
-def test_accessed_chunks(shape, chunks, ops):
+async def test_accessed_chunks(shape, chunks, ops):
     # Test that only the required chunks are accessed during basic selection operations
     # shape: array shape
     # chunks: chunk size
@@ -1688,7 +1691,7 @@ def test_accessed_chunks(shape, chunks, ops):
     import itertools
 
     # Use a counting dict as the backing store so we can track the items access
-    store = CountingDict()
+    store = await CountingDict.open()
     z = zarr_array_from_numpy_array(StorePath(store), np.zeros(shape), chunk_shape=chunks)
 
     for ii, (optype, slices) in enumerate(ops):
