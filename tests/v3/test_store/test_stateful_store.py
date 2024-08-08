@@ -55,6 +55,9 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
         await self.store.delete(path)
 
+    async def empty_store(self):
+
+        await self.store.empty()
     #async def listdir(self, group): #does listdir take group?
 
     #    dir_ls = await self.store.list_dir(group)
@@ -163,5 +166,28 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     #    store_keys = asyncio.run(self.list_dir())#need to pass a gruop to this
     #    model_keys = self.model.listed_keys
     #    assert store_keys == model_keys
+
+    #@rule()
+    #def empty(self):
+
+        #get paths
+        #paths = asyncio.run(self.store_list())
+
+        #delete paths from store
+        #self.store.delete(paths)
+        #delete paths from model
+        #for key in paths:
+        #    self.model.pop(key, None)
+        
+        #assert asyncio.run(self.empty_store())
+        #assert len(self.model.keys()) is None
+
+    #@invariant()
+    #def check_empty
+
+
+
+
+
 
 StatefulStoreTest = ZarrStoreStateMachine.TestCase
