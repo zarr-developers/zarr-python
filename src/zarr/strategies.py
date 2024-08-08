@@ -23,7 +23,7 @@ _attr_values = st.recursive(
 # 3. must not be a string composed only of period characters, e.g. "." or ".."
 # 4. must not start with the reserved prefix "__"
 zarr_key_chars = st.sampled_from(
-    "_.-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
+    ".-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
 )
 node_names = st.text(zarr_key_chars, min_size=1).filter(
     lambda t: t not in (".", "..") and not t.startswith("__")
