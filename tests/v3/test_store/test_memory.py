@@ -5,11 +5,7 @@ import pytest
 from zarr.buffer import Buffer, cpu, gpu
 from zarr.store.memory import GpuMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
-
-try:
-    import cupy as cp
-except ImportError:
-    cp = None
+from zarr.testing.utils import gpu_test
 
 
 class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
@@ -46,7 +42,7 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         assert True
 
 
-@pytest.mark.skipif(cp is None, reason="requires cupy")
+@gpu_test
 class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
     store_cls = GpuMemoryStore
     buffer_cls = gpu.Buffer
