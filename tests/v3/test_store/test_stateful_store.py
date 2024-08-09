@@ -111,8 +111,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
             start = byte_range[0] or 0
             step = byte_range[1]
             stop = start + step if step is not None else None
-            model_vals_partial = model_vals[start:stop]
-            model_vals_ls.append(model_vals_partial)
+            model_vals_ls.append(model_vals[start:stop])
 
         assert all(
             obs == exp.to_bytes() for obs, exp in zip(observed, model_vals_ls, strict=True)
