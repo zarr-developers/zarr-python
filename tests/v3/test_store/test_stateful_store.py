@@ -106,8 +106,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
         model_vals_ls = []
 
-        for idx in range(len(observed)):
-            key, byte_range = key_range[idx]
+        for key, byte_range in key_range:
             model_vals = self.model[key]
             start = byte_range[0] or 0
             step = byte_range[1]
