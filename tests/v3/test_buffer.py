@@ -24,6 +24,7 @@ from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.store.core import StorePath
 from zarr.store.memory import MemoryStore
+from zarr.testing.utils import gpu_test
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -118,7 +119,7 @@ async def test_async_array_prototype():
     assert np.array_equal(expect, got)
 
 
-@pytest.mark.skipif(cp is None, reason="requires cupy")
+@gpu_test
 @pytest.mark.asyncio
 async def test_async_array_gpu_prototype():
     """Test the use of the GPU buffer prototype"""
@@ -175,7 +176,7 @@ async def test_codecs_use_of_prototype():
     assert np.array_equal(expect, got)
 
 
-@pytest.mark.skipif(cp is None, reason="requires cupy")
+@gpu_test
 @pytest.mark.asyncio
 async def test_codecs_use_of_gpu_prototype():
     expect = cp.zeros((10, 10), dtype="uint16", order="F")
