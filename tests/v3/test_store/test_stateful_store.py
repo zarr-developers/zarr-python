@@ -78,7 +78,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         paths = asyncio.run(self.store_list())
         # note(f'(check paths equal) {self.model=}, {self.store._store_dict=}')
         assert list(self.model.keys()) == paths
-        assert len(self.model.keys()) == len(self.store._store_dict)
+        assert len(self.model.keys()) == len(self.store)
         assert self.model == self.store._store_dict
 
     @precondition(lambda self: len(self.model.keys()) > 0)
