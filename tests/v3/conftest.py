@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING
 
 from _pytest.compat import LEGACY_PATH
 
-from zarr import config
+from zarr import AsyncGroup, config
 from zarr.abc.store import Store
 from zarr.common import ChunkCoords, MemoryOrder, ZarrFormat
-from zarr.group import AsyncGroup
 
 if TYPE_CHECKING:
     from typing import Any, Literal

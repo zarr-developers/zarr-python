@@ -13,7 +13,6 @@ from typing_extensions import deprecated
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
-from zarr.array import Array, AsyncArray
 from zarr.attributes import Attributes
 from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_key_encodings import ChunkKeyEncoding
@@ -26,10 +25,11 @@ from zarr.common import (
     ChunkCoords,
     ZarrFormat,
 )
-from zarr.config import config
+from zarr.core.array import Array, AsyncArray
+from zarr.core.config import config
+from zarr.core.sync import SyncMixin, sync
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.core import ensure_no_existing_node
-from zarr.sync import SyncMixin, sync
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable

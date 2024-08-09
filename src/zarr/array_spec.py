@@ -39,3 +39,6 @@ class ArraySpec:
     @property
     def ndim(self) -> int:
         return len(self.shape)
+
+
+__all__ = ["ArraySpec"]

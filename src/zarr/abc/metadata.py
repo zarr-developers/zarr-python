@@ -44,3 +44,6 @@ class Metadata:
         ...
 
         return cls(**data)
+
+
+__all__ = ["Metadata"]

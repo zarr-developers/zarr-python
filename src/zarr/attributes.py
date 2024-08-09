@@ -33,3 +33,6 @@ class Attributes(MutableMapping[str, JSON]):
 
     def __len__(self) -> int:
         return len(self._obj.metadata.attributes)
+
+
+__all__ = ["Attributes"]

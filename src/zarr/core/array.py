@@ -1,14 +1,6 @@
 from __future__ import annotations
 
 import json
-
-# Notes on what I've changed here:
-# 1. Split Array into AsyncArray and Array
-# 3. Added .size and .attrs methods
-# 4. Temporarily disabled the creation of ArrayV2
-# 5. Added from_dict to AsyncArray
-# Questions to consider:
-# 1. Was splitting the array into two classes really necessary?
 from asyncio import gather
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
@@ -35,8 +27,8 @@ from zarr.common import (
     concurrent_map,
     product,
 )
-from zarr.config import config, parse_indexing_order
-from zarr.indexing import (
+from zarr.core.config import config, parse_indexing_order
+from zarr.core.indexing import (
     BasicIndexer,
     BasicSelection,
     BlockIndex,
@@ -59,13 +51,13 @@ from zarr.indexing import (
     is_scalar,
     pop_fields,
 )
+from zarr.core.sync import sync
 from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.registry import get_pipeline_class
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.core import (
     ensure_no_existing_node,
 )
-from zarr.sync import sync
 
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
@@ -2056,3 +2048,6 @@ class Array:
         return sync(
             self._async_array.info(),
         )
+
+
+__all__ = ["Array", "AsyncArray"]

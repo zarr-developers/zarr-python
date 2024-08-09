@@ -6,14 +6,14 @@ import numpy as np
 import pytest
 from _pytest.compat import LEGACY_PATH
 
-from zarr.array import Array, AsyncArray
+from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.buffer import Buffer
 from zarr.common import ZarrFormat
+from zarr.core.group import GroupMetadata
+from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.group import AsyncGroup, Group, GroupMetadata
 from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.core import make_store_path
-from zarr.sync import sync
 
 from .conftest import parse_store
 

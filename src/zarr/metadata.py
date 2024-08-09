@@ -15,7 +15,6 @@ from zarr.abc.metadata import Metadata
 from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
-from zarr.config import config
 from zarr.registry import get_codec_class, get_pipeline_class
 
 if TYPE_CHECKING:
@@ -35,7 +34,7 @@ from zarr.common import (
     parse_named_configuration,
     parse_shapelike,
 )
-from zarr.config import parse_indexing_order
+from zarr.core.config import config, parse_indexing_order
 
 # For type checking
 _bool = bool

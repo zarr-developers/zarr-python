@@ -2,13 +2,12 @@ import numpy as np
 import pytest
 
 import zarr.v2
+from zarr import Array, AsyncArray, config
 from zarr.abc.codec import Codec
 from zarr.abc.store import Store
-from zarr.array import Array, AsyncArray
 from zarr.buffer import default_buffer_prototype
 from zarr.codecs import BytesCodec, ShardingCodec, TransposeCodec
 from zarr.common import MemoryOrder
-from zarr.config import config
 from zarr.store.core import StorePath
 
 from .test_codecs import _AsyncArrayProxy

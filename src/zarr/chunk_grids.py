@@ -19,7 +19,7 @@ from zarr.common import (
     parse_named_configuration,
     parse_shapelike,
 )
-from zarr.indexing import ceildiv
+from zarr.core.indexing import ceildiv
 
 if TYPE_CHECKING:
     from typing_extensions import Self

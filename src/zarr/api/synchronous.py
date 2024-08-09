@@ -3,12 +3,12 @@ from __future__ import annotations
 from typing import Any
 
 import zarr.api.asynchronous as async_api
-from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
 from zarr.common import JSON, AccessModeLiteral, ChunkCoords, ZarrFormat
-from zarr.group import Group
+from zarr.core.array import Array, AsyncArray
+from zarr.core.group import Group
+from zarr.core.sync import sync
 from zarr.store import StoreLike
-from zarr.sync import sync
 
 
 def consolidate_metadata(*args: Any, **kwargs: Any) -> Group:
@@ -271,3 +271,31 @@ open_array.__doc__ = async_api.open_array.__doc__
 open_like.__doc__ = async_api.open_like.__doc__
 zeros.__doc__ = async_api.zeros.__doc__
 zeros_like.__doc__ = async_api.zeros_like.__doc__
+
+__all__ = [
+    "consolidate_metadata",
+    "copy",
+    "copy_all",
+    "copy_store",
+    "load",
+    "open",
+    "open_consolidated",
+    "save",
+    "save_array",
+    "save_group",
+    "tree",
+    "array",
+    "group",
+    "open_group",
+    "create",
+    "empty",
+    "empty_like",
+    "full",
+    "full_like",
+    "ones",
+    "ones_like",
+    "open_array",
+    "open_like",
+    "zeros",
+    "zeros_like",
+]

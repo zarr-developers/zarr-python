@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 from importlib.metadata import EntryPoint
 from importlib.metadata import entry_points as get_entry_points
 
-from zarr.config import BadConfigError, config
+from zarr.core.config import BadConfigError, config
 
 T = TypeVar("T")
 

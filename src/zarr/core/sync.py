@@ -12,7 +12,7 @@ from concurrent.futures import wait
 
 from typing_extensions import ParamSpec
 
-from zarr.config import config
+from zarr.core.config import config
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -128,3 +128,6 @@ class SyncMixin:
             return [item async for item in async_iterator]
 
         return self._sync(iter_to_list())
+
+
+__all__ = ["sync", "SyncMixin"]

@@ -14,8 +14,8 @@ from zarr.abc.store import ByteSetter
 from zarr.array_spec import ArraySpec
 from zarr.buffer import NDBuffer
 from zarr.codecs import BatchedCodecPipeline, BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
-from zarr.config import BadConfigError, config
-from zarr.indexing import SelectorTuple
+from zarr.core.config import BadConfigError, config
+from zarr.core.indexing import SelectorTuple
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,

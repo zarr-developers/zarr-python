@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from zarr.array import AsyncArray
+from zarr import AsyncArray
 from zarr.buffer import ArrayLike, BufferPrototype, NDArrayLike, numpy_buffer_prototype
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec

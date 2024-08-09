@@ -14,7 +14,7 @@ import zarr
 from zarr.abc.store import Store
 from zarr.buffer import BufferPrototype, NDBuffer
 from zarr.common import ChunkCoords
-from zarr.indexing import (
+from zarr.core.indexing import (
     make_slice_selection,
     normalize_integer_selection,
     oindex,

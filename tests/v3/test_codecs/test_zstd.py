@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
+from zarr import Array
 from zarr.abc.store import Store
-from zarr.array import Array
 from zarr.codecs import BytesCodec, ZstdCodec
 from zarr.store.core import StorePath
 
