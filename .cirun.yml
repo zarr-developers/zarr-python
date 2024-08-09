@@ -1,9 +1,0 @@
-runners:
-  - name: "zarr-gpu-runner"
-    cloud: "gcp"
-    gpu: "nvidia-tesla-t4"
-    instance_type: "n1-standard-1"
-    machine_image: "common-cu123-v20240730-ubuntu-2204-py310"
-    preemptible: true
-    labels:
-      - "cirun-gpu-runner"
