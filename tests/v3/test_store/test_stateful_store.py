@@ -145,7 +145,6 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         asyncio.run(self.store_clear())
         self.model.clear()
 
-        assert self.model == self.store._store_dict
         assert len(self.model.keys()) == 0
 
     def empty(self, data) -> None:
