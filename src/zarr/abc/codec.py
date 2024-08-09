@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from zarr.array_spec import ArraySpec
+    from zarr.common import JSON
     from zarr.indexing import SelectorTuple
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
@@ -254,7 +255,7 @@ class CodecPipeline(Metadata):
 
     @classmethod
     @abstractmethod
-    def from_list(cls, codecs: list[Codec]) -> Self:
+    def from_list(cls, codecs: Iterable[Codec]) -> Self:
         """Creates a codec pipeline from a list of codecs.
 
         Parameters
@@ -389,6 +390,15 @@ class CodecPipeline(Metadata):
         value : NDBuffer
         """
         ...
+
+    @classmethod
+    def from_dict(cls, data: Iterable[JSON | Codec]) -> Self:
+        """
+        Create an instance of the model from a dictionary
+        """
+        ...
+
+        return cls(**data)
 
 
 async def batching_helper(

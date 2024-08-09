@@ -21,11 +21,10 @@ from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.attributes import Attributes
 from zarr.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
-from zarr.chunk_grids import RegularChunkGrid
+from zarr.chunk_grids import RegularChunkGrid, _guess_chunks
 from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
-from zarr.codecs.pipeline import BatchedCodecPipeline
 from zarr.common import (
     JSON,
     ZARR_JSON,
@@ -61,7 +60,11 @@ from zarr.indexing import (
     pop_fields,
 )
 from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
+from zarr.registry import get_pipeline_class
 from zarr.store import StoreLike, StorePath, make_store_path
+from zarr.store.core import (
+    ensure_no_existing_node,
+)
 from zarr.sync import sync
 
 
@@ -76,11 +79,11 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
     raise TypeError
 
 
-def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> BatchedCodecPipeline:
+def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
-        return BatchedCodecPipeline.from_list(metadata.codecs)
+        return get_pipeline_class().from_list(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
-        return BatchedCodecPipeline.from_list(
+        return get_pipeline_class().from_list(
             [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
         )
     else:
@@ -137,12 +140,13 @@ class AsyncArray:
         compressor: dict[str, JSON] | None = None,
         # runtime
         exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
     ) -> AsyncArray:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
 
         if chunk_shape is None:
             if chunks is None:
-                raise ValueError("Either chunk_shape or chunks needs to be provided.")
+                chunk_shape = chunks = _guess_chunks(shape=shape, typesize=np.dtype(dtype).itemsize)
             chunk_shape = chunks
         elif chunks is not None:
             raise ValueError("Only one of chunk_shape or chunks must be provided.")
@@ -164,7 +168,7 @@ class AsyncArray:
                 raise ValueError(
                     "compressor cannot be used for arrays with version 3. Use bytes-to-bytes codecs instead."
                 )
-            return await cls._create_v3(
+            result = await cls._create_v3(
                 store_path,
                 shape=shape,
                 dtype=dtype,
@@ -187,7 +191,7 @@ class AsyncArray:
                 )
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with version 2.")
-            return await cls._create_v2(
+            result = await cls._create_v2(
                 store_path,
                 shape=shape,
                 dtype=dtype,
@@ -202,6 +206,12 @@ class AsyncArray:
             )
         else:
             raise ValueError(f"Insupported zarr_format. Got: {zarr_format}")
+
+        if data is not None:
+            # insert user-provided data
+            await result.setitem(..., data)
+
+        return result
 
     @classmethod
     async def _create_v3(
@@ -224,7 +234,7 @@ class AsyncArray:
         exists_ok: bool = False,
     ) -> AsyncArray:
         if not exists_ok:
-            assert not await (store_path / ZARR_JSON).exists()
+            await ensure_no_existing_node(store_path, zarr_format=3)
 
         codecs = list(codecs) if codecs is not None else [BytesCodec()]
 
@@ -280,8 +290,7 @@ class AsyncArray:
         import numcodecs
 
         if not exists_ok:
-            assert not await (store_path / ZARRAY_JSON).exists()
-
+            await ensure_no_existing_node(store_path, zarr_format=2)
         if order is None:
             order = "C"
 
@@ -325,18 +334,18 @@ class AsyncArray:
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
     ) -> AsyncArray:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
 
         if zarr_format == 2:
             zarray_bytes, zattrs_bytes = await gather(
                 (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
             )
             if zarray_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
         elif zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
         elif zarr_format is None:
             zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
                 (store_path / ZARR_JSON).get(),
@@ -348,7 +357,7 @@ class AsyncArray:
                 # alternatively, we could warn and favor v3
                 raise ValueError("Both zarr.json and .zarray objects exist")
             if zarr_json_bytes is None and zarray_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
             # set zarr_format based on which keys were found
             if zarr_json_bytes is not None:
                 zarr_format = 3
@@ -403,7 +412,7 @@ class AsyncArray:
 
     @property
     def read_only(self) -> bool:
-        return bool(not self.store_path.store.writeable)
+        return self.store_path.store.mode.readonly
 
     @property
     def path(self) -> str:
@@ -474,8 +483,13 @@ class AsyncArray:
         return out_buffer.as_ndarray_like()
 
     async def getitem(
-        self, selection: BasicSelection, *, prototype: BufferPrototype = default_buffer_prototype
+        self,
+        selection: BasicSelection,
+        *,
+        prototype: BufferPrototype | None = None,
     ) -> NDArrayLike:
+        if prototype is None:
+            prototype = default_buffer_prototype()
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
@@ -484,7 +498,7 @@ class AsyncArray:
         return await self._get_selection(indexer, prototype=prototype)
 
     async def _save_metadata(self, metadata: ArrayMetadata) -> None:
-        to_save = metadata.to_buffer_dict()
+        to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await gather(*awaitables)
 
@@ -536,8 +550,10 @@ class AsyncArray:
         self,
         selection: BasicSelection,
         value: npt.ArrayLike,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
     ) -> None:
+        if prototype is None:
+            prototype = default_buffer_prototype()
         indexer = BasicIndexer(
             selection,
             shape=self.metadata.shape,
@@ -714,6 +730,10 @@ class Array:
     @property
     def read_only(self) -> bool:
         return self._async_array.read_only
+
+    @property
+    def fill_value(self) -> Any:
+        return self.metadata.fill_value
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
@@ -988,7 +1008,7 @@ class Array:
         selection: BasicSelection = Ellipsis,
         *,
         out: NDBuffer | None = None,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
         """Retrieve data for an item or region of the array.
@@ -1095,6 +1115,8 @@ class Array:
 
         """
 
+        if prototype is None:
+            prototype = default_buffer_prototype()
         return sync(
             self._async_array._get_selection(
                 BasicIndexer(selection, self.shape, self.metadata.chunk_grid),
@@ -1110,7 +1132,7 @@ class Array:
         value: npt.ArrayLike,
         *,
         fields: Fields | None = None,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
     ) -> None:
         """Modify data for an item or region of the array.
 
@@ -1194,6 +1216,8 @@ class Array:
         vindex, oindex, blocks, __getitem__, __setitem__
 
         """
+        if prototype is None:
+            prototype = default_buffer_prototype()
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
@@ -1203,7 +1227,7 @@ class Array:
         *,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
     ) -> NDArrayLike:
         """Retrieve data by making a selection for each dimension of the array. For
         example, if an array has 2 dimensions, allows selecting specific rows and/or
@@ -1312,6 +1336,8 @@ class Array:
         vindex, oindex, blocks, __getitem__, __setitem__
 
         """
+        if prototype is None:
+            prototype = default_buffer_prototype()
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._get_selection(
@@ -1325,7 +1351,7 @@ class Array:
         value: npt.ArrayLike,
         *,
         fields: Fields | None = None,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
     ) -> None:
         """Modify data via a selection for each dimension of the array.
 
@@ -1422,6 +1448,8 @@ class Array:
         vindex, oindex, blocks, __getitem__, __setitem__
 
         """
+        if prototype is None:
+            prototype = default_buffer_prototype()
         indexer = OrthogonalIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
@@ -1433,7 +1461,7 @@ class Array:
         *,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
     ) -> NDArrayLike:
         """Retrieve a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
@@ -1500,6 +1528,8 @@ class Array:
         vindex, oindex, blocks, __getitem__, __setitem__
         """
 
+        if prototype is None:
+            prototype = default_buffer_prototype()
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._get_selection(
@@ -1513,7 +1543,7 @@ class Array:
         value: npt.ArrayLike,
         *,
         fields: Fields | None = None,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
     ) -> None:
         """Modify a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
@@ -1580,6 +1610,8 @@ class Array:
         vindex, oindex, blocks, __getitem__, __setitem__
 
         """
+        if prototype is None:
+            prototype = default_buffer_prototype()
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
@@ -1589,7 +1621,7 @@ class Array:
         *,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
     ) -> NDArrayLike:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
@@ -1658,6 +1690,8 @@ class Array:
         vindex, oindex, blocks, __getitem__, __setitem__
 
         """
+        if prototype is None:
+            prototype = default_buffer_prototype()
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
         out_array = sync(
             self._async_array._get_selection(
@@ -1676,7 +1710,7 @@ class Array:
         value: npt.ArrayLike,
         *,
         fields: Fields | None = None,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
     ) -> None:
         """Modify a selection of individual items, by providing the indices (coordinates)
         for each item to be modified.
@@ -1740,6 +1774,8 @@ class Array:
         vindex, oindex, blocks, __getitem__, __setitem__
 
         """
+        if prototype is None:
+            prototype = default_buffer_prototype()
         # setup indexer
         indexer = CoordinateIndexer(selection, self.shape, self.metadata.chunk_grid)
 
@@ -1763,7 +1799,7 @@ class Array:
         *,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
     ) -> NDArrayLike:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
@@ -1846,6 +1882,8 @@ class Array:
         vindex, oindex, blocks, __getitem__, __setitem__
 
         """
+        if prototype is None:
+            prototype = default_buffer_prototype()
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
         return sync(
             self._async_array._get_selection(
@@ -1859,7 +1897,7 @@ class Array:
         value: npt.ArrayLike,
         *,
         fields: Fields | None = None,
-        prototype: BufferPrototype = default_buffer_prototype,
+        prototype: BufferPrototype | None = None,
     ) -> None:
         """Modify a selection of individual blocks, by providing the chunk indices
         (coordinates) for each block to be modified.
@@ -1937,6 +1975,8 @@ class Array:
         vindex, oindex, blocks, __getitem__, __setitem__
 
         """
+        if prototype is None:
+            prototype = default_buffer_prototype()
         indexer = BlockIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 

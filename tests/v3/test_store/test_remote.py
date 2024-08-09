@@ -82,15 +82,17 @@ async def alist(it):
 
 
 async def test_basic():
-    store = RemoteStore(f"s3://{test_bucket_name}", mode="w", endpoint_url=endpoint_url, anon=False)
+    store = await RemoteStore.open(
+        f"s3://{test_bucket_name}", mode="w", endpoint_url=endpoint_url, anon=False
+    )
     assert not await alist(store.list())
     assert not await store.exists("foo")
     data = b"hello"
     await store.set("foo", Buffer.from_bytes(data))
     assert await store.exists("foo")
-    assert (await store.get("foo", prototype=default_buffer_prototype)).to_bytes() == data
+    assert (await store.get("foo", prototype=default_buffer_prototype())).to_bytes() == data
     out = await store.get_partial_values(
-        prototype=default_buffer_prototype, key_ranges=[("foo", (1, None))]
+        prototype=default_buffer_prototype(), key_ranges=[("foo", (1, None))]
     )
     assert out[0].to_bytes() == data[1:]
 
@@ -102,7 +104,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
     def store_kwargs(self, request) -> dict[str, str | bool]:
         url = f"s3://{test_bucket_name}"
         anon = False
-        mode = "w"
+        mode = "r+"
         if request.param == "use_upath":
             return {"url": UPath(url, endpoint_url=endpoint_url, anon=anon), "mode": mode}
         elif request.param == "use_str":

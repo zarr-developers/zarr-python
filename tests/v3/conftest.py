@@ -4,7 +4,11 @@ from collections.abc import Iterator
 from types import ModuleType
 from typing import TYPE_CHECKING
 
-from zarr.common import ZarrFormat
+from _pytest.compat import LEGACY_PATH
+
+from zarr import config
+from zarr.abc.store import Store
+from zarr.common import ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.group import AsyncGroup
 
 if TYPE_CHECKING:
@@ -12,56 +16,58 @@ if TYPE_CHECKING:
 import pathlib
 from dataclasses import dataclass, field
 
+import numpy as np
 import pytest
+from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.remote import RemoteStore
 
 
-def parse_store(
+async def parse_store(
     store: Literal["local", "memory", "remote"], path: str
 ) -> LocalStore | MemoryStore | RemoteStore:
     if store == "local":
-        return LocalStore(path, mode="w")
+        return await LocalStore.open(path, mode="w")
     if store == "memory":
-        return MemoryStore(mode="w")
+        return await MemoryStore.open(mode="w")
     if store == "remote":
-        return RemoteStore(mode="w")
+        return await RemoteStore.open(url=path, mode="w")
     raise AssertionError
 
 
 @pytest.fixture(params=[str, pathlib.Path])
-def path_type(request):
+def path_type(request: pytest.FixtureRequest) -> Any:
     return request.param
 
 
 # todo: harmonize this with local_store fixture
 @pytest.fixture
-def store_path(tmpdir):
-    store = LocalStore(str(tmpdir), mode="w")
+async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
+    store = await LocalStore.open(str(tmpdir), mode="w")
     p = StorePath(store)
     return p
 
 
 @pytest.fixture(scope="function")
-def local_store(tmpdir):
-    return LocalStore(str(tmpdir), mode="w")
+async def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
+    return await LocalStore.open(str(tmpdir), mode="w")
 
 
 @pytest.fixture(scope="function")
-def remote_store():
-    return RemoteStore(mode="w")
+async def remote_store(url: str) -> RemoteStore:
+    return await RemoteStore.open(url, mode="w")
 
 
 @pytest.fixture(scope="function")
-def memory_store():
-    return MemoryStore(mode="w")
+async def memory_store() -> MemoryStore:
+    return await MemoryStore.open(mode="w")
 
 
 @pytest.fixture(scope="function")
-def store(request: str, tmpdir):
+async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     param = request.param
-    return parse_store(param, str(tmpdir))
+    return await parse_store(param, str(tmpdir))
 
 
 @dataclass
@@ -72,10 +78,10 @@ class AsyncGroupRequest:
 
 
 @pytest.fixture(scope="function")
-async def async_group(request: pytest.FixtureRequest, tmpdir) -> AsyncGroup:
+async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
-    store = parse_store(param.store, str(tmpdir))
+    store = await parse_store(param.store, str(tmpdir))
     agroup = await AsyncGroup.create(
         store,
         attributes=param.attributes,
@@ -90,3 +96,41 @@ def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
     """Fixture to parametrize over numpy-like libraries"""
 
     yield pytest.importorskip(request.param)
+
+
+@pytest.fixture(autouse=True)
+def reset_config():
+    config.reset()
+    yield
+    config.reset()
+
+
+@dataclass
+class ArrayRequest:
+    shape: ChunkCoords
+    dtype: str
+    order: MemoryOrder
+
+
+@pytest.fixture
+def array_fixture(request: pytest.FixtureRequest) -> np.ndarray:
+    array_request: ArrayRequest = request.param
+    return (
+        np.arange(np.prod(array_request.shape))
+        .reshape(array_request.shape, order=array_request.order)
+        .astype(array_request.dtype)
+    )
+
+
+settings.register_profile(
+    "ci",
+    max_examples=1000,
+    deadline=None,
+    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
+)
+settings.register_profile(
+    "local",
+    max_examples=300,
+    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
+    verbosity=Verbosity.verbose,
+)

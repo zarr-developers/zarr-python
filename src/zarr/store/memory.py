@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator, MutableMapping
+from typing import Any
 
 from zarr.abc.store import Store
 from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import OpenMode, concurrent_map
+from zarr.common import AccessModeLiteral, concurrent_map
 from zarr.store.utils import _normalize_interval_index
 
 
@@ -18,10 +19,19 @@ class MemoryStore(Store):
     _store_dict: MutableMapping[str, Buffer]
 
     def __init__(
-        self, store_dict: MutableMapping[str, Buffer] | None = None, *, mode: OpenMode = "r"
+        self,
+        store_dict: MutableMapping[str, Buffer] | None = None,
+        *,
+        mode: AccessModeLiteral = "r",
     ):
         super().__init__(mode=mode)
         self._store_dict = store_dict or {}
+
+    async def empty(self) -> bool:
+        return not self._store_dict
+
+    async def clear(self) -> None:
+        self._store_dict.clear()
 
     def __str__(self) -> str:
         return f"memory://{id(self._store_dict)}"
@@ -36,10 +46,10 @@ class MemoryStore(Store):
             and self.mode == other.mode
         )
 
-    def __setstate__(self, state: tuple[MutableMapping[str, Buffer], OpenMode]) -> None:
+    def __setstate__(self, state: Any) -> None:
         raise NotImplementedError(f"{type(self)} cannot be pickled")
 
-    def __getstate__(self) -> tuple[MutableMapping[str, Buffer], OpenMode]:
+    def __getstate__(self) -> None:
         raise NotImplementedError(f"{type(self)} cannot be pickled")
 
     async def get(
@@ -48,6 +58,8 @@ class MemoryStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
+        if not self._is_open:
+            await self._open()
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
@@ -72,6 +84,8 @@ class MemoryStore(Store):
         return key in self._store_dict
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        if not self._is_open:
+            await self._open()
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
@@ -108,8 +122,9 @@ class MemoryStore(Store):
             prefix = prefix[:-1]
 
         if prefix == "":
-            for key in self._store_dict:
-                yield key.split("/", maxsplit=1)[0]
+            keys_unique = set(k.split("/")[0] for k in self._store_dict.keys())
+            for key in keys_unique:
+                yield key
         else:
             for key in self._store_dict:
                 if key.startswith(prefix + "/") and key != prefix:

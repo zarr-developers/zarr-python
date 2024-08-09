@@ -1036,7 +1036,7 @@ class CoordinateIndexer(Indexer):
         # flatten selection
         selection_broadcast = tuple(dim_sel.reshape(-1) for dim_sel in selection_broadcast)
         chunks_multi_index_broadcast = tuple(
-            [dim_chunks.reshape(-1) for dim_chunks in chunks_multi_index_broadcast]
+            dim_chunks.reshape(-1) for dim_chunks in chunks_multi_index_broadcast
         )
 
         # ravel chunk indices
@@ -1220,24 +1220,25 @@ def make_slice_selection(selection: Any) -> list[slice]:
     return ls
 
 
+def decode_morton(z: int, chunk_shape: ChunkCoords) -> ChunkCoords:
+    # Inspired by compressed morton code as implemented in Neuroglancer
+    # https://github.com/google/neuroglancer/blob/master/src/neuroglancer/datasource/precomputed/volume.md#compressed-morton-code
+    bits = tuple(math.ceil(math.log2(c)) for c in chunk_shape)
+    max_coords_bits = max(bits)
+    input_bit = 0
+    input_value = z
+    out = [0] * len(chunk_shape)
+
+    for coord_bit in range(max_coords_bits):
+        for dim in range(len(chunk_shape)):
+            if coord_bit < bits[dim]:
+                bit = (input_value >> input_bit) & 1
+                out[dim] |= bit << coord_bit
+                input_bit += 1
+    return tuple(out)
+
+
 def morton_order_iter(chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
-    def decode_morton(z: int, chunk_shape: ChunkCoords) -> ChunkCoords:
-        # Inspired by compressed morton code as implemented in Neuroglancer
-        # https://github.com/google/neuroglancer/blob/master/src/neuroglancer/datasource/precomputed/volume.md#compressed-morton-code
-        bits = tuple(math.ceil(math.log2(c)) for c in chunk_shape)
-        max_coords_bits = max(*bits)
-        input_bit = 0
-        input_value = z
-        out = [0 for _ in range(len(chunk_shape))]
-
-        for coord_bit in range(max_coords_bits):
-            for dim in range(len(chunk_shape)):
-                if coord_bit < bits[dim]:
-                    bit = (input_value >> input_bit) & 1
-                    out[dim] |= bit << coord_bit
-                    input_bit += 1
-        return tuple(out)
-
     for i in range(product(chunk_shape)):
         yield decode_morton(i, chunk_shape)
 

@@ -5,7 +5,7 @@ from typing import Any
 import zarr.api.asynchronous as async_api
 from zarr.array import Array, AsyncArray
 from zarr.buffer import NDArrayLike
-from zarr.common import JSON, ChunkCoords, OpenMode, ZarrFormat
+from zarr.common import JSON, AccessModeLiteral, ChunkCoords, ZarrFormat
 from zarr.group import Group
 from zarr.store import StoreLike
 from zarr.sync import sync
@@ -36,7 +36,7 @@ def load(
 def open(
     *,
     store: StoreLike | None = None,
-    mode: OpenMode | None = None,  # type and value changed
+    mode: AccessModeLiteral | None = None,  # type and value changed
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -161,7 +161,7 @@ def group(
 def open_group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,
-    mode: OpenMode | None = None,  # not used in async api
+    mode: AccessModeLiteral | None = None,  # not used in async api
     cache_attrs: bool | None = None,  # default changed, not used in async api
     synchronizer: Any = None,  # not used in async api
     path: str | None = None,
