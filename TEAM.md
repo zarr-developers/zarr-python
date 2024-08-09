@@ -7,6 +7,7 @@
 - @jakirkham (jakirkham)
 - @martindurant (Martin Durant)
 - @normanrz (Norman Rzepka)
+- @dstansby (David Stansby)
 
 ## Emeritus core-developers
 - @alimanfoo (Alistair Miles)
