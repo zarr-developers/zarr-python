@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from zarr.codecs.arrow import ArrowRecordBatchCodec
 from zarr.codecs.blosc import BloscCname, BloscCodec, BloscShuffle
 from zarr.codecs.bytes import BytesCodec, Endian
 from zarr.codecs.crc32c_ import Crc32cCodec
@@ -10,6 +11,7 @@ from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 
 __all__ = [
+    "ArrowRecordBatchCodec",
     "BatchedCodecPipeline",
     "BloscCname",
     "BloscCodec",

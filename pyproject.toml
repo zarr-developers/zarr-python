@@ -109,6 +109,7 @@ dependencies = [
     "universal_pathlib"
 ]
 extra-dependencies = [
+    "pyarrow",
     "coverage",
     "pytest",
     "pytest-cov",
