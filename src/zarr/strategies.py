@@ -147,7 +147,7 @@ def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs):  # type: ign
     )
 
 
-def key_ranges(keys: SearchStrategy | None = None) -> st.lists[:]:
+def key_ranges(keys: SearchStrategy | None = None) -> SearchStrategy[list]:
     """fn to generate key_ranges strategy for get_partial_values()
     returns list strategy w/ form: [(key, (range_start, range_step)),
                                     (key, (range_start, range_step)),...]
