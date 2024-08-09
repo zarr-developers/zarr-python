@@ -172,7 +172,7 @@ class _ShardReader(ShardMapping):
     def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardReader:
         index = _ShardIndex.create_empty(chunks_per_shard)
         obj = cls()
-        obj.buf = Buffer.create_zero_length()
+        obj.buf = default_buffer_prototype.buffer.create_zero_length()
         obj.index = index
         return obj
 
@@ -217,7 +217,7 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
     @classmethod
     def create_empty(cls, chunks_per_shard: ChunkCoords) -> _ShardBuilder:
         obj = cls()
-        obj.buf = Buffer.create_zero_length()
+        obj.buf = default_buffer_prototype.buffer.create_zero_length()
         obj.index = _ShardIndex.create_empty(chunks_per_shard)
         return obj
 
@@ -607,7 +607,9 @@ class ShardingCodec(
                 await BatchedCodecPipeline.from_list(self.index_codecs).encode(
                     [
                         (
-                            NDBuffer.from_numpy_array(index.offsets_and_lengths),
+                            default_buffer_prototype.nd_buffer.from_numpy_array(
+                                index.offsets_and_lengths
+                            ),
                             self._get_index_chunk_spec(index.chunks_per_shard),
                         )
                     ],
