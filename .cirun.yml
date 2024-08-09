@@ -3,7 +3,8 @@ runners:
     cloud: "gcp"
     gpu: "nvidia-tesla-t4"
     instance_type: "n1-standard-1"
-    machine_image: "common-cu123-v20240730-ubuntu-2204-py310"
+    # machine_image: "common-cu123-v20240730-ubuntu-2204-py310"
+    machine_image: "ubuntu-2204-jammy-v20240801"
     preemptible: true
     labels:
       - "cirun-gpu-runner"
