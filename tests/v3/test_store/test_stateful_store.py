@@ -3,6 +3,7 @@
 import asyncio
 import string
 
+
 import hypothesis.strategies as st
 from hypothesis import note
 from hypothesis.stateful import (
@@ -15,20 +16,20 @@ from hypothesis.stateful import (
 from hypothesis.strategies import SearchStrategy
 
 from zarr.buffer import Buffer, default_buffer_prototype
-from zarr.store import MemoryStore
+from zarr.store import MemoryStore, RemoteStore, LocalStore
 
 #from strategies_store import StoreStatefulStrategies, key_ranges
 from zarr.strategies import paths, key_ranges
 
-#strategies = StoreStatefulStrategies()
 
+#zarr spec: https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html
+
+# NOTE: all methods should be called on self.store, assertions should compare self.model and self.store._store_dict
 class ZarrStoreStateMachine(RuleBasedStateMachine):
-    #keys_bundle = Bundle('keys_bundle')
-    #TODO add arg/class for store type
-    def __init__(self):
-        super().__init__()
+    def __init__(self): # look into using run_machine_as_test()
+        super().__init__()                          
         self.model = {}
-        self.store = MemoryStore(mode="w")
+        self.store = MemoryStore(mode="w") 
 
     # Unfortunately, hypothesis' stateful testing infra does not support asyncio
     # So we redefine sync versions of the Store API.
@@ -43,10 +44,9 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
     async def get_key(self, key):
         obs = await self.store.get(key, prototype=default_buffer_prototype())
-        return obs#.to_bytes()
+        return obs
 
     async def get_partial(self, key_ranges):
-        # read back part
         obs_maybe = await self.store.get_partial_values(
             prototype=default_buffer_prototype(), key_ranges=key_ranges
         )
@@ -56,11 +56,11 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
         await self.store.delete(path)
 
-    async def empty_store(self):
+    async def store_empty(self):
 
         await self.store.empty()
 
-    async def clear_store(self):
+    async def store_clear(self):
 
         await self.store.clear()
     #async def listdir(self, group): #does listdir take group?
@@ -70,37 +70,33 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     #    return dir_ls
     # ------
 
-    @rule(key=paths, data=st.binary(min_size=0, max_size=100))#, target=keys_bundle)
+    @rule(key=paths, data=st.binary(min_size=0, max_size=100))
     def set(self, key: str, data: bytes) -> None:
         note(f"(set) Setting {key!r} with {data}")
         assert not self.store.mode.readonly
         data_buf = Buffer.from_bytes(data)
         asyncio.run(self.store_set(key, data_buf))
-        #note(f'(set) {self.store._store_dict[key]=}')
-        # TODO: does model need to contain Buffer or just data? I think it needs data_buf
         self.model[key] =  data_buf #this was data
-        #return key
 
     @invariant()
     def check_paths_equal(self) -> None:
         note("Checking that paths are equal")
         paths = asyncio.run(self.store_list())
-        #note(f'in check paths equal {self.model=}, {self.store._store_dict=}')
+        #note(f'(check paths equal) {self.model=}, {self.store._store_dict=}')
         assert list(self.model.keys()) == paths
         assert len(self.model.keys()) == len(self.store._store_dict)
         assert self.model == self.store._store_dict
-        #assert self.model == self.store
 
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
     #@rule(key=keys_bundle)
-    #def get(self, key) -> None:
     def get(self, data) -> None:
 
         key = data.draw(st.sampled_from(sorted(self.model.keys())))
         store_value = asyncio.run(self.get_key(key))
         #note(f'(get) {self.model[key]=}, {store_value}')
-        assert self.model[key].to_bytes() == store_value.to_bytes() #self.model[key].to_bytes()
+        #to bytes here necessary (on model and store) because data_buf set to model in set()
+        assert self.model[key].to_bytes() == store_value.to_bytes()
 
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
@@ -137,26 +133,45 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     def delete(self,data) -> None:
 
         path_st = data.draw(st.sampled_from(sorted(self.model.keys())))
-        note(f'Deleting {path_st=}')
+        note(f'(delete) Deleting {path_st=}')
 
         asyncio.run(self.delete_key(path_st))
 
         del self.model[path_st]
 
-    @invariant()
-    def check_delete(self) -> None:
-        '''this doesn't actually do anything'''
-        note('in check_delete()')
-        #can/should this be the same as the invariant for set? 
-        paths = asyncio.run(self.store_list())
-        note(f"After delete, checking that paths are equal, {paths=}, model={list(self.model.keys())}")
-        assert list(self.model.keys()) == paths
-        assert len(list(self.model.keys())) == len(paths)
-        #maybe add assertion that path_st not in keys? but this would req paths_st from delete()..
+        #property tests
+        assert self.model.keys() == self.store._store_dict.keys()
+        assert path_st not in list(self.model.keys())
+
+    @rule(key=paths, data=st.binary(min_size=0, max_size=100))
+    def clear(self, key:str, data:bytes):
+        ''' clear() is in zarr/store/memory.py
+        it calls clear on self._store_dict
+        clear() is dict method that removes all key-val pairs from dict
+        '''
+        assert not self.store.mode.readonly
+        note('(clear)')
+        asyncio.run(self.store_clear())
+        self.model.clear()
+
+        assert self.model == self.store._store_dict
+        assert len(self.model.keys()) == 0
+
+    def empty(self, data) -> None:
+        '''empty checks if a store is empty or not
+        return true if self._store_dict doesn't exist
+        return false if self._store_dict exists '''
+        note('(empty)')
+
+        asyncio.run(self.store_clear())
+        assert self.store.empty()
 
     #@precondition(lambda self: len(self.model.keys()) > 0)
-    #@rule(key = strategies.key_st, data=strategies.data_st)
+    #@rule(key = paths, data=st.binary(min_size=0, max_size=100))
     #def listdir(self, key, data) -> None:
+    #    '''list_dir - Retrieve all keys and prefixes with a given prefix 
+    #    and which do not contain the character “/” after the given prefix.
+    #    '''
 
         #assert not self.store.mode.readonly
         #data_buf = Buffer.from_bytes(data)
@@ -173,6 +188,20 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         #for store, list all keys 
         #for model, list all keys 
 
+StatefulStoreTest = ZarrStoreStateMachine.TestCase
+
+
+    #@invariant()
+    #def check_delete(self) -> None:
+    #    '''this doesn't actually do anything'''
+    #    note('(check_delete)')
+        #can/should this be the same as the invariant for set? 
+    #    paths = asyncio.run(self.store_list())
+    #    note(f"After delete, checking that paths are equal, {paths=}, model={list(self.model.keys())}")
+    #    assert list(self.model.keys()) == paths
+    #    assert len(list(self.model.keys())) == len(paths)
+        #maybe add assertion that path_st not in keys? but this would req paths_st from delete()..
+
 
     #@invariant()
     #listdir not working
@@ -182,63 +211,5 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     #    model_keys = self.model.listed_keys
     #    assert store_keys == model_keys
 
-        
-    @rule(key=paths, data=st.binary(min_size=0, max_size=100))
-    def clear(self, key:str, data:bytes):
-        ''' clear() is in zarr/store/memory.py
-        it calls clear on self._store_dict
-        clear() is dict method that removes all key-val pairs from dict
-        (returns empty dict)
-        - little unsure of what we want here. calling clear() on a zarr store 
-        actually calls clear on store._store_dict. 
-        so after clear(), self.model will actually be equal to self.store._store_dict
-        not self.store, but this is inconsistent with equalities in other  tests where self.model = self.store? '''
-        assert not self.store.mode.readonly
-        note('in clear()')
-        #clear
-        asyncio.run(self.clear_store())
-        self.model.clear()
 
-
-    #@precondition(lambda self: len(self.model) == 0)
-    #@rule()
-    #i feel like this should be an invariant but it needs a precondition so needs to be a rule ? 
-    #@invariant()
-    #def check_clear(self):
-    #    note('in check_clear()')
-    #    note(f'{self.model=}, {self.store=}')
-    #    note(f'{self.model.keys()=}, {self.store._store_dict=}')
-    #    assert len(self.model.keys()) == len(self.store._store_dict)
-        #assert self.model.keys() == self.store._store_dict
-        #assert self.model == self.store
-
-
-        #use .empty() to check? or that is circular? 
-
-
-
-
-        
-    #@precondition(lambda self: len(self.model.keys()) > 0)
-    #@rule()
-    #def empty(self):
-    #    '''empty() checks if a store is empty. is it similar to get in that it isn't changing the state of the store, so can have a 
-    #    property test in the rule instead of an invariant ?'''
-
-        #delete paths from store
-    #    note('in empty()')
-    #    self.store.clear()
-    #    store_paths = asyncio.run(self.store_list())
-    #    note(f'{store_paths=}, {len(store_paths)=}')
-        #note(f'is store empty? {store_paths}')
-        #delete paths from model
-    #    self.model.clear()
-    #    note(f'is model empty? {list(self.model.keys())}')
-    #    assert len(list(self.model.keys())) == len(store_paths) #== 0
-
-    #@invariant()
-    #def check_empty
-
-
-
-StatefulStoreTest = ZarrStoreStateMachine.TestCase
+   
