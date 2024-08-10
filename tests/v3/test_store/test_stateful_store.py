@@ -11,83 +11,117 @@ from hypothesis.stateful import (
     rule,
 )
 
+from zarr.abc.store import Store as StoreABC
 from zarr.buffer import Buffer, default_buffer_prototype
-from zarr.store import MemoryStore
+from zarr.store import LocalStore, MemoryStore, RemoteStore
 
 # from strategies_store import StoreStatefulStrategies, key_ranges
-from zarr.strategies import key_ranges, paths
+from zarr.testing.strategies import key_ranges, paths
 
 # zarr spec: https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html
 
 
-# NOTE: all methods should be called on self.store, assertions should compare self.model and self.store._store_dict
-class ZarrStoreStateMachine(RuleBasedStateMachine):
-    def __init__(self):  # look into using run_machine_as_test()
-        super().__init__()
-        self.model = {}
-        self.store = MemoryStore(mode="w")
+class SyncMemStoreWrapper(StoreABC):
+    def __init__(self, store_type):
+        """Store to hold async functions that map to StoreABC abstract methods"""
+        if store_type in ("Memory", "memory"):
+            self.store = MemoryStore(mode="w")  # store_container.store
+        elif store_type in ("Local", "local"):
+            self.store = LocalStore(mode="w")
+        elif store_type in ("Remote", "remote"):
+            self.store = RemoteStore(mode="w")
+        else:
+            raise ValueError(f"Invalid item_type: {store_type}")
+        # Unfortunately, hypothesis' stateful testing infra does not support asyncio
 
-    # Unfortunately, hypothesis' stateful testing infra does not support asyncio
     # So we redefine sync versions of the Store API.
     # https://github.com/HypothesisWorks/hypothesis/issues/3712#issuecomment-1668999041
-    async def store_set(self, key, data_buffer):
+    async def set(self, key, data_buffer):  # buffer is value
         await self.store.set(key, data_buffer)
 
-    async def store_list(self):
+    async def list(self):
         paths = [path async for path in self.store.list()]
         # note(f'(store set) store {paths=}, type {type(paths)=}, {len(paths)=}')
         return paths
 
-    async def get_key(self, key):
+    async def get(
+        self,
+        key,
+    ):
         obs = await self.store.get(key, prototype=default_buffer_prototype())
         return obs
 
-    async def get_partial(self, key_ranges):
+    async def get_partial_values(self, key_ranges):
         obs_maybe = await self.store.get_partial_values(
             prototype=default_buffer_prototype(), key_ranges=key_ranges
         )
         return obs_maybe
 
-    async def delete_key(self, path):
+    async def delete(self, path):  # path is key
         await self.store.delete(path)
 
-    async def store_empty(self):
+    async def empty(self):
         await self.store.empty()
 
-    async def store_clear(self):
+    async def clear(self):
         await self.store.clear()
 
-    # async def listdir(self, group): #does listdir take group?
+    async def exists(self, key):
+        raise NotImplementedError
 
-    #    dir_ls = await self.store.list_dir(group)
+    async def list_dir(self, prefix):
+        raise NotImplementedError
 
-    #    return dir_ls
-    # ------
+    async def list_prefix(self, prefix: str):
+        raise NotImplementedError
+
+    async def set_partial_values(self, key_start_values):
+        raise NotImplementedError
+
+    async def supports_listing(self):
+        raise NotImplementedError
+
+    async def supports_partial_writes(self):
+        raise NotImplementedError
+
+    async def supports_writes(self):
+        raise NotImplementedError
+
+
+class ZarrStoreStateMachine(RuleBasedStateMachine):
+    def __init__(self):  # look into using run_machine_as_test()
+        super().__init__()
+        self.model = {}
+        self.sync_wrapper = SyncMemStoreWrapper("memory")
+        self.store = self.sync_wrapper.store
+        # self.store = MemoryStore(mode='w')
 
     @rule(key=paths, data=st.binary(min_size=0, max_size=100))
     def set(self, key: str, data: bytes) -> None:
         note(f"(set) Setting {key!r} with {data}")
         assert not self.store.mode.readonly
         data_buf = Buffer.from_bytes(data)
-        asyncio.run(self.store_set(key, data_buf))
+        asyncio.run(self.sync_wrapper.set(key, data_buf))
         self.model[key] = data_buf  # this was data
 
     @invariant()
     def check_paths_equal(self) -> None:
         note("Checking that paths are equal")
-        paths = asyncio.run(self.store_list())
-        # note(f'(check paths equal) {self.model=}, {self.store._store_dict=}')
+        paths = asyncio.run(self.sync_wrapper.list())
         assert list(self.model.keys()) == paths
-        assert len(self.model.keys()) == len(self.store)
-        assert self.model == self.store._store_dict
+        note("Checking values equal")
+        for key, _val in self.model.items():
+            store_item = asyncio.run(self.sync_wrapper.get(key)).to_bytes()
+            # note(f'(inv) model item: {self.model[key]}')
+            # note(f'(inv) {store_item=}')
+            assert self.model[key].to_bytes() == store_item
 
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
     # @rule(key=keys_bundle)
     def get(self, data) -> None:
         key = data.draw(st.sampled_from(sorted(self.model.keys())))
-        store_value = asyncio.run(self.get_key(key))
-        # note(f'(get) {self.model[key]=}, {store_value}')
+        store_value = asyncio.run(self.sync_wrapper.get(key))
         # to bytes here necessary (on model and store) because data_buf set to model in set()
         assert self.model[key].to_bytes() == store_value.to_bytes()
 
@@ -97,7 +131,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         key_st = st.sampled_from(sorted(self.model.keys()))
         key_range = data.draw(key_ranges(keys=key_st))
 
-        obs_maybe = asyncio.run(self.get_partial(key_range))
+        obs_maybe = asyncio.run(self.sync_wrapper.get_partial_values(key_range))
         observed = []
 
         for obs in obs_maybe:
@@ -126,13 +160,8 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         path_st = data.draw(st.sampled_from(sorted(self.model.keys())))
         note(f"(delete) Deleting {path_st=}")
 
-        asyncio.run(self.delete_key(path_st))
-
+        asyncio.run(self.sync_wrapper.delete(path_st))
         del self.model[path_st]
-
-        # property tests
-        assert self.model.keys() == self.store._store_dict.keys()
-        assert path_st not in list(self.model.keys())
 
     @rule(key=paths, data=st.binary(min_size=0, max_size=100))
     def clear(self, key: str, data: bytes):
@@ -142,62 +171,20 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         """
         assert not self.store.mode.readonly
         note("(clear)")
-        asyncio.run(self.store_clear())
+        asyncio.run(self.sync_wrapper.clear())
         self.model.clear()
 
         assert len(self.model.keys()) == 0
 
-    def empty(self, data) -> None:
-        """empty checks if a store is empty or not
-        return true if self._store_dict doesn't exist
-        return false if self._store_dict exists"""
-        note("(empty)")
+    # @rule()
+    # def empty(self, data) -> None:
+    #    """empty checks if a store is empty or not
+    #    return true if self._store_dict doesn't exist
+    #    return false if self._store_dict exists"""
+    #    note("(empty)")
 
-        asyncio.run(self.store_clear())
-        assert self.store.empty()
-
-    # @precondition(lambda self: len(self.model.keys()) > 0)
-    # @rule(key = paths, data=st.binary(min_size=0, max_size=100))
-    # def listdir(self, key, data) -> None:
-    #    '''list_dir - Retrieve all keys and prefixes with a given prefix
-    #    and which do not contain the character “/” after the given prefix.
-    #    '''
-
-    # assert not self.store.mode.readonly
-    # data_buf = Buffer.from_bytes(data)
-    # set keys on store
-    # asyncio.run(self.store_set(key, data_buf))
-    # set same keys on model
-    # self.model[key] = data
-    # list keys on store
-    # asyncio.run(self.listdir(key))
-
-    # self.model.listed_keys = list(self.model.keys())
-    # for store, set random keys
-
-    # for store, list all keys
-    # for model, list all keys
+    #    asyncio.run(self.sync_wrapper.empty())
+    #    assert self.store.empty()
 
 
 StatefulStoreTest = ZarrStoreStateMachine.TestCase
-
-
-# @invariant()
-# def check_delete(self) -> None:
-#    '''this doesn't actually do anything'''
-#    note('(check_delete)')
-# can/should this be the same as the invariant for set?
-#    paths = asyncio.run(self.store_list())
-#    note(f"After delete, checking that paths are equal, {paths=}, model={list(self.model.keys())}")
-#    assert list(self.model.keys()) == paths
-#    assert len(list(self.model.keys())) == len(paths)
-# maybe add assertion that path_st not in keys? but this would req paths_st from delete()..
-
-
-# @invariant()
-# listdir not working
-# def check_listdir(self):
-
-#    store_keys = asyncio.run(self.list_dir())#need to pass a group to this
-#    model_keys = self.model.listed_keys
-#    assert store_keys == model_keys
