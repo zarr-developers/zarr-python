@@ -39,3 +39,12 @@ repos:
           - pytest
           # Zarr v2
           - types-redis
+  - repo: https://github.com/scientific-python/cookie
+    rev: 2024.04.23
+    hooks:
+      - id: sp-repo-review
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: rst-directive-colons
+      - id: rst-inline-touching-normal
