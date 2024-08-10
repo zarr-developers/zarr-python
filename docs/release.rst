@@ -24,7 +24,13 @@ Enhancements
 ~~~~~~~~~~~~
 
 * Add Zstd codec to old V3 code path.
-  By :user:`Ryan Abernathey <rabernat>` 
+  By :user:`Ryan Abernathey <rabernat>`
+
+Maintenance
+~~~~~~~~~~~
+
+* Removed support for Python 3.9.
+  By :user:`David Stansby <dstansby>`
 
 .. _release_2.18.1:
 
@@ -51,7 +57,7 @@ Maintenance
 * Enable ruff/bugbear rules (B) and fix issues.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1702`.
 
-* Minor updates to use `np.inf` instead of `np.PINF` / `np.NINF` in preparation for NumPy 2.0.0 release. 
+* Minor updates to use `np.inf` instead of `np.PINF` / `np.NINF` in preparation for NumPy 2.0.0 release.
   By :user:`Joe Hamman <jhamman>` :issue:`1842`.
 
 Deprecations
