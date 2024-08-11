@@ -182,9 +182,11 @@ extend-select = [
     "UP",  # pyupgrade
     "RSE",
     "RUF",
+    "TRY", # tryceratops
 ]
 ignore = [
     "RUF005",
+    "TRY003",
 ]
 
 [tool.mypy]

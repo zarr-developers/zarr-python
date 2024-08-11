@@ -87,7 +87,7 @@ def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecP
             [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
         )
     else:
-        raise AssertionError
+        raise TypeError
 
 
 @dataclass(frozen=True)
@@ -394,7 +394,7 @@ class AsyncArray:
         if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
             return self.metadata.chunk_grid.chunk_shape
         else:
-            raise ValueError(
+            raise TypeError(
                 f"chunk attribute is only available for RegularChunkGrid, this array has a {self.metadata.chunk_grid}"
             )
 
