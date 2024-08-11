@@ -11,7 +11,7 @@ from zarr.store import LocalStore, MemoryStore
 from zarr.store.core import StorePath
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 @pytest.mark.parametrize("exists_ok", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
@@ -60,7 +60,7 @@ def test_array_creation_existing_node(
             )
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 def test_array_name_properties_no_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
@@ -71,7 +71,7 @@ def test_array_name_properties_no_group(
     assert arr.basename is None
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 def test_array_name_properties_with_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat

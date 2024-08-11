@@ -20,12 +20,12 @@ import numpy as np
 import pytest
 from hypothesis import HealthCheck, Verbosity, settings
 
-from zarr.store import LocalStore, MemoryStore, StorePath
+from zarr.store import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.store.remote import RemoteStore
 
 
 async def parse_store(
-    store: Literal["local", "memory", "remote"], path: str
+    store: Literal["local", "memory", "remote", "zip"], path: str
 ) -> LocalStore | MemoryStore | RemoteStore:
     if store == "local":
         return await LocalStore.open(path, mode="w")
@@ -33,6 +33,8 @@ async def parse_store(
         return await MemoryStore.open(mode="w")
     if store == "remote":
         return await RemoteStore.open(url=path, mode="w")
+    if store == "zip":
+        return await ZipStore.open(path + "/zarr.zip", mode="w")
     raise AssertionError
 
 
@@ -65,6 +67,11 @@ async def memory_store() -> MemoryStore:
 
 
 @pytest.fixture(scope="function")
+async def zip_store(tmpdir: LEGACY_PATH) -> ZipStore:
+    return await ZipStore.open(str(tmpdir / "zarr.zip"), mode="w")
+
+
+@pytest.fixture(scope="function")
 async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     param = request.param
     return await parse_store(param, str(tmpdir))
@@ -73,7 +80,7 @@ async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
 @dataclass
 class AsyncGroupRequest:
     zarr_format: ZarrFormat
-    store: Literal["local", "remote", "memory"]
+    store: Literal["local", "remote", "memory", "zip"]
     attributes: dict[str, Any] = field(default_factory=dict)
 
 

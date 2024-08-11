@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 from _pytest.compat import LEGACY_PATH
 
+from zarr.abc.store import Store
 from zarr.array import Array, AsyncArray
 from zarr.buffer import Buffer
 from zarr.common import ZarrFormat
@@ -18,10 +19,10 @@ from zarr.sync import sync
 from .conftest import parse_store
 
 
-@pytest.fixture(params=["local", "memory"])
-async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> LocalStore | MemoryStore:
+@pytest.fixture(params=["local", "memory", "zip"])
+async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     result = await parse_store(request.param, str(tmpdir))
-    if not isinstance(result, MemoryStore | LocalStore):
+    if not isinstance(result, Store):
         raise TypeError("Wrong store class returned by test fixture! got " + result + " instead")
     return result
 
@@ -42,7 +43,7 @@ def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
     return cast(ZarrFormat, result)
 
 
-def test_group_init(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+def test_group_init(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test that initializing a group from an asyncgroup works.
     """
@@ -51,7 +52,7 @@ def test_group_init(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) ->
     assert group._async_group == agroup
 
 
-def test_group_name_properties(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+def test_group_name_properties(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test basic properties of groups
     """
@@ -365,12 +366,12 @@ def test_group_create_array(
     assert np.array_equal(array[:], data)
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 @pytest.mark.parametrize("exists_ok", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
 def test_group_creation_existing_node(
-    store: LocalStore | MemoryStore,
+    store: Store,
     zarr_format: ZarrFormat,
     exists_ok: bool,
     extant_node: Literal["array", "group"],
@@ -454,14 +455,14 @@ async def test_asyncgroup_create(
             )
 
 
-async def test_asyncgroup_attrs(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+async def test_asyncgroup_attrs(store: Store, zarr_format: ZarrFormat) -> None:
     attributes = {"foo": 100}
     agroup = await AsyncGroup.create(store, zarr_format=zarr_format, attributes=attributes)
 
     assert agroup.attrs == agroup.metadata.attributes == attributes
 
 
-async def test_asyncgroup_info(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+async def test_asyncgroup_info(store: Store, zarr_format: ZarrFormat) -> None:
     agroup = await AsyncGroup.create(  # noqa
         store,
         zarr_format=zarr_format,
@@ -471,7 +472,7 @@ async def test_asyncgroup_info(store: LocalStore | MemoryStore, zarr_format: Zar
 
 
 async def test_asyncgroup_open(
-    store: LocalStore | MemoryStore,
+    store: Store,
     zarr_format: ZarrFormat,
 ) -> None:
     """
@@ -492,7 +493,7 @@ async def test_asyncgroup_open(
 
 
 async def test_asyncgroup_open_wrong_format(
-    store: LocalStore | MemoryStore,
+    store: Store,
     zarr_format: ZarrFormat,
 ) -> None:
     _ = await AsyncGroup.create(store=store, exists_ok=False, zarr_format=zarr_format)
@@ -533,7 +534,7 @@ def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, A
 # todo: replace this with a declarative API where we model a full hierarchy
 
 
-async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Create an `AsyncGroup`, then create members of that group, and ensure that we can access those
     members via the `AsyncGroup.getitem` method.
@@ -555,7 +556,7 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
         await agroup.getitem("foo")
 
 
-async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None:
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     sub_array_path = "sub_array"
     _ = await agroup.create_array(
@@ -585,7 +586,7 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
 
 
 async def test_asyncgroup_create_group(
-    store: LocalStore | MemoryStore,
+    store: Store,
     zarr_format: ZarrFormat,
 ) -> None:
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
@@ -601,7 +602,7 @@ async def test_asyncgroup_create_group(
 
 
 async def test_asyncgroup_create_array(
-    store: LocalStore | MemoryStore, zarr_format: ZarrFormat, exists_ok: bool
+    store: Store, zarr_format: ZarrFormat, exists_ok: bool
 ) -> None:
     """
     Test that the AsyncGroup.create_array method works correctly. We ensure that array properties
@@ -639,9 +640,7 @@ async def test_asyncgroup_create_array(
     assert subnode.metadata.zarr_format == zarr_format
 
 
-async def test_asyncgroup_update_attributes(
-    store: LocalStore | MemoryStore, zarr_format: ZarrFormat
-) -> None:
+async def test_asyncgroup_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test that the AsyncGroup.update_attributes method works correctly.
     """

@@ -19,7 +19,7 @@ class ZipStore(Store):
     supports_partial_writes: bool = False
     supports_listing: bool = True
 
-    root: Path
+    path: Path
     compression: int
     allowZip64: bool
 
@@ -36,7 +36,7 @@ class ZipStore(Store):
         if isinstance(path, str):
             path = Path(path)
         assert isinstance(path, Path)
-        self.path = path
+        self.path = path  # root?
 
         self.compression = compression
         self.allowZip64 = allowZip64
@@ -71,7 +71,7 @@ class ZipStore(Store):
         return f"ZipStore({str(self)!r})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, type(self)) and self.root == other.root
+        return isinstance(other, type(self)) and self.path == other.path
 
     def _get(
         self,
@@ -146,12 +146,9 @@ class ZipStore(Store):
             self._set(key, value)
 
     async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
-        self._check_writable()
-        # TODO: this actually seems possible!
         raise NotImplementedError
 
     async def delete(self, key: str) -> None:
-        # TODO: decide if writing an empty file is the right thing to do
         raise NotImplementedError
 
     async def exists(self, key: str) -> bool:
@@ -207,10 +204,18 @@ class ZipStore(Store):
         if prefix.endswith("/"):
             prefix = prefix[:-1]
 
-        known_keys = set()
-        async for key in self.list():
-            if key.startswith(prefix + "/") and key != prefix:
-                k = key.removeprefix(prefix + "/").split("/")[0]
-                if k not in known_keys:
-                    known_keys.add(k)
-                    yield k
+        keys = self._zf.namelist()
+        seen = set()
+        if prefix == "":
+            keys_unique = set(k.split("/")[0] for k in keys)
+            for key in keys_unique:
+                if key not in seen:
+                    seen.add(key)
+                    yield key
+        else:
+            for key in keys:
+                if key.startswith(prefix + "/") and key != prefix:
+                    k = key.removeprefix(prefix + "/").split("/")[0]
+                    if k not in seen:
+                        seen.add(k)
+                        yield k
