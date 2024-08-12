@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from zarr.buffer import Buffer
-from zarr.common import BytesLike
+from zarr.core.buffer import Buffer
+from zarr.core.common import BytesLike
 
 
 def assert_bytes_equal(b1: Buffer | BytesLike | None, b2: Buffer | BytesLike | None) -> None:
@@ -16,3 +16,6 @@ def assert_bytes_equal(b1: Buffer | BytesLike | None, b2: Buffer | BytesLike | N
     if isinstance(b2, Buffer):
         b2 = b2.to_bytes()
     assert b1 == b2
+
+
+__all__ = ["assert_bytes_equal"]

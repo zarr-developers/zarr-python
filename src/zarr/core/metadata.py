@@ -12,9 +12,9 @@ import numpy.typing as npt
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
 from zarr.abc.metadata import Metadata
-from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
-from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
-from zarr.chunk_key_encodings import ChunkKeyEncoding, parse_separator
+from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
+from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.core.chunk_key_encodings import ChunkKeyEncoding, parse_separator
 from zarr.registry import get_codec_class, get_pipeline_class
 
 if TYPE_CHECKING:
@@ -22,8 +22,8 @@ if TYPE_CHECKING:
 
 import numcodecs.abc
 
-from zarr.array_spec import ArraySpec
-from zarr.common import (
+from zarr.core.array_spec import ArraySpec
+from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,

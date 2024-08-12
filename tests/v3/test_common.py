@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 import numpy as np
 import pytest
 
-from zarr.common import parse_name, parse_shapelike, product
+from zarr.core.common import parse_name, parse_shapelike, product
 from zarr.core.config import parse_indexing_order
 
 

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, MutableMapping
+from collections.abc import MutableMapping
 from typing import TYPE_CHECKING
 
-from zarr.common import JSON
+from zarr.core.common import JSON
 
 if TYPE_CHECKING:
-    from zarr.array import Array
-    from zarr.group import Group
+    from collections.abc import Iterator
+
+    from zarr.core.array import Array
+    from zarr.core.group import Group
 
 
 class Attributes(MutableMapping[str, JSON]):
@@ -33,6 +35,3 @@ class Attributes(MutableMapping[str, JSON]):
 
     def __len__(self) -> int:
         return len(self._obj.metadata.attributes)
-
-
-__all__ = ["Attributes"]

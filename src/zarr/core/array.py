@@ -11,13 +11,17 @@ import numpy.typing as npt
 
 from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
-from zarr.attributes import Attributes
-from zarr.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
-from zarr.chunk_grids import RegularChunkGrid, _guess_chunks
-from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
-from zarr.common import (
+from zarr.core.attributes import Attributes
+from zarr.core.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
+from zarr.core.chunk_grids import RegularChunkGrid, _guess_chunks
+from zarr.core.chunk_key_encodings import (
+    ChunkKeyEncoding,
+    DefaultChunkKeyEncoding,
+    V2ChunkKeyEncoding,
+)
+from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
@@ -51,11 +55,11 @@ from zarr.core.indexing import (
     is_scalar,
     pop_fields,
 )
+from zarr.core.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
-from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.registry import get_pipeline_class
 from zarr.store import StoreLike, StorePath, make_store_path
-from zarr.store.core import (
+from zarr.store.common import (
     ensure_no_existing_node,
 )
 
@@ -2048,6 +2052,3 @@ class Array:
         return sync(
             self._async_array.info(),
         )
-
-
-__all__ = ["Array", "AsyncArray"]

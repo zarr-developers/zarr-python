@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, TYPE_CHECKING
 
 import numpy as np
 
-from zarr.buffer import BufferPrototype
-from zarr.common import ChunkCoords, parse_dtype, parse_fill_value, parse_order, parse_shapelike
 
+from zarr.core.common import parse_dtype, parse_fill_value, parse_order, parse_shapelike
+
+if TYPE_CHECKING:
+    from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import ChunkCoords
 
 @dataclass(frozen=True)
 class ArraySpec:
@@ -39,6 +42,3 @@ class ArraySpec:
     @property
     def ndim(self) -> int:
         return len(self.shape)
-
-
-__all__ = ["ArraySpec"]

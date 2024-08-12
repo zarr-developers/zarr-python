@@ -8,17 +8,17 @@ import numpy as np
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.buffer import Buffer, NDBuffer
-from zarr.chunk_grids import ChunkGrid
-from zarr.common import ChunkCoords, concurrent_map
+from zarr.core.buffer import Buffer, NDBuffer
+from zarr.core.chunk_grids import ChunkGrid
+from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.array_spec import ArraySpec
-    from zarr.common import JSON
-    from zarr.indexing import SelectorTuple
+    from zarr.core.array_spec import ArraySpec
+    from zarr.core.common import JSON
+    from zarr.core.indexing import SelectorTuple
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
@@ -112,7 +112,7 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         -------
         Iterable[CodecInput | None]
         """
-        return await batching_helper(self._decode_single, chunks_and_specs)
+        return await _batching_helper(self._decode_single, chunks_and_specs)
 
     async def _encode_single(
         self, chunk_data: CodecInput, chunk_spec: ArraySpec
@@ -135,7 +135,7 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         -------
         Iterable[CodecOutput | None]
         """
-        return await batching_helper(self._encode_single, chunks_and_specs)
+        return await _batching_helper(self._encode_single, chunks_and_specs)
 
 
 class ArrayArrayCodec(_Codec[NDBuffer, NDBuffer]):
@@ -401,18 +401,18 @@ class CodecPipeline(Metadata):
         return cls(**data)
 
 
-async def batching_helper(
+async def _batching_helper(
     func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
     batch_info: Iterable[tuple[CodecInput | None, ArraySpec]],
 ) -> list[CodecOutput | None]:
     return await concurrent_map(
         list(batch_info),
-        noop_for_none(func),
+        _noop_for_none(func),
         config.get("async.concurrency"),
     )
 
 
-def noop_for_none(
+def _noop_for_none(
     func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
 ) -> Callable[[CodecInput | None, ArraySpec], Awaitable[CodecOutput | None]]:
     async def wrap(chunk: CodecInput | None, chunk_spec: ArraySpec) -> CodecOutput | None:
@@ -432,5 +432,4 @@ __all__ = [
     "ArrayBytesCodecPartialDecodeMixin",
     "ArrayBytesCodecPartialEncodeMixin",
     "CodecPipeline",
-    # TODO: also include batching_helper and noop_for_none?
 ]

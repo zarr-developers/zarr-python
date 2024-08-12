@@ -8,7 +8,7 @@ from _pytest.compat import LEGACY_PATH
 
 from zarr import AsyncGroup, config
 from zarr.abc.store import Store
-from zarr.common import ChunkCoords, MemoryOrder, ZarrFormat
+from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
 
 if TYPE_CHECKING:
     from typing import Any, Literal
@@ -20,7 +20,7 @@ import pytest
 from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr.store import LocalStore, MemoryStore, StorePath
-from zarr.store.remote import RemoteStore
+from zarr.store._remote import RemoteStore
 
 
 async def parse_store(

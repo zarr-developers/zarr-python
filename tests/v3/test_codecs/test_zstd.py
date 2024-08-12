@@ -4,7 +4,7 @@ import pytest
 from zarr import Array
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec, ZstdCodec
-from zarr.store.core import StorePath
+from zarr.store.common import StorePath
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])

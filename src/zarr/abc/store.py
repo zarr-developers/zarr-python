@@ -4,8 +4,8 @@ from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from typing_extensions import Self
 
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import AccessModeLiteral, BytesLike
+from zarr.core.buffer import Buffer, BufferPrototype
+from zarr.core.common import AccessModeLiteral, BytesLike
 
 
 class AccessMode(NamedTuple):

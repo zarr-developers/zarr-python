@@ -18,9 +18,9 @@ from zarr.abc.codec import (
     CodecPipeline,
 )
 from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.buffer import Buffer, BufferPrototype, NDBuffer
-from zarr.chunk_grids import ChunkGrid
-from zarr.common import JSON, ChunkCoords, concurrent_map, parse_named_configuration
+from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
+from zarr.core.chunk_grids import ChunkGrid
+from zarr.core.common import JSON, ChunkCoords, concurrent_map, parse_named_configuration
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar, is_total_slice
 from zarr.registry import get_codec_class, register_pipeline
@@ -28,7 +28,7 @@ from zarr.registry import get_codec_class, register_pipeline
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.array_spec import ArraySpec
+    from zarr.core.array_spec import ArraySpec
 
 T = TypeVar("T")
 U = TypeVar("U")

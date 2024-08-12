@@ -5,10 +5,15 @@ import os
 import shutil
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import AccessModeLiteral, concurrent_map, to_thread
+from zarr.core.common import concurrent_map, to_thread
+from zarr.core.buffer import Buffer
+
+if TYPE_CHECKING:
+    from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import AccessModeLiteral
 
 
 def _get(

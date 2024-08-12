@@ -5,7 +5,6 @@ import pytest
 
 from zarr import Array, AsyncArray
 from zarr.abc.store import Store
-from zarr.buffer import default_buffer_prototype
 from zarr.codecs import (
     BloscCodec,
     BytesCodec,
@@ -13,7 +12,8 @@ from zarr.codecs import (
     ShardingCodecIndexLocation,
     TransposeCodec,
 )
-from zarr.store.core import StorePath
+from zarr.core.buffer import default_buffer_prototype
+from zarr.store.common import StorePath
 
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim

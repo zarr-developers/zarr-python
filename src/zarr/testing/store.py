@@ -3,8 +3,8 @@ from typing import Any, Generic, TypeVar
 import pytest
 
 from zarr.abc.store import AccessMode, Store
-from zarr.buffer import Buffer, default_buffer_prototype
-from zarr.store.utils import _normalize_interval_index
+from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.store._utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
 
 S = TypeVar("S", bound=Store)
@@ -199,3 +199,6 @@ class StoreTests(Generic[S]):
         keys_observed = [k async for k in store.list_dir("foo/")]
         assert len(keys_expected) == len(keys_observed), keys_observed
         assert set(keys_observed) == set(keys_expected), keys_observed
+
+
+__all__ = ["StoreTests"]

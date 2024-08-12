@@ -4,14 +4,14 @@ import numpy as np
 import pytest
 
 from zarr import AsyncArray
-from zarr.buffer import ArrayLike, BufferPrototype, NDArrayLike, numpy_buffer_prototype
 from zarr.codecs.blosc import BloscCodec
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.store.core import StorePath
+from zarr.core.buffer import ArrayLike, BufferPrototype, NDArrayLike, numpy_buffer_prototype
+from zarr.store.common import StorePath
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,
     StoreExpectingTestBuffer,
