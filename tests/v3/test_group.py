@@ -12,7 +12,7 @@ from zarr.buffer import Buffer
 from zarr.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.group import AsyncGroup, Group, GroupMetadata
-from zarr.store import LocalStore, MemoryStore, StorePath
+from zarr.store import StorePath
 from zarr.store.core import make_store_path
 from zarr.sync import sync
 
@@ -72,7 +72,7 @@ def test_group_name_properties(store: Store, zarr_format: ZarrFormat) -> None:
     assert bar.basename == "bar"
 
 
-def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+def test_group_members(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test that `Group.members` returns correct values, i.e. the arrays and groups
     (explicit and implicit) contained in that group.
@@ -107,7 +107,7 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
 
-def test_group(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+def test_group(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test basic Group routines.
     """
@@ -149,9 +149,7 @@ def test_group(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None
     assert dict(bar3.attrs) == {"baz": "qux", "name": "bar"}
 
 
-def test_group_create(
-    store: MemoryStore | LocalStore, exists_ok: bool, zarr_format: ZarrFormat
-) -> None:
+def test_group_create(store: Store, exists_ok: bool, zarr_format: ZarrFormat) -> None:
     """
     Test that `Group.create` works as expected.
     """
@@ -167,9 +165,7 @@ def test_group_create(
             )
 
 
-def test_group_open(
-    store: MemoryStore | LocalStore, zarr_format: ZarrFormat, exists_ok: bool
-) -> None:
+def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> None:
     """
     Test the `Group.open` method.
     """
@@ -201,7 +197,7 @@ def test_group_open(
         assert group_created_again.store_path == spath
 
 
-def test_group_getitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+def test_group_getitem(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__getitem__` method.
     """
@@ -216,10 +212,12 @@ def test_group_getitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
         group["nope"]
 
 
-def test_group_delitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+def test_group_delitem(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__delitem__` method.
     """
+    if not store.supports_deletes:
+        pytest.skip("store does not support deletes")
 
     group = Group.create(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
@@ -237,7 +235,7 @@ def test_group_delitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
         group["subarray"]
 
 
-def test_group_iter(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__iter__` method.
     """
@@ -247,7 +245,7 @@ def test_group_iter(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) ->
         [x for x in group]  # type: ignore
 
 
-def test_group_len(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__len__` method.
     """
@@ -257,7 +255,7 @@ def test_group_len(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> 
         len(group)  # type: ignore
 
 
-def test_group_setitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__setitem__` method.
     """
@@ -266,7 +264,7 @@ def test_group_setitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
         group["key"] = 10
 
 
-def test_group_contains(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+def test_group_contains(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__contains__` method
     """
@@ -276,7 +274,7 @@ def test_group_contains(store: MemoryStore | LocalStore, zarr_format: ZarrFormat
     assert "foo" in group
 
 
-def test_group_subgroups(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+def test_group_subgroups(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the behavior of `Group` methods for accessing subgroups, namely `Group.group_keys` and `Group.groups`
     """
@@ -291,7 +289,7 @@ def test_group_subgroups(store: MemoryStore | LocalStore, zarr_format: ZarrForma
     assert all(a in subgroups_observed for a in subgroups_expected)
 
 
-def test_group_subarrays(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+def test_group_subarrays(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the behavior of `Group` methods for accessing subgroups, namely `Group.group_keys` and `Group.groups`
     """
@@ -306,7 +304,7 @@ def test_group_subarrays(store: MemoryStore | LocalStore, zarr_format: ZarrForma
     assert all(a in subarrays_observed for a in subarrays_expected)
 
 
-def test_group_update_attributes(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+def test_group_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the behavior of `Group.update_attributes`
     """
@@ -318,9 +316,7 @@ def test_group_update_attributes(store: MemoryStore | LocalStore, zarr_format: Z
     assert new_group.attrs == new_attrs
 
 
-async def test_group_update_attributes_async(
-    store: MemoryStore | LocalStore, zarr_format: ZarrFormat
-) -> None:
+async def test_group_update_attributes_async(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the behavior of `Group.update_attributes_async`
     """
@@ -334,7 +330,7 @@ async def test_group_update_attributes_async(
 
 @pytest.mark.parametrize("method", ["create_array", "array"])
 def test_group_create_array(
-    store: MemoryStore | LocalStore,
+    store: Store,
     zarr_format: ZarrFormat,
     exists_ok: bool,
     method: Literal["create_array", "array"],
@@ -414,7 +410,7 @@ def test_group_creation_existing_node(
 
 
 async def test_asyncgroup_create(
-    store: MemoryStore | LocalStore,
+    store: Store,
     exists_ok: bool,
     zarr_format: ZarrFormat,
 ) -> None:
@@ -519,7 +515,7 @@ async def test_asyncgroup_open_wrong_format(
         {"zarr_format": 2, "attributes": {"foo": 100}},
     ),
 )
-def test_asyncgroup_from_dict(store: MemoryStore | LocalStore, data: dict[str, Any]) -> None:
+def test_asyncgroup_from_dict(store: Store, data: dict[str, Any]) -> None:
     """
     Test that we can create an AsyncGroup from a dict
     """
@@ -557,6 +553,9 @@ async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None
 
 
 async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None:
+    if not store.supports_deletes:
+        pytest.skip("store does not support deletes")
+
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     sub_array_path = "sub_array"
     _ = await agroup.create_array(

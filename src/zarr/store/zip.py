@@ -16,6 +16,7 @@ ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
 class ZipStore(Store):
     supports_writes: bool = True
+    supports_deletes: bool = False
     supports_partial_writes: bool = False
     supports_listing: bool = True
 
@@ -85,7 +86,10 @@ class ZipStore(Store):
                     return prototype.buffer.from_bytes(f.read())
                 start, length = byte_range
                 if start:
-                    f.seek(start or 0)
+                    if start < 0:
+                        start = f.seek(start, os.SEEK_END) + start
+                    else:
+                        start = f.seek(start, os.SEEK_SET)
                 if length:
                     return prototype.buffer.from_bytes(f.read(length))
                 else:

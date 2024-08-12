@@ -141,6 +141,12 @@ class Store(ABC):
         """
         ...
 
+    @property
+    @abstractmethod
+    def supports_deletes(self) -> bool:
+        """Does the store support deletes?"""
+        ...
+
     @abstractmethod
     async def delete(self, key: str) -> None:
         """Remove a key from the store

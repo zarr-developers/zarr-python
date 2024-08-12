@@ -293,6 +293,8 @@ def test_write_partial_sharded_chunks(store: Store) -> None:
 
 @pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 async def test_delete_empty_shards(store: Store) -> None:
+    if not store.supports_deletes:
+        pytest.skip("store does not support deletes")
     path = "delete_empty_shards"
     spath = StorePath(store, path)
     a = await AsyncArray.create(
