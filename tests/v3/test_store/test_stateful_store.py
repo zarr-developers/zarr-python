@@ -22,16 +22,9 @@ from zarr.testing.strategies import key_ranges, paths
 
 
 class SyncStoreWrapper():
-    def __init__(self, store_type):
+    def __init__(self, store):
         """Store to hold async functions that map to StoreABC abstract methods"""
-        if store_type in ("Memory", "memory"):
-            self.store = MemoryStore(mode="w")  # store_container.store
-        elif store_type in ("Local", "local"):
-            self.store = LocalStore(mode="w")
-        elif store_type in ("Remote", "remote"):
-            self.store = RemoteStore(mode="w")
-        else:
-            raise ValueError(f"Invalid item_type: {store_type}")
+        self.store = store
         # Unfortunately, hypothesis' stateful testing infra does not support asyncio
 
     # So we redefine sync versions of the Store API.
