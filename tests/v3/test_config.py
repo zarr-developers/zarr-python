@@ -27,6 +27,7 @@ from zarr.registry import (
     register_ndbuffer,
     register_pipeline,
 )
+from zarr.sync import sync
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,
     StoreExpectingTestBuffer,
@@ -191,11 +192,11 @@ def test_config_ndbuffer_implementation(store):
     assert isinstance(got, TestNDArrayLike)
 
 
-def test_config_buffer_implementation():
+def test_config_buffer_implementation() -> None:
     # has default value
     assert fully_qualified_name(get_buffer_class()) == config.defaults[0]["buffer"]
-
-    arr = zeros(shape=(100), store=StoreExpectingTestBuffer(mode="w"))
+    store = sync(StoreExpectingTestBuffer.open(mode="w"))
+    arr = zeros(shape=(100), store=store)
 
     # AssertionError of StoreExpectingTestBuffer when not using my buffer
     with pytest.raises(AssertionError):
@@ -213,7 +214,7 @@ def test_config_buffer_implementation():
     data2d = np.arange(1000).reshape(100, 10)
     arr_sharding = zeros(
         shape=(100, 10),
-        store=StoreExpectingTestBuffer(mode="w"),
+        store=sync(StoreExpectingTestBuffer.open(mode="w")),
         codecs=[ShardingCodec(chunk_shape=(10, 10))],
     )
     arr_sharding[:] = data2d
@@ -221,7 +222,7 @@ def test_config_buffer_implementation():
 
     arr_Crc32c = zeros(
         shape=(100, 10),
-        store=StoreExpectingTestBuffer(mode="w"),
+        store=sync(StoreExpectingTestBuffer.open(mode="w")),
         codecs=[BytesCodec(), Crc32cCodec()],
     )
     arr_Crc32c[:] = data2d

@@ -52,10 +52,6 @@ class Store(ABC):
                 raise FileExistsError("Store already exists")
         self._is_open = True
 
-    async def _ensure_open(self) -> None:
-        if not self._is_open:
-            await self._open()
-
     @abstractmethod
     async def empty(self) -> bool: ...
 

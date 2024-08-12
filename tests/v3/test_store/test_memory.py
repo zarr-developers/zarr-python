@@ -23,8 +23,8 @@ class TestMemoryStore(StoreTests[MemoryStore]):
         return {"store_dict": request.param, "mode": "r+"}
 
     @pytest.fixture(scope="function")
-    def store(self, store_kwargs: str | None | dict[str, Buffer]) -> MemoryStore:
-        return self.store_cls(**store_kwargs)
+    async def store(self, store_kwargs: str | None | dict[str, Buffer]) -> MemoryStore:
+        return await self.store_cls.open(**store_kwargs)
 
     def test_store_repr(self, store: MemoryStore) -> None:
         assert str(store) == f"memory://{id(store._store_dict)}"

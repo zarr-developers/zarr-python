@@ -50,7 +50,7 @@ class RemoteStore(Store):
         storage_options: passed on to fsspec to make the filesystem instance. If url is a UPath,
             this must not be used.
         """
-        super().__init__(mode=mode)
+
         if isinstance(url, str):
             self._url = url.rstrip("/")
             self._fs, _path = fsspec.url_to_fs(url, **storage_options)
@@ -73,6 +73,7 @@ class RemoteStore(Store):
         # test instantiate file system
         if not self._fs.async_impl:
             raise TypeError("FileSystem needs to support async operations")
+        super().__init__(mode=mode)
 
     async def clear(self) -> None:
         try:
