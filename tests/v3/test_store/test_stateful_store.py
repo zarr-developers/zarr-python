@@ -88,7 +88,7 @@ class SyncStoreWrapper:
 class ZarrStoreStateMachine(RuleBasedStateMachine):
     def __init__(self):  # look into using run_machine_as_test()
         super().__init__()
-        self.model = {}
+        self.model: dict[str, bytes] = {}
         self.store = SyncStoreWrapper(MemoryStore(mode="w"))
 
     @rule(key=paths, data=st.binary(min_size=0, max_size=100))
@@ -149,6 +149,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
             start = byte_range[0] or 0
             step = byte_range[1]
             stop = start + step if step is not None else None
+            assert model_vals[start:stop] is not None
             model_vals_ls.append(model_vals[start:stop])
 
         assert all(
