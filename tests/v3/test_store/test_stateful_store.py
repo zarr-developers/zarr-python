@@ -99,7 +99,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @invariant()
     def check_paths_equal(self) -> None:
         note("Checking that paths are equal")
-        paths = asyncio.run(self.sync_wrapper.list())
+        paths = self.store.list()
         assert list(self.model.keys()) == paths
         note("Checking values equal")
         for key, _val in self.model.items():
