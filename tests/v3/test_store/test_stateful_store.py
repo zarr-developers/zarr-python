@@ -103,7 +103,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         assert list(self.model.keys()) == paths
         note("Checking values equal")
         for key, _val in self.model.items():
-            store_item = asyncio.run(self.sync_wrapper.get(key)).to_bytes()
+            store_item = self.store.get(key).to_bytes()
             # note(f'(inv) model item: {self.model[key]}')
             # note(f'(inv) {store_item=}')
             assert self.model[key].to_bytes() == store_item
