@@ -29,8 +29,8 @@ class SyncStoreWrapper():
 
     # So we redefine sync versions of the Store API.
     # https://github.com/HypothesisWorks/hypothesis/issues/3712#issuecomment-1668999041
-    async def set(self, key, data_buffer):  # buffer is value
-        await self.store.set(key, data_buffer)
+    def set(self, key, data_buffer):  # buffer is value
+        return asyncio.run(self.store.set(key, data_buffer))
 
     async def list(self):
         paths = [path async for path in self.store.list()]
