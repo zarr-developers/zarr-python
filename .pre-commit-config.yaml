@@ -35,7 +35,6 @@ repos:
           - numcodecs
           - numpy
           - typing_extensions
-          - zstandard
           # Tests
           - pytest
           # Zarr v2

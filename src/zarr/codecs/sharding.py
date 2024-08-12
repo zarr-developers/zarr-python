@@ -393,7 +393,7 @@ class ShardingCodec(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."
             )
         if not isinstance(chunk_grid, RegularChunkGrid):
-            raise ValueError("Sharding is only compatible with regular chunk grids.")
+            raise TypeError("Sharding is only compatible with regular chunk grids.")
         if not all(
             s % c == 0
             for s, c in zip(

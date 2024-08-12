@@ -492,7 +492,7 @@ def codecs_from_list(
                     "must be preceded by another ArrayArrayCodec. "
                     f"Got {type(prev_codec)} instead."
                 )
-                raise ValueError(msg)
+                raise TypeError(msg)
             array_array += (cur_codec,)
 
         elif isinstance(cur_codec, ArrayBytesCodec):
@@ -501,7 +501,7 @@ def codecs_from_list(
                     f"Invalid codec order. ArrayBytes codec {cur_codec}"
                     f" must be preceded by an ArrayArrayCodec. Got {type(prev_codec)} instead."
                 )
-                raise ValueError(msg)
+                raise TypeError(msg)
 
             if array_bytes_maybe is not None:
                 msg = (
@@ -521,7 +521,7 @@ def codecs_from_list(
                 )
             bytes_bytes += (cur_codec,)
         else:
-            raise AssertionError
+            raise TypeError
 
     if array_bytes_maybe is None:
         raise ValueError("Required ArrayBytesCodec was not found.")

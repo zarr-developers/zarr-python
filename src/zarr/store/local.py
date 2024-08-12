@@ -87,9 +87,10 @@ class LocalStore(Store):
     async def empty(self) -> bool:
         try:
             subpaths = os.listdir(self.root)
-            return not subpaths
         except FileNotFoundError:
             return True
+        else:
+            return not subpaths
 
     def __str__(self) -> str:
         return f"file://{self.root}"
