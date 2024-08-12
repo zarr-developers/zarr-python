@@ -90,7 +90,7 @@ def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecP
             [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
         )
     else:
-        raise AssertionError
+        raise TypeError
 
 
 @dataclass(frozen=True)

@@ -118,7 +118,6 @@ class RemoteStore(Store):
                     else self._fs._cat_file(path)
                 )
             )
-            return value
 
         except self.allowed_exceptions:
             return None
@@ -127,6 +126,8 @@ class RemoteStore(Store):
                 # this is an s3-specific condition we probably don't want to leak
                 return prototype.buffer.from_bytes(b"")
             raise
+        else:
+            return value
 
     async def set(
         self,

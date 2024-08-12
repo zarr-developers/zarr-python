@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pytest
+from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.remote import RemoteStore
@@ -121,10 +122,15 @@ def array_fixture(request: pytest.FixtureRequest) -> np.ndarray:
     )
 
 
-@pytest.fixture(params=[2, 3])
-def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
-    if request.param == 2:
-        return 2
-    if request.param == 3:
-        return 3
-    raise ValueError("Invalid parameterization of this test fixture.")
+settings.register_profile(
+    "ci",
+    max_examples=1000,
+    deadline=None,
+    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
+)
+settings.register_profile(
+    "local",
+    max_examples=300,
+    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
+    verbosity=Verbosity.verbose,
+)
