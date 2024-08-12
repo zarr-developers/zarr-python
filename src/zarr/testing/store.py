@@ -5,7 +5,7 @@ import pytest
 from zarr.abc.store import AccessMode, Store
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store.utils import _normalize_interval_index
-from zarr.sync import _collect_aiterator
+from zarr.sync import _collect_aiterator, collect_aiterator
 from zarr.testing.utils import assert_bytes_equal
 
 S = TypeVar("S", bound=Store)
@@ -92,6 +92,27 @@ class StoreTests(Generic[S]):
         expected = data_buf[start : start + length]
         assert_bytes_equal(observed, expected)
 
+    async def test_get_many(self, store: S) -> None:
+        """
+        Ensure that multiple keys can be retrieved at once with the _get_many method.
+        """
+        keys = tuple(map(str, range(10)))
+        values = tuple(f"{k}".encode() for k in keys)
+        for k, v in zip(keys, values, strict=False):
+            self.set(store, k, Buffer.from_bytes(v))
+        observed_buffers = collect_aiterator(
+            store._get_many(
+                zip(
+                    keys,
+                    (default_buffer_prototype(),) * len(keys),
+                    (None,) * len(keys),
+                    strict=False,
+                )
+            )
+        )
+        observed_values = tuple(b.to_bytes() for b in observed_buffers)  # type: ignore
+        assert observed_values == values
+
     @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     async def test_set(self, store: S, key: str, data: bytes) -> None:
@@ -104,15 +125,15 @@ class StoreTests(Generic[S]):
         observed = self.get(store, key)
         assert_bytes_equal(observed, data_buf)
 
-    async def test_set_dict(self, store: S) -> None:
+    async def test_set_many(self, store: S) -> None:
         """
-        Test that a dict of key : value pairs can be inserted into the store via the
-        `_set_dict` method.
+        Test that a collection of key : value pairs can be inserted into the store via the
+        `_set_many` method.
         """
         keys = ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"]
         data_buf = [Buffer.from_bytes(k.encode()) for k in keys]
         store_dict = dict(zip(keys, data_buf, strict=True))
-        await store._set_dict(store_dict)
+        await store._set_many(store_dict.items())
         for k, v in store_dict.items():
             assert self.get(store, k).to_bytes() == v.to_bytes()
 
@@ -185,7 +206,7 @@ class StoreTests(Generic[S]):
             prefix + "/zarr.json": data,
             **{prefix + f"/c/{idx}": data for idx in range(10)},
         }
-        await store._set_dict(store_dict)
+        await store._set_many(store_dict.items())
         expected_sorted = sorted(store_dict.keys())
         observed = await _collect_aiterator(store.list())
         observed_sorted = sorted(observed)
@@ -201,7 +222,7 @@ class StoreTests(Generic[S]):
         data = Buffer.from_bytes(b"")
         fname = "zarr.json"
         store_dict = {p + fname: data for p in prefixes}
-        await store._set_dict(store_dict)
+        await store._set_many(store_dict.items())
         for p in prefixes:
             observed = tuple(sorted(await _collect_aiterator(store.list_prefix(p))))
             expected: tuple[str, ...] = ()
@@ -221,7 +242,7 @@ class StoreTests(Generic[S]):
         assert await _collect_aiterator(store.list_dir("")) == ()
         assert await _collect_aiterator(store.list_dir(root)) == ()
 
-        await store._set_dict(store_dict)
+        await store._set_many(store_dict.items())
 
         keys_observed = await _collect_aiterator(store.list_dir(root))
         keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict.keys()}

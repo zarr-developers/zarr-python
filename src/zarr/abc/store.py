@@ -1,11 +1,20 @@
-from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator, Mapping
-from typing import Any, NamedTuple, Protocol, runtime_checkable
+from __future__ import annotations
 
-from typing_extensions import Self
+from abc import ABC, abstractmethod
+from asyncio import gather
+from collections.abc import AsyncGenerator
+from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+    from typing import Any, TypeAlias
+
+    from typing_extensions import Self
 
 from zarr.buffer import Buffer, BufferPrototype
 from zarr.common import AccessModeLiteral, BytesLike
+
+ByteRangeRequest: TypeAlias = tuple[int | None, int | None] | None
 
 
 class AccessMode(NamedTuple):
@@ -76,7 +85,7 @@ class Store(ABC):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
 
@@ -95,13 +104,13 @@ class Store(ABC):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: list[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
         ----------
-        key_ranges : list[tuple[str, tuple[int, int]]]
+        key_ranges : list[tuple[str, tuple[int | None, int | None]]]
             Ordered set of key, range pairs, a key may occur multiple times with different ranges
 
         Returns
@@ -221,13 +230,21 @@ class Store(ABC):
         self._is_open = False
         pass
 
-    async def _set_dict(self, dict: Mapping[str, Buffer]) -> None:
+    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
         """
-        Insert objects into storage as defined by a prefix: value mapping.
+        Insert a collection of objects into storage.
         """
-        for key, value in dict.items():
-            await self.set(key, value)
+        await gather(*(self.set(key, value) for key, value in values))
         return None
+
+    async def _get_many(
+        self, requests: Iterable[tuple[str, BufferPrototype, ByteRangeRequest]]
+    ) -> AsyncGenerator[Buffer | None, None]:
+        """
+        Retrieve a collection of objects from storage.
+        """
+        for req in requests:
+            yield await self.get(*req)
 
 
 @runtime_checkable
