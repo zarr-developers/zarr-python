@@ -85,8 +85,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     def __init__(self):  # look into using run_machine_as_test()
         super().__init__()
         self.model = {}
-        self.sync_wrapper = SyncMemStoreWrapper("memory")
-        self.store = self.sync_wrapper.store
+        self.store = SyncStoreWrapper(MemoryStore(mode="w"))
         # self.store = MemoryStore(mode='w')
 
     @rule(key=paths, data=st.binary(min_size=0, max_size=100))
