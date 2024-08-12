@@ -21,7 +21,7 @@ from zarr.testing.strategies import key_ranges, paths
 # zarr spec: https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html
 
 
-class SyncMemStoreWrapper(StoreABC):
+class SyncStoreWrapper():
     def __init__(self, store_type):
         """Store to hold async functions that map to StoreABC abstract methods"""
         if store_type in ("Memory", "memory"):
