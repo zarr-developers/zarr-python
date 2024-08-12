@@ -29,7 +29,6 @@ dependencies = [
     'numcodecs>=0.10.0',
     'fsspec>2024',
     'crc32c',
-    'zstandard',
     'typing_extensions',
     'donfig',
 ]
@@ -85,8 +84,8 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
-    "msgpack",
-    "lmdb",
+    'msgpack',
+    'lmdb',
 ]
 extra = [
     'msgpack',
@@ -183,9 +182,11 @@ extend-select = [
     "UP",  # pyupgrade
     "RSE",
     "RUF",
+    "TRY", # tryceratops
 ]
 ignore = [
     "RUF005",
+    "TRY003",
 ]
 
 [tool.mypy]
