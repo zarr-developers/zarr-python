@@ -93,7 +93,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         note(f"(set) Setting {key!r} with {data}")
         assert not self.store.mode.readonly
         data_buf = Buffer.from_bytes(data)
-        asyncio.run(self.sync_wrapper.set(key, data_buf))
+        self.store.set(key, data_buf))
         self.model[key] = data_buf  # this was data
 
     @invariant()
