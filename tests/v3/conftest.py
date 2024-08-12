@@ -20,7 +20,7 @@ import pytest
 from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr.store import LocalStore, MemoryStore, StorePath
-from zarr.store._remote import RemoteStore
+from zarr.store.remote import RemoteStore
 
 
 async def parse_store(

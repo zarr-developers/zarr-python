@@ -10,6 +10,8 @@ from dataclasses import dataclass, fields
 
 from zarr.core.common import JSON
 
+__all__ = ["Metadata"]
+
 
 @dataclass(frozen=True)
 class Metadata:
@@ -44,6 +46,3 @@ class Metadata:
         ...
 
         return cls(**data)
-
-
-__all__ = ["Metadata"]

@@ -22,8 +22,8 @@ from zarr.core.indexing import (
     replace_ellipsis,
 )
 from zarr.registry import get_ndbuffer_class
-from zarr.store._memory import MemoryStore
 from zarr.store.common import StorePath
+from zarr.store.memory import MemoryStore
 
 
 @pytest.fixture

@@ -20,6 +20,34 @@ from zarr.store import (
     make_store_path,
 )
 
+__all__ = [
+    "consolidate_metadata",
+    "copy",
+    "copy_all",
+    "copy_store",
+    "load",
+    "open",
+    "open_consolidated",
+    "save",
+    "save_array",
+    "save_group",
+    "tree",
+    "array",
+    "group",
+    "open_group",
+    "create",
+    "empty",
+    "empty_like",
+    "full",
+    "full_like",
+    "ones",
+    "ones_like",
+    "open_array",
+    "open_like",
+    "zeros",
+    "zeros_like",
+]
+
 # TODO: this type could use some more thought, noqa to avoid "Variable "asynchronous.ArrayLike" is not valid as a type"
 ArrayLike = Union[AsyncArray | Array | npt.NDArray[Any]]  # noqa
 PathLike = str
@@ -933,32 +961,3 @@ async def zeros_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
     """
     like_kwargs = _like_args(a, kwargs)
     return await zeros(**like_kwargs)
-
-
-__all__ = [
-    "consolidate_metadata",
-    "copy",
-    "copy_all",
-    "copy_store",
-    "load",
-    "open",
-    "open_consolidated",
-    "save",
-    "save_array",
-    "save_group",
-    "tree",
-    "array",
-    "group",
-    "open_group",
-    "create",
-    "empty",
-    "empty_like",
-    "full",
-    "full_like",
-    "ones",
-    "ones_like",
-    "open_array",
-    "open_like",
-    "zeros",
-    "zeros_like",
-]

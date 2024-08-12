@@ -8,8 +8,8 @@ from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
-from zarr.store._local import LocalStore
-from zarr.store._memory import MemoryStore
+from zarr.store.local import LocalStore
+from zarr.store.memory import MemoryStore
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype

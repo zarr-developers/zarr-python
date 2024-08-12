@@ -7,6 +7,8 @@ from typing_extensions import Self
 from zarr.core.buffer import Buffer, BufferPrototype
 from zarr.core.common import AccessModeLiteral, BytesLike
 
+__all__ = ["Store", "AccessMode", "ByteGetter", "ByteSetter", "set_or_delete"]
+
 
 class AccessMode(NamedTuple):
     readonly: bool
@@ -245,6 +247,3 @@ async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:
         await byte_setter.delete()
     else:
         await byte_setter.set(value)
-
-
-__all__ = ["Store", "AccessMode", "ByteGetter", "ByteSetter", "set_or_delete"]
