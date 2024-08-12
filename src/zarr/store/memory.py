@@ -71,7 +71,7 @@ class MemoryStore(Store):
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         if not self._is_open:
-            raise RuntimeError("Store is closed. Cannot `get` from a closed store.")
+            raise RuntimeError("Store is closed. Cannot `set` in a closed store.")
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
