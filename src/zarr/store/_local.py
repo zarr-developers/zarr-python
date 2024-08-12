@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from zarr.abc.store import Store
-from zarr.core.common import concurrent_map, to_thread
 from zarr.core.buffer import Buffer
+from zarr.core.common import concurrent_map, to_thread
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype

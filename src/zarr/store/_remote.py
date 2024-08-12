@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from zarr.abc.store import Store
-from zarr.store.common import _dereference_path
 from zarr.core.buffer import Buffer
+from zarr.store.common import _dereference_path
 
 if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
