@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from types import ModuleType
 from typing import TYPE_CHECKING
 
@@ -99,7 +99,7 @@ def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
 
 
 @pytest.fixture(autouse=True)
-def reset_config():
+def reset_config() -> Generator[None, None, None]:
     config.reset()
     yield
     config.reset()
