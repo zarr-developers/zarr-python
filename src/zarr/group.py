@@ -467,9 +467,10 @@ class AsyncGroup:
         # TODO: this can be made more efficient.
         try:
             await self.getitem(member)
-            return True
         except KeyError:
             return False
+        else:
+            return True
 
     # todo: decide if this method should be separate from `groups`
     async def group_keys(self) -> AsyncGenerator[str, None]:
