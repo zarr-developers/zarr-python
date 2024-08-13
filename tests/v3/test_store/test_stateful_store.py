@@ -5,7 +5,9 @@ import asyncio
 import hypothesis.strategies as st
 from hypothesis import note
 from hypothesis.stateful import (
+    Bundle,
     RuleBasedStateMachine,
+    initialize,
     invariant,
     precondition,
     rule,
@@ -24,14 +26,14 @@ class SyncStoreWrapper:
     def __init__(self, store):
         """Class to hold sync functions that map to async methods of MemoryStore
         MemoryStore methods are async, this class' methods are sync, so just need to call asyncio.run() in them
-        then, methods in statemachine class are sync and call sync
+        then, methods in statemachine class are sync and call sync.
+        Unfortunately, hypothesis' stateful testing infra does not support asyncio
+        So we redefine sync versions of the Store API.
+        https://github.com/HypothesisWorks/hypothesis/issues/3712#issuecomment-1668999041
         """
         self.store = store
         self.mode = store.mode
 
-    # Unfortunately, hypothesis' stateful testing infra does not support asyncio
-    # So we redefine sync versions of the Store API.
-    # https://github.com/HypothesisWorks/hypothesis/issues/3712#issuecomment-1668999041
     def set(self, key, data_buffer):  # buffer is value
         return asyncio.run(self.store.set(key, data_buffer))
 
@@ -86,55 +88,48 @@ class SyncStoreWrapper:
 
 
 class ZarrStoreStateMachine(RuleBasedStateMachine):
-    def __init__(self):  # look into using run_machine_as_test()
+    keys_bundle = Bundle("keys_bundle")
+    key_ranges_bundle = Bundle("key_ranges")
+
+    def __init__(self):
         super().__init__()
         self.model: dict[str, bytes] = {}
         self.store = SyncStoreWrapper(MemoryStore(mode="w"))
 
-    @rule(key=paths, data=st.binary(min_size=0, max_size=100))
+    # NOTE: set this and the next as initialize instead of rule to make sure they run
+    #      and create key, key_ranges before any rules that use key, key_ranges
+    #      not totally sure this is necessary
+    @initialize(key=paths, data=st.binary(min_size=0, max_size=100), target=keys_bundle)
     def set(self, key: str, data: bytes) -> None:
         note(f"(set) Setting {key!r} with {data}")
         assert not self.store.mode.readonly
         data_buf = Buffer.from_bytes(data)
         self.store.set(key, data_buf)
-        self.model[key] = data_buf  # this was data
+        self.model[key] = data_buf
+        note("init key")
+        return key
 
-    @invariant()
-    def check_paths_equal(self) -> None:
-        note("Checking that paths are equal")
-        paths = list(self.store.list())
+    @initialize(key=keys_bundle, data=st.data(), target=key_ranges_bundle)
+    def init_key_ranges(self, data, key):
+        note("init key ranges")
+        key_st = st.just(key)
+        key_ranges_st = key_ranges(keys=key_st)
+        return data.draw(key_ranges_st)
 
-        assert list(self.model.keys()) == paths
-
-    @invariant()
-    def check_vals_equal(self) -> None:
-        note("Checking values equal")
-        for key, _val in self.model.items():
-            store_item = self.store.get(key).to_bytes()
-            assert self.model[key].to_bytes() == store_item
-
-    @invariant()
-    def check_num_keys_equal(self) -> None:
-        note("check num keys equal")
-        model_keys_len = len(list(self.model.keys()))
-        store_keys_len = len(list(self.store.list()))
-        assert model_keys_len == store_keys_len
-
-    # @rule(key=keys_bundle)
     @precondition(lambda self: len(self.model.keys()) > 0)
-    @rule(data=st.data())
-    def get(self, data) -> None:
-        key = data.draw(st.sampled_from(sorted(self.model.keys())))
+    @rule(key=keys_bundle)
+    def get(self, key) -> None:
+        note(f"(get) {key=}")
         store_value = self.store.get(key)
+        note(f"(get) key type: {type(key)}")
+        note(f"(get) store: {store_value.to_bytes()}, model: {self.model[key].to_bytes()}")
         # to bytes here necessary (on model and store) because data_buf set to model in set()
-        assert self.model[key].to_bytes() == store_value.to_bytes()
+        assert self.model[key].to_bytes() == (store_value.to_bytes())
 
     @precondition(lambda self: len(self.model.keys()) > 0)
-    @rule(data=st.data())
-    def get_partial_values(self, data) -> None:
-        key_st = st.sampled_from(sorted(self.model.keys()))  # hypothesis wants you to sort
-        key_range = data.draw(key_ranges(keys=key_st))
-
+    @rule(key=keys_bundle, key_range=key_ranges_bundle)
+    def get_partial_values(self, key, key_range) -> None:
+        note(f"(get partial) {key_range=}")
         obs_maybe = self.store.get_partial_values(key_range)
         observed = []
 
@@ -180,25 +175,51 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @rule()
     def empty(self) -> None:
         note("(empty)")
-        # check if store, model are empty
-        store_empty = self.store.empty()
-        model_empty = not self.model
+
         # make sure they either both are or both aren't (same state)
-        assert model_empty == store_empty
+        assert self.store.empty() == (not self.model)
 
-    @rule(key=paths)
+    @rule(key=keys_bundle)
     def exists(self, key) -> None:
+        #
         note("(exists)")
-
-        def model_exists(self, key) -> bool:
-            return key in self.model
-
-        # check if given key in model, store
-        store_exists = self.store.exists(key)
-        model_exists = model_exists(self, key)
-
         # make sure same state
-        assert model_exists == store_exists
+        assert self.store.exists(key) == (key in self.model)
+
+    @invariant()
+    def check_paths_equal(self) -> None:
+        note("Checking that paths are equal")
+        paths = list(self.store.list())
+
+        assert list(self.model.keys()) == paths
+
+    @invariant()
+    def check_vals_equal(self) -> None:
+        note("Checking values equal")
+        for key, _val in self.model.items():
+            store_item = self.store.get(key).to_bytes()
+            assert self.model[key].to_bytes() == store_item
+
+    @invariant()
+    def check_num_keys_equal(self) -> None:
+        note("check num keys equal")
+
+        assert len(self.model) == len(list(self.store.list()))
+
+    @invariant()
+    def check_keys(self) -> None:
+        keys = list(self.store.list())
+
+        if len(keys) == 0:
+            assert self.store.empty() is True
+
+        elif len(keys) != 0:
+            assert self.store.empty() is False
+
+            for key in keys:
+                assert self.store.exists(key) is True
+                # assert self.store.empty() is False
+        note("checking keys / exists / empty")
 
 
 StatefulStoreTest = ZarrStoreStateMachine.TestCase
