@@ -141,7 +141,7 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
 @pytest.mark.parametrize("store", ("local",), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
-async def test_serizalizable_async_array(
+async def test_serializable_async_array(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
     expected = await AsyncArray.create(
@@ -159,7 +159,7 @@ async def test_serizalizable_async_array(
 
 @pytest.mark.parametrize("store", ("local",), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
-def test_serizalizable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> None:
+def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = Array.create(
         store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
     )

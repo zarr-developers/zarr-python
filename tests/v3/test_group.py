@@ -658,9 +658,7 @@ async def test_asyncgroup_update_attributes(
 
 @pytest.mark.parametrize("store", ("local",), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
-async def test_serizalizable_async_group(
-    store: LocalStore | MemoryStore, zarr_format: ZarrFormat
-) -> None:
+async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = await AsyncGroup.create(
         store=store, attributes={"foo": 999}, zarr_format=zarr_format
     )
@@ -671,7 +669,7 @@ async def test_serizalizable_async_group(
 
 @pytest.mark.parametrize("store", ("local",), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
-def test_serizalizable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
+def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = Group.create(store=store, attributes={"foo": 999}, zarr_format=zarr_format)
     p = pickle.dumps(expected)
     actual = pickle.loads(p)
