@@ -13,6 +13,18 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec, CodecPipeline
     from zarr.core.buffer import Buffer, NDBuffer
 
+__all__ = [
+    "Registry",
+    "register_codec",
+    "register_pipeline",
+    "register_buffer",
+    "register_ndbuffer",
+    "get_codec_class",
+    "get_pipeline_class",
+    "get_buffer_class",
+    "get_ndbuffer_class",
+]
+
 T = TypeVar("T")
 
 
@@ -178,16 +190,3 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
 
 
 _collect_entrypoints()
-
-
-__all__ = [
-    "Registry",
-    "register_codec",
-    "register_pipeline",
-    "register_buffer",
-    "register_ndbuffer",
-    "get_codec_class",
-    "get_pipeline_class",
-    "get_buffer_class",
-    "get_ndbuffer_class",
-]

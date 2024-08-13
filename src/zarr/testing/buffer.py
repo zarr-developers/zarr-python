@@ -14,6 +14,13 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
 
+__all__ = [
+    "TestBuffer",
+    "NDBufferUsingTestNDArrayLike",
+    "StoreExpectingTestBuffer",
+]
+
+
 class TestNDArrayLike(np.ndarray):
     """An example of a ndarray-like class"""
 
@@ -64,10 +71,3 @@ class StoreExpectingTestBuffer(MemoryStore):
         if ret is not None:
             assert isinstance(ret, prototype.buffer)
         return ret
-
-
-__all__ = [
-    "TestBuffer",
-    "NDBufferUsingTestNDArrayLike",
-    "StoreExpectingTestBuffer",
-]

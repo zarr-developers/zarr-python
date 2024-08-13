@@ -3,6 +3,8 @@ from __future__ import annotations
 from zarr.core.buffer import Buffer
 from zarr.core.common import BytesLike
 
+__all__ = ["assert_bytes_equal"]
+
 
 def assert_bytes_equal(b1: Buffer | BytesLike | None, b2: Buffer | BytesLike | None) -> None:
     """Help function to assert if two bytes-like or Buffers are equal
@@ -16,6 +18,3 @@ def assert_bytes_equal(b1: Buffer | BytesLike | None, b2: Buffer | BytesLike | N
     if isinstance(b2, Buffer):
         b2 = b2.to_bytes()
     assert b1 == b2
-
-
-__all__ = ["assert_bytes_equal"]
