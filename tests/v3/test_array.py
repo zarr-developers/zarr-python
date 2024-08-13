@@ -149,10 +149,10 @@ def test_nchunks_initialized(store: LocalStore | MemoryStore, zarr_format: ZarrF
     assert array.nchunks == num_chunks
     assert nchunks_initialized(array) == 0
 
-    for idx, region in enumerate(array._iter_chunk_regions):
+    for idx, region in enumerate(array._iter_chunk_regions()):
         array[region] = 1
         assert nchunks_initialized(array) == idx + 1
 
-    for idx, key in enumerate(array._iter_chunk_keys):
+    for idx, key in enumerate(array._iter_chunk_keys()):
         sync((array.store_path / key).delete())
         assert nchunks_initialized(array) == array.nchunks - (idx + 1)

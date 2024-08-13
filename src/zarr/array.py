@@ -12,7 +12,13 @@ import json
 from asyncio import gather
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Any, Literal
+
+    from zarr.common import JSON, ChunkCoords, ZarrFormat
 
 import numpy as np
 import numpy.typing as npt
@@ -27,12 +33,9 @@ from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, 
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
 from zarr.common import (
-    JSON,
     ZARR_JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
-    ChunkCoords,
-    ZarrFormat,
     concurrent_map,
     product,
 )
@@ -53,13 +56,13 @@ from zarr.indexing import (
     OrthogonalSelection,
     Selection,
     VIndex,
+    _iter_grid,
     ceildiv,
     check_fields,
     check_no_multi_fields,
     is_pure_fancy_indexing,
     is_pure_orthogonal_indexing,
     is_scalar,
-    iter_grid,
     pop_fields,
 )
 from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
@@ -443,9 +446,7 @@ class AsyncArray:
         return None
 
     @property
-    @deprecated(
-        "cdata_shape is transitional and will be removed in an early zarr-python v3 release."
-    )
+    @deprecated("AsyncArray.cdata_shape may be removed in an early zarr-python v3 release.")
     def cdata_shape(self) -> ChunkCoords:
         """
         The shape of the chunk grid for this array.
@@ -453,34 +454,32 @@ class AsyncArray:
         return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
 
     @property
-    @deprecated("nchunks is transitional and will be removed in an early zarr-python v3 release.")
+    @deprecated("AsyncArray.nchunks may be removed in an early zarr-python v3 release.")
     def nchunks(self) -> int:
         """
         The number of chunks in the stored representation of this array.
         """
         return product(self.cdata_shape)
 
-    @property
-    def _iter_chunk_coords(self) -> Iterator[ChunkCoords]:
+    def _iter_chunk_coords(self, origin: Sequence[int] | None = None) -> Iterator[ChunkCoords]:
         """
-        Produce an iterator over the coordinates of each chunk, in chunk grid space.
+        Produce an iterator over the coordinates of each chunk, in chunk grid space, relative to
+        an optional origin.
         """
-        return iter_grid(self.cdata_shape)
+        return _iter_grid(self.cdata_shape, origin=origin)
 
-    @property
-    def _iter_chunk_keys(self) -> Iterator[str]:
+    def _iter_chunk_keys(self, origin: Sequence[int] | None = None) -> Iterator[str]:
         """
-        Return an iterator over the keys of each chunk.
+        Return an iterator over the storage keys of each chunk, relative to an optional origin.
         """
-        for k in self._iter_chunk_coords:
+        for k in self._iter_chunk_coords(origin=origin):
             yield self.metadata.encode_chunk_key(k)
 
-    @property
     def _iter_chunk_regions(self) -> Iterator[tuple[slice, ...]]:
         """
         Iterate over the regions spanned by each chunk.
         """
-        for cgrid_position in self._iter_chunk_coords:
+        for cgrid_position in self._iter_chunk_coords():
             out: tuple[slice, ...] = ()
             for c_pos, c_shape in zip(cgrid_position, self.chunks, strict=False):
                 start = c_pos * c_shape
@@ -811,12 +810,12 @@ class Array:
         """
         return self._async_array.nchunks
 
-    @property
-    def _iter_chunks(self) -> Iterator[ChunkCoords]:
+    def _iter_chunks(self, origin: Sequence[int] | None = None) -> Iterator[ChunkCoords]:
         """
-        Produce an iterator over the coordinates of each chunk, in chunk grid space.
+        Produce an iterator over the coordinates of each chunk, in chunk grid space, relative
+        to an optional origin.
         """
-        yield from self._async_array._iter_chunk_coords
+        yield from self._async_array._iter_chunk_coords(origin=origin)
 
     @property
     def nbytes(self) -> int:
@@ -825,19 +824,17 @@ class Array:
         """
         return self._async_array.nbytes
 
-    @property
-    def _iter_chunk_keys(self) -> Iterator[str]:
+    def _iter_chunk_keys(self, origin: Sequence[int] | None = None) -> Iterator[str]:
         """
-        Return an iterator over the keys of each chunk.
+        Return an iterator over the keys of each chunk, relative to an optional origin
         """
-        yield from self._async_array._iter_chunk_keys
+        yield from self._async_array._iter_chunk_keys(origin=origin)
 
-    @property
     def _iter_chunk_regions(self) -> Iterator[tuple[slice, ...]]:
         """
         Iterate over the regions spanned by each chunk.
         """
-        yield from self._async_array._iter_chunk_regions
+        yield from self._async_array._iter_chunk_regions()
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
@@ -2179,7 +2176,7 @@ def chunks_initialized(array: Array) -> tuple[str, ...]:
     )
     out: list[str] = []
 
-    for chunk_key in array._iter_chunk_keys:
+    for chunk_key in array._iter_chunk_keys():
         if chunk_key in store_contents:
             out.append(chunk_key)
 

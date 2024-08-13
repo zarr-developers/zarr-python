@@ -4,15 +4,17 @@ import itertools
 import math
 import numbers
 import operator
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from functools import reduce
 from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
+    Literal,
     NamedTuple,
     Protocol,
+    TypeAlias,
     TypeGuard,
     TypeVar,
     cast,
@@ -87,12 +89,35 @@ def ceildiv(a: float, b: float) -> int:
     return math.ceil(a / b)
 
 
-def iter_grid(shape: Iterable[int]) -> Iterator[ChunkCoords]:
-    """
-    Iterate over the elements of grid.
+_ArrayIndexingOrder: TypeAlias = Literal["lexicographic"]
 
-    Takes a grid shape expressed as an iterable of ints and
-    yields tuples bounded by that grid shape in lexicographic order.
+
+def _iter_grid(
+    shape: Sequence[int],
+    *,
+    origin: Sequence[int] | None = None,
+    order: _ArrayIndexingOrder = "lexicographic",
+) -> Iterator[ChunkCoords]:
+    """
+    Iterate over the elements of grid of integers.
+
+    Takes a grid shape expressed as a sequence of integers and an optional origin and
+    yields tuples bounded by [origin, origin + grid_shape].
+
+    Parameters
+    ---------
+    shape: Sequence[int]
+        The size of the domain to iterate over.
+    origin: Sequence[int] | None, default=None
+        The first coordinate of the domain.
+    order: Literal["lexicographic"], default="lexicographic"
+        The linear indexing order to use.
+
+    Returns
+    -------
+
+    itertools.product object
+        An iterator over tuples of integers
 
     Examples
     --------
@@ -102,12 +127,28 @@ def iter_grid(shape: Iterable[int]) -> Iterator[ChunkCoords]:
     >>> tuple(iter_grid((2,3)))
     ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2))
 
-    Parameters
-    ----------
-    shape: Iterable[int]
-        The shape of the grid to iterate over.
+    >>> tuple(iter_grid((2,3)), origin=(1,1))
+    ((1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 3))
     """
-    yield from itertools.product(*(map(range, shape)))
+    if origin is None:
+        origin_parsed = (0,) * len(shape)
+    else:
+        if len(origin) != len(shape):
+            msg = (
+                "Shape and origin parameters must have the same length."
+                f"Got {len(shape)} elements in shape, but {len(origin)} elements in origin."
+            )
+            raise ValueError(msg)
+        origin_parsed = tuple(origin)
+
+    if order == "lexicographic":
+        yield from itertools.product(
+            *(range(o, o + s) for o, s in zip(origin_parsed, shape, strict=True))
+        )
+
+    else:
+        msg = f"Indexing order {order} is not supported at this time."  # type: ignore[unreachable]
+        raise NotImplementedError(msg)
 
 
 def is_integer(x: Any) -> TypeGuard[int]:
