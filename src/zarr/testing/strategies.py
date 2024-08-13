@@ -147,14 +147,11 @@ def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs):  # type: ign
     )
 
 
-def key_ranges(keys: SearchStrategy | None = None) -> SearchStrategy[list]:
+def key_ranges(keys: SearchStrategy = node_names) -> SearchStrategy[list]:
     """fn to generate key_ranges strategy for get_partial_values()
     returns list strategy w/ form: [(key, (range_start, range_step)),
                                     (key, (range_start, range_step)),...]
     """
-    if keys is None:
-        group_st = st.text(alphabet=string.ascii_letters + string.digits, min_size=1, max_size=10)
-        keys = st.lists(group_st, min_size=1, max_size=5).map("/".join)
     byte_ranges = st.tuples(
         st.none() | st.integers(min_value=0), st.none() | st.integers(min_value=0)
     )
