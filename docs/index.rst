@@ -9,6 +9,7 @@ Zarr-Python
     :hidden:
 
     getting_started
+    migration
     tutorial
     api/index
     spec
