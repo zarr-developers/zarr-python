@@ -121,8 +121,6 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     def get(self, key) -> None:
         note(f"(get) {key=}")
         store_value = self.store.get(key)
-        note(f"(get) key type: {type(key)}")
-        note(f"(get) store: {store_value.to_bytes()}, model: {self.model[key].to_bytes()}")
         # to bytes here necessary (on model and store) because data_buf set to model in set()
         assert self.model[key].to_bytes() == (store_value.to_bytes())
 
