@@ -66,7 +66,7 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
         if isinstance(a.metadata, ArrayV3Metadata):
             new["codecs"] = a.metadata.codecs
         else:
-            raise ValueError(f"Unsupported zarr format: {a.metadata.zarr_format}")
+            raise TypeError(f"Unsupported zarr format: {a.metadata.zarr_format}")
     else:
         # TODO: set default values compressor/codecs
         # to do this, we may need to evaluate if this is a v2 or v3 array
@@ -862,7 +862,7 @@ async def open_array(
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         if store_path.store.mode.create:
             return await create(
                 store=store_path,
@@ -871,7 +871,7 @@ async def open_array(
                 overwrite=store_path.store.mode.overwrite,
                 **kwargs,
             )
-        raise e
+        raise
 
 
 async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AsyncArray:

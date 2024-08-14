@@ -251,9 +251,10 @@ async def contains_group(store_path: StorePath, zarr_format: ZarrFormat) -> bool
                 extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
                 # we avoid constructing a full metadata document here in the name of speed.
                 result: bool = extant_meta_json["node_type"] == "group"
-                return result
             except (ValueError, KeyError):
                 return False
+            else:
+                return result
     elif zarr_format == 2:
         return await (store_path / ZGROUP_JSON).exists()
     msg = f"Invalid zarr_format provided. Got {zarr_format}, expected 2 or 3"  # type: ignore[unreachable]
