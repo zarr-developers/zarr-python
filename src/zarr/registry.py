@@ -2,16 +2,28 @@ from __future__ import annotations
 
 import warnings
 from collections import defaultdict
+from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
+from zarr.core.config import BadConfigError, config
+
 if TYPE_CHECKING:
+    from importlib.metadata import EntryPoint
+
     from zarr.abc.codec import Codec, CodecPipeline
-    from zarr.buffer import Buffer, NDBuffer
+    from zarr.core.buffer import Buffer, NDBuffer
 
-from importlib.metadata import EntryPoint
-from importlib.metadata import entry_points as get_entry_points
-
-from zarr.config import BadConfigError, config
+__all__ = [
+    "Registry",
+    "register_codec",
+    "register_pipeline",
+    "register_buffer",
+    "register_ndbuffer",
+    "get_codec_class",
+    "get_pipeline_class",
+    "get_buffer_class",
+    "get_ndbuffer_class",
+]
 
 T = TypeVar("T")
 

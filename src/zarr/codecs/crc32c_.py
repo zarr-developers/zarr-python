@@ -7,9 +7,9 @@ import numpy as np
 from crc32c import crc32c
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer
-from zarr.common import JSON, parse_named_configuration
+from zarr.core.array_spec import ArraySpec
+from zarr.core.buffer import Buffer
+from zarr.core.common import JSON, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:

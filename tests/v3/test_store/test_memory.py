@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from zarr.buffer import Buffer
+from zarr.core.buffer import Buffer
 from zarr.store.memory import MemoryStore
 from zarr.testing.store import StoreTests
 
