@@ -15,8 +15,6 @@ from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.store import MemoryStore
 from zarr.testing.strategies import key_ranges, paths
 
-# zarr spec: https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html
-
 
 class SyncStoreWrapper:
     def __init__(self, store):
@@ -267,15 +265,8 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         AssertionError
             If the returned value of an invalid key is not None
         """
-        model_keys = list(self.model.keys())
-        # model_keys = ['/']
-        # key = '/'
         note("(get_invalid)")
-
-        # note(f"(get invalid) key: {key}")
-        # note(f"(get invalid) val: {self.store.get(key, self.prototype)}")
-
-        assume(key not in model_keys)
+        assume(key not in self.model.keys())
         assert self.store.get(key, self.prototype) is None
 
     @precondition(lambda self: len(self.model.keys()) > 0)
@@ -308,11 +299,11 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         model_vals_ls = []
 
         for key, byte_range in key_range:
-            model_vals = self.model[key]
+            # model_vals = self.model[key]
             start = byte_range[0] or 0
             step = byte_range[1]
             stop = start + step if step is not None else None
-            model_vals_ls.append(model_vals[start:stop])
+            model_vals_ls.append(self.model[key][start:stop])
 
         assert all(
             obs == exp.to_bytes() for obs, exp in zip(observed, model_vals_ls, strict=True)
