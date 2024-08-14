@@ -107,6 +107,7 @@ exclude = [
 extend-select = [
     "B"
 ]
+ignore = ["B905"] # zip-without-explicit-strict
 
 [tool.black]
 line-length = 100
