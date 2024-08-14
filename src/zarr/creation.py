@@ -15,12 +15,6 @@ from zarr.api.synchronous import (
     zeros_like,
 )
 
-warnings.warn(
-    "zarr.creation is deprecated, use zarr.api.synchronous",
-    DeprecationWarning,
-    stacklevel=2,
-)
-
 __all__ = [
     "create",
     "empty",
@@ -35,3 +29,9 @@ __all__ = [
     "full_like",
     "open_like",
 ]
+
+warnings.warn(
+    "zarr.creation is deprecated, use zarr.api.synchronous",
+    DeprecationWarning,
+    stacklevel=2,
+)

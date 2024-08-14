@@ -11,7 +11,7 @@ from hypothesis.stateful import (
     rule,
 )
 
-from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
+from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.store import MemoryStore
 from zarr.testing.strategies import key_ranges, paths
 

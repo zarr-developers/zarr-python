@@ -7,11 +7,18 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import numpy.typing as npt
 
-from zarr.buffer import Buffer, BufferPrototype, NDBuffer
+from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
 from zarr.store import MemoryStore
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+
+__all__ = [
+    "TestBuffer",
+    "NDBufferUsingTestNDArrayLike",
+    "StoreExpectingTestBuffer",
+]
 
 
 class TestNDArrayLike(np.ndarray):

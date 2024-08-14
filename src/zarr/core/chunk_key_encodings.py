@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast
 
 from zarr.abc.metadata import Metadata
-from zarr.common import (
+from zarr.core.common import (
     JSON,
     ChunkCoords,
     parse_named_configuration,

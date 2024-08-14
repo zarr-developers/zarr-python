@@ -6,8 +6,8 @@ import numpy as np
 from hypothesis import given, settings  # noqa
 from hypothesis.strategies import SearchStrategy
 
-from zarr.array import Array
-from zarr.group import Group
+from zarr.core.array import Array
+from zarr.core.group import Group
 from zarr.store import MemoryStore, StoreLike
 
 # Copied from Xarray
