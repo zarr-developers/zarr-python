@@ -1,6 +1,5 @@
 # Stateful tests for arbitrary Zarr stores.
 
-import asyncio
 
 import hypothesis.strategies as st
 from hypothesis import assume, note
@@ -11,7 +10,10 @@ from hypothesis.stateful import (
     rule,
 )
 
+import zarr
+from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
+from zarr.core.sync import sync
 from zarr.store import MemoryStore
 from zarr.testing.strategies import key_ranges, paths
 
@@ -19,46 +21,49 @@ from zarr.testing.strategies import key_ranges, paths
 class SyncStoreWrapper(zarr.core.sync.SyncMixin):
     def __init__(self, store: Store):
         """Synchronous Store wrapper
-        
+
         This class holds synchronous methods that map to async methods of Store classes.
-        The synchronous wrapper is needed because hypothesis' stateful testing infra does 
+        The synchronous wrapper is needed because hypothesis' stateful testing infra does
         not support asyncio so we redefine sync versions of the Store API.
         https://github.com/HypothesisWorks/hypothesis/issues/3712#issuecomment-1668999041
         """
         self.store = store
-        self.mode = store.mode
 
-    def set(self, key, data_buffer):
-        return asyncio.run(self.store.set(key, data_buffer))
+    @property
+    def mode(self) -> AccessMode:
+        return self.store.mode
 
-    def list(self):
+    def set(self, key, data_buffer) -> None:
+        return sync(self.store.set(key, data_buffer))
+
+    def list(self) -> list:
         async def wrapper(gen):
             return [i async for i in gen]
 
         gen = self.store.list()
-        yield from asyncio.run(wrapper(gen))
+        yield from sync(wrapper(gen))
 
-    def get(self, key, prototype: BufferPrototype):
-        obs = asyncio.run(self.store.get(key, prototype=prototype))
+    def get(self, key, prototype: BufferPrototype) -> zarr.core.buffer.Buffer:
+        obs = sync(self.store.get(key, prototype=prototype))
         return obs
 
-    def get_partial_values(self, key_ranges, prototype: BufferPrototype):
-        obs_partial = asyncio.run(
+    def get_partial_values(self, key_ranges, prototype: BufferPrototype) -> zarr.core.buffer.Buffer:
+        obs_partial = sync(
             self.store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
         )
         return obs_partial
 
-    def delete(self, path):
-        return asyncio.run(self.store.delete(path))
+    def delete(self, path) -> None:
+        return sync(self.store.delete(path))
 
-    def empty(self):
-        return asyncio.run(self.store.empty())
+    def empty(self) -> bool:
+        return sync(self.store.empty())
 
-    def clear(self):
-        return asyncio.run(self.store.clear())
+    def clear(self) -> None:
+        return sync(self.store.clear())
 
-    def exists(self, key):
-        return asyncio.run(self.store.exists(key))
+    def exists(self, key) -> bool:
+        return sync(self.store.exists(key))
 
     def list_dir(self, prefix):
         raise NotImplementedError
@@ -70,19 +75,36 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
         raise NotImplementedError
 
     @property
-    def supports_listing(self):
+    def supports_listing(self) -> bool:
         return self.store.supports_listing
 
     @property
-    def supports_partial_writes(self):
+    def supports_partial_writes(self) -> bool:
         return self.supports_partial_writes
 
     @property
-    def supports_writes(self):
+    def supports_writes(self) -> bool:
         return self.store.supports_writes
 
 
 class ZarrStoreStateMachine(RuleBasedStateMachine):
+    """ "
+    Zarr store state machine
+
+        This is a subclass of a Hypothesis RuleBasedStateMachine.
+        It is testing a framework to ensure that the state of a Zarr store matches
+        an expected state after a set of random operations. It contains a store
+        (currently, a Zarr MemoryStore) and a model, a simplified version of a
+        zarr store (in this case, a dict). It also contains rules which represent
+        actions that can be applied to a zarr store. Rules apply an action to both
+        the store and the model, and invariants assert that the state of the model
+        is equal to the state of the store. Hypothesis then generates sequences of
+        rules, running invariants after each rule. It raises an error if a sequence
+        produces discontinuity between state of the model and state of the store
+        (ie. an invariant is violated).
+        https://hypothesis.readthedocs.io/en/latest/stateful.html
+    """
+
     def __init__(self):
         super().__init__()
         self.model: dict[str, bytes] = {}
@@ -103,10 +125,8 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         key = data.draw(
             st.sampled_from(sorted(self.model.keys()))
         )  # hypothesis wants to sample from sorted list
-        model_value = self.model[key]
-        note(f"(get) model value {model_value.to_bytes()}")
+        note("(get)")
         store_value = self.store.get(key, self.prototype)
-        note(f"(get) store value: {store_value.to_bytes()}")
         # to bytes here necessary because data_buf set to model in set()
         assert self.model[key].to_bytes() == (store_value.to_bytes())
 
