@@ -609,11 +609,11 @@ class Array:
 
         Iterate over part of the array:
             >>> for value in z.islice(25, 30): value;
-            25
-            26
-            27
-            28
-            29
+            np.int64(25)
+            np.int64(26)
+            np.int64(27)
+            np.int64(28)
+            np.int64(29)
         """
 
         if len(self.shape) == 0:
@@ -679,7 +679,7 @@ class Array:
         Retrieve a single item::
 
             >>> z[5]
-            5
+            np.int64(5)
 
         Retrieve a region via slicing::
 
@@ -706,7 +706,7 @@ class Array:
         Retrieve an item::
 
             >>> z[2, 2]
-            22
+            np.int64(22)
 
         Retrieve a region via slicing::
 
@@ -830,7 +830,7 @@ class Array:
         Retrieve a single item::
 
             >>> z.get_basic_selection(5)
-            5
+            np.int64(5)
 
         Retrieve a region via slicing::
 
@@ -852,7 +852,7 @@ class Array:
         Retrieve an item::
 
             >>> z.get_basic_selection((2, 2))
-            22
+            np.int64(22)
 
         Retrieve a region via slicing::
 
@@ -2824,7 +2824,7 @@ class Array:
             >>> v[:]
             array([False, False,  True, ...,  True, False, False])
             >>> np.all(a[:].view(dtype=bool) == v[:])
-            True
+            np.True_
 
         An array can be viewed with a dtype with a different item size, however
         some care is needed to adjust the shape and chunk shape so that chunk
@@ -2838,7 +2838,7 @@ class Array:
             >>> v[:10]
             array([0, 0, 1, 0, 2, 0, 3, 0, 4, 0], dtype=uint8)
             >>> np.all(a[:].view('u1') == v[:])
-            True
+            np.True_
 
         Change fill value for uninitialized chunks:
 

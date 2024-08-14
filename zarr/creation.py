@@ -569,7 +569,7 @@ def open_array(
     >>> z2
     <zarr.core.Array (10000, 10000) float64 read-only>
     >>> np.all(z1[:] == z2[:])
-    True
+    np.True_
 
     Notes
     -----
