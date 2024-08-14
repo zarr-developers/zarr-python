@@ -145,6 +145,10 @@ filterwarnings = [
     "ignore:The .* is deprecated and will be removed in a Zarr-Python version 3*:FutureWarning",
     "ignore:The experimental Zarr V3 implementation in this version .*:FutureWarning",
 ]
+doctest_subpackage_requires =[
+    "zarr/core.py = numpy>=2",
+    "zarr/creation.py = numpy>=2"
+]
 
 
 [tool.codespell]
