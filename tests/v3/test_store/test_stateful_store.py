@@ -16,13 +16,13 @@ from zarr.store import MemoryStore
 from zarr.testing.strategies import key_ranges, paths
 
 
-class SyncStoreWrapper:
-    def __init__(self, store):
-        """Class to hold sync functions that map to async methods of MemoryStore
-        MemoryStore methods are async, this class' methods are sync, so just need to call asyncio.run() in them
-        then, methods in statemachine class are sync and call sync.
-        Unfortunately, hypothesis' stateful testing infra does not support asyncio
-        So we redefine sync versions of the Store API.
+class SyncStoreWrapper(zarr.core.sync.SyncMixin):
+    def __init__(self, store: Store):
+        """Synchronous Store wrapper
+        
+        This class holds synchronous methods that map to async methods of Store classes.
+        The synchronous wrapper is needed because hypothesis' stateful testing infra does 
+        not support asyncio so we redefine sync versions of the Store API.
         https://github.com/HypothesisWorks/hypothesis/issues/3712#issuecomment-1668999041
         """
         self.store = store
@@ -69,14 +69,17 @@ class SyncStoreWrapper:
     def set_partial_values(self, key_start_values):
         raise NotImplementedError
 
+    @property
     def supports_listing(self):
-        raise NotImplementedError
+        return self.store.supports_listing
 
+    @property
     def supports_partial_writes(self):
-        raise NotImplementedError
+        return self.supports_partial_writes
 
+    @property
     def supports_writes(self):
-        raise NotImplementedError
+        return self.store.supports_writes
 
 
 class ZarrStoreStateMachine(RuleBasedStateMachine):
