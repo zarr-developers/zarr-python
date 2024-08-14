@@ -44,7 +44,7 @@ def test_config_defaults_set() -> None:
             "async": {"concurrency": None, "timeout": None},
             "json_indent": 2,
             "codec_pipeline": {
-                "path": "zarr.codecs.pipeline.BatchedCodecPipeline",
+                "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
             },
             "buffer": "zarr.core.buffer.Buffer",
@@ -92,8 +92,8 @@ def test_config_codec_pipeline_class(store):
     # has default value
     assert get_pipeline_class().__name__ != ""
 
-    config.set({"codec_pipeline.name": "zarr.codecs.pipeline.BatchedCodecPipeline"})
-    assert get_pipeline_class() == zarr.codecs.pipeline.BatchedCodecPipeline
+    config.set({"codec_pipeline.name": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
+    assert get_pipeline_class() == zarr.core.codec_pipeline.BatchedCodecPipeline
 
     _mock = Mock()
 
