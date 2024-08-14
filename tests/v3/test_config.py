@@ -11,9 +11,10 @@ import zarr
 from zarr import Array, zeros
 from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter
-from zarr.codecs import BatchedCodecPipeline, BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
+from zarr.codecs import BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
+from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
 from zarr.registry import (
