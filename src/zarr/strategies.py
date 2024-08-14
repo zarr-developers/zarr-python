@@ -5,9 +5,8 @@ import hypothesis.strategies as st
 import numpy as np
 from hypothesis import given, settings  # noqa
 
-from .array import Array
-from .group import Group
-from .store import MemoryStore, StoreLike
+from zarr import Array, Group
+from zarr.store import MemoryStore, StoreLike
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)

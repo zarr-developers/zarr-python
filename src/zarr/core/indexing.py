@@ -23,12 +23,13 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.buffer import NDArrayLike
-from zarr.common import ChunkCoords, product
+from zarr.core.buffer import NDArrayLike
+from zarr.core.common import product
 
 if TYPE_CHECKING:
-    from zarr.array import Array
-    from zarr.chunk_grids import ChunkGrid
+    from zarr.core.array import Array
+    from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.common import ChunkCoords
 
 IntSequence = list[int] | npt.NDArray[np.intp]
 ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
@@ -197,7 +198,7 @@ def is_pure_orthogonal_indexing(selection: Selection, ndim: int) -> TypeGuard[Or
 
 
 def get_chunk_shape(chunk_grid: ChunkGrid) -> ChunkCoords:
-    from zarr.chunk_grids import RegularChunkGrid
+    from zarr.core.chunk_grids import RegularChunkGrid
 
     assert isinstance(
         chunk_grid, RegularChunkGrid

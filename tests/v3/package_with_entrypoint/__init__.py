@@ -3,10 +3,10 @@ from collections.abc import Iterable
 from numpy import ndarray
 
 from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecPipeline
-from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer, NDBuffer
 from zarr.codecs import BytesCodec
-from zarr.common import BytesLike
+from zarr.core.array_spec import ArraySpec
+from zarr.core.buffer import Buffer, NDBuffer
+from zarr.core.common import BytesLike
 
 
 class TestEntrypointCodec(ArrayBytesCodec):

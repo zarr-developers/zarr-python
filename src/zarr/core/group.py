@@ -13,11 +13,11 @@ from typing_extensions import deprecated
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
-from zarr.array import Array, AsyncArray
-from zarr.attributes import Attributes
-from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
-from zarr.chunk_key_encodings import ChunkKeyEncoding
-from zarr.common import (
+from zarr.core.array import Array, AsyncArray
+from zarr.core.attributes import Attributes
+from zarr.core.buffer import default_buffer_prototype
+from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
@@ -26,14 +26,16 @@ from zarr.common import (
     ChunkCoords,
     ZarrFormat,
 )
-from zarr.config import config
+from zarr.core.config import config
+from zarr.core.sync import SyncMixin, sync
 from zarr.store import StoreLike, StorePath, make_store_path
-from zarr.store.core import ensure_no_existing_node
-from zarr.sync import SyncMixin, sync
+from zarr.store.common import ensure_no_existing_node
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
     from typing import Any
+
+    from zarr.core.buffer import Buffer, BufferPrototype
 
 logger = logging.getLogger("zarr.group")
 

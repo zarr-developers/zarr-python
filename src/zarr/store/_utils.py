@@ -1,4 +1,4 @@
-from zarr.buffer import Buffer
+from zarr.core.buffer import Buffer
 
 
 def _normalize_interval_index(
