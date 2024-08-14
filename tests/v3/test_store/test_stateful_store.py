@@ -3,7 +3,7 @@
 import asyncio
 
 import hypothesis.strategies as st
-from hypothesis import note
+from hypothesis import assume, note
 from hypothesis.stateful import (
     RuleBasedStateMachine,
     invariant,
@@ -41,15 +41,12 @@ class SyncStoreWrapper:
         yield from asyncio.run(wrapper(gen))
 
     def get(self, key, prototype: BufferPrototype):
-        # the input args on this get should match get() from memory store
         obs = asyncio.run(self.store.get(key, prototype=prototype))
         return obs
 
-    def get_partial_values(self, key_ranges):
+    def get_partial_values(self, key_ranges, prototype: BufferPrototype):
         obs_partial = asyncio.run(
-            self.store.get_partial_values(
-                prototype=default_buffer_prototype(), key_ranges=key_ranges
-            )
+            self.store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
         )
         return obs_partial
 
@@ -89,6 +86,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         super().__init__()
         self.model: dict[str, bytes] = {}
         self.store = SyncStoreWrapper(MemoryStore(mode="w"))
+        self.prototype = default_buffer_prototype()
 
     @rule(key=paths, data=st.binary(min_size=0, max_size=100))
     def set(self, key: str, data: bytes) -> None:
@@ -99,27 +97,37 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.model[key] = data_buf
 
     @precondition(lambda self: len(self.model.keys()) > 0)
-    @rule(key=paths, data=st.data(), prototype=st.just(default_buffer_prototype()))
-    def get(self, key, data, prototype) -> None:
-        key = data.draw(st.sampled_from(sorted(self.model.keys())))
+    @rule(key=paths, data=st.data())
+    def get(self, key, data) -> None:
+        key = data.draw(
+            st.sampled_from(sorted(self.model.keys()))
+        )  # hypothesis wants to sample from sorted list
         model_value = self.model[key]
         note(f"(get) model value {model_value.to_bytes()}")
-        store_value = self.store.get(key, prototype)
+        store_value = self.store.get(key, self.prototype)
         note(f"(get) store value: {store_value.to_bytes()}")
         # to bytes here necessary because data_buf set to model in set()
         assert self.model[key].to_bytes() == (store_value.to_bytes())
 
-    # write test for invalid keys
-    # eg @rule() def get_invalid() <- key strategy that can have valid and invalid keys
-    # check that drawn key not in keys, then check that model/store returns None or raises error
-    # look at using assume, assume key not in model keys
+    @rule(key=paths, data=st.data())
+    def get_invalid_keys(self, key, data) -> None:
+        model_keys = list(self.model.keys())
+        # model_keys = ['/']
+        # key = '/'
+        note("(get_invalid)")
+
+        # note(f"(get invalid) key: {key}")
+        # note(f"(get invalid) val: {self.store.get(key, self.prototype)}")
+
+        assume(key not in model_keys)
+        assert self.store.get(key, self.prototype) is None
 
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
     def get_partial_values(self, data) -> None:
         key_range = data.draw(key_ranges(keys=st.sampled_from(sorted(self.model.keys()))))
         note(f"(get partial) {key_range=}")
-        obs_maybe = self.store.get_partial_values(key_range)
+        obs_maybe = self.store.get_partial_values(key_range, self.prototype)
         observed = []
 
         for obs in obs_maybe:
@@ -158,11 +166,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.store.clear()
         self.model.clear()
 
-        # checking that clear did happen, since i don't think this is specifically
-        # checked in invariants, though it should still work
-        assert (
-            len(self.model.keys()) == len(list(self.store.list())) == 0
-        )  # <- make sure this is tested in an invariant
+        assert len(self.model.keys()) == len(list(self.store.list())) == 0
 
     @rule()
     def empty(self) -> None:
@@ -175,7 +179,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     def exists(self, key) -> None:
         note("(exists)")
 
-        assert self.store.exists(key) == key in self.model
+        assert self.store.exists(key) == (key in self.model)
 
     @invariant()
     def check_paths_equal(self) -> None:
@@ -188,7 +192,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     def check_vals_equal(self) -> None:
         note("Checking values equal")
         for key, _val in self.model.items():
-            store_item = self.store.get(key).to_bytes()
+            store_item = self.store.get(key, self.prototype).to_bytes()
             assert self.model[key].to_bytes() == store_item
 
     @invariant()
