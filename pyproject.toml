@@ -139,7 +139,7 @@ run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "pytest --hypothesis-profile ci tests/v3/test_properties.py tests/v3/test_stateful*"
+run-hypothesis = "pytest --hypothesis-profile ci tests/v3/test_properties.py tests/v3/test_store/test_stateful*"
 list-env = "pip list"
 
 [tool.hatch.envs.docs]
