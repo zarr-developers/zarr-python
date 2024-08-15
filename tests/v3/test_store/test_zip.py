@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from zarr.abc.store import AccessMode
-from zarr.buffer import Buffer, default_buffer_prototype
+from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.store.zip import ZipStore
 from zarr.testing.store import StoreTests
 

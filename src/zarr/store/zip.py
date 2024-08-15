@@ -6,10 +6,13 @@ import time
 import zipfile
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype
+from zarr.core.buffer import Buffer, BufferPrototype
+
+if TYPE_CHECKING:
+    from typing_extensions import Self
 
 ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
@@ -23,6 +26,9 @@ class ZipStore(Store):
     path: Path
     compression: int
     allowZip64: bool
+
+    _zf: zipfile.ZipFile
+    _lock: threading.RLock
 
     def __init__(
         self,
@@ -39,15 +45,26 @@ class ZipStore(Store):
         assert isinstance(path, Path)
         self.path = path  # root?
 
+        self._zmode = mode
         self.compression = compression
         self.allowZip64 = allowZip64
 
-        self._lock = threading.RLock()  # TODO: evaluate if this is the lock we want or if we want an asyncio.Lock or something like that
+    @classmethod
+    async def open(cls, *args: Any, **kwargs: Any) -> Self:
+        store = cls(*args, **kwargs)
+        store._lock = threading.RLock()  # TODO: evaluate if this is the lock we want or if we want an asyncio.Lock or something like that
 
-        self._zf = zipfile.ZipFile(path, mode=mode, compression=compression, allowZip64=allowZip64)
+        store._zf = zipfile.ZipFile(
+            store.path,
+            mode=store._zmode,
+            compression=store.compression,
+            allowZip64=store.allowZip64,
+        )
+        store._is_open = True
+        return store
 
     def close(self) -> None:
-        self._is_open = False
+        super().close()
         with self._lock:
             self._zf.close()
 
@@ -61,9 +78,11 @@ class ZipStore(Store):
             )
 
     async def empty(self) -> bool:
-        async for _ in self.list():
-            return False
-        return True
+        with self._lock:
+            if self._zf.namelist():
+                return False
+            else:
+                return True
 
     def __str__(self) -> str:
         return f"zip://{self.path}"
