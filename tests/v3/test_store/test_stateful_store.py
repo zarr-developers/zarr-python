@@ -13,7 +13,6 @@ from hypothesis.stateful import (
 import zarr
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
-from zarr.core.sync import sync
 from zarr.store import MemoryStore
 from zarr.testing.strategies import key_ranges, paths
 
@@ -37,33 +36,29 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
         return sync(self.store.set(key, data_buffer))
 
     def list(self) -> list:
-        async def wrapper(gen):
-            return [i async for i in gen]
-
-        gen = self.store.list()
-        yield from sync(wrapper(gen))
+    return self._sync_iter(self.store.list())
 
     def get(self, key, prototype: BufferPrototype) -> zarr.core.buffer.Buffer:
-        obs = sync(self.store.get(key, prototype=prototype))
+        obs = self._sync(self.store.get(key, prototype=prototype))
         return obs
 
     def get_partial_values(self, key_ranges, prototype: BufferPrototype) -> zarr.core.buffer.Buffer:
-        obs_partial = sync(
+        obs_partial = self._sync(
             self.store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
         )
         return obs_partial
 
     def delete(self, path) -> None:
-        return sync(self.store.delete(path))
+        return self._sync(self.store.delete(path))
 
     def empty(self) -> bool:
-        return sync(self.store.empty())
+        return self._sync(self.store.empty())
 
     def clear(self) -> None:
-        return sync(self.store.clear())
+        return self._sync(self.store.clear())
 
     def exists(self, key) -> bool:
-        return sync(self.store.exists(key))
+        return self._sync(self.store.exists(key))
 
     def list_dir(self, prefix):
         raise NotImplementedError
