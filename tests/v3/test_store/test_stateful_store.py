@@ -32,23 +32,25 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
     def mode(self) -> AccessMode:
         return self.store.mode
 
-    def set(self, key, data_buffer) -> None:
-        return sync(self.store.set(key, data_buffer))
+    def set(self, key: str, data_buffer: zarr.core.buffer.Buffer) -> None:
+        return self._sync(self.store.set(key, data_buffer))
 
     def list(self) -> list:
-    return self._sync_iter(self.store.list())
+        return self._sync_iter(self.store.list())
 
-    def get(self, key, prototype: BufferPrototype) -> zarr.core.buffer.Buffer:
+    def get(self, key: str, prototype: BufferPrototype) -> zarr.core.buffer.Buffer:
         obs = self._sync(self.store.get(key, prototype=prototype))
         return obs
 
-    def get_partial_values(self, key_ranges, prototype: BufferPrototype) -> zarr.core.buffer.Buffer:
+    def get_partial_values(
+        self, key_ranges: list, prototype: BufferPrototype
+    ) -> zarr.core.buffer.Buffer:
         obs_partial = self._sync(
             self.store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
         )
         return obs_partial
 
-    def delete(self, path) -> None:
+    def delete(self, path: str) -> None:
         return self._sync(self.store.delete(path))
 
     def empty(self) -> bool:
@@ -116,7 +118,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(key=paths, data=st.data())
-    def get(self, key, data) -> None:
+    def get(self, key: str, data: bytes) -> None:
         key = data.draw(
             st.sampled_from(sorted(self.model.keys()))
         )  # hypothesis wants to sample from sorted list
@@ -126,14 +128,14 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         assert self.model[key].to_bytes() == (store_value.to_bytes())
 
     @rule(key=paths, data=st.data())
-    def get_invalid_keys(self, key, data) -> None:
+    def get_invalid_keys(self, key: str, data: bytes) -> None:
         note("(get_invalid)")
         assume(key not in self.model.keys())
         assert self.store.get(key, self.prototype) is None
 
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
-    def get_partial_values(self, data) -> None:
+    def get_partial_values(self, data: bytes) -> None:
         key_range = data.draw(key_ranges(keys=st.sampled_from(sorted(self.model.keys()))))
         note(f"(get partial) {key_range=}")
         obs_maybe = self.store.get_partial_values(key_range, self.prototype)
@@ -160,7 +162,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
-    def delete(self, data) -> None:
+    def delete(self, data: bytes) -> None:
         key = data.draw(st.sampled_from(sorted(self.model.keys())))
         note(f"(delete) Deleting {key=}")
 
@@ -184,7 +186,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         assert self.store.empty() == (not self.model)
 
     @rule(key=paths)
-    def exists(self, key) -> None:
+    def exists(self, key: str) -> None:
         note("(exists)")
 
         assert self.store.exists(key) == (key in self.model)
