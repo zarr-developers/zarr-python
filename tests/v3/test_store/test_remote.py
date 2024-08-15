@@ -10,9 +10,9 @@ from botocore.session import Session
 from s3fs import S3FileSystem
 from upath import UPath
 
-from zarr.buffer import Buffer, default_buffer_prototype
+from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.core.sync import _collect_aiterator, sync
 from zarr.store import RemoteStore
-from zarr.sync import _collect_aiterator, sync
 from zarr.testing.store import StoreTests
 
 s3fs = pytest.importorskip("s3fs")

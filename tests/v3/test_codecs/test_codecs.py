@@ -7,19 +7,18 @@ import numpy as np
 import pytest
 
 import zarr.v2
+from zarr import Array, AsyncArray, config
 from zarr.abc.codec import Codec
 from zarr.abc.store import Store
-from zarr.array import Array, AsyncArray
-from zarr.buffer import default_buffer_prototype
 from zarr.codecs import (
     BytesCodec,
     GzipCodec,
     ShardingCodec,
     TransposeCodec,
 )
-from zarr.common import MemoryOrder
-from zarr.config import config
-from zarr.indexing import Selection, morton_order_iter
+from zarr.core.buffer import default_buffer_prototype
+from zarr.core.common import MemoryOrder
+from zarr.core.indexing import Selection, morton_order_iter
 from zarr.store import StorePath
 from zarr.testing.utils import assert_bytes_equal
 
@@ -382,7 +381,7 @@ def test_invalid_metadata(store: Store) -> None:
             fill_value=0,
         )
     spath2 = StorePath(store, "invalid_endian")
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         Array.create(
             spath2,
             shape=(16, 16),

@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING
 
 from _pytest.compat import LEGACY_PATH
 
-from zarr import config
+from zarr import AsyncGroup, config
 from zarr.abc.store import Store
-from zarr.common import ChunkCoords, MemoryOrder, ZarrFormat
-from zarr.group import AsyncGroup
+from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
 
 if TYPE_CHECKING:
     from typing import Any, Literal
@@ -18,6 +17,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import pytest
+from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.remote import RemoteStore
@@ -119,3 +119,17 @@ def array_fixture(request: pytest.FixtureRequest) -> np.ndarray:
         .reshape(array_request.shape, order=array_request.order)
         .astype(array_request.dtype)
     )
+
+
+settings.register_profile(
+    "ci",
+    max_examples=1000,
+    deadline=None,
+    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
+)
+settings.register_profile(
+    "local",
+    max_examples=300,
+    suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
+    verbosity=Verbosity.verbose,
+)

@@ -29,10 +29,8 @@ dependencies = [
     'numcodecs>=0.10.0',
     'fsspec>2024',
     'crc32c',
-    'zstandard',
     'typing_extensions',
     'donfig',
-    'pytest'
 ]
 dynamic = [
   "version",
@@ -55,6 +53,22 @@ license = {text = "MIT License"}
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
+test = [
+    "coverage",
+    "pytest",
+    "pytest-cov",
+    "msgpack",
+    "lmdb",
+    "s3fs",
+    "pytest-asyncio",
+    "moto[s3]",
+    "flask-cors",
+    "flask",
+    "requests",
+    "mypy",
+    "hypothesis"
+]
+
 jupyter = [
     'notebook',
     'ipytree>=0.2.2',
@@ -70,8 +84,8 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
-    "msgpack",
-    "lmdb",
+    'msgpack',
+    'lmdb',
 ]
 extra = [
     'msgpack',
@@ -108,21 +122,7 @@ dependencies = [
     "numpy~={matrix:numpy}",
     "universal_pathlib"
 ]
-extra-dependencies = [
-    "coverage",
-    "pytest",
-    "pytest-cov",
-    "msgpack",
-    "lmdb",
-    "s3fs",
-    "pytest-asyncio",
-    "moto[s3]",
-    "flask-cors",
-    "flask",
-    "requests",
-    "mypy"
-]
-features = ["extra"]
+features = ["test", "extra"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.11", "3.12"]
@@ -139,6 +139,7 @@ run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
+run-hypothesis = "pytest --hypothesis-profile ci tests/v3/test_properties.py"
 list-env = "pip list"
 
 [tool.hatch.envs.docs]
@@ -181,9 +182,11 @@ extend-select = [
     "UP",  # pyupgrade
     "RSE",
     "RUF",
+    "TRY", # tryceratops
 ]
 ignore = [
     "RUF005",
+    "TRY003",
 ]
 
 [tool.mypy]

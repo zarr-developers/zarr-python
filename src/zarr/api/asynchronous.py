@@ -9,16 +9,44 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.abc.codec import Codec
-from zarr.array import Array, AsyncArray
-from zarr.buffer import NDArrayLike
-from zarr.chunk_key_encodings import ChunkKeyEncoding
-from zarr.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
-from zarr.group import AsyncGroup
-from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.array import Array, AsyncArray
+from zarr.core.buffer import NDArrayLike
+from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
+from zarr.core.group import AsyncGroup
+from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import (
     StoreLike,
     make_store_path,
 )
+
+__all__ = [
+    "consolidate_metadata",
+    "copy",
+    "copy_all",
+    "copy_store",
+    "load",
+    "open",
+    "open_consolidated",
+    "save",
+    "save_array",
+    "save_group",
+    "tree",
+    "array",
+    "group",
+    "open_group",
+    "create",
+    "empty",
+    "empty_like",
+    "full",
+    "full_like",
+    "ones",
+    "ones_like",
+    "open_array",
+    "open_like",
+    "zeros",
+    "zeros_like",
+]
 
 # TODO: this type could use some more thought, noqa to avoid "Variable "asynchronous.ArrayLike" is not valid as a type"
 ArrayLike = Union[AsyncArray | Array | npt.NDArray[Any]]  # noqa
@@ -66,7 +94,7 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
         if isinstance(a.metadata, ArrayV3Metadata):
             new["codecs"] = a.metadata.codecs
         else:
-            raise ValueError(f"Unsupported zarr format: {a.metadata.zarr_format}")
+            raise TypeError(f"Unsupported zarr format: {a.metadata.zarr_format}")
     else:
         # TODO: set default values compressor/codecs
         # to do this, we may need to evaluate if this is a v2 or v3 array
@@ -862,7 +890,7 @@ async def open_array(
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         if store_path.store.mode.create:
             return await create(
                 store=store_path,
@@ -871,7 +899,7 @@ async def open_array(
                 overwrite=store_path.store.mode.overwrite,
                 **kwargs,
             )
-        raise e
+        raise
 
 
 async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AsyncArray:

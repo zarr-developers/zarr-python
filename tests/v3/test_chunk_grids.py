@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from zarr.chunk_grids import _guess_chunks
+from zarr.core.chunk_grids import _guess_chunks
 
 
 @pytest.mark.parametrize(

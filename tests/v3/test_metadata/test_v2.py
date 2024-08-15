@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 import pytest
 
 from zarr.codecs import GzipCodec
-from zarr.metadata import ArrayV2Metadata, parse_zarr_format_v2
+from zarr.core.metadata import ArrayV2Metadata, parse_zarr_format_v2
 
 
 def test_parse_zarr_format_valid() -> None:

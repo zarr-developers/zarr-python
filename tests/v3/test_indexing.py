@@ -12,9 +12,9 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from zarr.abc.store import Store
-from zarr.buffer import BufferPrototype, NDBuffer
-from zarr.common import ChunkCoords
-from zarr.indexing import (
+from zarr.core.buffer import BufferPrototype, NDBuffer
+from zarr.core.common import ChunkCoords
+from zarr.core.indexing import (
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -22,7 +22,7 @@ from zarr.indexing import (
     replace_ellipsis,
 )
 from zarr.registry import get_ndbuffer_class
-from zarr.store.core import StorePath
+from zarr.store.common import StorePath
 from zarr.store.memory import MemoryStore
 
 

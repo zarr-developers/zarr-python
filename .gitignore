@@ -78,5 +78,8 @@ src/zarr/_version.py
 #test_sync*
 data/*
 src/fixture/
+fixture/
 
 .DS_Store
+tests/.hypothesis
+.hypothesis/
