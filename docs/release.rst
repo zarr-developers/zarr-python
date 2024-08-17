@@ -19,14 +19,18 @@ Release notes
    3.0 release.
 
 
-Unreleased
-----------
+.. _release_2.18.3:
+
+2.18.3
+------
 
 Maintenance
 ~~~~~~~~~~~
-
 * Removed support for Python 3.9.
   By :user:`David Stansby <dstansby>`
+  
+* Fix a regression when using orthogonal indexing with a scalar.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1931`
 
 
 .. _release_2.18.2:
