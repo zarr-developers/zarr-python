@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import MutableMapping
+from collections.abc import Mapping, MutableMapping
 from typing import TYPE_CHECKING
 
 from zarr.core.common import JSON
@@ -35,3 +35,9 @@ class Attributes(MutableMapping[str, JSON]):
 
     def __len__(self) -> int:
         return len(self._obj.metadata.attributes)
+
+    def put(self, d: Mapping[str, JSON]) -> None:
+        # Backwards compat for 2.x API.
+        new_attrs = dict(self._obj.metadata.attributes)
+        new_attrs.update(d)
+        self._obj = self._obj.update_attributes(new_attrs)

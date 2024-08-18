@@ -12,7 +12,7 @@ from typing_extensions import deprecated
 
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
-from zarr.abc.store import set_or_delete
+from zarr.abc.store import Store, set_or_delete
 from zarr.core.array import Array, AsyncArray
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
@@ -122,8 +122,12 @@ class AsyncGroup:
     metadata: GroupMetadata
     store_path: StorePath
 
+    @property
+    def store(self) -> Store:
+        return self.store_path.store
+
     @classmethod
-    async def create(
+    async def from_store(
         cls,
         store: StoreLike,
         *,
@@ -316,7 +320,7 @@ class AsyncGroup:
         attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
         attributes = attributes or {}
-        return await type(self).create(
+        return await type(self).from_store(
             self.store_path / path,
             attributes=attributes,
             exists_ok=exists_ok,
@@ -533,8 +537,24 @@ class AsyncGroup:
 class Group(SyncMixin):
     _async_group: AsyncGroup
 
+    @property
+    def store(self) -> Store:
+        # Backwards compatibility for 2.x
+        return self._async_group.store
+
+    @property
+    def read_only(self) -> bool:
+        # Backwards compatibility for 2.x
+        return self._async_group.store.mode.readonly
+
+    @property
+    def synchronizer(self) -> None:
+        # Backwards compatibility for 2.x
+        # Not implemented in 3.x yet.
+        return None
+
     @classmethod
-    def create(
+    def from_store(
         cls,
         store: StoreLike,
         *,
@@ -544,7 +564,7 @@ class Group(SyncMixin):
     ) -> Group:
         attributes = attributes or {}
         obj = sync(
-            AsyncGroup.create(
+            AsyncGroup.from_store(
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
@@ -664,6 +684,10 @@ class Group(SyncMixin):
 
     def create_group(self, name: str, **kwargs: Any) -> Group:
         return Group(self._sync(self._async_group.create_group(name, **kwargs)))
+
+    def create(self, *args: Any, **kwargs: Any) -> Array:
+        # Backwards compatibility for 2.x
+        return self.create_array(*args, **kwargs)
 
     def create_array(
         self,

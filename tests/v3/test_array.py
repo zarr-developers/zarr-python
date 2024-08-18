@@ -24,7 +24,7 @@ def test_array_creation_existing_node(
     Check that an existing array or group is handled as expected during array creation.
     """
     spath = StorePath(store)
-    group = Group.create(spath, zarr_format=zarr_format)
+    group = Group.from_store(spath, zarr_format=zarr_format)
     expected_exception: type[ContainsArrayError] | type[ContainsGroupError]
     if extant_node == "array":
         expected_exception = ContainsArrayError
@@ -75,7 +75,7 @@ def test_array_name_properties_no_group(
 def test_array_name_properties_with_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
-    root = Group.create(store=store, zarr_format=zarr_format)
+    root = Group.from_store(store=store, zarr_format=zarr_format)
     foo = root.create_array("foo", shape=(100,), chunks=(10,), dtype="i4")
     assert foo.path == "foo"
     assert foo.name == "/foo"
