@@ -98,7 +98,7 @@ def arrays(
     expected_attrs = {} if attributes is None else attributes
 
     array_path = path + ("/" if not path.endswith("/") else "") + name
-    root: Group = Group.from_store(store)
+    root = Group.from_store(store)
     fill_value_args: tuple[Any, ...] = tuple()
     if nparray.dtype.kind == "M":
         fill_value_args = ("ns",)
