@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, NotRequired, overload
 
 if TYPE_CHECKING:
     from typing import Self
@@ -27,7 +27,7 @@ from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.common import ZARR_JSON, parse_named_configuration, parse_shapelike
 from zarr.core.config import config
-from zarr.core.metadata.common import ArrayMetadata, parse_attributes
+from zarr.core.metadata.common import ArrayMetadata, ArrayMetadataDict, parse_attributes
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
 from zarr.registry import get_codec_class
 
@@ -179,6 +179,20 @@ def _replace_special_floats(obj: object) -> Any:
     return obj
 
 
+class ArrayV3MetadataDict(ArrayMetadataDict):
+    """A dictionary representing array metadata for Zarr version 3."""
+
+    chunk_grid: ChunkGrid
+    data_type: npt.DTypeLike | DataType
+    chunk_key_encoding: ChunkKeyEncoding
+    fill_value: Any
+    codecs: tuple[Codec, ...]
+    dimension_names: NotRequired[tuple[str, ...]]
+    zarr_format: Literal[3]
+    node_type: Literal["array"]
+    storage_transformers: tuple[dict[str, JSON], ...]
+
+
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(ArrayMetadata):
     shape: ChunkCoords
@@ -295,7 +309,7 @@ class ArrayV3Metadata(ArrayMetadata):
         return {ZARR_JSON: prototype.buffer.from_bytes(json.dumps(d, cls=V3JsonEncoder).encode())}
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
         # make a copy because we are modifying the dict
         _data = data.copy()
 
@@ -313,7 +327,7 @@ class ArrayV3Metadata(ArrayMetadata):
         _data["attributes"] = _data.pop("attributes", None)
         return cls(**_data, data_type=data_type)  # type: ignore[arg-type]
 
-    def to_dict(self) -> dict[str, JSON]:
+    def to_dict(self) -> ArrayV3MetadataDict:
         out_dict = super().to_dict()
 
         if not isinstance(out_dict, dict):
@@ -323,7 +337,8 @@ class ArrayV3Metadata(ArrayMetadata):
         # the metadata document
         if out_dict["dimension_names"] is None:
             out_dict.pop("dimension_names")
-        return out_dict
+
+        return cast(ArrayV3MetadataDict, out_dict)
 
     def update_shape(self, shape: ChunkCoords) -> Self:
         return replace(self, shape=shape)

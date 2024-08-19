@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from zarr.abc.codec import ArrayBytesCodec
+from zarr.abc.codec import ArrayBytesCodec, CodecConfigDict, CodecDict
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.registry import register_codec
@@ -30,6 +30,18 @@ class Endian(Enum):
 default_system_endian = Endian(sys.byteorder)
 
 
+class BytesCodecConfigDict(CodecConfigDict):
+    """A dictionary representing a bytes codec configuration."""
+
+    endian: Endian
+
+
+class BytesCodecDict(CodecDict[BytesCodecConfigDict]):
+    """A dictionary representing a bytes codec."""
+
+    ...
+
+
 @dataclass(frozen=True)
 class BytesCodec(ArrayBytesCodec):
     is_fixed_size = True
@@ -49,11 +61,12 @@ class BytesCodec(ArrayBytesCodec):
         configuration_parsed = configuration_parsed or {}
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> dict[str, JSON]:
-        if self.endian is None:
-            return {"name": "bytes"}
-        else:
-            return {"name": "bytes", "configuration": {"endian": self.endian.value}}
+    def to_dict(self) -> BytesCodecDict:
+        out_dict: BytesCodecDict = {"name": "bytes"}
+        if self.endian is not None:
+            out_dict["configuration"] = {"endian": self.endian.value}
+
+        return out_dict
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if array_spec.dtype.itemsize == 0:

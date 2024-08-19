@@ -7,7 +7,7 @@ import numpy as np
 import typing_extensions
 from crc32c import crc32c
 
-from zarr.abc.codec import BytesBytesCodec
+from zarr.abc.codec import BytesBytesCodec, CodecConfigDict, CodecDict
 from zarr.core.common import JSON, parse_named_configuration
 from zarr.registry import register_codec
 
@@ -16,6 +16,12 @@ if TYPE_CHECKING:
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer
+
+
+class Crc32cCodecDict(CodecDict[CodecConfigDict]):
+    """A dictionary representing a CRC32C codec."""
+
+    ...
 
 
 @dataclass(frozen=True)
@@ -27,8 +33,9 @@ class Crc32cCodec(BytesBytesCodec):
         parse_named_configuration(data, "crc32c", require_configuration=False)
         return cls()
 
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": "crc32c"}
+    def to_dict(self) -> Crc32cCodecDict:
+        out_dict = {"name": "crc32c"}
+        return cast(Crc32cCodecDict, out_dict)
 
     async def _decode_single(
         self,

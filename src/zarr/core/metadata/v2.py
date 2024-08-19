@@ -6,7 +6,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from typing import Any, Literal, Self
+    from typing import Any, Literal, NotRequired, Self
 
     import numpy.typing as npt
 
@@ -24,7 +24,20 @@ from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
-from zarr.core.metadata.common import ArrayMetadata, parse_attributes
+from zarr.core.metadata.common import ArrayMetadata, ArrayMetadataDict, parse_attributes
+
+
+class ArrayV2MetadataDict(ArrayMetadataDict):
+    """A dictionary representing array metadata for Zarr version 2."""
+
+    chunks: RegularChunkGrid
+    dtype: np.dtype[Any]
+    fill_value: NotRequired[None | int | float | str | bytes]
+    order: Literal["C", "F"]
+    filters: NotRequired[Iterable[numcodecs.abc.Codec | dict[str, JSON]]]
+    dimension_separator: NotRequired[Literal[".", "/"]]
+    compressor: NotRequired[numcodecs.abc.Codec]
+    zarr_format: Literal[2]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -161,7 +174,7 @@ class ArrayV2Metadata(ArrayMetadata):
 
         return cls(**_data)
 
-    def to_dict(self) -> dict[str, JSON]:
+    def to_dict(self) -> ArrayV2MetadataDict:
         zarray_dict = super().to_dict()
 
         if self.dtype.kind in "SV" and self.fill_value is not None:
@@ -177,7 +190,7 @@ class ArrayV2Metadata(ArrayMetadata):
         _ = zarray_dict.pop("data_type")
         zarray_dict["dtype"] = self.data_type.str
 
-        return zarray_dict
+        return cast(ArrayV2MetadataDict, zarray_dict)
 
     def get_chunk_spec(
         self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype

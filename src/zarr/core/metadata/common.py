@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Any, Literal, Self
+    from typing import Any, Literal, NotRequired, Self
 
     import numpy as np
 
@@ -14,8 +14,17 @@ if TYPE_CHECKING:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import TypedDict
 
 from zarr.abc.metadata import Metadata
+
+
+# TODO: Revisit Optional vs ... | None
+class ArrayMetadataDict(TypedDict):
+    """A dictionary representing array metadata common to all Zarr versions."""
+
+    shape: ChunkCoords
+    attributes: NotRequired[dict[str, JSON]]  # TODO: Double-check if NotRequired is appropriate
 
 
 @dataclass(frozen=True, kw_only=True)

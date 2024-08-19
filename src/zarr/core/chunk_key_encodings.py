@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
@@ -18,6 +18,13 @@ def parse_separator(data: JSON) -> SeparatorLiteral:
     if data not in (".", "/"):
         raise ValueError(f"Expected an '.' or '/' separator. Got {data} instead.")
     return cast(SeparatorLiteral, data)
+
+
+class ChunkKeyEncodingDict(TypedDict):
+    """A dictionary representing a chunk key encoding configuration."""
+
+    name: str
+    configuration: dict[Literal["separator"], SeparatorLiteral]
 
 
 @dataclass(frozen=True)
@@ -50,8 +57,9 @@ class ChunkKeyEncoding(Metadata):
         msg = f"Unknown chunk key encoding. Got {name_parsed}, expected one of ('v2', 'default')."
         raise ValueError(msg)
 
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": self.name, "configuration": {"separator": self.separator}}
+    def to_dict(self) -> ChunkKeyEncodingDict:
+        out_dict = {"name": self.name, "configuration": {"separator": self.separator}}
+        return cast(ChunkKeyEncodingDict, out_dict)
 
     @abstractmethod
     def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
