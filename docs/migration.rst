@@ -18,7 +18,8 @@ Zarr-Python 3 represents a major refactor of the Zarr-Python codebase. Some of t
 
 Though these goals necessitated some breaking changes to the API (hence the major version update), we have tried to maintain
 backwards compatibility in the most widely used parts of the API including the `Array` and `Group` classes and the top-level
-API (e.g. `zarr.open_array` and `zarr.open_group`).
+API (e.g. `zarr.open_array` and `zarr.open_group`). It is worth noting that we significantly evolved the internal data model,
+moving away from a model that was tightly coupled to the v2 specification, and to a more generic representation of Zarr objects.
 
 Getting ready for 3.0
 ---------------------
@@ -44,11 +45,13 @@ Ahead of the 3.0 release, we suggest projects that depend on Zarr-Python take th
     - ``zarr.sync``
     - ``zarr.types``
     - ``zarr.util``
+    - ``zarr.n5``
 
 Continue using Zarr-Python 2
 ----------------------------
 
 Zarr-Python 2.x is still available, though we recommend migrating to Zarr-Python 3 for its improvements and new features.
+Security and bug fixes will be made to the 2.x series for at least 6 months following the first Zarr-Python 3 release.
 
 If you need to use the latest Zarr-Python 2 release, you can install it with:
 
@@ -63,12 +66,12 @@ The following sections provide details on the most important changes in Zarr-Pyt
 Changes to the Array class
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-TODO
+1. Disallow direct construction
 
 Changes to the Group class
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-TODO
+1. Disallow direct construction
 
 Changes to the Store class
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
