@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
-from zarr.abc.codec import ArrayArrayCodec
+from zarr.abc.codec import ArrayArrayCodec, CodecConfigDict, CodecDict
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.chunk_grids import ChunkGrid
@@ -27,6 +27,18 @@ def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
     return tuple(cast(Iterable[int], data))
 
 
+class TransposeCodecConfigDict(CodecConfigDict):
+    """A dictionary representing a transpose codec configuration."""
+
+    order: list[int]
+
+
+class TransposeCodecDict(CodecDict[TransposeCodecConfigDict]):
+    """A dictionary representing a transpose codec."""
+
+    ...
+
+
 @dataclass(frozen=True)
 class TransposeCodec(ArrayArrayCodec):
     is_fixed_size = True
@@ -43,8 +55,9 @@ class TransposeCodec(ArrayArrayCodec):
         _, configuration_parsed = parse_named_configuration(data, "transpose")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": "transpose", "configuration": {"order": list(self.order)}}
+    def to_dict(self) -> TransposeCodecDict:
+        out_dict = {"name": "transpose", "configuration": {"order": list(self.order)}}
+        return cast(TransposeCodecDict, out_dict)
 
     def validate(self, shape: tuple[int, ...], dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
         if len(self.order) != len(shape):

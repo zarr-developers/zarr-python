@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Awaitable, Callable, Iterable
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypedDict, TypeVar
 
 import numpy as np
+from typing_extensions import NotRequired
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import ByteGetter, ByteSetter
@@ -168,6 +169,22 @@ class BytesBytesCodec(_Codec[Buffer, Buffer]):
 
 
 Codec = ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
+
+
+class CodecConfigDict(TypedDict):
+    """A dictionary representing a codec configuration."""
+
+    ...
+
+
+T = TypeVar("T", bound=CodecConfigDict)
+
+
+class CodecDict(TypedDict, Generic[T]):
+    """A generic dictionary representing a codec."""
+
+    name: str
+    configuration: NotRequired[T]
 
 
 class ArrayBytesCodecPartialDecodeMixin:

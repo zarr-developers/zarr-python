@@ -5,10 +5,11 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, Literal, TypedDict, cast, overload
 
 import numpy as np
 import numpy.typing as npt
+from typing_extensions import NotRequired
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
 from zarr.abc.metadata import Metadata
@@ -110,6 +111,40 @@ class DataType(Enum):
             "<f8": "float64",
         }
         return DataType[dtype_to_data_type[dtype.str]]
+
+
+# TODO: Revisit Optional vs ... | None
+class ArrayMetadataDict(TypedDict):
+    """A dictionary representing array metadata common to all Zarr versions."""
+
+    shape: ChunkCoords
+    attributes: NotRequired[dict[str, JSON]]  # TODO: Double-check if NotRequired is appropriate
+
+
+class ArrayV3MetadataDict(ArrayMetadataDict):
+    """A dictionary representing array metadata for Zarr version 3."""
+
+    chunk_grid: ChunkGrid
+    data_type: np.dtype[Any]
+    chunk_key_encoding: ChunkKeyEncoding
+    fill_value: Any
+    codecs: tuple[Codec, ...]
+    dimension_names: NotRequired[tuple[str, ...]]
+    zarr_format: Literal[3]
+    node_type: Literal["array"]
+
+
+class ArrayV2MetadataDict(ArrayMetadataDict):
+    """A dictionary representing array metadata for Zarr version 2."""
+
+    chunks: RegularChunkGrid
+    dtype: np.dtype[Any]
+    fill_value: None | int | float
+    order: Literal["C", "F"]
+    filters: NotRequired[list[dict[str, JSON]]]
+    dimension_separator: NotRequired[Literal[".", "/"]]
+    compressor: NotRequired[dict[str, JSON]]
+    zarr_format: Literal[2]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -296,7 +331,7 @@ class ArrayV3Metadata(ArrayMetadata):
         _data["attributes"] = _data.pop("attributes", None)
         return cls(**_data)  # type: ignore[arg-type]
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> ArrayV3MetadataDict:
         out_dict = super().to_dict()
 
         if not isinstance(out_dict, dict):
@@ -306,7 +341,8 @@ class ArrayV3Metadata(ArrayMetadata):
         # the metadata document
         if out_dict["dimension_names"] is None:
             out_dict.pop("dimension_names")
-        return out_dict
+
+        return cast(ArrayV3MetadataDict, out_dict)
 
     def update_shape(self, shape: ChunkCoords) -> Self:
         return replace(self, shape=shape)
@@ -416,7 +452,7 @@ class ArrayV2Metadata(ArrayMetadata):
         _ = parse_zarr_format_v2(_data.pop("zarr_format"))
         return cls(**_data)
 
-    def to_dict(self) -> JSON:
+    def to_dict(self) -> ArrayV2MetadataDict:
         zarray_dict = super().to_dict()
 
         assert isinstance(zarray_dict, dict)
@@ -427,7 +463,7 @@ class ArrayV2Metadata(ArrayMetadata):
         _ = zarray_dict.pop("data_type")
         zarray_dict["dtype"] = self.data_type.str
 
-        return zarray_dict
+        return cast(ArrayV2MetadataDict, zarray_dict)
 
     def get_chunk_spec(
         self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype

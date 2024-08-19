@@ -7,7 +7,7 @@ from abc import abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Generic, TypedDict, TypeVar, cast
 
 import numpy as np
 
@@ -94,6 +94,22 @@ def _guess_chunks(
     return tuple(int(x) for x in chunks)
 
 
+class ChunkGridConfigDict(TypedDict):
+    """A dictionary representing a chunk grid configuration."""
+
+    chunk_shape: tuple[int, ...]
+
+
+T = TypeVar("T", bound=ChunkGridConfigDict)
+
+
+class ChunkGridDict(TypedDict, Generic[T]):
+    """A generic dictionary representing a chunk grid."""
+
+    name: str
+    configuration: T
+
+
 @dataclass(frozen=True)
 class ChunkGrid(Metadata):
     @classmethod
@@ -115,6 +131,12 @@ class ChunkGrid(Metadata):
         pass
 
 
+class RegularChunkGridDict(ChunkGridDict[ChunkGridConfigDict]):
+    """A dictionary representing a regular chunk grid."""
+
+    ...
+
+
 @dataclass(frozen=True)
 class RegularChunkGrid(ChunkGrid):
     chunk_shape: ChunkCoords
@@ -130,8 +152,9 @@ class RegularChunkGrid(ChunkGrid):
 
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
+    def to_dict(self) -> RegularChunkGridDict:
+        out_dict = {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
+        return cast(RegularChunkGridDict, out_dict)
 
     def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
         return itertools.product(

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from numcodecs.gzip import GZip
 
-from zarr.abc.codec import BytesBytesCodec
+from zarr.abc.codec import BytesBytesCodec, CodecConfigDict, CodecDict
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import Buffer, as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_named_configuration, to_thread
@@ -13,6 +13,18 @@ from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+
+class GzipCodecConfigDict(CodecConfigDict):
+    """A dictionary representing a gzip codec configuration."""
+
+    level: int
+
+
+class GzipCodecDict(CodecDict[GzipCodecConfigDict]):
+    """A dictionary representing a gzip codec."""
+
+    ...
 
 
 def parse_gzip_level(data: JSON) -> int:
@@ -41,8 +53,9 @@ class GzipCodec(BytesBytesCodec):
         _, configuration_parsed = parse_named_configuration(data, "gzip")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": "gzip", "configuration": {"level": self.level}}
+    def to_dict(self) -> GzipCodecDict:
+        out_dict = {"name": "gzip", "configuration": {"level": self.level}}
+        return cast(GzipCodecDict, out_dict)
 
     async def _decode_single(
         self,

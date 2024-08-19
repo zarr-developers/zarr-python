@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import lru_cache
 from operator import itemgetter
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -15,6 +15,8 @@ from zarr.abc.codec import (
     ArrayBytesCodecPartialDecodeMixin,
     ArrayBytesCodecPartialEncodeMixin,
     Codec,
+    CodecConfigDict,
+    CodecDict,
     CodecPipeline,
 )
 from zarr.abc.store import ByteGetter, ByteSetter
@@ -312,6 +314,21 @@ class _MergingShardBuilder(ShardMutableMapping):
         return await shard_builder.finalize(index_location, index_encoder)
 
 
+class ShardingCodecConfigDict(CodecConfigDict):
+    """A dictionary representing a sharding codec configuration."""
+
+    chunk_shape: list[int]  # TODO: Double check this
+    codecs: list[CodecDict[Any]]
+    index_codecs: list[CodecDict[Any]]
+    index_location: ShardingCodecIndexLocation
+
+
+class ShardingCodecDict(CodecDict[ShardingCodecConfigDict]):
+    """A dictionary representing a sharding codec."""
+
+    ...
+
+
 @dataclass(frozen=True)
 class ShardingCodec(
     ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
@@ -369,8 +386,8 @@ class ShardingCodec(
     def codec_pipeline(self) -> CodecPipeline:
         return get_pipeline_class().from_list(self.codecs)
 
-    def to_dict(self) -> dict[str, JSON]:
-        return {
+    def to_dict(self) -> ShardingCodecDict:
+        out_dict = {
             "name": "sharding_indexed",
             "configuration": {
                 "chunk_shape": list(self.chunk_shape),
@@ -379,6 +396,8 @@ class ShardingCodec(
                 "index_location": self.index_location,
             },
         }
+
+        return cast(ShardingCodecDict, out_dict)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         shard_spec = self._get_chunk_spec(array_spec)
