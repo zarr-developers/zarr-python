@@ -122,10 +122,6 @@ class AsyncGroup:
     metadata: GroupMetadata
     store_path: StorePath
 
-    @property
-    def store(self) -> Store:
-        return self.store_path.store
-
     @classmethod
     async def from_store(
         cls,
@@ -312,6 +308,21 @@ class AsyncGroup:
     @property
     def info(self) -> None:
         raise NotImplementedError
+
+    @property
+    def store(self) -> Store:
+        return self.store_path.store
+
+    @property
+    def read_only(self) -> bool:
+        # Backwards compatibility for 2.x
+        return self.store_path.store.mode.readonly
+
+    @property
+    def synchronizer(self) -> None:
+        # Backwards compatibility for 2.x
+        # Not implemented in 3.x yet.
+        return None
 
     async def create_group(
         self,
@@ -537,22 +548,6 @@ class AsyncGroup:
 class Group(SyncMixin):
     _async_group: AsyncGroup
 
-    @property
-    def store(self) -> Store:
-        # Backwards compatibility for 2.x
-        return self._async_group.store
-
-    @property
-    def read_only(self) -> bool:
-        # Backwards compatibility for 2.x
-        return self._async_group.store.mode.readonly
-
-    @property
-    def synchronizer(self) -> None:
-        # Backwards compatibility for 2.x
-        # Not implemented in 3.x yet.
-        return None
-
     @classmethod
     def from_store(
         cls,
@@ -643,6 +638,22 @@ class Group(SyncMixin):
     @property
     def info(self) -> None:
         raise NotImplementedError
+
+    @property
+    def store(self) -> Store:
+        # Backwards compatibility for 2.x
+        return self._async_group.store
+
+    @property
+    def read_only(self) -> bool:
+        # Backwards compatibility for 2.x
+        return self._async_group.read_only
+
+    @property
+    def synchronizer(self) -> None:
+        # Backwards compatibility for 2.x
+        # Not implemented in 3.x yet.
+        return self._async_group.synchronizer
 
     def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
         self._sync(self._async_group.update_attributes(new_attributes))
