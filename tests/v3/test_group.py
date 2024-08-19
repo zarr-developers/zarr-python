@@ -155,7 +155,9 @@ def test_group_create(
     Test that `Group.from_store` works as expected.
     """
     attributes = {"foo": 100}
-    group = Group.from_store(store, attributes=attributes, zarr_format=zarr_format, exists_ok=exists_ok)
+    group = Group.from_store(
+        store, attributes=attributes, zarr_format=zarr_format, exists_ok=exists_ok
+    )
 
     assert group.attrs == attributes
 
