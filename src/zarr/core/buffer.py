@@ -262,9 +262,10 @@ class Buffer:
         )
 
     def __eq__(self, other: object) -> bool:
-        # Note: this was needed to support comparing MemoryStore instances with Buffer values in them
-        # if/when we stopped putting buffers in memory stores, this can be removed
-        return isinstance(other, type(self)) and self.to_bytes() == other.to_bytes()
+        # Another Buffer class can override this to choose a more efficient path
+        return isinstance(other, Buffer) and np.array_equal(
+            self.as_numpy_array(), other.as_numpy_array()
+        )
 
 
 class NDBuffer:
