@@ -559,6 +559,10 @@ class BoolArrayDimIndexer:
 
 
 class Order(Enum):
+    """
+    Enum for indexing order.
+    """
+
     UNKNOWN = 0
     INCREASING = 1
     DECREASING = 2
