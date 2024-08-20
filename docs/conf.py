@@ -59,7 +59,7 @@ autoapi_dirs = ['../src/zarr']
 autoapi_add_toctree_entry = False
 autoapi_generate_api_docs = True
 autoapi_member_order = "groupwise"
-autoapi_root = "api"
+autoapi_root = "_autoapi"
 autoapi_keep_files = True
 
 
