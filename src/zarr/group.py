@@ -8,13 +8,14 @@ from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy.typing as npt
+from typing_extensions import deprecated
 
 from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
 from zarr.array import Array, AsyncArray
 from zarr.attributes import Attributes
-from zarr.buffer import Buffer, default_buffer_prototype
+from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
 from zarr.chunk_key_encodings import ChunkKeyEncoding
 from zarr.common import (
     JSON,
@@ -27,11 +28,12 @@ from zarr.common import (
 )
 from zarr.config import config
 from zarr.store import StoreLike, StorePath, make_store_path
+from zarr.store.core import ensure_no_existing_node
 from zarr.sync import SyncMixin, sync
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
-    from typing import Any, Literal
+    from typing import Any
 
 logger = logging.getLogger("zarr.group")
 
@@ -79,20 +81,20 @@ class GroupMetadata(Metadata):
     zarr_format: ZarrFormat = 3
     node_type: Literal["group"] = field(default="group", init=False)
 
-    def to_buffer_dict(self) -> dict[str, Buffer]:
+    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         json_indent = config.get("json_indent")
         if self.zarr_format == 3:
             return {
-                ZARR_JSON: default_buffer_prototype.buffer.from_bytes(
+                ZARR_JSON: prototype.buffer.from_bytes(
                     json.dumps(self.to_dict(), indent=json_indent).encode()
                 )
             }
         else:
             return {
-                ZGROUP_JSON: default_buffer_prototype.buffer.from_bytes(
+                ZGROUP_JSON: prototype.buffer.from_bytes(
                     json.dumps({"zarr_format": self.zarr_format}, indent=json_indent).encode()
                 ),
-                ZATTRS_JSON: default_buffer_prototype.buffer.from_bytes(
+                ZATTRS_JSON: prototype.buffer.from_bytes(
                     json.dumps(self.attributes, indent=json_indent).encode()
                 ),
             }
@@ -123,16 +125,14 @@ class AsyncGroup:
         cls,
         store: StoreLike,
         *,
-        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
+        attributes: dict[str, Any] | None = None,
         exists_ok: bool = False,
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
         if not exists_ok:
-            if zarr_format == 3:
-                assert not await (store_path / ZARR_JSON).exists()
-            elif zarr_format == 2:
-                assert not await (store_path / ZGROUP_JSON).exists()
+            await ensure_no_existing_node(store_path, zarr_format=zarr_format)
+        attributes = attributes or {}
         group = cls(
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
@@ -146,7 +146,7 @@ class AsyncGroup:
         store: StoreLike,
         zarr_format: Literal[2, 3, None] = 3,
     ) -> AsyncGroup:
-        store_path = make_store_path(store)
+        store_path = await make_store_path(store)
 
         if zarr_format == 2:
             zgroup_bytes, zattrs_bytes = await asyncio.gather(
@@ -169,7 +169,7 @@ class AsyncGroup:
                 # alternatively, we could warn and favor v3
                 raise ValueError("Both zarr.json and .zgroup objects exist")
             if zarr_json_bytes is None and zgroup_bytes is None:
-                raise KeyError(store_path)  # filenotfounderror?
+                raise FileNotFoundError(store_path)
             # set zarr_format based on which keys were found
             if zarr_json_bytes is not None:
                 zarr_format = 3
@@ -274,7 +274,7 @@ class AsyncGroup:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
     async def _save_metadata(self) -> None:
-        to_save = self.metadata.to_buffer_dict()
+        to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 
@@ -311,8 +311,9 @@ class AsyncGroup:
         self,
         path: str,
         exists_ok: bool = False,
-        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
+        attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
+        attributes = attributes or {}
         return await type(self).create(
             self.store_path / path,
             attributes=attributes,
@@ -345,7 +346,49 @@ class AsyncGroup:
         compressor: dict[str, JSON] | None = None,
         # runtime
         exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
     ) -> AsyncArray:
+        """
+        Create a Zarr array within this AsyncGroup.
+        This method lightly wraps AsyncArray.create.
+
+        Parameters
+        ----------
+        path: str
+            The name of the array.
+        shape: tuple[int, ...]
+            The shape of the array.
+        dtype: np.DtypeLike = float64
+            The data type of the array.
+        chunk_shape: tuple[int, ...] | None = None
+            The shape of the chunks of the array. V3 only.
+        chunk_key_encoding: ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
+            A specification of how the chunk keys are represented in storage.
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None
+            An iterable of Codec or dict serializations thereof. The elements of
+            this collection specify the transformation from array values to stored bytes.
+        dimension_names: Iterable[str] | None = None
+            The names of the dimensions of the array. V3 only.
+        chunks: ChunkCoords | None = None
+            The shape of the chunks of the array. V2 only.
+        dimension_separator: Literal[".", "/"] | None = None
+            The delimiter used for the chunk keys.
+        order: Literal["C", "F"] | None = None
+            The memory order of the array.
+        filters: list[dict[str, JSON]] | None = None
+            Filters for the array.
+        compressor: dict[str, JSON] | None = None
+            The compressor for the array.
+        exists_ok: bool = False
+            If True, a pre-existing array or group at the path of this array will
+            be overwritten. If False, the presence of a pre-existing array or group is
+            an error.
+
+        Returns
+        -------
+        AsyncArray
+
+        """
         return await AsyncArray.create(
             self.store_path / path,
             shape=shape,
@@ -363,6 +406,7 @@ class AsyncGroup:
             compressor=compressor,
             exists_ok=exists_ok,
             zarr_format=self.metadata.zarr_format,
+            data=data,
         )
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
@@ -405,6 +449,7 @@ class AsyncGroup:
         # would be nice to make these special keys accessible programmatically,
         # and scoped to specific zarr versions
         _skip_keys = ("zarr.json", ".zgroup", ".zattrs")
+
         async for key in self.store_path.store.list_dir(self.store_path.path):
             if key in _skip_keys:
                 continue
@@ -490,10 +535,11 @@ class Group(SyncMixin):
         cls,
         store: StoreLike,
         *,
-        attributes: dict[str, Any] = {},  # noqa: B006, FIXME
+        attributes: dict[str, Any] | None = None,
         zarr_format: ZarrFormat = 3,
         exists_ok: bool = False,
     ) -> Group:
+        attributes = attributes or {}
         obj = sync(
             AsyncGroup.create(
                 store,
@@ -537,7 +583,7 @@ class Group(SyncMixin):
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
-        to_save = new_metadata.to_buffer_dict()
+        to_save = new_metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)
 
@@ -616,8 +662,99 @@ class Group(SyncMixin):
     def create_group(self, name: str, **kwargs: Any) -> Group:
         return Group(self._sync(self._async_group.create_group(name, **kwargs)))
 
-    def create_array(self, name: str, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.create_array(name, **kwargs)))
+    def create_array(
+        self,
+        name: str,
+        *,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike = "float64",
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ChunkCoords | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
+    ) -> Array:
+        """
+        Create a zarr array within this AsyncGroup.
+        This method lightly wraps AsyncArray.create.
+
+        Parameters
+        ----------
+        name: str
+            The name of the array.
+        shape: tuple[int, ...]
+            The shape of the array.
+        dtype: np.DtypeLike = float64
+            The data type of the array.
+        chunk_shape: tuple[int, ...] | None = None
+            The shape of the chunks of the array. V3 only.
+        chunk_key_encoding: ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
+            A specification of how the chunk keys are represented in storage.
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None
+            An iterable of Codec or dict serializations thereof. The elements of this collection
+            specify the transformation from array values to stored bytes.
+        dimension_names: Iterable[str] | None = None
+            The names of the dimensions of the array. V3 only.
+        chunks: ChunkCoords | None = None
+            The shape of the chunks of the array. V2 only.
+        dimension_separator: Literal[".", "/"] | None = None
+            The delimiter used for the chunk keys.
+        order: Literal["C", "F"] | None = None
+            The memory order of the array.
+        filters: list[dict[str, JSON]] | None = None
+            Filters for the array.
+        compressor: dict[str, JSON] | None = None
+            The compressor for the array.
+        exists_ok: bool = False
+            If True, a pre-existing array or group at the path of this array will
+            be overwritten. If False, the presence of a pre-existing array or group is
+            an error.
+        data: npt.ArrayLike | None = None
+            Array data to initialize the array with.
+
+        Returns
+        -------
+        Array
+
+        """
+        return Array(
+            self._sync(
+                self._async_group.create_array(
+                    path=name,
+                    shape=shape,
+                    dtype=dtype,
+                    fill_value=fill_value,
+                    attributes=attributes,
+                    chunk_shape=chunk_shape,
+                    chunk_key_encoding=chunk_key_encoding,
+                    codecs=codecs,
+                    dimension_names=dimension_names,
+                    chunks=chunks,
+                    dimension_separator=dimension_separator,
+                    order=order,
+                    filters=filters,
+                    compressor=compressor,
+                    exists_ok=exists_ok,
+                    data=data,
+                )
+            )
+        )
 
     def empty(self, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty(**kwargs)))
@@ -645,3 +782,99 @@ class Group(SyncMixin):
 
     def move(self, source: str, dest: str) -> None:
         return self._sync(self._async_group.move(source, dest))
+
+    @deprecated("Use Group.create_array instead.")
+    def array(
+        self,
+        name: str,
+        *,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike = "float64",
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ChunkCoords | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
+    ) -> Array:
+        """
+        Create a zarr array within this AsyncGroup.
+        This method lightly wraps `AsyncArray.create`.
+
+        Parameters
+        ----------
+        name: str
+            The name of the array.
+        shape: tuple[int, ...]
+            The shape of the array.
+        dtype: np.DtypeLike = float64
+            The data type of the array.
+        chunk_shape: tuple[int, ...] | None = None
+            The shape of the chunks of the array. V3 only.
+        chunk_key_encoding: ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
+            A specification of how the chunk keys are represented in storage.
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None
+            An iterable of Codec or dict serializations thereof. The elements of
+            this collection specify the transformation from array values to stored bytes.
+        dimension_names: Iterable[str] | None = None
+            The names of the dimensions of the array. V3 only.
+        chunks: ChunkCoords | None = None
+            The shape of the chunks of the array. V2 only.
+        dimension_separator: Literal[".", "/"] | None = None
+            The delimiter used for the chunk keys.
+        order: Literal["C", "F"] | None = None
+            The memory order of the array.
+        filters: list[dict[str, JSON]] | None = None
+            Filters for the array.
+        compressor: dict[str, JSON] | None = None
+            The compressor for the array.
+        exists_ok: bool = False
+            If True, a pre-existing array or group at the path of this array will
+            be overwritten. If False, the presence of a pre-existing array or group is
+            an error.
+        data: npt.ArrayLike | None = None
+            Array data to initialize the array with.
+
+        Returns
+        -------
+
+        Array
+
+        """
+        return Array(
+            self._sync(
+                self._async_group.create_array(
+                    path=name,
+                    shape=shape,
+                    dtype=dtype,
+                    fill_value=fill_value,
+                    attributes=attributes,
+                    chunk_shape=chunk_shape,
+                    chunk_key_encoding=chunk_key_encoding,
+                    codecs=codecs,
+                    dimension_names=dimension_names,
+                    chunks=chunks,
+                    dimension_separator=dimension_separator,
+                    order=order,
+                    filters=filters,
+                    compressor=compressor,
+                    exists_ok=exists_ok,
+                    data=data,
+                )
+            )
+        )

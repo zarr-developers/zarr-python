@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
+from pytest_asyncio import fixture
 
 import zarr
 from zarr import Array, Group
@@ -29,7 +30,7 @@ def test_create_array(memory_store: Store) -> None:
     assert z.chunks == (40,)
 
 
-def test_open_array(memory_store: Store) -> None:
+async def test_open_array(memory_store: Store) -> None:
     store = memory_store
 
     # open array, create if doesn't exist
@@ -44,18 +45,19 @@ def test_open_array(memory_store: Store) -> None:
     assert z.shape == (200,)
 
     # open array, read-only
-    ro_store = type(store)(store_dict=store._store_dict, mode="r")
+    store_cls = type(store)
+    ro_store = await store_cls.open(store_dict=store._store_dict, mode="r")
     z = open(store=ro_store)
     assert isinstance(z, Array)
     assert z.shape == (200,)
     assert z.read_only
 
     # path not found
-    with pytest.raises(ValueError):
+    with pytest.raises(FileNotFoundError):
         open(store="doesnotexist", mode="r")
 
 
-def test_open_group(memory_store: Store) -> None:
+async def test_open_group(memory_store: Store) -> None:
     store = memory_store
 
     # open group, create if doesn't exist
@@ -70,7 +72,8 @@ def test_open_group(memory_store: Store) -> None:
     # assert "foo" not in g
 
     # open group, read-only
-    ro_store = type(store)(store_dict=store._store_dict, mode="r")
+    store_cls = type(store)
+    ro_store = await store_cls.open(store_dict=store._store_dict, mode="r")
     g = open_group(store=ro_store)
     assert isinstance(g, Group)
     # assert g.read_only
@@ -86,6 +89,55 @@ def test_save_errors() -> None:
     with pytest.raises(ValueError):
         # no arrays provided
         save("data/group.zarr")
+
+
+@fixture
+def tmppath(tmpdir):
+    return str(tmpdir / "example.zarr")
+
+
+def test_open_with_mode_r(tmppath) -> None:
+    # 'r' means read only (must exist)
+    with pytest.raises(FileNotFoundError):
+        zarr.open(store=tmppath, mode="r")
+    zarr.ones(store=tmppath, shape=(3, 3))
+    z2 = zarr.open(store=tmppath, mode="r")
+    assert (z2[:] == 1).all()
+    with pytest.raises(ValueError):
+        z2[:] = 3
+
+
+def test_open_with_mode_r_plus(tmppath) -> None:
+    # 'r+' means read/write (must exist)
+    with pytest.raises(FileNotFoundError):
+        zarr.open(store=tmppath, mode="r+")
+    zarr.ones(store=tmppath, shape=(3, 3))
+    z2 = zarr.open(store=tmppath, mode="r+")
+    assert (z2[:] == 1).all()
+    z2[:] = 3
+
+
+def test_open_with_mode_a(tmppath) -> None:
+    # 'a' means read/write (create if doesn't exist)
+    zarr.open(store=tmppath, mode="a", shape=(3, 3))[...] = 1
+    z2 = zarr.open(store=tmppath, mode="a")
+    assert (z2[:] == 1).all()
+    z2[:] = 3
+
+
+def test_open_with_mode_w(tmppath) -> None:
+    # 'w' means create (overwrite if exists);
+    zarr.open(store=tmppath, mode="w", shape=(3, 3))[...] = 3
+    z2 = zarr.open(store=tmppath, mode="w", shape=(3, 3))
+    assert not (z2[:] == 3).all()
+    z2[:] = 3
+
+
+def test_open_with_mode_w_minus(tmppath) -> None:
+    # 'w-' means create  (fail if exists)
+    zarr.open(store=tmppath, mode="w-", shape=(3, 3))[...] = 1
+    with pytest.raises(FileExistsError):
+        zarr.open(store=tmppath, mode="w-")
 
 
 # def test_lazy_loader():

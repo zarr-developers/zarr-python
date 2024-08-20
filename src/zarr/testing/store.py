@@ -2,7 +2,7 @@ from typing import Any, Generic, TypeVar
 
 import pytest
 
-from zarr.abc.store import Store
+from zarr.abc.store import AccessMode, Store
 from zarr.buffer import Buffer, default_buffer_prototype
 from zarr.store.utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
@@ -34,33 +34,28 @@ class StoreTests(Generic[S, B]):
 
     @pytest.fixture(scope="function")
     def store_kwargs(self) -> dict[str, Any]:
-        return {"mode": "w"}
+        return {"mode": "r+"}
 
     @pytest.fixture(scope="function")
-    def store(self, store_kwargs: dict[str, Any]) -> Store:
-        return self.store_cls(**store_kwargs)
+    async def store(self, store_kwargs: dict[str, Any]) -> Store:
+        return await self.store_cls.open(**store_kwargs)
 
     def test_store_type(self, store: S) -> None:
         assert isinstance(store, Store)
         assert isinstance(store, self.store_cls)
 
     def test_store_mode(self, store: S, store_kwargs: dict[str, Any]) -> None:
-        assert store.mode == "w", store.mode
-        assert store.writeable
+        assert store.mode == AccessMode.from_literal("r+")
+        assert not store.mode.readonly
 
         with pytest.raises(AttributeError):
-            store.mode = "w"  # type: ignore[misc]
-
-        # read-only
-        kwargs = {**store_kwargs, "mode": "r"}
-        read_store = self.store_cls(**kwargs)
-        assert read_store.mode == "r", read_store.mode
-        assert not read_store.writeable
+            store.mode = AccessMode.from_literal("w")  # type: ignore[misc]
 
     async def test_not_writable_store_raises(self, store_kwargs: dict[str, Any]) -> None:
         kwargs = {**store_kwargs, "mode": "r"}
-        store = self.store_cls(**kwargs)
-        assert not store.writeable
+        store = await self.store_cls.open(**kwargs)
+        assert store.mode == AccessMode.from_literal("r")
+        assert store.mode.readonly
 
         # set
         with pytest.raises(ValueError):
@@ -93,7 +88,7 @@ class StoreTests(Generic[S, B]):
         """
         data_buf = self.buffer_cls.from_bytes(data)
         self.set(store, key, data_buf)
-        observed = await store.get(key, prototype=default_buffer_prototype, byte_range=byte_range)
+        observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
         start, length = _normalize_interval_index(data_buf, interval=byte_range)
         expected = data_buf[start : start + length]
         assert_bytes_equal(observed, expected)
@@ -104,7 +99,7 @@ class StoreTests(Generic[S, B]):
         """
         Ensure that data can be written to the store using the store.set method.
         """
-        assert store.writeable
+        assert not store.mode.readonly
         data_buf = self.buffer_cls.from_bytes(data)
         await store.set(key, data_buf)
         observed = self.get(store, key)
@@ -128,7 +123,7 @@ class StoreTests(Generic[S, B]):
 
         # read back just part of it
         observed_maybe = await store.get_partial_values(
-            prototype=default_buffer_prototype, key_ranges=key_ranges
+            prototype=default_buffer_prototype(), key_ranges=key_ranges
         )
 
         observed: list[Buffer] = []
@@ -140,7 +135,9 @@ class StoreTests(Generic[S, B]):
 
         for idx in range(len(observed)):
             key, byte_range = key_ranges[idx]
-            result = await store.get(key, prototype=default_buffer_prototype, byte_range=byte_range)
+            result = await store.get(
+                key, prototype=default_buffer_prototype(), byte_range=byte_range
+            )
             assert result is not None
             expected.append(result)
 
@@ -158,6 +155,16 @@ class StoreTests(Generic[S, B]):
         assert await store.exists("foo/zarr.json")
         await store.delete("foo/zarr.json")
         assert not await store.exists("foo/zarr.json")
+
+    async def test_empty(self, store: S) -> None:
+        assert await store.empty()
+        self.set(store, "key", Buffer.from_bytes(bytes("something", encoding="utf-8")))
+        assert not await store.empty()
+
+    async def test_clear(self, store: S) -> None:
+        self.set(store, "key", Buffer.from_bytes(bytes("something", encoding="utf-8")))
+        await store.clear()
+        assert await store.empty()
 
     async def test_list(self, store: S) -> None:
         assert [k async for k in store.list()] == []
@@ -185,8 +192,12 @@ class StoreTests(Generic[S, B]):
         await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
         await store.set("foo/c/1", self.buffer_cls.from_bytes(b"\x01"))
 
-        keys = [k async for k in store.list_dir("foo")]
-        assert set(keys) == set(["zarr.json", "c"]), keys
+        keys_expected = ["zarr.json", "c"]
+        keys_observed = [k async for k in store.list_dir("foo")]
 
-        keys = [k async for k in store.list_dir("foo/")]
-        assert set(keys) == set(["zarr.json", "c"]), keys
+        assert len(keys_observed) == len(keys_expected), keys_observed
+        assert set(keys_observed) == set(keys_expected), keys_observed
+
+        keys_observed = [k async for k in store.list_dir("foo/")]
+        assert len(keys_expected) == len(keys_observed), keys_observed
+        assert set(keys_observed) == set(keys_expected), keys_observed

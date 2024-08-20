@@ -6,15 +6,15 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import OpenMode
+from zarr.buffer import BufferPrototype
+from zarr.common import AccessModeLiteral
 from zarr.store.core import _dereference_path
 
 if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
     from upath import UPath
 
-    from zarr.buffer import Buffer
+    from zarr.buffer import Buffer, BufferPrototype
     from zarr.common import BytesLike
 
 
@@ -32,7 +32,7 @@ class RemoteStore(Store):
     def __init__(
         self,
         url: UPath | str,
-        mode: OpenMode = "r",
+        mode: AccessModeLiteral = "r",
         allowed_exceptions: tuple[type[Exception], ...] = (
             FileNotFoundError,
             IsADirectoryError,
@@ -50,7 +50,6 @@ class RemoteStore(Store):
         storage_options: passed on to fsspec to make the filesystem instance. If url is a UPath,
             this must not be used.
         """
-
         super().__init__(mode=mode)
         if isinstance(url, str):
             self._url = url.rstrip("/")
@@ -75,6 +74,17 @@ class RemoteStore(Store):
         if not self._fs.async_impl:
             raise TypeError("FileSystem needs to support async operations")
 
+    async def clear(self) -> None:
+        try:
+            for subpath in await self._fs._find(self.path, withdirs=True):
+                if subpath != self.path:
+                    await self._fs._rm(subpath, recursive=True)
+        except FileNotFoundError:
+            pass
+
+    async def empty(self) -> bool:
+        return not await self._fs._find(self.path, withdirs=True)
+
     def __str__(self) -> str:
         return f"{self._url}"
 
@@ -87,6 +97,8 @@ class RemoteStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
+        if not self._is_open:
+            await self._open()
         path = _dereference_path(self.path, key)
 
         try:
@@ -122,6 +134,8 @@ class RemoteStore(Store):
         value: Buffer,
         byte_range: tuple[int, int] | None = None,
     ) -> None:
+        if not self._is_open:
+            await self._open()
         self._check_writable()
         path = _dereference_path(self.path, key)
         # write data

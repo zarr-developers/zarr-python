@@ -33,7 +33,7 @@ ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
 JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
 MemoryOrder = Literal["C", "F"]
-OpenMode = Literal["r", "r+", "a", "w", "w-"]
+AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 
 
 def product(tup: ChunkCoords) -> int:
