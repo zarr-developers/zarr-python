@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
-from zarr.array_spec import ArraySpec
-from zarr.buffer import NDBuffer
-from zarr.chunk_grids import ChunkGrid
-from zarr.common import JSON, ChunkCoordsLike, parse_named_configuration
+from zarr.core.array_spec import ArraySpec
+from zarr.core.buffer import NDBuffer
+from zarr.core.chunk_grids import ChunkGrid
+from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:

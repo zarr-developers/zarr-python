@@ -12,14 +12,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from zarr.abc.metadata import Metadata
-from zarr.common import (
+from zarr.core.common import (
     JSON,
     ChunkCoords,
     ChunkCoordsLike,
     parse_named_configuration,
     parse_shapelike,
 )
-from zarr.indexing import ceildiv
+from zarr.core.indexing import ceildiv
 
 if TYPE_CHECKING:
     from typing_extensions import Self

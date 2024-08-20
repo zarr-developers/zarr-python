@@ -3,8 +3,8 @@ from collections.abc import Iterator
 import numpy as np
 import pytest
 
+from zarr import Array
 from zarr.abc.store import Store
-from zarr.array import Array
 from zarr.store import MemoryStore, StorePath
 
 

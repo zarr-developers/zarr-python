@@ -1,10 +1,10 @@
 import numpy as np
 import pytest
 
+from zarr import Array
 from zarr.abc.store import Store
-from zarr.array import Array
 from zarr.codecs import BytesCodec, GzipCodec
-from zarr.store.core import StorePath
+from zarr.store.common import StorePath
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])

@@ -4,10 +4,9 @@ from typing import Literal
 import numpy as np
 import pytest
 
-from zarr.array import Array, AsyncArray
-from zarr.common import ZarrFormat
+from zarr import Array, AsyncArray, Group
+from zarr.core.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.group import Group
 from zarr.store import LocalStore, MemoryStore
 from zarr.store.core import StorePath
 

@@ -1,18 +1,17 @@
 from __future__ import annotations
 
+import asyncio
+import threading
+from concurrent.futures import wait
 from typing import TYPE_CHECKING, TypeVar
+
+from typing_extensions import ParamSpec
+
+from zarr.core.config import config
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Coroutine
     from typing import Any
-
-import asyncio
-import threading
-from concurrent.futures import wait
-
-from typing_extensions import ParamSpec
-
-from zarr.config import config
 
 P = ParamSpec("P")
 T = TypeVar("T")

@@ -18,18 +18,18 @@ from zarr.abc.codec import (
     CodecPipeline,
 )
 from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.array_spec import ArraySpec
-from zarr.buffer import (
+from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.crc32c_ import Crc32cCodec
+from zarr.core.array_spec import ArraySpec
+from zarr.core.buffer import (
     Buffer,
     BufferPrototype,
     NDBuffer,
     default_buffer_prototype,
     numpy_buffer_prototype,
 )
-from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
-from zarr.codecs.bytes import BytesCodec
-from zarr.codecs.crc32c_ import Crc32cCodec
-from zarr.common import (
+from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.core.common import (
     ChunkCoords,
     ChunkCoordsLike,
     parse_enum,
@@ -37,8 +37,14 @@ from zarr.common import (
     parse_shapelike,
     product,
 )
-from zarr.indexing import BasicIndexer, SelectorTuple, c_order_iter, get_indexer, morton_order_iter
-from zarr.metadata import parse_codecs
+from zarr.core.indexing import (
+    BasicIndexer,
+    SelectorTuple,
+    c_order_iter,
+    get_indexer,
+    morton_order_iter,
+)
+from zarr.core.metadata import parse_codecs
 from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
 if TYPE_CHECKING:
@@ -46,7 +52,7 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self
 
-    from zarr.common import JSON
+    from zarr.core.common import JSON
 
 MAX_UINT_64 = 2**64 - 1
 ShardMapping = Mapping[ChunkCoords, Buffer]
