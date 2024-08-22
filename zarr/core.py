@@ -575,10 +575,13 @@ class Array:
             # store comparison
         )
 
-    def __array__(self, *args):
+    def __array__(self, dtype=None, copy=None):
         a = self[...]
-        if args:
-            a = a.astype(args[0])
+        if dtype is not None:
+            a = a.astype(dtype=dtype)
+
+        if copy is not None and copy:
+            return a.copy()
         return a
 
     def islice(self, start=None, end=None):
