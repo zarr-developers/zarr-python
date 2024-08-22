@@ -576,13 +576,7 @@ class Array:
         )
 
     def __array__(self, dtype=None, copy=None):
-        a = self[...]
-        if dtype is not None:
-            a = a.astype(dtype=dtype)
-
-        if copy is not None and copy:
-            return a.copy()
-        return a
+        return np.array(self[...], dtype=dtype, copy=copy)
 
     def islice(self, start=None, end=None):
         """
