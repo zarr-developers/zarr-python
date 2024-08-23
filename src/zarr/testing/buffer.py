@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer, cpu
+from zarr.core.buffer import Buffer, BufferPrototype, cpu
 from zarr.store import MemoryStore
 
 if TYPE_CHECKING:
