@@ -24,13 +24,22 @@ Release notes
 2.18.3
 ------
 
+Enhancements
+~~~~~~~~~~~~
+* Added support for creating a copy of data when converting a `zarr.Array`
+  to a numpy array.
+  By :user:`David Stansby <dstansby>`
+
 Maintenance
 ~~~~~~~~~~~
 * Removed support for Python 3.9.
   By :user:`David Stansby <dstansby>`
-  
+
 * Fix a regression when using orthogonal indexing with a scalar.
   By :user:`Deepak Cherian <dcherian>` :issue:`1931`
+
+* Added compatibility with numpy 2.1.
+  By :user:`David Stansby <dstansby>`
 
 
 .. _release_2.18.2:
