@@ -7,6 +7,7 @@ import pytest
 from _pytest.compat import LEGACY_PATH
 
 from zarr.array import Array, AsyncArray
+from zarr.buffer import default_buffer_prototype
 from zarr.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.group import AsyncGroup, Group, GroupMetadata

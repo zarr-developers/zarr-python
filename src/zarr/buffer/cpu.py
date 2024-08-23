@@ -12,6 +12,10 @@ import numpy.typing as npt
 
 from zarr.buffer import core
 from zarr.buffer.core import ArrayLike, NDArrayLike
+from zarr.registry import (
+    register_buffer,
+    register_ndbuffer,
+)
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -210,5 +214,14 @@ def as_numpy_array_wrapper(
 
 
 # CPU buffer prototype using numpy arrays
-buffer_prototype = core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
-default_buffer_prototype = buffer_prototype
+# buffer_prototype = core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
+# default_buffer_prototype = buffer_prototype
+
+
+# The numpy prototype used for E.g. when reading the shard index
+def numpy_buffer_prototype() -> core.BufferPrototype:
+    return core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
+
+
+register_buffer(Buffer)
+register_ndbuffer(NDBuffer)
