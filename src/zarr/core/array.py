@@ -294,7 +294,7 @@ class AsyncArray:
         dtype: npt.DTypeLike,
         chunks: ChunkCoords,
         dimension_separator: Literal[".", "/"] | None = None,
-        fill_value: None | int | float = None,
+        fill_value: None | float = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
