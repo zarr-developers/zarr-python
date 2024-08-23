@@ -16,6 +16,8 @@ from typing import (
     overload,
 )
 
+import numcodecs
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
 
@@ -167,3 +169,24 @@ def parse_order(data: Any) -> Literal["C", "F"]:
     if data in ("C", "F"):
         return cast(Literal["C", "F"], data)
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
+
+
+def _json_convert(o: Any) -> Any:
+    if isinstance(o, np.dtype):
+        return str(o)
+    if np.isscalar(o):
+        # convert numpy scalar to python type, and pass
+        # python types through
+        out = getattr(o, "item", lambda: o)()
+        if isinstance(out, complex):
+            # python complex types are not JSON serializable, so we use the
+            # serialization defined in the zarr v3 spec
+            return [out.real, out.imag]
+        return out
+    if isinstance(o, Enum):
+        return o.name
+    # this serializes numcodecs compressors
+    # todo: implement to_dict for codecs
+    elif isinstance(o, numcodecs.abc.Codec):
+        config: dict[str, Any] = o.get_config()
+        return config

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import warnings
 from collections.abc import Iterable
 from typing import Any, Literal, Union, cast
@@ -12,8 +13,14 @@ from zarr.abc.codec import Codec
 from zarr.core.array import Array, AsyncArray
 from zarr.core.buffer import NDArrayLike
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
-from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
-from zarr.core.group import AsyncGroup
+from zarr.core.common import (
+    JSON,
+    AccessModeLiteral,
+    ChunkCoords,
+    MemoryOrder,
+    ZarrFormat,
+)
+from zarr.core.group import AsyncGroup, ConsolidatedMetadata
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import (
     StoreLike,
@@ -126,8 +133,38 @@ def _default_zarr_version() -> ZarrFormat:
     return 3
 
 
-async def consolidate_metadata(*args: Any, **kwargs: Any) -> AsyncGroup:
-    raise NotImplementedError
+async def consolidate_metadata(store: StoreLike) -> AsyncGroup:
+    """
+    Consolidate the metadata of all nodes in a hierarchy.
+
+    Upon completion, the metadata of the root node in the Zarr hierarchy will be
+    updated to include all the metadata of child nodes.
+
+    Parameters
+    ----------
+    store: StoreLike
+        The store-like object whose metadata you wish to consolidate.
+
+    Returns
+    -------
+    group: AsyncGroup
+        The group, with the ``consolidated_metadata`` field set to include
+        the metadata of each child node.
+    """
+    group = await AsyncGroup.open(store)
+    members = dict([x async for x in group.members(recursive=True)])
+    members_metadata = {}
+
+    members_metadata = {k: v.metadata for k, v in members.items()}
+
+    consolidated_metadata = ConsolidatedMetadata(metadata=members_metadata)
+    metadata = dataclasses.replace(group.metadata, consolidated_metadata=consolidated_metadata)
+    group = dataclasses.replace(
+        group,
+        metadata=metadata,
+    )
+    await group._save_metadata()
+    return group
 
 
 async def copy(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
@@ -229,7 +266,7 @@ async def open(
 
 
 async def open_consolidated(*args: Any, **kwargs: Any) -> AsyncGroup:
-    raise NotImplementedError
+    return await open_group(*args, **kwargs)
 
 
 async def save(
@@ -703,7 +740,9 @@ async def create(
             )
         else:
             warnings.warn(
-                "dimension_separator is not yet implemented", RuntimeWarning, stacklevel=2
+                "dimension_separator is not yet implemented",
+                RuntimeWarning,
+                stacklevel=2,
             )
     if write_empty_chunks:
         warnings.warn("write_empty_chunks is not yet implemented", RuntimeWarning, stacklevel=2)

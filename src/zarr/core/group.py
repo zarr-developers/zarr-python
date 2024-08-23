@@ -25,8 +25,10 @@ from zarr.core.common import (
     ZGROUP_JSON,
     ChunkCoords,
     ZarrFormat,
+    _json_convert,
 )
 from zarr.core.config import config
+from zarr.core.metadata import ArrayMetadata, ArrayV3Metadata
 from zarr.core.sync import SyncMixin, sync
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.common import ensure_no_existing_node
@@ -78,9 +80,56 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
 
 
 @dataclass(frozen=True)
+class ConsolidatedMetadata:
+    metadata: dict[str, ArrayMetadata | GroupMetadata]
+    kind: Literal["inline"] = "inline"
+    must_understand: Literal[False] = False
+
+    def to_dict(self) -> dict[str, JSON]:
+        return {
+            "kind": self.kind,
+            "must_understand": self.must_understand,
+            "metadata": {k: v.to_dict() for k, v in self.metadata.items()},
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, JSON]) -> ConsolidatedMetadata:
+        data = dict(data)
+        raw_metadata = data.get("metadata")
+        if not isinstance(raw_metadata, dict):
+            raise TypeError("Unexpected type for 'metadata'")
+
+        elif not raw_metadata:
+            raise ValueError("Must specify metadata")
+
+        metadata: dict[str, ArrayMetadata | GroupMetadata]
+        if raw_metadata:
+            metadata = {}
+            for k, v in raw_metadata.items():
+                if not isinstance(v, dict):
+                    raise TypeError(f"Invalid value for metadata items. key={k}, type={type(v)}")
+
+                node_type = v.get("node_type", None)
+                if node_type == "group":
+                    metadata[k] = GroupMetadata.from_dict(v)
+                elif node_type == "array":
+                    metadata[k] = ArrayV3Metadata.from_dict(v)
+                else:
+                    raise ValueError(f"Invalid node_type: '{node_type}'")
+        # assert data["kind"] == "inline"
+        if data["kind"] != "inline":
+            raise ValueError
+
+        if data["must_understand"] is not False:
+            raise ValueError
+        return cls(metadata=metadata)
+
+
+@dataclass(frozen=True)
 class GroupMetadata(Metadata):
     attributes: dict[str, Any] = field(default_factory=dict)
     zarr_format: ZarrFormat = 3
+    consolidated_metadata: ConsolidatedMetadata | None = None
     node_type: Literal["group"] = field(default="group", init=False)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
@@ -88,7 +137,7 @@ class GroupMetadata(Metadata):
         if self.zarr_format == 3:
             return {
                 ZARR_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.to_dict(), indent=json_indent).encode()
+                    json.dumps(self.to_dict(), default=_json_convert, indent=json_indent).encode()
                 )
             }
         else:
@@ -101,20 +150,33 @@ class GroupMetadata(Metadata):
                 ),
             }
 
-    def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3):
+    def __init__(
+        self,
+        attributes: dict[str, Any] | None = None,
+        zarr_format: ZarrFormat = 3,
+        consolidated_metadata: ConsolidatedMetadata | None = None,
+    ):
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
 
         object.__setattr__(self, "attributes", attributes_parsed)
         object.__setattr__(self, "zarr_format", zarr_format_parsed)
+        object.__setattr__(self, "consolidated_metadata", consolidated_metadata)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
+        data = dict(data)
         assert data.pop("node_type", None) in ("group", None)
+        consolidated_metadata = data.pop("consolidated_metadata", None)
+        if consolidated_metadata:
+            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
         return cls(**data)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        result = asdict(replace(self, consolidated_metadata=None))
+        if self.consolidated_metadata:
+            result["consolidated_metadata"] = self.consolidated_metadata.to_dict()
+        return result
 
 
 @dataclass(frozen=True)
@@ -497,7 +559,8 @@ class AsyncGroup:
                 # as opposed to a prefix, in the store under the prefix associated with this group
                 # in which case `key` cannot be the name of a sub-array or sub-group.
                 logger.warning(
-                    "Object at %s is not recognized as a component of a Zarr hierarchy.", key
+                    "Object at %s is not recognized as a component of a Zarr hierarchy.",
+                    key,
                 )
 
     async def contains(self, member: str) -> bool:

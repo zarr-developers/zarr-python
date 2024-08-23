@@ -20,7 +20,6 @@ from zarr.registry import get_codec_class, get_pipeline_class
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-import numcodecs.abc
 
 from zarr.core.array_spec import ArraySpec
 from zarr.core.common import (
@@ -30,6 +29,7 @@ from zarr.core.common import (
     ZATTRS_JSON,
     ChunkCoords,
     ZarrFormat,
+    _json_convert,
     parse_dtype,
     parse_named_configuration,
     parse_shapelike,
@@ -252,27 +252,6 @@ class ArrayV3Metadata(ArrayMetadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        def _json_convert(o: Any) -> Any:
-            if isinstance(o, np.dtype):
-                return str(o)
-            if np.isscalar(o):
-                # convert numpy scalar to python type, and pass
-                # python types through
-                out = getattr(o, "item", lambda: o)()
-                if isinstance(out, complex):
-                    # python complex types are not JSON serializable, so we use the
-                    # serialization defined in the zarr v3 spec
-                    return [out.real, out.imag]
-                return out
-            if isinstance(o, Enum):
-                return o.name
-            # this serializes numcodecs compressors
-            # todo: implement to_dict for codecs
-            elif isinstance(o, numcodecs.abc.Codec):
-                config: dict[str, Any] = o.get_config()
-                return config
-            raise TypeError
-
         json_indent = config.get("json_indent")
         return {
             ZARR_JSON: prototype.buffer.from_bytes(
