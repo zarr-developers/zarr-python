@@ -18,17 +18,17 @@ from zarr.abc.codec import (
     CodecPipeline,
 )
 from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.buffer import Buffer, BufferPrototype, NDBuffer
-from zarr.chunk_grids import ChunkGrid
-from zarr.common import JSON, ChunkCoords, concurrent_map, parse_named_configuration
-from zarr.config import config
-from zarr.indexing import SelectorTuple, is_scalar, is_total_slice
+from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
+from zarr.core.chunk_grids import ChunkGrid
+from zarr.core.common import JSON, ChunkCoords, concurrent_map, parse_named_configuration
+from zarr.core.config import config
+from zarr.core.indexing import SelectorTuple, is_scalar, is_total_slice
 from zarr.registry import get_codec_class, register_pipeline
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.array_spec import ArraySpec
+    from zarr.core.array_spec import ArraySpec
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -492,7 +492,7 @@ def codecs_from_list(
                     "must be preceded by another ArrayArrayCodec. "
                     f"Got {type(prev_codec)} instead."
                 )
-                raise ValueError(msg)
+                raise TypeError(msg)
             array_array += (cur_codec,)
 
         elif isinstance(cur_codec, ArrayBytesCodec):
@@ -501,7 +501,7 @@ def codecs_from_list(
                     f"Invalid codec order. ArrayBytes codec {cur_codec}"
                     f" must be preceded by an ArrayArrayCodec. Got {type(prev_codec)} instead."
                 )
-                raise ValueError(msg)
+                raise TypeError(msg)
 
             if array_bytes_maybe is not None:
                 msg = (
@@ -521,7 +521,7 @@ def codecs_from_list(
                 )
             bytes_bytes += (cur_codec,)
         else:
-            raise AssertionError
+            raise TypeError
 
     if array_bytes_maybe is None:
         raise ValueError("Required ArrayBytesCodec was not found.")

@@ -4,9 +4,9 @@ import fsspec
 import pytest
 from upath import UPath
 
-from zarr.buffer import Buffer, cpu, default_buffer_prototype
+from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
+from zarr.core.sync import sync
 from zarr.store import RemoteStore
-from zarr.sync import sync
 from zarr.testing.store import StoreTests
 
 s3fs = pytest.importorskip("s3fs")

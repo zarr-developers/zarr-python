@@ -1,4 +1,4 @@
-from zarr.buffer.core import (
+from zarr.core.buffer.core import (
     ArrayLike,
     Buffer,
     BufferPrototype,
@@ -6,7 +6,7 @@ from zarr.buffer.core import (
     NDBuffer,
     default_buffer_prototype,
 )
-from zarr.buffer.cpu import numpy_buffer_prototype
+from zarr.core.buffer.cpu import numpy_buffer_prototype
 
 __all__ = [
     "ArrayLike",

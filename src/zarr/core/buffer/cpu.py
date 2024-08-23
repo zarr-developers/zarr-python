@@ -10,8 +10,8 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.buffer import core
-from zarr.buffer.core import ArrayLike, NDArrayLike
+from zarr.core.buffer import core
+from zarr.core.buffer.core import ArrayLike, NDArrayLike
 from zarr.registry import (
     register_buffer,
     register_ndbuffer,
@@ -20,7 +20,7 @@ from zarr.registry import (
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.common import BytesLike
+    from zarr.core.common import BytesLike
 
 
 class Buffer(core.Buffer):

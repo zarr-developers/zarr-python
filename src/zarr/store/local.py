@@ -5,10 +5,15 @@ import os
 import shutil
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import AccessModeLiteral, concurrent_map, to_thread
+from zarr.core.buffer import Buffer
+from zarr.core.common import concurrent_map, to_thread
+
+if TYPE_CHECKING:
+    from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import AccessModeLiteral
 
 
 def _get(
@@ -87,9 +92,10 @@ class LocalStore(Store):
     async def empty(self) -> bool:
         try:
             subpaths = os.listdir(self.root)
-            return not subpaths
         except FileNotFoundError:
             return True
+        else:
+            return not subpaths
 
     def __str__(self) -> str:
         return f"file://{self.root}"

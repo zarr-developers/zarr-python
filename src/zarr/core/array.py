@@ -1,14 +1,6 @@
 from __future__ import annotations
 
 import json
-
-# Notes on what I've changed here:
-# 1. Split Array into AsyncArray and Array
-# 3. Added .size and .attrs methods
-# 4. Temporarily disabled the creation of ArrayV2
-# 5. Added from_dict to AsyncArray
-# Questions to consider:
-# 1. Was splitting the array into two classes really necessary?
 from asyncio import gather
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
@@ -19,13 +11,17 @@ import numpy.typing as npt
 
 from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
-from zarr.attributes import Attributes
-from zarr.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
-from zarr.chunk_grids import RegularChunkGrid, _guess_chunks
-from zarr.chunk_key_encodings import ChunkKeyEncoding, DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
-from zarr.common import (
+from zarr.core.attributes import Attributes
+from zarr.core.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
+from zarr.core.chunk_grids import RegularChunkGrid, _guess_chunks
+from zarr.core.chunk_key_encodings import (
+    ChunkKeyEncoding,
+    DefaultChunkKeyEncoding,
+    V2ChunkKeyEncoding,
+)
+from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
@@ -35,8 +31,8 @@ from zarr.common import (
     concurrent_map,
     product,
 )
-from zarr.config import config, parse_indexing_order
-from zarr.indexing import (
+from zarr.core.config import config, parse_indexing_order
+from zarr.core.indexing import (
     BasicIndexer,
     BasicSelection,
     BlockIndex,
@@ -59,13 +55,13 @@ from zarr.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.sync import sync
 from zarr.registry import get_pipeline_class
 from zarr.store import StoreLike, StorePath, make_store_path
-from zarr.store.core import (
+from zarr.store.common import (
     ensure_no_existing_node,
 )
-from zarr.sync import sync
 
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
@@ -87,7 +83,7 @@ def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecP
             [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
         )
     else:
-        raise AssertionError
+        raise TypeError
 
 
 @dataclass(frozen=True)
@@ -394,7 +390,7 @@ class AsyncArray:
         if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
             return self.metadata.chunk_grid.chunk_shape
         else:
-            raise ValueError(
+            raise TypeError(
                 f"chunk attribute is only available for RegularChunkGrid, this array has a {self.metadata.chunk_grid}"
             )
 

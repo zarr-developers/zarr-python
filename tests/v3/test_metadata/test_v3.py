@@ -4,8 +4,8 @@ import re
 from typing import TYPE_CHECKING, Literal
 
 from zarr.abc.codec import Codec
-from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs.bytes import BytesCodec
+from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 
 if TYPE_CHECKING:
     from typing import Any
@@ -15,9 +15,9 @@ from collections.abc import Sequence
 import numpy as np
 import pytest
 
-from zarr.metadata import ArrayV3Metadata, parse_dimension_names
-from zarr.metadata import parse_fill_value_v3 as parse_fill_value
-from zarr.metadata import parse_zarr_format_v3 as parse_zarr_format
+from zarr.core.metadata import ArrayV3Metadata, parse_dimension_names
+from zarr.core.metadata import parse_fill_value_v3 as parse_fill_value
+from zarr.core.metadata import parse_zarr_format_v3 as parse_zarr_format
 
 bool_dtypes = ("bool",)
 

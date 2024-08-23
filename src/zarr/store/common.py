@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import AccessMode, Store
-from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
-from zarr.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, AccessModeLiteral, ZarrFormat
+from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
+
+if TYPE_CHECKING:
+    from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import AccessModeLiteral
 
 
 def _dereference_path(root: str, path: str) -> str:
@@ -251,9 +255,10 @@ async def contains_group(store_path: StorePath, zarr_format: ZarrFormat) -> bool
                 extant_meta_json = json.loads(extant_meta_bytes.to_bytes())
                 # we avoid constructing a full metadata document here in the name of speed.
                 result: bool = extant_meta_json["node_type"] == "group"
-                return result
             except (ValueError, KeyError):
                 return False
+            else:
+                return result
     elif zarr_format == 2:
         return await (store_path / ZGROUP_JSON).exists()
     msg = f"Invalid zarr_format provided. Got {zarr_format}, expected 2 or 3"  # type: ignore[unreachable]

@@ -6,16 +6,15 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from zarr.abc.store import Store
-from zarr.buffer import BufferPrototype
-from zarr.common import AccessModeLiteral
-from zarr.store.core import _dereference_path
+from zarr.core.buffer import Buffer
+from zarr.store.common import _dereference_path
 
 if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
     from upath import UPath
 
-    from zarr.buffer import Buffer, BufferPrototype
-    from zarr.common import BytesLike
+    from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import AccessModeLiteral, BytesLike
 
 
 class RemoteStore(Store):
@@ -118,7 +117,6 @@ class RemoteStore(Store):
                     else self._fs._cat_file(path)
                 )
             )
-            return value
 
         except self.allowed_exceptions:
             return None
@@ -127,6 +125,8 @@ class RemoteStore(Store):
                 # this is an s3-specific condition we probably don't want to leak
                 return prototype.buffer.from_bytes(b"")
             raise
+        else:
+            return value
 
     async def set(
         self,

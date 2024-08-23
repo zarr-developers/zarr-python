@@ -6,10 +6,10 @@ from typing import TYPE_CHECKING
 from numcodecs.gzip import GZip
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer
-from zarr.buffer.cpu import as_numpy_array_wrapper
-from zarr.common import JSON, parse_named_configuration, to_thread
+from zarr.core.array_spec import ArraySpec
+from zarr.core.buffer import Buffer
+from zarr.core.buffer.cpu import as_numpy_array_wrapper
+from zarr.core.common import JSON, parse_named_configuration, to_thread
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:

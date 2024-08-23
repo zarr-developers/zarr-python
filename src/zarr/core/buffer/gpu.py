@@ -12,13 +12,13 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.buffer import core
-from zarr.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
+from zarr.core.buffer import core
+from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
-    from zarr.common import BytesLike
+    from zarr.core.common import BytesLike
 
 try:
     import cupy as cp

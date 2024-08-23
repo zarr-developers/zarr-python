@@ -17,7 +17,7 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.common import ChunkCoords
+from zarr.core.common import ChunkCoords
 from zarr.registry import (
     get_buffer_class,
     get_ndbuffer_class,
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from zarr.codecs.bytes import Endian
-    from zarr.common import BytesLike
+    from zarr.core.common import BytesLike
 
 
 @runtime_checkable

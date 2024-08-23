@@ -4,8 +4,10 @@ from typing import Any, cast
 
 import pytest
 
-from zarr.buffer import Buffer
-from zarr.common import BytesLike
+from zarr.core.buffer import Buffer
+from zarr.core.common import BytesLike
+
+__all__ = ["assert_bytes_equal"]
 
 
 def assert_bytes_equal(b1: Buffer | BytesLike | None, b2: Buffer | BytesLike | None) -> None:
