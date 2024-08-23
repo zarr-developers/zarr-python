@@ -136,7 +136,7 @@ def test_get_basic_selection_0d(store: StorePath, use_out: bool, value: Any, dty
 
     if use_out:
         # test out param
-        b = default_buffer_prototype.nd_buffer.from_numpy_array(np.zeros_like(arr_np))
+        b = default_buffer_prototype().nd_buffer.from_numpy_array(np.zeros_like(arr_np))
         arr_z.get_basic_selection(Ellipsis, out=b)
         assert_array_equal(arr_np, b.as_ndarray_like())
 
@@ -247,7 +247,7 @@ def _test_get_basic_selection(a, z, selection):
     assert_array_equal(expect, actual)
 
     # test out param
-    b = default_buffer_prototype.nd_buffer.from_numpy_array(
+    b = default_buffer_prototype().nd_buffer.from_numpy_array(
         np.empty(shape=expect.shape, dtype=expect.dtype)
     )
     z.get_basic_selection(selection, out=b)
