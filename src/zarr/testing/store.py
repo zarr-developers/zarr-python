@@ -161,11 +161,11 @@ class StoreTests(Generic[S, B]):
 
     async def test_empty(self, store: S) -> None:
         assert await store.empty()
-        self.set(store, "key", Buffer.from_bytes(bytes("something", encoding="utf-8")))
+        self.set(store, "key", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8")))
         assert not await store.empty()
 
     async def test_clear(self, store: S) -> None:
-        self.set(store, "key", Buffer.from_bytes(bytes("something", encoding="utf-8")))
+        self.set(store, "key", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8")))
         await store.clear()
         assert await store.empty()
 
