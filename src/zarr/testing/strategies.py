@@ -4,7 +4,7 @@ from typing import Any
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 import numpy as np
-from hypothesis import given, settings  # noqa
+from hypothesis import given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
 from zarr.core.array import Array

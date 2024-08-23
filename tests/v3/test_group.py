@@ -550,7 +550,7 @@ async def test_asyncgroup_attrs(store: Store, zarr_format: ZarrFormat) -> None:
 
 
 async def test_asyncgroup_info(store: Store, zarr_format: ZarrFormat) -> None:
-    agroup = await AsyncGroup.from_store(  # noqa
+    agroup = await AsyncGroup.from_store(  # noqa: F841
         store,
         zarr_format=zarr_format,
     )

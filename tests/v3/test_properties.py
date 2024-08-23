@@ -4,10 +4,11 @@ from numpy.testing import assert_array_equal
 
 pytest.importorskip("hypothesis")
 
-import hypothesis.extra.numpy as npst  # noqa
-import hypothesis.strategies as st  # noqa
-from hypothesis import given, settings  # noqa
-from zarr.testing.strategies import arrays, np_arrays, basic_indices  # noqa
+import hypothesis.extra.numpy as npst  # noqa: E402
+import hypothesis.strategies as st  # noqa: E402
+from hypothesis import given  # noqa: E402
+
+from zarr.testing.strategies import arrays, basic_indices, np_arrays  # noqa: E402
 
 
 @given(st.data())
