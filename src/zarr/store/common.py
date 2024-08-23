@@ -64,10 +64,9 @@ class StorePath:
     def __repr__(self) -> str:
         return f"StorePath({self.store.__class__.__name__}, {str(self)!r})"
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         try:
-            if self.store == other.store and self.path == other.path:
-                return True
+            return self.store == other.store and self.path == other.path  # type: ignore[attr-defined, no-any-return]
         except Exception:
             pass
         return False
