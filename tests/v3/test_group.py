@@ -96,14 +96,16 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
 
     # add an extra object to the domain of the group.
     # the list of children should ignore this object.
-    sync(store.set(f"{path}/extra_object-1", default_buffer_prototype.buffer.from_bytes(b"000000")))
+    sync(
+        store.set(f"{path}/extra_object-1", default_buffer_prototype().buffer.from_bytes(b"000000"))
+    )
     # add an extra object under a directory-like prefix in the domain of the group.
     # this creates a directory with a random key in it
     # this should not show up as a member
     sync(
         store.set(
             f"{path}/extra_directory/extra_object-2",
-            default_buffer_prototype.buffer.from_bytes(b"000000"),
+            default_buffer_prototype().buffer.from_bytes(b"000000"),
         )
     )
     members_observed = group.members
