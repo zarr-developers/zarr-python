@@ -136,7 +136,7 @@ class Buffer(ABC):
         array-like object that must be 1-dim, contiguous, and byte dtype.
     """
 
-    def __init__(self, array_like: ArrayLike):
+    def __init__(self, array_like: ArrayLike) -> None:
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
         if array_like.dtype != np.dtype("b"):
@@ -313,7 +313,7 @@ class NDBuffer:
         ndarray-like object that is convertible to a regular Numpy array.
     """
 
-    def __init__(self, array: NDArrayLike):
+    def __init__(self, array: NDArrayLike) -> None:
         # assert array.ndim > 0
         assert array.dtype != object
         self._data = array

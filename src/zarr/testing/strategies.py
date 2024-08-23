@@ -171,5 +171,4 @@ def key_ranges(keys: SearchStrategy = node_names) -> SearchStrategy[list]:
         st.none() | st.integers(min_value=0), st.none() | st.integers(min_value=0)
     )
     key_tuple = st.tuples(keys, byte_ranges)
-    key_range_st = st.lists(key_tuple, min_size=1, max_size=10)
-    return key_range_st
+    return st.lists(key_tuple, min_size=1, max_size=10)

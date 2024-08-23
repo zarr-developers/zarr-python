@@ -36,7 +36,7 @@ class Store(ABC):
     _mode: AccessMode
     _is_open: bool
 
-    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any):
+    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any) -> None:
         self._is_open = False
         self._mode = AccessMode.from_literal(mode)
 

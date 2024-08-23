@@ -211,6 +211,7 @@ extend-select = [
     "I",   # isort
     "ISC", # flake8-implicit-str-concat
     "PGH", # pygrep-hooks
+    "PYI", # flake8-pyi
     "RSE", # flake8-raise
     "RUF",
     "TCH", # flake8-type-checking
@@ -218,6 +219,7 @@ extend-select = [
     "UP",  # pyupgrade
 ]
 ignore = [
+    "PYI013",
     "RUF005",
     "TRY003",
     # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules

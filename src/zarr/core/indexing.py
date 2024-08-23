@@ -54,7 +54,7 @@ class ArrayIndexError(IndexError):
 class BoundsCheckError(IndexError):
     _msg = ""
 
-    def __init__(self, dim_len: int):
+    def __init__(self, dim_len: int) -> None:
         self._msg = f"index out of bounds for dimension with length {dim_len}"
 
 
@@ -255,7 +255,7 @@ class IntDimIndexer:
     dim_chunk_len: int
     nitems: int = 1
 
-    def __init__(self, dim_sel: int, dim_len: int, dim_chunk_len: int):
+    def __init__(self, dim_sel: int, dim_len: int, dim_chunk_len: int) -> None:
         object.__setattr__(self, "dim_sel", normalize_integer_selection(dim_sel, dim_len))
         object.__setattr__(self, "dim_len", dim_len)
         object.__setattr__(self, "dim_chunk_len", dim_chunk_len)
@@ -279,7 +279,7 @@ class SliceDimIndexer:
     stop: int
     step: int
 
-    def __init__(self, dim_sel: slice, dim_len: int, dim_chunk_len: int):
+    def __init__(self, dim_sel: slice, dim_len: int, dim_chunk_len: int) -> None:
         # normalize
         start, stop, step = dim_sel.indices(dim_len)
         if step < 1:
@@ -453,7 +453,7 @@ class BasicIndexer(Indexer):
         selection: BasicSelection,
         shape: ChunkCoords,
         chunk_grid: ChunkGrid,
-    ):
+    ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
         # handle ellipsis
         selection_normalized = replace_ellipsis(selection, shape)
@@ -509,7 +509,7 @@ class BoolArrayDimIndexer:
     nitems: int
     dim_chunk_ixs: npt.NDArray[np.intp]
 
-    def __init__(self, dim_sel: npt.NDArray[np.bool_], dim_len: int, dim_chunk_len: int):
+    def __init__(self, dim_sel: npt.NDArray[np.bool_], dim_len: int, dim_chunk_len: int) -> None:
         # check number of dimensions
         if not is_bool_array(dim_sel, 1):
             raise IndexError("Boolean arrays in an orthogonal selection must be 1-dimensional only")
@@ -626,7 +626,7 @@ class IntArrayDimIndexer:
         wraparound: bool = True,
         boundscheck: bool = True,
         order: Order = Order.UNKNOWN,
-    ):
+    ) -> None:
         # ensure 1d array
         dim_sel = np.asanyarray(dim_sel)
         if not is_integer_array(dim_sel, 1):
@@ -766,7 +766,7 @@ class OrthogonalIndexer(Indexer):
     is_advanced: bool
     drop_axes: tuple[int, ...]
 
-    def __init__(self, selection: Selection, shape: ChunkCoords, chunk_grid: ChunkGrid):
+    def __init__(self, selection: Selection, shape: ChunkCoords, chunk_grid: ChunkGrid) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
         # handle ellipsis
@@ -880,7 +880,9 @@ class BlockIndexer(Indexer):
     shape: ChunkCoords
     drop_axes: ChunkCoords
 
-    def __init__(self, selection: BasicSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
+    def __init__(
+        self, selection: BasicSelection, shape: ChunkCoords, chunk_grid: ChunkGrid
+    ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
         # handle ellipsis
@@ -1005,7 +1007,9 @@ class CoordinateIndexer(Indexer):
     chunk_shape: ChunkCoords
     drop_axes: ChunkCoords
 
-    def __init__(self, selection: CoordinateSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
+    def __init__(
+        self, selection: CoordinateSelection, shape: ChunkCoords, chunk_grid: ChunkGrid
+    ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
         cdata_shape: ChunkCoords
@@ -1122,7 +1126,7 @@ class CoordinateIndexer(Indexer):
 
 @dataclass(frozen=True)
 class MaskIndexer(CoordinateIndexer):
-    def __init__(self, selection: MaskSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
+    def __init__(self, selection: MaskSelection, shape: ChunkCoords, chunk_grid: ChunkGrid) -> None:
         # some initial normalization
         selection_normalized = cast(tuple[MaskSelection], ensure_tuple(selection))
         selection_normalized = cast(tuple[MaskSelection], replace_lists(selection_normalized))

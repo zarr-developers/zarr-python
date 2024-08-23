@@ -131,7 +131,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @rule(key=paths, data=st.data())
     def get_invalid_keys(self, key: str, data: DataObject) -> None:
         note("(get_invalid)")
-        assume(key not in self.model.keys())
+        assume(key not in self.model)
         assert self.store.get(key, self.prototype) is None
 
     @precondition(lambda self: len(self.model.keys()) > 0)

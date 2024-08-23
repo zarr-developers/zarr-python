@@ -468,7 +468,7 @@ def test_group_creation_existing_node(
     """
     spath = StorePath(store)
     group = Group.from_store(spath, zarr_format=zarr_format)
-    expected_exception: type[ContainsArrayError] | type[ContainsGroupError]
+    expected_exception: type[ContainsArrayError | ContainsGroupError]
     attributes: dict[str, JSON] = {"old": True}
 
     if extant_node == "array":

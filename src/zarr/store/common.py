@@ -23,15 +23,14 @@ def _dereference_path(root: str, path: str) -> str:
     assert isinstance(path, str)
     root = root.rstrip("/")
     path = f"{root}/{path}" if root else path
-    path = path.rstrip("/")
-    return path
+    return path.rstrip("/")
 
 
 class StorePath:
     store: Store
     path: str
 
-    def __init__(self, store: Store, path: str | None = None):
+    def __init__(self, store: Store, path: str | None = None) -> None:
         self.store = store
         self.path = path or ""
 
@@ -265,8 +264,7 @@ async def contains_array(store_path: StorePath, zarr_format: ZarrFormat) -> bool
             except (ValueError, KeyError):
                 return False
     elif zarr_format == 2:
-        result = await (store_path / ZARRAY_JSON).exists()
-        return result
+        return await (store_path / ZARRAY_JSON).exists()
     msg = f"Invalid zarr_format provided. Got {zarr_format}, expected 2 or 3"
     raise ValueError(msg)
 

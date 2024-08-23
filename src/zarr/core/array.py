@@ -110,7 +110,7 @@ class AsyncArray:
         metadata: ArrayMetadata,
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
-    ):
+    ) -> None:
         metadata_parsed = parse_array_metadata(metadata)
         order_parsed = parse_indexing_order(order or config.get("array.order"))
 
@@ -331,8 +331,7 @@ class AsyncArray:
         data: dict[str, JSON],
     ) -> AsyncArray:
         metadata = parse_array_metadata(data)
-        async_array = cls(metadata=metadata, store_path=store_path)
-        return async_array
+        return cls(metadata=metadata, store_path=store_path)
 
     @classmethod
     async def open(
