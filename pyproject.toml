@@ -207,14 +207,15 @@ extend-exclude = [
 
 [tool.ruff.lint]
 extend-select = [
-    "B",  # flake8-bugbear
-    "I",  # isort
-    "ISC",
-    "UP",  # pyupgrade
-    "RSE",
+    "B",   # flake8-bugbear
+    "I",   # isort
+    "ISC", # flake8-implicit-str-concat
+    "PGH", # pygrep-hooks
+    "RSE", # flake8-raise
     "RUF",
     "TCH", # flake8-type-checking
     "TRY", # tryceratops
+    "UP",  # pyupgrade
 ]
 ignore = [
     "RUF005",
