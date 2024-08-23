@@ -54,7 +54,7 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 def parse_attributes(data: Any) -> dict[str, Any]:
     if data is None:
         return {}
-    elif isinstance(data, dict) and all(map(lambda v: isinstance(v, str), data.keys())):
+    elif isinstance(data, dict) and all(isinstance(v, str) for v in data.keys()):
         return data
     msg = f"Expected dict with string keys. Got {type(data)} instead."
     raise TypeError(msg)
@@ -888,7 +888,7 @@ class Group(SyncMixin):
         """
         _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
-        result = tuple(map(lambda kv: (kv[0], _parse_async_node(kv[1])), _members))
+        result = tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
         return result
 
     def __contains__(self, member: str) -> bool:
