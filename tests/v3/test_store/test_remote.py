@@ -86,10 +86,7 @@ def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
 
 
 async def alist(it):
-    out = []
-    async for a in it:
-        out.append(a)
-    return out
+    return [a async for a in it]
 
 
 async def test_basic() -> None:
