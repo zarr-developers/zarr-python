@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
+from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer, cpu
 from zarr.store import MemoryStore
 
 if TYPE_CHECKING:
@@ -25,11 +25,11 @@ class TestNDArrayLike(np.ndarray):
     """An example of a ndarray-like class"""
 
 
-class TestBuffer(Buffer):
+class TestBuffer(cpu.Buffer):
     """Example of a custom Buffer that handles ArrayLike"""
 
 
-class NDBufferUsingTestNDArrayLike(NDBuffer):
+class NDBufferUsingTestNDArrayLike(cpu.NDBuffer):
     """Example of a custom NDBuffer that handles MyNDArrayLike"""
 
     @classmethod

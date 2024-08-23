@@ -148,7 +148,7 @@ async def test_codecs_use_of_gpu_prototype():
 
 
 def test_numpy_buffer_prototype():
-    buffer = cpu.buffer_prototype().buffer.create_zero_length()
-    ndbuffer = cpu.buffer_prototype().nd_buffer.create(shape=(1, 2), dtype=np.dtype("int64"))
+    buffer = cpu.buffer_prototype.buffer.create_zero_length()
+    ndbuffer = cpu.buffer_prototype.nd_buffer.create(shape=(1, 2), dtype=np.dtype("int64"))
     assert isinstance(buffer.as_array_like(), np.ndarray)
     assert isinstance(ndbuffer.as_ndarray_like(), np.ndarray)

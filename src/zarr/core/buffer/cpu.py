@@ -214,7 +214,7 @@ def as_numpy_array_wrapper(
 
 
 # CPU buffer prototype using numpy arrays
-# buffer_prototype = core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
+buffer_prototype = core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 # default_buffer_prototype = buffer_prototype
 
 
