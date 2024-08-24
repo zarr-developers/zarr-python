@@ -345,18 +345,20 @@ class AsyncGroup:
             grp = await self.create_group(name, exists_ok=True)
         else:
             try:
-                grp = await self.getitem(name)
-                if not isinstance(grp, AsyncGroup):
+                item: AsyncGroup | AsyncArray = await self.getitem(name)
+                if not isinstance(item, AsyncGroup):
                     raise TypeError(
-                        f"Incompatible object ({grp.__class__.__name__}) already exists"
+                        f"Incompatible object ({item.__class__.__name__}) already exists"
                     )
+                assert isinstance(item, AsyncGroup)  # make mypy happy
+                grp = item
             except KeyError:
                 grp = await self.create_group(name)
         return grp
 
     async def require_groups(self, *names: str) -> tuple[AsyncGroup, ...]:
         """Convenience method to require multiple groups in a single call."""
-        return tuple(await concurrent_map(list(names), self.require_group))
+        return tuple(await concurrent_map([names], self.require_group))
 
     async def create_array(
         self,
@@ -457,7 +459,7 @@ class AsyncGroup:
         name : string
             Array name.
         kwargs : dict
-            Additional arguments passed to create_array()
+            Additional arguments passed to AsyncGroup.create_array()
 
         Returns
         -------
@@ -886,14 +888,14 @@ class Group(SyncMixin):
         """Create an array.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the require_dataset() method.
+        with h5py, Zarr groups also implement the :func:`zarr.Group.require_dataset` method.
 
         Parameters
         ----------
         name : string
             Array name.
         kwargs : dict
-            Additional arguments passed to create_array()
+            Additional arguments passed to :func:`zarr.Group.create_array`
 
         Returns
         -------
@@ -905,7 +907,7 @@ class Group(SyncMixin):
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the create_dataset() method.
+        with h5py, Zarr groups also implement the :func:`zarr.Group.create_dataset` method.
 
         Other `kwargs` are as per :func:`zarr.Group.create_dataset`.
 
