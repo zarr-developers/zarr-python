@@ -75,7 +75,7 @@ jupyter = [
     'ipywidgets>=8.0.0',
 ]
 gpu = [
-    "cupy>=13.0.0",
+    "cupy-cuda12x",
 ]
 docs = [
     'sphinx',
@@ -123,9 +123,9 @@ build.hooks.vcs.version-file = "src/zarr/_version.py"
 [tool.hatch.envs.test]
 dependencies = [
     "numpy~={matrix:numpy}",
-    "universal_pathlib"
+    "universal_pathlib",
 ]
-features = ["test", "extra"]
+features = ["test", "extra", "gpu"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.11", "3.12"]
@@ -136,6 +136,11 @@ version = ["minimal"]
 python = ["3.10", "3.11", "3.12"]
 numpy = ["1.24", "1.26", "2.0"]
 features = ["optional"]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.10", "3.11", "3.12"]
+numpy = ["1.24", "1.26", "2.0"]
+features = ["gpu"]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
