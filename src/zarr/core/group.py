@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, cast, overload
 
+import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
@@ -25,6 +26,8 @@ from zarr.core.common import (
     ZGROUP_JSON,
     ChunkCoords,
     ZarrFormat,
+    concurrent_map,
+    parse_shapelike,
 )
 from zarr.core.config import config
 from zarr.core.sync import SyncMixin, sync
@@ -323,6 +326,38 @@ class AsyncGroup:
             zarr_format=self.metadata.zarr_format,
         )
 
+    async def require_group(self, name: str, overwrite: bool = False) -> AsyncGroup:
+        """Obtain a sub-group, creating one if it doesn't exist.
+
+        Parameters
+        ----------
+        name : string
+            Group name.
+        overwrite : bool, optional
+            Overwrite any existing group with given `name` if present.
+
+        Returns
+        -------
+        g : AsyncGroup
+        """
+        if overwrite:
+            # TODO: check that exists_ok=True errors if an array exists where the group is being created
+            grp = await self.create_group(name, exists_ok=True)
+        else:
+            try:
+                grp = await self.getitem(name)
+                if not isinstance(grp, AsyncGroup):
+                    raise TypeError(
+                        f"Incompatible object ({grp.__class__.__name__}) already exists"
+                    )
+            except KeyError:
+                grp = await self.create_group(name)
+        return grp
+
+    async def require_groups(self, *names: str) -> tuple[AsyncGroup, ...]:
+        """Convenience method to require multiple groups in a single call."""
+        return tuple(await concurrent_map(list(names), self.require_group))
+
     async def create_array(
         self,
         path: str,
@@ -410,6 +445,74 @@ class AsyncGroup:
             zarr_format=self.metadata.zarr_format,
             data=data,
         )
+
+    async def create_dataset(self, name: str, **kwargs: Any) -> AsyncArray:
+        """Create an array.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the require_dataset() method.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        kwargs : dict
+            Additional arguments passed to create_array()
+
+        Returns
+        -------
+        a : AsyncArray
+        """
+        return await self.create_array(name, **kwargs)
+
+    async def require_dataset(
+        self,
+        name: str,
+        *,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike = None,
+        exact: bool = False,
+        **kwargs: Any,
+    ) -> AsyncArray:
+        """Obtain an array, creating if it doesn't exist.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the create_dataset() method.
+
+        Other `kwargs` are as per :func:`zarr.Group.create_dataset`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+        """
+        try:
+            ds = await self.getitem(name)
+            if not isinstance(ds, AsyncArray):
+                raise TypeError(f"Incompatible object ({ds.__class__.__name__}) already exists")
+
+            shape = parse_shapelike(shape)
+            if shape != ds.shape:
+                raise TypeError(f"Incompatible shape ({ds.shape} vs {shape})")
+
+            dtype = np.dtype(dtype)
+            if exact:
+                if ds.dtype != dtype:
+                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
+            else:
+                if not np.can_cast(ds.dtype, dtype):
+                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
+        except KeyError:
+            ds = await self.create_dataset(name, shape=shape, dtype=dtype, exact=exact, **kwargs)
+
+        return ds
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
         # metadata.attributes is "frozen" so we simply clear and update the dict
@@ -665,6 +768,26 @@ class Group(SyncMixin):
     def create_group(self, name: str, **kwargs: Any) -> Group:
         return Group(self._sync(self._async_group.create_group(name, **kwargs)))
 
+    def require_group(self, name: str, **kwargs: Any) -> Group:
+        """Obtain a sub-group, creating one if it doesn't exist.
+
+        Parameters
+        ----------
+        name : string
+            Group name.
+        overwrite : bool, optional
+            Overwrite any existing group with given `name` if present.
+
+        Returns
+        -------
+        g : Group
+        """
+        return Group(self._sync(self._async_group.require_group(name, **kwargs)))
+
+    def require_groups(self, *names: str) -> tuple[Group, ...]:
+        """Convenience method to require multiple groups in a single call."""
+        return tuple(map(Group, self._sync(self._async_group.require_groups(*names))))
+
     def create_array(
         self,
         name: str,
@@ -758,6 +881,47 @@ class Group(SyncMixin):
                 )
             )
         )
+
+    def create_dataset(self, name: str, **kwargs: Any) -> Array:
+        """Create an array.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the require_dataset() method.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        kwargs : dict
+            Additional arguments passed to create_array()
+
+        Returns
+        -------
+        a : Array
+        """
+        return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
+
+    def require_dataset(self, name: str, **kwargs: Any) -> Array:
+        """Obtain an array, creating if it doesn't exist.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the create_dataset() method.
+
+        Other `kwargs` are as per :func:`zarr.Group.create_dataset`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+        """
+        return Array(self._sync(self._async_group.require_dataset(name, **kwargs)))
 
     def empty(self, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty(**kwargs)))
