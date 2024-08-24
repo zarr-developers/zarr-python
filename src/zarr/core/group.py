@@ -452,14 +452,14 @@ class AsyncGroup:
         """Create an array.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the require_dataset() method.
+        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.require_dataset` method.
 
         Parameters
         ----------
         name : string
             Array name.
         kwargs : dict
-            Additional arguments passed to AsyncGroup.create_array()
+            Additional arguments passed to :func:`zarr.AsyncGroup.create_array`.
 
         Returns
         -------
@@ -479,9 +479,9 @@ class AsyncGroup:
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
-        with h5py, Zarr groups also implement the create_dataset() method.
+        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.create_dataset` method.
 
-        Other `kwargs` are as per :func:`zarr.Group.create_dataset`.
+        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
 
         Parameters
         ----------
@@ -494,6 +494,10 @@ class AsyncGroup:
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
             `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : AsyncArray
         """
         try:
             ds = await self.getitem(name)
