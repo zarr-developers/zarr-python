@@ -117,6 +117,14 @@ class MemoryStore(Store):
             for key in keys_unique:
                 yield key
         else:
-            for key in self._store_dict:
-                if key.startswith(prefix + "/") and key != prefix:
-                    yield key.removeprefix(prefix + "/").split("/")[0]
+            # Our dictionary doesn't contain directory markers, but we want to include
+            # a pseudo directory when there's a nested item and we're listing an
+            # intermediate level.
+            n = prefix.count("/") + 2
+            keys_unique = {
+                "/".join(k.split("/", n)[:n])
+                for k in self._store_dict
+                if k.startswith(prefix + "/")
+            }
+            for key in keys_unique:
+                yield key.removeprefix(prefix + "/").split("/")[0]

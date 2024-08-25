@@ -192,6 +192,13 @@ class StoreTests(Generic[S]):
         assert [k async for k in store.list_dir("foo")] == []
         await store.set("foo/zarr.json", Buffer.from_bytes(b"bar"))
         await store.set("foo/c/1", Buffer.from_bytes(b"\x01"))
+        await store.set("foo/c/d/1", Buffer.from_bytes(b"\x01"))
+        await store.set("foo/c/d/2", Buffer.from_bytes(b"\x01"))
+        await store.set("foo/c/d/3", Buffer.from_bytes(b"\x01"))
+
+        keys_expected = ["foo"]
+        keys_observed = [k async for k in store.list_dir("")]
+        assert set(keys_observed) == set(keys_expected), keys_observed
 
         keys_expected = ["zarr.json", "c"]
         keys_observed = [k async for k in store.list_dir("foo")]
