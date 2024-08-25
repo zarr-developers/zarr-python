@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 import hypothesis.extra.numpy as npst
@@ -101,7 +102,14 @@ def arrays(
     root = Group.create(store)
     fill_value_args: tuple[Any, ...] = tuple()
     if nparray.dtype.kind == "M":
-        fill_value_args = ("ns",)
+        m = re.search("\[(.+)\]", nparray.dtype.str)
+        if not m:
+            raise ValueError(f"Couldn't find precision for dtype '{nparray.dtype}.")
+
+        fill_value_args = (
+            # e.g. ns, D
+            m.groups()[0],
+        )
 
     a = root.create_array(
         array_path,
