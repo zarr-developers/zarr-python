@@ -88,7 +88,7 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
     members_expected["subgroup"] = group.create_group("subgroup")
     # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
     # too deep in the hierarchy
-    _ = members_expected["subgroup"].create_group("subsubgroup")  # type: ignore
+    subsubgroup = members_expected["subgroup"].create_group("subsubgroup")  # type: ignore
 
     members_expected["subarray"] = group.create_array(
         "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
@@ -101,7 +101,13 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
     # this creates a directory with a random key in it
     # this should not show up as a member
     sync(store.set(f"{path}/extra_directory/extra_object-2", Buffer.from_bytes(b"000000")))
-    members_observed = group.members
+    members_observed = group.members()
+    # members are not guaranteed to be ordered, so sort before comparing
+    assert sorted(dict(members_observed)) == sorted(members_expected)
+
+    # recursive=True
+    members_observed = group.members(recursive=True)
+    members_expected["subgroup/subsubgroup"] = subsubgroup
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
@@ -349,7 +355,8 @@ def test_group_create_array(
     if method == "create_array":
         array = group.create_array(name="array", shape=shape, dtype=dtype, data=data)
     elif method == "array":
-        array = group.array(name="array", shape=shape, dtype=dtype, data=data)
+        with pytest.warns(DeprecationWarning):
+            array = group.array(name="array", shape=shape, dtype=dtype, data=data)
     else:
         raise AssertionError
 
@@ -358,7 +365,7 @@ def test_group_create_array(
             with pytest.raises(ContainsArrayError):
                 group.create_array(name="array", shape=shape, dtype=dtype, data=data)
         elif method == "array":
-            with pytest.raises(ContainsArrayError):
+            with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
                 group.array(name="array", shape=shape, dtype=dtype, data=data)
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
@@ -653,3 +660,40 @@ async def test_asyncgroup_update_attributes(
 
     agroup_new_attributes = await agroup.update_attributes(attributes_new)
     assert agroup_new_attributes.attrs == attributes_new
+
+
+async def test_group_members_async(store: LocalStore | MemoryStore):
+    group = AsyncGroup(
+        GroupMetadata(),
+        store_path=StorePath(store=store, path="root"),
+    )
+    a0 = await group.create_array("a0", (1,))
+    g0 = await group.create_group("g0")
+    a1 = await g0.create_array("a1", (1,))
+    g1 = await g0.create_group("g1")
+    a2 = await g1.create_array("a2", (1,))
+    g2 = await g1.create_group("g2")
+
+    # immediate children
+    children = sorted([x async for x in group.members()], key=lambda x: x[0])
+    assert children == [
+        ("a0", a0),
+        ("g0", g0),
+    ]
+
+    nmembers = await group.nmembers()
+    assert nmembers == 2
+
+    all_children = sorted([x async for x in group.members(recursive=True)], key=lambda x: x[0])
+    expected = [
+        ("a0", a0),
+        ("g0", g0),
+        ("g0/a1", a1),
+        ("g0/g1", g1),
+        ("g0/g1/a2", a2),
+        ("g0/g1/g2", g2),
+    ]
+    assert all_children == expected
+
+    nmembers = await group.nmembers(recursive=True)
+    assert nmembers == 6

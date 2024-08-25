@@ -424,20 +424,43 @@ class AsyncGroup:
     def __repr__(self) -> str:
         return f"<AsyncGroup {self.store_path}>"
 
-    async def nmembers(self) -> int:
+    async def nmembers(self, recursive: bool = False) -> int:
+        """
+        Count the number of members in this group.
+
+        Parameters
+        ----------
+        recursive : bool, default False
+            Whether to recursively count arrays and groups in child groups of
+            this Group. By default, just immediate child array and group members
+            are counted.
+
+        Returns
+        -------
+        count : int
+        """
         # TODO: consider using aioitertools.builtins.sum for this
         # return await aioitertools.builtins.sum((1 async for _ in self.members()), start=0)
         n = 0
-        async for _ in self.members():
+        async for _ in self.members(recursive=recursive):
             n += 1
         return n
 
-    async def members(self) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
+    async def members(
+        self, recursive: bool = False
+    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
         This method requires that `store_path.store` supports directory listing.
 
         The results are not guaranteed to be ordered.
+
+        Parameters
+        ----------
+        recursive : bool, default False
+            Whether to recursively include arrays and groups in child groups of
+            this Group. By default, just immediate child array and group members
+            are included.
         """
         if not self.store_path.store.supports_listing:
             msg = (
@@ -456,7 +479,19 @@ class AsyncGroup:
             if key in _skip_keys:
                 continue
             try:
-                yield (key, await self.getitem(key))
+                obj = await self.getitem(key)
+                yield (key, obj)
+
+                if (
+                    recursive
+                    and hasattr(obj.metadata, "node_type")
+                    and obj.metadata.node_type == "group"
+                ):
+                    # the assert is just for mypy to know that `obj.metadata.node_type`
+                    # implies an AsyncGroup, not an AsyncArray
+                    assert isinstance(obj, AsyncGroup)
+                    async for child_key, val in obj.members(recursive=recursive):
+                        yield "/".join([key, child_key]), val
             except KeyError:
                 # keyerror is raised when `key` names an object (in the object storage sense),
                 # as opposed to a prefix, in the store under the prefix associated with this group
@@ -628,17 +663,15 @@ class Group(SyncMixin):
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
-    @property
-    def nmembers(self) -> int:
-        return self._sync(self._async_group.nmembers())
+    def nmembers(self, recursive: bool = False) -> int:
+        return self._sync(self._async_group.nmembers(recursive=recursive))
 
-    @property
-    def members(self) -> tuple[tuple[str, Array | Group], ...]:
+    def members(self, recursive: bool = False) -> tuple[tuple[str, Array | Group], ...]:
         """
         Return the sub-arrays and sub-groups of this group as a tuple of (name, array | group)
         pairs
         """
-        _members = self._sync_iter(self._async_group.members())
+        _members = self._sync_iter(self._async_group.members(recursive=recursive))
 
         result = tuple(map(lambda kv: (kv[0], _parse_async_node(kv[1])), _members))
         return result
