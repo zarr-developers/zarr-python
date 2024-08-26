@@ -32,6 +32,7 @@ def test_basic_indexing(data):
 
 
 @given(data=st.data())
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_vindex(data):
     zarray = data.draw(arrays())
     nparray = zarray[:]
