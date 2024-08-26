@@ -69,6 +69,8 @@ class N5Store(NestedDirectoryStore):
 
     Safe to write in multiple threads or processes.
 
+    .. deprecated:: 2.18.3
+        `N5Store` will be removed in Zarr 3.0.0.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -332,6 +334,9 @@ class N5FSStore(FSStore):
     storage, and this procedure requires chunk keys with "." separated
     dimensions, hence the Zarr arrays targeting N5 have the deceptive
     "." dimension separator.
+
+    .. deprecated:: 2.18.3
+        `N5FSStore` will be removed in Zarr 3.0.0.
     """
 
     _array_meta_key = "attributes.json"
