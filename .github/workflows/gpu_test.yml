@@ -27,9 +27,18 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+    - name: cuda-toolkit
+      uses: Jimver/cuda-toolkit@v0.2.16
+      id: cuda-toolkit
+      with:
+        cuda: '12.5.0'
+      run: |
+        echo "Installed cuda version is: ${{steps.cuda-toolkit.outputs.cuda}}"
+        echo "Cuda install location: ${{steps.cuda-toolkit.outputs.CUDA_PATH}}"
+        nvcc -V
     - name: GPU check
       run: |
-        nvidia-smi && ls -l /usr/local/cuda/lib64/ && echo ${LD_LIBRARY_PATH}
+        nvidia-smi && which nvcc && ls -l /usr/local/cuda/lib64/ && echo ${LD_LIBRARY_PATH}
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
