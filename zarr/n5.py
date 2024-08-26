@@ -339,6 +339,13 @@ class N5FSStore(FSStore):
     _attrs_key = "attributes.json"
 
     def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "The N5FSStore is deprecated and will be removed in a Zarr-Python version 3, "
+            "see https://github.com/zarr-developers/zarr-python/issues/1274 and "
+            "https://github.com/zarr-developers/n5py for more information.",
+            FutureWarning,
+            stacklevel=2,
+        )
         if "dimension_separator" in kwargs:
             kwargs.pop("dimension_separator")
             warnings.warn(
