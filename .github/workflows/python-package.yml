@@ -18,8 +18,6 @@ jobs:
         python-version: ['3.10', '3.11', '3.12']
         numpy_version: ['>=1.24.0', '==1.23.*']
         exclude:
-          - python-version: '3.10'
-            numpy_version: '==1.23.*'
           - python-version: '3.11'
             numpy_version: '==1.23.*'
           - python-version: '3.12'
