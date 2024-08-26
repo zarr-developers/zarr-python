@@ -16,12 +16,10 @@ jobs:
     strategy:
       matrix:
         python-version: ['3.10', '3.11', '3.12']
-        numpy_version: ['>=1.24.0', '==1.23.*']
+        numpy_version: ['>=2.1', '==1.24.*', '==1.26.*']
         exclude:
-          - python-version: '3.11'
-            numpy_version: '==1.23.*'
           - python-version: '3.12'
-            numpy_version: '==1.23.*'
+            numpy_version: '==1.24.*'
     services:
       redis:
         image: redis
@@ -61,7 +59,7 @@ jobs:
         conda activate zarr-env
         python -m pip install --upgrade pip
         python -m pip install -U pip setuptools wheel line_profiler
-        python -m pip install -rrequirements_dev_minimal.txt numpy${{matrix.numpy_version}} -rrequirements_dev_optional.txt pymongo redis
+        python -m pip install -r requirements_dev_minimal.txt numpy${{matrix.numpy_version}} -r requirements_dev_optional.txt pymongo redis
         python -m pip install -e .
         python -m pip freeze
     - name: Tests
