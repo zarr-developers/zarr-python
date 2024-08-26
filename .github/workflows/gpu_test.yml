@@ -29,7 +29,7 @@ jobs:
     - uses: actions/checkout@v4
     - name: GPU check
       run: |
-        nvidia-smi
+        nvidia-smi && ls -l /usr/local/cuda/lib64/ && echo ${LD_LIBRARY_PATH}
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
