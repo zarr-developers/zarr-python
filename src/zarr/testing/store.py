@@ -193,14 +193,42 @@ class StoreTests(Generic[S, B]):
         assert out == []
         assert [k async for k in store.list_dir("foo")] == []
         await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
-        await store.set("foo/c/1", self.buffer_cls.from_bytes(b"\x01"))
+        await store.set("group-0/zarr.json", self.buffer_cls.from_bytes(b"\x01"))  # group
+        await store.set("group-0/group-1/zarr.json", self.buffer_cls.from_bytes(b"\x01"))  # group
+        await store.set("group-0/group-1/a1/zarr.json", self.buffer_cls.from_bytes(b"\x01"))
+        await store.set("group-0/group-1/a2/zarr.json", self.buffer_cls.from_bytes(b"\x01"))
+        await store.set("group-0/group-1/a3/zarr.json", self.buffer_cls.from_bytes(b"\x01"))
 
-        keys_expected = ["zarr.json", "c"]
+        keys_expected = ["foo", "group-0"]
+        keys_observed = [k async for k in store.list_dir("")]
+        assert set(keys_observed) == set(keys_expected)
+
+        keys_expected = ["zarr.json"]
         keys_observed = [k async for k in store.list_dir("foo")]
 
         assert len(keys_observed) == len(keys_expected), keys_observed
         assert set(keys_observed) == set(keys_expected), keys_observed
 
         keys_observed = [k async for k in store.list_dir("foo/")]
+        assert len(keys_expected) == len(keys_observed), keys_observed
+        assert set(keys_observed) == set(keys_expected), keys_observed
+
+        keys_observed = [k async for k in store.list_dir("group-0")]
+        keys_expected = ["zarr.json", "group-1"]
+
+        assert len(keys_observed) == len(keys_expected), keys_observed
+        assert set(keys_observed) == set(keys_expected), keys_observed
+
+        keys_observed = [k async for k in store.list_dir("group-0/")]
+        assert len(keys_expected) == len(keys_observed), keys_observed
+        assert set(keys_observed) == set(keys_expected), keys_observed
+
+        keys_observed = [k async for k in store.list_dir("group-0/group-1")]
+        keys_expected = ["zarr.json", "a1", "a2", "a3"]
+
+        assert len(keys_observed) == len(keys_expected), keys_observed
+        assert set(keys_observed) == set(keys_expected), keys_observed
+
+        keys_observed = [k async for k in store.list_dir("group-0/group-1")]
         assert len(keys_expected) == len(keys_observed), keys_observed
         assert set(keys_observed) == set(keys_expected), keys_observed
