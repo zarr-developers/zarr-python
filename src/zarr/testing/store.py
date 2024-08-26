@@ -198,7 +198,7 @@ class StoreTests(Generic[S]):
 
         keys_expected = ["foo"]
         keys_observed = [k async for k in store.list_dir("")]
-        assert set(keys_observed) == set(keys_expected), keys_observed
+        assert set(keys_observed) == set(keys_expected)
 
         keys_expected = ["zarr.json", "c"]
         keys_observed = [k async for k in store.list_dir("foo")]
