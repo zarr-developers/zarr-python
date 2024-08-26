@@ -46,10 +46,8 @@ Deprecations
 ~~~~~~~~~~~~
 
 * Deprecate :class:`zarr.n5.N5Store` and :class:`zarr.n5.N5FSStore`. These
-stores are slated to be removed in Zarr Python 3.0.
-By :user:`Joe Hamman <jhamman>` :issue:`2085`.
-
-
+  stores are slated to be removed in Zarr Python 3.0.
+  By :user:`Joe Hamman <jhamman>` :issue:`2085`.
 
 .. _release_2.18.2:
 
