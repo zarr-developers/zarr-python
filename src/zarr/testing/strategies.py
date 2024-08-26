@@ -102,7 +102,7 @@ def arrays(
     root = Group.create(store)
     fill_value_args: tuple[Any, ...] = tuple()
     if nparray.dtype.kind == "M":
-        m = re.search("\[(.+)\]", nparray.dtype.str)
+        m = re.search(r"\[(.+)\]", nparray.dtype.str)
         if not m:
             raise ValueError(f"Couldn't find precision for dtype '{nparray.dtype}.")
 
