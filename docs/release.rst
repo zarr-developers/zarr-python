@@ -39,8 +39,11 @@ Maintenance
 * Fix a regression when using orthogonal indexing with a scalar.
   By :user:`Deepak Cherian <dcherian>` :issue:`1931`
 
-* Added compatibility with numpy 2.1.
+* Added compatibility with NumPy 2.1.
   By :user:`David Stansby <dstansby>`
+
+* Bump minimum NumPy version to 1.24.
+  :user:`Joe Hamman <jhamman>` (:issue:`2127`).
 
 Deprecations
 ~~~~~~~~~~~~
