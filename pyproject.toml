@@ -125,7 +125,7 @@ dependencies = [
     "numpy~={matrix:numpy}",
     "universal_pathlib",
 ]
-features = ["test", "extra", "gpu"]
+features = ["test", "extra"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.11", "3.12"]
@@ -144,7 +144,27 @@ features = ["gpu"]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
-run-coverage-gpu = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=tests"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=tests"
+run = "run-coverage --no-cov"
+run-verbose = "run-coverage --verbose"
+run-mypy = "mypy src"
+run-hypothesis = "pytest --hypothesis-profile ci tests/v3/test_properties.py tests/v3/test_store/test_stateful*"
+list-env = "pip list"
+
+[tool.hatch.envs.gputest]
+dependencies = [
+    "numpy~={matrix:numpy}",
+    "universal_pathlib",
+]
+features = ["test", "extra", "gpu"]
+
+[[tool.hatch.envs.gputest.matrix]]
+python = ["3.10", "3.11", "3.12"]
+numpy = ["1.24", "1.26", "2.0"]
+version = ["minimal"]
+
+[tool.hatch.envs.gputest.scripts]
+run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
