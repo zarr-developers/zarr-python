@@ -89,6 +89,7 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
     # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
     # too deep in the hierarchy
     subsubgroup = members_expected["subgroup"].create_group("subsubgroup")  # type: ignore
+    subsubsubgroup = subsubgroup.create_group("subsubsubgroup")  # type: ignore
 
     members_expected["subarray"] = group.create_array(
         "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
@@ -105,9 +106,15 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
-    # recursive=True
-    members_observed = group.members(recursive=True)
+    # partial
+    members_observed = group.members(max_depth=1)
     members_expected["subgroup/subsubgroup"] = subsubgroup
+    # members are not guaranteed to be ordered, so sort before comparing
+    assert sorted(dict(members_observed)) == sorted(members_expected)
+
+    # total
+    members_observed = group.members(max_depth=-1)
+    members_expected["subgroup/subsubgroup/subsubsubgroup"] = subsubsubgroup
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
@@ -684,16 +691,32 @@ async def test_group_members_async(store: LocalStore | MemoryStore):
     nmembers = await group.nmembers()
     assert nmembers == 2
 
-    all_children = sorted([x async for x in group.members(recursive=True)], key=lambda x: x[0])
+    # partial
+    children = sorted([x async for x in group.members(max_depth=1)], key=lambda x: x[0])
     expected = [
         ("a0", a0),
         ("g0", g0),
         ("g0/a1", a1),
         ("g0/g1", g1),
-        ("g0/g1/a2", a2),
-        ("g0/g1/g2", g2),
     ]
-    assert all_children == expected
+    assert children == expected
+    nmembers = await group.nmembers(max_depth=1)
+    assert nmembers == 4
 
-    nmembers = await group.nmembers(recursive=True)
-    assert nmembers == 6
+    # all children
+    for max_depth in [-1, None]:
+        all_children = sorted(
+            [x async for x in group.members(max_depth=max_depth)], key=lambda x: x[0]
+        )
+        expected = [
+            ("a0", a0),
+            ("g0", g0),
+            ("g0/a1", a1),
+            ("g0/g1", g1),
+            ("g0/g1/a2", a2),
+            ("g0/g1/g2", g2),
+        ]
+        assert all_children == expected
+
+        nmembers = await group.nmembers(max_depth=max_depth)
+        assert nmembers == 6

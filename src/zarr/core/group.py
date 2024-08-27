@@ -424,16 +424,21 @@ class AsyncGroup:
     def __repr__(self) -> str:
         return f"<AsyncGroup {self.store_path}>"
 
-    async def nmembers(self, recursive: bool = False) -> int:
+    async def nmembers(
+        self,
+        max_depth: int | None = 0,
+    ) -> int:
         """
         Count the number of members in this group.
 
         Parameters
         ----------
-        recursive : bool, default False
-            Whether to recursively count arrays and groups in child groups of
-            this Group. By default, just immediate child array and group members
-            are counted.
+        max_depth : int, default 0
+            The maximum number of levels of the hierarchy to include. By
+            default, (``max_depth=0``) only immediate children are included. Set
+            ``max_depth=None`` or ``max_depth=-1`` to include all nodes, and
+            some positive integer to consider children within that many levels
+            of the root Group.
 
         Returns
         -------
@@ -442,12 +447,13 @@ class AsyncGroup:
         # TODO: consider using aioitertools.builtins.sum for this
         # return await aioitertools.builtins.sum((1 async for _ in self.members()), start=0)
         n = 0
-        async for _ in self.members(recursive=recursive):
+        async for _ in self.members(max_depth=max_depth):
             n += 1
         return n
 
     async def members(
-        self, recursive: bool = False
+        self,
+        max_depth: int | None = 0,
     ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
@@ -457,11 +463,22 @@ class AsyncGroup:
 
         Parameters
         ----------
-        recursive : bool, default False
-            Whether to recursively include arrays and groups in child groups of
-            this Group. By default, just immediate child array and group members
-            are included.
+        max_depth : int, default 0
+            The maximum number of levels of the hierarchy to include. By
+            default, (``max_depth=0``) only immediate children are included. Set
+            ``max_depth=None`` or ``max_depth=-1`` to include all nodes, and
+            some positive integer to consider children within that many levels
+            of the root Group.
+
         """
+        if max_depth is None:
+            max_depth = -1
+        async for item in self._members(max_depth=max_depth, current_depth=0):
+            yield item
+
+    async def _members(
+        self, max_depth: int, current_depth: int
+    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
         if not self.store_path.store.supports_listing:
             msg = (
                 f"The store associated with this group ({type(self.store_path.store)}) "
@@ -483,14 +500,16 @@ class AsyncGroup:
                 yield (key, obj)
 
                 if (
-                    recursive
+                    ((current_depth < max_depth) or (max_depth < 0))
                     and hasattr(obj.metadata, "node_type")
                     and obj.metadata.node_type == "group"
                 ):
                     # the assert is just for mypy to know that `obj.metadata.node_type`
                     # implies an AsyncGroup, not an AsyncArray
                     assert isinstance(obj, AsyncGroup)
-                    async for child_key, val in obj.members(recursive=recursive):
+                    async for child_key, val in obj._members(
+                        max_depth=max_depth, current_depth=current_depth + 1
+                    ):
                         yield "/".join([key, child_key]), val
             except KeyError:
                 # keyerror is raised when `key` names an object (in the object storage sense),
@@ -663,15 +682,15 @@ class Group(SyncMixin):
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
-    def nmembers(self, recursive: bool = False) -> int:
-        return self._sync(self._async_group.nmembers(recursive=recursive))
+    def nmembers(self, max_depth: int | None = 0) -> int:
+        return self._sync(self._async_group.nmembers(max_depth=max_depth))
 
-    def members(self, recursive: bool = False) -> tuple[tuple[str, Array | Group], ...]:
+    def members(self, max_depth: int | None = 0) -> tuple[tuple[str, Array | Group], ...]:
         """
         Return the sub-arrays and sub-groups of this group as a tuple of (name, array | group)
         pairs
         """
-        _members = self._sync_iter(self._async_group.members(recursive=recursive))
+        _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
         result = tuple(map(lambda kv: (kv[0], _parse_async_node(kv[1])), _members))
         return result
