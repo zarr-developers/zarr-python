@@ -26,7 +26,6 @@ from zarr.core.common import (
     ZGROUP_JSON,
     ChunkCoords,
     ZarrFormat,
-    concurrent_map,
     parse_shapelike,
 )
 from zarr.core.config import config
@@ -358,7 +357,9 @@ class AsyncGroup:
 
     async def require_groups(self, *names: str) -> tuple[AsyncGroup, ...]:
         """Convenience method to require multiple groups in a single call."""
-        return tuple(await concurrent_map([names], self.require_group))
+        if not names:
+            return ()
+        return tuple(await asyncio.gather(*(self.require_group(name) for name in names)))
 
     async def create_array(
         self,
@@ -501,6 +502,7 @@ class AsyncGroup:
         """
         try:
             ds = await self.getitem(name)
+            print("Found existing dataset", ds)
             if not isinstance(ds, AsyncArray):
                 raise TypeError(f"Incompatible object ({ds.__class__.__name__}) already exists")
 
@@ -516,7 +518,8 @@ class AsyncGroup:
                 if not np.can_cast(ds.dtype, dtype):
                     raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
         except KeyError:
-            ds = await self.create_dataset(name, shape=shape, dtype=dtype, exact=exact, **kwargs)
+            print(f"Creating dataset {name} with shape {shape} and dtype {dtype}")
+            ds = await self.create_dataset(name, shape=shape, dtype=dtype, **kwargs)
 
         return ds
 
