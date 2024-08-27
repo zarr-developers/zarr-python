@@ -24,14 +24,33 @@ Release notes
 2.18.3
 ------
 
+Enhancements
+~~~~~~~~~~~~
+* Added support for creating a copy of data when converting a `zarr.Array`
+  to a numpy array.
+  By :user:`David Stansby <dstansby>` (:issue:`2106`) and 
+  :user:`Joe Hamman <jhamman>` (:issue:`2123`).
+
 Maintenance
 ~~~~~~~~~~~
 * Removed support for Python 3.9.
-  By :user:`David Stansby <dstansby>`
-  
+  By :user:`David Stansby <dstansby>` (:issue:`2074`).
+
 * Fix a regression when using orthogonal indexing with a scalar.
   By :user:`Deepak Cherian <dcherian>` :issue:`1931`
 
+* Added compatibility with NumPy 2.1.
+  By :user:`David Stansby <dstansby>`
+
+* Bump minimum NumPy version to 1.24.
+  :user:`Joe Hamman <jhamman>` (:issue:`2127`).
+
+Deprecations
+~~~~~~~~~~~~
+
+* Deprecate :class:`zarr.n5.N5Store` and :class:`zarr.n5.N5FSStore`. These
+  stores are slated to be removed in Zarr Python 3.0.
+  By :user:`Joe Hamman <jhamman>` :issue:`2085`.
 
 .. _release_2.18.2:
 

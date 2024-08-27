@@ -575,11 +575,8 @@ class Array:
             # store comparison
         )
 
-    def __array__(self, *args):
-        a = self[...]
-        if args:
-            a = a.astype(args[0])
-        return a
+    def __array__(self, *args, **kwargs):
+        return np.array(self[...], *args, **kwargs)
 
     def islice(self, start=None, end=None):
         """
