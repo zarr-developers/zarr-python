@@ -436,9 +436,8 @@ class AsyncGroup:
         max_depth : int, default 0
             The maximum number of levels of the hierarchy to include. By
             default, (``max_depth=0``) only immediate children are included. Set
-            ``max_depth=None`` or ``max_depth=-1`` to include all nodes, and
-            some positive integer to consider children within that many levels
-            of the root Group.
+            ``max_depth=None`` to include all nodes, and some positive integer
+            to consider children within that many levels of the root Group.
 
         Returns
         -------
@@ -466,18 +465,17 @@ class AsyncGroup:
         max_depth : int, default 0
             The maximum number of levels of the hierarchy to include. By
             default, (``max_depth=0``) only immediate children are included. Set
-            ``max_depth=None`` or ``max_depth=-1`` to include all nodes, and
-            some positive integer to consider children within that many levels
-            of the root Group.
+            ``max_depth=None`` to include all nodes, and some positive integer
+            to consider children within that many levels of the root Group.
 
         """
-        if max_depth is None:
-            max_depth = -1
+        if max_depth is not None and max_depth < 0:
+            raise ValueError(f"max_depth must be None or >= 0. Got '{max_depth}' instead")
         async for item in self._members(max_depth=max_depth, current_depth=0):
             yield item
 
     async def _members(
-        self, max_depth: int, current_depth: int
+        self, max_depth: int | None, current_depth: int
     ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
         if not self.store_path.store.supports_listing:
             msg = (
@@ -500,7 +498,7 @@ class AsyncGroup:
                 yield (key, obj)
 
                 if (
-                    ((current_depth < max_depth) or (max_depth < 0))
+                    ((max_depth is None) or (current_depth < max_depth))
                     and hasattr(obj.metadata, "node_type")
                     and obj.metadata.node_type == "group"
                 ):

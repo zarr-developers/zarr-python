@@ -113,10 +113,13 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
     # total
-    members_observed = group.members(max_depth=-1)
+    members_observed = group.members(max_depth=None)
     members_expected["subgroup/subsubgroup/subsubsubgroup"] = subsubsubgroup
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
+
+    with pytest.raises(ValueError, match="max_depth"):
+        members_observed = group.members(max_depth=-1)
 
 
 def test_group(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
@@ -704,19 +707,19 @@ async def test_group_members_async(store: LocalStore | MemoryStore):
     assert nmembers == 4
 
     # all children
-    for max_depth in [-1, None]:
-        all_children = sorted(
-            [x async for x in group.members(max_depth=max_depth)], key=lambda x: x[0]
-        )
-        expected = [
-            ("a0", a0),
-            ("g0", g0),
-            ("g0/a1", a1),
-            ("g0/g1", g1),
-            ("g0/g1/a2", a2),
-            ("g0/g1/g2", g2),
-        ]
-        assert all_children == expected
+    all_children = sorted([x async for x in group.members(max_depth=None)], key=lambda x: x[0])
+    expected = [
+        ("a0", a0),
+        ("g0", g0),
+        ("g0/a1", a1),
+        ("g0/g1", g1),
+        ("g0/g1/a2", a2),
+        ("g0/g1/g2", g2),
+    ]
+    assert all_children == expected
 
-        nmembers = await group.nmembers(max_depth=max_depth)
-        assert nmembers == 6
+    nmembers = await group.nmembers(max_depth=None)
+    assert nmembers == 6
+
+    with pytest.raises(ValueError, match="max_depth"):
+        [x async for x in group.members(max_depth=-1)]
