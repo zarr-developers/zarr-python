@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from zarr import Array, Group
+from zarr.core.buffer import NDBuffer
 from zarr.core.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.store import LocalStore, MemoryStore
@@ -135,3 +136,44 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
     assert arr.fill_value == np.dtype(dtype_str).type(fill_value)
     assert arr.fill_value.dtype == arr.dtype
+
+
+def test_create_positional_args_deprecated():
+    store = MemoryStore({}, mode="w")
+    with pytest.warns(FutureWarning, match="Pass"):
+        Array.create(store, (2, 2), dtype="f8")
+
+
+def test_selection_positional_args_deprecated():
+    store = MemoryStore({}, mode="w")
+    arr = Array.create(store, shape=(2, 2), dtype="f8")
+
+    with pytest.warns(FutureWarning, match="Pass out"):
+        arr.get_basic_selection(..., NDBuffer(array=np.empty((2, 2))))
+
+    with pytest.warns(FutureWarning, match="Pass fields"):
+        arr.set_basic_selection(..., 1, None)
+
+    with pytest.warns(FutureWarning, match="Pass out"):
+        arr.get_orthogonal_selection(..., NDBuffer(array=np.empty((2, 2))))
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.set_orthogonal_selection(..., 1, None)
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.get_mask_selection(np.zeros((2, 2), dtype=bool), NDBuffer(array=np.empty((0,))))
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.set_mask_selection(np.zeros((2, 2), dtype=bool), 1, None)
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.get_coordinate_selection(([0, 1], [0, 1]), NDBuffer(array=np.empty((2,))))
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.set_coordinate_selection(([0, 1], [0, 1]), 1, None)
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.get_block_selection((0, slice(None)), NDBuffer(array=np.empty((2, 2))))
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.set_block_selection((0, slice(None)), 1, None)

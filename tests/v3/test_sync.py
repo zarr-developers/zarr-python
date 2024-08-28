@@ -122,3 +122,6 @@ def test_sync_mixin(sync_loop) -> None:
     foo = SyncFoo(async_foo)
     assert foo.foo() == "foo"
     assert foo.bar() == list(range(10))
+
+
+def test_open_positional_args_deprecate(): ...

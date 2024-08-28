@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import zarr.api.asynchronous as async_api
+from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, ZarrFormat
@@ -61,6 +62,7 @@ def load(
     return sync(async_api.load(store=store, zarr_version=zarr_version, path=path))
 
 
+@_deprecate_positional_args
 def open(
     store: StoreLike | None = None,
     *,
@@ -105,6 +107,7 @@ def save(
     )
 
 
+@_deprecate_positional_args
 def save_array(
     store: StoreLike,
     arr: NDArrayLike,
@@ -155,9 +158,10 @@ def array(data: NDArrayLike, **kwargs: Any) -> Array:
     return Array(sync(async_api.array(data=data, **kwargs)))
 
 
+@_deprecate_positional_args
 def group(
-    *,  # Note: this is a change from v2
     store: StoreLike | None = None,
+    *,  # Note: this is a change from v2
     overwrite: bool = False,
     chunk_store: StoreLike | None = None,  # not used in async_api
     cache_attrs: bool | None = None,  # default changed, not used in async_api
@@ -186,6 +190,7 @@ def group(
     )
 
 
+@_deprecate_positional_args
 def open_group(
     store: StoreLike | None = None,
     *,  # Note: this is a change from v2
