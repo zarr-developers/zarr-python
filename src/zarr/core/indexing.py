@@ -34,7 +34,9 @@ if TYPE_CHECKING:
 IntSequence = list[int] | npt.NDArray[np.intp]
 ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
 BasicSelector = int | slice | EllipsisType
-Selector = BasicSelector | ArrayOfIntOrBool
+Selector = (
+    BasicSelector | ArrayOfIntOrBool | Array
+)  # help! we want zarr.Array[np.intp] | zarr.Array[np.bool_]
 
 BasicSelection = BasicSelector | tuple[BasicSelector, ...]  # also used for BlockIndex
 CoordinateSelection = IntSequence | tuple[IntSequence, ...]
@@ -839,6 +841,10 @@ class OIndex:
     array: Array
 
     def __getitem__(self, selection: OrthogonalSelection) -> NDArrayLike:
+        from zarr.core.array import Array
+
+        if isinstance(selection, Array):
+            selection = np.asarray(selection)
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
@@ -1127,6 +1133,10 @@ class VIndex:
     array: Array
 
     def __getitem__(self, selection: CoordinateSelection | MaskSelection) -> NDArrayLike:
+        from zarr.core.array import Array
+
+        if isinstance(selection, Array):
+            selection = np.asarray(selection)
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
