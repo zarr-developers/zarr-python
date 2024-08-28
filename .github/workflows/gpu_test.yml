@@ -32,13 +32,12 @@ jobs:
       id: cuda-toolkit
       with:
         cuda: '12.5.0'
+    - name: GPU check
       run: |
         echo "Installed cuda version is: ${{steps.cuda-toolkit.outputs.cuda}}"
         echo "Cuda install location: ${{steps.cuda-toolkit.outputs.CUDA_PATH}}"
         nvcc -V
-    - name: GPU check
-      run: |
-        nvidia-smi && which nvcc && ls -l /usr/local/cuda/lib64/ && echo ${LD_LIBRARY_PATH}
+        nvidia-smi
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
