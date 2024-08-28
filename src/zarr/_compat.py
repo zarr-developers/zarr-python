@@ -6,6 +6,8 @@ from typing import Any, TypeVar
 
 T = TypeVar("T")
 
+# Based off https://github.com/scikit-learn/scikit-learn/blob/e87b32a81c70abed8f2e97483758eb64df8255e9/sklearn/utils/validation.py#L63
+
 
 def _deprecate_positional_args(
     func: Callable[..., T] | None = None, *, version: str = "1.3"
