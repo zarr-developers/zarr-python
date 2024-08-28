@@ -252,7 +252,7 @@ class AsyncGroup:
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
                 zarr_json = {**zarray, "attributes": zattrs}
-                return AsyncArray.from_dict(store_path, zarray)
+                return AsyncArray.from_dict(store_path, zarr_json)
             else:
                 zgroup = (
                     json.loads(zgroup_bytes.to_bytes())
@@ -502,7 +502,6 @@ class AsyncGroup:
         """
         try:
             ds = await self.getitem(name)
-            print("Found existing dataset", ds)
             if not isinstance(ds, AsyncArray):
                 raise TypeError(f"Incompatible object ({ds.__class__.__name__}) already exists")
 
@@ -518,7 +517,6 @@ class AsyncGroup:
                 if not np.can_cast(ds.dtype, dtype):
                     raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
         except KeyError:
-            print(f"Creating dataset {name} with shape {shape} and dtype {dtype}")
             ds = await self.create_dataset(name, shape=shape, dtype=dtype, **kwargs)
 
         return ds
@@ -670,8 +668,9 @@ class Group(SyncMixin):
     def open(
         cls,
         store: StoreLike,
+        zarr_format: Literal[2, 3, None] = 3,
     ) -> Group:
-        obj = sync(AsyncGroup.open(store))
+        obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
         return cls(obj)
 
     def __getitem__(self, path: str) -> Array | Group:
