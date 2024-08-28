@@ -540,11 +540,11 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
     """
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
 
-    sub_array_path = "sub_array"
+    array_name = "sub_array"
     sub_array = await agroup.create_array(
-        path=sub_array_path, shape=(10,), dtype="uint8", chunk_shape=(2,)
+        name=array_name, shape=(10,), dtype="uint8", chunk_shape=(2,)
     )
-    assert await agroup.getitem(sub_array_path) == sub_array
+    assert await agroup.getitem(array_name) == sub_array
 
     sub_group_path = "sub_group"
     sub_group = await agroup.create_group(sub_group_path, attributes={"foo": 100})
@@ -557,18 +557,18 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
 
 async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
-    sub_array_path = "sub_array"
+    array_name = "sub_array"
     _ = await agroup.create_array(
-        path=sub_array_path, shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
+        name=array_name, shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
     )
-    await agroup.delitem(sub_array_path)
+    await agroup.delitem(array_name)
 
     #  todo: clean up the code duplication here
     if zarr_format == 2:
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zarray")
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zattrs")
+        assert not await agroup.store_path.store.exists(array_name + "/" + ".zarray")
+        assert not await agroup.store_path.store.exists(array_name + "/" + ".zattrs")
     elif zarr_format == 3:
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
+        assert not await agroup.store_path.store.exists(array_name + "/" + "zarr.json")
     else:
         raise AssertionError
 
@@ -576,10 +576,10 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
     _ = await agroup.create_group(sub_group_path, attributes={"foo": 100})
     await agroup.delitem(sub_group_path)
     if zarr_format == 2:
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zgroup")
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zattrs")
+        assert not await agroup.store_path.store.exists(array_name + "/" + ".zgroup")
+        assert not await agroup.store_path.store.exists(array_name + "/" + ".zattrs")
     elif zarr_format == 3:
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
+        assert not await agroup.store_path.store.exists(array_name + "/" + "zarr.json")
     else:
         raise AssertionError
 
@@ -591,7 +591,7 @@ async def test_asyncgroup_create_group(
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     sub_node_path = "sub_group"
     attributes = {"foo": 999}
-    subnode = await agroup.create_group(path=sub_node_path, attributes=attributes)
+    subnode = await agroup.create_group(name=sub_node_path, attributes=attributes)
 
     assert isinstance(subnode, AsyncGroup)
     assert subnode.attrs == attributes
@@ -621,7 +621,7 @@ async def test_asyncgroup_create_array(
 
     sub_node_path = "sub_array"
     subnode = await agroup.create_array(
-        path=sub_node_path,
+        name=sub_node_path,
         shape=shape,
         dtype=dtype,
         chunk_shape=chunk_shape,

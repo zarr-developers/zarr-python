@@ -311,13 +311,14 @@ class AsyncGroup:
 
     async def create_group(
         self,
-        path: str,
+        name: str,
+        *,
         exists_ok: bool = False,
         attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
         attributes = attributes or {}
         return await type(self).create(
-            self.store_path / path,
+            self.store_path / name,
             attributes=attributes,
             exists_ok=exists_ok,
             zarr_format=self.metadata.zarr_format,
@@ -325,7 +326,8 @@ class AsyncGroup:
 
     async def create_array(
         self,
-        path: str,
+        name: str,
+        *,
         shape: ChunkCoords,
         dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
@@ -356,7 +358,7 @@ class AsyncGroup:
 
         Parameters
         ----------
-        path: str
+        name: str
             The name of the array.
         shape: tuple[int, ...]
             The shape of the array.
@@ -392,7 +394,7 @@ class AsyncGroup:
 
         """
         return await AsyncArray.create(
-            self.store_path / path,
+            self.store_path / name,
             shape=shape,
             dtype=dtype,
             chunk_shape=chunk_shape,
@@ -739,7 +741,7 @@ class Group(SyncMixin):
         return Array(
             self._sync(
                 self._async_group.create_array(
-                    path=name,
+                    name=name,
                     shape=shape,
                     dtype=dtype,
                     fill_value=fill_value,
@@ -862,7 +864,7 @@ class Group(SyncMixin):
         return Array(
             self._sync(
                 self._async_group.create_array(
-                    path=name,
+                    name=name,
                     shape=shape,
                     dtype=dtype,
                     fill_value=fill_value,
