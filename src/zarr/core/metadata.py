@@ -256,13 +256,21 @@ class ArrayV3Metadata(ArrayMetadata):
             if isinstance(o, np.dtype):
                 return str(o)
             if np.isscalar(o):
-                # convert numpy scalar to python type, and pass
-                # python types through
-                out = getattr(o, "item", lambda: o)()
-                if isinstance(out, complex):
-                    # python complex types are not JSON serializable, so we use the
-                    # serialization defined in the zarr v3 spec
-                    return [out.real, out.imag]
+                out: Any
+                if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
+                    # https://github.com/zarr-developers/zarr-python/issues/2119
+                    # `.item()` on a datetime type might or might not return an
+                    # integer, depending on the value.
+                    # Explicitly cast to an int first, and then grab .item()
+                    out = o.view("i8").item()
+                else:
+                    # convert numpy scalar to python type, and pass
+                    # python types through
+                    out = getattr(o, "item", lambda: o)()
+                    if isinstance(out, complex):
+                        # python complex types are not JSON serializable, so we use the
+                        # serialization defined in the zarr v3 spec
+                        return [out.real, out.imag]
                 return out
             if isinstance(o, Enum):
                 return o.name
