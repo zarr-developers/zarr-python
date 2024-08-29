@@ -602,9 +602,21 @@ def parse_fill_value_v3(fill_value: Any, dtype: FLOAT_DTYPE) -> FLOAT: ...
 def parse_fill_value_v3(fill_value: Any, dtype: COMPLEX_DTYPE) -> COMPLEX: ...
 
 
+@overload
+def parse_fill_value_v3(fill_value: Any, dtype: np.dtype[Any]) -> Any:
+    # This dtype[Any] is unfortunately necessary right now.
+    # See https://github.com/zarr-developers/zarr-python/issues/2131#issuecomment-2318010899
+    # for more details, but `dtype` here (which comes from `parse_dtype`)
+    # is np.dtype[Any].
+    #
+    # If you want the specialized types rather than Any, you need to use `np.dtypes.<dtype>`
+    # rather than np.dtypes(<type>)
+    ...
+
+
 def parse_fill_value_v3(
-    fill_value: Any, dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE
-) -> BOOL | INTEGER | FLOAT | COMPLEX:
+    fill_value: Any, dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | np.dtype[Any]
+) -> BOOL | INTEGER | FLOAT | COMPLEX | Any:
     """
     Parse `fill_value`, a potential fill value, into an instance of `dtype`, a data type.
     If `fill_value` is `None`, then this function will return the result of casting the value 0
