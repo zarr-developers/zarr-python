@@ -11,7 +11,6 @@ on:
   workflow_dispatch:
 
 env:
-  PATH: /usr/local/cuda/bin
   LD_LIBRARY_PATH: /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64
 
 concurrency:
