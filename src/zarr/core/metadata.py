@@ -572,7 +572,7 @@ INTEGER_DTYPE = (
     | np.dtypes.Int16DType
     | np.dtypes.Int32DType
     | np.dtypes.Int64DType
-    | np.dtypes.UByteDType
+    | np.dtypes.UInt8DType
     | np.dtypes.UInt16DType
     | np.dtypes.UInt32DType
     | np.dtypes.UInt64DType
