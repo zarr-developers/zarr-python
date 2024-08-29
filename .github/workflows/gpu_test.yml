@@ -27,15 +27,17 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: cuda-toolkit
-      uses: Jimver/cuda-toolkit@v0.2.16
-      id: cuda-toolkit
-      with:
-        cuda: '12.4.1'
+    # - name: cuda-toolkit
+    #   uses: Jimver/cuda-toolkit@v0.2.16
+    #   id: cuda-toolkit
+    #   with:
+    #     cuda: '12.4.1'
     - name: GPU check
       run: |
-        echo "Installed cuda version is: ${{steps.cuda-toolkit.outputs.cuda}}"
-        echo "Cuda install location: ${{steps.cuda-toolkit.outputs.CUDA_PATH}}"
+        wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.1-1_all.deb
+        sudo dpkg -i cuda-keyring_1.1-1_all.deb
+        sudo apt-get update
+        sudo apt-get -y install cuda-toolkit-12-6
         nvcc -V
         nvidia-smi
     - name: Set up Python
