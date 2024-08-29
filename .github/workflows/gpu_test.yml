@@ -10,6 +10,10 @@ on:
     branches: [ v3 ]
   workflow_dispatch:
 
+env:
+  PATH: /usr/local/cuda/bin
+  LD_LIBRARY_PATH: /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -32,14 +36,19 @@ jobs:
     #   id: cuda-toolkit
     #   with:
     #     cuda: '12.4.1'
-    - name: GPU check
+    - name: Set up CUDA
       run: |
         wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.1-1_all.deb
         sudo dpkg -i cuda-keyring_1.1-1_all.deb
         sudo apt-get update
         sudo apt-get -y install cuda-toolkit-12-6
-        nvcc -V
+        echo "/usr/local/cuda/bin" >> $GITHUB_PATH
+    - name: GPU check
+      run: |
         nvidia-smi
+        echo $PATH
+        echo $LD_LIBRARY_PATH
+        nvcc -V
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
