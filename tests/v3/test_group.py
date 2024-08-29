@@ -109,7 +109,7 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
             default_buffer_prototype().buffer.from_bytes(b"000000"),
         )
     )
-    members_observed = group.members
+    members_observed = group.members()
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
