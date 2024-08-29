@@ -564,7 +564,7 @@ INTEGER_DTYPE = (
     | np.dtypes.Int16DType
     | np.dtypes.Int32DType
     | np.dtypes.Int64DType
-    | np.dtypes.UByteDType
+    | np.dtypes.UInt8DType
     | np.dtypes.UInt16DType
     | np.dtypes.UInt32DType
     | np.dtypes.UInt64DType
@@ -576,6 +576,9 @@ FLOAT = np.float16 | np.float32 | np.float64
 COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
 COMPLEX = np.complex64 | np.complex128
 # todo: r* dtypes
+
+
+# type[bool] | type[signedinteger[_8Bit]] | type[signedinteger[_16Bit]] | type[signedinteger[_32Bit]] | type[signedinteger[_64Bit]] | type[unsignedinteger[_8Bit]] | type[unsignedinteger[_16Bit]] | type[unsignedinteger[_32Bit]] | type[unsignedinteger[_64Bit]] | type[floating[_16Bit]] | type[floating[_32Bit]] | type[floating[_64Bit]] | type[complexfloating[_32Bit, _32Bit]] | type[complexfloating[_64Bit, _64Bit]]
 
 
 @overload
@@ -592,6 +595,14 @@ def parse_fill_value_v3(fill_value: Any, dtype: FLOAT_DTYPE) -> FLOAT: ...
 
 @overload
 def parse_fill_value_v3(fill_value: Any, dtype: COMPLEX_DTYPE) -> COMPLEX: ...
+
+
+@overload
+def parse_fill_value_v3(fill_value: Any, dtype: Any) -> Any:
+    # We'd like to remove this overload, but are currently unable to.
+    # `dtype` has gone through `parse_dtype`, which at the moment return
+    # np.dtype[Any].
+    ...
 
 
 def parse_fill_value_v3(
