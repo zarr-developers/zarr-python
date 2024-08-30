@@ -38,6 +38,7 @@ class Crc32cCodec(BytesBytesCodec):
         crc32_bytes = data[-4:]
         inner_bytes = data[:-4]
 
+        # Need to do a manual cast until https://github.com/numpy/numpy/issues/26783 is resolved
         computed_checksum = np.uint32(crc32c(cast(typing_extensions.Buffer, inner_bytes))).tobytes()
         stored_checksum = bytes(crc32_bytes)
         if computed_checksum != stored_checksum:
