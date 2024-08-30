@@ -684,11 +684,11 @@ async def test_group_members_async(store: LocalStore | MemoryStore):
         GroupMetadata(),
         store_path=StorePath(store=store, path="root"),
     )
-    a0 = await group.create_array("a0", (1,))
+    a0 = await group.create_array("a0", shape=(1,))
     g0 = await group.create_group("g0")
-    a1 = await g0.create_array("a1", (1,))
+    a1 = await g0.create_array("a1", shape=(1,))
     g1 = await g0.create_group("g1")
-    a2 = await g1.create_array("a2", (1,))
+    a2 = await g1.create_array("a2", shape=(1,))
     g2 = await g1.create_group("g2")
 
     # immediate children
