@@ -203,7 +203,7 @@ class RemoteStore(Store):
         except FileNotFoundError:
             return
         for onefile in (a.replace(prefix + "/", "") for a in allfiles):
-            yield onefile
+            yield onefile.removeprefix(self.path).removeprefix("/")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         for onefile in await self._fs._ls(prefix, detail=False):

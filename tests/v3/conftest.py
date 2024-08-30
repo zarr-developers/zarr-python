@@ -101,6 +101,9 @@ async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> As
 def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
     """Fixture to parametrize over numpy-like libraries"""
 
+    if request.param == "cupy":
+        request.node.add_marker(pytest.mark.gpu)
+
     yield pytest.importorskip(request.param)
 
 
