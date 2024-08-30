@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, replace
 from enum import Enum
 from functools import lru_cache
 from operator import itemgetter
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -101,7 +101,9 @@ class _ShardIndex(NamedTuple):
 
     @property
     def chunks_per_shard(self) -> ChunkCoords:
-        return self.offsets_and_lengths.shape[0:-1]
+        result = tuple(self.offsets_and_lengths.shape[0:-1])
+        # The cast is required until https://github.com/numpy/numpy/pull/27211 is merged
+        return cast(ChunkCoords, result)
 
     def _localize_chunk(self, chunk_coords: ChunkCoords) -> ChunkCoords:
         return tuple(
