@@ -313,13 +313,14 @@ class AsyncGroup:
 
     async def create_group(
         self,
-        path: str,
+        name: str,
+        *,
         exists_ok: bool = False,
         attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
         attributes = attributes or {}
         return await type(self).create(
-            self.store_path / path,
+            self.store_path / name,
             attributes=attributes,
             exists_ok=exists_ok,
             zarr_format=self.metadata.zarr_format,
@@ -363,7 +364,8 @@ class AsyncGroup:
 
     async def create_array(
         self,
-        path: str,
+        name: str,
+        *,
         shape: ChunkCoords,
         dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
@@ -394,7 +396,7 @@ class AsyncGroup:
 
         Parameters
         ----------
-        path: str
+        name: str
             The name of the array.
         shape: tuple[int, ...]
             The shape of the array.
@@ -430,7 +432,7 @@ class AsyncGroup:
 
         """
         return await AsyncArray.create(
-            self.store_path / path,
+            self.store_path / name,
             shape=shape,
             dtype=dtype,
             chunk_shape=chunk_shape,
@@ -534,21 +536,59 @@ class AsyncGroup:
     def __repr__(self) -> str:
         return f"<AsyncGroup {self.store_path}>"
 
-    async def nmembers(self) -> int:
+    async def nmembers(
+        self,
+        max_depth: int | None = 0,
+    ) -> int:
+        """
+        Count the number of members in this group.
+
+        Parameters
+        ----------
+        max_depth : int, default 0
+            The maximum number of levels of the hierarchy to include. By
+            default, (``max_depth=0``) only immediate children are included. Set
+            ``max_depth=None`` to include all nodes, and some positive integer
+            to consider children within that many levels of the root Group.
+
+        Returns
+        -------
+        count : int
+        """
         # TODO: consider using aioitertools.builtins.sum for this
         # return await aioitertools.builtins.sum((1 async for _ in self.members()), start=0)
         n = 0
-        async for _ in self.members():
+        async for _ in self.members(max_depth=max_depth):
             n += 1
         return n
 
-    async def members(self) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
+    async def members(
+        self,
+        max_depth: int | None = 0,
+    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
         This method requires that `store_path.store` supports directory listing.
 
         The results are not guaranteed to be ordered.
+
+        Parameters
+        ----------
+        max_depth : int, default 0
+            The maximum number of levels of the hierarchy to include. By
+            default, (``max_depth=0``) only immediate children are included. Set
+            ``max_depth=None`` to include all nodes, and some positive integer
+            to consider children within that many levels of the root Group.
+
         """
+        if max_depth is not None and max_depth < 0:
+            raise ValueError(f"max_depth must be None or >= 0. Got '{max_depth}' instead")
+        async for item in self._members(max_depth=max_depth, current_depth=0):
+            yield item
+
+    async def _members(
+        self, max_depth: int | None, current_depth: int
+    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
         if not self.store_path.store.supports_listing:
             msg = (
                 f"The store associated with this group ({type(self.store_path.store)}) "
@@ -566,7 +606,21 @@ class AsyncGroup:
             if key in _skip_keys:
                 continue
             try:
-                yield (key, await self.getitem(key))
+                obj = await self.getitem(key)
+                yield (key, obj)
+
+                if (
+                    ((max_depth is None) or (current_depth < max_depth))
+                    and hasattr(obj.metadata, "node_type")
+                    and obj.metadata.node_type == "group"
+                ):
+                    # the assert is just for mypy to know that `obj.metadata.node_type`
+                    # implies an AsyncGroup, not an AsyncArray
+                    assert isinstance(obj, AsyncGroup)
+                    async for child_key, val in obj._members(
+                        max_depth=max_depth, current_depth=current_depth + 1
+                    ):
+                        yield "/".join([key, child_key]), val
             except KeyError:
                 # keyerror is raised when `key` names an object (in the object storage sense),
                 # as opposed to a prefix, in the store under the prefix associated with this group
@@ -739,17 +793,15 @@ class Group(SyncMixin):
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
-    @property
-    def nmembers(self) -> int:
-        return self._sync(self._async_group.nmembers())
+    def nmembers(self, max_depth: int | None = 0) -> int:
+        return self._sync(self._async_group.nmembers(max_depth=max_depth))
 
-    @property
-    def members(self) -> tuple[tuple[str, Array | Group], ...]:
+    def members(self, max_depth: int | None = 0) -> tuple[tuple[str, Array | Group], ...]:
         """
         Return the sub-arrays and sub-groups of this group as a tuple of (name, array | group)
         pairs
         """
-        _members = self._sync_iter(self._async_group.members())
+        _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
         result = tuple(map(lambda kv: (kv[0], _parse_async_node(kv[1])), _members))
         return result
@@ -870,7 +922,7 @@ class Group(SyncMixin):
         return Array(
             self._sync(
                 self._async_group.create_array(
-                    path=name,
+                    name=name,
                     shape=shape,
                     dtype=dtype,
                     fill_value=fill_value,
@@ -1034,7 +1086,7 @@ class Group(SyncMixin):
         return Array(
             self._sync(
                 self._async_group.create_array(
-                    path=name,
+                    name=name,
                     shape=shape,
                     dtype=dtype,
                     fill_value=fill_value,
