@@ -12,7 +12,7 @@ from hypothesis.stateful import (
 
 import zarr
 from zarr.abc.store import AccessMode, Store
-from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
+from zarr.core.buffer import BufferPrototype, cpu, default_buffer_prototype
 from zarr.store import MemoryStore
 from zarr.testing.strategies import key_ranges, paths
 
@@ -112,7 +112,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     def set(self, key: str, data: bytes) -> None:
         note(f"(set) Setting {key!r} with {data}")
         assert not self.store.mode.readonly
-        data_buf = Buffer.from_bytes(data)
+        data_buf = cpu.Buffer.from_bytes(data)
         self.store.set(key, data_buf)
         self.model[key] = data_buf
 

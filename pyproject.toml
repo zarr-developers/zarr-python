@@ -74,6 +74,9 @@ jupyter = [
     'ipytree>=0.2.2',
     'ipywidgets>=8.0.0',
 ]
+gpu = [
+    "cupy-cuda12x",
+]
 docs = [
     'sphinx',
     'sphinx-autobuild>=2021.3.14',
@@ -120,7 +123,7 @@ build.hooks.vcs.version-file = "src/zarr/_version.py"
 [tool.hatch.envs.test]
 dependencies = [
     "numpy~={matrix:numpy}",
-    "universal_pathlib"
+    "universal_pathlib",
 ]
 features = ["test", "extra"]
 
@@ -134,8 +137,34 @@ python = ["3.10", "3.11", "3.12"]
 numpy = ["1.24", "1.26", "2.0"]
 features = ["optional"]
 
+[[tool.hatch.envs.test.matrix]]
+python = ["3.10", "3.11", "3.12"]
+numpy = ["1.24", "1.26", "2.0"]
+features = ["gpu"]
+
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=tests"
+run = "run-coverage --no-cov"
+run-verbose = "run-coverage --verbose"
+run-mypy = "mypy src"
+run-hypothesis = "pytest --hypothesis-profile ci tests/v3/test_properties.py tests/v3/test_store/test_stateful*"
+list-env = "pip list"
+
+[tool.hatch.envs.gputest]
+dependencies = [
+    "numpy~={matrix:numpy}",
+    "universal_pathlib",
+]
+features = ["test", "extra", "gpu"]
+
+[[tool.hatch.envs.gputest.matrix]]
+python = ["3.10", "3.11", "3.12"]
+numpy = ["1.24", "1.26", "2.0"]
+version = ["minimal"]
+
+[tool.hatch.envs.gputest.scripts]
+run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
@@ -223,4 +252,8 @@ filterwarnings = [
     "error:::zarr.*",
     "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
+    "ignore:Creating a zarr.buffer.gpu.*:UserWarning",
+]
+markers = [
+    "gpu: mark a test as requiring CuPy and GPU"
 ]

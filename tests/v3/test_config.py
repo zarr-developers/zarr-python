@@ -46,8 +46,8 @@ def test_config_defaults_set() -> None:
                 "path": "zarr.codecs.pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
             },
-            "buffer": "zarr.core.buffer.Buffer",
-            "ndbuffer": "zarr.core.buffer.NDBuffer",
+            "buffer": "zarr.core.buffer.cpu.Buffer",
+            "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",
                 "gzip": "zarr.codecs.gzip.GzipCodec",

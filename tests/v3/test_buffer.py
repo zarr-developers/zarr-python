@@ -10,14 +10,21 @@ from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.core.buffer import ArrayLike, BufferPrototype, NDArrayLike, numpy_buffer_prototype
+from zarr.core.buffer import ArrayLike, BufferPrototype, NDArrayLike, cpu, gpu
 from zarr.store.common import StorePath
+from zarr.store.memory import MemoryStore
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,
     StoreExpectingTestBuffer,
     TestBuffer,
     TestNDArrayLike,
 )
+from zarr.testing.utils import gpu_test
+
+try:
+    import cupy as cp
+except ImportError:
+    cp = None
 
 
 def test_nd_array_like(xp):
@@ -52,6 +59,31 @@ async def test_async_array_prototype():
     assert np.array_equal(expect, got)
 
 
+@gpu_test
+@pytest.mark.asyncio
+async def test_async_array_gpu_prototype():
+    """Test the use of the GPU buffer prototype"""
+
+    expect = cp.zeros((9, 9), dtype="uint16", order="F")
+    a = await AsyncArray.create(
+        StorePath(MemoryStore(mode="w")) / "test_async_array_gpu_prototype",
+        shape=expect.shape,
+        chunk_shape=(5, 5),
+        dtype=expect.dtype,
+        fill_value=0,
+    )
+    expect[1:4, 3:6] = cp.ones((3, 3))
+
+    await a.setitem(
+        selection=(slice(1, 4), slice(3, 6)),
+        value=cp.ones((3, 3)),
+        prototype=gpu.buffer_prototype,
+    )
+    got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=gpu.buffer_prototype)
+    assert isinstance(got, cp.ndarray)
+    assert cp.array_equal(expect, got)
+
+
 @pytest.mark.asyncio
 async def test_codecs_use_of_prototype():
     expect = np.zeros((10, 10), dtype="uint16", order="F")
@@ -84,8 +116,39 @@ async def test_codecs_use_of_prototype():
     assert np.array_equal(expect, got)
 
 
+@gpu_test
+@pytest.mark.asyncio
+async def test_codecs_use_of_gpu_prototype():
+    expect = cp.zeros((10, 10), dtype="uint16", order="F")
+    a = await AsyncArray.create(
+        StorePath(MemoryStore(mode="w")) / "test_codecs_use_of_gpu_prototype",
+        shape=expect.shape,
+        chunk_shape=(5, 5),
+        dtype=expect.dtype,
+        fill_value=0,
+        codecs=[
+            TransposeCodec(order=(1, 0)),
+            BytesCodec(),
+            BloscCodec(),
+            Crc32cCodec(),
+            GzipCodec(),
+            ZstdCodec(),
+        ],
+    )
+    expect[:] = cp.arange(100).reshape(10, 10)
+
+    await a.setitem(
+        selection=(slice(0, 10), slice(0, 10)),
+        value=expect[:],
+        prototype=gpu.buffer_prototype,
+    )
+    got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=gpu.buffer_prototype)
+    assert isinstance(got, cp.ndarray)
+    assert cp.array_equal(expect, got)
+
+
 def test_numpy_buffer_prototype():
-    buffer = numpy_buffer_prototype().buffer.create_zero_length()
-    ndbuffer = numpy_buffer_prototype().nd_buffer.create(shape=(1, 2), dtype=np.dtype("int64"))
+    buffer = cpu.buffer_prototype.buffer.create_zero_length()
+    ndbuffer = cpu.buffer_prototype.nd_buffer.create(shape=(1, 2), dtype=np.dtype("int64"))
     assert isinstance(buffer.as_array_like(), np.ndarray)
     assert isinstance(ndbuffer.as_ndarray_like(), np.ndarray)
