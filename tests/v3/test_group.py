@@ -93,8 +93,8 @@ def test_group_members(store: Store, zarr_format: ZarrFormat) -> None:
     members_expected["subgroup"] = group.create_group("subgroup")
     # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
     # too deep in the hierarchy
-    subsubgroup = members_expected["subgroup"].create_group("subsubgroup")  # type: ignore
-    subsubsubgroup = subsubgroup.create_group("subsubsubgroup")  # type: ignore
+    subsubgroup = members_expected["subgroup"].create_group("subsubgroup")
+    subsubsubgroup = subsubgroup.create_group("subsubsubgroup")
 
     members_expected["subarray"] = group.create_array(
         "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
