@@ -152,7 +152,7 @@ async def consolidate_metadata(store: StoreLike) -> AsyncGroup:
         the metadata of each child node.
     """
     group = await AsyncGroup.open(store)
-    members = dict([x async for x in group.members(recursive=True)])
+    members = dict([x async for x in group.members(max_depth=None)])
     members_metadata = {}
 
     members_metadata = {k: v.metadata for k, v in members.items()}

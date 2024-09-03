@@ -7,7 +7,7 @@ import pytest
 from _pytest.compat import LEGACY_PATH
 
 from zarr import Array, AsyncArray, AsyncGroup, Group
-from zarr.core.buffer import Buffer
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import ZarrFormat
 from zarr.core.group import GroupMetadata
 from zarr.core.sync import sync
@@ -89,6 +89,7 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
     # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
     # too deep in the hierarchy
     subsubgroup = members_expected["subgroup"].create_group("subsubgroup")  # type: ignore
+    subsubsubgroup = subsubgroup.create_group("subsubsubgroup")  # type: ignore
 
     members_expected["subarray"] = group.create_array(
         "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
@@ -96,20 +97,36 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
 
     # add an extra object to the domain of the group.
     # the list of children should ignore this object.
-    sync(store.set(f"{path}/extra_object-1", Buffer.from_bytes(b"000000")))
+    sync(
+        store.set(f"{path}/extra_object-1", default_buffer_prototype().buffer.from_bytes(b"000000"))
+    )
     # add an extra object under a directory-like prefix in the domain of the group.
     # this creates a directory with a random key in it
     # this should not show up as a member
-    sync(store.set(f"{path}/extra_directory/extra_object-2", Buffer.from_bytes(b"000000")))
+    sync(
+        store.set(
+            f"{path}/extra_directory/extra_object-2",
+            default_buffer_prototype().buffer.from_bytes(b"000000"),
+        )
+    )
     members_observed = group.members()
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
-    # recursive=True
-    members_observed = group.members(recursive=True)
+    # partial
+    members_observed = group.members(max_depth=1)
     members_expected["subgroup/subsubgroup"] = subsubgroup
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
+
+    # total
+    members_observed = group.members(max_depth=None)
+    members_expected["subgroup/subsubgroup/subsubsubgroup"] = subsubsubgroup
+    # members are not guaranteed to be ordered, so sort before comparing
+    assert sorted(dict(members_observed)) == sorted(members_expected)
+
+    with pytest.raises(ValueError, match="max_depth"):
+        members_observed = group.members(max_depth=-1)
 
 
 def test_group(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
@@ -547,11 +564,11 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
     """
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
 
-    sub_array_path = "sub_array"
+    array_name = "sub_array"
     sub_array = await agroup.create_array(
-        path=sub_array_path, shape=(10,), dtype="uint8", chunk_shape=(2,)
+        name=array_name, shape=(10,), dtype="uint8", chunk_shape=(2,)
     )
-    assert await agroup.getitem(sub_array_path) == sub_array
+    assert await agroup.getitem(array_name) == sub_array
 
     sub_group_path = "sub_group"
     sub_group = await agroup.create_group(sub_group_path, attributes={"foo": 100})
@@ -564,18 +581,18 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
 
 async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
-    sub_array_path = "sub_array"
+    array_name = "sub_array"
     _ = await agroup.create_array(
-        path=sub_array_path, shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
+        name=array_name, shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
     )
-    await agroup.delitem(sub_array_path)
+    await agroup.delitem(array_name)
 
     #  todo: clean up the code duplication here
     if zarr_format == 2:
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zarray")
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zattrs")
+        assert not await agroup.store_path.store.exists(array_name + "/" + ".zarray")
+        assert not await agroup.store_path.store.exists(array_name + "/" + ".zattrs")
     elif zarr_format == 3:
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
+        assert not await agroup.store_path.store.exists(array_name + "/" + "zarr.json")
     else:
         raise AssertionError
 
@@ -583,10 +600,10 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
     _ = await agroup.create_group(sub_group_path, attributes={"foo": 100})
     await agroup.delitem(sub_group_path)
     if zarr_format == 2:
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zgroup")
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + ".zattrs")
+        assert not await agroup.store_path.store.exists(array_name + "/" + ".zgroup")
+        assert not await agroup.store_path.store.exists(array_name + "/" + ".zattrs")
     elif zarr_format == 3:
-        assert not await agroup.store_path.store.exists(sub_array_path + "/" + "zarr.json")
+        assert not await agroup.store_path.store.exists(array_name + "/" + "zarr.json")
     else:
         raise AssertionError
 
@@ -598,7 +615,7 @@ async def test_asyncgroup_create_group(
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     sub_node_path = "sub_group"
     attributes = {"foo": 999}
-    subnode = await agroup.create_group(path=sub_node_path, attributes=attributes)
+    subnode = await agroup.create_group(name=sub_node_path, attributes=attributes)
 
     assert isinstance(subnode, AsyncGroup)
     assert subnode.attrs == attributes
@@ -628,7 +645,7 @@ async def test_asyncgroup_create_array(
 
     sub_node_path = "sub_array"
     subnode = await agroup.create_array(
-        path=sub_node_path,
+        name=sub_node_path,
         shape=shape,
         dtype=dtype,
         chunk_shape=chunk_shape,
@@ -667,11 +684,11 @@ async def test_group_members_async(store: LocalStore | MemoryStore):
         GroupMetadata(),
         store_path=StorePath(store=store, path="root"),
     )
-    a0 = await group.create_array("a0", (1,))
+    a0 = await group.create_array("a0", shape=(1,))
     g0 = await group.create_group("g0")
-    a1 = await g0.create_array("a1", (1,))
+    a1 = await g0.create_array("a1", shape=(1,))
     g1 = await g0.create_group("g1")
-    a2 = await g1.create_array("a2", (1,))
+    a2 = await g1.create_array("a2", shape=(1,))
     g2 = await g1.create_group("g2")
 
     # immediate children
@@ -684,7 +701,20 @@ async def test_group_members_async(store: LocalStore | MemoryStore):
     nmembers = await group.nmembers()
     assert nmembers == 2
 
-    all_children = sorted([x async for x in group.members(recursive=True)], key=lambda x: x[0])
+    # partial
+    children = sorted([x async for x in group.members(max_depth=1)], key=lambda x: x[0])
+    expected = [
+        ("a0", a0),
+        ("g0", g0),
+        ("g0/a1", a1),
+        ("g0/g1", g1),
+    ]
+    assert children == expected
+    nmembers = await group.nmembers(max_depth=1)
+    assert nmembers == 4
+
+    # all children
+    all_children = sorted([x async for x in group.members(max_depth=None)], key=lambda x: x[0])
     expected = [
         ("a0", a0),
         ("g0", g0),
@@ -695,5 +725,8 @@ async def test_group_members_async(store: LocalStore | MemoryStore):
     ]
     assert all_children == expected
 
-    nmembers = await group.nmembers(recursive=True)
+    nmembers = await group.nmembers(max_depth=None)
     assert nmembers == 6
+
+    with pytest.raises(ValueError, match="max_depth"):
+        [x async for x in group.members(max_depth=-1)]
