@@ -451,6 +451,7 @@ class AsyncGroup:
             data=data,
         )
 
+    @deprecated("Use Group.create_array instead.")
     async def create_dataset(self, name: str, **kwargs: Any) -> AsyncArray:
         """Create an array.
 
@@ -467,9 +468,13 @@ class AsyncGroup:
         Returns
         -------
         a : AsyncArray
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `Group.create_array` instead.
         """
         return await self.create_array(name, **kwargs)
 
+    @deprecated("Use Group.require_array instead.")
     async def require_dataset(
         self,
         name: str,
@@ -483,6 +488,40 @@ class AsyncGroup:
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
         with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.create_dataset` method.
+
+        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : AsyncArray
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_dataset` instead.
+        """
+        return await self.require_array(name, shape=shape, dtype=dtype, exact=exact, **kwargs)
+
+    async def require_array(
+        self,
+        name: str,
+        *,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike = None,
+        exact: bool = False,
+        **kwargs: Any,
+    ) -> AsyncArray:
+        """Obtain an array, creating if it doesn't exist.
 
         Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
 
