@@ -28,6 +28,7 @@ ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
 
 BytesLike = bytes | bytearray | memoryview
+ShapeLike = tuple[int, ...] | int
 ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
