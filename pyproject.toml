@@ -197,6 +197,7 @@ extend-exclude = [
     "buck-out",
     "build",
     "dist",
+    "notebooks", # temporary, until we achieve compatibility with ruff ≥ 0.6
     "venv",
     "docs",
     "src/zarr/v2/",
