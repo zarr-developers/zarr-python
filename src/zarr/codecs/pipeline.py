@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from itertools import islice, pairwise
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 from warnings import warn
 
 import numpy as np
@@ -15,6 +15,7 @@ from zarr.abc.codec import (
     ArrayBytesCodecPartialEncodeMixin,
     BytesBytesCodec,
     Codec,
+    CodecDict,
     CodecPipeline,
 )
 from zarr.abc.store import ByteGetter, ByteSetter
@@ -85,8 +86,8 @@ class BatchedCodecPipeline(CodecPipeline):
                 out.append(get_codec_class(name_parsed).from_dict(c))  # type: ignore[arg-type]
         return cls.from_list(out, batch_size=batch_size)
 
-    def to_dict(self) -> JSON:
-        return [c.to_dict() for c in self]
+    def to_dict(self) -> list[CodecDict[Any]]:
+        return cast(list[CodecDict[Any]], [c.to_dict() for c in self])
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return type(self).from_list([c.evolve_from_array_spec(array_spec=array_spec) for c in self])

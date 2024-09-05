@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cached_property
 from importlib.metadata import version
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from numcodecs.zstd import Zstd
 
-from zarr.abc.codec import BytesBytesCodec
+from zarr.abc.codec import BytesBytesCodec, CodecConfigDict, CodecDict
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
@@ -30,6 +30,19 @@ def parse_checksum(data: JSON) -> bool:
     if isinstance(data, bool):
         return data
     raise TypeError(f"Expected bool. Got {type(data)}.")
+
+
+class ZstdCodecConfigDict(CodecConfigDict):
+    """A dictionary representing a zstd codec configuration."""
+
+    level: int
+    checksum: bool
+
+
+class ZstdCodecDict(CodecDict[ZstdCodecConfigDict]):
+    """A dictionary representing a zstd codec."""
+
+    ...
 
 
 @dataclass(frozen=True)
@@ -59,8 +72,12 @@ class ZstdCodec(BytesBytesCodec):
         _, configuration_parsed = parse_named_configuration(data, "zstd")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
+    def to_dict(self) -> ZstdCodecDict:
+        out_dict = {
+            "name": "zstd",
+            "configuration": {"level": self.level, "checksum": self.checksum},
+        }
+        return cast(ZstdCodecDict, out_dict)
 
     @cached_property
     def _zstd_codec(self) -> Zstd:

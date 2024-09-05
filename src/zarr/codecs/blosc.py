@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numcodecs
 from numcodecs.blosc import Blosc
 
-from zarr.abc.codec import BytesBytesCodec
+from zarr.abc.codec import BytesBytesCodec, CodecConfigDict, CodecDict
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
@@ -43,6 +43,22 @@ class BloscCname(Enum):
     zstd = "zstd"
     snappy = "snappy"
     zlib = "zlib"
+
+
+class BloscCodecConfigDict(CodecConfigDict):
+    """A dictionary representing a Blosc codec configuration."""
+
+    typesize: int
+    cname: BloscCname
+    clevel: int
+    shuffle: BloscShuffle
+    blocksize: int
+
+
+class BloscCodecDict(CodecDict[BloscCodecConfigDict]):
+    """A dictionary representing a Blosc codec."""
+
+    ...
 
 
 # See https://zarr.readthedocs.io/en/stable/tutorial.html#configuring-blosc
@@ -109,12 +125,12 @@ class BloscCodec(BytesBytesCodec):
         _, configuration_parsed = parse_named_configuration(data, "blosc")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> dict[str, JSON]:
+    def to_dict(self) -> BloscCodecDict:
         if self.typesize is None:
             raise ValueError("`typesize` needs to be set for serialization.")
         if self.shuffle is None:
             raise ValueError("`shuffle` needs to be set for serialization.")
-        return {
+        out_dict = {
             "name": "blosc",
             "configuration": {
                 "typesize": self.typesize,
@@ -124,6 +140,8 @@ class BloscCodec(BytesBytesCodec):
                 "blocksize": self.blocksize,
             },
         }
+
+        return cast(BloscCodecDict, out_dict)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         dtype = array_spec.dtype

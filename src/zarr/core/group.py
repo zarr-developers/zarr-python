@@ -5,7 +5,7 @@ import json
 import logging
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field, replace
-from typing import TYPE_CHECKING, Literal, cast, overload
+from typing import TYPE_CHECKING, Literal, TypedDict, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -79,8 +79,17 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
         raise TypeError(f"Unknown node type, got {type(node)}")
 
 
+class GroupMetadataDict(TypedDict):
+    """A dictionary representing a group metadata."""
+
+    attributes: dict[str, Any]
+    zarr_format: ZarrFormat
+    node_type: Literal["group"]
+
+
 @dataclass(frozen=True)
 class GroupMetadata(Metadata):
+    # TODO: Should attributes be a dict[str, JSON] instead?
     attributes: dict[str, Any] = field(default_factory=dict)
     zarr_format: ZarrFormat = 3
     node_type: Literal["group"] = field(default="group", init=False)
@@ -115,8 +124,8 @@ class GroupMetadata(Metadata):
         assert data.pop("node_type", None) in ("group", None)
         return cls(**data)
 
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+    def to_dict(self) -> GroupMetadataDict:
+        return cast(GroupMetadataDict, asdict(self))
 
 
 @dataclass(frozen=True)
