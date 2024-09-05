@@ -25,7 +25,7 @@ repos:
     rev: v1.11.2
     hooks:
       - id: mypy
-        files: src|tests/v3/test_api.py
+        files: src|tests/v3/test_(api|array|buffer).py
         additional_dependencies:
           # Package dependencies
           - asciitree
