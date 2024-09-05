@@ -16,6 +16,7 @@ from zarr.core.common import (
     JSON,
     ChunkCoords,
     ChunkCoordsLike,
+    ShapeLike,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
 
 
 def _guess_chunks(
-    shape: int | ChunkCoords,
+    shape: ShapeLike,
     typesize: int,
     *,
     increment_bytes: int = 256 * 1024,
