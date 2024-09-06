@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import pytest
-from _pytest.compat import LEGACY_PATH
 
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.core.buffer import default_buffer_prototype
@@ -16,6 +15,9 @@ from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.common import make_store_path
 
 from .conftest import parse_store
+
+if TYPE_CHECKING:
+    from _pytest.compat import LEGACY_PATH
 
 
 @pytest.fixture(params=["local", "memory"])

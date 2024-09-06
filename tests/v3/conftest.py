@@ -4,12 +4,12 @@ from collections.abc import Iterator
 from types import ModuleType
 from typing import TYPE_CHECKING
 
-from _pytest.compat import LEGACY_PATH
-
 from zarr import AsyncGroup, config
 
 if TYPE_CHECKING:
     from typing import Any, Literal
+
+    from _pytest.compat import LEGACY_PATH
 
     from zarr.abc.store import Store
     from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat

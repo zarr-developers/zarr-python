@@ -6,8 +6,6 @@ from itertools import islice, pairwise
 from typing import TYPE_CHECKING, Any, TypeVar
 from warnings import warn
 
-import numpy as np
-
 from zarr.abc.codec import (
     ArrayArrayCodec,
     ArrayBytesCodec,
@@ -23,6 +21,7 @@ from zarr.core.indexing import SelectorTuple, is_scalar, is_total_slice
 from zarr.registry import get_codec_class, register_pipeline
 
 if TYPE_CHECKING:
+    import numpy as np
     from typing_extensions import Self
 
     from zarr.abc.store import ByteGetter, ByteSetter
