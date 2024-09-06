@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
 from zarr.core.buffer import Buffer
-from zarr.core.common import BytesLike
+
+if TYPE_CHECKING:
+    from zarr.core.common import BytesLike
 
 __all__ = ["assert_bytes_equal"]
 

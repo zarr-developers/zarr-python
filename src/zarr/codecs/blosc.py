@@ -9,14 +9,15 @@ import numcodecs
 from numcodecs.blosc import Blosc
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.core.array_spec import ArraySpec
-from zarr.core.buffer import Buffer
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_enum, parse_named_configuration, to_thread
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+    from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import Buffer
 
 
 class BloscShuffle(Enum):
