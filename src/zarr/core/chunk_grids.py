@@ -4,7 +4,6 @@ import itertools
 import math
 import operator
 from abc import abstractmethod
-from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING
@@ -22,6 +21,8 @@ from zarr.core.common import (
 from zarr.core.indexing import ceildiv
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from typing_extensions import Self
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from collections.abc import Callable, Iterable, Sequence
+from abc import ABC, abstractmethod
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -9,25 +9,25 @@ from typing import (
     NamedTuple,
     Protocol,
     SupportsIndex,
+    cast,
     runtime_checkable,
 )
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.common import ChunkCoords
 from zarr.registry import (
     get_buffer_class,
     get_ndbuffer_class,
-    register_buffer,
-    register_ndbuffer,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
     from typing_extensions import Self
 
     from zarr.codecs.bytes import Endian
-    from zarr.core.common import BytesLike
+    from zarr.core.common import BytesLike, ChunkCoords
 
 
 @runtime_checkable
@@ -112,7 +112,7 @@ def check_item_key_is_1d_contiguous(key: Any) -> None:
         raise ValueError("slice must be contiguous")
 
 
-class Buffer:
+class Buffer(ABC):
     """A flat contiguous memory block
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
@@ -141,6 +141,7 @@ class Buffer:
         self._data = array_like
 
     @classmethod
+    @abstractmethod
     def create_zero_length(cls) -> Self:
         """Create an empty buffer with length zero
 
@@ -148,7 +149,11 @@ class Buffer:
         -------
             New empty 0-length buffer
         """
-        return cls(np.array([], dtype="b"))
+        if cls is Buffer:
+            raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
+        return cls(
+            cast(ArrayLike, None)
+        )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
     def from_array_like(cls, array_like: ArrayLike) -> Self:
@@ -166,6 +171,7 @@ class Buffer:
         return cls(array_like)
 
     @classmethod
+    @abstractmethod
     def from_buffer(cls, buffer: Buffer) -> Self:
         """Create a new buffer of an existing Buffer
 
@@ -185,10 +191,20 @@ class Buffer:
         Returns
         -------
             A new buffer representing the content of the input buffer
+
+        Note
+        ----
+        Subclasses of `Buffer` must override this method to implement
+        more optimal conversions that avoid copies where possible
         """
-        return cls.from_array_like(buffer.as_array_like())
+        if cls is Buffer:
+            raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
+        return cls(
+            cast(ArrayLike, None)
+        )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
+    @abstractmethod
     def from_bytes(cls, bytes_like: BytesLike) -> Self:
         """Create a new buffer of a bytes-like object (host memory)
 
@@ -201,7 +217,11 @@ class Buffer:
         -------
             New buffer representing `bytes_like`
         """
-        return cls.from_array_like(np.frombuffer(bytes_like, dtype="b"))
+        if cls is Buffer:
+            raise NotImplementedError("Cannot call abstract method on the abstract class 'Buffer'")
+        return cls(
+            cast(ArrayLike, None)
+        )  # This line will never be reached, but it satisfies the type checker
 
     def as_array_like(self) -> ArrayLike:
         """Returns the underlying array (host or device memory) of this buffer
@@ -214,6 +234,7 @@ class Buffer:
         """
         return self._data
 
+    @abstractmethod
     def as_numpy_array(self) -> npt.NDArray[Any]:
         """Returns the buffer as a NumPy array (host memory).
 
@@ -225,7 +246,7 @@ class Buffer:
         -------
             NumPy array of this buffer (might be a data copy)
         """
-        return np.asanyarray(self._data)
+        ...
 
     def to_bytes(self) -> bytes:
         """Returns the buffer as `bytes` (host memory).
@@ -252,14 +273,10 @@ class Buffer:
     def __len__(self) -> int:
         return self._data.size
 
+    @abstractmethod
     def __add__(self, other: Buffer) -> Self:
         """Concatenate two buffers"""
-
-        other_array = other.as_array_like()
-        assert other_array.dtype == np.dtype("b")
-        return self.__class__(
-            np.concatenate((np.asanyarray(self._data), np.asanyarray(other_array)))
-        )
+        ...
 
 
 class NDBuffer:
@@ -293,6 +310,7 @@ class NDBuffer:
         self._data = array
 
     @classmethod
+    @abstractmethod
     def create(
         cls,
         *,
@@ -324,10 +342,13 @@ class NDBuffer:
         A subclass can overwrite this method to create a ndarray-like object
         other then the default Numpy array.
         """
-        ret = cls(np.empty(shape=tuple(shape), dtype=dtype, order=order))
-        if fill_value is not None:
-            ret.fill(fill_value)
-        return ret
+        if cls is NDBuffer:
+            raise NotImplementedError(
+                "Cannot call abstract method on the abstract class 'NDBuffer'"
+            )
+        return cls(
+            cast(NDArrayLike, None)
+        )  # This line will never be reached, but it satisfies the type checker
 
     @classmethod
     def from_ndarray_like(cls, ndarray_like: NDArrayLike) -> Self:
@@ -345,6 +366,7 @@ class NDBuffer:
         return cls(ndarray_like)
 
     @classmethod
+    @abstractmethod
     def from_numpy_array(cls, array_like: npt.ArrayLike) -> Self:
         """Create a new buffer of Numpy array-like object
 
@@ -357,7 +379,13 @@ class NDBuffer:
         -------
             New buffer representing `array_like`
         """
-        return cls.from_ndarray_like(np.asanyarray(array_like))
+        if cls is NDBuffer:
+            raise NotImplementedError(
+                "Cannot call abstract method on the abstract class 'NDBuffer'"
+            )
+        return cls(
+            cast(NDArrayLike, None)
+        )  # This line will never be reached, but it satisfies the type checker
 
     def as_ndarray_like(self) -> NDArrayLike:
         """Returns the underlying array (host or device memory) of this buffer
@@ -370,6 +398,7 @@ class NDBuffer:
         """
         return self._data
 
+    @abstractmethod
     def as_numpy_array(self) -> npt.NDArray[Any]:
         """Returns the buffer as a NumPy array (host memory).
 
@@ -381,7 +410,7 @@ class NDBuffer:
         -------
             NumPy array of this buffer (might be a data copy)
         """
-        return np.asanyarray(self._data)
+        ...
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -412,13 +441,11 @@ class NDBuffer:
     def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K") -> Self:
         return self.__class__(self._data.astype(dtype=dtype, order=order))
 
-    def __getitem__(self, key: Any) -> Self:
-        return self.__class__(np.asanyarray(self._data.__getitem__(key)))
+    @abstractmethod
+    def __getitem__(self, key: Any) -> Self: ...
 
-    def __setitem__(self, key: Any, value: Any) -> None:
-        if isinstance(value, NDBuffer):
-            value = value._data
-        self._data.__setitem__(key, value)
+    @abstractmethod
+    def __setitem__(self, key: Any, value: Any) -> None: ...
 
     def __len__(self) -> int:
         return self._data.__len__()
@@ -437,34 +464,6 @@ class NDBuffer:
 
     def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None) -> Self:
         return self.__class__(self._data.transpose(axes))
-
-
-def as_numpy_array_wrapper(
-    func: Callable[[npt.NDArray[Any]], bytes], buf: Buffer, prototype: BufferPrototype
-) -> Buffer:
-    """Converts the input of `func` to a numpy array and the output back to `Buffer`.
-
-    This function is useful when calling a `func` that only support host memory such
-    as `GZip.decode` and `Blosc.decode`. In this case, use this wrapper to convert
-    the input `buf` to a Numpy array and convert the result back into a `Buffer`.
-
-    Parameters
-    ----------
-    func
-        The callable that will be called with the converted `buf` as input.
-        `func` must return bytes, which will be converted into a `Buffer`
-        before returned.
-    buf
-        The buffer that will be converted to a Numpy array before given as
-        input to `func`.
-    prototype
-        The prototype of the output buffer.
-
-    Returns
-    -------
-        The result of `func` converted to a `Buffer`
-    """
-    return prototype.buffer.from_bytes(func(buf.as_numpy_array()))
 
 
 class BufferPrototype(NamedTuple):
@@ -487,12 +486,3 @@ class BufferPrototype(NamedTuple):
 # The default buffer prototype used throughout the Zarr codebase.
 def default_buffer_prototype() -> BufferPrototype:
     return BufferPrototype(buffer=get_buffer_class(), nd_buffer=get_ndbuffer_class())
-
-
-# The numpy prototype used for E.g. when reading the shard index
-def numpy_buffer_prototype() -> BufferPrototype:
-    return BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
-
-
-register_buffer(Buffer)
-register_ndbuffer(NDBuffer)

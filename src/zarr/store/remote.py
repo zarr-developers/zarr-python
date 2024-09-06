@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
 import fsspec
 
 from zarr.abc.store import Store
-from zarr.core.buffer import Buffer
 from zarr.store.common import _dereference_path
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from fsspec.asyn import AsyncFileSystem
     from upath import UPath
 
-    from zarr.core.buffer import BufferPrototype
+    from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import AccessModeLiteral, BytesLike
 
 
@@ -202,7 +202,7 @@ class RemoteStore(Store):
         except FileNotFoundError:
             return
         for onefile in (a.replace(prefix + "/", "") for a in allfiles):
-            yield onefile
+            yield onefile.removeprefix(self.path).removeprefix("/")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         for onefile in await self._fs._ls(prefix, detail=False):

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from zarr.abc.codec import Codec
-
 if TYPE_CHECKING:
     from typing import Any
+
+    from zarr.abc.codec import Codec
 
 import pytest
 

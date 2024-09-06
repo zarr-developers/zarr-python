@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import json
 from asyncio import gather
-from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -62,6 +60,11 @@ from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.common import (
     ensure_no_existing_node,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from zarr.abc.codec import Codec, CodecPipeline
 
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
@@ -512,7 +515,12 @@ class AsyncArray:
 
         # check value shape
         if np.isscalar(value):
-            value = np.asanyarray(value, dtype=self.metadata.dtype)
+            array_like = prototype.buffer.create_zero_length().as_array_like()
+            if isinstance(array_like, np._typing._SupportsArrayFunc):
+                # TODO: need to handle array types that don't support __array_function__
+                # like PyTorch and JAX
+                array_like_ = cast(np._typing._SupportsArrayFunc, array_like)
+            value = np.asanyarray(value, dtype=self.metadata.dtype, like=array_like_)
         else:
             if not hasattr(value, "shape"):
                 value = np.asarray(value, self.metadata.dtype)
@@ -520,7 +528,11 @@ class AsyncArray:
             #     value.shape == indexer.shape
             # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
             if not hasattr(value, "dtype") or value.dtype.name != self.metadata.dtype.name:
-                value = np.array(value, dtype=self.metadata.dtype, order="A")
+                if hasattr(value, "astype"):
+                    # Handle things that are already NDArrayLike more efficiently
+                    value = value.astype(dtype=self.metadata.dtype, order="A")
+                else:
+                    value = np.array(value, dtype=self.metadata.dtype, order="A")
         value = cast(NDArrayLike, value)
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass

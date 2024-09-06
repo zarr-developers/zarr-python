@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
-from types import ModuleType
 from typing import TYPE_CHECKING
 
-from _pytest.compat import LEGACY_PATH
-
 from zarr import AsyncGroup, config
-from zarr.abc.store import Store
-from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from types import ModuleType
     from typing import Any, Literal
+
+    from _pytest.compat import LEGACY_PATH
+
+    from zarr.abc.store import Store
+    from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
 import pathlib
 from dataclasses import dataclass, field
 
@@ -93,6 +94,9 @@ async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> As
 @pytest.fixture(params=["numpy", "cupy"])
 def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
     """Fixture to parametrize over numpy-like libraries"""
+
+    if request.param == "cupy":
+        request.node.add_marker(pytest.mark.gpu)
 
     yield pytest.importorskip(request.param)
 

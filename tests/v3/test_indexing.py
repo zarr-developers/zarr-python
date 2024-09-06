@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import numpy as np
@@ -11,9 +10,7 @@ import pytest
 from numpy.testing import assert_array_equal
 
 import zarr
-from zarr.abc.store import Store
-from zarr.core.buffer import BufferPrototype, NDBuffer
-from zarr.core.common import ChunkCoords
+from zarr.core.buffer import BufferPrototype, default_buffer_prototype
 from zarr.core.indexing import (
     make_slice_selection,
     normalize_integer_selection,
@@ -24,6 +21,12 @@ from zarr.core.indexing import (
 from zarr.registry import get_ndbuffer_class
 from zarr.store.common import StorePath
 from zarr.store.memory import MemoryStore
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from zarr.abc.store import Store
+    from zarr.core.common import ChunkCoords
 
 
 @pytest.fixture
@@ -136,7 +139,7 @@ def test_get_basic_selection_0d(store: StorePath, use_out: bool, value: Any, dty
 
     if use_out:
         # test out param
-        b = NDBuffer.from_numpy_array(np.zeros_like(arr_np))
+        b = default_buffer_prototype().nd_buffer.from_numpy_array(np.zeros_like(arr_np))
         arr_z.get_basic_selection(Ellipsis, out=b)
         assert_array_equal(arr_np, b.as_ndarray_like())
 
@@ -247,7 +250,9 @@ def _test_get_basic_selection(a, z, selection):
     assert_array_equal(expect, actual)
 
     # test out param
-    b = NDBuffer.from_numpy_array(np.empty(shape=expect.shape, dtype=expect.dtype))
+    b = default_buffer_prototype().nd_buffer.from_numpy_array(
+        np.empty(shape=expect.shape, dtype=expect.dtype)
+    )
     z.get_basic_selection(selection, out=b)
     assert_array_equal(expect, b.as_numpy_array())
 
