@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from zarr import Array, Group
-from zarr.core.buffer import NDBuffer
+from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.store import LocalStore, MemoryStore
