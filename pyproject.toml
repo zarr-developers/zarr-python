@@ -212,6 +212,7 @@ extend-select = [
     "UP",  # pyupgrade
     "RSE",
     "RUF",
+    "TCH", # flake8-type-checking
     "TRY", # tryceratops
 ]
 ignore = [
