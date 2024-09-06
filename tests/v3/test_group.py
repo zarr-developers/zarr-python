@@ -737,7 +737,7 @@ async def test_group_members_async(store: LocalStore | MemoryStore):
 
 
 async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.create_group(store=store, zarr_format=zarr_format)
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
 
     # create foo group
     _ = await root.create_group("foo", attributes={"foo": 100})
@@ -765,7 +765,7 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
 
 
 async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     # create foo group
     _ = await root.create_group("foo", attributes={"foo": 100})
     # create bar group
@@ -786,7 +786,7 @@ async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: Zarr
 
 
 async def test_create_dataset(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
     assert foo.shape == (10,)
 
@@ -799,7 +799,7 @@ async def test_create_dataset(store: LocalStore | MemoryStore, zarr_format: Zarr
 
 
 async def test_require_array(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     foo1 = await root.require_array("foo", shape=(10,), dtype="i8", attributes={"foo": 101})
     assert foo1.attrs == {"foo": 101}
     foo2 = await root.require_array("foo", shape=(10,), dtype="i8")
