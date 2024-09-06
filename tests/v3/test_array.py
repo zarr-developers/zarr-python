@@ -138,7 +138,7 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
     assert arr.fill_value.dtype == arr.dtype
 
 
-def test_create_positional_args_deprecated():
+def test_create_positional_args_deprecated() -> None:
     store = MemoryStore({}, mode="w")
     with pytest.warns(FutureWarning, match="Pass"):
         Array.create(store, (2, 2), dtype="f8")
