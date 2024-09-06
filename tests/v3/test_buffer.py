@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -30,7 +31,6 @@ except ImportError:
 
 if TYPE_CHECKING:
     import types
-
 
 
 def test_nd_array_like(xp: types.ModuleType) -> None:

@@ -144,7 +144,7 @@ def test_create_positional_args_deprecated() -> None:
         Array.create(store, (2, 2), dtype="f8")
 
 
-def test_selection_positional_args_deprecated():
+def test_selection_positional_args_deprecated() -> None:
     store = MemoryStore({}, mode="w")
     arr = Array.create(store, shape=(2, 2), dtype="f8")
 
