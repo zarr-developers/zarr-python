@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numcodecs
 from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
-from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import Buffer, NDBuffer, default_buffer_prototype
 from zarr.core.common import JSON, to_thread
 from zarr.registry import get_ndbuffer_class
+
+if TYPE_CHECKING:
+    from zarr.core.array_spec import ArraySpec
 
 
 @dataclass(frozen=True)

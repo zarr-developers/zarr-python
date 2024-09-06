@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import pytest
-from _pytest.compat import LEGACY_PATH
 
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.core.buffer import default_buffer_prototype
@@ -16,6 +15,9 @@ from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.common import make_store_path
 
 from .conftest import parse_store
+
+if TYPE_CHECKING:
+    from _pytest.compat import LEGACY_PATH
 
 
 @pytest.fixture(params=["local", "memory"])
@@ -732,3 +734,90 @@ async def test_group_members_async(store: LocalStore | MemoryStore):
 
     with pytest.raises(ValueError, match="max_depth"):
         [x async for x in group.members(max_depth=-1)]
+
+
+async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+
+    # create foo group
+    _ = await root.create_group("foo", attributes={"foo": 100})
+
+    # test that we can get the group using require_group
+    foo_group = await root.require_group("foo")
+    assert foo_group.attrs == {"foo": 100}
+
+    # test that we can get the group using require_group and overwrite=True
+    foo_group = await root.require_group("foo", overwrite=True)
+
+    _ = await foo_group.create_array(
+        "bar", shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
+    )
+
+    # test that overwriting a group w/ children fails
+    # TODO: figure out why ensure_no_existing_node is not catching the foo.bar array
+    #
+    # with pytest.raises(ContainsArrayError):
+    #     await root.require_group("foo", overwrite=True)
+
+    # test that requiring a group where an array is fails
+    with pytest.raises(TypeError):
+        await foo_group.require_group("bar")
+
+
+async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    # create foo group
+    _ = await root.create_group("foo", attributes={"foo": 100})
+    # create bar group
+    _ = await root.create_group("bar", attributes={"bar": 200})
+
+    foo_group, bar_group = await root.require_groups("foo", "bar")
+    assert foo_group.attrs == {"foo": 100}
+    assert bar_group.attrs == {"bar": 200}
+
+    # get a mix of existing and new groups
+    foo_group, spam_group = await root.require_groups("foo", "spam")
+    assert foo_group.attrs == {"foo": 100}
+    assert spam_group.attrs == {}
+
+    # no names
+    no_group = await root.require_groups()
+    assert no_group == ()
+
+
+async def test_create_dataset(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
+    assert foo.shape == (10,)
+
+    with pytest.raises(ContainsArrayError):
+        await root.create_dataset("foo", shape=(100,), dtype="int8")
+
+    _ = await root.create_group("bar")
+    with pytest.raises(ContainsGroupError):
+        await root.create_dataset("bar", shape=(100,), dtype="int8")
+
+
+async def test_require_array(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    foo1 = await root.require_array("foo", shape=(10,), dtype="i8", attributes={"foo": 101})
+    assert foo1.attrs == {"foo": 101}
+    foo2 = await root.require_array("foo", shape=(10,), dtype="i8")
+    assert foo2.attrs == {"foo": 101}
+
+    # exact = False
+    _ = await root.require_array("foo", shape=10, dtype="f8")
+
+    # errors w/ exact True
+    with pytest.raises(TypeError, match="Incompatible dtype"):
+        await root.require_array("foo", shape=(10,), dtype="f8", exact=True)
+
+    with pytest.raises(TypeError, match="Incompatible shape"):
+        await root.require_array("foo", shape=(100, 100), dtype="i8")
+
+    with pytest.raises(TypeError, match="Incompatible dtype"):
+        await root.require_array("foo", shape=(10,), dtype="f4")
+
+    _ = await root.create_group("bar")
+    with pytest.raises(TypeError, match="Incompatible object"):
+        await root.require_array("bar", shape=(10,), dtype="int8")

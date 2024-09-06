@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import zarr.api.asynchronous as async_api
 from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
-from zarr.core.buffer import NDArrayLike
-from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, ZarrFormat
 from zarr.core.group import Group
 from zarr.core.sync import sync
-from zarr.store import StoreLike
+
+if TYPE_CHECKING:
+    from zarr.core.buffer import NDArrayLike
+    from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, ZarrFormat
+    from zarr.store import StoreLike
 
 __all__ = [
     "consolidate_metadata",

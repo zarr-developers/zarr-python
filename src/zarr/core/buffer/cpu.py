@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -11,15 +10,17 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.buffer import core
-from zarr.core.buffer.core import ArrayLike, NDArrayLike
 from zarr.registry import (
     register_buffer,
     register_ndbuffer,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
     from typing_extensions import Self
 
+    from zarr.core.buffer.core import ArrayLike, NDArrayLike
     from zarr.core.common import BytesLike
 
 

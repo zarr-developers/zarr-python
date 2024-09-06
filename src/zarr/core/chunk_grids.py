@@ -4,7 +4,6 @@ import itertools
 import math
 import operator
 from abc import abstractmethod
-from collections.abc import Iterator
 from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING
@@ -16,17 +15,20 @@ from zarr.core.common import (
     JSON,
     ChunkCoords,
     ChunkCoordsLike,
+    ShapeLike,
     parse_named_configuration,
     parse_shapelike,
 )
 from zarr.core.indexing import ceildiv
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from typing_extensions import Self
 
 
 def _guess_chunks(
-    shape: ChunkCoords,
+    shape: ShapeLike,
     typesize: int,
     *,
     increment_bytes: int = 256 * 1024,
@@ -56,6 +58,8 @@ def _guess_chunks(
     ChunkCoords
 
     """
+    if isinstance(shape, int):
+        shape = (shape,)
 
     ndims = len(shape)
     # require chunks to have non-zero length for all dimensions
