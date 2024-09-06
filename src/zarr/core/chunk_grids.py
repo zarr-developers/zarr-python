@@ -15,6 +15,7 @@ from zarr.core.common import (
     JSON,
     ChunkCoords,
     ChunkCoordsLike,
+    ShapeLike,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -27,7 +28,7 @@ if TYPE_CHECKING:
 
 
 def _guess_chunks(
-    shape: ChunkCoords,
+    shape: ShapeLike,
     typesize: int,
     *,
     increment_bytes: int = 256 * 1024,
@@ -57,6 +58,8 @@ def _guess_chunks(
     ChunkCoords
 
     """
+    if isinstance(shape, int):
+        shape = (shape,)
 
     ndims = len(shape)
     # require chunks to have non-zero length for all dimensions

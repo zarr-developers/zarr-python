@@ -22,6 +22,7 @@ from zarr.core.common import (
     ZATTRS_JSON,
     ZGROUP_JSON,
     ChunkCoords,
+    ShapeLike,
     ZarrFormat,
     parse_shapelike,
 )
@@ -365,7 +366,7 @@ class AsyncGroup:
         self,
         name: str,
         *,
-        shape: ChunkCoords,
+        shape: ShapeLike,
         dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -380,7 +381,7 @@ class AsyncGroup:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
-        chunks: ChunkCoords | None = None,
+        chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -890,7 +891,7 @@ class Group(SyncMixin):
         self,
         name: str,
         *,
-        shape: ChunkCoords,
+        shape: ShapeLike,
         dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -905,7 +906,7 @@ class Group(SyncMixin):
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
-        chunks: ChunkCoords | None = None,
+        chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
