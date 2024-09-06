@@ -1,6 +1,5 @@
 from __future__ import annotations
-
-import types
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
@@ -27,6 +26,11 @@ try:
     import cupy as cp
 except ImportError:
     cp = None
+
+
+if TYPE_CHECKING:
+    import types
+
 
 
 def test_nd_array_like(xp: types.ModuleType) -> None:
