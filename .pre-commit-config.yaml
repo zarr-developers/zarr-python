@@ -25,7 +25,7 @@ repos:
     rev: v1.11.2
     hooks:
       - id: mypy
-        files: src
+        files: src|tests/v3/test_(api|array|buffer).py
         additional_dependencies:
           # Package dependencies
           - asciitree
@@ -35,6 +35,7 @@ repos:
           - numcodecs
           - numpy
           - typing_extensions
+          - universal-pathlib
           # Tests
           - pytest
           # Zarr v2

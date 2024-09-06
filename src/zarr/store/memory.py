@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, MutableMapping
 from typing import TYPE_CHECKING
 
 from zarr.abc.store import Store
@@ -9,6 +8,8 @@ from zarr.core.common import concurrent_map
 from zarr.store._utils import _normalize_interval_index
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, MutableMapping
+
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
 

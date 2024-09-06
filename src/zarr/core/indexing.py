@@ -23,11 +23,11 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.buffer import NDArrayLike
 from zarr.core.common import product
 
 if TYPE_CHECKING:
     from zarr.core.array import Array
+    from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import ChunkCoords
 

@@ -3,13 +3,11 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from collections.abc import Iterable
-from typing import Any, Literal, Union, cast
+from typing import TYPE_CHECKING, Any, Literal, Union, cast
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec
 from zarr.core.array import Array, AsyncArray
 from zarr.core.buffer import NDArrayLike
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
@@ -26,6 +24,13 @@ from zarr.store import (
     StoreLike,
     make_store_path,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from zarr.abc.codec import Codec
+    from zarr.core.buffer import NDArrayLike
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
 __all__ = [
     "consolidate_metadata",

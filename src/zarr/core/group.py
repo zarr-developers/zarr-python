@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, cast, overload
 
@@ -11,13 +10,11 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
 from zarr.core.array import Array, AsyncArray
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
@@ -25,6 +22,7 @@ from zarr.core.common import (
     ZATTRS_JSON,
     ZGROUP_JSON,
     ChunkCoords,
+    ShapeLike,
     ZarrFormat,
     _json_convert,
     parse_shapelike,
@@ -36,10 +34,12 @@ from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.common import ensure_no_existing_node
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable
+    from collections.abc import AsyncGenerator, Iterable, Iterator
     from typing import Any
 
+    from zarr.abc.codec import Codec
     from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
 logger = logging.getLogger("zarr.group")
 
@@ -485,7 +485,7 @@ class AsyncGroup:
         self,
         name: str,
         *,
-        shape: ChunkCoords,
+        shape: ShapeLike,
         dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -500,7 +500,7 @@ class AsyncGroup:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
-        chunks: ChunkCoords | None = None,
+        chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -1014,7 +1014,7 @@ class Group(SyncMixin):
         self,
         name: str,
         *,
-        shape: ChunkCoords,
+        shape: ShapeLike,
         dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -1029,7 +1029,7 @@ class Group(SyncMixin):
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
-        chunks: ChunkCoords | None = None,
+        chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
