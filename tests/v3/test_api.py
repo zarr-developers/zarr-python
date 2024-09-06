@@ -88,7 +88,7 @@ def test_save_errors() -> None:
         save_group("data/group.zarr")
     with pytest.raises(TypeError):
         # no array provided
-        save_array("data/group.zarr")  # type: ignore[call-arg]
+        save_array("data/group.zarr")
     with pytest.raises(ValueError):
         # no arrays provided
         save("data/group.zarr")
@@ -860,13 +860,13 @@ def test_tree() -> None:
 #             copy(source["foo"], dest, dry_run=True, log=True)
 
 
-def test_open_positional_args_deprecated():
+def test_open_positional_args_deprecated() -> None:
     store = MemoryStore({}, mode="w")
     with pytest.warns(FutureWarning, match="pass"):
         open(store, "w", shape=(1,))
 
 
-def test_save_array_positional_args_deprecated():
+def test_save_array_positional_args_deprecated() -> None:
     store = MemoryStore({}, mode="w")
     with warnings.catch_warnings():
         warnings.filterwarnings(
@@ -882,13 +882,13 @@ def test_save_array_positional_args_deprecated():
             )
 
 
-def test_group_positional_args_deprecated():
+def test_group_positional_args_deprecated() -> None:
     store = MemoryStore({}, mode="w")
     with pytest.warns(FutureWarning, match="pass"):
         group(store, True)
 
 
-def test_open_group_positional_args_deprecated():
+def test_open_group_positional_args_deprecated() -> None:
     store = MemoryStore({}, mode="w")
     with pytest.warns(FutureWarning, match="pass"):
         open_group(store, "w")
