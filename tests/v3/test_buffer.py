@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import types
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
@@ -22,6 +22,9 @@ from zarr.testing.buffer import (
     TestNDArrayLike,
 )
 from zarr.testing.utils import gpu_test
+
+if TYPE_CHECKING:
+    import types
 
 try:
     import cupy as cp
