@@ -258,3 +258,9 @@ filterwarnings = [
 markers = [
     "gpu: mark a test as requiring CuPy and GPU"
 ]
+
+[tool.repo-review]
+ignore = [
+	"PC111",  # fix Python code in documentation - enable later 
+	"PC180",  # for JavaScript - not interested
+]

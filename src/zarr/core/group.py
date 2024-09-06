@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, cast, overload
 
+import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
@@ -26,6 +27,7 @@ from zarr.core.common import (
     ChunkCoords,
     ZarrFormat,
     _json_convert,
+    parse_shapelike,
 )
 from zarr.core.config import config
 from zarr.core.metadata import ArrayMetadata, ArrayV3Metadata
@@ -79,6 +81,15 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
         raise TypeError(f"Unknown node type, got {type(node)}")
 
 
+# What does ConsolidatedMetadata mean at non-root levels of a Store?
+# Specifically, if a we have a Group at `/a/b` and cnosolidate
+# all the metadata under it, should the keys in the metadata map
+# be
+#   1: /a/b/1, /a/b/2, ...
+#   2: /1, /2, ...
+# ?
+
+
 @dataclass(frozen=True)
 class ConsolidatedMetadata:
     metadata: dict[str, ArrayMetadata | GroupMetadata]
@@ -123,6 +134,12 @@ class ConsolidatedMetadata:
         if data["must_understand"] is not False:
             raise ValueError
         return cls(metadata=metadata)
+
+    def _filter_prefix(self, key: str) -> ConsolidatedMetadata:
+        """
+        Filter a
+        """
+        return replace(self, metadata={k: v for k, v in self.metadata.items() if k.startswith(key)})
 
 
 @dataclass(frozen=True)
@@ -274,20 +291,50 @@ class AsyncGroup:
         store_path = self.store_path / key
         logger.debug("key=%s, store_path=%s", key, store_path)
 
+        # Consolidated metadata lets us avoid some I/O operations so try that first.
+        if self.metadata.consolidated_metadata is not None:
+            try:
+                metadata = self.metadata.consolidated_metadata.metadata[key]
+            except KeyError as e:
+                # The Group Metadata has consolidated metadata, but the key
+                # isn't present. We trust this to mean that the key isn't in
+                # the hierarchy, and *don't* fall back to checking the store.
+                msg = f"'{key}' not found in consolidated metadata."
+                raise KeyError(msg) from e
+
+            if metadata.zarr_format == 3:
+                assert isinstance(metadata, GroupMetadata | ArrayV3Metadata)
+
+                if metadata.node_type == "group":
+                    # To speed up nested access like
+                    #     group.getitem("a").getitem("b").getitem("array")
+                    # we'll propagate the consolidated metadata to children. However, we need
+                    # to remove the `store_path` prefix to ensure that `group.getitem("a")`
+                    # has a different (shorter) prefix thanks to it having a longer root.
+                    metadata = replace(
+                        self.metadata,
+                        consolidated_metadata=replace(
+                            self.metadata.consolidated_metadata,
+                            metadata={
+                                k.split(key, 1)[-1].lstrip("/"): v
+                                for k, v in self.metadata.consolidated_metadata.metadata.items()
+                                if k.startswith(key) and k != key
+                            },
+                        ),
+                    )
+                    return AsyncGroup(metadata=metadata, store_path=store_path)
+                else:
+                    # TODO: order?
+                    return AsyncArray(metadata=metadata, store_path=store_path)
+            else:
+                # v2
+                raise NotImplementedError
+
         # Note:
         # in zarr-python v2, we first check if `key` references an Array, else if `key` references
         # a group,using standalone `contains_array` and `contains_group` functions. These functions
         # are reusable, but for v3 they would perform redundant I/O operations.
         # Not clear how much of that strategy we want to keep here.
-        if self.metadata.consolidated_metadata is not None:
-            metadata = self.metadata.consolidated_metadata.metadata[key]
-
-            if metadata.node_type == "group":
-                return AsyncGroup(metadata=metadata, store_path=store_path)
-            else:
-                # TODO: order?
-                return AsyncArray(metadata=metadata, store_path=store_path)
-
         elif self.metadata.zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
@@ -320,7 +367,7 @@ class AsyncGroup:
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
                 zarr_json = {**zarray, "attributes": zattrs}
-                return AsyncArray.from_dict(store_path, zarray)
+                return AsyncArray.from_dict(store_path, zarr_json)
             else:
                 zgroup = (
                     json.loads(zgroup_bytes.to_bytes())
@@ -333,10 +380,13 @@ class AsyncGroup:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
     async def delitem(self, key: str) -> None:
-        # TODO: sync consolidated_metadata
         store_path = self.store_path / key
         if self.metadata.zarr_format == 3:
             await (store_path / ZARR_JSON).delete()
+            if self.metadata.consolidated_metadata:
+                self.metadata.consolidated_metadata.metadata.pop(key, None)
+                # This should probably synchronize?
+
         elif self.metadata.zarr_format == 2:
             await asyncio.gather(
                 (store_path / ZGROUP_JSON).delete(),  # TODO: missing_ok=False
@@ -394,6 +444,42 @@ class AsyncGroup:
             exists_ok=exists_ok,
             zarr_format=self.metadata.zarr_format,
         )
+
+    async def require_group(self, name: str, overwrite: bool = False) -> AsyncGroup:
+        """Obtain a sub-group, creating one if it doesn't exist.
+
+        Parameters
+        ----------
+        name : string
+            Group name.
+        overwrite : bool, optional
+            Overwrite any existing group with given `name` if present.
+
+        Returns
+        -------
+        g : AsyncGroup
+        """
+        if overwrite:
+            # TODO: check that exists_ok=True errors if an array exists where the group is being created
+            grp = await self.create_group(name, exists_ok=True)
+        else:
+            try:
+                item: AsyncGroup | AsyncArray = await self.getitem(name)
+                if not isinstance(item, AsyncGroup):
+                    raise TypeError(
+                        f"Incompatible object ({item.__class__.__name__}) already exists"
+                    )
+                assert isinstance(item, AsyncGroup)  # make mypy happy
+                grp = item
+            except KeyError:
+                grp = await self.create_group(name)
+        return grp
+
+    async def require_groups(self, *names: str) -> tuple[AsyncGroup, ...]:
+        """Convenience method to require multiple groups in a single call."""
+        if not names:
+            return ()
+        return tuple(await asyncio.gather(*(self.require_group(name) for name in names)))
 
     async def create_array(
         self,
@@ -483,6 +569,117 @@ class AsyncGroup:
             zarr_format=self.metadata.zarr_format,
             data=data,
         )
+
+    @deprecated("Use AsyncGroup.create_array instead.")
+    async def create_dataset(self, name: str, **kwargs: Any) -> AsyncArray:
+        """Create an array.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.require_dataset` method.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        kwargs : dict
+            Additional arguments passed to :func:`zarr.AsyncGroup.create_array`.
+
+        Returns
+        -------
+        a : AsyncArray
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.create_array` instead.
+        """
+        return await self.create_array(name, **kwargs)
+
+    @deprecated("Use AsyncGroup.require_array instead.")
+    async def require_dataset(
+        self,
+        name: str,
+        *,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike = None,
+        exact: bool = False,
+        **kwargs: Any,
+    ) -> AsyncArray:
+        """Obtain an array, creating if it doesn't exist.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.create_dataset` method.
+
+        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : AsyncArray
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.require_dataset` instead.
+        """
+        return await self.require_array(name, shape=shape, dtype=dtype, exact=exact, **kwargs)
+
+    async def require_array(
+        self,
+        name: str,
+        *,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike = None,
+        exact: bool = False,
+        **kwargs: Any,
+    ) -> AsyncArray:
+        """Obtain an array, creating if it doesn't exist.
+
+        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : AsyncArray
+        """
+        try:
+            ds = await self.getitem(name)
+            if not isinstance(ds, AsyncArray):
+                raise TypeError(f"Incompatible object ({ds.__class__.__name__}) already exists")
+
+            shape = parse_shapelike(shape)
+            if shape != ds.shape:
+                raise TypeError(f"Incompatible shape ({ds.shape} vs {shape})")
+
+            dtype = np.dtype(dtype)
+            if exact:
+                if ds.dtype != dtype:
+                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
+            else:
+                if not np.can_cast(ds.dtype, dtype):
+                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
+        except KeyError:
+            ds = await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
+
+        return ds
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
         # metadata.attributes is "frozen" so we simply clear and update the dict
@@ -687,8 +884,9 @@ class Group(SyncMixin):
     def open(
         cls,
         store: StoreLike,
+        zarr_format: Literal[2, 3, None] = 3,
     ) -> Group:
-        obj = sync(AsyncGroup.open(store))
+        obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
         return cls(obj)
 
     def __getitem__(self, path: str) -> Array | Group:
@@ -792,6 +990,26 @@ class Group(SyncMixin):
     def create_group(self, name: str, **kwargs: Any) -> Group:
         return Group(self._sync(self._async_group.create_group(name, **kwargs)))
 
+    def require_group(self, name: str, **kwargs: Any) -> Group:
+        """Obtain a sub-group, creating one if it doesn't exist.
+
+        Parameters
+        ----------
+        name : string
+            Group name.
+        overwrite : bool, optional
+            Overwrite any existing group with given `name` if present.
+
+        Returns
+        -------
+        g : Group
+        """
+        return Group(self._sync(self._async_group.require_group(name, **kwargs)))
+
+    def require_groups(self, *names: str) -> tuple[Group, ...]:
+        """Convenience method to require multiple groups in a single call."""
+        return tuple(map(Group, self._sync(self._async_group.require_groups(*names))))
+
     def create_array(
         self,
         name: str,
@@ -885,6 +1103,83 @@ class Group(SyncMixin):
                 )
             )
         )
+
+    @deprecated("Use Group.create_array instead.")
+    def create_dataset(self, name: str, **kwargs: Any) -> Array:
+        """Create an array.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the :func:`zarr.Group.require_dataset` method.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        kwargs : dict
+            Additional arguments passed to :func:`zarr.Group.create_array`
+
+        Returns
+        -------
+        a : Array
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `Group.create_array` instead.
+        """
+        return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
+
+    @deprecated("Use Group.require_array instead.")
+    def require_dataset(self, name: str, **kwargs: Any) -> Array:
+        """Obtain an array, creating if it doesn't exist.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the :func:`zarr.Group.create_dataset` method.
+
+        Other `kwargs` are as per :func:`zarr.Group.create_dataset`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : Array
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
+        """
+        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
+
+    def require_array(self, name: str, **kwargs: Any) -> Array:
+        """Obtain an array, creating if it doesn't exist.
+
+
+        Other `kwargs` are as per :func:`zarr.Group.create_array`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : Array
+        """
+        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
 
     def empty(self, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty(**kwargs)))

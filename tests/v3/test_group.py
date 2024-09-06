@@ -6,10 +6,11 @@ import numpy as np
 import pytest
 from _pytest.compat import LEGACY_PATH
 
+import zarr.api.asynchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import ZarrFormat
-from zarr.core.group import GroupMetadata
+from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.store import LocalStore, MemoryStore, StorePath
@@ -98,7 +99,10 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
     # add an extra object to the domain of the group.
     # the list of children should ignore this object.
     sync(
-        store.set(f"{path}/extra_object-1", default_buffer_prototype().buffer.from_bytes(b"000000"))
+        store.set(
+            f"{path}/extra_object-1",
+            default_buffer_prototype().buffer.from_bytes(b"000000"),
+        )
     )
     # add an extra object under a directory-like prefix in the domain of the group.
     # this creates a directory with a random key in it
@@ -185,7 +189,10 @@ def test_group_create(
     if not exists_ok:
         with pytest.raises(ContainsGroupError):
             group = Group.create(
-                store, attributes=attributes, exists_ok=exists_ok, zarr_format=zarr_format
+                store,
+                attributes=attributes,
+                exists_ok=exists_ok,
+                zarr_format=zarr_format,
             )
 
 
@@ -583,7 +590,11 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     array_name = "sub_array"
     _ = await agroup.create_array(
-        name=array_name, shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
+        name=array_name,
+        shape=(10,),
+        dtype="uint8",
+        chunk_shape=(2,),
+        attributes={"foo": 100},
     )
     await agroup.delitem(array_name)
 
@@ -730,3 +741,175 @@ async def test_group_members_async(store: LocalStore | MemoryStore):
 
     with pytest.raises(ValueError, match="max_depth"):
         [x async for x in group.members(max_depth=-1)]
+
+
+async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+
+    # create foo group
+    _ = await root.create_group("foo", attributes={"foo": 100})
+
+    # test that we can get the group using require_group
+    foo_group = await root.require_group("foo")
+    assert foo_group.attrs == {"foo": 100}
+
+    # test that we can get the group using require_group and overwrite=True
+    foo_group = await root.require_group("foo", overwrite=True)
+
+    _ = await foo_group.create_array(
+        "bar", shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
+    )
+
+    # test that overwriting a group w/ children fails
+    # TODO: figure out why ensure_no_existing_node is not catching the foo.bar array
+    #
+    # with pytest.raises(ContainsArrayError):
+    #     await root.require_group("foo", overwrite=True)
+
+    # test that requiring a group where an array is fails
+    with pytest.raises(TypeError):
+        await foo_group.require_group("bar")
+
+
+async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    # create foo group
+    _ = await root.create_group("foo", attributes={"foo": 100})
+    # create bar group
+    _ = await root.create_group("bar", attributes={"bar": 200})
+
+    foo_group, bar_group = await root.require_groups("foo", "bar")
+    assert foo_group.attrs == {"foo": 100}
+    assert bar_group.attrs == {"bar": 200}
+
+    # get a mix of existing and new groups
+    foo_group, spam_group = await root.require_groups("foo", "spam")
+    assert foo_group.attrs == {"foo": 100}
+    assert spam_group.attrs == {}
+
+    # no names
+    no_group = await root.require_groups()
+    assert no_group == ()
+
+
+async def test_create_dataset(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
+    assert foo.shape == (10,)
+
+    with pytest.raises(ContainsArrayError):
+        await root.create_dataset("foo", shape=(100,), dtype="int8")
+
+    _ = await root.create_group("bar")
+    with pytest.raises(ContainsGroupError):
+        await root.create_dataset("bar", shape=(100,), dtype="int8")
+
+
+async def test_require_array(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    foo1 = await root.require_array("foo", shape=(10,), dtype="i8", attributes={"foo": 101})
+    assert foo1.attrs == {"foo": 101}
+    foo2 = await root.require_array("foo", shape=(10,), dtype="i8")
+    assert foo2.attrs == {"foo": 101}
+
+    # exact = False
+    _ = await root.require_array("foo", shape=10, dtype="f8")
+
+    # errors w/ exact True
+    with pytest.raises(TypeError, match="Incompatible dtype"):
+        await root.require_array("foo", shape=(10,), dtype="f8", exact=True)
+
+    with pytest.raises(TypeError, match="Incompatible shape"):
+        await root.require_array("foo", shape=(100, 100), dtype="i8")
+
+    with pytest.raises(TypeError, match="Incompatible dtype"):
+        await root.require_array("foo", shape=(10,), dtype="f4")
+
+    _ = await root.create_group("bar")
+    with pytest.raises(TypeError, match="Incompatible object"):
+        await root.require_array("bar", shape=(10,), dtype="int8")
+
+
+async def test_group_getitem_consolidated(store: LocalStore | MemoryStore):
+    root = await AsyncGroup.create(store=store)
+    # Set up the test structure with
+    # /
+    #  g0/      # group /g0
+    #    g1/    # group /g0/g1
+    #      g2/  # group /g0/g1/g2
+    #  x1/      # group /x0
+    #    x2/    # group /x0/x1
+    #      x3/  # group /x0/x1/x2
+
+    g0 = await root.create_group("g0")
+    g1 = await g0.create_group("g1")
+    await g1.create_group("g2")
+
+    x0 = await root.create_group("x0")
+    x1 = await x0.create_group("x1")
+    await x1.create_group("x2")
+
+    await zarr.api.asynchronous.consolidate_metadata(store)
+
+    # On disk, we've consolidated all the metadata in the root zarr.json
+    group = await zarr.api.asynchronous.open(store=store)
+    rg0 = await group.getitem("g0")
+
+    expected = ConsolidatedMetadata(
+        metadata={
+            "g1": GroupMetadata(
+                attributes={},
+                zarr_format=3,
+                consolidated_metadata=None,
+            ),
+            "g1/g2": GroupMetadata(
+                attributes={},
+                zarr_format=3,
+                consolidated_metadata=None,
+            ),
+        }
+    )
+    assert rg0.metadata.consolidated_metadata == expected
+
+    expected.metadata.pop("g1")
+    expected.metadata["g2"] = expected.metadata.pop("g1/g2")
+    rg1 = await rg0.getitem("g1")
+    assert rg1.metadata.consolidated_metadata == expected
+
+    rg2 = await rg1.getitem("g2")
+    expected.metadata.clear()
+    assert rg2.metadata.consolidated_metadata == expected
+
+
+async def test_group_delitem_consolidated(store: LocalStore | MemoryStore):
+    root = await AsyncGroup.create(store=store)
+    # Set up the test structure with
+    # /
+    #  g0/         # group /g0
+    #    g1/       # group /g0/g1
+    #      g2/     # group /g0/g1/g2
+    #        data  # array
+    #  x1/         # group /x0
+    #    x2/       # group /x0/x1
+    #      x3/     # group /x0/x1/x2
+    #        data  # array
+
+    g0 = await root.create_group("g0")
+    g1 = await g0.create_group("g1")
+    g2 = await g1.create_group("g2")
+    await g2.create_array("data", shape=(1,))
+
+    x0 = await root.create_group("x0")
+    x1 = await x0.create_group("x1")
+    x2 = await x1.create_group("x2")
+    await x2.create_array("data", shape=(1,))
+
+    await zarr.api.asynchronous.consolidate_metadata(store)
+
+    group = await zarr.api.asynchronous.open(store=store)
+    assert len(group.metadata.consolidated_metadata.metadata) == 8
+    assert "g0" in group.metadata.consolidated_metadata.metadata
+
+    await group.delitem("g0")
+    assert len(group.metadata.consolidated_metadata.metadata) == 7
+    assert "g0" not in group.metadata.consolidated_metadata.metadata
