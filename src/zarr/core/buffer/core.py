@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -23,6 +22,8 @@ from zarr.registry import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
     from typing_extensions import Self
 
     from zarr.codecs.bytes import Endian

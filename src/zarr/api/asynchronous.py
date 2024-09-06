@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import warnings
-from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Literal, Union, cast
 
 import numpy as np
@@ -18,6 +17,8 @@ from zarr.store import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from zarr.abc.codec import Codec
     from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding

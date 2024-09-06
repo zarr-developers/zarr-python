@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Awaitable, Callable, Iterable
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from zarr.abc.metadata import Metadata
@@ -10,6 +9,8 @@ from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Iterable
+
     import numpy as np
     from typing_extensions import Self
 

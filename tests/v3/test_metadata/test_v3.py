@@ -9,11 +9,11 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from typing import Any
 
     from zarr.abc.codec import Codec
 
-from collections.abc import Sequence
 
 import numpy as np
 import pytest

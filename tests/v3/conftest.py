@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
-from types import ModuleType
 from typing import TYPE_CHECKING
 
 from zarr import AsyncGroup, config
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from types import ModuleType
     from typing import Any, Literal
 
     from _pytest.compat import LEGACY_PATH

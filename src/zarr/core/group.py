@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, cast, overload
 
@@ -32,7 +31,7 @@ from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.common import ensure_no_existing_node
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable
+    from collections.abc import AsyncGenerator, Iterable, Iterator
     from typing import Any
 
     from zarr.abc.codec import Codec

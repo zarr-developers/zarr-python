@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -24,6 +23,8 @@ from zarr.store.common import StorePath
 from zarr.store.memory import MemoryStore
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from zarr.abc.store import Store
     from zarr.core.common import ChunkCoords
 
