@@ -737,7 +737,7 @@ async def test_group_members_async(store: LocalStore | MemoryStore):
 
 
 async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    root = await AsyncGroup.create_group(store=store, zarr_format=zarr_format)
 
     # create foo group
     _ = await root.create_group("foo", attributes={"foo": 100})
