@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from asyncio import gather
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import AsyncGenerator, Iterable
 from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from typing_extensions import Self
@@ -144,6 +144,13 @@ class Store(ABC):
         """
         ...
 
+    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
+        """
+        Insert multiple (key, value) pairs into storage.
+        """
+        await gather(*(self.set(key, value) for key, value in values))
+        return None
+
     @abstractmethod
     async def delete(self, key: str) -> None:
         """Remove a key from the store
@@ -225,13 +232,6 @@ class Store(ABC):
         """Close the store."""
         self._is_open = False
         pass
-
-    async def _set_dict(self, dict: Mapping[str, Buffer]) -> None:
-        """
-        Insert objects into storage as defined by a prefix: value mapping.
-        """
-        await gather(*(self.set(key, value) for key, value in dict.items()))
-        return None
 
 
 @runtime_checkable
