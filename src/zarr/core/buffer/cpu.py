@@ -11,7 +11,6 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.buffer import core
-from zarr.core.buffer.core import ArrayLike, NDArrayLike
 from zarr.registry import (
     register_buffer,
     register_ndbuffer,
@@ -20,6 +19,7 @@ from zarr.registry import (
 if TYPE_CHECKING:
     from typing_extensions import Self
 
+    from zarr.core.buffer.core import ArrayLike, NDArrayLike
     from zarr.core.common import BytesLike
 
 

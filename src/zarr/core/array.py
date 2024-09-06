@@ -4,12 +4,11 @@ import json
 from asyncio import gather
 from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -62,6 +61,9 @@ from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.common import (
     ensure_no_existing_node,
 )
+
+if TYPE_CHECKING:
+    from zarr.abc.codec import Codec, CodecPipeline
 
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:

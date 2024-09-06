@@ -11,13 +11,11 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
 from zarr.core.array import Array, AsyncArray
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
@@ -37,7 +35,9 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
     from typing import Any
 
+    from zarr.abc.codec import Codec
     from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
 logger = logging.getLogger("zarr.group")
 

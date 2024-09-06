@@ -7,11 +7,12 @@ from typing import TYPE_CHECKING
 from _pytest.compat import LEGACY_PATH
 
 from zarr import AsyncGroup, config
-from zarr.abc.store import Store
-from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
 
 if TYPE_CHECKING:
     from typing import Any, Literal
+
+    from zarr.abc.store import Store
+    from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
 import pathlib
 from dataclasses import dataclass, field
 

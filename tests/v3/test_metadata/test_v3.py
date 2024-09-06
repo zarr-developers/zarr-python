@@ -4,13 +4,14 @@ import json
 import re
 from typing import TYPE_CHECKING, Literal
 
-from zarr.abc.codec import Codec
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 
 if TYPE_CHECKING:
     from typing import Any
+
+    from zarr.abc.codec import Codec
 
 from collections.abc import Sequence
 

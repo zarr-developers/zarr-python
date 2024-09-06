@@ -7,16 +7,16 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 import numpy as np
 
 from zarr.abc.metadata import Metadata
-from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
     from typing_extensions import Self
 
+    from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
+    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import JSON
     from zarr.core.indexing import SelectorTuple
 

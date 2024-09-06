@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import numpy as np
@@ -11,9 +11,7 @@ import pytest
 from numpy.testing import assert_array_equal
 
 import zarr
-from zarr.abc.store import Store
 from zarr.core.buffer import BufferPrototype, default_buffer_prototype
-from zarr.core.common import ChunkCoords
 from zarr.core.indexing import (
     make_slice_selection,
     normalize_integer_selection,
@@ -24,6 +22,10 @@ from zarr.core.indexing import (
 from zarr.registry import get_ndbuffer_class
 from zarr.store.common import StorePath
 from zarr.store.memory import MemoryStore
+
+if TYPE_CHECKING:
+    from zarr.abc.store import Store
+    from zarr.core.common import ChunkCoords
 
 
 @pytest.fixture

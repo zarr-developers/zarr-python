@@ -6,14 +6,13 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from zarr.abc.store import Store
-from zarr.core.buffer import Buffer
 from zarr.store.common import _dereference_path
 
 if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
     from upath import UPath
 
-    from zarr.core.buffer import BufferPrototype
+    from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import AccessModeLiteral, BytesLike
 
 
