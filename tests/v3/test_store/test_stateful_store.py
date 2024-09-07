@@ -202,9 +202,9 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @invariant()
     def check_vals_equal(self) -> None:
         note("Checking values equal")
-        for key, _val in self.model.items():
+        for key, val in self.model.items():
             store_item = self.store.get(key, self.prototype).to_bytes()
-            assert self.model[key].to_bytes() == store_item
+            assert val.to_bytes() == store_item
 
     @invariant()
     def check_num_keys_equal(self) -> None:
