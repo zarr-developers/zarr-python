@@ -575,11 +575,8 @@ class Array:
             # store comparison
         )
 
-    def __array__(self, *args):
-        a = self[...]
-        if args:
-            a = a.astype(args[0])
-        return a
+    def __array__(self, *args, **kwargs):
+        return np.array(self[...], *args, **kwargs)
 
     def islice(self, start=None, end=None):
         """
@@ -609,11 +606,11 @@ class Array:
 
         Iterate over part of the array:
             >>> for value in z.islice(25, 30): value;
-            25
-            26
-            27
-            28
-            29
+            np.int64(25)
+            np.int64(26)
+            np.int64(27)
+            np.int64(28)
+            np.int64(29)
         """
 
         if len(self.shape) == 0:
@@ -679,7 +676,7 @@ class Array:
         Retrieve a single item::
 
             >>> z[5]
-            5
+            np.int64(5)
 
         Retrieve a region via slicing::
 
@@ -706,7 +703,7 @@ class Array:
         Retrieve an item::
 
             >>> z[2, 2]
-            22
+            np.int64(22)
 
         Retrieve a region via slicing::
 
@@ -830,7 +827,7 @@ class Array:
         Retrieve a single item::
 
             >>> z.get_basic_selection(5)
-            5
+            np.int64(5)
 
         Retrieve a region via slicing::
 
@@ -852,7 +849,7 @@ class Array:
         Retrieve an item::
 
             >>> z.get_basic_selection((2, 2))
-            22
+            np.int64(22)
 
         Retrieve a region via slicing::
 
@@ -2053,7 +2050,12 @@ class Array:
                     if isinstance(cdata, UncompressedPartialReadBufferV3):
                         cdata = cdata.read_full()
                     chunk = ensure_ndarray_like(cdata).view(self._dtype)
-                    chunk = chunk.reshape(self._chunks, order=self._order)
+                    # dest.shape is not self._chunks when a dimensions is squeezed out
+                    # For example, assume self._chunks = (5, 5, 1)
+                    # and the selection is [:, :, 0]
+                    # Then out_selection is (slice(5), slice(5))
+                    # See https://github.com/zarr-developers/zarr-python/issues/1931
+                    chunk = chunk.reshape(dest.shape, order=self._order)
                     np.copyto(dest, chunk)
                 return
 
@@ -2819,7 +2821,7 @@ class Array:
             >>> v[:]
             array([False, False,  True, ...,  True, False, False])
             >>> np.all(a[:].view(dtype=bool) == v[:])
-            True
+            np.True_
 
         An array can be viewed with a dtype with a different item size, however
         some care is needed to adjust the shape and chunk shape so that chunk
@@ -2833,7 +2835,7 @@ class Array:
             >>> v[:10]
             array([0, 0, 1, 0, 2, 0, 3, 0, 4, 0], dtype=uint8)
             >>> np.all(a[:].view('u1') == v[:])
-            True
+            np.True_
 
         Change fill value for uninitialized chunks:
 

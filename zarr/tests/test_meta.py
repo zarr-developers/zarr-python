@@ -282,36 +282,28 @@ def test_encode_decode_array_dtype_shape_v3(cname):
         fill_value=None,
         chunk_memory_layout="C",
     )
-
-    meta_json = (
-        """{
+    meta_expected = {
         "attributes": {},
-        "chunk_grid": {
-            "chunk_shape": [10],
-            "separator": "/",
-            "type": "regular"
-        },
+        "chunk_grid": {"chunk_shape": [10], "separator": "/", "type": "regular"},
         "chunk_memory_layout": "C",
         "compressor": {
-        """
-        + f"""
-        "codec": "https://purl.org/zarr/spec/codec/{cname}/1.0",
-        """
-        + """
-            "configuration": {
-                "level": 1
-            }
+            "codec": f"https://purl.org/zarr/spec/codec/{cname}/1.0",
+            "configuration": {"level": 1},
         },
         "data_type": "<f8",
         "extensions": [],
-        "fill_value": null,
-        "shape": [100, 10, 10 ]
-    }"""
-    )
+        "fill_value": None,
+        "shape": [100, 10, 10],
+    }
+
+    if cname == "zstd":
+        meta_expected["compressor"]["configuration"]["checksum"] = False
+
+    meta_expected_json = json.dumps(meta_expected)
 
     # test encoding
     meta_enc = Metadata3.encode_array_metadata(meta)
-    assert_json_equal(meta_json, meta_enc)
+    assert_json_equal(meta_enc, meta_expected_json)
 
     # test decoding
     meta_dec = Metadata3.decode_array_metadata(meta_enc)

@@ -18,13 +18,63 @@ Release notes
    See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
    3.0 release.
 
+.. _release_2.18.4:
+
+2.18.4 (unreleased)
+-------------------
+
+Enhancements
+~~~~~~~~~~~~
+
+Maintenance
+~~~~~~~~~~~
+
+Deprecations
+~~~~~~~~~~~~
+
+.. _release_2.18.3:
+
+2.18.3
+------
+
+Enhancements
+~~~~~~~~~~~~
+* Added support for creating a copy of data when converting a `zarr.Array`
+  to a numpy array.
+  By :user:`David Stansby <dstansby>` (:issue:`2106`) and 
+  :user:`Joe Hamman <jhamman>` (:issue:`2123`).
+
+Maintenance
+~~~~~~~~~~~
+* Removed support for Python 3.9.
+  By :user:`David Stansby <dstansby>` (:issue:`2074`).
+
+* Fix a regression when using orthogonal indexing with a scalar.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1931`
+
+* Added compatibility with NumPy 2.1.
+  By :user:`David Stansby <dstansby>`
+
+* Bump minimum NumPy version to 1.24.
+  :user:`Joe Hamman <jhamman>` (:issue:`2127`).
+
+Deprecations
+~~~~~~~~~~~~
+
+* Deprecate :class:`zarr.n5.N5Store` and :class:`zarr.n5.N5FSStore`. These
+  stores are slated to be removed in Zarr Python 3.0.
+  By :user:`Joe Hamman <jhamman>` :issue:`2085`.
+
 .. _release_2.18.2:
+
+2.18.2
+------
 
 Enhancements
 ~~~~~~~~~~~~
 
 * Add Zstd codec to old V3 code path.
-  By :user:`Ryan Abernathey <rabernat>` 
+  By :user:`Ryan Abernathey <rabernat>`
 
 .. _release_2.18.1:
 
@@ -51,7 +101,7 @@ Maintenance
 * Enable ruff/bugbear rules (B) and fix issues.
   By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1702`.
 
-* Minor updates to use `np.inf` instead of `np.PINF` / `np.NINF` in preparation for NumPy 2.0.0 release. 
+* Minor updates to use `np.inf` instead of `np.PINF` / `np.NINF` in preparation for NumPy 2.0.0 release.
   By :user:`Joe Hamman <jhamman>` :issue:`1842`.
 
 Deprecations

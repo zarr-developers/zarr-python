@@ -16,10 +16,10 @@ jobs:
           submodules: true
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5.1.0
+      - uses: actions/setup-python@v5.2.0
         name: Install Python
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Install PyBuild
         run: |
@@ -64,7 +64,7 @@ jobs:
         with:
           name: releases
           path: dist
-      - uses: pypa/gh-action-pypi-publish@v1.8.14
+      - uses: pypa/gh-action-pypi-publish@v1.10.0
         with:
           user: __token__
           password: ${{ secrets.pypi_password }}

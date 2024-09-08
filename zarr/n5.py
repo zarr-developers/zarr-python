@@ -69,7 +69,19 @@ class N5Store(NestedDirectoryStore):
 
     Safe to write in multiple threads or processes.
 
+    .. deprecated:: 2.18.3
+        `N5Store` will be removed in Zarr 3.0.0.
     """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        warnings.warn(
+            "The N5Store is deprecated and will be removed in a Zarr-Python version 3, "
+            "see https://github.com/zarr-developers/zarr-python/issues/1274 and "
+            "https://github.com/zarr-developers/n5py for more information.",
+            FutureWarning,
+            stacklevel=2,
+        )
 
     def __getitem__(self, key: str) -> bytes:
         if key.endswith(zarr_group_meta_key):
@@ -322,6 +334,9 @@ class N5FSStore(FSStore):
     storage, and this procedure requires chunk keys with "." separated
     dimensions, hence the Zarr arrays targeting N5 have the deceptive
     "." dimension separator.
+
+    .. deprecated:: 2.18.3
+        `N5FSStore` will be removed in Zarr 3.0.0.
     """
 
     _array_meta_key = "attributes.json"
@@ -329,6 +344,13 @@ class N5FSStore(FSStore):
     _attrs_key = "attributes.json"
 
     def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "The N5FSStore is deprecated and will be removed in a Zarr-Python version 3, "
+            "see https://github.com/zarr-developers/zarr-python/issues/1274 and "
+            "https://github.com/zarr-developers/n5py for more information.",
+            FutureWarning,
+            stacklevel=2,
+        )
         if "dimension_separator" in kwargs:
             kwargs.pop("dimension_separator")
             warnings.warn(
