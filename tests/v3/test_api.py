@@ -117,6 +117,10 @@ def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
 
 
 def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
+    # Open without shape argument should default to group
+    g = zarr.open(store=tmp_path, mode="a")
+    assert isinstance(g, Group)
+
     # 'a' means read/write (create if doesn't exist)
     arr = zarr.open(store=tmp_path, mode="a", shape=(3, 3))
     assert isinstance(arr, Array)
