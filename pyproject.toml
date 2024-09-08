@@ -243,7 +243,16 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
-    "tests.v3.**",
+    "tests.v3.package_with_entrypoint.*",
+    "tests.v3.test_codecs.*",
+    "tests.v3.test_metadata.*",
+    "tests.v3.test_store.*",
+    "tests.v3.test_config",
+    "tests.v3.test_group",
+    "tests.v3.test_indexing",
+    "tests.v3.test_properties",
+    "tests.v3.test_sync",
+    "tests.v3.test_v2",
 ]
 ignore_errors = true
 
