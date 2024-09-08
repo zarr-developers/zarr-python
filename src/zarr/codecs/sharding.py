@@ -60,6 +60,10 @@ ShardMutableMapping = MutableMapping[ChunkCoords, Buffer]
 
 
 class ShardingCodecIndexLocation(Enum):
+    """
+    Enum for index location used by the sharding codec.
+    """
+
     start = "start"
     end = "end"
 

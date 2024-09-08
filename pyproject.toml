@@ -78,9 +78,9 @@ gpu = [
     "cupy-cuda12x",
 ]
 docs = [
-    'sphinx',
+    'sphinx<8',
     'sphinx-autobuild>=2021.3.14',
-    'sphinx-autoapi',
+    'sphinx-autoapi<3.1',
     'sphinx_design',
     'sphinx-issues',
     'sphinx-copybutton',

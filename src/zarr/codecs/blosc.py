@@ -21,6 +21,10 @@ if TYPE_CHECKING:
 
 
 class BloscShuffle(Enum):
+    """
+    Enum for shuffle filter used by blosc.
+    """
+
     noshuffle = "noshuffle"
     shuffle = "shuffle"
     bitshuffle = "bitshuffle"
@@ -38,6 +42,10 @@ class BloscShuffle(Enum):
 
 
 class BloscCname(Enum):
+    """
+    Enum for compression library used by blosc.
+    """
+
     lz4 = "lz4"
     lz4hc = "lz4hc"
     blosclz = "blosclz"
