@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import warnings
 from abc import ABC, abstractmethod
 from typing import (
     TYPE_CHECKING,
@@ -457,7 +458,11 @@ class NDBuffer:
         return f"<NDBuffer shape={self.shape} dtype={self.dtype} {self._data!r}>"
 
     def all_equal(self, other: Any) -> bool:
-        return bool((self._data == other).all())
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", r"invalid value encountered in equal", category=RuntimeWarning
+            )
+            return bool((self._data == other).all())
 
     def fill(self, value: Any) -> None:
         self._data.fill(value)
