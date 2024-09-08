@@ -457,7 +457,10 @@ class NDBuffer:
         return f"<NDBuffer shape={self.shape} dtype={self.dtype} {self._data!r}>"
 
     def all_equal(self, other: Any) -> bool:
-        return np.array_equal(self._data, other, equal_nan=True)
+        # use array_equal to obtain equal_nan=True functionality
+        data, other = np.broadcast_arrays(self._data, other)
+        result = np.array_equal(self._data, other, equal_nan=True)
+        return result
 
     def fill(self, value: Any) -> None:
         self._data.fill(value)
