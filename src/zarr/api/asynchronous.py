@@ -224,7 +224,7 @@ async def open(
 
     if path is not None:
         store_path = store_path / path
-    
+
     if "shape" not in kwargs:
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
     try:
