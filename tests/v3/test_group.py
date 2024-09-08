@@ -681,7 +681,7 @@ async def test_asyncgroup_update_attributes(
     assert agroup_new_attributes.attrs == attributes_new
 
 
-async def test_group_members_async(store: LocalStore | MemoryStore):
+async def test_group_members_async(store: LocalStore | MemoryStore) -> None:
     group = AsyncGroup(
         GroupMetadata(),
         store_path=StorePath(store=store, path="root"),
