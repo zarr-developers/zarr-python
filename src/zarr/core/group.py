@@ -3,37 +3,41 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, cast, overload
 
+import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr.abc.codec import Codec
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
-from zarr.array import Array, AsyncArray
-from zarr.attributes import Attributes
-from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
-from zarr.chunk_key_encodings import ChunkKeyEncoding
-from zarr.common import (
+from zarr.core.array import Array, AsyncArray
+from zarr.core.attributes import Attributes
+from zarr.core.buffer import default_buffer_prototype
+from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ZARRAY_JSON,
     ZATTRS_JSON,
     ZGROUP_JSON,
     ChunkCoords,
+    ShapeLike,
     ZarrFormat,
+    parse_shapelike,
 )
-from zarr.config import config
+from zarr.core.config import config
+from zarr.core.sync import SyncMixin, sync
 from zarr.store import StoreLike, StorePath, make_store_path
-from zarr.store.core import ensure_no_existing_node
-from zarr.sync import SyncMixin, sync
+from zarr.store.common import ensure_no_existing_node
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable
+    from collections.abc import AsyncGenerator, Iterable, Iterator
     from typing import Any
+
+    from zarr.abc.codec import Codec
+    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
 logger = logging.getLogger("zarr.group")
 
@@ -248,7 +252,7 @@ class AsyncGroup:
             if zarray is not None:
                 # TODO: update this once the V2 array support is part of the primary array class
                 zarr_json = {**zarray, "attributes": zattrs}
-                return AsyncArray.from_dict(store_path, zarray)
+                return AsyncArray.from_dict(store_path, zarr_json)
             else:
                 zgroup = (
                     json.loads(zgroup_bytes.to_bytes())
@@ -309,22 +313,60 @@ class AsyncGroup:
 
     async def create_group(
         self,
-        path: str,
+        name: str,
+        *,
         exists_ok: bool = False,
         attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
         attributes = attributes or {}
         return await type(self).create(
-            self.store_path / path,
+            self.store_path / name,
             attributes=attributes,
             exists_ok=exists_ok,
             zarr_format=self.metadata.zarr_format,
         )
 
+    async def require_group(self, name: str, overwrite: bool = False) -> AsyncGroup:
+        """Obtain a sub-group, creating one if it doesn't exist.
+
+        Parameters
+        ----------
+        name : string
+            Group name.
+        overwrite : bool, optional
+            Overwrite any existing group with given `name` if present.
+
+        Returns
+        -------
+        g : AsyncGroup
+        """
+        if overwrite:
+            # TODO: check that exists_ok=True errors if an array exists where the group is being created
+            grp = await self.create_group(name, exists_ok=True)
+        else:
+            try:
+                item: AsyncGroup | AsyncArray = await self.getitem(name)
+                if not isinstance(item, AsyncGroup):
+                    raise TypeError(
+                        f"Incompatible object ({item.__class__.__name__}) already exists"
+                    )
+                assert isinstance(item, AsyncGroup)  # make mypy happy
+                grp = item
+            except KeyError:
+                grp = await self.create_group(name)
+        return grp
+
+    async def require_groups(self, *names: str) -> tuple[AsyncGroup, ...]:
+        """Convenience method to require multiple groups in a single call."""
+        if not names:
+            return ()
+        return tuple(await asyncio.gather(*(self.require_group(name) for name in names)))
+
     async def create_array(
         self,
-        path: str,
-        shape: ChunkCoords,
+        name: str,
+        *,
+        shape: ShapeLike,
         dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -339,7 +381,7 @@ class AsyncGroup:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
-        chunks: ChunkCoords | None = None,
+        chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -354,7 +396,7 @@ class AsyncGroup:
 
         Parameters
         ----------
-        path: str
+        name: str
             The name of the array.
         shape: tuple[int, ...]
             The shape of the array.
@@ -390,7 +432,7 @@ class AsyncGroup:
 
         """
         return await AsyncArray.create(
-            self.store_path / path,
+            self.store_path / name,
             shape=shape,
             dtype=dtype,
             chunk_shape=chunk_shape,
@@ -409,6 +451,117 @@ class AsyncGroup:
             data=data,
         )
 
+    @deprecated("Use AsyncGroup.create_array instead.")
+    async def create_dataset(self, name: str, **kwargs: Any) -> AsyncArray:
+        """Create an array.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.require_dataset` method.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        kwargs : dict
+            Additional arguments passed to :func:`zarr.AsyncGroup.create_array`.
+
+        Returns
+        -------
+        a : AsyncArray
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.create_array` instead.
+        """
+        return await self.create_array(name, **kwargs)
+
+    @deprecated("Use AsyncGroup.require_array instead.")
+    async def require_dataset(
+        self,
+        name: str,
+        *,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike = None,
+        exact: bool = False,
+        **kwargs: Any,
+    ) -> AsyncArray:
+        """Obtain an array, creating if it doesn't exist.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.create_dataset` method.
+
+        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : AsyncArray
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.require_dataset` instead.
+        """
+        return await self.require_array(name, shape=shape, dtype=dtype, exact=exact, **kwargs)
+
+    async def require_array(
+        self,
+        name: str,
+        *,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike = None,
+        exact: bool = False,
+        **kwargs: Any,
+    ) -> AsyncArray:
+        """Obtain an array, creating if it doesn't exist.
+
+        Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : AsyncArray
+        """
+        try:
+            ds = await self.getitem(name)
+            if not isinstance(ds, AsyncArray):
+                raise TypeError(f"Incompatible object ({ds.__class__.__name__}) already exists")
+
+            shape = parse_shapelike(shape)
+            if shape != ds.shape:
+                raise TypeError(f"Incompatible shape ({ds.shape} vs {shape})")
+
+            dtype = np.dtype(dtype)
+            if exact:
+                if ds.dtype != dtype:
+                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
+            else:
+                if not np.can_cast(ds.dtype, dtype):
+                    raise TypeError(f"Incompatible dtype ({ds.dtype} vs {dtype})")
+        except KeyError:
+            ds = await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
+
+        return ds
+
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
         # metadata.attributes is "frozen" so we simply clear and update the dict
         self.metadata.attributes.clear()
@@ -422,21 +575,59 @@ class AsyncGroup:
     def __repr__(self) -> str:
         return f"<AsyncGroup {self.store_path}>"
 
-    async def nmembers(self) -> int:
+    async def nmembers(
+        self,
+        max_depth: int | None = 0,
+    ) -> int:
+        """
+        Count the number of members in this group.
+
+        Parameters
+        ----------
+        max_depth : int, default 0
+            The maximum number of levels of the hierarchy to include. By
+            default, (``max_depth=0``) only immediate children are included. Set
+            ``max_depth=None`` to include all nodes, and some positive integer
+            to consider children within that many levels of the root Group.
+
+        Returns
+        -------
+        count : int
+        """
         # TODO: consider using aioitertools.builtins.sum for this
         # return await aioitertools.builtins.sum((1 async for _ in self.members()), start=0)
         n = 0
-        async for _ in self.members():
+        async for _ in self.members(max_depth=max_depth):
             n += 1
         return n
 
-    async def members(self) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
+    async def members(
+        self,
+        max_depth: int | None = 0,
+    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
         This method requires that `store_path.store` supports directory listing.
 
         The results are not guaranteed to be ordered.
+
+        Parameters
+        ----------
+        max_depth : int, default 0
+            The maximum number of levels of the hierarchy to include. By
+            default, (``max_depth=0``) only immediate children are included. Set
+            ``max_depth=None`` to include all nodes, and some positive integer
+            to consider children within that many levels of the root Group.
+
         """
+        if max_depth is not None and max_depth < 0:
+            raise ValueError(f"max_depth must be None or >= 0. Got '{max_depth}' instead")
+        async for item in self._members(max_depth=max_depth, current_depth=0):
+            yield item
+
+    async def _members(
+        self, max_depth: int | None, current_depth: int
+    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
         if not self.store_path.store.supports_listing:
             msg = (
                 f"The store associated with this group ({type(self.store_path.store)}) "
@@ -454,7 +645,21 @@ class AsyncGroup:
             if key in _skip_keys:
                 continue
             try:
-                yield (key, await self.getitem(key))
+                obj = await self.getitem(key)
+                yield (key, obj)
+
+                if (
+                    ((max_depth is None) or (current_depth < max_depth))
+                    and hasattr(obj.metadata, "node_type")
+                    and obj.metadata.node_type == "group"
+                ):
+                    # the assert is just for mypy to know that `obj.metadata.node_type`
+                    # implies an AsyncGroup, not an AsyncArray
+                    assert isinstance(obj, AsyncGroup)
+                    async for child_key, val in obj._members(
+                        max_depth=max_depth, current_depth=current_depth + 1
+                    ):
+                        yield "/".join([key, child_key]), val
             except KeyError:
                 # keyerror is raised when `key` names an object (in the object storage sense),
                 # as opposed to a prefix, in the store under the prefix associated with this group
@@ -467,9 +672,10 @@ class AsyncGroup:
         # TODO: this can be made more efficient.
         try:
             await self.getitem(member)
-            return True
         except KeyError:
             return False
+        else:
+            return True
 
     # todo: decide if this method should be separate from `groups`
     async def group_keys(self) -> AsyncGenerator[str, None]:
@@ -555,8 +761,9 @@ class Group(SyncMixin):
     def open(
         cls,
         store: StoreLike,
+        zarr_format: Literal[2, 3, None] = 3,
     ) -> Group:
-        obj = sync(AsyncGroup.open(store))
+        obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
         return cls(obj)
 
     def __getitem__(self, path: str) -> Array | Group:
@@ -625,17 +832,15 @@ class Group(SyncMixin):
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
-    @property
-    def nmembers(self) -> int:
-        return self._sync(self._async_group.nmembers())
+    def nmembers(self, max_depth: int | None = 0) -> int:
+        return self._sync(self._async_group.nmembers(max_depth=max_depth))
 
-    @property
-    def members(self) -> tuple[tuple[str, Array | Group], ...]:
+    def members(self, max_depth: int | None = 0) -> tuple[tuple[str, Array | Group], ...]:
         """
         Return the sub-arrays and sub-groups of this group as a tuple of (name, array | group)
         pairs
         """
-        _members = self._sync_iter(self._async_group.members())
+        _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
         result = tuple(map(lambda kv: (kv[0], _parse_async_node(kv[1])), _members))
         return result
@@ -662,11 +867,31 @@ class Group(SyncMixin):
     def create_group(self, name: str, **kwargs: Any) -> Group:
         return Group(self._sync(self._async_group.create_group(name, **kwargs)))
 
+    def require_group(self, name: str, **kwargs: Any) -> Group:
+        """Obtain a sub-group, creating one if it doesn't exist.
+
+        Parameters
+        ----------
+        name : string
+            Group name.
+        overwrite : bool, optional
+            Overwrite any existing group with given `name` if present.
+
+        Returns
+        -------
+        g : Group
+        """
+        return Group(self._sync(self._async_group.require_group(name, **kwargs)))
+
+    def require_groups(self, *names: str) -> tuple[Group, ...]:
+        """Convenience method to require multiple groups in a single call."""
+        return tuple(map(Group, self._sync(self._async_group.require_groups(*names))))
+
     def create_array(
         self,
         name: str,
         *,
-        shape: ChunkCoords,
+        shape: ShapeLike,
         dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -681,7 +906,7 @@ class Group(SyncMixin):
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
-        chunks: ChunkCoords | None = None,
+        chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -736,7 +961,7 @@ class Group(SyncMixin):
         return Array(
             self._sync(
                 self._async_group.create_array(
-                    path=name,
+                    name=name,
                     shape=shape,
                     dtype=dtype,
                     fill_value=fill_value,
@@ -755,6 +980,83 @@ class Group(SyncMixin):
                 )
             )
         )
+
+    @deprecated("Use Group.create_array instead.")
+    def create_dataset(self, name: str, **kwargs: Any) -> Array:
+        """Create an array.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the :func:`zarr.Group.require_dataset` method.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        kwargs : dict
+            Additional arguments passed to :func:`zarr.Group.create_array`
+
+        Returns
+        -------
+        a : Array
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `Group.create_array` instead.
+        """
+        return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
+
+    @deprecated("Use Group.require_array instead.")
+    def require_dataset(self, name: str, **kwargs: Any) -> Array:
+        """Obtain an array, creating if it doesn't exist.
+
+        Arrays are known as "datasets" in HDF5 terminology. For compatibility
+        with h5py, Zarr groups also implement the :func:`zarr.Group.create_dataset` method.
+
+        Other `kwargs` are as per :func:`zarr.Group.create_dataset`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : Array
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
+        """
+        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
+
+    def require_array(self, name: str, **kwargs: Any) -> Array:
+        """Obtain an array, creating if it doesn't exist.
+
+
+        Other `kwargs` are as per :func:`zarr.Group.create_array`.
+
+        Parameters
+        ----------
+        name : string
+            Array name.
+        shape : int or tuple of ints
+            Array shape.
+        dtype : string or dtype, optional
+            NumPy dtype.
+        exact : bool, optional
+            If True, require `dtype` to match exactly. If false, require
+            `dtype` can be cast from array dtype.
+
+        Returns
+        -------
+        a : Array
+        """
+        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
 
     def empty(self, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty(**kwargs)))
@@ -859,7 +1161,7 @@ class Group(SyncMixin):
         return Array(
             self._sync(
                 self._async_group.create_array(
-                    path=name,
+                    name=name,
                     shape=shape,
                     dtype=dtype,
                     fill_value=fill_value,

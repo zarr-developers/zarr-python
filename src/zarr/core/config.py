@@ -60,8 +60,8 @@ config = Config(
                 "sharding_indexed": "zarr.codecs.sharding.ShardingCodec",
                 "transpose": "zarr.codecs.transpose.TransposeCodec",
             },
-            "buffer": "zarr.buffer.Buffer",
-            "ndbuffer": "zarr.buffer.NDBuffer",
+            "buffer": "zarr.core.buffer.cpu.Buffer",
+            "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
         }
     ],
 )

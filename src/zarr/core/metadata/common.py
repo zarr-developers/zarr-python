@@ -5,18 +5,18 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any, Literal
 
+    import numpy as np
     from typing_extensions import Self
+
+    from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.common import JSON, ChunkCoords, ZarrFormat
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-import numpy as np
-
 from zarr.abc.metadata import Metadata
-from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.chunk_grids import ChunkGrid
-from zarr.common import JSON, ChunkCoords, ZarrFormat
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -6,19 +6,27 @@ if TYPE_CHECKING:
     import numpy.typing as npt
     from typing_extensions import Self
 
+    from zarr.core.buffer import Buffer, BufferPrototype
+
 import json
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 import numpy as np
 
-from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.chunk_grids import RegularChunkGrid
-from zarr.chunk_key_encodings import parse_separator
-from zarr.common import JSON, ZARRAY_JSON, ZATTRS_JSON, ChunkCoords, parse_dtype, parse_shapelike
-from zarr.config import config, parse_indexing_order
-from zarr.metadata.common import ArrayMetadata, parse_attributes
+from zarr.core.array_spec import ArraySpec
+from zarr.core.chunk_grids import RegularChunkGrid
+from zarr.core.chunk_key_encodings import parse_separator
+from zarr.core.common import (
+    JSON,
+    ZARRAY_JSON,
+    ZATTRS_JSON,
+    ChunkCoords,
+    parse_dtype,
+    parse_shapelike,
+)
+from zarr.core.config import config, parse_indexing_order
+from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 
 
 @dataclass(frozen=True, kw_only=True)

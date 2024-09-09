@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, MutableMapping
+from typing import TYPE_CHECKING
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import AccessModeLiteral, concurrent_map
-from zarr.store.utils import _normalize_interval_index
+from zarr.core.buffer import Buffer, gpu
+from zarr.core.common import concurrent_map
+from zarr.store._utils import _normalize_interval_index
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, MutableMapping
+
+    from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import AccessModeLiteral
 
 
 # TODO: this store could easily be extended to wrap any MutableMapping store from v2
@@ -24,7 +30,9 @@ class MemoryStore(Store):
         mode: AccessModeLiteral = "r",
     ):
         super().__init__(mode=mode)
-        self._store_dict = store_dict or {}
+        if store_dict is None:
+            store_dict = {}
+        self._store_dict = store_dict
 
     async def empty(self) -> bool:
         return not self._store_dict
@@ -109,9 +117,51 @@ class MemoryStore(Store):
 
         if prefix == "":
             keys_unique = set(k.split("/")[0] for k in self._store_dict.keys())
-            for key in keys_unique:
-                yield key
         else:
-            for key in self._store_dict:
-                if key.startswith(prefix + "/") and key != prefix:
-                    yield key.removeprefix(prefix + "/").split("/")[0]
+            # Our dictionary doesn't contain directory markers, but we want to include
+            # a pseudo directory when there's a nested item and we're listing an
+            # intermediate level.
+            keys_unique = {
+                key.removeprefix(prefix + "/").split("/")[0]
+                for key in self._store_dict
+                if key.startswith(prefix + "/") and key != prefix
+            }
+
+        for key in keys_unique:
+            yield key
+
+
+class GpuMemoryStore(MemoryStore):
+    """A GPU only memory store that stores every chunk in GPU memory irrespective
+    of the original location. This guarantees that chunks will always be in GPU
+    memory for downstream processing. For location agnostic use cases, it would
+    be better to use `MemoryStore` instead.
+    """
+
+    _store_dict: MutableMapping[str, Buffer]
+
+    def __init__(
+        self,
+        store_dict: MutableMapping[str, Buffer] | None = None,
+        *,
+        mode: AccessModeLiteral = "r",
+    ):
+        super().__init__(mode=mode)
+        if store_dict:
+            self._store_dict = {k: gpu.Buffer.from_buffer(store_dict[k]) for k in iter(store_dict)}
+
+    def __str__(self) -> str:
+        return f"gpumemory://{id(self._store_dict)}"
+
+    def __repr__(self) -> str:
+        return f"GpuMemoryStore({str(self)!r})"
+
+    async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        self._check_writable()
+        assert isinstance(key, str)
+        if not isinstance(value, Buffer):
+            raise TypeError(f"Expected Buffer. Got {type(value)}.")
+
+        # Convert to gpu.Buffer
+        gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
+        await super().set(key, gpu_value, byte_range=byte_range)

@@ -7,7 +7,7 @@ pytest.importorskip("hypothesis")
 import hypothesis.extra.numpy as npst  # noqa
 import hypothesis.strategies as st  # noqa
 from hypothesis import given, settings  # noqa
-from zarr.strategies import arrays, np_arrays, basic_indices  # noqa
+from zarr.testing.strategies import arrays, np_arrays, basic_indices  # noqa
 
 
 @given(st.data())
@@ -18,6 +18,11 @@ def test_roundtrip(data):
 
 
 @given(data=st.data())
+# The filter warning here is to silence an occasional warning in NDBuffer.all_equal
+# See https://github.com/zarr-developers/zarr-python/pull/2118#issuecomment-2310280899
+# Uncomment the next line to reproduce the original failure.
+# @reproduce_failure('6.111.2', b'AXicY2FgZGRAB/8/ndR2z7nkDZEDADWpBL4=')
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_basic_indexing(data):
     zarray = data.draw(arrays())
     nparray = zarray[:]
@@ -32,6 +37,11 @@ def test_basic_indexing(data):
 
 
 @given(data=st.data())
+# The filter warning here is to silence an occasional warning in NDBuffer.all_equal
+# See https://github.com/zarr-developers/zarr-python/pull/2118#issuecomment-2310280899
+# Uncomment the next line to reproduce the original failure.
+# @reproduce_failure('6.111.2', b'AXicY2FgZGRAB/8/eLmF7qr/C5EDADZUBRM=')
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_vindex(data):
     zarray = data.draw(arrays())
     nparray = zarray[:]

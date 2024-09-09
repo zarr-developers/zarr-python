@@ -20,11 +20,11 @@ import numcodecs.abc
 import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
-from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
-from zarr.chunk_grids import ChunkGrid, RegularChunkGrid
-from zarr.chunk_key_encodings import ChunkKeyEncoding
-from zarr.common import (
+from zarr.core.array_spec import ArraySpec
+from zarr.core.buffer import Buffer, BufferPrototype, default_buffer_prototype
+from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
+from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ChunkCoords,
@@ -32,8 +32,8 @@ from zarr.common import (
     parse_named_configuration,
     parse_shapelike,
 )
-from zarr.config import config
-from zarr.metadata.common import ArrayMetadata, parse_attributes
+from zarr.core.config import config
+from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 from zarr.registry import get_codec_class, get_pipeline_class
 
 
@@ -140,13 +140,21 @@ class ArrayV3Metadata(ArrayMetadata):
             if isinstance(o, np.dtype):
                 return str(o)
             if np.isscalar(o):
-                # convert numpy scalar to python type, and pass
-                # python types through
-                out = getattr(o, "item", lambda: o)()
-                if isinstance(out, complex):
-                    # python complex types are not JSON serializable, so we use the
-                    # serialization defined in the zarr v3 spec
-                    return [out.real, out.imag]
+                out: Any
+                if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
+                    # https://github.com/zarr-developers/zarr-python/issues/2119
+                    # `.item()` on a datetime type might or might not return an
+                    # integer, depending on the value.
+                    # Explicitly cast to an int first, and then grab .item()
+                    out = o.view("i8").item()
+                else:
+                    # convert numpy scalar to python type, and pass
+                    # python types through
+                    out = getattr(o, "item", lambda: o)()
+                    if isinstance(out, complex):
+                        # python complex types are not JSON serializable, so we use the
+                        # serialization defined in the zarr v3 spec
+                        return [out.real, out.imag]
                 return out
             if isinstance(o, Enum):
                 return o.name
@@ -273,9 +281,21 @@ def parse_fill_value(fill_value: Any, dtype: FLOAT_DTYPE) -> FLOAT: ...
 def parse_fill_value(fill_value: Any, dtype: COMPLEX_DTYPE) -> COMPLEX: ...
 
 
+@overload
+def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
+    # This dtype[Any] is unfortunately necessary right now.
+    # See https://github.com/zarr-developers/zarr-python/issues/2131#issuecomment-2318010899
+    # for more details, but `dtype` here (which comes from `parse_dtype`)
+    # is np.dtype[Any].
+    #
+    # If you want the specialized types rather than Any, you need to use `np.dtypes.<dtype>`
+    # rather than np.dtypes(<type>)
+    ...
+
+
 def parse_fill_value(
     fill_value: Any, dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE
-) -> BOOL | INTEGER | FLOAT | COMPLEX:
+) -> BOOL | INTEGER | FLOAT | COMPLEX | Any:
     """
     Parse `fill_value`, a potential fill value, into an instance of `dtype`, a data type.
     If `fill_value` is `None`, then this function will return the result of casting the value 0

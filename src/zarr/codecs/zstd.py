@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from functools import cached_property
+from importlib.metadata import version
+from typing import TYPE_CHECKING
 
-import numpy.typing as npt
-from zstandard import ZstdCompressor, ZstdDecompressor
+from numcodecs.zstd import Zstd
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer, as_numpy_array_wrapper
-from zarr.common import JSON, parse_named_configuration, to_thread
+from zarr.core.buffer.cpu import as_numpy_array_wrapper
+from zarr.core.common import JSON, parse_named_configuration, to_thread
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing_extensions import Self
+
+    from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import Buffer
 
 
 def parse_zstd_level(data: JSON) -> int:
@@ -38,6 +41,14 @@ class ZstdCodec(BytesBytesCodec):
     checksum: bool = False
 
     def __init__(self, *, level: int = 0, checksum: bool = False) -> None:
+        # numcodecs 0.13.0 introduces the checksum attribute for the zstd codec
+        _numcodecs_version = tuple(map(int, version("numcodecs").split(".")))
+        if _numcodecs_version < (0, 13, 0):  # pragma: no cover
+            raise RuntimeError(
+                "numcodecs version >= 0.13.0 is required to use the zstd codec. "
+                f"Version {_numcodecs_version} is currently installed."
+            )
+
         level_parsed = parse_zstd_level(level)
         checksum_parsed = parse_checksum(checksum)
 
@@ -52,13 +63,10 @@ class ZstdCodec(BytesBytesCodec):
     def to_dict(self) -> dict[str, JSON]:
         return {"name": "zstd", "configuration": {"level": self.level, "checksum": self.checksum}}
 
-    def _compress(self, data: npt.NDArray[Any]) -> bytes:
-        ctx = ZstdCompressor(level=self.level, write_checksum=self.checksum)
-        return ctx.compress(data.tobytes())
-
-    def _decompress(self, data: npt.NDArray[Any]) -> bytes:
-        ctx = ZstdDecompressor()
-        return ctx.decompress(data.tobytes())
+    @cached_property
+    def _zstd_codec(self) -> Zstd:
+        config_dict = {"level": self.level, "checksum": self.checksum}
+        return Zstd.from_config(config_dict)
 
     async def _decode_single(
         self,
@@ -66,7 +74,7 @@ class ZstdCodec(BytesBytesCodec):
         chunk_spec: ArraySpec,
     ) -> Buffer:
         return await to_thread(
-            as_numpy_array_wrapper, self._decompress, chunk_bytes, chunk_spec.prototype
+            as_numpy_array_wrapper, self._zstd_codec.decode, chunk_bytes, chunk_spec.prototype
         )
 
     async def _encode_single(
@@ -75,7 +83,7 @@ class ZstdCodec(BytesBytesCodec):
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
         return await to_thread(
-            as_numpy_array_wrapper, self._compress, chunk_bytes, chunk_spec.prototype
+            as_numpy_array_wrapper, self._zstd_codec.encode, chunk_bytes, chunk_spec.prototype
         )
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:

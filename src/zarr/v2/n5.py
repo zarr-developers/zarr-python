@@ -272,6 +272,7 @@ class N5FSStore(FSStore):
     """Implementation of the N5 format (https://github.com/saalfeldlab/n5)
     using `fsspec`, which allows storage on a variety of filesystems. Based
     on `zarr.N5Store`.
+
     Parameters
     ----------
     path : string
