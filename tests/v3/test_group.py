@@ -5,7 +5,9 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import pytest
 
+import zarr.api.asynchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
+from zarr.api.synchronous import open_group
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import ZarrFormat
 from zarr.core.group import GroupMetadata
@@ -819,3 +821,13 @@ async def test_require_array(store: LocalStore | MemoryStore, zarr_format: ZarrF
     _ = await root.create_group("bar")
     with pytest.raises(TypeError, match="Incompatible object"):
         await root.require_array("bar", shape=(10,), dtype="int8")
+
+
+async def test_open_mutable_mapping():
+    group = await zarr.api.asynchronous.open_group(store={}, mode="w")
+    assert isinstance(group.store_path.store, MemoryStore)
+
+
+def test_open_mutable_mapping_sync():
+    group = open_group(store={}, mode="w")
+    assert isinstance(group.store_path.store, MemoryStore)
