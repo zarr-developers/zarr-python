@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
+from zarr.core.metadata.v2 import ArrayV2Metadata
+
 if TYPE_CHECKING:
     from typing import Any
 
@@ -10,7 +12,7 @@ if TYPE_CHECKING:
 import pytest
 
 from zarr.codecs import GzipCodec
-from zarr.core.metadata import ArrayV2Metadata, parse_zarr_format_v2
+from zarr.core.metadata.v2 import parse_zarr_format_v2
 
 
 def test_parse_zarr_format_valid() -> None:
