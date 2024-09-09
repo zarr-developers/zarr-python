@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from zarr import Array, Group
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.store import LocalStore, MemoryStore
@@ -135,3 +136,22 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
     assert arr.fill_value == np.dtype(dtype_str).type(fill_value)
     assert arr.fill_value.dtype == arr.dtype
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_array_v3_nan_fill_value(store: MemoryStore) -> None:
+    shape = (10,)
+    arr = Array.create(
+        store=store,
+        shape=shape,
+        dtype=np.float64,
+        zarr_format=3,
+        chunk_shape=shape,
+        fill_value=np.nan,
+    )
+    arr[:] = np.nan
+
+    assert np.isnan(arr.fill_value)
+    assert arr.fill_value.dtype == arr.dtype
+    # all fill value chunk is an empty chunk, and should not be written
+    assert await store.get("c/0", prototype=default_buffer_prototype()) is None
