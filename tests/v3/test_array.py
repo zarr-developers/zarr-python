@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 from zarr import Array, Group
-from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.store import LocalStore, MemoryStore
@@ -154,4 +153,4 @@ async def test_array_v3_nan_fill_value(store: MemoryStore) -> None:
     assert np.isnan(arr.fill_value)
     assert arr.fill_value.dtype == arr.dtype
     # all fill value chunk is an empty chunk, and should not be written
-    assert await store.get("c/0", prototype=default_buffer_prototype()) is None
+    assert not [a async for a in store.list_prefix("/")]
