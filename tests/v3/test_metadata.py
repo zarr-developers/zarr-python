@@ -21,10 +21,10 @@ async def test_consolidated(memory_store: Store) -> None:
     # single array
     # etc.
     g = await group(store=memory_store, attributes={"foo": "bar"})
-    await g.create_array(path="air", shape=(1, 2, 3))
-    await g.create_array(path="lat", shape=(1,))
-    await g.create_array(path="lon", shape=(2,))
-    await g.create_array(path="time", shape=(3,))
+    await g.create_array(name="air", shape=(1, 2, 3))
+    await g.create_array(name="lat", shape=(1,))
+    await g.create_array(name="lon", shape=(2,))
+    await g.create_array(name="time", shape=(3,))
 
     child = await g.create_group("child", attributes={"key": "child"})
     await child.create_array("array", shape=(4, 4), attributes={"key": "child"})
