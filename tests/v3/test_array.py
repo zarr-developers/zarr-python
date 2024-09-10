@@ -4,6 +4,9 @@ import numpy as np
 import pytest
 
 from zarr import Array, Group
+from zarr.codecs import BytesCodec, GzipCodec, ShardingCodec
+from zarr.core.array import ChunkSpec
+from zarr.core.chunk_grids import _guess_chunks
 from zarr.core.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.store import LocalStore, MemoryStore
@@ -131,3 +134,41 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
     assert arr.fill_value == np.dtype(dtype_str).type(fill_value)
     assert arr.fill_value.dtype == arr.dtype
+
+
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        {"write_shape": (10,)},
+        {"write_shape": (10,), "read_shape": (5,)},
+        {"write_shape": (10,), "read_shape": (5,)},
+        {"read_shape": (5,)},
+        {},
+        (10,),
+    ],
+)
+def test_array_chunks(chunks: ChunkSpec | tuple[int, ...] | None) -> None:
+    codecs = [BytesCodec(), GzipCodec()]
+
+    arr = Array.create(
+        store=MemoryStore(mode="w"), shape=(100,), dtype="uint8", chunks=chunks, codecs=codecs
+    )
+    if chunks is None or chunks == {}:
+        assert arr.chunks == _guess_chunks(arr.shape, arr.dtype.itemsize)
+        assert arr.metadata.codecs == codecs
+    elif isinstance(chunks, tuple):
+        assert arr.chunks == chunks
+        assert arr.metadata.codecs == codecs
+    elif "write_shape" in chunks:
+        assert arr.chunks == chunks["write_shape"]
+        if "read_shape" in chunks:
+            codecs = arr.metadata.codecs
+            assert isinstance(codecs[0], ShardingCodec)
+            assert codecs[0].chunk_shape == chunks["read_shape"]
+        else:
+            assert arr.metadata.codecs == codecs
+    elif "read_shape" in chunks:
+        assert arr.chunks == chunks["read_shape"]
+        assert arr.metadata.codecs == codecs
+    else:
+        raise ValueError(f"Invalid chunks: {chunks}")
