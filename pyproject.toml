@@ -181,7 +181,6 @@ serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
 [tool.ruff]
 line-length = 100
-src = ["src"]
 force-exclude = true
 extend-exclude = [
     ".bzr",
