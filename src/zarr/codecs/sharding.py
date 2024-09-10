@@ -127,7 +127,7 @@ class _ShardIndex(NamedTuple):
         if (chunk_start, chunk_len) == (MAX_UINT_64, MAX_UINT_64):
             return None
         else:
-            return (int(chunk_start), int(chunk_start) + int(chunk_len))
+            return (int(chunk_start), int(chunk_len))
 
     def set_chunk_slice(self, chunk_coords: ChunkCoords, chunk_slice: slice | None) -> None:
         localized_chunk = self._localize_chunk(chunk_coords)

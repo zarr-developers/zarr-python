@@ -31,8 +31,9 @@ from .test_codecs import _AsyncArrayProxy, order_from_dim
     indirect=["array_fixture"],
 )
 @pytest.mark.parametrize("offset", [0, 10])
+@pytest.mark.parametrize("chunk_index", [0, 1])
 def test_sharding(
-    store: Store, array_fixture: np.ndarray, index_location: ShardingCodecIndexLocation, offset: int
+    store: Store, array_fixture: np.ndarray, index_location: ShardingCodecIndexLocation, chunk_index: int, offset: int
 ) -> None:
     """
     Test that we can create an array with a sharding codec, write data to that array, and get
@@ -40,15 +41,17 @@ def test_sharding(
     """
     data = array_fixture
     spath = StorePath(store)
+    shard_size = 64
+    chunk_size = shard_size // 2
     arr = Array.create(
         spath,
         shape=tuple(s + offset for s in data.shape),
-        chunk_shape=(64,) * data.ndim,
+        chunk_shape=(shard_size,) * data.ndim,
         dtype=data.dtype,
         fill_value=6,
         codecs=[
             ShardingCodec(
-                chunk_shape=(32,) * data.ndim,
+                chunk_shape=(chunk_size,) * data.ndim,
                 codecs=[
                     TransposeCodec(order=order_from_dim("F", data.ndim)),
                     BytesCodec(),
@@ -58,11 +61,12 @@ def test_sharding(
             )
         ],
     )
-    write_region = tuple(slice(offset, None) for dim in range(data.ndim))
+    start_index = chunk_size * chunk_index
+    write_region = tuple(slice(start_index + offset, None) for dim in range(data.ndim))
     arr[write_region] = data
 
     if offset > 0:
-        empty_region = tuple(slice(0, offset) for dim in range(data.ndim))
+        empty_region = tuple(slice(start_index, offset) for dim in range(data.ndim))
         assert np.all(arr[empty_region] == arr.metadata.fill_value)
 
     read_data = arr[write_region]
