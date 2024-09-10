@@ -75,8 +75,8 @@ from typing import TypedDict
 
 
 class ChunkSpec(TypedDict, total=False):
-    read_shape: tuple[int, ...] | int
-    write_shape: tuple[int, ...] | int
+    read_shape: tuple[int, ...]
+    write_shape: tuple[int, ...]
 
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
@@ -241,26 +241,28 @@ class AsyncArray:
             await ensure_no_existing_node(store_path, zarr_format=3)
 
         array_shape = parse_shapelike(shape)
-        shard_shape: tuple[int, ...] | None
+        shard_shape: tuple[int, ...] | None = None
         chunk_shape: tuple[int, ...]
 
         # because chunks is an optional typeddict with optional keys, it could be completely empty
         # OR None, both of which result in chunks being inferred automatically
         if chunks is not None and not (chunks == {}):
             if isinstance(chunks, dict):
-                chunk_shape = parse_shapelike(chunks["write_shape"])
-                if "read_shape" in chunks:
-                    shard_shape = parse_shapelike(chunks["read_shape"])
-                else:
-                    shard_shape = None
+                if "write_shape" in chunks:
+                    chunk_shape = chunks["write_shape"]
+                    if "read_shape" in chunks:
+                        # sharding is only enabled when read_shape and write_shape are specified
+                        # we do not special-case the condition when read_shape and write_shape are the same
+                        shard_shape = chunks["read_shape"]
+                elif "read_shape" in chunks:
+                    # if read_shape is present, but write_shape is absent, then
+                    # set the chunk_shape to read_shape, and keep shard_shape set to `None`
+                    chunk_shape = chunks["read_shape"]
             else:
                 chunk_shape = parse_shapelike(chunks)
-                shard_shape = None
         else:
             # determine chunking parameters automatically
             chunk_shape = _guess_chunks(array_shape, np.dtype(dtype).itemsize)
-            # default is no sharding
-            shard_shape = None
 
         _codecs = tuple(codecs) if codecs is not None else (BytesCodec(),)
 
