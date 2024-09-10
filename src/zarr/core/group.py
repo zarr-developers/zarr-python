@@ -12,7 +12,7 @@ from typing_extensions import deprecated
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
-from zarr.core.array import Array, AsyncArray
+from zarr.core.array import Array, AsyncArray, ChunkSpec
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
@@ -371,7 +371,6 @@ class AsyncGroup:
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
         # v3 only
-        chunk_shape: ChunkCoords | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -381,7 +380,7 @@ class AsyncGroup:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
-        chunks: ShapeLike | None = None,
+        chunks: ChunkSpec | ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -435,7 +434,6 @@ class AsyncGroup:
             self.store_path / name,
             shape=shape,
             dtype=dtype,
-            chunk_shape=chunk_shape,
             fill_value=fill_value,
             chunk_key_encoding=chunk_key_encoding,
             codecs=codecs,
@@ -896,7 +894,6 @@ class Group(SyncMixin):
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
         # v3 only
-        chunk_shape: ChunkCoords | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -905,8 +902,7 @@ class Group(SyncMixin):
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
-        # v2 only
-        chunks: ShapeLike | None = None,
+        chunks: ChunkSpec | ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -966,7 +962,6 @@ class Group(SyncMixin):
                     dtype=dtype,
                     fill_value=fill_value,
                     attributes=attributes,
-                    chunk_shape=chunk_shape,
                     chunk_key_encoding=chunk_key_encoding,
                     codecs=codecs,
                     dimension_names=dimension_names,
@@ -1094,8 +1089,6 @@ class Group(SyncMixin):
         dtype: npt.DTypeLike = "float64",
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
-        # v3 only
-        chunk_shape: ChunkCoords | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -1166,7 +1159,6 @@ class Group(SyncMixin):
                     dtype=dtype,
                     fill_value=fill_value,
                     attributes=attributes,
-                    chunk_shape=chunk_shape,
                     chunk_key_encoding=chunk_key_encoding,
                     codecs=codecs,
                     dimension_names=dimension_names,

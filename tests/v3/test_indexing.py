@@ -43,7 +43,7 @@ def zarr_array_from_numpy_array(
         store=store / str(uuid4()),
         shape=a.shape,
         dtype=a.dtype,
-        chunk_shape=chunk_shape or a.shape,
+        chunks=chunk_shape or a.shape,
         chunk_key_encoding=("v2", "."),
     )
     z[()] = a

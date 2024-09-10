@@ -23,7 +23,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     a = await AsyncArray.create(
         spath,
         shape=data.shape,
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype=data.dtype,
         fill_value=0,
         chunk_key_encoding=("v2", "."),
@@ -62,7 +62,7 @@ async def test_endian_write(
     a = await AsyncArray.create(
         spath,
         shape=data.shape,
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype="uint16",
         fill_value=0,
         chunk_key_encoding=("v2", "."),

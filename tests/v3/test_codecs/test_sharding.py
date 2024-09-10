@@ -43,7 +43,7 @@ def test_sharding(
     arr = Array.create(
         spath,
         shape=tuple(s + offset for s in data.shape),
-        chunk_shape=(64,) * data.ndim,
+        chunks=(64,) * data.ndim,
         dtype=data.dtype,
         fill_value=6,
         codecs=[
@@ -87,7 +87,7 @@ def test_sharding_partial(
     a = Array.create(
         spath,
         shape=tuple(a + 10 for a in data.shape),
-        chunk_shape=(64, 64, 64),
+        chunks=(64, 64, 64),
         dtype=data.dtype,
         fill_value=0,
         codecs=[
@@ -130,7 +130,7 @@ def test_sharding_partial_read(
     a = Array.create(
         spath,
         shape=tuple(a + 10 for a in data.shape),
-        chunk_shape=(64, 64, 64),
+        chunks=(64, 64, 64),
         dtype=data.dtype,
         fill_value=1,
         codecs=[
@@ -167,7 +167,7 @@ def test_sharding_partial_overwrite(
     a = Array.create(
         spath,
         shape=tuple(a + 10 for a in data.shape),
-        chunk_shape=(64, 64, 64),
+        chunks=(64, 64, 64),
         dtype=data.dtype,
         fill_value=1,
         codecs=[
@@ -221,7 +221,7 @@ def test_nested_sharding(
     a = Array.create(
         spath,
         shape=data.shape,
-        chunk_shape=(64, 64, 64),
+        chunks=(64, 64, 64),
         dtype=data.dtype,
         fill_value=0,
         codecs=[
@@ -249,7 +249,7 @@ def test_open_sharding(store: Store) -> None:
     a = Array.create(
         spath,
         shape=(16, 16),
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype="int32",
         fill_value=0,
         codecs=[
@@ -274,7 +274,7 @@ def test_write_partial_sharded_chunks(store: Store) -> None:
     a = Array.create(
         spath,
         shape=(40, 40),
-        chunk_shape=(20, 20),
+        chunks=(20, 20),
         dtype=data.dtype,
         fill_value=1,
         codecs=[
@@ -298,7 +298,7 @@ async def test_delete_empty_shards(store: Store) -> None:
     a = await AsyncArray.create(
         spath,
         shape=(16, 16),
-        chunk_shape=(8, 16),
+        chunks=(8, 16),
         dtype="uint16",
         fill_value=1,
         codecs=[ShardingCodec(chunk_shape=(8, 8))],

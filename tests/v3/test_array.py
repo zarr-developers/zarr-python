@@ -64,7 +64,7 @@ def test_array_creation_existing_node(
 def test_array_name_properties_no_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
-    arr = Array.create(store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4")
+    arr = Array.create(store=store, shape=(100,), zarr_format=zarr_format, dtype="i4")
     assert arr.path == ""
     assert arr.name is None
     assert arr.basename is None
@@ -82,7 +82,7 @@ def test_array_name_properties_with_group(
     assert foo.basename == "foo"
 
     bar = root.create_group("bar")
-    spam = bar.create_array("spam", shape=(100,), chunks=(10,), dtype="i4")
+    spam = bar.create_array("spam", shape=(100,), dtype="i4")
 
     assert spam.path == "bar/spam"
     assert spam.name == "/bar/spam"
@@ -107,13 +107,10 @@ def test_array_v3_fill_value_default(
             shape=shape,
             dtype=dtype_str,
             zarr_format=3,
-            chunk_shape=shape,
             fill_value=None,
         )
     else:
-        arr = Array.create(
-            store=store, shape=shape, dtype=dtype_str, zarr_format=3, chunk_shape=shape
-        )
+        arr = Array.create(store=store, shape=shape, dtype=dtype_str, zarr_format=3)
 
     assert arr.fill_value == np.dtype(dtype_str).type(default_fill_value)
     assert arr.fill_value.dtype == arr.dtype
@@ -129,7 +126,6 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
         shape=shape,
         dtype=dtype_str,
         zarr_format=3,
-        chunk_shape=shape,
         fill_value=fill_value,
     )
 

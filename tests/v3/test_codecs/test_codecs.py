@@ -92,7 +92,7 @@ async def test_order(
         a = await AsyncArray.create(
             spath,
             shape=data.shape,
-            chunk_shape=(32, 8),
+            chunks=(32, 8),
             dtype=data.dtype,
             fill_value=0,
             chunk_key_encoding=("v2", "."),
@@ -154,7 +154,7 @@ def test_order_implicit(
         a = Array.create(
             spath,
             shape=data.shape,
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=data.dtype,
             fill_value=0,
             codecs=codecs_,
@@ -181,7 +181,7 @@ def test_open(store: Store) -> None:
     a = Array.create(
         spath,
         shape=(16, 16),
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype="int32",
         fill_value=0,
     )
@@ -228,7 +228,7 @@ def test_write_partial_chunks(store: Store) -> None:
     a = Array.create(
         spath,
         shape=data.shape,
-        chunk_shape=(20, 20),
+        chunks=(20, 20),
         dtype=data.dtype,
         fill_value=1,
     )
@@ -244,7 +244,7 @@ async def test_delete_empty_chunks(store: Store) -> None:
     a = await AsyncArray.create(
         spath,
         shape=data.shape,
-        chunk_shape=(32, 32),
+        chunks=(32, 32),
         dtype=data.dtype,
         fill_value=1,
     )
@@ -262,7 +262,7 @@ async def test_zarr_compat(store: Store) -> None:
     a = await AsyncArray.create(
         spath,
         shape=data.shape,
-        chunk_shape=(10, 10),
+        chunks=(10, 10),
         dtype=data.dtype,
         chunk_key_encoding=("v2", "."),
         fill_value=1,
@@ -303,7 +303,7 @@ async def test_zarr_compat_F(store: Store) -> None:
     a = await AsyncArray.create(
         spath,
         shape=data.shape,
-        chunk_shape=(10, 10),
+        chunks=(10, 10),
         dtype=data.dtype,
         chunk_key_encoding=("v2", "."),
         fill_value=1,
@@ -346,7 +346,7 @@ async def test_dimension_names(store: Store) -> None:
     await AsyncArray.create(
         spath,
         shape=data.shape,
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype=data.dtype,
         fill_value=0,
         dimension_names=("x", "y"),
@@ -361,7 +361,7 @@ async def test_dimension_names(store: Store) -> None:
     await AsyncArray.create(
         spath2,
         shape=data.shape,
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype=data.dtype,
         fill_value=0,
     )
@@ -379,7 +379,7 @@ def test_invalid_metadata(store: Store) -> None:
         Array.create(
             spath,
             shape=(16, 16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
         )
@@ -388,7 +388,7 @@ def test_invalid_metadata(store: Store) -> None:
         Array.create(
             spath2,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
@@ -401,7 +401,7 @@ def test_invalid_metadata(store: Store) -> None:
         Array.create(
             spath3,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
@@ -414,7 +414,7 @@ def test_invalid_metadata(store: Store) -> None:
         Array.create(
             spath4,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
@@ -426,7 +426,7 @@ def test_invalid_metadata(store: Store) -> None:
         Array.create(
             spath5,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
@@ -438,7 +438,7 @@ def test_invalid_metadata(store: Store) -> None:
         Array.create(
             spath6,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
@@ -450,7 +450,7 @@ def test_invalid_metadata(store: Store) -> None:
         Array.create(
             spath7,
             shape=(16, 16),
-            chunk_shape=(16, 16),
+            chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
@@ -468,7 +468,7 @@ async def test_resize(store: Store) -> None:
     a = await AsyncArray.create(
         spath,
         shape=data.shape,
-        chunk_shape=(10, 10),
+        chunks=(10, 10),
         dtype=data.dtype,
         chunk_key_encoding=("v2", "."),
         fill_value=1,

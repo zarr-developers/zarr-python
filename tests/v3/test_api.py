@@ -20,7 +20,7 @@ def test_create_array(memory_store: Store) -> None:
     assert z.shape == (100,)
 
     # create array, overwrite, specify chunk shape
-    z = create(shape=200, chunk_shape=20, store=store, overwrite=True)
+    z = create(shape=200, chunks=20, store=store, overwrite=True)
     assert isinstance(z, Array)
     assert z.shape == (200,)
     assert z.chunks == (20,)

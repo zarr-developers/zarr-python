@@ -19,7 +19,7 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
     await AsyncArray.create(
         spath,
         shape=(16, 16),
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype=dtype,
         fill_value=0,
         codecs=[BytesCodec(), BloscCodec()],
@@ -40,7 +40,7 @@ async def test_blosc_evolve(store: Store, dtype: str) -> None:
     await AsyncArray.create(
         spath2,
         shape=(16, 16),
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype=dtype,
         fill_value=0,
         codecs=[ShardingCodec(chunk_shape=(16, 16), codecs=[BytesCodec(), BloscCodec()])],

@@ -94,7 +94,7 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
     subsubsubgroup = subsubgroup.create_group("subsubsubgroup")  # type: ignore
 
     members_expected["subarray"] = group.create_array(
-        "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
+        "subarray", shape=(100,), dtype="uint8", exists_ok=True
     )
 
     # add an extra object to the domain of the group.
@@ -147,9 +147,7 @@ def test_group(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None
 
     # create an array from the "bar" group
     data = np.arange(0, 4 * 4, dtype="uint16").reshape((4, 4))
-    arr = bar.create_array(
-        "baz", shape=data.shape, dtype=data.dtype, chunk_shape=(2, 2), exists_ok=True
-    )
+    arr = bar.create_array("baz", shape=data.shape, dtype=data.dtype, chunks=(2, 2), exists_ok=True)
     arr[:] = data
 
     # check the array
@@ -232,7 +230,7 @@ def test_group_getitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
 
     group = Group.create(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
-    subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+    subarray = group.create_array(name="subarray", shape=(10,))
 
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
@@ -247,7 +245,7 @@ def test_group_delitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
 
     group = Group.create(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
-    subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+    subarray = group.create_array(name="subarray", shape=(10,))
 
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
@@ -567,9 +565,7 @@ async def test_asyncgroup_getitem(store: LocalStore | MemoryStore, zarr_format: 
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
 
     array_name = "sub_array"
-    sub_array = await agroup.create_array(
-        name=array_name, shape=(10,), dtype="uint8", chunk_shape=(2,)
-    )
+    sub_array = await agroup.create_array(name=array_name, shape=(10,), dtype="uint8")
     assert await agroup.getitem(array_name) == sub_array
 
     sub_group_path = "sub_group"
@@ -585,7 +581,7 @@ async def test_asyncgroup_delitem(store: LocalStore | MemoryStore, zarr_format: 
     agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     array_name = "sub_array"
     _ = await agroup.create_array(
-        name=array_name, shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
+        name=array_name, shape=(10,), dtype="uint8", attributes={"foo": 100}
     )
     await agroup.delitem(array_name)
 
@@ -642,7 +638,7 @@ async def test_asyncgroup_create_array(
 
     shape = (10,)
     dtype = "uint8"
-    chunk_shape = (4,)
+    chunks = (4,)
     attributes = {"foo": 100}
 
     sub_node_path = "sub_array"
@@ -650,7 +646,7 @@ async def test_asyncgroup_create_array(
         name=sub_node_path,
         shape=shape,
         dtype=dtype,
-        chunk_shape=chunk_shape,
+        chunks=chunks,
         attributes=attributes,
     )
     assert isinstance(subnode, AsyncArray)
@@ -661,7 +657,7 @@ async def test_asyncgroup_create_array(
     assert subnode.dtype == dtype
     # todo: fix the type annotation of array.metadata.chunk_grid so that we get some autocomplete
     # here.
-    assert subnode.metadata.chunk_grid.chunk_shape == chunk_shape
+    assert subnode.metadata.chunk_grid.chunk_shape == chunks
     assert subnode.metadata.zarr_format == zarr_format
 
 
@@ -747,9 +743,7 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
     # test that we can get the group using require_group and overwrite=True
     foo_group = await root.require_group("foo", overwrite=True)
 
-    _ = await foo_group.create_array(
-        "bar", shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
-    )
+    _ = await foo_group.create_array("bar", shape=(10,), dtype="uint8", attributes={"foo": 100})
 
     # test that overwriting a group w/ children fails
     # TODO: figure out why ensure_no_existing_node is not catching the foo.bar array

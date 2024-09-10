@@ -7,8 +7,15 @@ from typing import TYPE_CHECKING, Any, Literal, Union, cast
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.array import Array, AsyncArray
-from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
+from zarr.core.array import Array, AsyncArray, ChunkSpec
+from zarr.core.common import (
+    JSON,
+    AccessModeLiteral,
+    ChunkCoords,
+    MemoryOrder,
+    ShapeLike,
+    ZarrFormat,
+)
 from zarr.core.group import AsyncGroup
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import (
@@ -561,7 +568,7 @@ async def open_group(
 async def create(
     shape: ChunkCoords,
     *,  # Note: this is a change from v2
-    chunks: ChunkCoords | None = None,  # TODO: v2 allowed chunks=True
+    chunks: ChunkSpec | ShapeLike | None = None,  # TODO: v2 allowed chunks=True
     dtype: npt.DTypeLike | None = None,
     compressor: dict[str, JSON] | None = None,  # TODO: default and type change
     fill_value: Any = 0,  # TODO: need type
@@ -583,7 +590,6 @@ async def create(
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
     # v3 only
-    chunk_shape: ChunkCoords | None = None,
     chunk_key_encoding: (
         ChunkKeyEncoding
         | tuple[Literal["default"], Literal[".", "/"]]
@@ -674,15 +680,6 @@ async def create(
         or _default_zarr_version()
     )
 
-    if zarr_format == 2 and chunks is None:
-        chunks = shape
-    if zarr_format == 3 and chunk_shape is None:
-        if chunks is not None:
-            chunk_shape = chunks
-            chunks = None
-        else:
-            chunk_shape = shape
-
     if order is not None:
         warnings.warn(
             "order is deprecated, use config `array.order` instead",
@@ -729,7 +726,6 @@ async def create(
         filters=filters,
         dimension_separator=dimension_separator,
         zarr_format=zarr_format,
-        chunk_shape=chunk_shape,
         chunk_key_encoding=chunk_key_encoding,
         codecs=codecs,
         dimension_names=dimension_names,

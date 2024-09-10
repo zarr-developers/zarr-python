@@ -9,7 +9,7 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.abc.store import set_or_delete
-from zarr.codecs import BytesCodec
+from zarr.codecs import BytesCodec, ShardingCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
@@ -71,6 +71,13 @@ if TYPE_CHECKING:
 # Array and AsyncArray are defined in the base ``zarr`` namespace
 __all__ = ["parse_array_metadata", "create_codec_pipeline"]
 
+from typing import TypedDict
+
+
+class ChunkSpec(TypedDict, total=False):
+    read_shape: tuple[int, ...] | int
+    write_shape: tuple[int, ...] | int
+
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
     if isinstance(data, ArrayV2Metadata | ArrayV3Metadata):
@@ -126,8 +133,6 @@ class AsyncArray:
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
-        # v3 only
-        chunk_shape: ChunkCoords | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -136,8 +141,8 @@ class AsyncArray:
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
+        chunks: ChunkSpec | ShapeLike | None = None,
         # v2 only
-        chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -149,16 +154,6 @@ class AsyncArray:
         store_path = await make_store_path(store)
 
         shape = parse_shapelike(shape)
-
-        if chunk_shape is None:
-            if chunks is None:
-                chunk_shape = chunks = _guess_chunks(shape=shape, typesize=np.dtype(dtype).itemsize)
-            else:
-                chunks = parse_shapelike(chunks)
-
-            chunk_shape = chunks
-        elif chunks is not None:
-            raise ValueError("Only one of chunk_shape or chunks must be provided.")
 
         if zarr_format == 3:
             if dimension_separator is not None:
@@ -181,7 +176,7 @@ class AsyncArray:
                 store_path,
                 shape=shape,
                 dtype=dtype,
-                chunk_shape=chunk_shape,
+                chunks=chunks,
                 fill_value=fill_value,
                 chunk_key_encoding=chunk_key_encoding,
                 codecs=codecs,
@@ -204,7 +199,7 @@ class AsyncArray:
                 store_path,
                 shape=shape,
                 dtype=dtype,
-                chunks=chunk_shape,
+                chunks=chunks,
                 dimension_separator=dimension_separator,
                 fill_value=fill_value,
                 order=order,
@@ -214,7 +209,7 @@ class AsyncArray:
                 exists_ok=exists_ok,
             )
         else:
-            raise ValueError(f"Insupported zarr_format. Got: {zarr_format}")
+            raise ValueError(f"Unsupported zarr_format. Got: {zarr_format}")
 
         if data is not None:
             # insert user-provided data
@@ -229,7 +224,7 @@ class AsyncArray:
         *,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
-        chunk_shape: ChunkCoords,
+        chunks: ShapeLike | ChunkSpec | None = None,
         fill_value: Any | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
@@ -245,8 +240,32 @@ class AsyncArray:
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=3)
 
-        shape = parse_shapelike(shape)
-        codecs = list(codecs) if codecs is not None else [BytesCodec()]
+        array_shape = parse_shapelike(shape)
+        shard_shape: tuple[int, ...] | None
+        chunk_shape: tuple[int, ...]
+
+        # because chunks is an optional typeddict with optional keys, it could be completely empty
+        # OR None, both of which result in chunks being inferred automatically
+        if chunks is not None and not (chunks == {}):
+            if isinstance(chunks, dict):
+                chunk_shape = parse_shapelike(chunks["write_shape"])
+                if "read_shape" in chunks:
+                    shard_shape = parse_shapelike(chunks["read_shape"])
+                else:
+                    shard_shape = None
+            else:
+                chunk_shape = parse_shapelike(chunks)
+                shard_shape = None
+        else:
+            # determine chunking parameters automatically
+            chunk_shape = _guess_chunks(array_shape, np.dtype(dtype).itemsize)
+            # default is no sharding
+            shard_shape = None
+
+        _codecs = tuple(codecs) if codecs is not None else (BytesCodec(),)
+
+        if shard_shape is not None:
+            _codecs = (ShardingCodec(chunk_shape=shard_shape, codecs=_codecs),)
 
         if fill_value is None:
             if dtype == np.dtype("bool"):
@@ -266,12 +285,12 @@ class AsyncArray:
             )
 
         metadata = ArrayV3Metadata(
-            shape=shape,
+            shape=array_shape,
             data_type=dtype,
             chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
             chunk_key_encoding=chunk_key_encoding,
             fill_value=fill_value,
-            codecs=codecs,
+            codecs=_codecs,
             dimension_names=tuple(dimension_names) if dimension_names else None,
             attributes=attributes or {},
         )
@@ -288,7 +307,7 @@ class AsyncArray:
         *,
         shape: ChunkCoords,
         dtype: npt.DTypeLike,
-        chunks: ChunkCoords,
+        chunks: ChunkSpec | ShapeLike | None,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: None | int | float = None,
         order: Literal["C", "F"] | None = None,
@@ -307,10 +326,28 @@ class AsyncArray:
         if dimension_separator is None:
             dimension_separator = "."
 
+        if chunks is None or chunks == {}:
+            _chunks = _guess_chunks(shape, np.dtype(dtype).itemsize)
+        elif isinstance(chunks, dict):
+            if "write_shape" in chunks:
+                _chunks = parse_shapelike(chunks["write_shape"])
+                if "read_shape" in chunks:
+                    if chunks["read_shape"] != chunks["write_shape"]:
+                        msg = "Invalid chunk specification. For zarr v2, read_shape must match write_shape."
+                        raise ValueError(msg)
+            elif "read_shape" in chunks:
+                _chunks = parse_shapelike(chunks["read_shape"])
+            else:
+                raise ValueError(
+                    f"Invalid chunk specification: {chunks}. Expected a dict compatible with ChunkSpec"
+                )
+        else:
+            _chunks = parse_shapelike(chunks)
+
         metadata = ArrayV2Metadata(
             shape=shape,
             dtype=np.dtype(dtype),
-            chunks=chunks,
+            chunks=_chunks,
             order=order,
             dimension_separator=dimension_separator,
             fill_value=0 if fill_value is None else fill_value,
@@ -638,7 +675,6 @@ class Array:
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
         # v3 only
-        chunk_shape: ChunkCoords | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -648,7 +684,7 @@ class Array:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
-        chunks: ChunkCoords | None = None,
+        chunks: ChunkSpec | ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -664,7 +700,6 @@ class Array:
                 zarr_format=zarr_format,
                 attributes=attributes,
                 fill_value=fill_value,
-                chunk_shape=chunk_shape,
                 chunk_key_encoding=chunk_key_encoding,
                 codecs=codecs,
                 dimension_names=dimension_names,
