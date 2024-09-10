@@ -30,7 +30,9 @@ class MemoryStore(Store):
         mode: AccessModeLiteral = "r",
     ):
         super().__init__(mode=mode)
-        self._store_dict = store_dict or {}
+        if store_dict is None:
+            store_dict = {}
+        self._store_dict = store_dict
 
     async def empty(self) -> bool:
         return not self._store_dict

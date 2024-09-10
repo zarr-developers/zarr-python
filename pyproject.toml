@@ -78,9 +78,9 @@ gpu = [
     "cupy-cuda12x",
 ]
 docs = [
-    'sphinx',
+    'sphinx<8',
     'sphinx-autobuild>=2021.3.14',
-    'sphinx-autoapi',
+    'sphinx-autoapi<3.1',
     'sphinx_design',
     'sphinx-issues',
     'sphinx-copybutton',
@@ -181,7 +181,6 @@ serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
 [tool.ruff]
 line-length = 100
-src = ["src"]
 force-exclude = true
 extend-exclude = [
     ".bzr",

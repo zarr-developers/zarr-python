@@ -68,6 +68,9 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import Codec, CodecPipeline
 
+# Array and AsyncArray are defined in the base ``zarr`` namespace
+__all__ = ["parse_array_metadata", "create_codec_pipeline"]
+
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
     if isinstance(data, ArrayV2Metadata | ArrayV3Metadata):
