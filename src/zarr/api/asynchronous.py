@@ -225,8 +225,11 @@ async def open(
     if path is not None:
         store_path = store_path / path
 
-    if "shape" not in kwargs:
-        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+    if "shape" not in kwargs and mode in {"a", "w", "w-"}:
+        try:
+            return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+        except AssertionError:
+            return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
     except KeyError:
