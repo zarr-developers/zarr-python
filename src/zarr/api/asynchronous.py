@@ -271,6 +271,7 @@ async def open(
 
 
 async def open_consolidated(*args: Any, **kwargs: Any) -> AsyncGroup:
+    kwargs.setdefault("open_consolidated", True)
     return await open_group(*args, **kwargs)
 
 
@@ -531,6 +532,7 @@ async def open_group(
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
     attributes: dict[str, JSON] | None = None,
+    open_consolidated: bool = False,
 ) -> AsyncGroup:
     """Open a group using file-mode-like semantics.
 
@@ -590,7 +592,9 @@ async def open_group(
         attributes = {}
 
     try:
-        return await AsyncGroup.open(store_path, zarr_format=zarr_format)
+        return await AsyncGroup.open(
+            store_path, zarr_format=zarr_format, open_consolidated=open_consolidated
+        )
     except (KeyError, FileNotFoundError):
         return await AsyncGroup.create(
             store_path, zarr_format=zarr_format, exists_ok=True, attributes=attributes

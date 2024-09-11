@@ -28,6 +28,7 @@ ZARR_JSON = "zarr.json"
 ZARRAY_JSON = ".zarray"
 ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
+ZMETADATA_v2_JSON = ".zmetadata"
 
 BytesLike = bytes | bytearray | memoryview
 ShapeLike = tuple[int, ...] | int

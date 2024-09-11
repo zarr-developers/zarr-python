@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import defaultdict
 from dataclasses import asdict, dataclass, field, replace
 from typing import TYPE_CHECKING, Literal, cast, overload
 
@@ -28,7 +29,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
-from zarr.core.metadata import ArrayMetadata, ArrayV3Metadata
+from zarr.core.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import SyncMixin, sync
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.common import ensure_no_existing_node
@@ -126,7 +127,14 @@ class ConsolidatedMetadata:
                 elif node_type == "array":
                     metadata[k] = ArrayV3Metadata.from_dict(v)
                 else:
-                    raise ValueError(f"Invalid node_type: '{node_type}'")
+                    # We either have V2 metadata, or invalid metadata
+                    if "shape" in v:
+                        # probably ArrayV2Metadata
+                        metadata[k] = ArrayV2Metadata.from_dict(v)
+                    else:
+                        # probably v2 Group metadata
+                        metadata[k] = GroupMetadata.from_dict(v)
+
         # assert data["kind"] == "inline"
         if data["kind"] != "inline":
             raise ValueError
@@ -226,15 +234,26 @@ class AsyncGroup:
         cls,
         store: StoreLike,
         zarr_format: Literal[2, 3, None] = 3,
+        open_consolidated: bool = False,
     ) -> AsyncGroup:
         store_path = await make_store_path(store)
 
         if zarr_format == 2:
-            zgroup_bytes, zattrs_bytes = await asyncio.gather(
-                (store_path / ZGROUP_JSON).get(), (store_path / ZATTRS_JSON).get()
+            paths = [store_path / ZGROUP_JSON, store_path / ZATTRS_JSON]
+            if open_consolidated:
+                paths.append(store_path / ".zmetadata")  # todo: configurable
+
+            zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
+                *[path.get() for path in paths]
             )
             if zgroup_bytes is None:
                 raise FileNotFoundError(store_path)
+
+            if open_consolidated:
+                consolidated_metadata_bytes = rest[0]
+                if consolidated_metadata_bytes is None:
+                    raise FileNotFoundError(paths[-1])
+
         elif zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
@@ -265,6 +284,37 @@ class AsyncGroup:
             zgroup = json.loads(zgroup_bytes.to_bytes())
             zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
             group_metadata = {**zgroup, "attributes": zattrs}
+
+            if open_consolidated:
+                # this *should* be defined.
+                assert consolidated_metadata_bytes is not None  # already checked above
+
+                v2_consolidated_metadata = json.loads(consolidated_metadata_bytes.to_bytes())
+                v2_consolidated_metadata = v2_consolidated_metadata["metadata"]
+                # We already read zattrs and zgroup. Should we ignore these?
+                v2_consolidated_metadata.pop(".zattrs")
+                v2_consolidated_metadata.pop(".zgroup")
+
+                consolidated_metadata: defaultdict[str, dict[str, Any]] = defaultdict(dict)
+
+                # keys like air/.zarray, air/.zattrs
+                for k, v in v2_consolidated_metadata.items():
+                    path, kind = k.rsplit("/.", 1)
+
+                    if kind == "zarray":
+                        consolidated_metadata[path].update(v)
+                    elif kind == "zattrs":
+                        consolidated_metadata[path]["attributes"] = v
+                    elif kind == "zgroup":
+                        consolidated_metadata[path].update(v)
+                    else:
+                        raise ValueError(f"Invalid file type '{kind}' at path '{path}")
+                group_metadata["consolidated_metadata"] = {
+                    "metadata": dict(consolidated_metadata),
+                    "kind": "inline",
+                    "must_understand": False,
+                }
+
         else:
             # V3 groups are comprised of a zarr.json object
             assert zarr_json_bytes is not None

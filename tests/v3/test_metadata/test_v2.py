@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING, Literal
+
+import numpy as np
+import pytest
+
+import zarr.store
+from zarr.codecs import GzipCodec
+from zarr.core.buffer import cpu
+from zarr.core.group import ConsolidatedMetadata, GroupMetadata
+from zarr.core.metadata import ArrayV2Metadata, parse_zarr_format_v2
 
 if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.codec import Codec
-
-import pytest
-
-from zarr.codecs import GzipCodec
-from zarr.core.metadata import ArrayV2Metadata, parse_zarr_format_v2
 
 
 def test_parse_zarr_format_valid() -> None:
@@ -70,3 +75,118 @@ def test_metadata_to_dict(
         observed.pop("dimension_separator")
 
     assert observed == expected
+
+
+async def test_read_consolidated_metadata():
+    # .zgroup, .zattrs, .metadata
+    zmetadata = {
+        "metadata": {
+            ".zattrs": {
+                "Conventions": "COARDS",
+            },
+            ".zgroup": {"zarr_format": 2},
+            "air/.zarray": {
+                "chunks": [730],
+                "compressor": {},
+                "dtype": "<i2",
+                "fill_value": 0,
+                "filters": None,
+                "order": "C",
+                "shape": [730],
+                "zarr_format": 2,
+            },
+            "air/.zattrs": {
+                "_ARRAY_DIMENSIONS": ["time"],
+                "dataset": "NMC Reanalysis",
+            },
+            "time/.zarray": {
+                "chunks": [730],
+                "compressor": {},
+                "dtype": "<f4",
+                "fill_value": "0.0",
+                "filters": None,
+                "order": "C",
+                "shape": [730],
+                "zarr_format": 2,
+            },
+            "time/.zattrs": {
+                "_ARRAY_DIMENSIONS": ["time"],
+                "calendar": "standard",
+                "long_name": "Time",
+                "standard_name": "time",
+                "units": "hours since 1800-01-01",
+            },
+            "nested/.zattrs": {"key": "value"},
+            "nested/.zgroup": {"zarr_format": 2},
+        },
+        "zarr_consolidated_format": 1,
+    }
+    store_dict = {}
+    store = zarr.store.MemoryStore(store_dict=store_dict, mode="a")
+    await store.set(
+        ".zattrs", cpu.Buffer.from_bytes(json.dumps({"Conventions": "COARDS"}).encode())
+    )
+    await store.set(".zgroup", cpu.Buffer.from_bytes(json.dumps({"zarr_format": 2}).encode()))
+    await store.set(".zmetadata", cpu.Buffer.from_bytes(json.dumps(zmetadata).encode()))
+    await store.set(
+        "air/.zarray",
+        cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["air/.zarray"]).encode()),
+    )
+    await store.set(
+        "air/.zattrs",
+        cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["air/.zattrs"]).encode()),
+    )
+    await store.set(
+        "time/.zarray",
+        cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["time/.zarray"]).encode()),
+    )
+    await store.set(
+        "time/.zattrs",
+        cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["time/.zattrs"]).encode()),
+    )
+
+    # and a nested group for fun
+    await store.set("nested/.zattrs", cpu.Buffer.from_bytes(json.dumps({"key": "value"}).encode()))
+    await store.set(
+        "nested/.zgroup", cpu.Buffer.from_bytes(json.dumps({"zarr_format": 2}).encode())
+    )
+
+    group = zarr.open_consolidated(store=store, zarr_format=2)
+    assert group.metadata.consolidated_metadata is not None
+    expected = ConsolidatedMetadata(
+        metadata={
+            "air": ArrayV2Metadata(
+                shape=(730,),
+                fill_value=0,
+                chunks=(730,),
+                attributes={"_ARRAY_DIMENSIONS": ["time"], "dataset": "NMC Reanalysis"},
+                dtype=np.dtype("int16"),
+                order="C",
+                filters=None,
+                dimension_separator=".",
+                compressor={},
+            ),
+            "time": ArrayV2Metadata(
+                shape=(730,),
+                fill_value=0.0,
+                chunks=(730,),
+                attributes={
+                    "_ARRAY_DIMENSIONS": ["time"],
+                    "calendar": "standard",
+                    "long_name": "Time",
+                    "standard_name": "time",
+                    "units": "hours since 1800-01-01",
+                },
+                dtype=np.dtype("float32"),
+                order="C",
+                filters=None,
+                dimension_separator=".",
+                compressor={},
+            ),
+            "nested": GroupMetadata(attributes={"key": "value"}, zarr_format=2),
+        },
+        kind="inline",
+        must_understand=False,
+    )
+    result = group.metadata.consolidated_metadata
+    assert result == expected
