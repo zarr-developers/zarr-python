@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
 
@@ -21,20 +23,23 @@ from zarr.testing.buffer import (
 )
 from zarr.testing.utils import gpu_test
 
+if TYPE_CHECKING:
+    import types
+
 try:
     import cupy as cp
 except ImportError:
     cp = None
 
 
-def test_nd_array_like(xp):
+def test_nd_array_like(xp: types.ModuleType) -> None:
     ary = xp.arange(10)
     assert isinstance(ary, ArrayLike)
     assert isinstance(ary, NDArrayLike)
 
 
 @pytest.mark.asyncio
-async def test_async_array_prototype():
+async def test_async_array_prototype() -> None:
     """Test the use of a custom buffer prototype"""
 
     expect = np.zeros((9, 9), dtype="uint16", order="F")
@@ -55,13 +60,15 @@ async def test_async_array_prototype():
         prototype=my_prototype,
     )
     got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=my_prototype)
-    assert isinstance(got, TestNDArrayLike)
-    assert np.array_equal(expect, got)
+    # ignoring a mypy error here that TestNDArrayLike doesn't meet the NDArrayLike protocol
+    # The test passes, so it clearly does.
+    assert isinstance(got, TestNDArrayLike)  # type: ignore[unreachable]
+    assert np.array_equal(expect, got)  # type: ignore[unreachable]
 
 
 @gpu_test
 @pytest.mark.asyncio
-async def test_async_array_gpu_prototype():
+async def test_async_array_gpu_prototype() -> None:
     """Test the use of the GPU buffer prototype"""
 
     expect = cp.zeros((9, 9), dtype="uint16", order="F")
@@ -85,7 +92,7 @@ async def test_async_array_gpu_prototype():
 
 
 @pytest.mark.asyncio
-async def test_codecs_use_of_prototype():
+async def test_codecs_use_of_prototype() -> None:
     expect = np.zeros((10, 10), dtype="uint16", order="F")
     a = await AsyncArray.create(
         StorePath(StoreExpectingTestBuffer(mode="w")) / "test_codecs_use_of_prototype",
@@ -112,13 +119,15 @@ async def test_codecs_use_of_prototype():
         prototype=my_prototype,
     )
     got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=my_prototype)
-    assert isinstance(got, TestNDArrayLike)
-    assert np.array_equal(expect, got)
+    # ignoring a mypy error here that TestNDArrayLike doesn't meet the NDArrayLike protocol
+    # The test passes, so it clearly does.
+    assert isinstance(got, TestNDArrayLike)  # type: ignore[unreachable]
+    assert np.array_equal(expect, got)  # type: ignore[unreachable]
 
 
 @gpu_test
 @pytest.mark.asyncio
-async def test_codecs_use_of_gpu_prototype():
+async def test_codecs_use_of_gpu_prototype() -> None:
     expect = cp.zeros((10, 10), dtype="uint16", order="F")
     a = await AsyncArray.create(
         StorePath(MemoryStore(mode="w")) / "test_codecs_use_of_gpu_prototype",
@@ -147,7 +156,7 @@ async def test_codecs_use_of_gpu_prototype():
     assert cp.array_equal(expect, got)
 
 
-def test_numpy_buffer_prototype():
+def test_numpy_buffer_prototype() -> None:
     buffer = cpu.buffer_prototype.buffer.create_zero_length()
     ndbuffer = cpu.buffer_prototype.nd_buffer.create(shape=(1, 2), dtype=np.dtype("int64"))
     assert isinstance(buffer.as_array_like(), np.ndarray)

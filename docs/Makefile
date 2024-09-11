@@ -52,6 +52,7 @@ help:
 .PHONY: clean
 clean:
 	rm -rf $(BUILDDIR)/*
+	rm -rf $(BUILDDIR)/../_autoapi
 
 .PHONY: html
 html:

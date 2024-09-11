@@ -78,9 +78,9 @@ gpu = [
     "cupy-cuda12x",
 ]
 docs = [
-    'sphinx',
+    'sphinx<8',
     'sphinx-autobuild>=2021.3.14',
-    'sphinx-autoapi',
+    'sphinx-autoapi<3.1',
     'sphinx_design',
     'sphinx-issues',
     'sphinx-copybutton',
@@ -95,6 +95,7 @@ extra = [
 ]
 optional = [
     'lmdb',
+    'universal-pathlib',
 ]
 
 [project.urls]
@@ -180,7 +181,6 @@ serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
 [tool.ruff]
 line-length = 100
-src = ["src"]
 force-exclude = true
 extend-exclude = [
     ".bzr",
@@ -197,6 +197,7 @@ extend-exclude = [
     "buck-out",
     "build",
     "dist",
+    "notebooks", # temporary, until we achieve compatibility with ruff ≥ 0.6
     "venv",
     "docs",
     "src/zarr/v2/",
@@ -211,6 +212,7 @@ extend-select = [
     "UP",  # pyupgrade
     "RSE",
     "RUF",
+    "TCH", # flake8-type-checking
     "TRY", # tryceratops
 ]
 ignore = [
@@ -256,4 +258,10 @@ filterwarnings = [
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU"
+]
+
+[tool.repo-review]
+ignore = [
+	"PC111",  # fix Python code in documentation - enable later 
+	"PC180",  # for JavaScript - not interested
 ]

@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
-from types import ModuleType
 from typing import TYPE_CHECKING
 
-from _pytest.compat import LEGACY_PATH
-
 from zarr import AsyncGroup, config
-from zarr.abc.store import Store
-from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from types import ModuleType
     from typing import Any, Literal
+
+    from _pytest.compat import LEGACY_PATH
+
+    from zarr.abc.store import Store
+    from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
 import pathlib
 from dataclasses import dataclass, field
 
