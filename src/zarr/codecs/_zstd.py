@@ -10,7 +10,6 @@ from numcodecs.zstd import Zstd
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
 from zarr.core.common import JSON, parse_named_configuration, to_thread
-from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -88,6 +87,3 @@ class ZstdCodec(BytesBytesCodec):
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         raise NotImplementedError
-
-
-register_codec("zstd", ZstdCodec)

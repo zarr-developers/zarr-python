@@ -18,7 +18,7 @@ from zarr.abc.codec import (
 from zarr.core.common import JSON, ChunkCoords, concurrent_map, parse_named_configuration
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar, is_total_slice
-from zarr.registry import get_codec_class, register_pipeline
+from zarr.registry import get_codec_class
 
 if TYPE_CHECKING:
     import numpy as np
@@ -526,6 +526,3 @@ def codecs_from_list(
         raise ValueError("Required ArrayBytesCodec was not found.")
     else:
         return array_array, array_bytes_maybe, bytes_bytes
-
-
-register_pipeline(BatchedCodecPipeline)
