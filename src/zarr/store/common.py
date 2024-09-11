@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import collections
 import json
-from collections.abc import MutableMapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -73,7 +71,7 @@ class StorePath:
         return False
 
 
-StoreLike = Store | StorePath | Path | str | MutableMapping[str, Buffer]
+StoreLike = Store | StorePath | Path | str | dict[str, Buffer]
 
 
 async def make_store_path(
@@ -96,7 +94,9 @@ async def make_store_path(
         return StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
         return StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
-    elif isinstance(store_like, collections.abc.MutableMapping):
+    elif isinstance(store_like, dict):
+        # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
+        # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
         return StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
     raise TypeError
 

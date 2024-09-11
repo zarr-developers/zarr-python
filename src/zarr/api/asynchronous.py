@@ -503,8 +503,8 @@ async def open_group(
         Strings are interpreted as paths on the local file system
         and used as the ``root`` argument to :class:`zarr.store.LocalStore`.
 
-        Mutable-mappings (e.g. a dictionary) are used as the ``store_dict``
-        argument in :class:`zarr.store.MemoryStore``.
+        Dictionaries are used as the ``store_dict`` argument in
+        :class:`zarr.store.MemoryStore``.
 
         By default (``store=None``) a new :class:`zarr.store.MemoryStore`
         is created.
