@@ -102,7 +102,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         https://hypothesis.readthedocs.io/en/latest/stateful.html
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.model: dict[str, bytes] = {}
         self.store = SyncStoreWrapper(MemoryStore(mode="w"))
@@ -170,7 +170,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         del self.model[key]
 
     @rule()
-    def clear(self):
+    def clear(self) -> None:
         assert not self.store.mode.readonly
         note("(clear)")
         self.store.clear()
