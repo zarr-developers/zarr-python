@@ -1,11 +1,20 @@
 from __future__ import annotations
 
+import pathlib
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+import numpy as np
+import numpy.typing as npt
+import pytest
+from hypothesis import HealthCheck, Verbosity, settings
+
 from zarr import AsyncGroup, config
+from zarr.store import LocalStore, MemoryStore, StorePath
+from zarr.store.remote import RemoteStore
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Generator, Iterator
     from types import ModuleType
     from typing import Any, Literal
 
@@ -13,15 +22,6 @@ if TYPE_CHECKING:
 
     from zarr.abc.store import Store
     from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
-import pathlib
-from dataclasses import dataclass, field
-
-import numpy as np
-import pytest
-from hypothesis import HealthCheck, Verbosity, settings
-
-from zarr.store import LocalStore, MemoryStore, StorePath
-from zarr.store.remote import RemoteStore
 
 
 async def parse_store(
@@ -102,7 +102,7 @@ def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
 
 
 @pytest.fixture(autouse=True)
-def reset_config():
+def reset_config() -> Generator[None, None, None]:
     config.reset()
     yield
     config.reset()
@@ -116,7 +116,7 @@ class ArrayRequest:
 
 
 @pytest.fixture
-def array_fixture(request: pytest.FixtureRequest) -> np.ndarray:
+def array_fixture(request: pytest.FixtureRequest) -> npt.NDArray[Any]:
     array_request: ArrayRequest = request.param
     return (
         np.arange(np.prod(array_request.shape))

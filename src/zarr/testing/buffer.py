@@ -25,9 +25,13 @@ __all__ = [
 class TestNDArrayLike(np.ndarray):
     """An example of a ndarray-like class"""
 
+    __test__ = False
+
 
 class TestBuffer(cpu.Buffer):
     """Example of a custom Buffer that handles ArrayLike"""
+
+    __test__ = False
 
 
 class NDBufferUsingTestNDArrayLike(cpu.NDBuffer):

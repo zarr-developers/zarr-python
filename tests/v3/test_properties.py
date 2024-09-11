@@ -11,7 +11,7 @@ from zarr.testing.strategies import arrays, np_arrays, basic_indices  # noqa
 
 
 @given(st.data())
-def test_roundtrip(data):
+def test_roundtrip(data: st.DataObject) -> None:
     nparray = data.draw(np_arrays)
     zarray = data.draw(arrays(arrays=st.just(nparray)))
     assert_array_equal(nparray, zarray[:])
@@ -23,7 +23,7 @@ def test_roundtrip(data):
 # Uncomment the next line to reproduce the original failure.
 # @reproduce_failure('6.111.2', b'AXicY2FgZGRAB/8/ndR2z7nkDZEDADWpBL4=')
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")
-def test_basic_indexing(data):
+def test_basic_indexing(data: st.DataObject) -> None:
     zarray = data.draw(arrays())
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
@@ -42,7 +42,7 @@ def test_basic_indexing(data):
 # Uncomment the next line to reproduce the original failure.
 # @reproduce_failure('6.111.2', b'AXicY2FgZGRAB/8/eLmF7qr/C5EDADZUBRM=')
 @pytest.mark.filterwarnings("ignore::RuntimeWarning")
-def test_vindex(data):
+def test_vindex(data: st.DataObject) -> None:
     zarray = data.draw(arrays())
     nparray = zarray[:]
 
