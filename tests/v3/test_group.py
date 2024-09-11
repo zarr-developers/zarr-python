@@ -692,7 +692,7 @@ async def test_asyncgroup_update_attributes(
     assert agroup_new_attributes.attrs == attributes_new
 
 
-async def test_group_members_async(store: LocalStore | MemoryStore):
+async def test_group_members_async(store: LocalStore | MemoryStore) -> None:
     group = AsyncGroup(
         GroupMetadata(),
         store_path=StorePath(store=store, path="root"),
@@ -796,14 +796,15 @@ async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: Zarr
 
 async def test_create_dataset(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
-    foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
+    with pytest.warns(DeprecationWarning):
+        foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
     assert foo.shape == (10,)
 
-    with pytest.raises(ContainsArrayError):
+    with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
         await root.create_dataset("foo", shape=(100,), dtype="int8")
 
     _ = await root.create_group("bar")
-    with pytest.raises(ContainsGroupError):
+    with pytest.raises(ContainsGroupError), pytest.warns(DeprecationWarning):
         await root.create_dataset("bar", shape=(100,), dtype="int8")
 
 

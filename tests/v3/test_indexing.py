@@ -25,12 +25,11 @@ from zarr.store.memory import MemoryStore
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from zarr.abc.store import Store
     from zarr.core.common import ChunkCoords
 
 
 @pytest.fixture
-async def store() -> Iterator[Store]:
+async def store() -> Iterator[StorePath]:
     yield StorePath(await MemoryStore.open(mode="w"))
 
 
@@ -52,7 +51,7 @@ def zarr_array_from_numpy_array(
 
 class CountingDict(MemoryStore):
     @classmethod
-    async def open(cls):
+    async def open(cls) -> CountingDict:
         store = await super().open(mode="w")
         store.counter = Counter()
         return store
@@ -68,7 +67,7 @@ class CountingDict(MemoryStore):
         return await super().set(key, value, byte_range)
 
 
-def test_normalize_integer_selection():
+def test_normalize_integer_selection() -> None:
     assert 1 == normalize_integer_selection(1, 100)
     assert 99 == normalize_integer_selection(-1, 100)
     with pytest.raises(IndexError):
@@ -79,7 +78,7 @@ def test_normalize_integer_selection():
         normalize_integer_selection(-1000, 100)
 
 
-def test_replace_ellipsis():
+def test_replace_ellipsis() -> None:
     # 1D, single item
     assert (0,) == replace_ellipsis(0, (100,))
 
@@ -258,7 +257,7 @@ def _test_get_basic_selection(a, z, selection):
 
 
 # noinspection PyStatementEffect
-def test_get_basic_selection_1d(store: StorePath):
+def test_get_basic_selection_1d(store: StorePath) -> None:
     # setup
     a = np.arange(1050, dtype=int)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(100,))
@@ -328,7 +327,7 @@ basic_selections_2d_bad = [
 
 
 # noinspection PyStatementEffect
-def test_get_basic_selection_2d(store: StorePath):
+def test_get_basic_selection_2d(store: StorePath) -> None:
     # setup
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
@@ -349,7 +348,7 @@ def test_get_basic_selection_2d(store: StorePath):
     np.testing.assert_array_equal(z[fancy_selection], [0, 11])
 
 
-def test_fancy_indexing_fallback_on_get_setitem(store: StorePath):
+def test_fancy_indexing_fallback_on_get_setitem(store: StorePath) -> None:
     z = zarr_array_from_numpy_array(store, np.zeros((20, 20)))
     z[[1, 2, 3], [1, 2, 3]] = 1
     np.testing.assert_array_equal(
