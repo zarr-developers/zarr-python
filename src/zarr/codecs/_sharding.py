@@ -18,8 +18,8 @@ from zarr.abc.codec import (
     CodecPipeline,
 )
 from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.codecs.bytes import BytesCodec
-from zarr.codecs.crc32c_ import Crc32cCodec
+from zarr.codecs._bytes import BytesCodec
+from zarr.codecs._crc32c_ import Crc32cCodec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import (
     Buffer,

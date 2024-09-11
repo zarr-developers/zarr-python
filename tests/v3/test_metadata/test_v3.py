@@ -4,7 +4,7 @@ import json
 import re
 from typing import TYPE_CHECKING, Literal
 
-from zarr.codecs.bytes import BytesCodec
+from zarr.codecs import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 

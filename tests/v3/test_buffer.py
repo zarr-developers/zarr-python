@@ -6,12 +6,7 @@ import numpy as np
 import pytest
 
 from zarr import AsyncArray
-from zarr.codecs.blosc import BloscCodec
-from zarr.codecs.bytes import BytesCodec
-from zarr.codecs.crc32c_ import Crc32cCodec
-from zarr.codecs.gzip import GzipCodec
-from zarr.codecs.transpose import TransposeCodec
-from zarr.codecs.zstd import ZstdCodec
+from zarr.codecs import BloscCodec, BytesCodec, Crc32cCodec, GzipCodec, TransposeCodec, ZstdCodec
 from zarr.core.buffer import ArrayLike, BufferPrototype, NDArrayLike, cpu, gpu
 from zarr.store.common import StorePath
 from zarr.store.memory import MemoryStore
