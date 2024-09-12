@@ -125,7 +125,7 @@ class ArrayV2Metadata(ArrayMetadata):
         # make a copy to protect the original from modification
         _data = data.copy()
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format_v2(_data.pop("zarr_format"))
+        _ = parse_zarr_format(_data.pop("zarr_format"))
         return cls(**_data)
 
     def to_dict(self) -> JSON:
@@ -165,7 +165,7 @@ class ArrayV2Metadata(ArrayMetadata):
         return replace(self, attributes=attributes)
 
 
-def parse_zarr_format_v2(data: Literal[2]) -> Literal[2]:
+def parse_zarr_format(data: Literal[2]) -> Literal[2]:
     if data == 2:
         return data
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
