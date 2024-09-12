@@ -51,11 +51,6 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         with pytest.raises(ValueError):
             await store.set("foo", cpu.Buffer.from_bytes(b"bar"))
 
-        # # delete
-        # TODO: uncomment once deletes are implemented
-        # with pytest.raises(ValueError):
-        #     await store.delete("foo")
-
     def test_store_repr(self, store: ZipStore) -> None:
         assert str(store) == f"zip://{store.path!s}"
 
