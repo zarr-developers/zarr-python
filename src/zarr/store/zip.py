@@ -17,6 +17,26 @@ ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
 
 class ZipStore(Store):
+    """
+    Storage class using a ZIP file.
+
+    Parameters
+    ----------
+    path : string
+        Location of file.
+    compression : integer, optional
+        Compression method to use when writing to the archive.
+    allowZip64 : bool, optional
+        If True (the default) will create ZIP files that use the ZIP64
+        extensions when the zipfile is larger than 2 GiB. If False
+        will raise an exception when the ZIP file would require ZIP64
+        extensions.
+    mode : string, optional
+        One of 'r' to read an existing file, 'w' to truncate and write a new
+        file, 'a' to append to an existing file, or 'x' to exclusively create
+        and write a new file.
+    """
+
     supports_writes: bool = True
     supports_deletes: bool = False
     supports_partial_writes: bool = False
@@ -132,17 +152,6 @@ class ZipStore(Store):
         prototype: BufferPrototype,
         key_ranges: list[tuple[str, tuple[int | None, int | None]]],
     ) -> list[Buffer | None]:
-        """
-        Read byte ranges from multiple keys.
-
-        Parameters
-        ----------
-        key_ranges: List[Tuple[str, Tuple[int, int]]]
-            A list of (key, (start, length)) tuples. The first element of the tuple is the name of
-            the key in storage to fetch bytes from. The second element the tuple defines the byte
-            range to retrieve. These values are arguments to `get`, as this method wraps
-            concurrent invocation of `get`.
-        """
         out = []
         with self._lock:
             for key, byte_range in key_ranges:
@@ -184,46 +193,16 @@ class ZipStore(Store):
                 return True
 
     async def list(self) -> AsyncGenerator[str, None]:
-        """Retrieve all keys in the store.
-
-        Returns
-        -------
-        AsyncGenerator[str, None]
-        """
         with self._lock:
             for key in self._zf.namelist():
                 yield key
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """Retrieve all keys in the store with a given prefix.
-
-        Parameters
-        ----------
-        prefix : str
-
-        Returns
-        -------
-        AsyncGenerator[str, None]
-        """
-
         async for key in self.list():
             if key.startswith(prefix):
                 yield key
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
-        """
-        Retrieve all keys and prefixes with a given prefix and which do not contain the character
-        “/” after the given prefix.
-
-        Parameters
-        ----------
-        prefix : str
-
-        Returns
-        -------
-        AsyncGenerator[str, None]
-        """
-
         if prefix.endswith("/"):
             prefix = prefix[:-1]
 
