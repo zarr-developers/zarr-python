@@ -898,7 +898,6 @@ async def open_array(
         if store_path.store.mode.create:
             return await create(
                 store=store_path,
-                path=path,
                 zarr_format=zarr_format,
                 overwrite=store_path.store.mode.overwrite,
                 **kwargs,

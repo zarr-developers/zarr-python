@@ -236,7 +236,7 @@ def test_metadata_to_dict(
 
 @pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
 @pytest.mark.parametrize("precision", ["ns", "D"])
-async def test_datetime_metadata(fill_value: int, precision: str):
+async def test_datetime_metadata(fill_value: int, precision: str) -> None:
     metadata_dict = {
         "zarr_format": 3,
         "node_type": "array",

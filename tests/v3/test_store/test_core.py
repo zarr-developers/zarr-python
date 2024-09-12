@@ -7,7 +7,7 @@ from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
 
 
-async def test_make_store_path(tmpdir) -> None:
+async def test_make_store_path(tmpdir: str) -> None:
     # None
     store_path = await make_store_path(None)
     assert isinstance(store_path.store, MemoryStore)
@@ -33,4 +33,4 @@ async def test_make_store_path(tmpdir) -> None:
     assert Path(store_path.store.root) == Path(tmpdir)
 
     with pytest.raises(TypeError):
-        await make_store_path(1)
+        await make_store_path(1)  # type: ignore[arg-type]

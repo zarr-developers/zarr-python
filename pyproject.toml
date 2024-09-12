@@ -225,6 +225,7 @@ python_version = "3.10"
 ignore_missing_imports = true
 namespace_packages = false
 
+
 strict = true
 warn_unreachable = true
 
@@ -233,6 +234,22 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 [[tool.mypy.overrides]]
 module = [
     "zarr.v2.*",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "tests.v2.*",
+    "tests.v3.package_with_entrypoint.*",
+    "tests.v3.test_codecs.*",
+    "tests.v3.test_metadata.*",
+    "tests.v3.test_store.*",
+    "tests.v3.test_config",
+    "tests.v3.test_group",
+    "tests.v3.test_indexing",
+    "tests.v3.test_properties",
+    "tests.v3.test_sync",
+    "tests.v3.test_v2",
 ]
 ignore_errors = true
 
@@ -262,6 +279,6 @@ markers = [
 
 [tool.repo-review]
 ignore = [
-	"PC111",  # fix Python code in documentation - enable later 
+	"PC111",  # fix Python code in documentation - enable later
 	"PC180",  # for JavaScript - not interested
 ]
