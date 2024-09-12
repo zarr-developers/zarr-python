@@ -195,8 +195,8 @@ class Buffer(ABC):
         -------
             A new buffer representing the content of the input buffer
 
-        Note
-        ----
+        Notes
+        -----
         Subclasses of `Buffer` must override this method to implement
         more optimal conversions that avoid copies where possible
         """
