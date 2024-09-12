@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, cast, overload
 
 if TYPE_CHECKING:
@@ -70,6 +71,27 @@ def parse_dimension_names(data: None | Iterable[str | None]) -> tuple[str | None
         raise TypeError(msg)
 
 
+def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
+    if data is None:
+        return ()
+    if isinstance(data, Iterable):
+        if len(tuple(data)) >= 1:
+            msg = (
+                "Got a non-null storage_transformers keyword argument. "
+                "Storage transformers are not supported by zarr-python at this time. "
+                "The storage transformer(s) will be retained in array metadata but will not "
+                "influence storage routines"
+            )
+            warnings.warn(msg, UserWarning, stacklevel=1)
+            return data  # type: ignore[return-value]
+        else:
+            return ()
+    else:
+        raise TypeError(
+            f"Invalid storage_transformers. Expected an iterable of dicts. Got {type(data)} instead."
+        )
+
+
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(ArrayMetadata):
     shape: ChunkCoords
@@ -82,6 +104,7 @@ class ArrayV3Metadata(ArrayMetadata):
     dimension_names: tuple[str, ...] | None = None
     zarr_format: Literal[3] = field(default=3, init=False)
     node_type: Literal["array"] = field(default="array", init=False)
+    storage_transformers: tuple[dict[str, JSON], ...]
 
     def __init__(
         self,
@@ -94,6 +117,7 @@ class ArrayV3Metadata(ArrayMetadata):
         codecs: Iterable[Codec | dict[str, JSON]],
         attributes: None | dict[str, JSON],
         dimension_names: None | Iterable[str],
+        storage_transformers: None | Iterable[dict[str, JSON]] = None,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
@@ -106,6 +130,7 @@ class ArrayV3Metadata(ArrayMetadata):
         fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed)
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
+        storage_transformers_parsed = parse_storage_transformers(storage_transformers)
 
         array_spec = ArraySpec(
             shape=shape_parsed,
@@ -124,6 +149,7 @@ class ArrayV3Metadata(ArrayMetadata):
         object.__setattr__(self, "dimension_names", dimension_names_parsed)
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "attributes", attributes_parsed)
+        object.__setattr__(self, "storage_transformers", storage_transformers_parsed)
 
         self._validate_metadata()
 

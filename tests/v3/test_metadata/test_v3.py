@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.codec import Codec
+    from zarr.core.common import JSON
 
 
 import numpy as np
@@ -172,6 +173,7 @@ def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str)
 @pytest.mark.parametrize("chunk_key_encoding", ["v2", "default"])
 @pytest.mark.parametrize("dimension_separator", [".", "/", None])
 @pytest.mark.parametrize("dimension_names", ["nones", "strings", "missing"])
+@pytest.mark.parametrize("storage_transformers", [None, ()])
 def test_metadata_to_dict(
     chunk_grid: str,
     codecs: list[Codec],
@@ -180,6 +182,7 @@ def test_metadata_to_dict(
     dimension_separator: Literal[".", "/"] | None,
     dimension_names: Literal["nones", "strings", "missing"],
     attributes: None | dict[str, Any],
+    storage_transformers: None | tuple[dict[str, JSON]],
 ) -> None:
     shape = (1, 2, 3)
     data_type = "uint8"
@@ -210,6 +213,7 @@ def test_metadata_to_dict(
         "chunk_key_encoding": cke,
         "codecs": tuple(c.to_dict() for c in codecs),
         "fill_value": fill_value,
+        "storage_transformers": storage_transformers,
     }
 
     if attributes is not None:
@@ -220,9 +224,16 @@ def test_metadata_to_dict(
     metadata = ArrayV3Metadata.from_dict(metadata_dict)
     observed = metadata.to_dict()
     expected = metadata_dict.copy()
+
+    # if unset or None or (), storage_transformers gets normalized to ()
+    assert observed["storage_transformers"] == ()
+    observed.pop("storage_transformers")
+    expected.pop("storage_transformers")
+
     if attributes is None:
         assert observed["attributes"] == {}
         observed.pop("attributes")
+
     if dimension_separator is None:
         if chunk_key_encoding == "default":
             expected_cke_dict = DefaultChunkKeyEncoding(separator="/").to_dict()
@@ -253,3 +264,24 @@ async def test_datetime_metadata(fill_value: int, precision: str) -> None:
 
     result = json.loads(d["zarr.json"].to_bytes())
     assert result["fill_value"] == fill_value
+
+
+def test_storage_transformers() -> None:
+    """
+    Test that providing an actual storage transformer produces a warning and otherwise passes through
+    """
+    metadata_dict = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (10,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": "uint8",
+        "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
+        "codecs": (BytesCodec(),),
+        "fill_value": 0,
+        "storage_transformers": ({"test": "should_warn"}),
+    }
+    with pytest.warns():
+        meta = ArrayV3Metadata.from_dict(metadata_dict)
+
+    assert meta.to_dict()["storage_transformers"] == metadata_dict["storage_transformers"]
