@@ -104,9 +104,12 @@ class ArrayV2Metadata(ArrayMetadata):
             raise TypeError
 
         zarray_dict = self.to_dict()
-        assert isinstance(zarray_dict, dict)
+
+        # todo: remove this check when we can ensure that to_dict always returns dicts.
+        if not isinstance(zarray_dict, dict):
+            raise TypeError(f"Invalid type: got {type(zarray_dict)}, expected dict.")
+
         zattrs_dict = zarray_dict.pop("attributes", {})
-        assert isinstance(zattrs_dict, dict)
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
@@ -128,7 +131,9 @@ class ArrayV2Metadata(ArrayMetadata):
     def to_dict(self) -> JSON:
         zarray_dict = super().to_dict()
 
-        assert isinstance(zarray_dict, dict)
+        # todo: remove this check when we can ensure that to_dict always returns dicts.
+        if not isinstance(zarray_dict, dict):
+            raise TypeError(f"Invalid type: got {type(zarray_dict)}, expected dict.")
 
         _ = zarray_dict.pop("chunk_grid")
         zarray_dict["chunks"] = self.chunk_grid.chunk_shape
