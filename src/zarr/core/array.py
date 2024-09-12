@@ -55,7 +55,8 @@ from zarr.core.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.core.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.registry import get_pipeline_class
 from zarr.store import StoreLike, StorePath, make_store_path
@@ -67,6 +68,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec, CodecPipeline
+    from zarr.core.metadata.common import ArrayMetadata
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
 __all__ = ["parse_array_metadata", "create_codec_pipeline"]
