@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import pytest
 
+import zarr.api.asynchronous
 import zarr.store
 from zarr.codecs import GzipCodec
 from zarr.core.buffer import cpu
@@ -77,8 +78,8 @@ def test_metadata_to_dict(
     assert observed == expected
 
 
-async def test_read_consolidated_metadata():
-    # .zgroup, .zattrs, .metadata
+@pytest.fixture
+async def v2_consolidated_metadata(memory_store: zarr.store.MemoryStore) -> zarr.store.MemoryStore:
     zmetadata = {
         "metadata": {
             ".zattrs": {
@@ -150,7 +151,12 @@ async def test_read_consolidated_metadata():
     await store.set(
         "nested/.zgroup", cpu.Buffer.from_bytes(json.dumps({"zarr_format": 2}).encode())
     )
+    return store
 
+
+async def test_read_consolidated_metadata(v2_consolidated_metadata: zarr.store.MemoryStore):
+    # .zgroup, .zattrs, .metadata
+    store = v2_consolidated_metadata
     group = zarr.open_consolidated(store=store, zarr_format=2)
     assert group.metadata.consolidated_metadata is not None
     expected = ConsolidatedMetadata(
@@ -190,3 +196,10 @@ async def test_read_consolidated_metadata():
     )
     result = group.metadata.consolidated_metadata
     assert result == expected
+
+
+async def test_getitem_consolidated(v2_consolidated_metadata):
+    store = v2_consolidated_metadata
+    group = await zarr.api.asynchronous.open_consolidated(store=store, zarr_format=2)
+    air = await group.getitem("air")
+    assert air.metadata.shape == (730,)

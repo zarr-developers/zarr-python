@@ -362,42 +362,7 @@ class AsyncGroup:
 
         # Consolidated metadata lets us avoid some I/O operations so try that first.
         if self.metadata.consolidated_metadata is not None:
-            try:
-                metadata = self.metadata.consolidated_metadata.metadata[key]
-            except KeyError as e:
-                # The Group Metadata has consolidated metadata, but the key
-                # isn't present. We trust this to mean that the key isn't in
-                # the hierarchy, and *don't* fall back to checking the store.
-                msg = f"'{key}' not found in consolidated metadata."
-                raise KeyError(msg) from e
-
-            if metadata.zarr_format == 3:
-                assert isinstance(metadata, GroupMetadata | ArrayV3Metadata)
-
-                if metadata.node_type == "group":
-                    # To speed up nested access like
-                    #     group.getitem("a").getitem("b").getitem("array")
-                    # we'll propagate the consolidated metadata to children. However, we need
-                    # to remove the `store_path` prefix to ensure that `group.getitem("a")`
-                    # has a different (shorter) prefix thanks to it having a longer root.
-                    metadata = replace(
-                        self.metadata,
-                        consolidated_metadata=replace(
-                            self.metadata.consolidated_metadata,
-                            metadata={
-                                k.split(key, 1)[-1].lstrip("/"): v
-                                for k, v in self.metadata.consolidated_metadata.metadata.items()
-                                if k.startswith(key) and k != key
-                            },
-                        ),
-                    )
-                    return AsyncGroup(metadata=metadata, store_path=store_path)
-                else:
-                    # TODO: order?
-                    return AsyncArray(metadata=metadata, store_path=store_path)
-            else:
-                # v2
-                raise NotImplementedError
+            return self._getitem_consolidated(store_path, key)
 
         # Note:
         # in zarr-python v2, we first check if `key` references an Array, else if `key` references
@@ -447,6 +412,47 @@ class AsyncGroup:
                 return type(self).from_dict(store_path, zarr_json)
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
+
+    def _getitem_consolidated(self, store_path: StorePath, key: str) -> AsyncArray | AsyncGroup:
+        # getitem, in the special case where we have consolidated metadata.
+        # Note that this is a regular def (non async) function.
+        # This shouldn't do any additional I/O.
+
+        # the caller needs to verify this!
+        assert self.metadata.consolidated_metadata is not None
+
+        try:
+            metadata = self.metadata.consolidated_metadata.metadata[key]
+        except KeyError as e:
+            # The Group Metadata has consolidated metadata, but the key
+            # isn't present. We trust this to mean that the key isn't in
+            # the hierarchy, and *don't* fall back to checking the store.
+            msg = f"'{key}' not found in consolidated metadata."
+            raise KeyError(msg) from e
+
+        assert isinstance(metadata, GroupMetadata | ArrayMetadata)
+
+        # generic over v2 / v3 here, so we don't have `metadata.node_type`. Use isinstance.
+        if isinstance(metadata, GroupMetadata):
+            # To speed up nested access like
+            #     group.getitem("a").getitem("b").getitem("array")
+            # we'll propagate the consolidated metadata to children. However, we need
+            # to remove the `store_path` prefix to ensure that `group.getitem("a")`
+            # has a different (shorter) prefix thanks to it having a longer root.
+            metadata = replace(
+                self.metadata,
+                consolidated_metadata=replace(
+                    self.metadata.consolidated_metadata,
+                    metadata={
+                        k.split(key, 1)[-1].lstrip("/"): v
+                        for k, v in self.metadata.consolidated_metadata.metadata.items()
+                        if k.startswith(key) and k != key
+                    },
+                ),
+            )
+            return AsyncGroup(metadata=metadata, store_path=store_path)
+        else:
+            return AsyncArray(metadata=metadata, store_path=store_path)
 
     async def delitem(self, key: str) -> None:
         store_path = self.store_path / key
