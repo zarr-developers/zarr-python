@@ -193,8 +193,6 @@ def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
     """
     Parse a potential fill value into a value that is compatible with the provided dtype.
 
-    This is a light wrapper around zarr.v2.util.normalize_fill_value.
-
     Parameters
     ----------
     fill_value: Any
@@ -205,6 +203,33 @@ def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
     Returns
         An instance of `dtype`, or `None`, or any python object (in the case of an object dtype)
     """
-    from zarr.v2.util import normalize_fill_value
 
-    return normalize_fill_value(fill_value=fill_value, dtype=dtype)
+    if fill_value is None or dtype.hasobject:
+        # no fill value
+        pass
+    elif not isinstance(fill_value, np.void) and fill_value == 0:
+        # this should be compatible across numpy versions for any array type, including
+        # structured arrays
+        fill_value = np.zeros((), dtype=dtype)[()]
+
+    elif dtype.kind == "U":
+        # special case unicode because of encoding issues on Windows if passed through numpy
+        # https://github.com/alimanfoo/zarr/pull/172#issuecomment-343782713
+
+        if not isinstance(fill_value, str):
+            raise ValueError(
+                f"fill_value {fill_value!r} is not valid for dtype {dtype}; must be a unicode string"
+            )
+    else:
+        try:
+            if isinstance(fill_value, bytes) and dtype.kind == "V":
+                # special case for numpy 1.14 compatibility
+                fill_value = np.array(fill_value, dtype=dtype.str).view(dtype)[()]
+            else:
+                fill_value = np.array(fill_value, dtype=dtype)[()]
+
+        except Exception as e:
+            msg = f"Fill_value {fill_value} is not valid for dtype {dtype}."
+            raise ValueError(msg) from e
+
+    return fill_value
