@@ -49,7 +49,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
         # set
         with pytest.raises(ValueError):
-            await store.set("foo", Buffer.from_bytes(b"bar"))
+            await store.set("foo", cpu.Buffer.from_bytes(b"bar"))
 
         # # delete
         # TODO: uncomment once deletes are implemented

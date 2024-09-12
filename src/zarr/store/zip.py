@@ -4,15 +4,14 @@ import os
 import threading
 import time
 import zipfile
-from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 from zarr.abc.store import Store
 from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from collections.abc import AsyncGenerator
 
 ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
@@ -49,19 +48,20 @@ class ZipStore(Store):
         self.compression = compression
         self.allowZip64 = allowZip64
 
-    @classmethod
-    async def open(cls, *args: Any, **kwargs: Any) -> Self:
-        store = cls(*args, **kwargs)
-        store._lock = threading.RLock()  # TODO: evaluate if this is the lock we want or if we want an asyncio.Lock or something like that
+    async def _open(self) -> None:
+        if self._is_open:
+            raise ValueError("store is already open")
 
-        store._zf = zipfile.ZipFile(
-            store.path,
-            mode=store._zmode,
-            compression=store.compression,
-            allowZip64=store.allowZip64,
+        self._lock = threading.RLock()
+
+        self._zf = zipfile.ZipFile(
+            self.path,
+            mode=self._zmode,
+            compression=self.compression,
+            allowZip64=self.allowZip64,
         )
-        store._is_open = True
-        return store
+
+        self._is_open = True
 
     def close(self) -> None:
         super().close()
