@@ -217,14 +217,36 @@ class AsyncGroup:
         cls,
         store: StoreLike,
         zarr_format: Literal[2, 3, None] = 3,
-        open_consolidated: bool = False,
+        open_consolidated: bool | str = False,
     ) -> AsyncGroup:
+        """
+        Open a new AsyncGroup
+
+        Parameters
+        ----------
+        store: StoreLike
+        zarr_format: {2, 3}, optional
+        open_consolidated: bool or str, default False
+            Whether to use consolidated metadata when opening a V2 Group.
+            This parameter has no effect when ``zarr_format=3`` (the default),
+            where consolidated metadata is always used when present.
+
+            By default, consolidated metadata is not used for ``zarr_format=2``,
+            matching the behavior of zarr-python 2.x. Pass ``open_consolidated=True``
+            to use consolidated metadata with the default key ``.zmetadata``.
+
+            Pass a string to use an alternative key in the store, which will be
+            be relative to the store or ``StorePath``.
+        """
         store_path = await make_store_path(store)
 
         if zarr_format == 2:
             paths = [store_path / ZGROUP_JSON, store_path / ZATTRS_JSON]
             if open_consolidated:
-                paths.append(store_path / ".zmetadata")  # todo: configurable
+                if open_consolidated is True:
+                    open_consolidated = ".zmetadata"
+
+                paths.append(store_path / open_consolidated)
 
             zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
                 *[path.get() for path in paths]
@@ -262,47 +284,61 @@ class AsyncGroup:
             raise ValueError(f"unexpected zarr_format: {zarr_format}")
 
         if zarr_format == 2:
-            # V2 groups are comprised of a .zgroup and .zattrs objects
+            # this is checked above, asserting here for mypy
             assert zgroup_bytes is not None
-            zgroup = json.loads(zgroup_bytes.to_bytes())
-            zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
-            group_metadata = {**zgroup, "attributes": zattrs}
-
-            if open_consolidated:
-                # this *should* be defined.
-                assert consolidated_metadata_bytes is not None  # already checked above
-
-                v2_consolidated_metadata = json.loads(consolidated_metadata_bytes.to_bytes())
-                v2_consolidated_metadata = v2_consolidated_metadata["metadata"]
-                # We already read zattrs and zgroup. Should we ignore these?
-                v2_consolidated_metadata.pop(".zattrs")
-                v2_consolidated_metadata.pop(".zgroup")
-
-                consolidated_metadata: defaultdict[str, dict[str, Any]] = defaultdict(dict)
-
-                # keys like air/.zarray, air/.zattrs
-                for k, v in v2_consolidated_metadata.items():
-                    path, kind = k.rsplit("/.", 1)
-
-                    if kind == "zarray":
-                        consolidated_metadata[path].update(v)
-                    elif kind == "zattrs":
-                        consolidated_metadata[path]["attributes"] = v
-                    elif kind == "zgroup":
-                        consolidated_metadata[path].update(v)
-                    else:
-                        raise ValueError(f"Invalid file type '{kind}' at path '{path}")
-                group_metadata["consolidated_metadata"] = {
-                    "metadata": dict(consolidated_metadata),
-                    "kind": "inline",
-                    "must_understand": False,
-                }
-
+            return cls._from_bytes_v2(
+                store_path, zgroup_bytes, zattrs_bytes, consolidated_metadata_bytes
+            )
         else:
             # V3 groups are comprised of a zarr.json object
             assert zarr_json_bytes is not None
-            group_metadata = json.loads(zarr_json_bytes.to_bytes())
+            return cls._from_bytes_v3(store_path, zarr_json_bytes)
 
+    @classmethod
+    def _from_bytes_v2(
+        cls,
+        store_path: StorePath,
+        zgroup_bytes: Buffer,
+        zattrs_bytes: Buffer | None,
+        consolidated_metadata_bytes: Buffer | None,
+    ) -> AsyncGroup:
+        # V2 groups are comprised of a .zgroup and .zattrs objects
+        zgroup = json.loads(zgroup_bytes.to_bytes())
+        zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
+        group_metadata = {**zgroup, "attributes": zattrs}
+
+        if consolidated_metadata_bytes is not None:
+            v2_consolidated_metadata = json.loads(consolidated_metadata_bytes.to_bytes())
+            v2_consolidated_metadata = v2_consolidated_metadata["metadata"]
+            # We already read zattrs and zgroup. Should we ignore these?
+            v2_consolidated_metadata.pop(".zattrs")
+            v2_consolidated_metadata.pop(".zgroup")
+
+            consolidated_metadata: defaultdict[str, dict[str, Any]] = defaultdict(dict)
+
+            # keys like air/.zarray, air/.zattrs
+            for k, v in v2_consolidated_metadata.items():
+                path, kind = k.rsplit("/.", 1)
+
+                if kind == "zarray":
+                    consolidated_metadata[path].update(v)
+                elif kind == "zattrs":
+                    consolidated_metadata[path]["attributes"] = v
+                elif kind == "zgroup":
+                    consolidated_metadata[path].update(v)
+                else:
+                    raise ValueError(f"Invalid file type '{kind}' at path '{path}")
+            group_metadata["consolidated_metadata"] = {
+                "metadata": dict(consolidated_metadata),
+                "kind": "inline",
+                "must_understand": False,
+            }
+
+        return cls.from_dict(store_path, group_metadata)
+
+    @classmethod
+    def _from_bytes_v3(cls, store_path: StorePath, zarr_json_bytes: Buffer) -> AsyncGroup:
+        group_metadata = json.loads(zarr_json_bytes.to_bytes())
         return cls.from_dict(store_path, group_metadata)
 
     @classmethod
