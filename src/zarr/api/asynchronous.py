@@ -138,7 +138,7 @@ def _default_zarr_version() -> ZarrFormat:
     return 3
 
 
-async def consolidate_metadata(store: StoreLike) -> AsyncGroup:
+async def consolidate_metadata(store: StoreLike, path: str | None = None) -> AsyncGroup:
     """
     Consolidate the metadata of all nodes in a hierarchy.
 
@@ -149,6 +149,12 @@ async def consolidate_metadata(store: StoreLike) -> AsyncGroup:
     ----------
     store: StoreLike
         The store-like object whose metadata you wish to consolidate.
+    path: str, optional
+        A path to a group in the store to consolidate at. Only children
+        below that group will be consolidated.
+
+        By default, the root node is used so all the metadata in the
+        store is consolidated.
 
     Returns
     -------
@@ -156,7 +162,12 @@ async def consolidate_metadata(store: StoreLike) -> AsyncGroup:
         The group, with the ``consolidated_metadata`` field set to include
         the metadata of each child node.
     """
-    group = await AsyncGroup.open(store)
+    store_path = await make_store_path(store)
+
+    if path is not None:
+        store_path = store_path / path
+
+    group = await AsyncGroup.open(store_path)
     group.store_path.store._check_writable()
 
     members = dict([x async for x in group.members(max_depth=None)])

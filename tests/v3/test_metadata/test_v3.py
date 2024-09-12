@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.store.common import StorePath
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -268,13 +269,8 @@ async def test_datetime_metadata(fill_value: int, precision: str) -> None:
     assert result["fill_value"] == fill_value
 
 
-async def test_consolidated(memory_store: Store) -> None:
-    # TODO: Figure out desired keys in
-    # TODO: variety in the hierarchies
-    # More nesting
-    # arrays under arrays
-    # single array
-    # etc.
+@pytest.fixture
+async def memory_store_with_hierarchy(memory_store: Store) -> None:
     g = await group(store=memory_store, attributes={"foo": "bar"})
     await g.create_array(name="air", shape=(1, 2, 3))
     await g.create_array(name="lat", shape=(1,))
@@ -286,9 +282,18 @@ async def test_consolidated(memory_store: Store) -> None:
 
     grandchild = await child.create_group("grandchild", attributes={"key": "grandchild"})
     await grandchild.create_array("array", shape=(4, 4), attributes={"key": "grandchild"})
+    return memory_store
 
-    await consolidate_metadata(memory_store)
-    group2 = await AsyncGroup.open(memory_store)
+
+async def test_consolidated(memory_store_with_hierarchy: Store) -> None:
+    # TODO: Figure out desired keys in
+    # TODO: variety in the hierarchies
+    # More nesting
+    # arrays under arrays
+    # single array
+    # etc.
+    await consolidate_metadata(memory_store_with_hierarchy)
+    group2 = await AsyncGroup.open(memory_store_with_hierarchy)
 
     array_metadata = {
         "attributes": {},
@@ -388,10 +393,10 @@ async def test_consolidated(memory_store: Store) -> None:
         ),
     )
     assert group2.metadata == expected
-    group3 = await open(store=memory_store)
+    group3 = await open(store=memory_store_with_hierarchy)
     assert group3.metadata == expected
 
-    group4 = await open_consolidated(store=memory_store)
+    group4 = await open_consolidated(store=memory_store_with_hierarchy)
     assert group4.metadata == expected
 
 
@@ -487,3 +492,14 @@ async def test_not_writable_raises(memory_store: zarr.store.MemoryStore) -> None
     read_store = zarr.store.MemoryStore(store_dict=memory_store._store_dict)
     with pytest.raises(ValueError, match="does not support writing"):
         await consolidate_metadata(read_store)
+
+
+async def test_non_root_node(memory_store_with_hierarchy: Store) -> None:
+    await consolidate_metadata(memory_store_with_hierarchy, path="child")
+    root = await AsyncGroup.open(memory_store_with_hierarchy)
+    child = await AsyncGroup.open(StorePath(memory_store_with_hierarchy) / "child")
+
+    assert root.metadata.consolidated_metadata is None
+    assert child.metadata.consolidated_metadata is not None
+    assert "air" not in child.metadata.consolidated_metadata.metadata
+    assert "grandchild" in child.metadata.consolidated_metadata.metadata
