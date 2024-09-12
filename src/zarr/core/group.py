@@ -132,12 +132,6 @@ class ConsolidatedMetadata:
                         metadata[k] = GroupMetadata.from_dict(v)
         return cls(metadata=metadata)
 
-    def _filter_prefix(self, key: str) -> ConsolidatedMetadata:
-        """
-        Filter a
-        """
-        return replace(self, metadata={k: v for k, v in self.metadata.items() if k.startswith(key)})
-
 
 @dataclass(frozen=True)
 class GroupMetadata(Metadata):
