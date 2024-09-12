@@ -90,7 +90,7 @@ def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecP
         return get_pipeline_class().from_list(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
         return get_pipeline_class().from_list(
-            [V2Filters(metadata.filters or ()), V2Compressor(metadata.compressor)]
+            [V2Filters(metadata.filters), V2Compressor(metadata.compressor)]
         )
     else:
         raise TypeError
