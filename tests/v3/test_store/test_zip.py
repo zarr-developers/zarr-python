@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import os
 import tempfile
-from collections.abc import Coroutine
-from typing import Any
+from typing import TYPE_CHECKING
 
 import pytest
 
 from zarr.abc.store import AccessMode
-from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.store.zip import ZipStore
 from zarr.testing.store import StoreTests
 
+if TYPE_CHECKING:
+    from collections.abc import Coroutine
+    from typing import Any
 
-class TestZipStore(StoreTests[ZipStore]):
+
+class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     store_cls = ZipStore
 
     @pytest.fixture(scope="function")
