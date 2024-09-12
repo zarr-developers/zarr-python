@@ -90,7 +90,7 @@ def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecP
         return get_pipeline_class().from_list(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
         return get_pipeline_class().from_list(
-            [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
+            [V2Filters(metadata.filters or ()), V2Compressor(metadata.compressor)]
         )
     else:
         raise TypeError
@@ -299,8 +299,6 @@ class AsyncArray:
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray:
-        import numcodecs
-
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=2)
         if order is None:
@@ -315,15 +313,9 @@ class AsyncArray:
             chunks=chunks,
             order=order,
             dimension_separator=dimension_separator,
-            fill_value=0 if fill_value is None else fill_value,
-            compressor=(
-                numcodecs.get_codec(compressor).get_config() if compressor is not None else None
-            ),
-            filters=(
-                [numcodecs.get_codec(filter).get_config() for filter in filters]
-                if filters is not None
-                else None
-            ),
+            fill_value=fill_value,
+            compressor=compressor,
+            filters=filters,
             attributes=attributes,
         )
         array = cls(metadata=metadata, store_path=store_path)
