@@ -18,11 +18,14 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     def get(self, store: MemoryStore, key: str) -> Buffer:
         return store._store_dict[key]
 
-    @pytest.fixture(scope="function", params=[None, {}])
+    @pytest.fixture(scope="function", params=[None, True])
     def store_kwargs(
         self, request: pytest.FixtureRequest
     ) -> dict[str, str | None | dict[str, Buffer]]:
-        return {"store_dict": request.param, "mode": "r+"}
+        kwargs = {"store_dict": None, "mode": "r+"}
+        if request.param is True:
+            kwargs["store_dict"] = {}
+        return kwargs
 
     @pytest.fixture(scope="function")
     def store(self, store_kwargs: str | None | dict[str, Buffer]) -> MemoryStore:
@@ -77,3 +80,9 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
 
     def test_list_prefix(self, store: GpuMemoryStore) -> None:
         assert True
+
+
+def test_uses_dict():
+    store_dict = {}
+    store = MemoryStore(store_dict)
+    assert store._store_dict is store_dict

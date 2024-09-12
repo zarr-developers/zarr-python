@@ -4,15 +4,16 @@ import json
 import re
 from typing import TYPE_CHECKING, Literal
 
-from zarr.abc.codec import Codec
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from typing import Any
 
-from collections.abc import Sequence
+    from zarr.abc.codec import Codec
+
 
 import numpy as np
 import pytest
@@ -236,7 +237,7 @@ def test_metadata_to_dict(
 
 @pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
 @pytest.mark.parametrize("precision", ["ns", "D"])
-async def test_datetime_metadata(fill_value: int, precision: str):
+async def test_datetime_metadata(fill_value: int, precision: str) -> None:
     metadata_dict = {
         "zarr_format": 3,
         "node_type": "array",

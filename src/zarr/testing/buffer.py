@@ -1,7 +1,6 @@
 # mypy: ignore-errors
 from __future__ import annotations
 
-from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -11,6 +10,8 @@ from zarr.core.buffer import Buffer, BufferPrototype, cpu
 from zarr.store import MemoryStore
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from typing_extensions import Self
 
 
@@ -24,9 +25,13 @@ __all__ = [
 class TestNDArrayLike(np.ndarray):
     """An example of a ndarray-like class"""
 
+    __test__ = False
+
 
 class TestBuffer(cpu.Buffer):
     """Example of a custom Buffer that handles ArrayLike"""
+
+    __test__ = False
 
 
 class NDBufferUsingTestNDArrayLike(cpu.NDBuffer):

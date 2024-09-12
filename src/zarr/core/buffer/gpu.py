@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterable
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -16,6 +15,8 @@ from zarr.core.buffer import core
 from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from typing_extensions import Self
 
     from zarr.core.common import BytesLike

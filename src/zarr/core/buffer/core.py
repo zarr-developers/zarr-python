@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sys
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,17 +16,21 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.common import ChunkCoords
 from zarr.registry import (
     get_buffer_class,
     get_ndbuffer_class,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Sequence
+
     from typing_extensions import Self
 
     from zarr.codecs.bytes import Endian
-    from zarr.core.common import BytesLike
+    from zarr.core.common import BytesLike, ChunkCoords
+
+# Everything here is imported into ``zarr.core.buffer`` namespace.
+__all__: list[str] = []
 
 
 @runtime_checkable

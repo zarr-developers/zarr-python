@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, MutableMapping
 from typing import TYPE_CHECKING
 
 from zarr.abc.store import Store
@@ -9,6 +8,8 @@ from zarr.core.common import concurrent_map
 from zarr.store._utils import _normalize_interval_index
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, MutableMapping
+
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
 
@@ -30,7 +31,9 @@ class MemoryStore(Store):
         mode: AccessModeLiteral = "r",
     ):
         super().__init__(mode=mode)
-        self._store_dict = store_dict or {}
+        if store_dict is None:
+            store_dict = {}
+        self._store_dict = store_dict
 
     async def empty(self) -> bool:
         return not self._store_dict

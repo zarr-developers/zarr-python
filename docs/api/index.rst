@@ -4,4 +4,4 @@ API Reference
 .. toctree::
     :maxdepth: 1
 
-    zarr
+    ../_autoapi/zarr/index

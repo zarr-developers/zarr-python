@@ -1,5 +1,7 @@
 import os
+from collections.abc import Generator
 
+import botocore.client
 import fsspec
 import pytest
 from upath import UPath
@@ -22,7 +24,7 @@ endpoint_url = f"http://127.0.0.1:{port}/"
 
 
 @pytest.fixture(scope="module")
-def s3_base():
+def s3_base() -> Generator[None, None, None]:
     # writable local S3 system
 
     # This fixture is module-scoped, meaning that we can reuse the MotoServer across all tests
@@ -37,7 +39,7 @@ def s3_base():
     server.stop()
 
 
-def get_boto3_client():
+def get_boto3_client() -> botocore.client.BaseClient:
     from botocore.session import Session
 
     # NB: we use the sync botocore client for setup
@@ -46,7 +48,7 @@ def get_boto3_client():
 
 
 @pytest.fixture(autouse=True, scope="function")
-def s3(s3_base):
+def s3(s3_base) -> Generator[s3fs.S3FileSystem, None, None]:
     """
     Quoting Martin Durant:
     pytest-asyncio creates a new event loop for each async test.
@@ -81,7 +83,7 @@ async def alist(it):
     return out
 
 
-async def test_basic():
+async def test_basic() -> None:
     store = await RemoteStore.open(
         f"s3://{test_bucket_name}", mode="w", endpoint_url=endpoint_url, anon=False
     )
