@@ -74,18 +74,20 @@ def test_group_name_properties(store: LocalStore | MemoryStore, zarr_format: Zar
     assert bar.basename == "bar"
 
 
-def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("consolidated_metadata", [True, False])
+def test_group_members(
+    store: MemoryStore | LocalStore, zarr_format: ZarrFormat, consolidated_metadata: bool
+) -> None:
     """
     Test that `Group.members` returns correct values, i.e. the arrays and groups
     (explicit and implicit) contained in that group.
     """
 
     path = "group"
-    agroup = AsyncGroup(
-        metadata=GroupMetadata(zarr_format=zarr_format),
-        store_path=StorePath(store=store, path=path),
+    group = Group.create(
+        store=store,
+        zarr_format=zarr_format,
     )
-    group = Group(agroup)
     members_expected: dict[str, Array | Group] = {}
 
     members_expected["subgroup"] = group.create_group("subgroup")
@@ -115,6 +117,11 @@ def test_group_members(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
             default_buffer_prototype().buffer.from_bytes(b"000000"),
         )
     )
+
+    if consolidated_metadata:
+        zarr.consolidate_metadata(store=store, zarr_format=zarr_format)
+        group = zarr.open_consolidated(store=store, zarr_format=zarr_format)
+
     members_observed = group.members()
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
@@ -692,10 +699,12 @@ async def test_asyncgroup_update_attributes(
     assert agroup_new_attributes.attrs == attributes_new
 
 
-async def test_group_members_async(store: LocalStore | MemoryStore) -> None:
-    group = AsyncGroup(
-        GroupMetadata(),
-        store_path=StorePath(store=store, path="root"),
+@pytest.mark.parametrize("consolidated_metadata", [True, False])
+async def test_group_members_async(
+    store: LocalStore | MemoryStore, consolidated_metadata: bool
+) -> None:
+    group = await AsyncGroup.create(
+        store=store,
     )
     a0 = await group.create_array("a0", shape=(1,))
     g0 = await group.create_group("g0")
@@ -737,6 +746,10 @@ async def test_group_members_async(store: LocalStore | MemoryStore) -> None:
         ("g0/g1/g2", g2),
     ]
     assert all_children == expected
+
+    if consolidated_metadata:
+        await zarr.api.asynchronous.consolidate_metadata(store=store)
+        group = await zarr.api.asynchronous.open_group(store=store)
 
     nmembers = await group.nmembers(max_depth=None)
     assert nmembers == 6

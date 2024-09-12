@@ -138,7 +138,9 @@ def _default_zarr_version() -> ZarrFormat:
     return 3
 
 
-async def consolidate_metadata(store: StoreLike, path: str | None = None) -> AsyncGroup:
+async def consolidate_metadata(
+    store: StoreLike, path: str | None = None, zarr_format: ZarrFormat = 3
+) -> AsyncGroup:
     """
     Consolidate the metadata of all nodes in a hierarchy.
 
@@ -167,7 +169,7 @@ async def consolidate_metadata(store: StoreLike, path: str | None = None) -> Asy
     if path is not None:
         store_path = store_path / path
 
-    group = await AsyncGroup.open(store_path)
+    group = await AsyncGroup.open(store_path, zarr_format=zarr_format)
     group.store_path.store._check_writable()
 
     members = dict([x async for x in group.members(max_depth=None)])

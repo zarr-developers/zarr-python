@@ -35,7 +35,7 @@ from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.common import ensure_no_existing_node
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable, Iterator
+    from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
     from typing import Any
 
     from zarr.abc.codec import Codec
@@ -832,7 +832,14 @@ class AsyncGroup:
     async def _members(
         self, max_depth: int | None, current_depth: int
     ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
-        # todo!
+        if self.metadata.consolidated_metadata is not None:
+            # we should be able to do members without any additional I/O
+            members = self._members_consolidated(max_depth, current_depth)
+
+            for member in members:
+                yield member
+            return
+
         if not self.store_path.store.supports_listing:
             msg = (
                 f"The store associated with this group ({type(self.store_path.store)}) "
@@ -845,6 +852,11 @@ class AsyncGroup:
         # would be nice to make these special keys accessible programmatically,
         # and scoped to specific zarr versions
         _skip_keys = ("zarr.json", ".zgroup", ".zattrs")
+
+        # hmm lots of I/O and logic interleaved here.
+        # We *could* have an async gen over self.metadata.consolidated_metadata.metadata.keys()
+        # and plug in here.l `getitem` will skip I/O.
+        # Kinda a shape to have all the asyncio task overhead though, when it isn't needed.
 
         async for key in self.store_path.store.list_dir(self.store_path.path):
             if key in _skip_keys:
@@ -873,6 +885,32 @@ class AsyncGroup:
                     "Object at %s is not recognized as a component of a Zarr hierarchy.",
                     key,
                 )
+
+    def _members_consolidated(
+        self, max_depth: int | None, current_depth: int
+    ) -> Generator[tuple[str, AsyncArray | AsyncGroup], None]:
+        # I think we know that current_depth is always 0?
+        # I guess we could have opened a non-consolidated store, hit a consolidated group, and then gotten here.
+        ...
+        # the caller must check this
+        assert self.metadata.consolidated_metadata is not None
+
+        keys = self.metadata.consolidated_metadata.metadata.keys()
+
+        # we kind of just want the top-level keys.
+        for key in keys:
+            # Why use self._getitem_consolidated instead of just consolidated_metadata.metadata.keys()?
+            #
+            # We want to ensure that groups yield from .members() *also* set consolidated
+            # metadata.
+            # This is a very subtle point that maybe indicates the API is wrong. But the tradeoff
+            # is duplicating the consolidated metadata for all children...
+            # Maybe...
+            obj = self._getitem_consolidated(self.store_path, key)
+            current_depth = key.count("/")
+
+            if (max_depth is None) or (current_depth <= max_depth):
+                yield key, obj
 
     async def contains(self, member: str) -> bool:
         # TODO: this can be made more efficient.
