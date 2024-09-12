@@ -258,16 +258,24 @@ class AsyncGroup:
                 consolidated_metadata_bytes = rest[0]
                 if consolidated_metadata_bytes is None:
                     raise FileNotFoundError(paths[-1])
+            else:
+                consolidated_metadata_bytes = None
 
         elif zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
                 raise FileNotFoundError(store_path)
         elif zarr_format is None:
-            zarr_json_bytes, zgroup_bytes, zattrs_bytes = await asyncio.gather(
+            (
+                zarr_json_bytes,
+                zgroup_bytes,
+                zattrs_bytes,
+                consolidated_metadata_bytes,
+            ) = await asyncio.gather(
                 (store_path / ZARR_JSON).get(),
                 (store_path / ZGROUP_JSON).get(),
                 (store_path / ZATTRS_JSON).get(),
+                (store_path / str(open_consolidated)).get(),
             )
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # TODO: revisit this exception type
