@@ -45,7 +45,7 @@ async def test_transpose(
         a = await AsyncArray.create(
             spath,
             shape=data.shape,
-            chunk_shape=(1, 32, 8),
+            chunks=(1, 32, 8),
             dtype=data.dtype,
             fill_value=0,
             chunk_key_encoding=("v2", "."),
@@ -95,7 +95,7 @@ def test_transpose_non_self_inverse(store: Store, order: list[int]) -> None:
     a = Array.create(
         spath,
         shape=data.shape,
-        chunk_shape=data.shape,
+        chunks=data.shape,
         dtype=data.dtype,
         fill_value=0,
         codecs=[TransposeCodec(order=order), BytesCodec()],
@@ -116,7 +116,7 @@ def test_transpose_invalid(
             Array.create(
                 spath,
                 shape=data.shape,
-                chunk_shape=(1, 32, 8),
+                chunks=(1, 32, 8),
                 dtype=data.dtype,
                 fill_value=0,
                 chunk_key_encoding=("v2", "."),

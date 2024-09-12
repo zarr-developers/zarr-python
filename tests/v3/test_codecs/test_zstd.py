@@ -15,7 +15,6 @@ def test_zstd(store: Store, checksum: bool) -> None:
     a = Array.create(
         StorePath(store, path="zstd"),
         shape=data.shape,
-        chunk_shape=(16, 16),
         dtype=data.dtype,
         fill_value=0,
         codecs=[BytesCodec(), ZstdCodec(level=0, checksum=checksum)],

@@ -14,7 +14,7 @@ def test_gzip(store: Store) -> None:
     a = Array.create(
         StorePath(store),
         shape=data.shape,
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype=data.dtype,
         fill_value=0,
         codecs=[BytesCodec(), GzipCodec()],
