@@ -82,15 +82,6 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
         raise TypeError(f"Unknown node type, got {type(node)}")
 
 
-# What does ConsolidatedMetadata mean at non-root levels of a Store?
-# Specifically, if a we have a Group at `/a/b` and cnosolidate
-# all the metadata under it, should the keys in the metadata map
-# be
-#   1: /a/b/1, /a/b/2, ...
-#   2: /1, /2, ...
-# ?
-
-
 @dataclass(frozen=True)
 class ConsolidatedMetadata:
     metadata: dict[str, ArrayMetadata | GroupMetadata]
@@ -107,16 +98,21 @@ class ConsolidatedMetadata:
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> ConsolidatedMetadata:
         data = dict(data)
+
+        kind = data.get("kind")
+        if kind != "inline":
+            raise ValueError(f"Consolidated metadata kind='{kind}' is not supported.")
+
+        # Do we care about the value of 'must_understand'?
+        # if data["must_understand"] is not False:
+        #     raise ValueError
+
         raw_metadata = data.get("metadata")
         if not isinstance(raw_metadata, dict):
-            raise TypeError("Unexpected type for 'metadata'")
+            raise TypeError(f"Unexpected type for 'metadata': {type(raw_metadata)}")
 
-        elif not raw_metadata:
-            raise ValueError("Must specify metadata")
-
-        metadata: dict[str, ArrayMetadata | GroupMetadata]
+        metadata: dict[str, ArrayMetadata | GroupMetadata] = {}
         if raw_metadata:
-            metadata = {}
             for k, v in raw_metadata.items():
                 if not isinstance(v, dict):
                     raise TypeError(f"Invalid value for metadata items. key={k}, type={type(v)}")
@@ -134,13 +130,6 @@ class ConsolidatedMetadata:
                     else:
                         # probably v2 Group metadata
                         metadata[k] = GroupMetadata.from_dict(v)
-
-        # assert data["kind"] == "inline"
-        if data["kind"] != "inline":
-            raise ValueError
-
-        if data["must_understand"] is not False:
-            raise ValueError
         return cls(metadata=metadata)
 
     def _filter_prefix(self, key: str) -> ConsolidatedMetadata:

@@ -503,3 +503,33 @@ async def test_non_root_node(memory_store_with_hierarchy: Store) -> None:
     assert child.metadata.consolidated_metadata is not None
     assert "air" not in child.metadata.consolidated_metadata.metadata
     assert "grandchild" in child.metadata.consolidated_metadata.metadata
+
+
+def test_consolidated_metadata_from_dict():
+    data = {"must_understand": False}
+
+    # missing kind
+    with pytest.raises(ValueError, match="kind='None'"):
+        ConsolidatedMetadata.from_dict(data)
+
+    # invalid kind
+    data["kind"] = "invalid"
+    with pytest.raises(ValueError, match="kind='invalid'"):
+        ConsolidatedMetadata.from_dict(data)
+
+    # missing metadata
+    data["kind"] = "inline"
+
+    with pytest.raises(TypeError, match="Unexpected type for 'metadata'"):
+        ConsolidatedMetadata.from_dict(data)
+
+    data["kind"] = "inline"
+    # empty is fine
+    data["metadata"] = {}
+    ConsolidatedMetadata.from_dict(data)
+
+    # invalid metadata
+    data["metadata"]["a"] = {"node_type": "array", "zarr_format": 3}
+
+    with pytest.raises(TypeError):
+        ConsolidatedMetadata.from_dict(data)
