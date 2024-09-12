@@ -876,25 +876,19 @@ async def test_group_getitem_consolidated(store: LocalStore | MemoryStore):
             "g1": GroupMetadata(
                 attributes={},
                 zarr_format=3,
-                consolidated_metadata=None,
-            ),
-            "g1/g2": GroupMetadata(
-                attributes={},
-                zarr_format=3,
-                consolidated_metadata=None,
+                consolidated_metadata=ConsolidatedMetadata(
+                    metadata={"g2": GroupMetadata(attributes={}, zarr_format=3)}
+                ),
             ),
         }
     )
     assert rg0.metadata.consolidated_metadata == expected
 
-    expected.metadata.pop("g1")
-    expected.metadata["g2"] = expected.metadata.pop("g1/g2")
     rg1 = await rg0.getitem("g1")
-    assert rg1.metadata.consolidated_metadata == expected
+    assert rg1.metadata.consolidated_metadata == expected.metadata["g1"].consolidated_metadata
 
     rg2 = await rg1.getitem("g2")
-    expected.metadata.clear()
-    assert rg2.metadata.consolidated_metadata == expected
+    assert rg2.metadata.consolidated_metadata is None
 
 
 async def test_group_delitem_consolidated(store: LocalStore | MemoryStore):

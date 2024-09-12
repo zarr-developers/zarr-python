@@ -361,37 +361,50 @@ async def test_consolidated(memory_store_with_hierarchy: Store) -> None:
                         **array_metadata,
                     }
                 ),
-                "child": GroupMetadata(attributes={"key": "child"}),
-                "child/array": ArrayV3Metadata.from_dict(
-                    {
-                        **array_metadata,
-                        **{
-                            "attributes": {"key": "child"},
-                            "shape": (4, 4),
-                            "chunk_grid": {
-                                "configuration": {"chunk_shape": (4, 4)},
-                                "name": "regular",
-                            },
+                "child": GroupMetadata(
+                    attributes={"key": "child"},
+                    consolidated_metadata=ConsolidatedMetadata(
+                        metadata={
+                            "array": ArrayV3Metadata.from_dict(
+                                {
+                                    **array_metadata,
+                                    **{
+                                        "attributes": {"key": "child"},
+                                        "shape": (4, 4),
+                                        "chunk_grid": {
+                                            "configuration": {"chunk_shape": (4, 4)},
+                                            "name": "regular",
+                                        },
+                                    },
+                                }
+                            ),
+                            "grandchild": GroupMetadata(
+                                attributes={"key": "grandchild"},
+                                consolidated_metadata=ConsolidatedMetadata(
+                                    metadata={
+                                        "array": ArrayV3Metadata.from_dict(
+                                            {
+                                                **array_metadata,
+                                                **{
+                                                    "attributes": {"key": "grandchild"},
+                                                    "shape": (4, 4),
+                                                    "chunk_grid": {
+                                                        "configuration": {"chunk_shape": (4, 4)},
+                                                        "name": "regular",
+                                                    },
+                                                },
+                                            }
+                                        )
+                                    }
+                                ),
+                            ),
                         },
-                    }
-                ),
-                "child/grandchild": GroupMetadata(attributes={"key": "grandchild"}),
-                "child/grandchild/array": ArrayV3Metadata.from_dict(
-                    {
-                        **array_metadata,
-                        **{
-                            "attributes": {"key": "grandchild"},
-                            "shape": (4, 4),
-                            "chunk_grid": {
-                                "configuration": {"chunk_shape": (4, 4)},
-                                "name": "regular",
-                            },
-                        },
-                    }
+                    ),
                 ),
             },
         ),
     )
+
     assert group2.metadata == expected
     group3 = await open(store=memory_store_with_hierarchy)
     assert group3.metadata == expected
@@ -533,3 +546,102 @@ def test_consolidated_metadata_from_dict():
 
     with pytest.raises(TypeError):
         ConsolidatedMetadata.from_dict(data)
+
+
+def test_flatten():
+    array_metadata = {
+        "attributes": {},
+        "chunk_key_encoding": {
+            "configuration": {"separator": "/"},
+            "name": "default",
+        },
+        "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
+        "data_type": np.dtype("float64"),
+        "fill_value": np.float64(0.0),
+        "node_type": "array",
+        # "shape": (1, 2, 3),
+        "zarr_format": 3,
+    }
+
+    metadata = ConsolidatedMetadata(
+        kind="inline",
+        must_understand=False,
+        metadata={
+            "air": ArrayV3Metadata.from_dict(
+                {
+                    **{
+                        "shape": (1, 2, 3),
+                        "chunk_grid": {
+                            "configuration": {"chunk_shape": (1, 2, 3)},
+                            "name": "regular",
+                        },
+                    },
+                    **array_metadata,
+                }
+            ),
+            "lat": ArrayV3Metadata.from_dict(
+                {
+                    **{
+                        "shape": (1,),
+                        "chunk_grid": {
+                            "configuration": {"chunk_shape": (1,)},
+                            "name": "regular",
+                        },
+                    },
+                    **array_metadata,
+                }
+            ),
+            "child": GroupMetadata(
+                attributes={"key": "child"},
+                consolidated_metadata=ConsolidatedMetadata(
+                    metadata={
+                        "array": ArrayV3Metadata.from_dict(
+                            {
+                                **array_metadata,
+                                **{
+                                    "attributes": {"key": "child"},
+                                    "shape": (4, 4),
+                                    "chunk_grid": {
+                                        "configuration": {"chunk_shape": (4, 4)},
+                                        "name": "regular",
+                                    },
+                                },
+                            }
+                        ),
+                        "grandchild": GroupMetadata(
+                            attributes={"key": "grandchild"},
+                            consolidated_metadata=ConsolidatedMetadata(
+                                metadata={
+                                    "array": ArrayV3Metadata.from_dict(
+                                        {
+                                            **array_metadata,
+                                            **{
+                                                "attributes": {"key": "grandchild"},
+                                                "shape": (4, 4),
+                                                "chunk_grid": {
+                                                    "configuration": {"chunk_shape": (4, 4)},
+                                                    "name": "regular",
+                                                },
+                                            },
+                                        }
+                                    )
+                                }
+                            ),
+                        ),
+                    },
+                ),
+            ),
+        },
+    )
+    result = metadata.flattened_metadata()
+    expected = {
+        "air": metadata.metadata["air"],
+        "lat": metadata.metadata["lat"],
+        "child": GroupMetadata(attributes={"key": "child"}),
+        "child/array": metadata.metadata["child"].consolidated_metadata.metadata["array"],
+        "child/grandchild": GroupMetadata(attributes={"key": "grandchild"}),
+        "child/grandchild/array": metadata.metadata["child"]
+        .consolidated_metadata.metadata["grandchild"]
+        .consolidated_metadata.metadata["array"],
+    }
+    assert result == expected

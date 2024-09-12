@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 from collections import defaultdict
@@ -84,6 +85,13 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
 
 @dataclass(frozen=True)
 class ConsolidatedMetadata:
+    """
+    Consolidated Metadata for this Group.
+
+    This stores the metadata of child nodes below this group. Any child groups
+    will have their consolidated metadata set appropriately.
+    """
+
     metadata: dict[str, ArrayMetadata | GroupMetadata]
     kind: Literal["inline"] = "inline"
     must_understand: Literal[False] = False
@@ -130,7 +138,107 @@ class ConsolidatedMetadata:
                     else:
                         # probably v2 Group metadata
                         metadata[k] = GroupMetadata.from_dict(v)
+            metadata = cls._flat_to_nested(metadata)
+
         return cls(metadata=metadata)
+
+    @staticmethod
+    def _flat_to_nested(
+        metadata: dict[str, ArrayMetadata | GroupMetadata],
+    ) -> dict[str, ArrayMetadata | GroupMetadata]:
+        """
+        Convert a flat metadata representation to a nested one.
+
+        Notes
+        -----
+        Flat metadata is used when persisting the consolidated metadata. The keys
+        include the full path, not just the node name. The key prefixes can be
+        used to determine which nodes are children of which other nodes.
+
+        Nested metadata is used in-memory. The outermost level will only have the
+        *immediate* children of the Group. All nested child groups will be stored
+        under the consolidated metadata of their immediate parent.
+        """
+        # We have a flat mapping from {k: v} where the keys include the *full*
+        # path segment.
+        #
+        # We want a nested representation, so we need to group by Group,
+        # i.e. find all the children with the same prefix.
+        # keys = sorted(metadata, key=lambda x: (x.count("/"), x))
+
+        # ideally we build up a data structure that has {full_key: metadata}
+        metadata = dict(metadata)
+
+        keys = sorted(metadata, key=lambda k: k.count("/"))
+        grouped = {
+            k: list(v) for k, v in itertools.groupby(keys, key=lambda k: k.rsplit("/", 1)[0])
+        }
+
+        # # we go top down and directly manipulate metadata.
+        for key, children_keys in grouped.items():
+            # key is a key like "a", "a/b", "a/b/c"
+            # The basic idea is to find the immediate parent (so "", "a", or "a/b")
+            # and update that node's consolidated metadata to include the metadata
+            # in children_keys
+            *prefixes, name = key.split("/")
+            parent = metadata
+
+            while prefixes:
+                # e.g. a/b/c has a parent "a/b". Walk through to get
+                # metadata["a"]["b"]
+                part = prefixes.pop()
+                # we can assume that parent[part] here is a group
+                # otherwise we wouldn't have a node with this `part` prefix.
+                # We can also assume that the parent node will have consolidated metadata.
+                parent = parent[part].consolidated_metadata.metadata  # type: ignore[union-attr]
+
+            node = parent[name]
+            children_keys = list(children_keys)
+
+            if isinstance(node, ArrayMetadata):
+                # These are already present, either thanks to being an array in the
+                # root, or by being collected as a child in the else clause
+                continue
+            else:
+                children_keys = list(children_keys)
+                # We pop from metadata, since we're *moving* this under group
+                children = {
+                    child_key.split("/")[-1]: metadata.pop(child_key)
+                    for child_key in children_keys
+                    if child_key != key
+                }
+                parent[name] = replace(
+                    node, consolidated_metadata=ConsolidatedMetadata(metadata=children)
+                )
+        return metadata
+
+    def flattened_metadata(self) -> dict[str, ArrayMetadata | GroupMetadata]:
+        metadata = {}
+        if self.metadata is None:
+            raise ValueError
+
+        def flatten(
+            key: str, group: GroupMetadata | ArrayMetadata
+        ) -> dict[str, ArrayMetadata | GroupMetadata]:
+            children: dict[str, ArrayMetadata | GroupMetadata] = {}
+            if isinstance(group, ArrayMetadata):
+                children[key] = group
+            else:
+                children[key] = replace(group, consolidated_metadata=None)
+                if group.consolidated_metadata and group.consolidated_metadata.metadata:
+                    for name, val in group.consolidated_metadata.metadata.items():
+                        full_key = "/".join([key, name])
+                        if isinstance(val, GroupMetadata):
+                            children.update(flatten(full_key, val))
+                        else:
+                            children[full_key] = val
+
+            return children
+
+        for k, v in self.metadata.items():
+            metadata.update(flatten(k, v))
+
+        return metadata
 
 
 @dataclass(frozen=True)
@@ -438,26 +546,7 @@ class AsyncGroup:
             msg = f"'{key}' not found in consolidated metadata."
             raise KeyError(msg) from e
 
-        assert isinstance(metadata, GroupMetadata | ArrayMetadata)
-
-        # generic over v2 / v3 here, so we don't have `metadata.node_type`. Use isinstance.
         if isinstance(metadata, GroupMetadata):
-            # To speed up nested access like
-            #     group.getitem("a").getitem("b").getitem("array")
-            # we'll propagate the consolidated metadata to children. However, we need
-            # to remove the `store_path` prefix to ensure that `group.getitem("a")`
-            # has a different (shorter) prefix thanks to it having a longer root.
-            metadata = replace(
-                self.metadata,
-                consolidated_metadata=replace(
-                    self.metadata.consolidated_metadata,
-                    metadata={
-                        k.split(key, 1)[-1].lstrip("/"): v
-                        for k, v in self.metadata.consolidated_metadata.metadata.items()
-                        if k.startswith(key) and k != key
-                    },
-                ),
-            )
             return AsyncGroup(metadata=metadata, store_path=store_path)
         else:
             return AsyncArray(metadata=metadata, store_path=store_path)

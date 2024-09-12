@@ -119,6 +119,19 @@ async def v2_consolidated_metadata(memory_store: zarr.store.MemoryStore) -> zarr
             },
             "nested/.zattrs": {"key": "value"},
             "nested/.zgroup": {"zarr_format": 2},
+            "nested/array/.zarray": {
+                "chunks": [730],
+                "compressor": {},
+                "dtype": "<f4",
+                "fill_value": "0.0",
+                "filters": None,
+                "order": "C",
+                "shape": [730],
+                "zarr_format": 2,
+            },
+            "nested/array/.zattrs": {
+                "calendar": "standard",
+            },
         },
         "zarr_consolidated_format": 1,
     }
@@ -151,6 +164,15 @@ async def v2_consolidated_metadata(memory_store: zarr.store.MemoryStore) -> zarr
     await store.set(
         "nested/.zgroup", cpu.Buffer.from_bytes(json.dumps({"zarr_format": 2}).encode())
     )
+    await store.set(
+        "nested/array/.zarray",
+        cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["nested/array/.zarray"]).encode()),
+    )
+    await store.set(
+        "nested/array/.zattrs",
+        cpu.Buffer.from_bytes(json.dumps(zmetadata["metadata"]["nested/array/.zattrs"]).encode()),
+    )
+
     return store
 
 
@@ -189,7 +211,27 @@ async def test_read_consolidated_metadata(v2_consolidated_metadata: zarr.store.M
                 dimension_separator=".",
                 compressor={},
             ),
-            "nested": GroupMetadata(attributes={"key": "value"}, zarr_format=2),
+            "nested": GroupMetadata(
+                attributes={"key": "value"},
+                zarr_format=2,
+                consolidated_metadata=ConsolidatedMetadata(
+                    metadata={
+                        "array": ArrayV2Metadata(
+                            shape=(730,),
+                            fill_value=0.0,
+                            chunks=(730,),
+                            attributes={
+                                "calendar": "standard",
+                            },
+                            dtype=np.dtype("float32"),
+                            order="C",
+                            filters=None,
+                            dimension_separator=".",
+                            compressor={},
+                        )
+                    }
+                ),
+            ),
         },
         kind="inline",
         must_understand=False,
