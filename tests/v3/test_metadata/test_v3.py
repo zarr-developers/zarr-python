@@ -480,3 +480,10 @@ def test_consolidated_sync(memory_store):
 
     group4 = zarr.api.synchronous.open_consolidated(store=memory_store)
     assert group4.metadata == expected
+
+
+async def test_not_writable_raises(memory_store: zarr.store.MemoryStore) -> None:
+    await group(store=memory_store, attributes={"foo": "bar"})
+    read_store = zarr.store.MemoryStore(store_dict=memory_store._store_dict)
+    with pytest.raises(ValueError, match="does not support writing"):
+        await consolidate_metadata(read_store)
