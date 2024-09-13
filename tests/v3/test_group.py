@@ -82,6 +82,11 @@ def test_group_members(
     Test that `Group.members` returns correct values, i.e. the arrays and groups
     (explicit and implicit) contained in that group.
     """
+    # group/
+    #   subgroup/
+    #     subsubgroup/
+    #       subsubsubgroup
+    #   subarray
 
     path = "group"
     group = Group.create(
@@ -916,10 +921,10 @@ async def test_group_delitem_consolidated(store: LocalStore | MemoryStore):
 
     await zarr.api.asynchronous.consolidate_metadata(store)
 
-    group = await zarr.api.asynchronous.open(store=store)
-    assert len(group.metadata.consolidated_metadata.metadata) == 8
+    group = await zarr.api.asynchronous.open_consolidated(store=store)
+    assert len(group.metadata.consolidated_metadata.metadata) == 2
     assert "g0" in group.metadata.consolidated_metadata.metadata
 
     await group.delitem("g0")
-    assert len(group.metadata.consolidated_metadata.metadata) == 7
+    assert len(group.metadata.consolidated_metadata.metadata) == 1
     assert "g0" not in group.metadata.consolidated_metadata.metadata

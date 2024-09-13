@@ -186,7 +186,7 @@ class ConsolidatedMetadata:
             while prefixes:
                 # e.g. a/b/c has a parent "a/b". Walk through to get
                 # metadata["a"]["b"]
-                part = prefixes.pop()
+                part = prefixes.pop(0)
                 # we can assume that parent[part] here is a group
                 # otherwise we wouldn't have a node with this `part` prefix.
                 # We can also assume that the parent node will have consolidated metadata.
@@ -212,7 +212,22 @@ class ConsolidatedMetadata:
                 )
         return metadata
 
+    @property
     def flattened_metadata(self) -> dict[str, ArrayMetadata | GroupMetadata]:
+        """
+        Return the flattened representation of Consolidated Metadata.
+
+        The returned dictionary will have a key for each child node in the hierarchy
+        under this group. Under the default (nested) representation available through
+        ``self.metadata``, the dictionary only contains keys for immediate children.
+
+        The keys of the dictionary will include the full path to a child node from
+        the current group, where segments are joined by ``//`.
+
+        Examples
+        --------
+        >>> cm = ConsolidatedMetadata()
+        """
         metadata = {}
         if self.metadata is None:
             raise ValueError
@@ -886,7 +901,7 @@ class AsyncGroup:
         count : int
         """
         if self.metadata.consolidated_metadata is not None:
-            return len(self.metadata.consolidated_metadata.metadata)
+            return len(self.metadata.consolidated_metadata.flattened_metadata)
         # TODO: consider using aioitertools.builtins.sum for this
         # return await aioitertools.builtins.sum((1 async for _ in self.members()), start=0)
         n = 0
@@ -976,30 +991,22 @@ class AsyncGroup:
                 )
 
     def _members_consolidated(
-        self, max_depth: int | None, current_depth: int
+        self, max_depth: int | None, current_depth: int, prefix: str = ""
     ) -> Generator[tuple[str, AsyncArray | AsyncGroup], None]:
-        # I think we know that current_depth is always 0?
-        # I guess we could have opened a non-consolidated store, hit a consolidated group, and then gotten here.
-        ...
-        # the caller must check this
-        assert self.metadata.consolidated_metadata is not None
-
-        keys = self.metadata.consolidated_metadata.metadata.keys()
+        consolidated_metadata = self.metadata.consolidated_metadata
 
         # we kind of just want the top-level keys.
-        for key in keys:
-            # Why use self._getitem_consolidated instead of just consolidated_metadata.metadata.keys()?
-            #
-            # We want to ensure that groups yield from .members() *also* set consolidated
-            # metadata.
-            # This is a very subtle point that maybe indicates the API is wrong. But the tradeoff
-            # is duplicating the consolidated metadata for all children...
-            # Maybe...
-            obj = self._getitem_consolidated(self.store_path, key)
-            current_depth = key.count("/")
-
-            if (max_depth is None) or (current_depth <= max_depth):
+        if consolidated_metadata is not None:
+            for key in consolidated_metadata.metadata.keys():
+                obj = self._getitem_consolidated(self.store_path, key)  # Metadata -> Group/Array
+                # this is probably  generally useful
+                key = "/".join([prefix, key]).lstrip("/")
                 yield key, obj
+
+                if ((max_depth is None) or (current_depth < max_depth)) and isinstance(
+                    obj, AsyncGroup
+                ):
+                    yield from obj._members_consolidated(max_depth, current_depth + 1, prefix=key)
 
     async def contains(self, member: str) -> bool:
         # TODO: this can be made more efficient.

@@ -633,7 +633,7 @@ def test_flatten():
             ),
         },
     )
-    result = metadata.flattened_metadata()
+    result = metadata.flattened_metadata
     expected = {
         "air": metadata.metadata["air"],
         "lat": metadata.metadata["lat"],
