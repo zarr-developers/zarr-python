@@ -9,7 +9,7 @@ import zarr.api.asynchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.api.synchronous import open_group
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.common import ZarrFormat
+from zarr.core.common import JSON, ZarrFormat
 from zarr.core.group import GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
@@ -409,7 +409,7 @@ def test_group_creation_existing_node(
     spath = StorePath(store)
     group = Group.create(spath, zarr_format=zarr_format)
     expected_exception: type[ContainsArrayError] | type[ContainsGroupError]
-    attributes = {"old": True}
+    attributes: dict[str, JSON] = {"old": True}
 
     if extant_node == "array":
         expected_exception = ContainsArrayError
@@ -645,7 +645,7 @@ async def test_asyncgroup_create_array(
     shape = (10,)
     dtype = "uint8"
     chunk_shape = (4,)
-    attributes = {"foo": 100}
+    attributes: dict[str, JSON] = {"foo": 100}
 
     sub_node_path = "sub_array"
     subnode = await agroup.create_array(
