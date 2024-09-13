@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from itertools import islice, pairwise
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -15,12 +14,14 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
-from zarr.core.common import JSON, ChunkCoords, concurrent_map, parse_named_configuration
+from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar, is_total_slice
-from zarr.registry import get_codec_class, register_pipeline
+from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
     import numpy as np
     from typing_extensions import Self
 
@@ -67,30 +68,6 @@ class BatchedCodecPipeline(CodecPipeline):
     array_bytes_codec: ArrayBytesCodec
     bytes_bytes_codecs: tuple[BytesBytesCodec, ...]
     batch_size: int
-
-    @classmethod
-    def from_dict(cls, data: Iterable[JSON | Codec], *, batch_size: int | None = None) -> Self:
-        out: list[Codec] = []
-        if not isinstance(data, Iterable):
-            raise TypeError(f"Expected iterable, got {type(data)}")
-
-        for c in data:
-            if isinstance(
-                c, ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
-            ):  # Can't use Codec here because of mypy limitation
-                out.append(c)
-            else:
-                name_parsed, _ = parse_named_configuration(c, require_configuration=False)
-                out.append(get_codec_class(name_parsed).from_dict(c))  # type: ignore[arg-type]
-        return cls.from_list(out, batch_size=batch_size)
-
-    def to_dict(self) -> dict[str, JSON]:
-        return {
-            "array_array_codecs": tuple(c.to_dict() for c in self.array_array_codecs),
-            "array_bytes_codec": self.array_bytes_codec.to_dict(),
-            "bytes_bytes_codec": tuple(c.to_dict() for c in self.bytes_bytes_codecs),
-            "batch_size": self.batch_size,
-        }
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return type(self).from_list([c.evolve_from_array_spec(array_spec=array_spec) for c in self])

@@ -19,7 +19,7 @@ from typing import Any, Literal
 import numcodecs.abc
 import numpy as np
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
@@ -27,7 +27,7 @@ from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.common import ZARR_JSON, parse_dtype, parse_named_configuration, parse_shapelike
 from zarr.core.config import config
 from zarr.core.metadata.common import ArrayMetadata, parse_attributes
-from zarr.registry import get_codec_class, get_pipeline_class
+from zarr.registry import get_codec_class
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -238,12 +238,6 @@ class ArrayV3Metadata(ArrayMetadata):
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
         return replace(self, attributes=attributes)
-
-
-def create_pipeline(data: Iterable[Codec | JSON]) -> CodecPipeline:
-    if not isinstance(data, Iterable):
-        raise TypeError(f"Expected iterable, got {type(data)}")
-    return get_pipeline_class().from_dict(data)
 
 
 BOOL = np.bool_

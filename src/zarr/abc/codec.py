@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
     from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.common import JSON
     from zarr.core.indexing import SelectorTuple
 
 __all__ = [
@@ -242,7 +241,7 @@ class ArrayBytesCodecPartialEncodeMixin:
         )
 
 
-class CodecPipeline(Metadata):
+class CodecPipeline:
     """Base class for implementing CodecPipeline.
     A CodecPipeline implements the read and write paths for chunk data.
     On the read path, it is responsible for fetching chunks from a store (via ByteGetter),
@@ -401,15 +400,6 @@ class CodecPipeline(Metadata):
         value : NDBuffer
         """
         ...
-
-    @classmethod
-    def from_dict(cls, data: Iterable[JSON | Codec]) -> Self:
-        """
-        Create an instance of the model from a dictionary
-        """
-        ...
-
-        return cls(**data)
 
 
 async def _batching_helper(
