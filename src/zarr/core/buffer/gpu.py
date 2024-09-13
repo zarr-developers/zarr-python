@@ -38,8 +38,8 @@ class Buffer(core.Buffer):
     array-like instance can be copied/converted to a regular Numpy array
     (host memory).
 
-    Note
-    ----
+    Notes
+    -----
     This buffer is untyped, so all indexing and sizes are in bytes.
 
     Parameters
@@ -123,8 +123,8 @@ class NDBuffer(core.NDBuffer):
     ndarray-like instance can be copied/converted to a regular Numpy array
     (host memory).
 
-    Note
-    ----
+    Notes
+    -----
     The two buffer classes Buffer and NDBuffer are very similar. In fact, Buffer
     is a special case of NDBuffer where dim=1, stride=1, and dtype="b". However,
     in order to use Python's type system to differentiate between the contiguous
@@ -193,8 +193,8 @@ class NDBuffer(core.NDBuffer):
     def as_numpy_array(self) -> npt.NDArray[Any]:
         """Returns the buffer as a NumPy array (host memory).
 
-        Warning
-        -------
+        Warnings
+        --------
         Might have to copy data, consider using `.as_ndarray_like()` instead.
 
         Returns
