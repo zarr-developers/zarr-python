@@ -5,21 +5,20 @@ Zarr-Python 3 introduces a number of changes to the API, including a number
 of significant breaking changes and pending deprecations.
 
 This page provides a guide highlighting the most notable changes to help you
-migrate your code from Zarr-Python 2.x to Zarr-Python 3.x.
+migrate your code from version 2 to version 3.
 
 Compatibility target
 --------------------
 
 Zarr-Python 3 represents a major refactor of the Zarr-Python codebase. Some of the goals motivating this refactor included:
 
-  - adding support for the V3 specification (alongside the V3 specification)
+  - adding support for the Zarr V3 specification (alongside the Zarr V2 specification)
   - cleaning up internal and user facing APIs
   - improving performance (particularly in high latency storage environments like cloud object store)
 
-Though these goals necessitated some breaking changes to the API (hence the major version update), we have tried to maintain
+These goals necessitated some breaking changes to the API (hence the major version update), but we have tried to maintain
 backwards compatibility in the most widely used parts of the API including the `Array` and `Group` classes and the top-level
-API (e.g. `zarr.open_array` and `zarr.open_group`). It is worth noting that we significantly evolved the internal data model,
-moving away from a model that was tightly coupled to the v2 specification, and to a more generic representation of Zarr objects.
+API (e.g. `zarr.open_array` and `zarr.open_group`).
 
 Getting ready for 3.0
 ---------------------
@@ -30,8 +29,8 @@ Ahead of the 3.0 release, we suggest projects that depend on Zarr-Python take th
 2. Limit your imports from the Zarr-Python package. Most of the primary API ``zarr.*`` will be compatible in 3.0. However, the following breaking API changes are planned:
    
    - ``numcodecs.*`` will no longer be available in ``zarr.*``. (Suggested action: transition to importing codecs from ``numcodecs`` directly.)
-   - The ``zarr.v3_api_available`` feature flag is being removed. (Suggested action: this experimental feature was deprecated in v2.18.)
-   - The following internal modules are being removed or significant changed:
+   - The ``zarr.v3_api_available`` feature flag is being removed. In zarr-python v3 the v3 API is always available, so you shouldn't need to use this flag.
+   - The following internal modules are being removed or significantly changed. If your application relies on imports from any of the below modules, you will need to either a) modify your application to no longer rely on these imports or b) vendor the parts of the specific modules that you need.
    
     - ``zarr.attrs``
     - ``zarr.codecs``
@@ -47,6 +46,8 @@ Ahead of the 3.0 release, we suggest projects that depend on Zarr-Python take th
     - ``zarr.util``
     - ``zarr.n5``
 
+3. Test that your package works with v3. You can start testing against version 3 now (pre-releases are being published to PyPI weekly).
+4. Update the pin to zarr >=3
 Continue using Zarr-Python 2
 ----------------------------
 
