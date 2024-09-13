@@ -1,6 +1,8 @@
 import pickle
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 from zarr import Array, AsyncArray
@@ -32,7 +34,10 @@ from .test_codecs import _AsyncArrayProxy, order_from_dim
 )
 @pytest.mark.parametrize("offset", [0, 10])
 def test_sharding(
-    store: Store, array_fixture: np.ndarray, index_location: ShardingCodecIndexLocation, offset: int
+    store: Store,
+    array_fixture: npt.NDArray[Any],
+    index_location: ShardingCodecIndexLocation,
+    offset: int,
 ) -> None:
     """
     Test that we can create an array with a sharding codec, write data to that array, and get
@@ -80,7 +85,7 @@ def test_sharding(
     indirect=["array_fixture"],
 )
 def test_sharding_partial(
-    store: Store, array_fixture: np.ndarray, index_location: ShardingCodecIndexLocation
+    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -123,7 +128,7 @@ def test_sharding_partial(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 def test_sharding_partial_read(
-    store: Store, array_fixture: np.ndarray, index_location: ShardingCodecIndexLocation
+    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
@@ -160,7 +165,7 @@ def test_sharding_partial_read(
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 def test_sharding_partial_overwrite(
-    store: Store, array_fixture: np.ndarray, index_location: ShardingCodecIndexLocation
+    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
 ) -> None:
     data = array_fixture[:10, :10, :10]
     spath = StorePath(store)
@@ -212,7 +217,7 @@ def test_sharding_partial_overwrite(
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 def test_nested_sharding(
     store: Store,
-    array_fixture: np.ndarray,
+    array_fixture: npt.NDArray[Any],
     outer_index_location: ShardingCodecIndexLocation,
     inner_index_location: ShardingCodecIndexLocation,
 ) -> None:

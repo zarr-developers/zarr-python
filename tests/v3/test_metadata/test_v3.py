@@ -4,18 +4,6 @@ import json
 import re
 from typing import TYPE_CHECKING, Literal
 
-from zarr.codecs.bytes import BytesCodec
-from zarr.core.buffer import default_buffer_prototype
-from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-from zarr.store.common import StorePath
-
-if TYPE_CHECKING:
-    from collections.abc import Sequence
-    from typing import Any
-
-    from zarr.abc.codec import Codec
-
-
 import numpy as np
 import pytest
 
@@ -27,12 +15,20 @@ from zarr.api.asynchronous import (
     open,
     open_consolidated,
 )
+from zarr.codecs.bytes import BytesCodec
+from zarr.core.buffer import default_buffer_prototype
+from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata, parse_dimension_names
 from zarr.core.metadata import parse_fill_value_v3 as parse_fill_value
 from zarr.core.metadata import parse_zarr_format_v3 as parse_zarr_format
+from zarr.store.common import StorePath
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+    from typing import Any
+
+    from zarr.abc.codec import Codec
     from zarr.abc.store import Store
 
 bool_dtypes = ("bool",)

@@ -48,7 +48,7 @@ def get_boto3_client() -> botocore.client.BaseClient:
 
 
 @pytest.fixture(autouse=True, scope="function")
-def s3(s3_base) -> Generator[s3fs.S3FileSystem, None, None]:
+def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
     """
     Quoting Martin Durant:
     pytest-asyncio creates a new event loop for each async test.

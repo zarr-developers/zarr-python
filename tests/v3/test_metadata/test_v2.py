@@ -10,8 +10,8 @@ import zarr.api.asynchronous
 import zarr.store
 from zarr.codecs import GzipCodec
 from zarr.core.buffer import cpu
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata
-from zarr.core.metadata import ArrayV2Metadata, parse_zarr_format_v2
+from zarr.core.group import ConsolidatedMetadata, GroupMetadata, parse_zarr_format
+from zarr.core.metadata import ArrayV2Metadata
 
 if TYPE_CHECKING:
     from typing import Any
@@ -20,13 +20,13 @@ if TYPE_CHECKING:
 
 
 def test_parse_zarr_format_valid() -> None:
-    assert parse_zarr_format_v2(2) == 2
+    assert parse_zarr_format(2) == 2
 
 
 @pytest.mark.parametrize("data", [None, 1, 3, 4, 5, "3"])
 def test_parse_zarr_format_invalid(data: Any) -> None:
     with pytest.raises(ValueError, match=f"Invalid value. Expected 2. Got {data}"):
-        parse_zarr_format_v2(data)
+        parse_zarr_format(data)
 
 
 @pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])

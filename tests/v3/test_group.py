@@ -8,8 +8,9 @@ import pytest
 import zarr.api.asynchronous
 import zarr.api.synchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
+from zarr.api.synchronous import open_group
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.common import ZarrFormat
+from zarr.core.common import JSON, ZarrFormat
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
@@ -453,7 +454,7 @@ def test_group_creation_existing_node(
     spath = StorePath(store)
     group = Group.create(spath, zarr_format=zarr_format)
     expected_exception: type[ContainsArrayError] | type[ContainsGroupError]
-    attributes = {"old": True}
+    attributes: dict[str, JSON] = {"old": True}
 
     if extant_node == "array":
         expected_exception = ContainsArrayError
@@ -693,7 +694,7 @@ async def test_asyncgroup_create_array(
     shape = (10,)
     dtype = "uint8"
     chunk_shape = (4,)
-    attributes = {"foo": 100}
+    attributes: dict[str, JSON] = {"foo": 100}
 
     sub_node_path = "sub_array"
     subnode = await agroup.create_array(
@@ -974,3 +975,13 @@ def test_members_name(store: LocalStore | MemoryStore, consolidate: bool):
     paths = sorted(x.name for _, x in group.members(max_depth=None))
     expected = ["/a", "/a/array", "/a/b", "/a/b/array"]
     assert paths == expected
+
+
+async def test_open_mutable_mapping():
+    group = await zarr.api.asynchronous.open_group(store={}, mode="w")
+    assert isinstance(group.store_path.store, MemoryStore)
+
+
+def test_open_mutable_mapping_sync():
+    group = open_group(store={}, mode="w")
+    assert isinstance(group.store_path.store, MemoryStore)

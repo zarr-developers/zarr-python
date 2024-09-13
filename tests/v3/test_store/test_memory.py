@@ -82,7 +82,7 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
         assert True
 
 
-def test_uses_dict():
+def test_uses_dict() -> None:
     store_dict = {}
     store = MemoryStore(store_dict)
     assert store._store_dict is store_dict

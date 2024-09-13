@@ -30,7 +30,8 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
-from zarr.core.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.common import ArrayMetadata
 from zarr.core.sync import SyncMixin, sync
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.common import ensure_no_existing_node
@@ -842,7 +843,7 @@ class AsyncGroup:
         self,
         name: str,
         *,
-        shape: ChunkCoords,
+        shape: ShapeLike,
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
