@@ -123,7 +123,9 @@ class ConsolidatedMetadata:
         if raw_metadata:
             for k, v in raw_metadata.items():
                 if not isinstance(v, dict):
-                    raise TypeError(f"Invalid value for metadata items. key={k}, type={type(v)}")
+                    raise TypeError(
+                        f"Invalid value for metadata items. key='{k}', type='{type(v).__name__}'"
+                    )
 
                 node_type = v.get("node_type", None)
                 if node_type == "group":
@@ -243,8 +245,6 @@ class ConsolidatedMetadata:
          'group-1': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group')}
         """
         metadata = {}
-        if self.metadata is None:
-            raise ValueError
 
         def flatten(
             key: str, group: GroupMetadata | ArrayMetadata

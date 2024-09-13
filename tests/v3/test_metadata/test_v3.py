@@ -643,3 +643,15 @@ class TestConsolidated:
             .consolidated_metadata.metadata["array"],
         }
         assert result == expected
+
+    def test_invalid_metadata_raises(self):
+        payload = {
+            "kind": "inline",
+            "must_understand": False,
+            "metadata": {
+                "foo": [1, 2, 3]  # invalid
+            },
+        }
+
+        with pytest.raises(TypeError, match="key='foo', type='list'"):
+            ConsolidatedMetadata.from_dict(payload)
