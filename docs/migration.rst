@@ -48,6 +48,7 @@ Ahead of the 3.0 release, we suggest projects that depend on Zarr-Python take th
 
 3. Test that your package works with v3. You can start testing against version 3 now (pre-releases are being published to PyPI weekly).
 4. Update the pin to zarr >=3
+
 Continue using Zarr-Python 2
 ----------------------------
 
