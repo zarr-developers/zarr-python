@@ -17,6 +17,7 @@ from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.common import make_store_path
+from zarr.store.zip import ZipStore
 
 from .conftest import parse_store
 
@@ -912,7 +913,10 @@ async def test_group_getitem_consolidated(store: LocalStore | MemoryStore):
     assert rg2.metadata.consolidated_metadata is None
 
 
-async def test_group_delitem_consolidated(store: LocalStore | MemoryStore):
+async def test_group_delitem_consolidated(store: Store):
+    if isinstance(store, ZipStore):
+        raise pytest.skip("Not implemented")
+
     root = await AsyncGroup.create(store=store)
     # Set up the test structure with
     # /
