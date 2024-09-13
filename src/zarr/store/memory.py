@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 # When that is done, the `MemoryStore` will just be a store that wraps a dict.
 class MemoryStore(Store):
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
 

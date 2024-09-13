@@ -21,7 +21,7 @@ from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 @pytest.mark.parametrize("index_location", ["start", "end"])
 @pytest.mark.parametrize(
     "array_fixture",
@@ -76,7 +76,7 @@ def test_sharding(
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 @pytest.mark.parametrize(
     "array_fixture",
     [
@@ -126,7 +126,7 @@ def test_sharding_partial(
     indirect=["array_fixture"],
 )
 @pytest.mark.parametrize("index_location", ["start", "end"])
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 def test_sharding_partial_read(
     store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
 ) -> None:
@@ -163,7 +163,7 @@ def test_sharding_partial_read(
     indirect=["array_fixture"],
 )
 @pytest.mark.parametrize("index_location", ["start", "end"])
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 def test_sharding_partial_overwrite(
     store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
 ) -> None:
@@ -214,7 +214,7 @@ def test_sharding_partial_overwrite(
     "inner_index_location",
     ["start", "end"],
 )
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 def test_nested_sharding(
     store: Store,
     array_fixture: npt.NDArray[Any],
@@ -247,7 +247,7 @@ def test_nested_sharding(
     assert np.array_equal(data, read_data)
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 def test_open_sharding(store: Store) -> None:
     path = "open_sharding"
     spath = StorePath(store, path)
@@ -272,7 +272,7 @@ def test_open_sharding(store: Store) -> None:
     assert a.metadata == b.metadata
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 def test_write_partial_sharded_chunks(store: Store) -> None:
     data = np.arange(0, 16 * 16, dtype="uint16").reshape((16, 16))
     spath = StorePath(store)
@@ -296,8 +296,10 @@ def test_write_partial_sharded_chunks(store: Store) -> None:
     assert np.array_equal(a[0:16, 0:16], data)
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 async def test_delete_empty_shards(store: Store) -> None:
+    if not store.supports_deletes:
+        pytest.skip("store does not support deletes")
     path = "delete_empty_shards"
     spath = StorePath(store, path)
     a = await AsyncArray.create(

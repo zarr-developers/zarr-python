@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 class RemoteStore(Store):
     # based on FSSpec
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = False
     supports_listing: bool = True
 
