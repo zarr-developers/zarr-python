@@ -222,11 +222,25 @@ class ConsolidatedMetadata:
         ``self.metadata``, the dictionary only contains keys for immediate children.
 
         The keys of the dictionary will include the full path to a child node from
-        the current group, where segments are joined by ``//`.
+        the current group, where segments are joined by ``/``.
 
         Examples
         --------
-        >>> cm = ConsolidatedMetadata()
+        >>> cm = ConsolidatedMetadata(
+        ...     metadata={
+        ...         "group-0": GroupMetadata(
+        ...             consolidated_metadata=ConsolidatedMetadata(
+        ...                 {
+        ...                     "group-0-0": GroupMetadata(),
+        ...                 }
+        ...             )
+        ...         ),
+        ...         "group-1": GroupMetadata(),
+        ...     }
+        ... )
+        {'group-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
+         'group-0/group-0-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
+         'group-1': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group')}
         """
         metadata = {}
         if self.metadata is None:
