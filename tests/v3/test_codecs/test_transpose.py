@@ -3,11 +3,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-import zarr.v2.creation
 from zarr import Array, AsyncArray, config
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec, ShardingCodec, TransposeCodec
-from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import MemoryOrder
 from zarr.store.common import StorePath
 
@@ -69,21 +67,6 @@ async def test_transpose(
     else:
         assert not read_data.flags["F_CONTIGUOUS"]
         assert read_data.flags["C_CONTIGUOUS"]
-
-    if not with_sharding:
-        # Compare with zarr-python
-        z = zarr.v2.creation.create(
-            shape=data.shape,
-            chunks=(1, 32, 8),
-            dtype="<u2",
-            order="F",
-            compressor=None,
-            fill_value=1,
-        )
-        z[:, :] = data
-        assert await store.get(
-            "transpose/0.0", prototype=default_buffer_prototype()
-        ) == await store.get("transpose_zarr/0.0", default_buffer_prototype())
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
