@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal, Union, cast
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.array import Array, AsyncArray
+from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
@@ -227,8 +227,18 @@ async def open(
 
     if "shape" not in kwargs and mode in {"a", "w", "w-"}:
         try:
+            metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+            zarr_format = metadata_dict["zarr_format"]
+            if zarr_format == 3:
+                is_array = metadata_dict.get("node_type") == "array"
+            else:
+                # for v2, the above would already have raised an exception if not an array
+                is_array = True
+        except (AssertionError, FileNotFoundError):
+            is_array = False
+        if not is_array:
             return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
-        except AssertionError:
+        else:
             return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)

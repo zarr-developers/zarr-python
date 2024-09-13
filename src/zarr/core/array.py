@@ -91,6 +91,53 @@ def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecP
         raise TypeError
 
 
+async def get_array_metadata(
+    store_path: StorePath, zarr_format: ZarrFormat | None = 3
+) -> dict[str, Any]:
+    if zarr_format == 2:
+        zarray_bytes, zattrs_bytes = await gather(
+            (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
+        )
+        if zarray_bytes is None:
+            raise FileNotFoundError(store_path)
+    elif zarr_format == 3:
+        zarr_json_bytes = await (store_path / ZARR_JSON).get()
+        if zarr_json_bytes is None:
+            raise FileNotFoundError(store_path)
+    elif zarr_format is None:
+        zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
+            (store_path / ZARR_JSON).get(),
+            (store_path / ZARRAY_JSON).get(),
+            (store_path / ZATTRS_JSON).get(),
+        )
+        if zarr_json_bytes is not None and zarray_bytes is not None:
+            # TODO: revisit this exception type
+            # alternatively, we could warn and favor v3
+            raise ValueError("Both zarr.json and .zarray objects exist")
+        if zarr_json_bytes is None and zarray_bytes is None:
+            raise FileNotFoundError(store_path)
+        # set zarr_format based on which keys were found
+        if zarr_json_bytes is not None:
+            zarr_format = 3
+        else:
+            zarr_format = 2
+    else:
+        raise ValueError(f"unexpected zarr_format: {zarr_format}")
+
+    metadata_dict: dict[str, Any]
+    if zarr_format == 2:
+        # V2 arrays are comprised of a .zarray and .zattrs objects
+        assert zarray_bytes is not None
+        metadata_dict = json.loads(zarray_bytes.to_bytes())
+        zattrs_dict = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
+        metadata_dict["attributes"] = zattrs_dict
+    else:
+        # V3 arrays are comprised of a zarr.json object
+        assert zarr_json_bytes is not None
+        metadata_dict = json.loads(zarr_json_bytes.to_bytes())
+    return metadata_dict
+
+
 @dataclass(frozen=True)
 class AsyncArray:
     metadata: ArrayMetadata
@@ -342,51 +389,12 @@ class AsyncArray:
         zarr_format: ZarrFormat | None = 3,
     ) -> AsyncArray:
         store_path = await make_store_path(store)
-
+        metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+        zarr_format = metadata_dict["zarr_format"]
         if zarr_format == 2:
-            zarray_bytes, zattrs_bytes = await gather(
-                (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
-            )
-            if zarray_bytes is None:
-                raise FileNotFoundError(store_path)
-        elif zarr_format == 3:
-            zarr_json_bytes = await (store_path / ZARR_JSON).get()
-            if zarr_json_bytes is None:
-                raise FileNotFoundError(store_path)
-        elif zarr_format is None:
-            zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
-                (store_path / ZARR_JSON).get(),
-                (store_path / ZARRAY_JSON).get(),
-                (store_path / ZATTRS_JSON).get(),
-            )
-            if zarr_json_bytes is not None and zarray_bytes is not None:
-                # TODO: revisit this exception type
-                # alternatively, we could warn and favor v3
-                raise ValueError("Both zarr.json and .zarray objects exist")
-            if zarr_json_bytes is None and zarray_bytes is None:
-                raise FileNotFoundError(store_path)
-            # set zarr_format based on which keys were found
-            if zarr_json_bytes is not None:
-                zarr_format = 3
-            else:
-                zarr_format = 2
+            return cls(store_path=store_path, metadata=ArrayV2Metadata.from_dict(metadata_dict))
         else:
-            raise ValueError(f"unexpected zarr_format: {zarr_format}")
-
-        if zarr_format == 2:
-            # V2 arrays are comprised of a .zarray and .zattrs objects
-            assert zarray_bytes is not None
-            zarray_dict = json.loads(zarray_bytes.to_bytes())
-            zattrs_dict = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
-            zarray_dict["attributes"] = zattrs_dict
-            return cls(store_path=store_path, metadata=ArrayV2Metadata.from_dict(zarray_dict))
-        else:
-            # V3 arrays are comprised of a zarr.json object
-            assert zarr_json_bytes is not None
-            return cls(
-                store_path=store_path,
-                metadata=ArrayV3Metadata.from_dict(json.loads(zarr_json_bytes.to_bytes())),
-            )
+            return cls(store_path=store_path, metadata=ArrayV3Metadata.from_dict(metadata_dict))
 
     @property
     def ndim(self) -> int:
