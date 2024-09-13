@@ -265,12 +265,12 @@ class CodecPipeline:
 
     @classmethod
     @abstractmethod
-    def from_list(cls, codecs: Iterable[Codec]) -> Self:
-        """Creates a codec pipeline from a list of codecs.
+    def from_codecs(cls, codecs: Iterable[Codec]) -> Self:
+        """Creates a codec pipeline from an iterable of codecs.
 
         Parameters
         ----------
-        codecs : list[Codec]
+        codecs : Iterable[Codec]
 
         Returns
         -------

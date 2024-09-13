@@ -87,9 +87,9 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
 
 def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
-        return get_pipeline_class().from_list(metadata.codecs)
+        return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
-        return get_pipeline_class().from_list(
+        return get_pipeline_class().from_codecs(
             [V2Filters(metadata.filters), V2Compressor(metadata.compressor)]
         )
     else:

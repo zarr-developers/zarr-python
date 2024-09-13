@@ -373,7 +373,7 @@ class ShardingCodec(
 
     @property
     def codec_pipeline(self) -> CodecPipeline:
-        return get_pipeline_class().from_list(self.codecs)
+        return get_pipeline_class().from_codecs(self.codecs)
 
     def to_dict(self) -> dict[str, JSON]:
         return {
@@ -620,7 +620,7 @@ class ShardingCodec(
         index_array = next(
             iter(
                 await get_pipeline_class()
-                .from_list(self.index_codecs)
+                .from_codecs(self.index_codecs)
                 .decode(
                     [(index_bytes, self._get_index_chunk_spec(chunks_per_shard))],
                 )
@@ -633,7 +633,7 @@ class ShardingCodec(
         index_bytes = next(
             iter(
                 await get_pipeline_class()
-                .from_list(self.index_codecs)
+                .from_codecs(self.index_codecs)
                 .encode(
                     [
                         (
@@ -651,7 +651,7 @@ class ShardingCodec(
     def _shard_index_size(self, chunks_per_shard: ChunkCoords) -> int:
         return (
             get_pipeline_class()
-            .from_list(self.index_codecs)
+            .from_codecs(self.index_codecs)
             .compute_encoded_size(
                 16 * product(chunks_per_shard), self._get_index_chunk_spec(chunks_per_shard)
             )

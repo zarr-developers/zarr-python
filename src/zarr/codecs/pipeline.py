@@ -70,10 +70,10 @@ class BatchedCodecPipeline(CodecPipeline):
     batch_size: int
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        return type(self).from_list([c.evolve_from_array_spec(array_spec=array_spec) for c in self])
+        return type(self).from_codecs(c.evolve_from_array_spec(array_spec=array_spec) for c in self)
 
     @classmethod
-    def from_list(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
+    def from_codecs(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
         array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(codecs)
 
         return cls(
