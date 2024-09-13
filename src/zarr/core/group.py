@@ -50,7 +50,7 @@ logger = logging.getLogger("zarr.group")
 def parse_zarr_format(data: Any) -> ZarrFormat:
     if data in (2, 3):
         return cast(Literal[2, 3], data)
-    msg = msg = f"Invalid zarr_format. Expected one 2 or 3. Got {data}."
+    msg = msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
     raise ValueError(msg)
 
 

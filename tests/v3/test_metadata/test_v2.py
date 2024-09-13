@@ -10,8 +10,9 @@ import zarr.api.asynchronous
 import zarr.store
 from zarr.codecs import GzipCodec
 from zarr.core.buffer import cpu
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata, parse_zarr_format
+from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata
+from zarr.core.metadata.v2 import parse_zarr_format
 
 if TYPE_CHECKING:
     from typing import Any
