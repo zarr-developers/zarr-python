@@ -4,8 +4,10 @@ import os
 import tempfile
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 
+import zarr
 from zarr.abc.store import AccessMode
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.store.zip import ZipStore
@@ -65,3 +67,32 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
     def test_delete(self, store: ZipStore) -> Coroutine[Any, Any, None]:
         pass
+
+    def test_api_integration(self, store: ZipStore) -> None:
+        root = zarr.open_group(store=store)
+
+        data = np.arange(10000, dtype=np.uint16).reshape(100, 100)
+        z = root.create_array(
+            shape=data.shape, chunks=(10, 10), name="foo", dtype=np.uint16, fill_value=99
+        )
+        z[:] = data
+
+        assert np.array_equal(data, z[:])
+
+        # you can overwrite existing chunks but zipfile will issue a warning
+        with pytest.warns(UserWarning, match="Duplicate name: 'foo/c/0/0'"):
+            z[0, 0] = 100
+
+        # TODO: assigning an entire chunk to fill value ends up deleting the chunk which is not supported
+        # a work around will be needed here.
+        with pytest.raises(NotImplementedError):
+            z[0:10, 0:10] = 99
+
+        bar = root.create_group("bar", attributes={"hello": "world"})
+        assert "hello" in dict(bar.attrs)
+
+        # keys cannot be deleted
+        with pytest.raises(NotImplementedError):
+            del root["bar"]
+
+        store.close()
