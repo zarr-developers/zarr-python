@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import zarr.api.asynchronous
+import zarr.api.synchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import ZarrFormat
@@ -244,7 +245,10 @@ def test_group_open(
         assert group_created_again.store_path == spath
 
 
-def test_group_getitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("consolidated", [True, False])
+def test_group_getitem(
+    store: MemoryStore | LocalStore, zarr_format: ZarrFormat, consolidated: bool
+) -> None:
     """
     Test the `Group.__getitem__` method.
     """
@@ -253,13 +257,19 @@ def test_group_getitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
     subgroup = group.create_group(name="subgroup")
     subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
 
+    if consolidated:
+        group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
+
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
     with pytest.raises(KeyError):
         group["nope"]
 
 
-def test_group_delitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("consolidated", [True, False])
+def test_group_delitem(
+    store: MemoryStore | LocalStore, zarr_format: ZarrFormat, consolidated: bool
+) -> None:
     """
     Test the `Group.__delitem__` method.
     """
@@ -267,6 +277,9 @@ def test_group_delitem(store: MemoryStore | LocalStore, zarr_format: ZarrFormat)
     group = Group.create(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
     subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+
+    if consolidated:
+        group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
 
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
@@ -319,22 +332,32 @@ def test_group_contains(store: MemoryStore | LocalStore, zarr_format: ZarrFormat
     assert "foo" in group
 
 
-def test_group_subgroups(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("consolidate", [True, False])
+def test_group_subgroups(
+    store: MemoryStore | LocalStore, zarr_format: ZarrFormat, consolidate: bool
+) -> None:
     """
     Test the behavior of `Group` methods for accessing subgroups, namely `Group.group_keys` and `Group.groups`
     """
     group = Group.create(store, zarr_format=zarr_format)
     keys = ("foo", "bar")
-    subgroups_expected = tuple(group.create_group(k) for k in keys)
+    subgroups_expected = tuple(group.create_group(k, attributes={"key": k}) for k in keys)
     # create a sub-array as well
     _ = group.create_array("array", shape=(10,))
+
+    if consolidate:
+        group = zarr.api.synchronous.consolidate_metadata(store, zarr_format=zarr_format)
+
     subgroups_observed = group.groups()
     assert set(group.group_keys()) == set(keys)
     assert len(subgroups_observed) == len(subgroups_expected)
     assert all(a in subgroups_observed for a in subgroups_expected)
 
 
-def test_group_subarrays(store: MemoryStore | LocalStore, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("consolidate", [True, False])
+def test_group_subarrays(
+    store: MemoryStore | LocalStore, zarr_format: ZarrFormat, consolidate: bool
+) -> None:
     """
     Test the behavior of `Group` methods for accessing subgroups, namely `Group.group_keys` and `Group.groups`
     """
@@ -343,6 +366,10 @@ def test_group_subarrays(store: MemoryStore | LocalStore, zarr_format: ZarrForma
     subarrays_expected = tuple(group.create_array(k, shape=(10,)) for k in keys)
     # create a sub-group as well
     _ = group.create_group("group")
+
+    if consolidate:
+        group = zarr.api.synchronous.consolidate_metadata(store, zarr_format=zarr_format)
+
     subarrays_observed = group.arrays()
     assert set(group.array_keys()) == set(keys)
     assert len(subarrays_observed) == len(subarrays_expected)
@@ -928,3 +955,22 @@ async def test_group_delitem_consolidated(store: LocalStore | MemoryStore):
     await group.delitem("g0")
     assert len(group.metadata.consolidated_metadata.metadata) == 1
     assert "g0" not in group.metadata.consolidated_metadata.metadata
+
+
+@pytest.mark.parametrize("consolidate", [True, False])
+def test_members_name(store: LocalStore | MemoryStore, consolidate: bool):
+    group = Group.create(store=store)
+    a = group.create_group(name="a")
+    a.create_array("array", shape=(1,))
+    b = a.create_group(name="b")
+    b.create_array("array", shape=(1,))
+
+    if consolidate:
+        group = zarr.api.synchronous.consolidate_metadata(store)
+
+    result = group["a"]["b"]
+    assert result.name == "/a/b"
+
+    paths = sorted(x.name for _, x in group.members(max_depth=None))
+    expected = ["/a", "/a/array", "/a/b", "/a/b/array"]
+    assert paths == expected

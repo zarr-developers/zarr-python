@@ -24,9 +24,6 @@ if TYPE_CHECKING:
     from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
 
 
-HERE = pathlib.Path(__file__).parent
-
-
 async def parse_store(
     store: Literal["local", "memory", "remote"], path: str
 ) -> LocalStore | MemoryStore | RemoteStore:
@@ -92,12 +89,6 @@ async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> As
         exists_ok=False,
     )
     return agroup
-
-
-@pytest.fixture(scope="function")
-async def complex_hierarchy() -> LocalStore:
-    root = HERE / "examples/complex-hierarchy.zarr"
-    return LocalStore(root=root)
 
 
 @pytest.fixture(params=["numpy", "cupy"])

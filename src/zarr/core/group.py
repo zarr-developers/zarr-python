@@ -575,6 +575,9 @@ class AsyncGroup:
             msg = f"'{key}' not found in consolidated metadata."
             raise KeyError(msg) from e
 
+        # update store_path to ensure that AsyncArray/Group.name is correct
+        store_path = StorePath(store=store_path.store, path=key)
+
         if isinstance(metadata, GroupMetadata):
             return AsyncGroup(metadata=metadata, store_path=store_path)
         else:
@@ -584,9 +587,6 @@ class AsyncGroup:
         store_path = self.store_path / key
         if self.metadata.zarr_format == 3:
             await (store_path / ZARR_JSON).delete()
-            if self.metadata.consolidated_metadata:
-                self.metadata.consolidated_metadata.metadata.pop(key, None)
-                # This should probably synchronize?
 
         elif self.metadata.zarr_format == 2:
             await asyncio.gather(
@@ -594,8 +594,14 @@ class AsyncGroup:
                 (store_path / ZARRAY_JSON).delete(),  # TODO: missing_ok=False
                 (store_path / ZATTRS_JSON).delete(),  # TODO: missing_ok=True
             )
+
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
+
+        if self.metadata.consolidated_metadata:
+            self.metadata.consolidated_metadata.metadata.pop(key, None)
+            # FIXME: This should probably rewrite all the consolidated metadata?
+            # Or do we expect users to reconsolidate?
 
     async def _save_metadata(self) -> None:
         to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
