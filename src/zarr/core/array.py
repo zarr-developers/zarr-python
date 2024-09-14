@@ -156,7 +156,7 @@ class AsyncArray:
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
     ):
-        if not isinstance(metadata, ArrayMetadata):
+        if isinstance(metadata, dict):
             zarr_format = metadata["zarr_format"]
             if zarr_format == 2:
                 metadata = ArrayV2Metadata.from_dict(metadata)
