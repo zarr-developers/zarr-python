@@ -724,7 +724,7 @@ async def create(
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    mode = kwargs.pop("mode", cast(AccessModeLiteral, "r" if read_only else "w"))
+    mode = kwargs.pop("mode", cast(AccessModeLiteral, "r" if read_only else "a"))
     store_path = await make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path

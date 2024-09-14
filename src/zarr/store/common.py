@@ -78,12 +78,12 @@ async def make_store_path(
     store_like: StoreLike | None, *, mode: AccessModeLiteral | None = None
 ) -> StorePath:
     if isinstance(store_like, StorePath):
-        if mode is not None:
-            assert AccessMode.from_literal(mode) == store_like.store.mode
+        if (mode is not None) and (AccessMode.from_literal(mode) != store_like.store.mode):
+            raise ValueError(f"mode mismatch (mode={mode} != store.mode={store_like.store.mode})")
         return store_like
     elif isinstance(store_like, Store):
-        if mode is not None:
-            assert AccessMode.from_literal(mode) == store_like.mode
+        if (mode is not None) and (AccessMode.from_literal(mode) != store_like.mode):
+            raise ValueError(f"mode mismatch (mode={mode} != store.mode={store_like.mode})")
         await store_like._ensure_open()
         return StorePath(store_like)
     elif store_like is None:

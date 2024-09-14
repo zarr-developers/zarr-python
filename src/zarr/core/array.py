@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.store import set_or_delete
+from zarr.abc.store import Store, set_or_delete
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
-from zarr.core.chunk_grids import RegularChunkGrid, _guess_chunks
+from zarr.core.chunk_grids import RegularChunkGrid, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     DefaultChunkKeyEncoding,
@@ -129,7 +129,7 @@ class AsyncArray:
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
         # v3 only
-        chunk_shape: ChunkCoords | None = None,
+        chunk_shape: ChunkCoords | None = None,  # TODO: handle bool and iterable of iterable types
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -139,7 +139,7 @@ class AsyncArray:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
-        chunks: ShapeLike | None = None,
+        chunks: ShapeLike | None = None,  # TODO: handle bool and iterable of iterable types
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -152,15 +152,14 @@ class AsyncArray:
 
         shape = parse_shapelike(shape)
 
-        if chunk_shape is None:
-            if chunks is None:
-                chunk_shape = chunks = _guess_chunks(shape=shape, typesize=np.dtype(dtype).itemsize)
-            else:
-                chunks = parse_shapelike(chunks)
+        if chunks is not None and chunk_shape is not None:
+            raise ValueError("Only one of chunk_shape or chunks can be provided.")
 
-            chunk_shape = chunks
-        elif chunks is not None:
-            raise ValueError("Only one of chunk_shape or chunks must be provided.")
+        dtype = np.dtype(dtype)
+        if chunks:
+            _chunks = normalize_chunks(chunks, shape, dtype.itemsize)
+        if chunk_shape:
+            _chunks = normalize_chunks(chunk_shape, shape, dtype.itemsize)
 
         if zarr_format == 3:
             if dimension_separator is not None:
@@ -183,7 +182,7 @@ class AsyncArray:
                 store_path,
                 shape=shape,
                 dtype=dtype,
-                chunk_shape=chunk_shape,
+                chunk_shape=_chunks,
                 fill_value=fill_value,
                 chunk_key_encoding=chunk_key_encoding,
                 codecs=codecs,
@@ -206,7 +205,7 @@ class AsyncArray:
                 store_path,
                 shape=shape,
                 dtype=dtype,
-                chunks=chunk_shape,
+                chunks=_chunks,
                 dimension_separator=dimension_separator,
                 fill_value=fill_value,
                 order=order,
@@ -392,6 +391,10 @@ class AsyncArray:
                 store_path=store_path,
                 metadata=ArrayV3Metadata.from_dict(json.loads(zarr_json_bytes.to_bytes())),
             )
+
+    @property
+    def store(self) -> Store:
+        return self.store_path.store
 
     @property
     def ndim(self) -> int:
@@ -696,6 +699,10 @@ class Array:
     ) -> Array:
         async_array = sync(AsyncArray.open(store))
         return cls(async_array)
+
+    @property
+    def store(self) -> Store:
+        return self._async_array.store
 
     @property
     def ndim(self) -> int:
