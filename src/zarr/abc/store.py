@@ -84,6 +84,11 @@ class Store(ABC):
             raise ValueError("store mode does not support writing")
 
     @abstractmethod
+    def __eq__(self, value: object) -> bool:
+        """Equality comparison."""
+        ...
+
+    @abstractmethod
     async def get(
         self,
         key: str,
