@@ -147,10 +147,16 @@ class AsyncArray:
 
     def __init__(
         self,
-        metadata: ArrayMetadata,
+        metadata: ArrayMetadata | dict[str, Any],
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
     ):
+        if not isinstance(metadata, ArrayMetadata):
+            zarr_format = metadata["zarr_format"]
+            if zarr_format == 2:
+                metadata = ArrayV2Metadata.from_dict(metadata)
+            else:
+                metadata = ArrayV3Metadata.from_dict(metadata)
         metadata_parsed = parse_array_metadata(metadata)
         order_parsed = parse_indexing_order(order or config.get("array.order"))
 
@@ -390,11 +396,7 @@ class AsyncArray:
     ) -> AsyncArray:
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-        zarr_format = metadata_dict["zarr_format"]
-        if zarr_format == 2:
-            return cls(store_path=store_path, metadata=ArrayV2Metadata.from_dict(metadata_dict))
-        else:
-            return cls(store_path=store_path, metadata=ArrayV3Metadata.from_dict(metadata_dict))
+        return cls(store_path=store_path, metadata=metadata_dict)
 
     @property
     def ndim(self) -> int:
