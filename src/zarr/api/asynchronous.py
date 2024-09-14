@@ -228,18 +228,15 @@ async def open(
     if "shape" not in kwargs and mode in {"a", "w", "w-"}:
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+            # for v2, the above would already have raised an exception if not an array
             zarr_format = metadata_dict["zarr_format"]
-            if zarr_format == 3:
-                is_array = metadata_dict.get("node_type") == "array"
-            else:
-                # for v2, the above would already have raised an exception if not an array
-                is_array = True
+            is_v3_array = zarr_format == 3 and metadata_dict.get("node_type") == "array"
+            if is_v3_array or zarr_format == 2:
+                return AsyncArray(store_path=store_path, metadata=metadata_dict)
         except (AssertionError, FileNotFoundError):
-            is_array = False
-        if not is_array:
-            return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
-        else:
-            return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+            pass
+        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
     except KeyError:
