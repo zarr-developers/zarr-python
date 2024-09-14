@@ -19,6 +19,10 @@ if TYPE_CHECKING:
 
 
 class Endian(Enum):
+    """
+    Enum for endian type used by bytes codec.
+    """
+
     big = "big"
     little = "little"
 

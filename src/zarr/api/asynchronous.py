@@ -10,7 +10,8 @@ import numpy.typing as npt
 from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
-from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.store import (
     StoreLike,
     make_store_path,
@@ -509,8 +510,18 @@ async def open_group(
 
     Parameters
     ----------
-    store : Store or string, optional
+    store : Store, string, or mapping, optional
         Store or path to directory in file system or name of zip file.
+
+        Strings are interpreted as paths on the local file system
+        and used as the ``root`` argument to :class:`zarr.store.LocalStore`.
+
+        Dictionaries are used as the ``store_dict`` argument in
+        :class:`zarr.store.MemoryStore``.
+
+        By default (``store=None``) a new :class:`zarr.store.MemoryStore`
+        is created.
+
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -909,7 +920,6 @@ async def open_array(
         if store_path.store.mode.create:
             return await create(
                 store=store_path,
-                path=path,
                 zarr_format=zarr_format,
                 overwrite=store_path.store.mode.overwrite,
                 **kwargs,

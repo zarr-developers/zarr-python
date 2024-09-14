@@ -29,6 +29,9 @@ if TYPE_CHECKING:
     from zarr.codecs.bytes import Endian
     from zarr.core.common import BytesLike, ChunkCoords
 
+# Everything here is imported into ``zarr.core.buffer`` namespace.
+__all__: list[str] = []
+
 
 @runtime_checkable
 class ArrayLike(Protocol):
@@ -192,8 +195,8 @@ class Buffer(ABC):
         -------
             A new buffer representing the content of the input buffer
 
-        Note
-        ----
+        Notes
+        -----
         Subclasses of `Buffer` must override this method to implement
         more optimal conversions that avoid copies where possible
         """

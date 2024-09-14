@@ -516,7 +516,7 @@ class AsyncGroup:
         self,
         name: str,
         *,
-        shape: ChunkCoords,
+        shape: ShapeLike,
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,

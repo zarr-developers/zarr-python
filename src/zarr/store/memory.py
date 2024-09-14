@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 # When that is done, the `MemoryStore` will just be a store that wraps a dict.
 class MemoryStore(Store):
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
 
@@ -30,7 +31,9 @@ class MemoryStore(Store):
         mode: AccessModeLiteral = "r",
     ):
         super().__init__(mode=mode)
-        self._store_dict = store_dict or {}
+        if store_dict is None:
+            store_dict = {}
+        self._store_dict = store_dict
 
     async def empty(self) -> bool:
         return not self._store_dict
