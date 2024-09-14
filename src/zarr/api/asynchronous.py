@@ -2,23 +2,55 @@ from __future__ import annotations
 
 import asyncio
 import warnings
-from collections.abc import Iterable
-from typing import Any, Literal, Union, cast
+from typing import TYPE_CHECKING, Any, Literal, Union, cast
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec
-from zarr.array import Array, AsyncArray
-from zarr.buffer import NDArrayLike
-from zarr.chunk_key_encodings import ChunkKeyEncoding
-from zarr.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
-from zarr.group import AsyncGroup
-from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.array import Array, AsyncArray
+from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
+from zarr.core.group import AsyncGroup
+from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.store import (
     StoreLike,
     make_store_path,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from zarr.abc.codec import Codec
+    from zarr.core.buffer import NDArrayLike
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+
+__all__ = [
+    "consolidate_metadata",
+    "copy",
+    "copy_all",
+    "copy_store",
+    "load",
+    "open",
+    "open_consolidated",
+    "save",
+    "save_array",
+    "save_group",
+    "tree",
+    "array",
+    "group",
+    "open_group",
+    "create",
+    "empty",
+    "empty_like",
+    "full",
+    "full_like",
+    "ones",
+    "ones_like",
+    "open_array",
+    "open_like",
+    "zeros",
+    "zeros_like",
+]
 
 # TODO: this type could use some more thought, noqa to avoid "Variable "asynchronous.ArrayLike" is not valid as a type"
 ArrayLike = Union[AsyncArray | Array | npt.NDArray[Any]]  # noqa
@@ -466,8 +498,18 @@ async def open_group(
 
     Parameters
     ----------
-    store : Store or string, optional
+    store : Store, string, or mapping, optional
         Store or path to directory in file system or name of zip file.
+
+        Strings are interpreted as paths on the local file system
+        and used as the ``root`` argument to :class:`zarr.store.LocalStore`.
+
+        Dictionaries are used as the ``store_dict`` argument in
+        :class:`zarr.store.MemoryStore``.
+
+        By default (``store=None``) a new :class:`zarr.store.MemoryStore`
+        is created.
+
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -866,7 +908,6 @@ async def open_array(
         if store_path.store.mode.create:
             return await create(
                 store=store_path,
-                path=path,
                 zarr_format=zarr_format,
                 overwrite=store_path.store.mode.overwrite,
                 **kwargs,

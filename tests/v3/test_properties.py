@@ -7,18 +7,23 @@ pytest.importorskip("hypothesis")
 import hypothesis.extra.numpy as npst  # noqa
 import hypothesis.strategies as st  # noqa
 from hypothesis import given, settings  # noqa
-from zarr.strategies import arrays, np_arrays, basic_indices  # noqa
+from zarr.testing.strategies import arrays, np_arrays, basic_indices  # noqa
 
 
 @given(st.data())
-def test_roundtrip(data):
+def test_roundtrip(data: st.DataObject) -> None:
     nparray = data.draw(np_arrays)
     zarray = data.draw(arrays(arrays=st.just(nparray)))
     assert_array_equal(nparray, zarray[:])
 
 
 @given(data=st.data())
-def test_basic_indexing(data):
+# The filter warning here is to silence an occasional warning in NDBuffer.all_equal
+# See https://github.com/zarr-developers/zarr-python/pull/2118#issuecomment-2310280899
+# Uncomment the next line to reproduce the original failure.
+# @reproduce_failure('6.111.2', b'AXicY2FgZGRAB/8/ndR2z7nkDZEDADWpBL4=')
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
+def test_basic_indexing(data: st.DataObject) -> None:
     zarray = data.draw(arrays())
     nparray = zarray[:]
     indexer = data.draw(basic_indices(shape=nparray.shape))
@@ -32,7 +37,12 @@ def test_basic_indexing(data):
 
 
 @given(data=st.data())
-def test_vindex(data):
+# The filter warning here is to silence an occasional warning in NDBuffer.all_equal
+# See https://github.com/zarr-developers/zarr-python/pull/2118#issuecomment-2310280899
+# Uncomment the next line to reproduce the original failure.
+# @reproduce_failure('6.111.2', b'AXicY2FgZGRAB/8/eLmF7qr/C5EDADZUBRM=')
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
+def test_vindex(data: st.DataObject) -> None:
     zarray = data.draw(arrays())
     nparray = zarray[:]
 

@@ -6,9 +6,11 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing_extensions import Self
 
+    from zarr.core.common import JSON
+
 from dataclasses import dataclass, fields
 
-from zarr.common import JSON
+__all__ = ["Metadata"]
 
 
 @dataclass(frozen=True)

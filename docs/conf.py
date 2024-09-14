@@ -57,9 +57,10 @@ issues_github_path = "zarr-developers/zarr-python"
 
 autoapi_dirs = ['../src/zarr']
 autoapi_add_toctree_entry = False
-autoapi_generate_api_docs = False
+autoapi_generate_api_docs = True
 autoapi_member_order = "groupwise"
-autoapi_root = "api"
+autoapi_root = "_autoapi"
+autoapi_keep_files = True
 
 
 # Add any paths that contain templates here, relative to this directory.
@@ -172,8 +173,19 @@ html_theme_options = {
 html_logo = "_static/logo1.png"
 
 
+def autoapi_skip_modules(app: sphinx.application.Sphinx, what: str, name: str, obj: object, skip: bool, options: dict[str, Any]) -> bool:
+    """
+    Return True if a module should be skipped in th API docs.
+    """
+    parts = name.split(".")
+    if what == "module" and (any(part.startswith("_") for part in parts) or "v2" in name or name.startswith("zarr.core")):
+        return True
+    return False
+
+
 def setup(app: sphinx.application.Sphinx) -> None:
     app.add_css_file("custom.css")
+    app.connect("autoapi-skip-member", autoapi_skip_modules)
 
 
 # The name of an image file (relative to this directory) to use as a favicon of
@@ -339,7 +351,7 @@ texinfo_documents = [
 # use in refs e.g:
 # :ref:`comparison manual <python:comparisons>`
 intersphinx_mapping = {
-    "python": ("https://docs.python.org/", None),
+    "python": ("https://docs.python.org/3/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "numcodecs": ("https://numcodecs.readthedocs.io/en/stable/", None),
 }

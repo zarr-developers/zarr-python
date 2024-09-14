@@ -14,22 +14,22 @@ from zarr.api.synchronous import (
     tree,
 )
 
+__all__ = [
+    "open",
+    "save",
+    "load",
+    "save_array",
+    "save_group",
+    "copy",
+    "copy_all",
+    "copy_store",
+    "tree",
+    "consolidate_metadata",
+    "open_consolidated",
+]
+
 warnings.warn(
     "zarr.convenience is deprecated, use zarr.api.synchronous",
     DeprecationWarning,
     stacklevel=2,
 )
-
-__all__ = [
-    "open",
-    "save_array",
-    "save_group",
-    "save",
-    "load",
-    "tree",
-    "copy_store",
-    "copy",
-    "copy_all",
-    "consolidate_metadata",
-    "open_consolidated",
-]

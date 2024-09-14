@@ -10,12 +10,12 @@ import pytest
 import zarr
 from zarr import Array, zeros
 from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
-from zarr.abc.store import ByteSetter
-from zarr.array_spec import ArraySpec
-from zarr.buffer import NDBuffer
+from zarr.abc.store import ByteSetter, Store
 from zarr.codecs import BatchedCodecPipeline, BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
-from zarr.config import BadConfigError, config
-from zarr.indexing import SelectorTuple
+from zarr.core.array_spec import ArraySpec
+from zarr.core.buffer import NDBuffer
+from zarr.core.config import BadConfigError, config
+from zarr.core.indexing import SelectorTuple
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -46,8 +46,8 @@ def test_config_defaults_set() -> None:
                 "path": "zarr.codecs.pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
             },
-            "buffer": "zarr.buffer.Buffer",
-            "ndbuffer": "zarr.buffer.NDBuffer",
+            "buffer": "zarr.core.buffer.cpu.Buffer",
+            "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",
                 "gzip": "zarr.codecs.gzip.GzipCodec",
@@ -77,17 +77,18 @@ def test_config_defaults_can_be_overridden(key: str, old_val: Any, new_val: Any)
         assert config.get(key) == new_val
 
 
-def test_fully_qualified_name():
+def test_fully_qualified_name() -> None:
     class MockClass:
         pass
 
-    assert "v3.test_config.test_fully_qualified_name.<locals>.MockClass" == fully_qualified_name(
-        MockClass
+    assert (
+        fully_qualified_name(MockClass)
+        == "tests.v3.test_config.test_fully_qualified_name.<locals>.MockClass"
     )
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-def test_config_codec_pipeline_class(store):
+def test_config_codec_pipeline_class(store: Store) -> None:
     # has default value
     assert get_pipeline_class().__name__ != ""
 
@@ -138,7 +139,7 @@ def test_config_codec_pipeline_class(store):
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-def test_config_codec_implementation(store):
+def test_config_codec_implementation(store: Store) -> None:
     # has default value
     assert fully_qualified_name(get_codec_class("blosc")) == config.defaults[0]["codecs"]["blosc"]
 
@@ -171,7 +172,7 @@ def test_config_codec_implementation(store):
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-def test_config_ndbuffer_implementation(store):
+def test_config_ndbuffer_implementation(store: Store) -> None:
     # has default value
     assert fully_qualified_name(get_ndbuffer_class()) == config.defaults[0]["ndbuffer"]
 
@@ -191,7 +192,7 @@ def test_config_ndbuffer_implementation(store):
     assert isinstance(got, TestNDArrayLike)
 
 
-def test_config_buffer_implementation():
+def test_config_buffer_implementation() -> None:
     # has default value
     assert fully_qualified_name(get_buffer_class()) == config.defaults[0]["buffer"]
 

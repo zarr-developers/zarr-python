@@ -2,11 +2,12 @@ from collections.abc import Iterable
 
 from numpy import ndarray
 
-from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecPipeline
-from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer, NDBuffer
+import zarr.core.buffer
+from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecOutput, CodecPipeline
 from zarr.codecs import BytesCodec
-from zarr.common import BytesLike
+from zarr.core.array_spec import ArraySpec
+from zarr.core.buffer import Buffer, NDBuffer
+from zarr.core.common import BytesLike
 
 
 class TestEntrypointCodec(ArrayBytesCodec):
@@ -15,7 +16,7 @@ class TestEntrypointCodec(ArrayBytesCodec):
     async def encode(
         self,
         chunks_and_specs: Iterable[tuple[CodecInput | None, ArraySpec]],
-    ) -> BytesLike | None:
+    ) -> Iterable[CodecOutput | None]:
         pass
 
     async def decode(
@@ -29,7 +30,7 @@ class TestEntrypointCodec(ArrayBytesCodec):
 
 
 class TestEntrypointCodecPipeline(CodecPipeline):
-    def __init__(self, batch_size: int = 1):
+    def __init__(self, batch_size: int = 1) -> None:
         pass
 
     async def encode(
@@ -55,10 +56,10 @@ class TestEntrypointGroup:
     class Codec(BytesCodec):
         pass
 
-    class Buffer(Buffer):
+    class Buffer(zarr.core.buffer.Buffer):
         pass
 
-    class NDBuffer(NDBuffer):
+    class NDBuffer(zarr.core.buffer.NDBuffer):
         pass
 
     class Pipeline(CodecPipeline):

@@ -4,11 +4,14 @@ from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from typing_extensions import Self
 
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import AccessModeLiteral, BytesLike
+from zarr.core.buffer import Buffer, BufferPrototype
+from zarr.core.common import AccessModeLiteral, BytesLike
+
+__all__ = ["Store", "AccessMode", "ByteGetter", "ByteSetter", "set_or_delete"]
 
 
 class AccessMode(NamedTuple):
+    str: AccessModeLiteral
     readonly: bool
     overwrite: bool
     create: bool
@@ -18,6 +21,7 @@ class AccessMode(NamedTuple):
     def from_literal(cls, mode: AccessModeLiteral) -> Self:
         if mode in ("r", "r+", "a", "w", "w-"):
             return cls(
+                str=mode,
                 readonly=mode == "r",
                 overwrite=mode == "w",
                 create=mode in ("a", "w", "w-"),
@@ -39,6 +43,14 @@ class Store(ABC):
         store = cls(*args, **kwargs)
         await store._open()
         return store
+
+    def __enter__(self) -> Self:
+        """Enter a context manager that will close the store upon exiting."""
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        """Close the store."""
+        self.close()
 
     async def _open(self) -> None:
         if self._is_open:
@@ -146,6 +158,12 @@ class Store(ABC):
         """
         ...
 
+    @property
+    @abstractmethod
+    def supports_deletes(self) -> bool:
+        """Does the store support deletes?"""
+        ...
+
     @abstractmethod
     async def delete(self, key: str) -> None:
         """Remove a key from the store
@@ -224,7 +242,6 @@ class Store(ABC):
     def close(self) -> None:
         """Close the store."""
         self._is_open = False
-        pass
 
 
 @runtime_checkable

@@ -3,17 +3,16 @@ from collections.abc import Iterator
 import numpy as np
 import pytest
 
-from zarr.abc.store import Store
-from zarr.array import Array
+from zarr import Array
 from zarr.store import MemoryStore, StorePath
 
 
 @pytest.fixture
-async def store() -> Iterator[Store]:
+async def store() -> Iterator[StorePath]:
     yield StorePath(await MemoryStore.open(mode="w"))
 
 
-def test_simple(store: Store):
+def test_simple(store: StorePath) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
     a = Array.create(
