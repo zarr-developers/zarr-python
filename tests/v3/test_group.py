@@ -788,6 +788,3 @@ def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> 
     actual = pickle.loads(p)
 
     assert actual == expected
-
-
-def test_group_create_v2_compatibility(): ...
