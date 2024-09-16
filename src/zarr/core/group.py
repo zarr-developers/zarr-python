@@ -141,14 +141,15 @@ class ConsolidatedMetadata:
                     else:
                         # probably v2 Group metadata
                         metadata[k] = GroupMetadata.from_dict(v)
-            metadata = cls._flat_to_nested(metadata)
+
+            cls._flat_to_nested(metadata)
 
         return cls(metadata=metadata)
 
     @staticmethod
     def _flat_to_nested(
         metadata: dict[str, ArrayMetadata | GroupMetadata],
-    ) -> dict[str, ArrayMetadata | GroupMetadata]:
+    ) -> None:
         """
         Convert a flat metadata representation to a nested one.
 
@@ -168,15 +169,14 @@ class ConsolidatedMetadata:
         # We want a nested representation, so we need to group by Group,
         # i.e. find all the children with the same prefix.
         #
-
-        metadata = dict(metadata)
+        # metadata = dict(metadata)
 
         keys = sorted(metadata, key=lambda k: k.count("/"))
         grouped = {
             k: list(v) for k, v in itertools.groupby(keys, key=lambda k: k.rsplit("/", 1)[0])
         }
 
-        # # we go top down and directly manipulate metadata.
+        # we go top down and directly manipulate metadata.
         for key, children_keys in grouped.items():
             # key is a key like "a", "a/b", "a/b/c"
             # The basic idea is to find the immediate parent (so "", "a", or "a/b")
@@ -191,7 +191,8 @@ class ConsolidatedMetadata:
                 part = prefixes.pop(0)
                 # we can assume that parent[part] here is a group
                 # otherwise we wouldn't have a node with this `part` prefix.
-                # We can also assume that the parent node will have consolidated metadata.
+                # We can also assume that the parent node will have consolidated metadata,
+                # because we're walking top to bottom.
                 parent = parent[part].consolidated_metadata.metadata  # type: ignore[union-attr]
 
             node = parent[name]
@@ -212,7 +213,6 @@ class ConsolidatedMetadata:
                 parent[name] = replace(
                     node, consolidated_metadata=ConsolidatedMetadata(metadata=children)
                 )
-        return metadata
 
     @property
     def flattened_metadata(self) -> dict[str, ArrayMetadata | GroupMetadata]:
