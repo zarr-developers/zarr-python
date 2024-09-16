@@ -281,6 +281,12 @@ class Buffer(ABC):
         """Concatenate two buffers"""
         ...
 
+    def __eq__(self, other: object) -> bool:
+        # Another Buffer class can override this to choose a more efficient path
+        return isinstance(other, Buffer) and np.array_equal(
+            self.as_numpy_array(), other.as_numpy_array()
+        )
+
 
 class NDBuffer:
     """An n-dimensional memory block

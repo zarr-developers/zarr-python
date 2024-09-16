@@ -1,9 +1,10 @@
+import pickle
 from typing import Literal
 
 import numpy as np
 import pytest
 
-from zarr import Array, Group
+from zarr import Array, AsyncArray, Group
 from zarr.core.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.store import LocalStore, MemoryStore
@@ -135,3 +136,36 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
     assert arr.fill_value == np.dtype(dtype_str).type(fill_value)
     assert arr.fill_value.dtype == arr.dtype
+
+
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_serializable_async_array(
+    store: LocalStore | MemoryStore, zarr_format: ZarrFormat
+) -> None:
+    expected = await AsyncArray.create(
+        store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
+    )
+    # await expected.setitems(list(range(100)))
+
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+
+    assert actual == expected
+    # np.testing.assert_array_equal(await actual.getitem(slice(None)), await expected.getitem(slice(None)))
+    # TODO: uncomment the parts of this test that will be impacted by the config/prototype changes in flight
+
+
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> None:
+    expected = Array.create(
+        store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
+    )
+    expected[:] = list(range(100))
+
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+
+    assert actual == expected
+    np.testing.assert_array_equal(actual[:], expected[:])

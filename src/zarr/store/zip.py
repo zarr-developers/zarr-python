@@ -5,7 +5,7 @@ import threading
 import time
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import Store
 from zarr.core.buffer import Buffer, BufferPrototype
@@ -68,7 +68,7 @@ class ZipStore(Store):
         self.compression = compression
         self.allowZip64 = allowZip64
 
-    async def _open(self) -> None:
+    def _sync_open(self) -> None:
         if self._is_open:
             raise ValueError("store is already open")
 
@@ -82,6 +82,17 @@ class ZipStore(Store):
         )
 
         self._is_open = True
+
+    async def _open(self) -> None:
+        self._sync_open()
+
+    def __getstate__(self) -> tuple[Path, ZipStoreAccessModeLiteral, int, bool]:
+        return self.path, self._zmode, self.compression, self.allowZip64
+
+    def __setstate__(self, state: Any) -> None:
+        self.path, self._zmode, self.compression, self.allowZip64 = state
+        self._is_open = False
+        self._sync_open()
 
     def close(self) -> None:
         super().close()

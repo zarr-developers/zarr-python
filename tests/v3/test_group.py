@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pickle
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
@@ -9,14 +10,14 @@ import zarr.api.asynchronous
 import zarr.api.synchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
-from zarr.api.synchronous import open_group
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.store import LocalStore, MemoryStore, StorePath
+from zarr.store import LocalStore, StorePath
 from zarr.store.common import make_store_path
+from zarr.store.memory import MemoryStore
 from zarr.store.zip import ZipStore
 
 from .conftest import parse_store
@@ -722,9 +723,7 @@ async def test_asyncgroup_update_attributes(store: Store, zarr_format: ZarrForma
 
 
 @pytest.mark.parametrize("consolidated_metadata", [True, False])
-async def test_group_members_async(
-    store: LocalStore | MemoryStore, consolidated_metadata: bool
-) -> None:
+async def test_group_members_async(store: Store, consolidated_metadata: bool) -> None:
     group = await AsyncGroup.create(
         store=store,
     )
@@ -780,8 +779,45 @@ async def test_group_members_async(
         [x async for x in group.members(max_depth=-1)]
 
 
-async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
+    expected = await AsyncGroup.create(
+        store=store, attributes={"foo": 999}, zarr_format=zarr_format
+    )
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+    assert actual == expected
+
+
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
+    expected = Group.create(store=store, attributes={"foo": 999}, zarr_format=zarr_format)
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+    assert actual == expected
+
+
+async def test_require_groups(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    # create foo group
+    _ = await root.create_group("foo", attributes={"foo": 100})
+    # create bar group
+    _ = await root.create_group("bar", attributes={"bar": 200})
+
+    foo_group, bar_group = await root.require_groups("foo", "bar")
+    assert foo_group.attrs == {"foo": 100}
+    assert bar_group.attrs == {"bar": 200}
+
+    # get a mix of existing and new groups
+    foo_group, spam_group = await root.require_groups("foo", "spam")
+    assert foo_group.attrs == {"foo": 100}
+    assert spam_group.attrs == {}
+
+    # no names
+    no_group = await root.require_groups()
+    assert no_group == ()
 
     # create foo group
     _ = await root.create_group("foo", attributes={"foo": 100})
@@ -808,28 +844,7 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
         await foo_group.require_group("bar")
 
 
-async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
-    # create foo group
-    _ = await root.create_group("foo", attributes={"foo": 100})
-    # create bar group
-    _ = await root.create_group("bar", attributes={"bar": 200})
-
-    foo_group, bar_group = await root.require_groups("foo", "bar")
-    assert foo_group.attrs == {"foo": 100}
-    assert bar_group.attrs == {"bar": 200}
-
-    # get a mix of existing and new groups
-    foo_group, spam_group = await root.require_groups("foo", "spam")
-    assert foo_group.attrs == {"foo": 100}
-    assert spam_group.attrs == {}
-
-    # no names
-    no_group = await root.require_groups()
-    assert no_group == ()
-
-
-async def test_create_dataset(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     with pytest.warns(DeprecationWarning):
         foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
@@ -843,7 +858,7 @@ async def test_create_dataset(store: LocalStore | MemoryStore, zarr_format: Zarr
         await root.create_dataset("bar", shape=(100,), dtype="int8")
 
 
-async def test_require_array(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
     foo1 = await root.require_array("foo", shape=(10,), dtype="i8", attributes={"foo": 101})
     assert foo1.attrs == {"foo": 101}
@@ -869,7 +884,7 @@ async def test_require_array(store: LocalStore | MemoryStore, zarr_format: ZarrF
 
 
 @pytest.mark.parametrize("consolidate", [True, False])
-def test_members_name(store: LocalStore | MemoryStore, consolidate: bool):
+def test_members_name(store: Store, consolidate: bool):
     group = Group.create(store=store)
     a = group.create_group(name="a")
     a.create_array("array", shape=(1,))
@@ -893,12 +908,12 @@ async def test_open_mutable_mapping():
 
 
 def test_open_mutable_mapping_sync():
-    group = open_group(store={}, mode="w")
+    group = zarr.open_group(store={}, mode="w")
     assert isinstance(group.store_path.store, MemoryStore)
 
 
 class TestConsolidated:
-    async def test_group_getitem_consolidated(self, store: LocalStore | MemoryStore) -> None:
+    async def test_group_getitem_consolidated(self, store: Store) -> None:
         root = await AsyncGroup.create(store=store)
         # Set up the test structure with
         # /
