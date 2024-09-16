@@ -382,13 +382,17 @@ class AsyncGroup:
         """
         store_path = await make_store_path(store)
 
+        if (zarr_format is None or zarr_format == 2) and use_consolidated in (None, True):
+            use_consolidated = ".zmetadata"
+
+        elif zarr_format == 3 and not isinstance(use_consolidated, bool | None):
+            raise TypeError("use_consolidated must be a bool for Zarr V3.")
+
         if zarr_format == 2:
             paths = [store_path / ZGROUP_JSON, store_path / ZATTRS_JSON]
             if use_consolidated:
-                if use_consolidated is True:
-                    use_consolidated = ".zmetadata"
-
-                paths.append(store_path / use_consolidated)
+                # we've cast to a str here, but mypy doesn't see that
+                paths.append(store_path / use_consolidated)  # type: ignore[operator]
 
             zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
                 *[path.get() for path in paths]
@@ -441,11 +445,12 @@ class AsyncGroup:
             )
         else:
             # V3 groups are comprised of a zarr.json object
-            if not isinstance(use_consolidated, bool | None):
-                raise TypeError("use_consolidated must be a bool for Zarr V3.")
             assert zarr_json_bytes is not None
+            # we've cast to a str here but mypy doesn't see that.
             return cls._from_bytes_v3(
-                store_path, zarr_json_bytes, use_consolidated=use_consolidated
+                store_path,
+                zarr_json_bytes,
+                use_consolidated=use_consolidated,  # type: ignore[arg-type]
             )
 
     @classmethod
