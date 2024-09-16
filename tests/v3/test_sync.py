@@ -8,11 +8,10 @@ from zarr.core.sync import SyncError, SyncMixin, _get_lock, _get_loop, sync
 
 
 @pytest.fixture(params=[True, False])
-def sync_loop(request) -> asyncio.AbstractEventLoop | None:
+def sync_loop(request: pytest.FixtureRequest) -> asyncio.AbstractEventLoop | None:
     if request.param is True:
         return _get_loop()
-
-    if request.param is False:
+    else:
         return None
 
 
@@ -58,7 +57,7 @@ def test_sync_raises_if_no_coroutine(sync_loop: asyncio.AbstractEventLoop | None
         return "foo"
 
     with pytest.raises(TypeError):
-        sync(foo(), loop=sync_loop)
+        sync(foo(), loop=sync_loop)  # type: ignore[arg-type]
 
 
 @pytest.mark.filterwarnings("ignore:coroutine.*was never awaited")
@@ -82,7 +81,7 @@ def test_sync_raises_if_calling_sync_from_within_a_running_loop(
         return "foo"
 
     async def bar() -> str:
-        return sync(foo(), loop=sync_loop)
+        return sync(foo(), loop=sync_loop)  # type: ignore[arg-type]
 
     with pytest.raises(SyncError):
         sync(bar(), loop=sync_loop)
@@ -92,7 +91,7 @@ def test_sync_raises_if_calling_sync_from_within_a_running_loop(
 def test_sync_raises_if_loop_is_invalid_type() -> None:
     foo = AsyncMock(return_value="foo")
     with pytest.raises(TypeError):
-        sync(foo(), loop=1)
+        sync(foo(), loop=1)  # type: ignore[arg-type]
     foo.assert_not_awaited()
 
 

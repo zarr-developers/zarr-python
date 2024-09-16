@@ -1,7 +1,9 @@
+import pickle
 from typing import Any, Generic, TypeVar
 
 import pytest
 
+import zarr.api.asynchronous
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.store._utils import _normalize_interval_index
@@ -46,6 +48,19 @@ class StoreTests(Generic[S, B]):
     def test_store_type(self, store: S) -> None:
         assert isinstance(store, Store)
         assert isinstance(store, self.store_cls)
+
+    def test_store_eq(self, store: S, store_kwargs: dict[str, Any]) -> None:
+        # check self equality
+        assert store == store
+
+        # check store equality with same inputs
+        # asserting this is important for being able to compare (de)serialized stores
+        store2 = self.store_cls(**store_kwargs)
+        assert store == store2
+
+    def test_serizalizable_store(self, store: S) -> None:
+        foo = pickle.dumps(store)
+        assert pickle.loads(foo) == store
 
     def test_store_mode(self, store: S, store_kwargs: dict[str, Any]) -> None:
         assert store.mode == AccessMode.from_literal("r+")
@@ -232,3 +247,14 @@ class StoreTests(Generic[S, B]):
         keys_observed = [k async for k in store.list_dir("group-0/group-1")]
         assert len(keys_expected) == len(keys_observed), keys_observed
         assert set(keys_observed) == set(keys_expected), keys_observed
+
+    async def test_set_get(self, store_kwargs: dict[str, Any]) -> None:
+        kwargs = {**store_kwargs, **{"mode": "w"}}
+        store = self.store_cls(**kwargs)
+        await zarr.api.asynchronous.open_array(store=store, path="a", mode="w", shape=(4,))
+        keys = [x async for x in store.list()]
+        assert keys == ["a/zarr.json"]
+
+        # no errors
+        await zarr.api.asynchronous.open_array(store=store, path="a", mode="r")
+        await zarr.api.asynchronous.open_array(store=store, path="a", mode="a")

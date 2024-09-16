@@ -44,7 +44,7 @@ from zarr.core.indexing import (
     get_indexer,
     morton_order_iter,
 )
-from zarr.core.metadata import parse_codecs
+from zarr.core.metadata.v3 import parse_codecs
 from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
 if TYPE_CHECKING:
@@ -60,6 +60,10 @@ ShardMutableMapping = MutableMapping[ChunkCoords, Buffer]
 
 
 class ShardingCodecIndexLocation(Enum):
+    """
+    Enum for index location used by the sharding codec.
+    """
+
     start = "start"
     end = "end"
 

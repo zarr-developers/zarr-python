@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import AsyncGenerator, MutableMapping
+from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import Store
 from zarr.core.buffer import Buffer, gpu
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 # When that is done, the `MemoryStore` will just be a store that wraps a dict.
 class MemoryStore(Store):
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
 
@@ -30,7 +32,9 @@ class MemoryStore(Store):
         mode: AccessModeLiteral = "r",
     ):
         super().__init__(mode=mode)
-        self._store_dict = store_dict or {}
+        if store_dict is None:
+            store_dict = {}
+        self._store_dict = store_dict
 
     async def empty(self) -> bool:
         return not self._store_dict
@@ -43,6 +47,19 @@ class MemoryStore(Store):
 
     def __repr__(self) -> str:
         return f"MemoryStore({str(self)!r})"
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, type(self))
+            and self._store_dict == other._store_dict
+            and self.mode == other.mode
+        )
+
+    def __setstate__(self, state: Any) -> None:
+        raise NotImplementedError(f"{type(self)} cannot be pickled")
+
+    def __getstate__(self) -> None:
+        raise NotImplementedError(f"{type(self)} cannot be pickled")
 
     async def get(
         self,

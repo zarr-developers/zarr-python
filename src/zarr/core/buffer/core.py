@@ -29,6 +29,9 @@ if TYPE_CHECKING:
     from zarr.codecs.bytes import Endian
     from zarr.core.common import BytesLike, ChunkCoords
 
+# Everything here is imported into ``zarr.core.buffer`` namespace.
+__all__: list[str] = []
+
 
 @runtime_checkable
 class ArrayLike(Protocol):
@@ -192,8 +195,8 @@ class Buffer(ABC):
         -------
             A new buffer representing the content of the input buffer
 
-        Note
-        ----
+        Notes
+        -----
         Subclasses of `Buffer` must override this method to implement
         more optimal conversions that avoid copies where possible
         """
@@ -277,6 +280,12 @@ class Buffer(ABC):
     def __add__(self, other: Buffer) -> Self:
         """Concatenate two buffers"""
         ...
+
+    def __eq__(self, other: object) -> bool:
+        # Another Buffer class can override this to choose a more efficient path
+        return isinstance(other, Buffer) and np.array_equal(
+            self.as_numpy_array(), other.as_numpy_array()
+        )
 
 
 class NDBuffer:

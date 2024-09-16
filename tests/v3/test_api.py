@@ -9,6 +9,7 @@ import zarr
 from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.api.synchronous import create, group, load, open, open_group, save, save_array, save_group
+from zarr.core.common import ZarrFormat
 from zarr.store.memory import MemoryStore
 
 
@@ -80,6 +81,26 @@ async def test_open_group(memory_store: MemoryStore) -> None:
     g = open_group(store=ro_store)
     assert isinstance(g, Group)
     # assert g.read_only
+
+
+@pytest.mark.parametrize("zarr_format", [None, 2, 3])
+async def test_open_group_unspecified_version(
+    tmpdir: pathlib.Path, zarr_format: ZarrFormat
+) -> None:
+    """regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
+
+    # create a group with specified zarr format (could be 2, 3, or None)
+    _ = await zarr.api.asynchronous.open_group(
+        store=str(tmpdir), mode="w", zarr_format=zarr_format, attributes={"foo": "bar"}
+    )
+
+    # now open that group without specifying the format
+    g2 = await zarr.api.asynchronous.open_group(store=str(tmpdir), mode="r")
+
+    assert g2.attrs == {"foo": "bar"}
+
+    if zarr_format is not None:
+        assert g2.metadata.zarr_format == zarr_format
 
 
 def test_save_errors() -> None:
