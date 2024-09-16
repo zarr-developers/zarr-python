@@ -167,9 +167,8 @@ class ConsolidatedMetadata:
         #
         # We want a nested representation, so we need to group by Group,
         # i.e. find all the children with the same prefix.
-        # keys = sorted(metadata, key=lambda x: (x.count("/"), x))
+        #
 
-        # ideally we build up a data structure that has {full_key: metadata}
         metadata = dict(metadata)
 
         keys = sorted(metadata, key=lambda k: k.count("/"))
@@ -442,9 +441,11 @@ class AsyncGroup:
             )
         else:
             # V3 groups are comprised of a zarr.json object
+            if not isinstance(use_consolidated, bool | None):
+                raise TypeError("use_consolidated must be a bool for Zarr V3.")
             assert zarr_json_bytes is not None
             return cls._from_bytes_v3(
-                store_path, zarr_json_bytes, use_consolidated=bool(use_consolidated)
+                store_path, zarr_json_bytes, use_consolidated=use_consolidated
             )
 
     @classmethod
@@ -491,7 +492,7 @@ class AsyncGroup:
 
     @classmethod
     def _from_bytes_v3(
-        cls, store_path: StorePath, zarr_json_bytes: Buffer, use_consolidated: bool
+        cls, store_path: StorePath, zarr_json_bytes: Buffer, use_consolidated: bool | None
     ) -> AsyncGroup:
         group_metadata = json.loads(zarr_json_bytes.to_bytes())
         if use_consolidated and group_metadata.get("consolidated_metadata") is None:
@@ -502,6 +503,7 @@ class AsyncGroup:
         elif use_consolidated is False:
             # Drop consolidated metadata if it's there.
             group_metadata.pop("consolidated_metadata", None)
+
         return cls.from_dict(store_path, group_metadata)
 
     @classmethod
