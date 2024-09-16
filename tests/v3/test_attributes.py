@@ -3,7 +3,7 @@ import zarr.core.attributes
 import zarr.store
 
 
-def test_put():
+def test_put() -> None:
     store = zarr.store.MemoryStore({}, mode="w")
     attrs = zarr.core.attributes.Attributes(
         zarr.Group.from_store(store, attributes={"a": 1, "b": 2})
