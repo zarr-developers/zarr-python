@@ -286,7 +286,9 @@ async def open(
 
 
 async def open_consolidated(*args: Any, **kwargs: Any) -> AsyncGroup:
-    kwargs.setdefault("open_consolidated", True)
+    """
+    Alias for :func:`open_group`.
+    """
     return await open_group(*args, **kwargs)
 
 
@@ -547,7 +549,7 @@ async def open_group(
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
     attributes: dict[str, JSON] | None = None,
-    open_consolidated: bool = False,
+    use_consolidated: bool | str | None = None,
 ) -> AsyncGroup:
     """Open a group using file-mode-like semantics.
 
@@ -586,6 +588,22 @@ async def open_group(
     meta_array : array-like, optional
         An array instance to use for determining arrays to create and return
         to users. Use `numpy.empty(())` by default.
+    use_consolidated: bool or str, default None
+        Whether to use consolidated metadata.
+
+        By default, consolidated metadata is used if it's present in the
+        store (in the ``zarr.json`` for Zarr v3 and in the ``.zmetadata`` file
+        for Zarr v2).
+
+        To explicitly require consolidated metadata, set ``use_consolidated=True``,
+        which will raise an exception if consolidated metadata is not found.
+
+        To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
+        which will fall back to using the regular, non consolidated metadata.
+
+        Zarr v2 allowed configuring the key storing the consolidated metadata
+        (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
+        to load consolidated metadata from a non-default key.
 
     Returns
     -------
@@ -618,7 +636,7 @@ async def open_group(
 
     try:
         return await AsyncGroup.open(
-            store_path, zarr_format=zarr_format, open_consolidated=open_consolidated
+            store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
         )
     except (KeyError, FileNotFoundError):
         return await AsyncGroup.create(

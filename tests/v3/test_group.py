@@ -868,88 +868,6 @@ async def test_require_array(store: LocalStore | MemoryStore, zarr_format: ZarrF
         await root.require_array("bar", shape=(10,), dtype="int8")
 
 
-async def test_group_getitem_consolidated(store: LocalStore | MemoryStore):
-    root = await AsyncGroup.create(store=store)
-    # Set up the test structure with
-    # /
-    #  g0/      # group /g0
-    #    g1/    # group /g0/g1
-    #      g2/  # group /g0/g1/g2
-    #  x1/      # group /x0
-    #    x2/    # group /x0/x1
-    #      x3/  # group /x0/x1/x2
-
-    g0 = await root.create_group("g0")
-    g1 = await g0.create_group("g1")
-    await g1.create_group("g2")
-
-    x0 = await root.create_group("x0")
-    x1 = await x0.create_group("x1")
-    await x1.create_group("x2")
-
-    await zarr.api.asynchronous.consolidate_metadata(store)
-
-    # On disk, we've consolidated all the metadata in the root zarr.json
-    group = await zarr.api.asynchronous.open(store=store)
-    rg0 = await group.getitem("g0")
-
-    expected = ConsolidatedMetadata(
-        metadata={
-            "g1": GroupMetadata(
-                attributes={},
-                zarr_format=3,
-                consolidated_metadata=ConsolidatedMetadata(
-                    metadata={"g2": GroupMetadata(attributes={}, zarr_format=3)}
-                ),
-            ),
-        }
-    )
-    assert rg0.metadata.consolidated_metadata == expected
-
-    rg1 = await rg0.getitem("g1")
-    assert rg1.metadata.consolidated_metadata == expected.metadata["g1"].consolidated_metadata
-
-    rg2 = await rg1.getitem("g2")
-    assert rg2.metadata.consolidated_metadata is None
-
-
-async def test_group_delitem_consolidated(store: Store):
-    if isinstance(store, ZipStore):
-        raise pytest.skip("Not implemented")
-
-    root = await AsyncGroup.create(store=store)
-    # Set up the test structure with
-    # /
-    #  g0/         # group /g0
-    #    g1/       # group /g0/g1
-    #      g2/     # group /g0/g1/g2
-    #        data  # array
-    #  x1/         # group /x0
-    #    x2/       # group /x0/x1
-    #      x3/     # group /x0/x1/x2
-    #        data  # array
-
-    g0 = await root.create_group("g0")
-    g1 = await g0.create_group("g1")
-    g2 = await g1.create_group("g2")
-    await g2.create_array("data", shape=(1,))
-
-    x0 = await root.create_group("x0")
-    x1 = await x0.create_group("x1")
-    x2 = await x1.create_group("x2")
-    await x2.create_array("data", shape=(1,))
-
-    await zarr.api.asynchronous.consolidate_metadata(store)
-
-    group = await zarr.api.asynchronous.open_consolidated(store=store)
-    assert len(group.metadata.consolidated_metadata.metadata) == 2
-    assert "g0" in group.metadata.consolidated_metadata.metadata
-
-    await group.delitem("g0")
-    assert len(group.metadata.consolidated_metadata.metadata) == 1
-    assert "g0" not in group.metadata.consolidated_metadata.metadata
-
-
 @pytest.mark.parametrize("consolidate", [True, False])
 def test_members_name(store: LocalStore | MemoryStore, consolidate: bool):
     group = Group.create(store=store)
@@ -977,3 +895,125 @@ async def test_open_mutable_mapping():
 def test_open_mutable_mapping_sync():
     group = open_group(store={}, mode="w")
     assert isinstance(group.store_path.store, MemoryStore)
+
+
+class TestConsolidated:
+    async def test_group_getitem_consolidated(self, store: LocalStore | MemoryStore) -> None:
+        root = await AsyncGroup.create(store=store)
+        # Set up the test structure with
+        # /
+        #  g0/      # group /g0
+        #    g1/    # group /g0/g1
+        #      g2/  # group /g0/g1/g2
+        #  x1/      # group /x0
+        #    x2/    # group /x0/x1
+        #      x3/  # group /x0/x1/x2
+
+        g0 = await root.create_group("g0")
+        g1 = await g0.create_group("g1")
+        await g1.create_group("g2")
+
+        x0 = await root.create_group("x0")
+        x1 = await x0.create_group("x1")
+        await x1.create_group("x2")
+
+        await zarr.api.asynchronous.consolidate_metadata(store)
+
+        # On disk, we've consolidated all the metadata in the root zarr.json
+        group = await zarr.api.asynchronous.open(store=store)
+        rg0 = await group.getitem("g0")
+
+        expected = ConsolidatedMetadata(
+            metadata={
+                "g1": GroupMetadata(
+                    attributes={},
+                    zarr_format=3,
+                    consolidated_metadata=ConsolidatedMetadata(
+                        metadata={"g2": GroupMetadata(attributes={}, zarr_format=3)}
+                    ),
+                ),
+            }
+        )
+        assert rg0.metadata.consolidated_metadata == expected
+
+        rg1 = await rg0.getitem("g1")
+        assert rg1.metadata.consolidated_metadata == expected.metadata["g1"].consolidated_metadata
+
+        rg2 = await rg1.getitem("g2")
+        assert rg2.metadata.consolidated_metadata is None
+
+    async def test_group_delitem_consolidated(self, store: Store) -> None:
+        if isinstance(store, ZipStore):
+            raise pytest.skip("Not implemented")
+
+        root = await AsyncGroup.create(store=store)
+        # Set up the test structure with
+        # /
+        #  g0/         # group /g0
+        #    g1/       # group /g0/g1
+        #      g2/     # group /g0/g1/g2
+        #        data  # array
+        #  x1/         # group /x0
+        #    x2/       # group /x0/x1
+        #      x3/     # group /x0/x1/x2
+        #        data  # array
+
+        g0 = await root.create_group("g0")
+        g1 = await g0.create_group("g1")
+        g2 = await g1.create_group("g2")
+        await g2.create_array("data", shape=(1,))
+
+        x0 = await root.create_group("x0")
+        x1 = await x0.create_group("x1")
+        x2 = await x1.create_group("x2")
+        await x2.create_array("data", shape=(1,))
+
+        await zarr.api.asynchronous.consolidate_metadata(store)
+
+        group = await zarr.api.asynchronous.open_consolidated(store=store)
+        assert len(group.metadata.consolidated_metadata.metadata) == 2
+        assert "g0" in group.metadata.consolidated_metadata.metadata
+
+        await group.delitem("g0")
+        assert len(group.metadata.consolidated_metadata.metadata) == 1
+        assert "g0" not in group.metadata.consolidated_metadata.metadata
+
+    def test_open_consolidated_raises(self, store: Store) -> None:
+        if isinstance(store, ZipStore):
+            raise pytest.skip("Not implemented")
+
+        root = Group.create(store=store)
+
+        # fine to be missing by default
+        zarr.open_group(store=store)
+
+        with pytest.raises(ValueError, match="Consolidated metadata requested."):
+            zarr.open_group(store=store, use_consolidated=True)
+
+        # Now create consolidated metadata...
+        root.create_group("g0")
+        zarr.consolidate_metadata(store)
+
+        # and explicitly ignore it.
+        group = zarr.open_group(store=store, use_consolidated=False)
+        assert group.metadata.consolidated_metadata is None
+
+    async def test_open_consolidated_raises_async(self, store: Store) -> None:
+        if isinstance(store, ZipStore):
+            raise pytest.skip("Not implemented")
+
+        root = await AsyncGroup.create(store=store)
+
+        # fine to be missing by default
+        await zarr.api.asynchronous.open_group(store=store)
+
+        with pytest.raises(ValueError, match="Consolidated metadata requested."):
+            await zarr.api.asynchronous.open_group(store=store, use_consolidated=True)
+
+        # Now create consolidated metadata...
+        await root.create_group("g0")
+        await zarr.api.asynchronous.consolidate_metadata(store)
+
+        # and explicitly ignore it.
+        group = await zarr.api.asynchronous.open_group(store=store, use_consolidated=False)
+        assert group.metadata.consolidated_metadata is None
