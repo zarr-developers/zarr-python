@@ -73,6 +73,7 @@ def _put(
 
 class LocalStore(Store):
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
 
