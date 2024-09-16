@@ -265,9 +265,6 @@ COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
 COMPLEX = np.complex64 | np.complex128
 
 
-# type[bool] | type[signedinteger[_8Bit]] | type[signedinteger[_16Bit]] | type[signedinteger[_32Bit]] | type[signedinteger[_64Bit]] | type[unsignedinteger[_8Bit]] | type[unsignedinteger[_16Bit]] | type[unsignedinteger[_32Bit]] | type[unsignedinteger[_64Bit]] | type[floating[_16Bit]] | type[floating[_32Bit]] | type[floating[_64Bit]] | type[complexfloating[_32Bit, _32Bit]] | type[complexfloating[_64Bit, _64Bit]]
-
-
 @overload
 def parse_fill_value(fill_value: Any, dtype: BOOL_DTYPE) -> BOOL: ...
 
