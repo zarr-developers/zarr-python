@@ -18,11 +18,6 @@ def test_roundtrip(data: st.DataObject) -> None:
 
 
 @given(data=st.data())
-# The filter warning here is to silence an occasional warning in NDBuffer.all_equal
-# See https://github.com/zarr-developers/zarr-python/pull/2118#issuecomment-2310280899
-# Uncomment the next line to reproduce the original failure.
-# @reproduce_failure('6.111.2', b'AXicY2FgZGRAB/8/ndR2z7nkDZEDADWpBL4=')
-@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_basic_indexing(data: st.DataObject) -> None:
     zarray = data.draw(arrays())
     nparray = zarray[:]
@@ -37,11 +32,6 @@ def test_basic_indexing(data: st.DataObject) -> None:
 
 
 @given(data=st.data())
-# The filter warning here is to silence an occasional warning in NDBuffer.all_equal
-# See https://github.com/zarr-developers/zarr-python/pull/2118#issuecomment-2310280899
-# Uncomment the next line to reproduce the original failure.
-# @reproduce_failure('6.111.2', b'AXicY2FgZGRAB/8/eLmF7qr/C5EDADZUBRM=')
-@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_vindex(data: st.DataObject) -> None:
     zarray = data.draw(arrays())
     nparray = zarray[:]
