@@ -10,7 +10,7 @@ T = TypeVar("T")
 
 
 def _deprecate_positional_args(
-    func: Callable[..., T] | None = None, *, version: str = "1.3"
+    func: Callable[..., T] | None = None, *, version: str = "3.1.0"
 ) -> Callable[..., T]:
     """Decorator for methods that issues warnings for positional arguments.
 
@@ -21,7 +21,7 @@ def _deprecate_positional_args(
     ----------
     func : callable, default=None
         Function to check arguments on.
-    version : callable, default="1.3"
+    version : callable, default="3.1.0"
         The version when positional arguments will result in error.
     """
 

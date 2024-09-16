@@ -4,7 +4,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import zarr
 from zarr.core.sync import SyncError, SyncMixin, _get_lock, _get_loop, sync
+from zarr.store.memory import MemoryStore
 
 
 @pytest.fixture(params=[True, False])
@@ -123,4 +125,7 @@ def test_sync_mixin(sync_loop) -> None:
     assert foo.bar() == list(range(10))
 
 
-def test_open_positional_args_deprecate(): ...
+def test_open_positional_args_deprecate():
+    store = MemoryStore({}, mode="w")
+    with pytest.warns(FutureWarning, match="pass"):
+        zarr.open(store, "w", shape=(1,))
