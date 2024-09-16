@@ -10,7 +10,7 @@ from zarr.core.sync import sync
 if TYPE_CHECKING:
     from zarr.core.buffer import NDArrayLike
     from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, ZarrFormat
-    from zarr.store import StoreLike
+    from zarr.storage import StoreLike
 
 __all__ = [
     "consolidate_metadata",

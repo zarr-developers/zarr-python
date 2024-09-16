@@ -14,7 +14,7 @@ from hypothesis.strategies import DataObject
 import zarr
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import BufferPrototype, cpu, default_buffer_prototype
-from zarr.store import MemoryStore
+from zarr.storage import MemoryStore
 from zarr.testing.strategies import key_ranges, paths
 
 

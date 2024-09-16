@@ -8,7 +8,7 @@ from upath import UPath
 
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import sync
-from zarr.store import RemoteStore
+from zarr.storage import RemoteStore
 from zarr.testing.store import StoreTests
 
 s3fs = pytest.importorskip("s3fs")

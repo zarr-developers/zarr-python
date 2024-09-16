@@ -8,8 +8,8 @@ from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
-from zarr.store.local import LocalStore
-from zarr.store.memory import MemoryStore
+from zarr.storage.local import LocalStore
+from zarr.storage.memory import MemoryStore
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
@@ -79,11 +79,13 @@ async def make_store_path(
 ) -> StorePath:
     if isinstance(store_like, StorePath):
         if (mode is not None) and (AccessMode.from_literal(mode) != store_like.store.mode):
-            raise ValueError(f"mode mismatch (mode={mode} != store.mode={store_like.store.mode})")
+            raise ValueError(
+                f"mode mismatch (mode={mode} != store.mode={store_like.store.mode.str})"
+            )
         return store_like
     elif isinstance(store_like, Store):
         if (mode is not None) and (AccessMode.from_literal(mode) != store_like.mode):
-            raise ValueError(f"mode mismatch (mode={mode} != store.mode={store_like.mode})")
+            raise ValueError(f"mode mismatch (mode={mode} != store.mode={store_like.mode.str})")
         await store_like._ensure_open()
         return StorePath(store_like)
     elif store_like is None:

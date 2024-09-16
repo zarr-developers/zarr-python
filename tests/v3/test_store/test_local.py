@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from zarr.core.buffer import Buffer, cpu
-from zarr.store.local import LocalStore
+from zarr.storage.local import LocalStore
 from zarr.testing.store import StoreTests
 
 

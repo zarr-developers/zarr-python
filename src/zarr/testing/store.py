@@ -6,7 +6,7 @@ import pytest
 import zarr.api.asynchronous
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.store._utils import _normalize_interval_index
+from zarr.storage._utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
 
 __all__ = ["StoreTests"]

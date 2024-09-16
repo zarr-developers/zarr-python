@@ -28,8 +28,8 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.sync import SyncMixin, sync
-from zarr.store import StoreLike, StorePath, make_store_path
-from zarr.store.common import ensure_no_existing_node
+from zarr.storage import StoreLike, StorePath, make_store_path
+from zarr.storage.common import ensure_no_existing_node
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable, Iterator

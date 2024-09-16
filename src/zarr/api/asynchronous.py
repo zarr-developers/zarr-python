@@ -7,14 +7,16 @@ from typing import TYPE_CHECKING, Any, Literal, Union, cast
 import numpy as np
 import numpy.typing as npt
 
+from zarr.abc.store import Store
 from zarr.core.array import Array, AsyncArray
 from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
-from zarr.store import (
+from zarr.storage import (
     StoreLike,
+    StorePath,
     make_store_path,
 )
 
@@ -221,15 +223,16 @@ async def open(
         Return type depends on what exists in the given store.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+
     store_path = await make_store_path(store, mode=mode)
 
     if path is not None:
         store_path = store_path / path
 
     try:
-        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+        return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
     except KeyError:
-        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+        return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
 
 
 async def open_consolidated(*args: Any, **kwargs: Any) -> AsyncGroup:
@@ -299,7 +302,14 @@ async def save_array(
         or _default_zarr_version()
     )
 
-    store_path = await make_store_path(store, mode="w")
+    mode = kwargs.pop("mode", None)
+    if isinstance(store, Store):
+        if mode is not None:
+            raise ValueError("mode cannot be specified if store is a Store")
+    elif mode is None:
+        mode = cast(AccessModeLiteral, "a")
+
+    store_path = await make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
     new = await AsyncArray.create(
@@ -453,7 +463,9 @@ async def group(
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    store_path = await make_store_path(store)
+    mode = None if isinstance(store, Store) else cast(AccessModeLiteral, "a")
+
+    store_path = await make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
 
@@ -550,6 +562,9 @@ async def open_group(
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
     if storage_options is not None:
         warnings.warn("storage_options is not yet implemented", RuntimeWarning, stacklevel=2)
+
+    if mode is not None and isinstance(store, Store | StorePath):
+        raise ValueError("store and mode cannot be specified at the same time")
 
     store_path = await make_store_path(store, mode=mode)
     if path is not None:
@@ -724,7 +739,13 @@ async def create(
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    mode = kwargs.pop("mode", cast(AccessModeLiteral, "r" if read_only else "a"))
+    mode = kwargs.pop("mode", None)
+    if isinstance(store, Store | StorePath):
+        if mode is not None:
+            raise ValueError("mode cannot be set when store is already initialized")
+    elif mode is None:
+        mode = cast(AccessModeLiteral, "r" if read_only else "a")
+
     store_path = await make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
@@ -896,8 +917,11 @@ async def open_array(
         The opened array.
     """
 
-    store_path = await make_store_path(store)
-    if path is not None:
+    mode = kwargs.pop("mode", None)
+    store_path = await make_store_path(store, mode=mode)
+    if (
+        path is not None
+    ):  # FIXME: apply path before opening store in w or risk deleting existing data
         store_path = store_path / path
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)

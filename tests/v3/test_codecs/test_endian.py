@@ -8,7 +8,7 @@ from zarr import AsyncArray
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
-from zarr.store.common import StorePath
+from zarr.storage.common import StorePath
 from zarr.testing.utils import assert_bytes_equal
 
 from .test_codecs import _AsyncArrayProxy

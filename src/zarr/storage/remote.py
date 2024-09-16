@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from zarr.abc.store import Store
-from zarr.store.common import _dereference_path
+from zarr.storage.common import _dereference_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

@@ -13,8 +13,8 @@ from zarr.core.common import JSON, ZarrFormat
 from zarr.core.group import GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.store import LocalStore, StorePath
-from zarr.store.common import make_store_path
+from zarr.storage import LocalStore, StorePath
+from zarr.storage.common import make_store_path
 
 from .conftest import parse_store
 

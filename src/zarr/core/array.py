@@ -59,8 +59,8 @@ from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.registry import get_pipeline_class
-from zarr.store import StoreLike, StorePath, make_store_path
-from zarr.store.common import (
+from zarr.storage import StoreLike, StorePath, make_store_path
+from zarr.storage.common import (
     ensure_no_existing_node,
 )
 
@@ -158,7 +158,7 @@ class AsyncArray:
         dtype = np.dtype(dtype)
         if chunks:
             _chunks = normalize_chunks(chunks, shape, dtype.itemsize)
-        if chunk_shape:
+        else:
             _chunks = normalize_chunks(chunk_shape, shape, dtype.itemsize)
 
         if zarr_format == 3:

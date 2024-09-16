@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any
 from zarr.abc.store import Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.common import concurrent_map
-from zarr.store._utils import _normalize_interval_index
+from zarr.storage._utils import _normalize_interval_index
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, MutableMapping

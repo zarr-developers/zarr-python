@@ -9,7 +9,7 @@ from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.api.synchronous import create, load, open, open_group, save, save_array, save_group
 from zarr.core.common import ZarrFormat
-from zarr.store.memory import MemoryStore
+from zarr.storage.memory import MemoryStore
 
 
 def test_create_array(memory_store: Store) -> None:
@@ -42,8 +42,9 @@ async def test_open_array(memory_store: MemoryStore) -> None:
     assert z.shape == (100,)
 
     # open array, overwrite
-    store._store_dict = {}
-    z = open(store=store, shape=200, mode="w")  # mode="w"
+    # store._store_dict = {}
+    store = MemoryStore(mode="w")
+    z = open(store=store, shape=200)
     assert isinstance(z, Array)
     assert z.shape == (200,)
 

@@ -10,8 +10,8 @@ import pytest
 from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr import AsyncGroup, config
-from zarr.store import LocalStore, MemoryStore, StorePath, ZipStore
-from zarr.store.remote import RemoteStore
+from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
+from zarr.storage.remote import RemoteStore
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterator

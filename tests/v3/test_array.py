@@ -7,8 +7,8 @@ import pytest
 from zarr import Array, AsyncArray, Group
 from zarr.core.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.store import LocalStore, MemoryStore
-from zarr.store.common import StorePath
+from zarr.storage import LocalStore, MemoryStore
+from zarr.storage.common import StorePath
 
 
 @pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])

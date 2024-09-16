@@ -17,7 +17,7 @@ from zarr.codecs import (
 )
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import Selection, morton_order_iter
-from zarr.store import StorePath
+from zarr.storage import StorePath
 from zarr.testing.utils import assert_bytes_equal
 
 if TYPE_CHECKING:
@@ -375,15 +375,15 @@ async def test_dimension_names(store: Store) -> None:
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
 def test_invalid_metadata(store: Store) -> None:
-    spath = StorePath(store, "invalid_metadata")
-    with pytest.raises(ValueError):
-        Array.create(
-            spath,
-            shape=(16, 16, 16),
-            chunk_shape=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-        )
+    # spath = StorePath(store, "invalid_metadata")
+    # with pytest.raises(ValueError):
+    #     Array.create(
+    #         spath,
+    #         shape=(16, 16, 16),
+    #         chunk_shape=(16, 16),  # this is now allowed (like in v2)
+    #         dtype=np.dtype("uint8"),
+    #         fill_value=0,
+    #     )
     spath2 = StorePath(store, "invalid_endian")
     with pytest.raises(TypeError):
         Array.create(
