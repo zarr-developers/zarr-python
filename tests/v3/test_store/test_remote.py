@@ -1,3 +1,4 @@
+import json
 import os
 from collections.abc import Generator
 
@@ -6,6 +7,7 @@ import fsspec
 import pytest
 from upath import UPath
 
+import zarr.api.asynchronous
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import sync
 from zarr.store import RemoteStore
@@ -158,3 +160,42 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
 
     def test_store_supports_listing(self, store: RemoteStore) -> None:
         assert True
+
+    async def test_remote_store_from_uri(
+        self, store: RemoteStore, store_kwargs: dict[str, str | bool]
+    ):
+        storage_options = {
+            "endpoint_url": endpoint_url,
+            "anon": False,
+        }
+
+        meta = {"attributes": {"key": "value"}, "zarr_format": 3, "node_type": "group"}
+
+        await store.set(
+            "zarr.json",
+            self.buffer_cls.from_bytes(json.dumps(meta).encode()),
+        )
+        group = await zarr.api.asynchronous.open_group(
+            store=store._url, storage_options=storage_options
+        )
+        assert dict(group.attrs) == {"key": "value"}
+
+        meta["attributes"]["key"] = "value-2"
+        await store.set(
+            "directory-2/zarr.json",
+            self.buffer_cls.from_bytes(json.dumps(meta).encode()),
+        )
+        group = await zarr.api.asynchronous.open_group(
+            store="/".join([store._url.rstrip("/"), "directory-2"]), storage_options=storage_options
+        )
+        assert dict(group.attrs) == {"key": "value-2"}
+
+        meta["attributes"]["key"] = "value-3"
+        await store.set(
+            "directory-3/zarr.json",
+            self.buffer_cls.from_bytes(json.dumps(meta).encode()),
+        )
+        group = await zarr.api.asynchronous.open_group(
+            store=store._url, path="directory-3", storage_options=storage_options
+        )
+        assert dict(group.attrs) == {"key": "value-3"}

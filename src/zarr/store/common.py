@@ -4,12 +4,17 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+import fsspec
+import fsspec.implementations
+
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
+
+# from zarr.store.remote import RemoteStore
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
@@ -75,30 +80,50 @@ StoreLike = Store | StorePath | Path | str | dict[str, Buffer]
 
 
 async def make_store_path(
-    store_like: StoreLike | None, *, mode: AccessModeLiteral | None = None
+    store_like: StoreLike | None,
+    *,
+    path: str | None = None,
+    mode: AccessModeLiteral | None = None,
+    storage_options: dict[str, Any] | None = None,
 ) -> StorePath:
+    from zarr.store.remote import RemoteStore  # circular import
+
     if isinstance(store_like, StorePath):
         if mode is not None:
             assert AccessMode.from_literal(mode) == store_like.store.mode
-        return store_like
+        result = store_like
     elif isinstance(store_like, Store):
         if mode is not None:
             assert AccessMode.from_literal(mode) == store_like.mode
         await store_like._ensure_open()
-        return StorePath(store_like)
+        result = StorePath(store_like)
     elif store_like is None:
         if mode is None:
             mode = "w"  # exception to the default mode = 'r'
-        return StorePath(await MemoryStore.open(mode=mode))
+        result = StorePath(await MemoryStore.open(mode=mode))
     elif isinstance(store_like, Path):
-        return StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
+        result = StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
-        return StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
+        try:
+            fs, path = fsspec.url_to_fs(store_like, **storage_options)
+        except Exception:
+            # not sure what to do here, but I don't want this to fail...
+            pass
+        else:
+            if "file" not in fs.protocol:
+                storage_options = storage_options or {}
+                return StorePath(RemoteStore(url=store_like, mode=mode or "r", **storage_options))
+        result = StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
     elif isinstance(store_like, dict):
         # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
         # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
-        return StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
-    raise TypeError
+        result = StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
+    else:
+        raise TypeError
+
+    if path is not None:
+        result = result / path
+    return result
 
 
 async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:

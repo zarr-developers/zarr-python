@@ -5,6 +5,7 @@ import pytest
 from zarr.store.common import make_store_path
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
+from zarr.store.remote import RemoteStore
 
 
 async def test_make_store_path(tmpdir: str) -> None:
@@ -34,3 +35,11 @@ async def test_make_store_path(tmpdir: str) -> None:
 
     with pytest.raises(TypeError):
         await make_store_path(1)  # type: ignore[arg-type]
+
+
+async def test_make_store_path_fsspec(monkeypatch) -> None:
+    import fsspec.implementations.memory
+
+    monkeypatch.setattr(fsspec.implementations.memory.MemoryFileSystem, "async_impl", True)
+    store_path = await make_store_path("memory://")
+    assert isinstance(store_path.store, RemoteStore)
