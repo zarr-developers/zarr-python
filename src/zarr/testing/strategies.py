@@ -110,13 +110,14 @@ def arrays(
         array_path,
         shape=nparray.shape,
         chunks=chunks,
-        dtype=nparray.dtype.str,
+        dtype=nparray.dtype,
         attributes=attributes,
         # compressor=compressor,  # TODO: FIXME
         fill_value=fill_value,
     )
 
     assert isinstance(a, Array)
+    assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunks == a.chunks
     assert array_path == a.path, (path, name, array_path, a.name, a.path)
