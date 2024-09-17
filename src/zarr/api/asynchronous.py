@@ -303,9 +303,9 @@ async def save_array(
     )
 
     mode = kwargs.pop("mode", None)
-    if isinstance(store, Store):
+    if isinstance(store, Store | StorePath):
         if mode is not None:
-            raise ValueError("mode cannot be specified if store is a Store")
+            raise ValueError("mode cannot be set when store is already initialized")
     elif mode is None:
         mode = cast(AccessModeLiteral, "a")
 
@@ -564,7 +564,7 @@ async def open_group(
         warnings.warn("storage_options is not yet implemented", RuntimeWarning, stacklevel=2)
 
     if mode is not None and isinstance(store, Store | StorePath):
-        raise ValueError("store and mode cannot be specified at the same time")
+        raise ValueError("mode cannot be set when store is already initialized")
 
     store_path = await make_store_path(store, mode=mode)
     if path is not None:
