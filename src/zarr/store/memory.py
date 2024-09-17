@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import AsyncGenerator, MutableMapping
+from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import Store
 from zarr.core.buffer import Buffer, gpu
@@ -46,6 +47,19 @@ class MemoryStore(Store):
 
     def __repr__(self) -> str:
         return f"MemoryStore({str(self)!r})"
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, type(self))
+            and self._store_dict == other._store_dict
+            and self.mode == other.mode
+        )
+
+    def __setstate__(self, state: Any) -> None:
+        raise NotImplementedError(f"{type(self)} cannot be pickled")
+
+    def __getstate__(self) -> None:
+        raise NotImplementedError(f"{type(self)} cannot be pickled")
 
     async def get(
         self,

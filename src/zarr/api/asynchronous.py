@@ -9,6 +9,7 @@ import numpy.typing as npt
 
 from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
+from zarr.core.config import config
 from zarr.core.group import AsyncGroup
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
@@ -126,8 +127,7 @@ def _handle_zarr_version_or_format(
 
 def _default_zarr_version() -> ZarrFormat:
     """return the default zarr_version"""
-    # TODO: set default value from config
-    return 3
+    return cast(ZarrFormat, int(config.get("default_zarr_version", 3)))
 
 
 async def consolidate_metadata(*args: Any, **kwargs: Any) -> AsyncGroup:
@@ -349,7 +349,10 @@ async def save_group(
     kwargs
         NumPy arrays with data to save.
     """
-    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+    zarr_format = (
+        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+        or _default_zarr_version()
+    )
 
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
@@ -460,10 +463,7 @@ async def group(
         The new group.
     """
 
-    zarr_format = (
-        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-        or _default_zarr_version()
-    )
+    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     store_path = await make_store_path(store)
     if path is not None:
@@ -486,7 +486,7 @@ async def group(
     except (KeyError, FileNotFoundError):
         return await AsyncGroup.create(
             store=store_path,
-            zarr_format=zarr_format,
+            zarr_format=zarr_format or _default_zarr_version(),
             exists_ok=overwrite,
             attributes=attributes,
         )
@@ -495,7 +495,7 @@ async def group(
 async def open_group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,
-    mode: AccessModeLiteral | None = None,  # not used
+    mode: AccessModeLiteral | None = None,
     cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any = None,  # not used
     path: str | None = None,
@@ -550,10 +550,7 @@ async def open_group(
         The new group.
     """
 
-    zarr_format = (
-        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-        or _default_zarr_version()
-    )
+    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     if cache_attrs is not None:
         warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -577,7 +574,10 @@ async def open_group(
         return await AsyncGroup.open(store_path, zarr_format=zarr_format)
     except (KeyError, FileNotFoundError):
         return await AsyncGroup.create(
-            store_path, zarr_format=zarr_format, exists_ok=True, attributes=attributes
+            store_path,
+            zarr_format=zarr_format or _default_zarr_version(),
+            exists_ok=True,
+            attributes=attributes,
         )
 
 
@@ -699,7 +699,7 @@ async def create(
 
     if zarr_format == 2 and chunks is None:
         chunks = shape
-    if zarr_format == 3 and chunk_shape is None:
+    elif zarr_format == 3 and chunk_shape is None:
         if chunks is not None:
             chunk_shape = chunks
             chunks = None
@@ -920,7 +920,7 @@ async def open_array(
         if store_path.store.mode.create:
             return await create(
                 store=store_path,
-                zarr_format=zarr_format,
+                zarr_format=zarr_format or _default_zarr_version(),
                 overwrite=store_path.store.mode.overwrite,
                 **kwargs,
             )

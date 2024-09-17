@@ -109,7 +109,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         anon = False
         mode = "r+"
         if request.param == "use_upath":
-            return {"mode": mode, "url": UPath(url, endpoint_url=endpoint_url, anon=anon)}
+            return {"url": UPath(url, endpoint_url=endpoint_url, anon=anon), "mode": mode}
         elif request.param == "use_str":
             return {"url": url, "mode": mode, "anon": anon, "endpoint_url": endpoint_url}
 
