@@ -154,7 +154,7 @@ async def test_array_v3_nan_fill_value(store: MemoryStore) -> None:
     assert np.isnan(arr.fill_value)
     assert arr.fill_value.dtype == arr.dtype
     # all fill value chunk is an empty chunk, and should not be written
-    assert not [a async for a in store.list_prefix("/")]
+    assert len([a async for a in store.list_prefix("/")]) == 0
 
 
 @pytest.mark.parametrize("store", ("local",), indirect=["store"])
