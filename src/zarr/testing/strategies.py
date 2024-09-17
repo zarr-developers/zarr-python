@@ -120,9 +120,7 @@ def arrays(
     assert nparray.shape == a.shape
     assert chunks == a.chunks
     assert array_path == a.path, (path, name, array_path, a.name, a.path)
-    # assert array_path == a.name, (path, name, array_path, a.name, a.path)
-    # assert a.basename is None  # TODO
-    # assert a.store == normalize_store_arg(store)
+    assert a.basename == name, (a.basename, name)
     assert dict(a.attrs) == expected_attrs
 
     a[:] = nparray
