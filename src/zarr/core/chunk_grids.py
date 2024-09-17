@@ -120,7 +120,7 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
     # handle dask-style chunks (iterable of iterables)
     if all(isinstance(c, (tuple | list)) for c in chunks):
         # take first chunk size for each dimension
-        chunks = (
+        chunks = tuple(
             c[0] for c in chunks
         )  # TODO: check/error/warn for irregular chunks (e.g. if c[0] != c[1:-1])
 
