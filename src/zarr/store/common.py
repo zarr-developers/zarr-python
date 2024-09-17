@@ -104,16 +104,13 @@ async def make_store_path(
     elif isinstance(store_like, Path):
         result = StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
-        try:
-            fs, path = fsspec.url_to_fs(store_like, **storage_options)
-        except Exception:
-            # not sure what to do here, but I don't want this to fail...
-            pass
+        storage_options = storage_options or {}
+        fs, path = fsspec.url_to_fs(store_like, **storage_options)
+        if "file" not in fs.protocol:
+            storage_options = storage_options or {}
+            result = StorePath(RemoteStore(url=store_like, mode=mode or "r", **storage_options))
         else:
-            if "file" not in fs.protocol:
-                storage_options = storage_options or {}
-                return StorePath(RemoteStore(url=store_like, mode=mode or "r", **storage_options))
-        result = StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
+            result = StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
     elif isinstance(store_like, dict):
         # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
         # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
