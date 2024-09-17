@@ -82,25 +82,6 @@ def arrays(
     fill_value = draw(npst.from_dtype(nparray.dtype))
     # compressor = draw(compressors)
 
-    # TODO: clean this up
-    # if path is None and name is None:
-    #     array_path = None
-    #     array_name = None
-    # elif path is None and name is not None:
-    #     array_path = f"{name}"
-    #     array_name = f"/{name}"
-    # elif path is not None and name is None:
-    #     array_path = path
-    #     array_name = None
-    # elif path == "/":
-    #     assert name is not None
-    #     array_path = name
-    #     array_name = "/" + name
-    # else:
-    #     assert name is not None
-    #     array_path = f"{path}/{name}"
-    #     array_name = "/" + array_path
-
     expected_attrs = {} if attributes is None else attributes
 
     array_path = path + ("/" if not path.endswith("/") else "") + name
