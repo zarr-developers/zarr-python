@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 class RemoteStore(Store):
     # based on FSSpec
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = False
     supports_listing: bool = True
 
@@ -50,6 +51,7 @@ class RemoteStore(Store):
             this must not be used.
         """
         super().__init__(mode=mode)
+        self._storage_options = storage_options
         if isinstance(url, str):
             self._url = url.rstrip("/")
             self._fs, _path = fsspec.url_to_fs(url, **storage_options)
@@ -89,6 +91,15 @@ class RemoteStore(Store):
 
     def __repr__(self) -> str:
         return f"<RemoteStore({type(self._fs).__name__}, {self.path})>"
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, type(self))
+            and self.path == other.path
+            and self.mode == other.mode
+            and self._url == other._url
+            # and self._storage_options == other._storage_options  # FIXME: this isn't working for some reason
+        )
 
     async def get(
         self,

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-import zarr.v2
+import zarr.v2.creation
 from zarr import Array, AsyncArray, config
 from zarr.codecs import (
     BytesCodec,
@@ -23,6 +23,7 @@ from zarr.testing.utils import assert_bytes_equal
 if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.abc.store import Store
+    from zarr.core.buffer.core import NDArrayLike
     from zarr.core.common import MemoryOrder
 
 
@@ -39,7 +40,7 @@ class _AsyncArraySelectionProxy:
     array: AsyncArray
     selection: Selection
 
-    async def get(self) -> np.ndarray:
+    async def get(self) -> NDArrayLike:
         return await self.array.getitem(self.selection)
 
     async def set(self, value: np.ndarray) -> None:
@@ -119,7 +120,7 @@ async def test_order(
 
     if not with_sharding:
         # Compare with zarr-python
-        z = zarr.v2.create(
+        z = zarr.v2.creation.create(
             shape=data.shape,
             chunks=(32, 8),
             dtype="<u2",
@@ -268,7 +269,7 @@ async def test_zarr_compat(store: Store) -> None:
         fill_value=1,
     )
 
-    z2 = zarr.v2.create(
+    z2 = zarr.v2.creation.create(
         shape=data.shape,
         chunks=(10, 10),
         dtype=data.dtype,
@@ -310,7 +311,7 @@ async def test_zarr_compat_F(store: Store) -> None:
         codecs=[TransposeCodec(order=order_from_dim("F", data.ndim)), BytesCodec()],
     )
 
-    z2 = zarr.v2.create(
+    z2 = zarr.v2.creation.create(
         shape=data.shape,
         chunks=(10, 10),
         dtype=data.dtype,
@@ -406,7 +407,7 @@ def test_invalid_metadata(store: Store) -> None:
             fill_value=0,
             codecs=[
                 BytesCodec(),
-                TransposeCodec(order="F"),
+                TransposeCodec(order="F"),  # type: ignore[arg-type]
             ],
         )
     spath4 = StorePath(store, "invalid_missing_bytes_codec")
