@@ -138,6 +138,25 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
     assert arr.fill_value.dtype == arr.dtype
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_array_v3_nan_fill_value(store: MemoryStore) -> None:
+    shape = (10,)
+    arr = Array.create(
+        store=store,
+        shape=shape,
+        dtype=np.float64,
+        zarr_format=3,
+        chunk_shape=shape,
+        fill_value=np.nan,
+    )
+    arr[:] = np.nan
+
+    assert np.isnan(arr.fill_value)
+    assert arr.fill_value.dtype == arr.dtype
+    # all fill value chunk is an empty chunk, and should not be written
+    assert len([a async for a in store.list_prefix("/")]) == 0
+
+
 @pytest.mark.parametrize("store", ("local",), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_serializable_async_array(

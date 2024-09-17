@@ -251,10 +251,10 @@ class StoreTests(Generic[S, B]):
     async def test_set_get(self, store_kwargs: dict[str, Any]) -> None:
         kwargs = {**store_kwargs, **{"mode": "w"}}
         store = self.store_cls(**kwargs)
-        await zarr.api.asynchronous.open_array(store=store, path="a", mode="w", shape=(4,))
+        await zarr.api.asynchronous.open_array(store=store, path="a", shape=(4,))
         keys = [x async for x in store.list()]
         assert keys == ["a/zarr.json"]
 
         # no errors
-        await zarr.api.asynchronous.open_array(store=store, path="a", mode="r")
-        await zarr.api.asynchronous.open_array(store=store, path="a", mode="a")
+        await zarr.api.asynchronous.open_array(store=store, path="a")
+        await zarr.api.asynchronous.open_array(store=store, path="a")

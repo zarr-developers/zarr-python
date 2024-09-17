@@ -462,8 +462,12 @@ class NDBuffer:
     def __repr__(self) -> str:
         return f"<NDBuffer shape={self.shape} dtype={self.dtype} {self._data!r}>"
 
-    def all_equal(self, other: Any) -> bool:
-        return bool((self._data == other).all())
+    def all_equal(self, other: Any, equal_nan: bool = True) -> bool:
+        """Compare to `other` using np.array_equal."""
+        # use array_equal to obtain equal_nan=True functionality
+        data, other = np.broadcast_arrays(self._data, other)
+        result = np.array_equal(self._data, other, equal_nan=equal_nan)
+        return result
 
     def fill(self, value: Any) -> None:
         self._data.fill(value)
