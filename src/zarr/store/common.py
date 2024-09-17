@@ -82,7 +82,6 @@ StoreLike = Store | StorePath | Path | str | dict[str, Buffer]
 async def make_store_path(
     store_like: StoreLike | None,
     *,
-    path: str | None = None,
     mode: AccessModeLiteral | None = None,
     storage_options: dict[str, Any] | None = None,
 ) -> StorePath:
@@ -105,7 +104,7 @@ async def make_store_path(
         result = StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
         storage_options = storage_options or {}
-        fs, path = fsspec.url_to_fs(store_like, **storage_options)
+        fs, _ = fsspec.url_to_fs(store_like, **storage_options)
         if "file" not in fs.protocol:
             storage_options = storage_options or {}
             result = StorePath(RemoteStore(url=store_like, mode=mode or "r", **storage_options))
@@ -118,8 +117,6 @@ async def make_store_path(
     else:
         raise TypeError
 
-    if path is not None:
-        result = result / path
     return result
 
 
