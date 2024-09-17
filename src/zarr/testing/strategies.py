@@ -1,4 +1,3 @@
-import re
 from typing import Any
 
 import hypothesis.extra.numpy as npst
@@ -42,7 +41,7 @@ np_arrays = npst.arrays(
 )
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
 compressors = st.sampled_from([None, "default"])
-format = st.sampled_from([2, 3])
+zarr_formats = st.sampled_from([2, 3])
 
 
 @st.composite  # type: ignore[misc]
@@ -72,14 +71,15 @@ def arrays(
     paths: st.SearchStrategy[None | str] = paths,
     array_names: st.SearchStrategy = array_names,
     attrs: st.SearchStrategy = attrs,
-    format: st.SearchStrategy = format,
+    zarr_formats: st.SearchStrategy = zarr_formats,
 ) -> Array:
     store = draw(stores)
     nparray, chunks = draw(np_array_and_chunks(arrays=arrays))
     path = draw(paths)
     name = draw(array_names)
     attributes = draw(attrs)
-    zarr_format = draw(format)
+    zarr_format = draw(zarr_formats)
+    fill_value = draw(npst.from_dtype(nparray.dtype))
     # compressor = draw(compressors)
 
     # TODO: clean this up
@@ -105,16 +105,6 @@ def arrays(
 
     array_path = path + ("/" if not path.endswith("/") else "") + name
     root = Group.from_store(store, zarr_format=zarr_format)
-    fill_value_args: tuple[Any, ...] = tuple()
-    if nparray.dtype.kind == "M":
-        m = re.search(r"\[(.+)\]", nparray.dtype.str)
-        if not m:
-            raise ValueError(f"Couldn't find precision for dtype '{nparray.dtype}.")
-
-        fill_value_args = (
-            # e.g. ns, D
-            m.groups()[0],
-        )
 
     a = root.create_array(
         array_path,
@@ -123,7 +113,7 @@ def arrays(
         dtype=nparray.dtype.str,
         attributes=attributes,
         # compressor=compressor,  # TODO: FIXME
-        fill_value=nparray.dtype.type(0, *fill_value_args),
+        fill_value=fill_value,
     )
 
     assert isinstance(a, Array)

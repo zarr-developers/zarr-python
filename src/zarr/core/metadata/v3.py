@@ -360,7 +360,7 @@ def parse_fill_value(
     if fill_value is None:
         return dtype.type(0)
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
-        if dtype in (np.complex64, np.complex128):
+        if dtype.type in (np.complex64, np.complex128):
             dtype = cast(COMPLEX_DTYPE, dtype)
             if len(fill_value) == 2:
                 # complex datatypes serialize to JSON arrays with two elements
