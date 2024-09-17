@@ -79,7 +79,8 @@ def arrays(
     name = draw(array_names)
     attributes = draw(attrs)
     zarr_format = draw(zarr_formats)
-    fill_value = draw(npst.from_dtype(nparray.dtype))
+    # test that None works too.
+    fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
     # compressor = draw(compressors)
 
     expected_attrs = {} if attributes is None else attributes
@@ -93,11 +94,12 @@ def arrays(
         chunks=chunks,
         dtype=nparray.dtype,
         attributes=attributes,
-        # compressor=compressor,  # TODO: FIXME
+        # compressor=compressor,  # FIXME
         fill_value=fill_value,
     )
 
     assert isinstance(a, Array)
+    assert a.fill_value is not None
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunks == a.chunks

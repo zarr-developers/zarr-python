@@ -464,6 +464,9 @@ class NDBuffer:
 
     def all_equal(self, other: Any, equal_nan: bool = True) -> bool:
         """Compare to `other` using np.array_equal."""
+        if other is None:
+            # Handle None fill_value for Zarr V2
+            return False
         # use array_equal to obtain equal_nan=True functionality
         data, other = np.broadcast_arrays(self._data, other)
         result = np.array_equal(self._data, other, equal_nan=equal_nan)
