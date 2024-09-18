@@ -694,12 +694,12 @@ async def create(
         else:
             chunk_shape = shape
 
-    # if order is not None:
-    #     warnings.warn(
-    #         "order is deprecated, use config `array.order` instead",
-    #         DeprecationWarning,
-    #         stacklevel=2,
-    #     )
+    if order is not None:
+        warnings.warn(
+            "order is deprecated, use config `array.order` instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
     if chunk_store is not None:

@@ -403,7 +403,7 @@ def test_group_array_creation(
 
     empty_like_array = group.empty_like(empty_array)
     assert isinstance(empty_like_array, Array)
-    assert empty_array.fill_value == 0
+    assert empty_like_array.fill_value == 0
 
     empty_array_bool = group.empty(shape=shape, dtype=np.dtype("bool"))
     assert isinstance(empty_array_bool, Array)
