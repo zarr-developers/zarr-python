@@ -714,17 +714,17 @@ class AsyncGroup:
     async def tree(self, expand: bool = False, level: int | None = None) -> Any:
         raise NotImplementedError
 
-    async def empty(self, **kwargs: Any) -> AsyncArray:
-        return await empty(**kwargs)
+    async def empty(self, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+        return await empty(shape=shape, fill_value=None, **kwargs)
 
-    async def zeros(self, **kwargs: Any) -> AsyncArray:
-        return await zeros(**kwargs)
+    async def zeros(self, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+        return await zeros(shape=shape, fill_value=0, **kwargs)
 
-    async def ones(self, **kwargs: Any) -> AsyncArray:
-        return await ones(**kwargs)
+    async def ones(self, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+        return await ones(shape=shape, fill_value=1, **kwargs)
 
-    async def full(self, **kwargs: Any) -> AsyncArray:
-        return await full(**kwargs)
+    async def full(self, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any) -> AsyncArray:
+        return await full(shape=shape, fill_value=fill_value, **kwargs)
 
     async def empty_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
         return await empty_like(prototype, kwargs)
@@ -1068,17 +1068,17 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, **kwargs)))
 
-    def empty(self, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.empty(**kwargs)))
+    def empty(self, shape: ChunkCoords, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.empty(shape=shape, **kwargs)))
 
-    def zeros(self, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.zeros(**kwargs)))
+    def zeros(self, shape: ChunkCoords, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.zeros(shape=shape, **kwargs)))
 
-    def ones(self, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.ones(**kwargs)))
+    def ones(self, shape: ChunkCoords, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.ones(shape=shape, **kwargs)))
 
-    def full(self, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.full(**kwargs)))
+    def full(self, shape: ChunkCoords, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.full(shape=shape, **kwargs)))
 
     def empty_like(self, prototype: AsyncArray, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty_like(prototype, **kwargs)))
