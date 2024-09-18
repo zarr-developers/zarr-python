@@ -21,7 +21,7 @@ import numpy as np
 from zarr.core.array_spec import ArraySpec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
-from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, parse_dtype, parse_shapelike
+from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 
@@ -155,6 +155,11 @@ class ArrayV2Metadata(ArrayMetadata):
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
         return replace(self, attributes=attributes)
+
+
+def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
+    # todo: real validation
+    return np.dtype(data)
 
 
 def parse_zarr_format(data: object) -> Literal[2]:

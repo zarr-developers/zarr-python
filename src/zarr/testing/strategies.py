@@ -35,7 +35,9 @@ attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
 paths = st.lists(node_names, min_size=1).map(lambda x: "/".join(x)) | st.just("/")
 np_arrays = npst.arrays(
     # TODO: re-enable timedeltas once they are supported
-    dtype=npst.scalar_dtypes().filter(lambda x: x.kind != "m"),
+    dtype=npst.scalar_dtypes().filter(
+        lambda x: (x.kind not in ["m", "M"]) and (x.byteorder not in [">"])
+    ),
     shape=npst.array_shapes(max_dims=4),
 )
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))

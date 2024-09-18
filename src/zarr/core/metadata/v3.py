@@ -24,7 +24,7 @@ from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
-from zarr.core.common import ZARR_JSON, parse_dtype, parse_named_configuration, parse_shapelike
+from zarr.core.common import ZARR_JSON, parse_named_configuration, parse_shapelike
 from zarr.core.config import config
 from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 from zarr.registry import get_codec_class
@@ -215,6 +215,10 @@ class ArrayV3Metadata(ArrayMetadata):
         # check that the node_type attribute is correct
         _ = parse_node_type_array(_data.pop("node_type"))
 
+        # check that the data_type attribute is valid
+        if _data["data_type"] not in DataType:
+            raise ValueError(f"Invalid V3 data_type: {_data['data_type']}")
+
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)
         # attributes key is optional, normalize missing to `None`
@@ -345,8 +349,11 @@ class DataType(Enum):
     uint16 = "uint16"
     uint32 = "uint32"
     uint64 = "uint64"
+    float16 = "float16"
     float32 = "float32"
     float64 = "float64"
+    complex64 = "complex64"
+    complex128 = "complex128"
 
     @property
     def byte_count(self) -> int:
@@ -360,8 +367,11 @@ class DataType(Enum):
             DataType.uint16: 2,
             DataType.uint32: 4,
             DataType.uint64: 8,
+            DataType.float16: 2,
             DataType.float32: 4,
             DataType.float64: 8,
+            DataType.complex64: 8,
+            DataType.complex128: 16,
         }
         return data_type_byte_counts[self]
 
@@ -381,8 +391,11 @@ class DataType(Enum):
             DataType.uint16: "u2",
             DataType.uint32: "u4",
             DataType.uint64: "u8",
+            DataType.float16: "f2",
             DataType.float32: "f4",
             DataType.float64: "f8",
+            DataType.complex64: "c8",
+            DataType.complex128: "c16",
         }
         return data_type_to_numpy[self]
 
@@ -399,7 +412,24 @@ class DataType(Enum):
             "<u2": "uint16",
             "<u4": "uint32",
             "<u8": "uint64",
+            "<f2": "float16",
             "<f4": "float32",
             "<f8": "float64",
+            "<c8": "complex64",
+            "<c16": "complex128",
         }
         return DataType[dtype_to_data_type[dtype.str]]
+
+
+def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
+    try:
+        dtype = np.dtype(data)
+    except TypeError as e:
+        raise ValueError(f"Invalid V3 data_type: {data}") from e
+    # check that this is a valid v3 data_type
+    try:
+        _ = DataType.from_dtype(dtype)
+    except KeyError as e:
+        raise ValueError(f"Invalid V3 data_type: {dtype}") from e
+
+    return dtype
