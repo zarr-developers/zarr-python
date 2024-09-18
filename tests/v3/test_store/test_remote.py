@@ -5,7 +5,6 @@ from collections.abc import Generator
 import botocore.client
 import fsspec
 import pytest
-from upath import UPath
 
 import zarr.api.asynchronous
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
@@ -86,8 +85,10 @@ async def alist(it):
 
 
 async def test_basic() -> None:
-    store = await RemoteStore.open(
-        f"s3://{test_bucket_name}", mode="w", endpoint_url=endpoint_url, anon=False
+    store = RemoteStore.from_url(
+        f"s3://{test_bucket_name}",
+        mode="w",
+        storage_options=dict(endpoint_url=endpoint_url, anon=False),
     )
     assert not await alist(store.list())
     assert not await store.exists("foo")
@@ -105,48 +106,42 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     store_cls = RemoteStore
     buffer_cls = cpu.Buffer
 
-    @pytest.fixture(scope="function", params=("use_upath", "use_str"))
+    @pytest.fixture(scope="function")
     def store_kwargs(self, request) -> dict[str, str | bool]:
-        url = f"s3://{test_bucket_name}"
-        anon = False
-        mode = "r+"
-        if request.param == "use_upath":
-            return {"url": UPath(url, endpoint_url=endpoint_url, anon=anon), "mode": mode}
-        elif request.param == "use_str":
-            return {"url": url, "mode": mode, "anon": anon, "endpoint_url": endpoint_url}
-
-        raise AssertionError
+        fs, path = fsspec.url_to_fs(
+            f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False
+        )
+        return {"fs": fs, "path": path, "mode": "r+"}
 
     @pytest.fixture(scope="function")
     def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
-        url = store_kwargs["url"]
-        mode = store_kwargs["mode"]
-        if isinstance(url, UPath):
-            out = self.store_cls(url=url, mode=mode)
-        else:
-            endpoint_url = store_kwargs["endpoint_url"]
-            out = self.store_cls(url=url, asynchronous=True, mode=mode, endpoint_url=endpoint_url)
-        return out
+        return self.store_cls(**store_kwargs)
+
+        # url = store_kwargs["url"]
+        # mode = store_kwargs["mode"]
+        # if isinstance(url, UPath):
+        #     out = self.store_cls.from_upath(url, mode=mode)
+        # else:
+        #     storage_options = {
+        #         "anon": store_kwargs["anon"],
+        #         "endpoint_url": store_kwargs["endpoint_url"]
+        #     }
+        #     out = self.store_cls.from_url(url=url, storage_options=storage_options, mode=mode)
+        # return out
 
     def get(self, store: RemoteStore, key: str) -> Buffer:
         #  make a new, synchronous instance of the filesystem because this test is run in sync code
-        fs, _ = fsspec.url_to_fs(
-            url=store._url,
-            asynchronous=False,
-            anon=store._fs.anon,
-            endpoint_url=store._fs.endpoint_url,
+        new_fs = fsspec.filesystem(
+            "s3", endpoint_url=store.fs.endpoint_url, anon=store.fs.anon, asynchronous=False
         )
-        return self.buffer_cls.from_bytes(fs.cat(f"{store.path}/{key}"))
+        return self.buffer_cls.from_bytes(new_fs.cat(f"{store.path}/{key}"))
 
     def set(self, store: RemoteStore, key: str, value: Buffer) -> None:
         #  make a new, synchronous instance of the filesystem because this test is run in sync code
-        fs, _ = fsspec.url_to_fs(
-            url=store._url,
-            asynchronous=False,
-            anon=store._fs.anon,
-            endpoint_url=store._fs.endpoint_url,
+        new_fs = fsspec.filesystem(
+            "s3", endpoint_url=store.fs.endpoint_url, anon=store.fs.anon, asynchronous=False
         )
-        fs.write_bytes(f"{store.path}/{key}", value.to_bytes())
+        new_fs.write_bytes(f"{store.path}/{key}", value.to_bytes())
 
     def test_store_repr(self, store: RemoteStore) -> None:
         assert str(store) == f"s3://{test_bucket_name}"
