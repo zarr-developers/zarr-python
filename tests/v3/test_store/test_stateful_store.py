@@ -224,18 +224,18 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
     @invariant()
     def check_keys(self) -> None:
-        # For local store, this can be empty if there are no files,
-        # but there are subfolders that weren't cleared.
         keys = list(self.store.list())
 
-        # if len(keys) == 0:
-        #     assert self.store.empty() is True
+        # NOTE: A local store can be non-empty if there are no files,
+        # but there are subfolders that weren't cleared.
+        if len(keys) == 0:
+            assert self.store.empty() is True
 
-        # elif len(keys) != 0:
-        #     assert self.store.empty() is False
+        elif len(keys) != 0:
+            assert self.store.empty() is False
 
-        for key in keys:
-            assert self.store.exists(key) is True
+            for key in keys:
+                assert self.store.exists(key) is True
         note("checking keys / exists / empty")
 
 
