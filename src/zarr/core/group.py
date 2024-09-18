@@ -12,6 +12,16 @@ from typing_extensions import deprecated
 
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
+from zarr.api.asynchronous import (
+    empty,
+    empty_like,
+    full,
+    full_like,
+    ones, 
+    ones_like,
+    zeros,
+    zeros_like
+)
 from zarr.core.array import Array, AsyncArray
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
@@ -705,28 +715,28 @@ class AsyncGroup:
         raise NotImplementedError
 
     async def empty(self, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+        return await empty(**kwargs)
 
     async def zeros(self, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+        return await zeros(**kwargs)
 
     async def ones(self, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+        return await ones(**kwargs)
 
     async def full(self, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+        return await full(**kwargs)
 
     async def empty_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+        return await empty_like(prototype, kwargs)
 
     async def zeros_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+        return await zeros_like(prototype, **kwargs)
 
     async def ones_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+        return await ones_like(prototype, **kwargs)
 
     async def full_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+        return await full_like(prototype, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
         raise NotImplementedError
