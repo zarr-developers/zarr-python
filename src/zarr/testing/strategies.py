@@ -32,7 +32,8 @@ node_names = st.text(zarr_key_chars, min_size=1).filter(
 )
 array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
-paths = st.lists(node_names, min_size=1).map(lambda x: "/".join(x)) | st.just("/")
+keys = st.lists(node_names, min_size=1).map(lambda x: "/".join(x))
+paths = st.just("/") | keys
 np_arrays = npst.arrays(
     # TODO: re-enable timedeltas once they are supported
     dtype=npst.scalar_dtypes().filter(lambda x: x.kind != "m"),

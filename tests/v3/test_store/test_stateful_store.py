@@ -1,21 +1,23 @@
 # Stateful tests for arbitrary Zarr stores.
-
-
 import hypothesis.strategies as st
+import pytest
 from hypothesis import assume, note
 from hypothesis.stateful import (
     RuleBasedStateMachine,
+    Settings,
+    initialize,
     invariant,
     precondition,
     rule,
+    run_state_machine_as_test,
 )
 from hypothesis.strategies import DataObject
 
 import zarr
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import BufferPrototype, cpu, default_buffer_prototype
-from zarr.store import MemoryStore
-from zarr.testing.strategies import key_ranges, paths
+from zarr.store import ZipStore
+from zarr.testing.strategies import key_ranges, keys
 
 
 class SyncStoreWrapper(zarr.core.sync.SyncMixin):
@@ -103,13 +105,17 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         https://hypothesis.readthedocs.io/en/latest/stateful.html
     """
 
-    def __init__(self) -> None:
+    def __init__(self, store) -> None:
         super().__init__()
         self.model: dict[str, bytes] = {}
-        self.store = SyncStoreWrapper(MemoryStore(mode="w"))
+        self.store = SyncStoreWrapper(store)
         self.prototype = default_buffer_prototype()
 
-    @rule(key=paths, data=st.binary(min_size=0, max_size=100))
+    @initialize()
+    def init_store(self):
+        self.store.clear()
+
+    @rule(key=keys, data=st.binary(min_size=0, max_size=100))
     def set(self, key: str, data: DataObject) -> None:
         note(f"(set) Setting {key!r} with {data}")
         assert not self.store.mode.readonly
@@ -118,7 +124,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.model[key] = data_buf
 
     @precondition(lambda self: len(self.model.keys()) > 0)
-    @rule(key=paths, data=st.data())
+    @rule(key=keys, data=st.data())
     def get(self, key: str, data: DataObject) -> None:
         key = data.draw(
             st.sampled_from(sorted(self.model.keys()))
@@ -128,7 +134,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         # to bytes here necessary because data_buf set to model in set()
         assert self.model[key].to_bytes() == (store_value.to_bytes())
 
-    @rule(key=paths, data=st.data())
+    @rule(key=keys, data=st.data())
     def get_invalid_keys(self, key: str, data: DataObject) -> None:
         note("(get_invalid)")
         assume(key not in self.model.keys())
@@ -186,7 +192,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         # make sure they either both are or both aren't empty (same state)
         assert self.store.empty() == (not self.model)
 
-    @rule(key=paths)
+    @rule(key=keys)
     def exists(self, key: str) -> None:
         note("(exists)")
 
@@ -227,4 +233,10 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         note("checking keys / exists / empty")
 
 
-StatefulStoreTest = ZarrStoreStateMachine.TestCase
+def test_zarr_hierarchy(sync_store: Store):
+    def mk_test_instance_sync():
+        return ZarrStoreStateMachine(sync_store)
+
+    if isinstance(sync_store, ZipStore):
+        pytest.skip(reason="ZipStore does not support delete")
+    run_state_machine_as_test(mk_test_instance_sync, settings=Settings(report_multiple_bugs=False))
