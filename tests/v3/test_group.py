@@ -396,7 +396,6 @@ def test_group_array_creation(
 ):
     group = Group.create(store, zarr_format=zarr_format)
     shape = (10, 10)
-    # TODO: fix tests with path
     empty_array = group.empty(name="empty", shape=shape)
     assert isinstance(empty_array, Array)
     assert empty_array.fill_value == 0

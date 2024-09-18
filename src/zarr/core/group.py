@@ -706,45 +706,45 @@ class AsyncGroup:
         raise NotImplementedError
 
     async def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
-        path = self.store_path / name
+        path = str(self.store_path / name)
         return await async_api.empty(shape=shape, path=path, **kwargs)
 
     async def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
-        path = self.store_path / name
+        path = str(self.store_path / name)
         return await async_api.zeros(shape=shape, path=path, **kwargs)
 
     async def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
-        path = self.store_path / name
+        path = str(self.store_path / name)
         return await async_api.ones(shape=shape, path=path, **kwargs)
 
     async def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
     ) -> AsyncArray:
-        path = self.store_path / name
+        path = str(self.store_path / name)
         return await async_api.full(shape=shape, fill_value=fill_value, path=path, **kwargs)
 
     async def empty_like(
         self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray:
-        path = self.store_path / name
+        path = str(self.store_path / name)
         return await async_api.empty_like(a=prototype, path=path, **kwargs)
 
     async def zeros_like(
         self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray:
-        path = self.store_path / name
+        path = str(self.store_path / name)
         return await async_api.zeros_like(a=prototype, path=path, **kwargs)
 
     async def ones_like(
         self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray:
-        path = self.store_path / name
+        path = str(self.store_path / name)
         return await async_api.ones_like(a=prototype, path=path, **kwargs)
 
     async def full_like(
         self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray:
-        path = self.store_path / name
+        path = str(self.store_path / name)
         return await async_api.full_like(a=prototype, path=path, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
