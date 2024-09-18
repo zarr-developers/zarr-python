@@ -10,9 +10,9 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
+import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import set_or_delete
-import zarr.api.asynchronous as async_api
 from zarr.core.array import Array, AsyncArray
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
@@ -717,16 +717,16 @@ class AsyncGroup:
     async def full(self, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any) -> AsyncArray:
         return await async_api.full(shape=shape, fill_value=fill_value, **kwargs)
 
-    async def empty_like(self, prototype: npt.ArrayLike, **kwargs: Any) -> AsyncArray:
+    async def empty_like(self, prototype: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
         return await async_api.empty_like(prototype, **kwargs)
 
-    async def zeros_like(self, prototype: npt.ArrayLike, **kwargs: Any) -> AsyncArray:
+    async def zeros_like(self, prototype: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
         return await async_api.zeros_like(prototype, **kwargs)
 
-    async def ones_like(self, prototype: npt.ArrayLike, **kwargs: Any) -> AsyncArray:
+    async def ones_like(self, prototype: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
         return await async_api.ones_like(prototype, **kwargs)
 
-    async def full_like(self, prototype: npt.ArrayLike, **kwargs: Any) -> AsyncArray:
+    async def full_like(self, prototype: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
         return await async_api.full_like(prototype, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
@@ -1069,18 +1069,20 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.ones(shape=shape, **kwargs)))
 
     def full(self, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.full(shape=shape, fill_value=fill_value, **kwargs)))
+        return Array(
+            self._sync(self._async_group.full(shape=shape, fill_value=fill_value, **kwargs))
+        )
 
-    def empty_like(self, prototype: npt.ArrayLike, **kwargs: Any) -> Array:
+    def empty_like(self, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty_like(prototype, **kwargs)))
 
-    def zeros_like(self, prototype: npt.ArrayLike, **kwargs: Any) -> Array:
+    def zeros_like(self, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.zeros_like(prototype, **kwargs)))
 
-    def ones_like(self, prototype: npt.ArrayLike, **kwargs: Any) -> Array:
+    def ones_like(self, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.ones_like(prototype, **kwargs)))
 
-    def full_like(self, prototype: npt.ArrayLike, **kwargs: Any) -> Array:
+    def full_like(self, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.full_like(prototype, **kwargs)))
 
     def move(self, source: str, dest: str) -> None:

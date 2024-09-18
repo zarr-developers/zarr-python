@@ -407,11 +407,11 @@ def test_group_array_creation(
 
     empty_array_bool = group.empty(shape=shape, dtype=np.dtype("bool"))
     assert isinstance(empty_array_bool, Array)
-    assert empty_array_bool.fill_value == False
+    assert not empty_array_bool.fill_value
 
     empty_like_array_bool = group.empty_like(empty_array_bool)
     assert isinstance(empty_like_array_bool, Array)
-    assert empty_like_array_bool.fill_value == False
+    assert not empty_like_array_bool.fill_value
 
     zeros_array = group.zeros(shape=shape)
     assert isinstance(zeros_array, Array)
