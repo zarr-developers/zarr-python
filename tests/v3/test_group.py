@@ -390,6 +390,54 @@ def test_group_create_array(
     assert np.array_equal(array[:], data)
 
 
+def test_group_array_creation(
+    store: Store,
+    zarr_format: ZarrFormat,
+):
+    group = Group.create(store, zarr_format=zarr_format)
+    shape = (10, 10)
+
+    empty_array = group.empty(shape=shape)
+    assert isinstance(empty_array, Array)
+    assert empty_array.fill_value == 0
+
+    empty_like_array = group.empty_like(empty_array)
+    assert isinstance(empty_like_array, Array)
+    assert empty_array.fill_value == 0
+
+    empty_array_bool = group.empty(shape=shape, dtype=np.dtype("bool"))
+    assert isinstance(empty_array_bool, Array)
+    assert empty_array_bool.fill_value == False
+
+    empty_like_array_bool = group.empty_like(empty_array_bool)
+    assert isinstance(empty_like_array_bool, Array)
+    assert empty_like_array_bool.fill_value == False
+
+    zeros_array = group.zeros(shape=shape)
+    assert isinstance(zeros_array, Array)
+    assert zeros_array.fill_value == 0
+
+    zeros_like_array = group.zeros_like(zeros_array)
+    assert isinstance(zeros_like_array, Array)
+    assert zeros_like_array.fill_value == 0
+
+    ones_array = group.ones(shape=shape)
+    assert isinstance(ones_array, Array)
+    assert ones_array.fill_value == 1
+
+    ones_like_array = group.ones_like(ones_array)
+    assert isinstance(ones_like_array, Array)
+    assert ones_like_array.fill_value == 1
+
+    full_array = group.full(shape=shape, fill_value=42)
+    assert isinstance(full_array, Array)
+    assert full_array.fill_value == 42
+
+    full_like_array = group.full_like(full_array, fill_value=43)
+    assert isinstance(full_like_array, Array)
+    assert full_like_array.fill_value == 43
+
+
 @pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 @pytest.mark.parametrize("exists_ok", [True, False])
