@@ -40,7 +40,6 @@ class RemoteStore(Store):
         fs: AsyncFileSystem,
         mode: AccessModeLiteral = "r",
         path: str = "/",
-        # url: UPath | str,
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ):
         """
@@ -82,7 +81,7 @@ class RemoteStore(Store):
         storage_options: dict[str, Any] | None = None,
         mode: AccessModeLiteral = "r",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
-    ):
+    ) -> RemoteStore:
         fs, path = fsspec.url_to_fs(url, **storage_options)
         return cls(fs=fs, path=path, mode=mode, allowed_exceptions=allowed_exceptions)
 
@@ -97,9 +96,6 @@ class RemoteStore(Store):
     async def empty(self) -> bool:
         return not await self.fs._find(self.path, withdirs=True)
 
-    # def __str__(self) -> str:
-    #     return f"RemoteStore<fs={self.fs} mode={self._mode}>"
-
     def __repr__(self) -> str:
         return f"<RemoteStore({type(self.fs).__name__}, {self.path})>"
 
@@ -109,8 +105,6 @@ class RemoteStore(Store):
             and self.path == other.path
             and self.mode == other.mode
             and self.fs == other.fs
-            # and self._url == other._url
-            # and self._storage_options == other._storage_options  # FIXME: this isn't working for some reason
         )
 
     async def get(

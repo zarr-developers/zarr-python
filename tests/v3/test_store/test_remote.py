@@ -5,6 +5,7 @@ from collections.abc import Generator
 import botocore.client
 import fsspec
 import pytest
+from upath import UPath
 
 import zarr.api.asynchronous
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
@@ -117,18 +118,6 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
         return self.store_cls(**store_kwargs)
 
-        # url = store_kwargs["url"]
-        # mode = store_kwargs["mode"]
-        # if isinstance(url, UPath):
-        #     out = self.store_cls.from_upath(url, mode=mode)
-        # else:
-        #     storage_options = {
-        #         "anon": store_kwargs["anon"],
-        #         "endpoint_url": store_kwargs["endpoint_url"]
-        #     }
-        #     out = self.store_cls.from_url(url=url, storage_options=storage_options, mode=mode)
-        # return out
-
     def get(self, store: RemoteStore, key: str) -> Buffer:
         #  make a new, synchronous instance of the filesystem because this test is run in sync code
         new_fs = fsspec.filesystem(
@@ -144,7 +133,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         new_fs.write_bytes(f"{store.path}/{key}", value.to_bytes())
 
     def test_store_repr(self, store: RemoteStore) -> None:
-        assert str(store) == f"s3://{test_bucket_name}"
+        assert str(store) == "<RemoteStore(S3FileSystem, test)>"
 
     def test_store_supports_writes(self, store: RemoteStore) -> None:
         assert True
@@ -171,7 +160,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
             self.buffer_cls.from_bytes(json.dumps(meta).encode()),
         )
         group = await zarr.api.asynchronous.open_group(
-            store=store._url, storage_options=storage_options
+            store=f"s3://{test_bucket_name}", storage_options=storage_options
         )
         assert dict(group.attrs) == {"key": "value"}
 
@@ -181,7 +170,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
             self.buffer_cls.from_bytes(json.dumps(meta).encode()),
         )
         group = await zarr.api.asynchronous.open_group(
-            store="/".join([store._url.rstrip("/"), "directory-2"]), storage_options=storage_options
+            store=f"s3://{test_bucket_name}/directory-2", storage_options=storage_options
         )
         assert dict(group.attrs) == {"key": "value-2"}
 
@@ -191,6 +180,11 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
             self.buffer_cls.from_bytes(json.dumps(meta).encode()),
         )
         group = await zarr.api.asynchronous.open_group(
-            store=store._url, path="directory-3", storage_options=storage_options
+            store=f"s3://{test_bucket_name}", path="directory-3", storage_options=storage_options
         )
         assert dict(group.attrs) == {"key": "value-3"}
+
+    def test_from_upath(self) -> None:
+        path = UPath(f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False)
+        result = RemoteStore.from_upath(path)
+        assert result.fs.endpoint_url == endpoint_url

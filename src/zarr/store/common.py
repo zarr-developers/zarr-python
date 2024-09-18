@@ -4,9 +4,6 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-import fsspec
-import fsspec.implementations
-
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
@@ -104,10 +101,11 @@ async def make_store_path(
         result = StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
         storage_options = storage_options or {}
-        fs, _ = fsspec.url_to_fs(store_like, **storage_options)
-        if "file" not in fs.protocol:
-            storage_options = storage_options or {}
-            result = StorePath(RemoteStore(url=store_like, mode=mode or "r", **storage_options))
+
+        if _is_fsspec_uri(store_like):
+            result = StorePath(
+                RemoteStore.from_url(store_like, storage_options=storage_options, mode=mode or "r")
+            )
         else:
             result = StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
     elif isinstance(store_like, dict):
@@ -118,6 +116,22 @@ async def make_store_path(
         raise TypeError
 
     return result
+
+
+def _is_fsspec_uri(uri: str) -> bool:
+    """
+    Check if a URI looks like a non-local fsspec URI.
+
+    Examples
+    --------
+    >>> _is_fsspec_uri("s3://bucket")
+    True
+    >>> _is_fsspec_uri("my-directory")
+    False
+    >>> _is_fsspec_uri("local://my-directory")
+    False
+    """
+    return "://" in uri or "::" in uri and "local://" not in uri
 
 
 async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:
