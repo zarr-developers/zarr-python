@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,8 @@ class Metadata:
             value = getattr(self, key)
             if isinstance(value, Metadata):
                 out_dict[field.name] = getattr(self, field.name).to_dict()
+            elif isinstance(value, bytes):
+                out_dict[key] = base64.b64encode(value)
             elif isinstance(value, str):
                 out_dict[key] = value
             elif isinstance(value, Sequence):

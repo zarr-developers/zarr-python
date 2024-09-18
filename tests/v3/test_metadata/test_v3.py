@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from typing import TYPE_CHECKING, Literal
 
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.metadata.v3 import ArrayV3Metadata
 
@@ -163,6 +165,31 @@ def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str)
     match = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}"
     with pytest.raises(TypeError, match=re.escape(match)):
         parse_fill_value(fill_value, dtype)
+
+
+def test_parse_fill_value_bytes():
+    result = parse_fill_value("", dtype=np.dtype("S6"))
+    assert result == np.bytes_("")
+
+
+@pytest.mark.parametrize("fill_value", [None, np.bytes_(b"")])
+def test_fill_value_bytes(fill_value: Any) -> None:
+    md = ArrayV3Metadata(
+        shape=(4,),
+        data_type=np.dtype("S6"),
+        fill_value=fill_value,
+        chunk_grid=RegularChunkGrid(chunk_shape=(2,)),
+        chunk_key_encoding=DefaultChunkKeyEncoding(),
+        codecs=(),
+        attributes={},
+        dimension_names=("a",),
+    )
+    assert md.fill_value == np.bytes_(b"")
+    assert md.dtype == np.dtype("S6")
+    # regression test for creating a new metadata from default values
+    dataclasses.replace(md)
+    serialized = md.to_dict()
+    assert serialized
 
 
 @pytest.mark.parametrize("chunk_grid", ["regular"])
