@@ -19,7 +19,7 @@ from typing import Any, Literal
 import numcodecs.abc
 import numpy as np
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec, CodecPipeline
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
@@ -27,22 +27,22 @@ from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.common import ZARR_JSON, parse_dtype, parse_named_configuration, parse_shapelike
 from zarr.core.config import config
 from zarr.core.metadata.common import ArrayMetadata, parse_attributes
-from zarr.registry import get_codec_class, get_pipeline_class
+from zarr.registry import get_codec_class
 
 
-def parse_zarr_format(data: Literal[3]) -> Literal[3]:
+def parse_zarr_format(data: object) -> Literal[3]:
     if data == 3:
-        return data
+        return 3
     raise ValueError(f"Invalid value. Expected 3. Got {data}.")
 
 
-def parse_node_type_array(data: Literal["array"]) -> Literal["array"]:
+def parse_node_type_array(data: object) -> Literal["array"]:
     if data == "array":
-        return data
+        return "array"
     raise ValueError(f"Invalid value. Expected 'array'. Got {data}.")
 
 
-def parse_codecs(data: Iterable[Codec | dict[str, JSON]]) -> tuple[Codec, ...]:
+def parse_codecs(data: object) -> tuple[Codec, ...]:
     out: tuple[Codec, ...] = ()
 
     if not isinstance(data, Iterable):
@@ -60,10 +60,10 @@ def parse_codecs(data: Iterable[Codec | dict[str, JSON]]) -> tuple[Codec, ...]:
     return out
 
 
-def parse_dimension_names(data: None | Iterable[str | None]) -> tuple[str | None, ...] | None:
+def parse_dimension_names(data: object) -> tuple[str | None, ...] | None:
     if data is None:
         return data
-    elif all(isinstance(x, type(None) | str) for x in data):
+    elif isinstance(data, Iterable) and all(isinstance(x, type(None) | str) for x in data):
         return tuple(data)
     else:
         msg = f"Expected either None or a iterable of str, got {type(data)}"
@@ -169,7 +169,7 @@ class ArrayV3Metadata(ArrayMetadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        def _json_convert(o: Any) -> Any:
+        def _json_convert(o: object) -> Any:
             if isinstance(o, np.dtype):
                 return str(o)
             if np.isscalar(o):
@@ -206,14 +206,14 @@ class ArrayV3Metadata(ArrayMetadata):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
+    def from_dict(cls, data: dict[str, JSON]) -> Self:
         # make a copy because we are modifying the dict
         _data = data.copy()
-        # TODO: Remove the type: ignores[] comments below and use a TypedDict to type `data`
+
         # check that the zarr_format attribute is correct
-        _ = parse_zarr_format(_data.pop("zarr_format"))  # type: ignore[arg-type]
+        _ = parse_zarr_format(_data.pop("zarr_format"))
         # check that the node_type attribute is correct
-        _ = parse_node_type_array(_data.pop("node_type"))  # type: ignore[arg-type]
+        _ = parse_node_type_array(_data.pop("node_type"))
 
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)
@@ -221,7 +221,7 @@ class ArrayV3Metadata(ArrayMetadata):
         _data["attributes"] = _data.pop("attributes", None)
         return cls(**_data)  # type: ignore[arg-type]
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()
 
         if not isinstance(out_dict, dict):
@@ -238,12 +238,6 @@ class ArrayV3Metadata(ArrayMetadata):
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
         return replace(self, attributes=attributes)
-
-
-def create_pipeline(data: Iterable[Codec | JSON]) -> CodecPipeline:
-    if not isinstance(data, Iterable):
-        raise TypeError(f"Expected iterable, got {type(data)}")
-    return get_pipeline_class().from_dict(data)
 
 
 BOOL = np.bool_
@@ -266,23 +260,23 @@ COMPLEX = np.complex64 | np.complex128
 
 
 @overload
-def parse_fill_value(fill_value: Any, dtype: BOOL_DTYPE) -> BOOL: ...
+def parse_fill_value(fill_value: object, dtype: BOOL_DTYPE) -> BOOL: ...
 
 
 @overload
-def parse_fill_value(fill_value: Any, dtype: INTEGER_DTYPE) -> INTEGER: ...
+def parse_fill_value(fill_value: object, dtype: INTEGER_DTYPE) -> INTEGER: ...
 
 
 @overload
-def parse_fill_value(fill_value: Any, dtype: FLOAT_DTYPE) -> FLOAT: ...
+def parse_fill_value(fill_value: object, dtype: FLOAT_DTYPE) -> FLOAT: ...
 
 
 @overload
-def parse_fill_value(fill_value: Any, dtype: COMPLEX_DTYPE) -> COMPLEX: ...
+def parse_fill_value(fill_value: object, dtype: COMPLEX_DTYPE) -> COMPLEX: ...
 
 
 @overload
-def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
+def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
     # This dtype[Any] is unfortunately necessary right now.
     # See https://github.com/zarr-developers/zarr-python/issues/2131#issuecomment-2318010899
     # for more details, but `dtype` here (which comes from `parse_dtype`)
@@ -294,7 +288,8 @@ def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
 
 
 def parse_fill_value(
-    fill_value: Any, dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | np.dtype[Any]
+    fill_value: object,
+    dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | np.dtype[Any],
 ) -> BOOL | INTEGER | FLOAT | COMPLEX | Any:
     """
     Parse `fill_value`, a potential fill value, into an instance of `dtype`, a data type.
@@ -333,7 +328,7 @@ def parse_fill_value(
                 raise ValueError(msg)
         msg = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}."
         raise TypeError(msg)
-    return dtype.type(fill_value)
+    return dtype.type(fill_value)  # type: ignore[arg-type]
 
 
 # For type checking
