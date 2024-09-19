@@ -129,7 +129,7 @@ class StoreTests(Generic[S, B]):
         `_set_many` method.
         """
         keys = ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"]
-        data_buf = [Buffer.from_bytes(k.encode()) for k in keys]
+        data_buf = [self.buffer_cls.from_bytes(k.encode()) for k in keys]
         store_dict = dict(zip(keys, data_buf, strict=True))
         await store._set_many(store_dict.items())
         for k, v in store_dict.items():
@@ -199,7 +199,7 @@ class StoreTests(Generic[S, B]):
     async def test_list(self, store: S) -> None:
         assert await _collect_aiterator(store.list()) == ()
         prefix = "foo"
-        data = Buffer.from_bytes(b"")
+        data = self.buffer_cls.from_bytes(b"")
         store_dict = {
             prefix + "/zarr.json": data,
             **{prefix + f"/c/{idx}": data for idx in range(10)},
@@ -217,24 +217,26 @@ class StoreTests(Generic[S, B]):
         prefix removed.
         """
         prefixes = ("", "a/", "a/b/", "a/b/c/")
-        data = Buffer.from_bytes(b"")
+        data = self.buffer_cls.from_bytes(b"")
         fname = "zarr.json"
         store_dict = {p + fname: data for p in prefixes}
+
         await store._set_many(store_dict.items())
-        for p in prefixes:
-            observed = tuple(sorted(await _collect_aiterator(store.list_prefix(p))))
+
+        for prefix in prefixes:
+            observed = tuple(sorted(await _collect_aiterator(store.list_prefix(prefix))))
             expected: tuple[str, ...] = ()
-            for k in store_dict.keys():
-                if k.startswith(p):
-                    expected += (k.removeprefix(p),)
+            for key in store_dict.keys():
+                if key.startswith(prefix):
+                    expected += (key.removeprefix(prefix),)
             expected = tuple(sorted(expected))
             assert observed == expected
 
     async def test_list_dir(self, store: S) -> None:
         root = "foo"
         store_dict = {
-            root + "/zarr.json": Buffer.from_bytes(b"bar"),
-            root + "/c/1": Buffer.from_bytes(b"\x01"),
+            root + "/zarr.json": self.buffer_cls.from_bytes(b"bar"),
+            root + "/c/1": self.buffer_cls.from_bytes(b"\x01"),
         }
 
         assert await _collect_aiterator(store.list_dir("")) == ()

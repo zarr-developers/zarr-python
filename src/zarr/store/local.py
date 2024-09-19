@@ -203,10 +203,10 @@ class LocalStore(Store):
         -------
         AsyncGenerator[str, None]
         """
-        to_strip = str(self.root) + "/"
+        to_strip = os.path.join(str(self.root / prefix))
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
-                yield str(p).removeprefix(to_strip)
+                yield str(p.relative_to(to_strip))
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         """
