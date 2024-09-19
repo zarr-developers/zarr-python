@@ -31,8 +31,6 @@ class RemoteStore(Store):
     supports_listing: bool = True
 
     fs: AsyncFileSystem
-    # _url: str
-    # path: str
     allowed_exceptions: tuple[type[Exception], ...]
 
     def __init__(
