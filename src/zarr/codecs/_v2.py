@@ -67,7 +67,7 @@ class V2Compressor(ArrayBytesCodec):
 
 @dataclass(frozen=True)
 class V2Filters(ArrayArrayCodec):
-    filters: list[dict[str, JSON]]
+    filters: tuple[numcodecs.abc.Codec, ...] | None
 
     is_fixed_size = False
 
@@ -79,8 +79,7 @@ class V2Filters(ArrayArrayCodec):
         chunk_ndarray = chunk_array.as_ndarray_like()
         # apply filters in reverse order
         if self.filters is not None:
-            for filter_metadata in self.filters[::-1]:
-                filter = numcodecs.get_codec(filter_metadata)
+            for filter in self.filters[::-1]:
                 chunk_ndarray = await to_thread(filter.decode, chunk_ndarray)
 
         # ensure correct chunk shape
@@ -99,9 +98,9 @@ class V2Filters(ArrayArrayCodec):
     ) -> NDBuffer | None:
         chunk_ndarray = chunk_array.as_ndarray_like().ravel(order=chunk_spec.order)
 
-        for filter_metadata in self.filters:
-            filter = numcodecs.get_codec(filter_metadata)
-            chunk_ndarray = await to_thread(filter.encode, chunk_ndarray)
+        if self.filters is not None:
+            for filter in self.filters:
+                chunk_ndarray = await to_thread(filter.encode, chunk_ndarray)
 
         return get_ndbuffer_class().from_ndarray_like(chunk_ndarray)
 
