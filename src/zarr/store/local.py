@@ -3,10 +3,11 @@ from __future__ import annotations
 import io
 import os
 import shutil
+from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zarr.abc.store import Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
 from zarr.core.common import concurrent_map, to_thread
 
@@ -127,7 +128,7 @@ class LocalStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: Iterable[ByteRangeRequest],
     ) -> list[Buffer | None]:
         """
         Read byte ranges from multiple keys.

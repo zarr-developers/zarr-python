@@ -16,7 +16,7 @@ from zarr.core.common import AccessModeLiteral, BytesLike
 
 __all__ = ["Store", "AccessMode", "ByteGetter", "ByteSetter", "set_or_delete"]
 
-ByteRangeRequest: TypeAlias = tuple[int | None, int | None] | None
+ByteRangeRequest: TypeAlias = tuple[int | None, int | None]
 
 
 class AccessMode(NamedTuple):
@@ -121,7 +121,7 @@ class Store(ABC):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
@@ -197,7 +197,9 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def set_partial_values(self, key_start_values: list[tuple[str, int, BytesLike]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
+    ) -> None:
         """Store values at a given key, starting at byte range_start.
 
         Parameters
@@ -262,7 +264,7 @@ class Store(ABC):
         self._is_open = False
 
     async def _get_many(
-        self, requests: Iterable[tuple[str, BufferPrototype, ByteRangeRequest]]
+        self, requests: Iterable[tuple[str, BufferPrototype, ByteRangeRequest | None]]
     ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
         """
         Retrieve a collection of objects from storage. In general this method does not guarantee
@@ -276,17 +278,17 @@ class Store(ABC):
 @runtime_checkable
 class ByteGetter(Protocol):
     async def get(
-        self, prototype: BufferPrototype, byte_range: tuple[int, int | None] | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
     ) -> Buffer | None: ...
 
 
 @runtime_checkable
 class ByteSetter(Protocol):
     async def get(
-        self, prototype: BufferPrototype, byte_range: tuple[int, int | None] | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
     ) -> Buffer | None: ...
 
-    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None: ...
+    async def set(self, value: Buffer, byte_range: ByteRangeRequest = None) -> None: ...
 
     async def delete(self) -> None: ...
 

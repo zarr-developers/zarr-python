@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any
 
 import fsspec
 
-from zarr.abc.store import Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.store.common import _dereference_path
 
 if TYPE_CHECKING:
@@ -105,7 +105,7 @@ class RemoteStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest = None,
     ) -> Buffer | None:
         if not self._is_open:
             await self._open()
@@ -172,7 +172,7 @@ class RemoteStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: list[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         if key_ranges:
             paths, starts, stops = zip(

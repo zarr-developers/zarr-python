@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
@@ -128,7 +128,7 @@ class ZipStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest = None,
     ) -> Buffer | None:
         try:
             with self._zf.open(key) as f:  # will raise KeyError
@@ -161,7 +161,7 @@ class ZipStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: list[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         out = []
         with self._lock:

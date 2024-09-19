@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, MutableMapping
 from typing import TYPE_CHECKING, Any
 
-from zarr.abc.store import Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.common import concurrent_map
 from zarr.store._utils import _normalize_interval_index
@@ -80,7 +80,7 @@ class MemoryStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: list[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         # All the key-ranges arguments goes with the same prototype
         async def _get(key: str, byte_range: tuple[int, int | None]) -> Buffer | None:
