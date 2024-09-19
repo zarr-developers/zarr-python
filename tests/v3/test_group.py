@@ -400,51 +400,61 @@ def test_group_array_creation(
     assert isinstance(empty_array, Array)
     assert empty_array.fill_value == 0
     assert empty_array.shape == shape
+    assert empty_array.store_path.store == store
 
     empty_like_array = group.empty_like(name="empty_like", prototype=empty_array)
     assert isinstance(empty_like_array, Array)
     assert empty_like_array.fill_value == 0
     assert empty_like_array.shape == shape
+    assert empty_like_array.store_path.store == store
 
     empty_array_bool = group.empty(name="empty_bool", shape=shape, dtype=np.dtype("bool"))
     assert isinstance(empty_array_bool, Array)
     assert not empty_array_bool.fill_value
-    assert empty_array.shape == shape
+    assert empty_array_bool.shape == shape
+    assert empty_array_bool.store_path.store == store
 
     empty_like_array_bool = group.empty_like(name="empty_like_bool", prototype=empty_array_bool)
     assert isinstance(empty_like_array_bool, Array)
     assert not empty_like_array_bool.fill_value
-    assert empty_like_array.shape == shape
+    assert empty_like_array_bool.shape == shape
+    assert empty_like_array_bool.store_path.store == store
 
     zeros_array = group.zeros(name="zeros", shape=shape)
     assert isinstance(zeros_array, Array)
     assert zeros_array.fill_value == 0
     assert zeros_array.shape == shape
+    assert zeros_array.store_path.store == store
 
     zeros_like_array = group.zeros_like(name="zeros_like", prototype=zeros_array)
     assert isinstance(zeros_like_array, Array)
     assert zeros_like_array.fill_value == 0
     assert zeros_like_array.shape == shape
+    assert zeros_like_array.store_path.store == store
 
     ones_array = group.ones(name="ones", shape=shape)
     assert isinstance(ones_array, Array)
     assert ones_array.fill_value == 1
     assert ones_array.shape == shape
+    assert ones_array.store_path.store == store
 
-    ones_like_array = group.ones_like(name="ones", prototype=ones_array)
+    ones_like_array = group.ones_like(name="ones_like", prototype=ones_array)
     assert isinstance(ones_like_array, Array)
     assert ones_like_array.fill_value == 1
     assert ones_like_array.shape == shape
+    assert ones_like_array.store_path.store == store
 
     full_array = group.full(name="full", shape=shape, fill_value=42)
     assert isinstance(full_array, Array)
     assert full_array.fill_value == 42
     assert full_array.shape == shape
+    assert full_array.store_path.store == store
 
     full_like_array = group.full_like(name="full_like", prototype=full_array, fill_value=43)
     assert isinstance(full_like_array, Array)
     assert full_like_array.fill_value == 43
     assert full_like_array.shape == shape
+    assert full_like_array.store_path.store == store
 
 
 @pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
