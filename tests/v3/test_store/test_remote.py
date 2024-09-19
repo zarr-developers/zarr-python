@@ -1,13 +1,21 @@
-import os
-from collections.abc import Generator
+from __future__ import annotations
 
-import botocore.client
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    import botocore.client
+
+import os
+
 import fsspec
 import pytest
+from botocore.session import Session
 from upath import UPath
 
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
-from zarr.core.sync import sync
+from zarr.core.sync import _collect_aiterator, sync
 from zarr.store import RemoteStore
 from zarr.testing.store import StoreTests
 
@@ -40,8 +48,6 @@ def s3_base() -> Generator[None, None, None]:
 
 
 def get_boto3_client() -> botocore.client.BaseClient:
-    from botocore.session import Session
-
     # NB: we use the sync botocore client for setup
     session = Session()
     return session.create_client("s3", endpoint_url=endpoint_url)
@@ -87,7 +93,7 @@ async def test_basic() -> None:
     store = await RemoteStore.open(
         f"s3://{test_bucket_name}", mode="w", endpoint_url=endpoint_url, anon=False
     )
-    assert not await alist(store.list())
+    assert await _collect_aiterator(store.list()) == ()
     assert not await store.exists("foo")
     data = b"hello"
     await store.set("foo", cpu.Buffer.from_bytes(data))
@@ -104,7 +110,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     buffer_cls = cpu.Buffer
 
     @pytest.fixture(scope="function", params=("use_upath", "use_str"))
-    def store_kwargs(self, request) -> dict[str, str | bool]:
+    def store_kwargs(self, request: pytest.FixtureRequest) -> dict[str, str | bool | UPath]:  # type: ignore
         url = f"s3://{test_bucket_name}"
         anon = False
         mode = "r+"
@@ -116,8 +122,8 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         raise AssertionError
 
     @pytest.fixture(scope="function")
-    def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
-        url = store_kwargs["url"]
+    async def store(self, store_kwargs: dict[str, str | bool | UPath]) -> RemoteStore:
+        url: str | UPath = store_kwargs["url"]
         mode = store_kwargs["mode"]
         if isinstance(url, UPath):
             out = self.store_cls(url=url, mode=mode)
