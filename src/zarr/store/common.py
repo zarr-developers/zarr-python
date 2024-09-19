@@ -84,6 +84,8 @@ async def make_store_path(
 ) -> StorePath:
     from zarr.store.remote import RemoteStore  # circular import
 
+    used_storage_options = False
+
     if isinstance(store_like, StorePath):
         if mode is not None:
             assert AccessMode.from_literal(mode) == store_like.store.mode
@@ -103,6 +105,7 @@ async def make_store_path(
         storage_options = storage_options or {}
 
         if _is_fsspec_uri(store_like):
+            used_storage_options = True
             result = StorePath(
                 RemoteStore.from_url(store_like, storage_options=storage_options, mode=mode or "r")
             )
@@ -114,6 +117,10 @@ async def make_store_path(
         result = StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
     else:
         raise TypeError
+
+    if storage_options and not used_storage_options:
+        msg = "'storage_options' was provided but unused. 'storage_options' is only used for fsspec filesystem stores."
+        raise TypeError(msg)
 
     return result
 
