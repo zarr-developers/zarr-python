@@ -209,9 +209,21 @@ class ZipStore(Store):
                 yield key
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
+
+        Parameters
+        ----------
+        prefix : str
+
+        Returns
+        -------
+        AsyncGenerator[str, None]
+        """
         async for key in self.list():
             if key.startswith(prefix):
-                yield key
+                yield key.removeprefix(prefix)
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         if prefix.endswith("/"):
