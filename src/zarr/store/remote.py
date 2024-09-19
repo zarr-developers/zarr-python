@@ -216,5 +216,19 @@ class RemoteStore(Store):
             yield onefile.removeprefix(self.path).removeprefix("/")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        for onefile in await self._fs._ls(prefix, detail=False):
-            yield onefile
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
+
+        Parameters
+        ----------
+        prefix : str
+
+        Returns
+        -------
+        AsyncGenerator[str, None]
+        """
+
+        find_str = "/".join([self.path, prefix])
+        for onefile in await self._fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
+            yield onefile.removeprefix(find_str)

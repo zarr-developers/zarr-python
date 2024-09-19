@@ -35,6 +35,3 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
     def test_store_supports_listing(self, store: LocalStore) -> None:
         assert store.supports_listing
-
-    def test_list_prefix(self, store: LocalStore) -> None:
-        assert True
