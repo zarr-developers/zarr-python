@@ -4,7 +4,7 @@ import asyncio
 import contextvars
 import functools
 import operator
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -35,7 +35,7 @@ ShapeLike = tuple[int, ...] | int
 ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
-JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
+JSON = None | str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...]
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 
@@ -83,7 +83,7 @@ def enum_names(enum: type[E]) -> Iterator[str]:
         yield item.name
 
 
-def parse_enum(data: JSON, cls: type[E]) -> E:
+def parse_enum(data: object, cls: type[E]) -> E:
     if isinstance(data, cls):
         return data
     if not isinstance(data, str):
@@ -173,12 +173,11 @@ def parse_order(data: Any) -> Literal["C", "F"]:
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
 
 
-def _json_convert(o: Any) -> Any:
+def _json_convert(o: object) -> Any:
     if isinstance(o, np.dtype):
         return str(o)
     if np.isscalar(o):
-        # convert numpy scalar to python type, and pass
-        # python types through
+        out: Any
         if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
             # https://github.com/zarr-developers/zarr-python/issues/2119
             # `.item()` on a datetime type might or might not return an
@@ -186,11 +185,13 @@ def _json_convert(o: Any) -> Any:
             # Explicitly cast to an int first, and then grab .item()
             out = o.view("i8").item()
         else:
+            # convert numpy scalar to python type, and pass
+            # python types through
             out = getattr(o, "item", lambda: o)()
-        if isinstance(out, complex):
-            # python complex types are not JSON serializable, so we use the
-            # serialization defined in the zarr v3 spec
-            return [out.real, out.imag]
+            if isinstance(out, complex):
+                # python complex types are not JSON serializable, so we use the
+                # serialization defined in the zarr v3 spec
+                return [out.real, out.imag]
         return out
     if isinstance(o, Enum):
         return o.name
@@ -199,3 +200,4 @@ def _json_convert(o: Any) -> Any:
     elif isinstance(o, numcodecs.abc.Codec):
         config: dict[str, Any] = o.get_config()
         return config
+    raise TypeError

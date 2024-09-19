@@ -45,7 +45,7 @@ class TransposeCodec(ArrayArrayCodec):
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "transpose", "configuration": {"order": list(self.order)}}
+        return {"name": "transpose", "configuration": {"order": tuple(self.order)}}
 
     def validate(self, shape: tuple[int, ...], dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
         if len(self.order) != len(shape):

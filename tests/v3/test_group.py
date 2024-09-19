@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import pytest
 
+import zarr
 import zarr.api.asynchronous
 import zarr.api.synchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
@@ -15,9 +16,8 @@ from zarr.core.common import JSON, ZarrFormat
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.store import LocalStore, StorePath
+from zarr.store import LocalStore, MemoryStore, StorePath
 from zarr.store.common import make_store_path
-from zarr.store.memory import MemoryStore
 from zarr.store.zip import ZipStore
 
 from .conftest import parse_store
@@ -722,6 +722,47 @@ async def test_asyncgroup_update_attributes(store: Store, zarr_format: ZarrForma
     assert agroup_new_attributes.attrs == attributes_new
 
 
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
+    expected = await AsyncGroup.create(
+        store=store, attributes={"foo": 999}, zarr_format=zarr_format
+    )
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+    assert actual == expected
+
+
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
+    expected = Group.create(store=store, attributes={"foo": 999}, zarr_format=zarr_format)
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+    assert actual == expected
+
+
+async def test_require_groups(store: Store, zarr_format: ZarrFormat) -> None:
+    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    # create foo group
+    _ = await root.create_group("foo", attributes={"foo": 100})
+    # create bar group
+    _ = await root.create_group("bar", attributes={"bar": 200})
+
+    foo_group, bar_group = await root.require_groups("foo", "bar")
+    assert foo_group.attrs == {"foo": 100}
+    assert bar_group.attrs == {"bar": 200}
+
+    # get a mix of existing and new groups
+    foo_group, spam_group = await root.require_groups("foo", "spam")
+    assert foo_group.attrs == {"foo": 100}
+    assert spam_group.attrs == {}
+
+    # no names
+    no_group = await root.require_groups()
+    assert no_group == ()
+
+
 @pytest.mark.parametrize("consolidated_metadata", [True, False])
 async def test_group_members_async(store: Store, consolidated_metadata: bool) -> None:
     group = await AsyncGroup.create(
@@ -779,45 +820,8 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
         [x async for x in group.members(max_depth=-1)]
 
 
-@pytest.mark.parametrize("store", ("local",), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
-async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
-    expected = await AsyncGroup.create(
-        store=store, attributes={"foo": 999}, zarr_format=zarr_format
-    )
-    p = pickle.dumps(expected)
-    actual = pickle.loads(p)
-    assert actual == expected
-
-
-@pytest.mark.parametrize("store", ("local",), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
-def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
-    expected = Group.create(store=store, attributes={"foo": 999}, zarr_format=zarr_format)
-    p = pickle.dumps(expected)
-    actual = pickle.loads(p)
-    assert actual == expected
-
-
-async def test_require_groups(store: Store, zarr_format: ZarrFormat) -> None:
+async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
-    # create foo group
-    _ = await root.create_group("foo", attributes={"foo": 100})
-    # create bar group
-    _ = await root.create_group("bar", attributes={"bar": 200})
-
-    foo_group, bar_group = await root.require_groups("foo", "bar")
-    assert foo_group.attrs == {"foo": 100}
-    assert bar_group.attrs == {"bar": 200}
-
-    # get a mix of existing and new groups
-    foo_group, spam_group = await root.require_groups("foo", "spam")
-    assert foo_group.attrs == {"foo": 100}
-    assert spam_group.attrs == {}
-
-    # no names
-    no_group = await root.require_groups()
-    assert no_group == ()
 
     # create foo group
     _ = await root.create_group("foo", attributes={"foo": 100})

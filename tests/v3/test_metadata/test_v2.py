@@ -8,7 +8,6 @@ import pytest
 
 import zarr.api.asynchronous
 import zarr.store
-from zarr.codecs import GzipCodec
 from zarr.core.buffer import cpu
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata
@@ -18,6 +17,8 @@ if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.codec import Codec
+
+import numcodecs
 
 
 def test_parse_zarr_format_valid() -> None:
@@ -31,14 +32,14 @@ def test_parse_zarr_format_invalid(data: Any) -> None:
 
 
 @pytest.mark.parametrize("attributes", [None, {"foo": "bar"}])
-@pytest.mark.parametrize("filters", [(), (GzipCodec().to_dict())])
-@pytest.mark.parametrize("compressor", [None, GzipCodec().to_dict()])
+@pytest.mark.parametrize("filters", [None, (), (numcodecs.GZip(),)])
+@pytest.mark.parametrize("compressor", [None, numcodecs.GZip()])
 @pytest.mark.parametrize("fill_value", [0, 1])
 @pytest.mark.parametrize("order", ["C", "F"])
 @pytest.mark.parametrize("dimension_separator", [".", "/", None])
 def test_metadata_to_dict(
     compressor: Codec | None,
-    filters: list[Codec] | None,
+    filters: tuple[Codec] | None,
     fill_value: Any,
     order: Literal["C", "F"],
     dimension_separator: Literal[".", "/"] | None,
