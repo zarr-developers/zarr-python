@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pickle
+
 import pytest
 
 from zarr.core.buffer import Buffer, cpu, gpu
@@ -46,6 +48,16 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     def test_list_prefix(self, store: MemoryStore) -> None:
         assert True
 
+    def test_serizalizable_store(self, store: MemoryStore) -> None:
+        with pytest.raises(NotImplementedError):
+            store.__getstate__()
+
+        with pytest.raises(NotImplementedError):
+            store.__setstate__({})
+
+        with pytest.raises(NotImplementedError):
+            pickle.dumps(store)
+
 
 @gpu_test
 class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
@@ -81,8 +93,12 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
     def test_list_prefix(self, store: GpuMemoryStore) -> None:
         assert True
 
+    def test_serizalizable_store(self, store: MemoryStore) -> None:
+        with pytest.raises(NotImplementedError):
+            store.__getstate__()
 
-def test_uses_dict():
-    store_dict = {}
-    store = MemoryStore(store_dict)
-    assert store._store_dict is store_dict
+        with pytest.raises(NotImplementedError):
+            store.__setstate__({})
+
+        with pytest.raises(NotImplementedError):
+            pickle.dumps(store)

@@ -44,7 +44,7 @@ from zarr.core.indexing import (
     get_indexer,
     morton_order_iter,
 )
-from zarr.core.metadata import parse_codecs
+from zarr.core.metadata.v3 import parse_codecs
 from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
 if TYPE_CHECKING:
@@ -68,7 +68,7 @@ class ShardingCodecIndexLocation(Enum):
     end = "end"
 
 
-def parse_index_location(data: JSON) -> ShardingCodecIndexLocation:
+def parse_index_location(data: object) -> ShardingCodecIndexLocation:
     return parse_enum(data, ShardingCodecIndexLocation)
 
 
@@ -333,7 +333,7 @@ class ShardingCodec(
         chunk_shape: ChunkCoordsLike,
         codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(),),
         index_codecs: Iterable[Codec | dict[str, JSON]] = (BytesCodec(), Crc32cCodec()),
-        index_location: ShardingCodecIndexLocation = ShardingCodecIndexLocation.end,
+        index_location: ShardingCodecIndexLocation | str = ShardingCodecIndexLocation.end,
     ) -> None:
         chunk_shape_parsed = parse_shapelike(chunk_shape)
         codecs_parsed = parse_codecs(codecs)
@@ -373,16 +373,16 @@ class ShardingCodec(
 
     @property
     def codec_pipeline(self) -> CodecPipeline:
-        return get_pipeline_class().from_list(self.codecs)
+        return get_pipeline_class().from_codecs(self.codecs)
 
     def to_dict(self) -> dict[str, JSON]:
         return {
             "name": "sharding_indexed",
             "configuration": {
-                "chunk_shape": list(self.chunk_shape),
-                "codecs": [s.to_dict() for s in self.codecs],
-                "index_codecs": [s.to_dict() for s in self.index_codecs],
-                "index_location": self.index_location,
+                "chunk_shape": self.chunk_shape,
+                "codecs": tuple([s.to_dict() for s in self.codecs]),
+                "index_codecs": tuple([s.to_dict() for s in self.index_codecs]),
+                "index_location": self.index_location.value,
             },
         }
 
@@ -620,7 +620,7 @@ class ShardingCodec(
         index_array = next(
             iter(
                 await get_pipeline_class()
-                .from_list(self.index_codecs)
+                .from_codecs(self.index_codecs)
                 .decode(
                     [(index_bytes, self._get_index_chunk_spec(chunks_per_shard))],
                 )
@@ -633,7 +633,7 @@ class ShardingCodec(
         index_bytes = next(
             iter(
                 await get_pipeline_class()
-                .from_list(self.index_codecs)
+                .from_codecs(self.index_codecs)
                 .encode(
                     [
                         (
@@ -651,7 +651,7 @@ class ShardingCodec(
     def _shard_index_size(self, chunks_per_shard: ChunkCoords) -> int:
         return (
             get_pipeline_class()
-            .from_list(self.index_codecs)
+            .from_codecs(self.index_codecs)
             .compute_encoded_size(
                 16 * product(chunks_per_shard), self._get_index_chunk_spec(chunks_per_shard)
             )

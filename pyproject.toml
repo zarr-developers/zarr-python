@@ -241,7 +241,8 @@ ignore_errors = true
 module = [
     "tests.v2.*",
     "tests.v3.package_with_entrypoint.*",
-    "tests.v3.test_codecs.*",
+    "tests.v3.test_codecs.test_codecs",
+    "tests.v3.test_codecs.test_transpose",
     "tests.v3.test_metadata.*",
     "tests.v3.test_store.*",
     "tests.v3.test_config",

@@ -39,6 +39,7 @@ def test_config_defaults_set() -> None:
     # regression test for available defaults
     assert config.defaults == [
         {
+            "default_zarr_version": 3,
             "array": {"order": "C"},
             "async": {"concurrency": None, "timeout": None},
             "json_indent": 2,

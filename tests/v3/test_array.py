@@ -1,16 +1,17 @@
+import pickle
 from typing import Literal
 
 import numpy as np
 import pytest
 
-from zarr import Array, Group
+from zarr import Array, AsyncArray, Group
 from zarr.core.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.store import LocalStore, MemoryStore
 from zarr.store.common import StorePath
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 @pytest.mark.parametrize("exists_ok", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
@@ -59,7 +60,7 @@ def test_array_creation_existing_node(
             )
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 def test_array_name_properties_no_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
@@ -70,7 +71,7 @@ def test_array_name_properties_no_group(
     assert arr.basename is None
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 def test_array_name_properties_with_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
@@ -135,3 +136,55 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
     assert arr.fill_value == np.dtype(dtype_str).type(fill_value)
     assert arr.fill_value.dtype == arr.dtype
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_array_v3_nan_fill_value(store: MemoryStore) -> None:
+    shape = (10,)
+    arr = Array.create(
+        store=store,
+        shape=shape,
+        dtype=np.float64,
+        zarr_format=3,
+        chunk_shape=shape,
+        fill_value=np.nan,
+    )
+    arr[:] = np.nan
+
+    assert np.isnan(arr.fill_value)
+    assert arr.fill_value.dtype == arr.dtype
+    # all fill value chunk is an empty chunk, and should not be written
+    assert len([a async for a in store.list_prefix("/")]) == 0
+
+
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+async def test_serializable_async_array(
+    store: LocalStore | MemoryStore, zarr_format: ZarrFormat
+) -> None:
+    expected = await AsyncArray.create(
+        store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
+    )
+    # await expected.setitems(list(range(100)))
+
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+
+    assert actual == expected
+    # np.testing.assert_array_equal(await actual.getitem(slice(None)), await expected.getitem(slice(None)))
+    # TODO: uncomment the parts of this test that will be impacted by the config/prototype changes in flight
+
+
+@pytest.mark.parametrize("store", ("local",), indirect=["store"])
+@pytest.mark.parametrize("zarr_format", (2, 3))
+def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> None:
+    expected = Array.create(
+        store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
+    )
+    expected[:] = list(range(100))
+
+    p = pickle.dumps(expected)
+    actual = pickle.loads(p)
+
+    assert actual == expected
+    np.testing.assert_array_equal(actual[:], expected[:])

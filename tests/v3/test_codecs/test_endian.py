@@ -3,7 +3,7 @@ from typing import Literal
 import numpy as np
 import pytest
 
-import zarr.v2
+import zarr.v2.creation
 from zarr import AsyncArray
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec
@@ -35,7 +35,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     assert np.array_equal(data, readback_data)
 
     # Compare with v2
-    z = zarr.v2.create(
+    z = zarr.v2.creation.create(
         shape=data.shape,
         chunks=(16, 16),
         dtype=">u2" if endian == "big" else "<u2",
@@ -74,7 +74,7 @@ async def test_endian_write(
     assert np.array_equal(data, readback_data)
 
     # Compare with zarr-python
-    z = zarr.v2.create(
+    z = zarr.v2.creation.create(
         shape=data.shape,
         chunks=(16, 16),
         dtype=">u2" if dtype_store_endian == "big" else "<u2",
