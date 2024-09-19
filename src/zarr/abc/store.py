@@ -263,12 +263,14 @@ class Store(ABC):
 
     async def _get_many(
         self, requests: Iterable[tuple[str, BufferPrototype, ByteRangeRequest]]
-    ) -> AsyncGenerator[Buffer | None, None]:
+    ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
         """
-        Retrieve a collection of objects from storage.
+        Retrieve a collection of objects from storage. In general this method does not guarantee
+        that objects will be retrieved in the order in which they were requested, so this method
+        yields tuple[str, Buffer | None] instead of just Buffer | None
         """
         for req in requests:
-            yield await self.get(*req)
+            yield (req[0], await self.get(*req))
 
 
 @runtime_checkable

@@ -129,8 +129,9 @@ class StoreTests(Generic[S, B]):
                 )
             )
         )
-        observed_values = tuple(b.to_bytes() for b in observed_buffers)  # type: ignore
-        assert observed_values == values
+        observed_kvs = sorted(tuple((k, b.to_bytes()) for k, b in observed_buffers))
+        expected_kvs = sorted(tuple((k, b) for k, b in zip(keys, values, strict=False)))
+        assert observed_kvs == expected_kvs
 
     @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
