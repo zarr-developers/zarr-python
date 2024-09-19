@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from asyncio import gather
-from collections.abc import AsyncGenerator
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+from collections.abc import AsyncGenerator, Iterable
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -11,13 +11,16 @@ if TYPE_CHECKING:
 
     from typing_extensions import Self
 
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import AccessModeLiteral, BytesLike
+from zarr.core.buffer import Buffer, BufferPrototype
+from zarr.core.common import AccessModeLiteral, BytesLike
+
+__all__ = ["Store", "AccessMode", "ByteGetter", "ByteSetter", "set_or_delete"]
 
 ByteRangeRequest: TypeAlias = tuple[int | None, int | None] | None
 
 
 class AccessMode(NamedTuple):
+    str: AccessModeLiteral
     readonly: bool
     overwrite: bool
     create: bool
@@ -27,6 +30,7 @@ class AccessMode(NamedTuple):
     def from_literal(cls, mode: AccessModeLiteral) -> Self:
         if mode in ("r", "r+", "a", "w", "w-"):
             return cls(
+                str=mode,
                 readonly=mode == "r",
                 overwrite=mode == "w",
                 create=mode in ("a", "w", "w-"),
@@ -48,6 +52,14 @@ class Store(ABC):
         store = cls(*args, **kwargs)
         await store._open()
         return store
+
+    def __enter__(self) -> Self:
+        """Enter a context manager that will close the store upon exiting."""
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        """Close the store."""
+        self.close()
 
     async def _open(self) -> None:
         if self._is_open:
@@ -79,6 +91,11 @@ class Store(ABC):
     def _check_writable(self) -> None:
         if self.mode.readonly:
             raise ValueError("store mode does not support writing")
+
+    @abstractmethod
+    def __eq__(self, value: object) -> bool:
+        """Equality comparison."""
+        ...
 
     @abstractmethod
     async def get(
@@ -150,6 +167,19 @@ class Store(ABC):
         """
         ...
 
+    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
+        """
+        Insert multiple (key, value) pairs into storage.
+        """
+        await gather(*(self.set(key, value) for key, value in values))
+        return None
+
+    @property
+    @abstractmethod
+    def supports_deletes(self) -> bool:
+        """Does the store support deletes?"""
+        ...
+
     @abstractmethod
     async def delete(self, key: str) -> None:
         """Remove a key from the store
@@ -197,7 +227,9 @@ class Store(ABC):
 
     @abstractmethod
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """Retrieve all keys in the store with a given prefix.
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
 
         Parameters
         ----------
@@ -228,14 +260,6 @@ class Store(ABC):
     def close(self) -> None:
         """Close the store."""
         self._is_open = False
-        pass
-
-    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
-        """
-        Insert a collection of objects into storage.
-        """
-        await gather(*(self.set(key, value) for key, value in values))
-        return None
 
     async def _get_many(
         self, requests: Iterable[tuple[str, BufferPrototype, ByteRangeRequest]]

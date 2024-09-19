@@ -1,6 +1,7 @@
 ---
 version: 2
 updates:
+  # Updates for v3 branch (the default branch)
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -11,6 +12,26 @@ updates:
           - "*"
   - package-ecosystem: "github-actions"
     directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Same updates, but for main branch
+  - package-ecosystem: "pip"
+    directory: "/"
+    target-branch: "main"
+    schedule:
+      interval: "daily"
+    groups:
+      requirements:
+        patterns:
+          - "*"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    target-branch: "main"
     schedule:
       interval: "weekly"
     groups:

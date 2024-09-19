@@ -3,12 +3,18 @@ from __future__ import annotations
 import io
 import os
 import shutil
-from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import AccessModeLiteral, concurrent_map, to_thread
+from zarr.core.buffer import Buffer
+from zarr.core.common import concurrent_map, to_thread
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
+    from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import AccessModeLiteral
 
 
 def _get(
@@ -67,6 +73,7 @@ def _put(
 
 class LocalStore(Store):
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
 
@@ -184,7 +191,9 @@ class LocalStore(Store):
                 yield str(p).replace(to_strip, "")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """Retrieve all keys in the store with a given prefix.
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
 
         Parameters
         ----------
@@ -194,10 +203,10 @@ class LocalStore(Store):
         -------
         AsyncGenerator[str, None]
         """
-        to_strip = str(self.root) + "/"
+        to_strip = os.path.join(str(self.root / prefix))
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
-                yield str(p).removeprefix(to_strip)
+                yield str(p.relative_to(to_strip))
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         """

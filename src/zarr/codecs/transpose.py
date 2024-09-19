@@ -7,16 +7,17 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
-from zarr.array_spec import ArraySpec
-from zarr.buffer import NDBuffer
-from zarr.chunk_grids import ChunkGrid
-from zarr.common import JSON, ChunkCoordsLike, parse_named_configuration
+from zarr.core.array_spec import ArraySpec
+from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
     from typing import Any
 
     from typing_extensions import Self
+
+    from zarr.core.buffer import NDBuffer
+    from zarr.core.chunk_grids import ChunkGrid
 
 
 def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
@@ -44,7 +45,7 @@ class TransposeCodec(ArrayArrayCodec):
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "transpose", "configuration": {"order": list(self.order)}}
+        return {"name": "transpose", "configuration": {"order": tuple(self.order)}}
 
     def validate(self, shape: tuple[int, ...], dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
         if len(self.order) != len(shape):

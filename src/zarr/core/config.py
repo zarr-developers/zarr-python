@@ -28,21 +28,20 @@ class Config(DConfig):  # type: ignore[misc]
         self.refresh()
 
 
-"""
-The config module is responsible for managing the configuration of zarr and  is based on the Donfig python library.
-For selecting custom implementations of codecs, pipelines, buffers and ndbuffers, first register the implementations 
-in the registry and then select them in the config.
-e.g. an implementation of the bytes codec in a class "NewBytesCodec", requires the value of codecs.bytes.name to be 
-"NewBytesCodec".
-Donfig can be configured programmatically, by environment variables, or from YAML files in standard locations
-e.g. export ZARR_CODECS__BYTES__NAME="NewBytesCodec"
-(for more information see github.com/pytroll/donfig)
-Default values below point to the standard implementations of zarr-python
-"""
+# The config module is responsible for managing the configuration of zarr and  is based on the Donfig python library.
+# For selecting custom implementations of codecs, pipelines, buffers and ndbuffers, first register the implementations
+# in the registry and then select them in the config.
+# e.g. an implementation of the bytes codec in a class "NewBytesCodec", requires the value of codecs.bytes.name to be
+# "NewBytesCodec".
+# Donfig can be configured programmatically, by environment variables, or from YAML files in standard locations
+# e.g. export ZARR_CODECS__BYTES__NAME="NewBytesCodec"
+# (for more information see github.com/pytroll/donfig)
+# Default values below point to the standard implementations of zarr-python
 config = Config(
     "zarr",
     defaults=[
         {
+            "default_zarr_version": 3,
             "array": {"order": "C"},
             "async": {"concurrency": None, "timeout": None},
             "json_indent": 2,
@@ -60,8 +59,8 @@ config = Config(
                 "sharding_indexed": "zarr.codecs.sharding.ShardingCodec",
                 "transpose": "zarr.codecs.transpose.TransposeCodec",
             },
-            "buffer": "zarr.buffer.Buffer",
-            "ndbuffer": "zarr.buffer.NDBuffer",
+            "buffer": "zarr.core.buffer.cpu.Buffer",
+            "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
         }
     ],
 )

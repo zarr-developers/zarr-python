@@ -1,23 +1,25 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import TYPE_CHECKING, Literal
 
-from zarr.abc.codec import Codec
-from zarr.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.codecs.bytes import BytesCodec
+from zarr.core.buffer import default_buffer_prototype
+from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.core.metadata.v3 import ArrayV3Metadata
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from typing import Any
 
-from collections.abc import Sequence
+    from zarr.abc.codec import Codec
+
 
 import numpy as np
 import pytest
 
-from zarr.metadata import ArrayV3Metadata, parse_dimension_names
-from zarr.metadata import parse_fill_value_v3 as parse_fill_value
-from zarr.metadata import parse_zarr_format_v3 as parse_zarr_format
+from zarr.core.metadata.v3 import parse_dimension_names, parse_fill_value, parse_zarr_format
 
 bool_dtypes = ("bool",)
 
@@ -230,3 +232,24 @@ def test_metadata_to_dict(
         observed.pop("chunk_key_encoding")
         expected.pop("chunk_key_encoding")
     assert observed == expected
+
+
+@pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
+@pytest.mark.parametrize("precision", ["ns", "D"])
+async def test_datetime_metadata(fill_value: int, precision: str) -> None:
+    metadata_dict = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (1,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": f"<M8[{precision}]",
+        "chunk_key_encoding": {"name": "default", "separator": "."},
+        "codecs": (),
+        "fill_value": np.datetime64(fill_value, precision),
+    }
+    metadata = ArrayV3Metadata.from_dict(metadata_dict)
+    # ensure there isn't a TypeError here.
+    d = metadata.to_buffer_dict(default_buffer_prototype())
+
+    result = json.loads(d["zarr.json"].to_bytes())
+    assert result["fill_value"] == fill_value

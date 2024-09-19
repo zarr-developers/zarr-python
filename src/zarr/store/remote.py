@@ -1,26 +1,26 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
 import fsspec
 
 from zarr.abc.store import Store
-from zarr.buffer import BufferPrototype
-from zarr.common import AccessModeLiteral
-from zarr.store.core import _dereference_path
+from zarr.store.common import _dereference_path
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from fsspec.asyn import AsyncFileSystem
     from upath import UPath
 
-    from zarr.buffer import Buffer, BufferPrototype
-    from zarr.common import BytesLike
+    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.common import AccessModeLiteral, BytesLike
 
 
 class RemoteStore(Store):
     # based on FSSpec
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = False
     supports_listing: bool = True
 
@@ -51,6 +51,7 @@ class RemoteStore(Store):
             this must not be used.
         """
         super().__init__(mode=mode)
+        self._storage_options = storage_options
         if isinstance(url, str):
             self._url = url.rstrip("/")
             self._fs, _path = fsspec.url_to_fs(url, **storage_options)
@@ -90,6 +91,15 @@ class RemoteStore(Store):
 
     def __repr__(self) -> str:
         return f"<RemoteStore({type(self._fs).__name__}, {self.path})>"
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, type(self))
+            and self.path == other.path
+            and self.mode == other.mode
+            and self._url == other._url
+            # and self._storage_options == other._storage_options  # FIXME: this isn't working for some reason
+        )
 
     async def get(
         self,
@@ -203,9 +213,22 @@ class RemoteStore(Store):
         except FileNotFoundError:
             return
         for onefile in (a.replace(prefix + "/", "") for a in allfiles):
-            yield onefile
+            yield onefile.removeprefix(self.path).removeprefix("/")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
+
+        Parameters
+        ----------
+        prefix : str
+
+        Returns
+        -------
+        AsyncGenerator[str, None]
+        """
+
         find_str = "/".join([self.path, prefix])
-        for onefile in await self._fs._find(find_str):
+        for onefile in await self._fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
             yield onefile.removeprefix(find_str)

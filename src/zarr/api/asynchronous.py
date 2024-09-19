@@ -2,23 +2,56 @@ from __future__ import annotations
 
 import asyncio
 import warnings
-from collections.abc import Iterable
-from typing import Any, Literal, Union, cast
+from typing import TYPE_CHECKING, Any, Literal, Union, cast
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec
-from zarr.array import Array, AsyncArray
-from zarr.buffer import NDArrayLike
-from zarr.chunk_key_encodings import ChunkKeyEncoding
-from zarr.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
-from zarr.group import AsyncGroup
-from zarr.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.array import Array, AsyncArray
+from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
+from zarr.core.config import config
+from zarr.core.group import AsyncGroup
+from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.store import (
     StoreLike,
     make_store_path,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from zarr.abc.codec import Codec
+    from zarr.core.buffer import NDArrayLike
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+
+__all__ = [
+    "consolidate_metadata",
+    "copy",
+    "copy_all",
+    "copy_store",
+    "load",
+    "open",
+    "open_consolidated",
+    "save",
+    "save_array",
+    "save_group",
+    "tree",
+    "array",
+    "group",
+    "open_group",
+    "create",
+    "empty",
+    "empty_like",
+    "full",
+    "full_like",
+    "ones",
+    "ones_like",
+    "open_array",
+    "open_like",
+    "zeros",
+    "zeros_like",
+]
 
 # TODO: this type could use some more thought, noqa to avoid "Variable "asynchronous.ArrayLike" is not valid as a type"
 ArrayLike = Union[AsyncArray | Array | npt.NDArray[Any]]  # noqa
@@ -94,8 +127,7 @@ def _handle_zarr_version_or_format(
 
 def _default_zarr_version() -> ZarrFormat:
     """return the default zarr_version"""
-    # TODO: set default value from config
-    return 3
+    return cast(ZarrFormat, int(config.get("default_zarr_version", 3)))
 
 
 async def consolidate_metadata(*args: Any, **kwargs: Any) -> AsyncGroup:
@@ -305,7 +337,10 @@ async def save_group(
     kwargs
         NumPy arrays with data to save.
     """
-    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+    zarr_format = (
+        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+        or _default_zarr_version()
+    )
 
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
@@ -416,10 +451,7 @@ async def group(
         The new group.
     """
 
-    zarr_format = (
-        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-        or _default_zarr_version()
-    )
+    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     store_path = await make_store_path(store)
     if path is not None:
@@ -442,7 +474,7 @@ async def group(
     except (KeyError, FileNotFoundError):
         return await AsyncGroup.create(
             store=store_path,
-            zarr_format=zarr_format,
+            zarr_format=zarr_format or _default_zarr_version(),
             exists_ok=overwrite,
             attributes=attributes,
         )
@@ -451,7 +483,7 @@ async def group(
 async def open_group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,
-    mode: AccessModeLiteral | None = None,  # not used
+    mode: AccessModeLiteral | None = None,
     cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any = None,  # not used
     path: str | None = None,
@@ -466,8 +498,18 @@ async def open_group(
 
     Parameters
     ----------
-    store : Store or string, optional
+    store : Store, string, or mapping, optional
         Store or path to directory in file system or name of zip file.
+
+        Strings are interpreted as paths on the local file system
+        and used as the ``root`` argument to :class:`zarr.store.LocalStore`.
+
+        Dictionaries are used as the ``store_dict`` argument in
+        :class:`zarr.store.MemoryStore``.
+
+        By default (``store=None``) a new :class:`zarr.store.MemoryStore`
+        is created.
+
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
@@ -496,10 +538,7 @@ async def open_group(
         The new group.
     """
 
-    zarr_format = (
-        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-        or _default_zarr_version()
-    )
+    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     if cache_attrs is not None:
         warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -523,7 +562,10 @@ async def open_group(
         return await AsyncGroup.open(store_path, zarr_format=zarr_format)
     except (KeyError, FileNotFoundError):
         return await AsyncGroup.create(
-            store_path, zarr_format=zarr_format, exists_ok=True, attributes=attributes
+            store_path,
+            zarr_format=zarr_format or _default_zarr_version(),
+            exists_ok=True,
+            attributes=attributes,
         )
 
 
@@ -645,7 +687,7 @@ async def create(
 
     if zarr_format == 2 and chunks is None:
         chunks = shape
-    if zarr_format == 3 and chunk_shape is None:
+    elif zarr_format == 3 and chunk_shape is None:
         if chunks is not None:
             chunk_shape = chunks
             chunks = None
@@ -866,8 +908,7 @@ async def open_array(
         if store_path.store.mode.create:
             return await create(
                 store=store_path,
-                path=path,
-                zarr_format=zarr_format,
+                zarr_format=zarr_format or _default_zarr_version(),
                 overwrite=store_path.store.mode.overwrite,
                 **kwargs,
             )

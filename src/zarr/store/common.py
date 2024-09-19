@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import AccessMode, Store
-from zarr.buffer import Buffer, BufferPrototype, default_buffer_prototype
-from zarr.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, AccessModeLiteral, ZarrFormat
+from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
+
+if TYPE_CHECKING:
+    from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import AccessModeLiteral
 
 
 def _dereference_path(root: str, path: str) -> str:
@@ -67,7 +71,7 @@ class StorePath:
         return False
 
 
-StoreLike = Store | StorePath | Path | str
+StoreLike = Store | StorePath | Path | str | dict[str, Buffer]
 
 
 async def make_store_path(
@@ -90,6 +94,10 @@ async def make_store_path(
         return StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
         return StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
+    elif isinstance(store_like, dict):
+        # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
+        # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
+        return StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
     raise TypeError
 
 
