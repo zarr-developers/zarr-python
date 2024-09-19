@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from itertools import islice, pairwise
 from typing import TYPE_CHECKING, Any, TypeVar
 from warnings import warn
-
-import numpy as np
 
 from zarr.abc.codec import (
     ArrayArrayCodec,
@@ -17,18 +14,21 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
-from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
-from zarr.core.chunk_grids import ChunkGrid
-from zarr.core.common import JSON, ChunkCoords, concurrent_map, parse_named_configuration
+from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar, is_total_slice
-from zarr.registry import get_codec_class, register_pipeline
+from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
+    import numpy as np
     from typing_extensions import Self
 
+    from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
+    from zarr.core.chunk_grids import ChunkGrid
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -69,30 +69,11 @@ class BatchedCodecPipeline(CodecPipeline):
     bytes_bytes_codecs: tuple[BytesBytesCodec, ...]
     batch_size: int
 
-    @classmethod
-    def from_dict(cls, data: Iterable[JSON | Codec], *, batch_size: int | None = None) -> Self:
-        out: list[Codec] = []
-        if not isinstance(data, Iterable):
-            raise TypeError(f"Expected iterable, got {type(data)}")
-
-        for c in data:
-            if isinstance(
-                c, ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
-            ):  # Can't use Codec here because of mypy limitation
-                out.append(c)
-            else:
-                name_parsed, _ = parse_named_configuration(c, require_configuration=False)
-                out.append(get_codec_class(name_parsed).from_dict(c))  # type: ignore[arg-type]
-        return cls.from_list(out, batch_size=batch_size)
-
-    def to_dict(self) -> JSON:
-        return [c.to_dict() for c in self]
-
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        return type(self).from_list([c.evolve_from_array_spec(array_spec=array_spec) for c in self])
+        return type(self).from_codecs(c.evolve_from_array_spec(array_spec=array_spec) for c in self)
 
     @classmethod
-    def from_list(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
+    def from_codecs(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
         array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(codecs)
 
         return cls(

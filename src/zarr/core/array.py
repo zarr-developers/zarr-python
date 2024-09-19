@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import json
 from asyncio import gather
-from collections.abc import Iterable
 from dataclasses import dataclass, field, replace
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -27,8 +25,10 @@ from zarr.core.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
     ChunkCoords,
+    ShapeLike,
     ZarrFormat,
     concurrent_map,
+    parse_shapelike,
     product,
 )
 from zarr.core.config import config, parse_indexing_order
@@ -55,13 +55,23 @@ from zarr.core.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.core.metadata import ArrayMetadata, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.registry import get_pipeline_class
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.common import (
     ensure_no_existing_node,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
+
+    from zarr.abc.codec import Codec, CodecPipeline
+    from zarr.core.metadata.common import ArrayMetadata
+
+# Array and AsyncArray are defined in the base ``zarr`` namespace
+__all__ = ["parse_array_metadata", "create_codec_pipeline"]
 
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
@@ -77,10 +87,10 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
 
 def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
-        return get_pipeline_class().from_list(metadata.codecs)
+        return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
-        return get_pipeline_class().from_list(
-            [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
+        return get_pipeline_class().from_codecs(
+            [V2Filters(metadata.filters), V2Compressor(metadata.compressor)]
         )
     else:
         raise TypeError
@@ -113,7 +123,7 @@ class AsyncArray:
         store: StoreLike,
         *,
         # v2 and v3
-        shape: ChunkCoords,
+        shape: ShapeLike,
         dtype: npt.DTypeLike,
         zarr_format: ZarrFormat = 3,
         fill_value: Any | None = None,
@@ -129,7 +139,7 @@ class AsyncArray:
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # v2 only
-        chunks: ChunkCoords | None = None,
+        chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
@@ -140,9 +150,14 @@ class AsyncArray:
     ) -> AsyncArray:
         store_path = await make_store_path(store)
 
+        shape = parse_shapelike(shape)
+
         if chunk_shape is None:
             if chunks is None:
                 chunk_shape = chunks = _guess_chunks(shape=shape, typesize=np.dtype(dtype).itemsize)
+            else:
+                chunks = parse_shapelike(chunks)
+
             chunk_shape = chunks
         elif chunks is not None:
             raise ValueError("Only one of chunk_shape or chunks must be provided.")
@@ -214,7 +229,7 @@ class AsyncArray:
         cls,
         store_path: StorePath,
         *,
-        shape: ChunkCoords,
+        shape: ShapeLike,
         dtype: npt.DTypeLike,
         chunk_shape: ChunkCoords,
         fill_value: Any | None = None,
@@ -232,6 +247,7 @@ class AsyncArray:
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=3)
 
+        shape = parse_shapelike(shape)
         codecs = list(codecs) if codecs is not None else [BytesCodec()]
 
         if fill_value is None:
@@ -283,8 +299,6 @@ class AsyncArray:
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray:
-        import numcodecs
-
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=2)
         if order is None:
@@ -299,15 +313,9 @@ class AsyncArray:
             chunks=chunks,
             order=order,
             dimension_separator=dimension_separator,
-            fill_value=0 if fill_value is None else fill_value,
-            compressor=(
-                numcodecs.get_codec(compressor).get_config() if compressor is not None else None
-            ),
-            filters=(
-                [numcodecs.get_codec(filter).get_config() for filter in filters]
-                if filters is not None
-                else None
-            ),
+            fill_value=fill_value,
+            compressor=compressor,
+            filters=filters,
             attributes=attributes,
         )
         array = cls(metadata=metadata, store_path=store_path)
@@ -512,7 +520,12 @@ class AsyncArray:
 
         # check value shape
         if np.isscalar(value):
-            value = np.asanyarray(value, dtype=self.metadata.dtype)
+            array_like = prototype.buffer.create_zero_length().as_array_like()
+            if isinstance(array_like, np._typing._SupportsArrayFunc):
+                # TODO: need to handle array types that don't support __array_function__
+                # like PyTorch and JAX
+                array_like_ = cast(np._typing._SupportsArrayFunc, array_like)
+            value = np.asanyarray(value, dtype=self.metadata.dtype, like=array_like_)
         else:
             if not hasattr(value, "shape"):
                 value = np.asarray(value, self.metadata.dtype)
@@ -520,7 +533,11 @@ class AsyncArray:
             #     value.shape == indexer.shape
             # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
             if not hasattr(value, "dtype") or value.dtype.name != self.metadata.dtype.name:
-                value = np.array(value, dtype=self.metadata.dtype, order="A")
+                if hasattr(value, "astype"):
+                    # Handle things that are already NDArrayLike more efficiently
+                    value = value.astype(dtype=self.metadata.dtype, order="A")
+                else:
+                    value = np.array(value, dtype=self.metadata.dtype, order="A")
         value = cast(NDArrayLike, value)
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass

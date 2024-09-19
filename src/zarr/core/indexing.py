@@ -23,11 +23,11 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.buffer import NDArrayLike
 from zarr.core.common import product
 
 if TYPE_CHECKING:
     from zarr.core.array import Array
+    from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import ChunkCoords
 
@@ -561,6 +561,10 @@ class BoolArrayDimIndexer:
 
 
 class Order(Enum):
+    """
+    Enum for indexing order.
+    """
+
     UNKNOWN = 0
     INCREASING = 1
     DECREASING = 2
@@ -702,7 +706,7 @@ def slice_to_range(s: slice, length: int) -> range:
 
 
 def ix_(selection: Any, shape: ChunkCoords) -> npt.NDArray[np.intp]:
-    """Convert an orthogonal selection to a numpy advanced (fancy) selection, like numpy.ix_
+    """Convert an orthogonal selection to a numpy advanced (fancy) selection, like ``numpy.ix_``
     but with support for slices and single ints."""
 
     # normalisation

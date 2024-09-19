@@ -4,7 +4,7 @@ import asyncio
 import contextvars
 import functools
 import operator
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -28,10 +28,11 @@ ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
 
 BytesLike = bytes | bytearray | memoryview
+ShapeLike = tuple[int, ...] | int
 ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
-JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
+JSON = None | str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...]
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 
@@ -79,7 +80,7 @@ def enum_names(enum: type[E]) -> Iterator[str]:
         yield item.name
 
 
-def parse_enum(data: JSON, cls: type[E]) -> E:
+def parse_enum(data: object, cls: type[E]) -> E:
     if isinstance(data, cls):
         return data
     if not isinstance(data, str):

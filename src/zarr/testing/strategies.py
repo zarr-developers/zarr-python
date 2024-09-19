@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 import hypothesis.extra.numpy as npst
@@ -101,7 +102,14 @@ def arrays(
     root = Group.create(store)
     fill_value_args: tuple[Any, ...] = tuple()
     if nparray.dtype.kind == "M":
-        fill_value_args = ("ns",)
+        m = re.search(r"\[(.+)\]", nparray.dtype.str)
+        if not m:
+            raise ValueError(f"Couldn't find precision for dtype '{nparray.dtype}.")
+
+        fill_value_args = (
+            # e.g. ns, D
+            m.groups()[0],
+        )
 
     a = root.create_array(
         array_path,
@@ -147,9 +155,12 @@ def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs):  # type: ign
 
 
 def key_ranges(keys: SearchStrategy = node_names) -> SearchStrategy[list]:
-    """fn to generate key_ranges strategy for get_partial_values()
-    returns list strategy w/ form: [(key, (range_start, range_step)),
-                                    (key, (range_start, range_step)),...]
+    """
+    Function to generate key_ranges strategy for get_partial_values()
+    returns list strategy w/ form::
+
+        [(key, (range_start, range_step)),
+         (key, (range_start, range_step)),...]
     """
     byte_ranges = st.tuples(
         st.none() | st.integers(min_value=0), st.none() | st.integers(min_value=0)
