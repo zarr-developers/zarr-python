@@ -604,7 +604,7 @@ async def create(
     chunks: ChunkCoords | None = None,  # TODO: v2 allowed chunks=True
     dtype: npt.DTypeLike | None = None,
     compressor: dict[str, JSON] | None = None,  # TODO: default and type change
-    fill_value: Any = 0,  # TODO: need type
+    fill_value: Any | None = 0,  # TODO: need type
     order: MemoryOrder | None = None,  # TODO: default change
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
@@ -860,7 +860,7 @@ async def full_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
     """
     like_kwargs = _like_args(a, kwargs)
     if isinstance(a, AsyncArray):
-        kwargs.setdefault("fill_value", a.metadata.fill_value)
+        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
     return await full(**like_kwargs)
 
 
