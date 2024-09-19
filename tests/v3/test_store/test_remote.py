@@ -1,17 +1,26 @@
+from __future__ import annotations
+
 import json
 import os
 from collections.abc import Generator
+from typing import TYPE_CHECKING
 
-import botocore.client
 import fsspec
 import pytest
+from botocore.session import Session
 from upath import UPath
 
 import zarr.api.asynchronous
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
-from zarr.core.sync import sync
+from zarr.core.sync import _collect_aiterator, sync
 from zarr.store import RemoteStore
 from zarr.testing.store import StoreTests
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    import botocore.client
+
 
 s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
@@ -42,8 +51,6 @@ def s3_base() -> Generator[None, None, None]:
 
 
 def get_boto3_client() -> botocore.client.BaseClient:
-    from botocore.session import Session
-
     # NB: we use the sync botocore client for setup
     session = Session()
     return session.create_client("s3", endpoint_url=endpoint_url)
@@ -91,7 +98,7 @@ async def test_basic() -> None:
         mode="w",
         storage_options=dict(endpoint_url=endpoint_url, anon=False),
     )
-    assert not await alist(store.list())
+    assert await _collect_aiterator(store.list()) == ()
     assert not await store.exists("foo")
     data = b"hello"
     await store.set("foo", cpu.Buffer.from_bytes(data))
