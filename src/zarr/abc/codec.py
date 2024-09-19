@@ -1,23 +1,22 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Awaitable, Callable, Iterable
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-import numpy as np
-
 from zarr.abc.metadata import Metadata
-from zarr.abc.store import ByteGetter, ByteSetter
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, Iterable
+
+    import numpy as np
     from typing_extensions import Self
 
+    from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.common import JSON
+    from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.indexing import SelectorTuple
 
 __all__ = [
@@ -242,7 +241,7 @@ class ArrayBytesCodecPartialEncodeMixin:
         )
 
 
-class CodecPipeline(Metadata):
+class CodecPipeline:
     """Base class for implementing CodecPipeline.
     A CodecPipeline implements the read and write paths for chunk data.
     On the read path, it is responsible for fetching chunks from a store (via ByteGetter),
@@ -266,12 +265,12 @@ class CodecPipeline(Metadata):
 
     @classmethod
     @abstractmethod
-    def from_list(cls, codecs: Iterable[Codec]) -> Self:
-        """Creates a codec pipeline from a list of codecs.
+    def from_codecs(cls, codecs: Iterable[Codec]) -> Self:
+        """Creates a codec pipeline from an iterable of codecs.
 
         Parameters
         ----------
-        codecs : list[Codec]
+        codecs : Iterable[Codec]
 
         Returns
         -------
@@ -401,15 +400,6 @@ class CodecPipeline(Metadata):
         value : NDBuffer
         """
         ...
-
-    @classmethod
-    def from_dict(cls, data: Iterable[JSON | Codec]) -> Self:
-        """
-        Create an instance of the model from a dictionary
-        """
-        ...
-
-        return cls(**data)
 
 
 async def _batching_helper(

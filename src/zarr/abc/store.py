@@ -12,6 +12,7 @@ __all__ = ["Store", "AccessMode", "ByteGetter", "ByteSetter", "set_or_delete"]
 
 
 class AccessMode(NamedTuple):
+    str: AccessModeLiteral
     readonly: bool
     overwrite: bool
     create: bool
@@ -21,6 +22,7 @@ class AccessMode(NamedTuple):
     def from_literal(cls, mode: AccessModeLiteral) -> Self:
         if mode in ("r", "r+", "a", "w", "w-"):
             return cls(
+                str=mode,
                 readonly=mode == "r",
                 overwrite=mode == "w",
                 create=mode in ("a", "w", "w-"),
@@ -42,6 +44,14 @@ class Store(ABC):
         store = cls(*args, **kwargs)
         await store._open()
         return store
+
+    def __enter__(self) -> Self:
+        """Enter a context manager that will close the store upon exiting."""
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        """Close the store."""
+        self.close()
 
     async def _open(self) -> None:
         if self._is_open:
@@ -73,6 +83,11 @@ class Store(ABC):
     def _check_writable(self) -> None:
         if self.mode.readonly:
             raise ValueError("store mode does not support writing")
+
+    @abstractmethod
+    def __eq__(self, value: object) -> bool:
+        """Equality comparison."""
+        ...
 
     @abstractmethod
     async def get(
@@ -150,6 +165,12 @@ class Store(ABC):
         """
         await gather(*(self.set(key, value) for key, value in values))
         return None
+
+    @property
+    @abstractmethod
+    def supports_deletes(self) -> bool:
+        """Does the store support deletes?"""
+        ...
 
     @abstractmethod
     async def delete(self, key: str) -> None:
@@ -231,7 +252,6 @@ class Store(ABC):
     def close(self) -> None:
         """Close the store."""
         self._is_open = False
-        pass
 
 
 @runtime_checkable

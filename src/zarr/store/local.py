@@ -3,7 +3,6 @@ from __future__ import annotations
 import io
 import os
 import shutil
-from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -12,6 +11,8 @@ from zarr.core.buffer import Buffer
 from zarr.core.common import concurrent_map, to_thread
 
 if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
+
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
 
@@ -72,6 +73,7 @@ def _put(
 
 class LocalStore(Store):
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
 

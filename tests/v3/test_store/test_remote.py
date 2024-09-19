@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+
+    import botocore.client
+
 import os
-from collections.abc import Generator
 
 import fsspec
 import pytest
-from botocore.client import BaseClient
 from botocore.session import Session
-from s3fs import S3FileSystem
 from upath import UPath
 
-from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.store import RemoteStore
 from zarr.testing.store import StoreTests
@@ -43,14 +47,14 @@ def s3_base() -> Generator[None, None, None]:
     server.stop()
 
 
-def get_boto3_client() -> BaseClient:
+def get_boto3_client() -> botocore.client.BaseClient:
     # NB: we use the sync botocore client for setup
     session = Session()
     return session.create_client("s3", endpoint_url=endpoint_url)
 
 
 @pytest.fixture(autouse=True, scope="function")
-def s3(s3_base: Generator[None, None, None]) -> Generator[S3FileSystem, None, None]:
+def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
     """
     Quoting Martin Durant:
     pytest-asyncio creates a new event loop for each async test.
@@ -75,6 +79,16 @@ def s3(s3_base: Generator[None, None, None]) -> Generator[S3FileSystem, None, No
     sync(session.close())
 
 
+# ### end from s3fs ### #
+
+
+async def alist(it):
+    out = []
+    async for a in it:
+        out.append(a)
+    return out
+
+
 async def test_basic() -> None:
     store = await RemoteStore.open(
         f"s3://{test_bucket_name}", mode="w", endpoint_url=endpoint_url, anon=False
@@ -82,7 +96,7 @@ async def test_basic() -> None:
     assert await _collect_aiterator(store.list()) == ()
     assert not await store.exists("foo")
     data = b"hello"
-    await store.set("foo", Buffer.from_bytes(data))
+    await store.set("foo", cpu.Buffer.from_bytes(data))
     assert await store.exists("foo")
     assert (await store.get("foo", prototype=default_buffer_prototype())).to_bytes() == data
     out = await store.get_partial_values(
@@ -91,8 +105,9 @@ async def test_basic() -> None:
     assert out[0].to_bytes() == data[1:]
 
 
-class TestRemoteStoreS3(StoreTests[RemoteStore]):
+class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     store_cls = RemoteStore
+    buffer_cls = cpu.Buffer
 
     @pytest.fixture(scope="function", params=("use_upath", "use_str"))
     def store_kwargs(self, request: pytest.FixtureRequest) -> dict[str, str | bool | UPath]:  # type: ignore
@@ -100,7 +115,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
         anon = False
         mode = "r+"
         if request.param == "use_upath":
-            return {"mode": mode, "url": UPath(url, endpoint_url=endpoint_url, anon=anon)}
+            return {"url": UPath(url, endpoint_url=endpoint_url, anon=anon), "mode": mode}
         elif request.param == "use_str":
             return {"url": url, "mode": mode, "anon": anon, "endpoint_url": endpoint_url}
 
@@ -125,7 +140,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore]):
             anon=store._fs.anon,
             endpoint_url=store._fs.endpoint_url,
         )
-        return Buffer.from_bytes(fs.cat(f"{store.path}/{key}"))
+        return self.buffer_cls.from_bytes(fs.cat(f"{store.path}/{key}"))
 
     def set(self, store: RemoteStore, key: str, value: Buffer) -> None:
         #  make a new, synchronous instance of the filesystem because this test is run in sync code
