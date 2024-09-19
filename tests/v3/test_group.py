@@ -301,34 +301,28 @@ def test_group_contains(store: Store, zarr_format: ZarrFormat) -> None:
     assert "foo" in group
 
 
-def test_group_subgroups(store: Store, zarr_format: ZarrFormat) -> None:
-    """
-    Test the behavior of `Group` methods for accessing subgroups, namely `Group.group_keys` and `Group.groups`
-    """
+def test_group_child_iterators(store: Store, zarr_format: ZarrFormat):
     group = Group.create(store, zarr_format=zarr_format)
-    keys = ("foo", "bar")
-    subgroups_expected = tuple(group.create_group(k) for k in keys)
-    # create a sub-array as well
-    _ = group.create_array("array", shape=(10,))
-    subgroups_observed = group.groups()
-    assert set(group.group_keys()) == set(keys)
-    assert len(subgroups_observed) == len(subgroups_expected)
-    assert all(a in subgroups_observed for a in subgroups_expected)
+    expected_group_keys = ["g0", "g1"]
+    expected_group_values = [group.create_group(name=name) for name in expected_group_keys]
+    expected_groups = list(zip(expected_group_keys, expected_group_values, strict=False))
 
+    expected_group_values[0].create_group("subgroup")
+    expected_group_values[0].create_array("subarray", shape=(1,))
 
-def test_group_subarrays(store: Store, zarr_format: ZarrFormat) -> None:
-    """
-    Test the behavior of `Group` methods for accessing subgroups, namely `Group.group_keys` and `Group.groups`
-    """
-    group = Group.create(store, zarr_format=zarr_format)
-    keys = ("foo", "bar")
-    subarrays_expected = tuple(group.create_array(k, shape=(10,)) for k in keys)
-    # create a sub-group as well
-    _ = group.create_group("group")
-    subarrays_observed = group.arrays()
-    assert set(group.array_keys()) == set(keys)
-    assert len(subarrays_observed) == len(subarrays_expected)
-    assert all(a in subarrays_observed for a in subarrays_expected)
+    expected_array_keys = ["a0", "a1"]
+    expected_array_values = [
+        group.create_array(name=name, shape=(1,)) for name in expected_array_keys
+    ]
+    expected_arrays = list(zip(expected_array_keys, expected_array_values, strict=False))
+
+    assert sorted(group.groups(), key=lambda x: x[0]) == expected_groups
+    assert sorted(group.group_keys()) == expected_group_keys
+    assert sorted(group.group_values(), key=lambda x: x.name) == expected_group_values
+
+    assert sorted(group.arrays(), key=lambda x: x[0]) == expected_arrays
+    assert sorted(group.array_keys()) == expected_array_keys
+    assert sorted(group.array_values(), key=lambda x: x.name) == expected_array_values
 
 
 def test_group_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:

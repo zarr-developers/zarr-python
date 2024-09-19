@@ -33,7 +33,7 @@ from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.common import ensure_no_existing_node
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable, Iterator
+    from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
     from typing import Any
 
     from zarr.abc.codec import Codec
@@ -678,29 +678,31 @@ class AsyncGroup:
         else:
             return True
 
-    # todo: decide if this method should be separate from `groups`
+    async def groups(self) -> AsyncGenerator[tuple[str, AsyncGroup], None]:
+        async for name, value in self.members():
+            if isinstance(value, AsyncGroup):
+                yield name, value
+
     async def group_keys(self) -> AsyncGenerator[str, None]:
+        async for key, _ in self.groups():
+            yield key
+
+    async def group_values(self) -> AsyncGenerator[AsyncGroup, None]:
+        async for _, group in self.groups():
+            yield group
+
+    async def arrays(self) -> AsyncGenerator[tuple[str, AsyncArray], None]:
         async for key, value in self.members():
-            if isinstance(value, AsyncGroup):
-                yield key
+            if isinstance(value, AsyncArray):
+                yield key, value
 
-    # todo: decide if this method should be separate from `group_keys`
-    async def groups(self) -> AsyncGenerator[AsyncGroup, None]:
-        async for _, value in self.members():
-            if isinstance(value, AsyncGroup):
-                yield value
-
-    # todo: decide if this method should be separate from `arrays`
     async def array_keys(self) -> AsyncGenerator[str, None]:
-        async for key, value in self.members():
-            if isinstance(value, AsyncArray):
-                yield key
+        async for key, _ in self.arrays():
+            yield key
 
-    # todo: decide if this method should be separate from `array_keys`
-    async def arrays(self) -> AsyncGenerator[AsyncArray, None]:
-        async for _, value in self.members():
-            if isinstance(value, AsyncArray):
-                yield value
+    async def array_values(self) -> AsyncGenerator[AsyncArray, None]:
+        async for _, array in self.arrays():
+            yield array
 
     async def tree(self, expand: bool = False, level: int | None = None) -> Any:
         raise NotImplementedError
@@ -861,18 +863,29 @@ class Group(SyncMixin):
     def __contains__(self, member: str) -> bool:
         return self._sync(self._async_group.contains(member))
 
-    def group_keys(self) -> tuple[str, ...]:
-        return tuple(self._sync_iter(self._async_group.group_keys()))
+    def groups(self) -> Generator[tuple[str, Group], None]:
+        for name, async_group in self._sync_iter(self._async_group.groups()):
+            yield name, Group(async_group)
 
-    def groups(self) -> tuple[Group, ...]:
-        # TODO: in v2 this was a generator that return key: Group
-        return tuple(Group(obj) for obj in self._sync_iter(self._async_group.groups()))
+    def group_keys(self) -> Generator[str, None]:
+        for name, _ in self.groups():
+            yield name
 
-    def array_keys(self) -> tuple[str, ...]:
-        return tuple(self._sync_iter(self._async_group.array_keys()))
+    def group_values(self) -> Generator[Group, None]:
+        for _, group in self.groups():
+            yield group
 
-    def arrays(self) -> tuple[Array, ...]:
-        return tuple(Array(obj) for obj in self._sync_iter(self._async_group.arrays()))
+    def arrays(self) -> Generator[tuple[str, Array], None]:
+        for name, async_array in self._sync_iter(self._async_group.arrays()):
+            yield name, Array(async_array)
+
+    def array_keys(self) -> Generator[str, None]:
+        for name, _ in self.arrays():
+            yield name
+
+    def array_values(self) -> Generator[Array, None]:
+        for _, array in self.arrays():
+            yield array
 
     def tree(self, expand: bool = False, level: int | None = None) -> Any:
         return self._sync(self._async_group.tree(expand=expand, level=level))
