@@ -60,3 +60,8 @@ async def test_make_store_path_fsspec(monkeypatch) -> None:
 async def test_make_store_path_storage_options_raises(store_like: StoreLike) -> None:
     with pytest.raises(TypeError, match="storage_options"):
         await make_store_path(store_like, storage_options={"foo": "bar"}, mode="w")
+
+
+async def test_unsupported() -> None:
+    with pytest.raises(TypeError, match="Unsupported type for store_like: 'int'"):
+        await make_store_path(1)  # type: ignore[arg-type]

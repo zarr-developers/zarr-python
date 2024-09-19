@@ -116,7 +116,8 @@ async def make_store_path(
         # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
         result = StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
     else:
-        raise TypeError
+        msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
+        raise TypeError(msg)
 
     if storage_options and not used_storage_options:
         msg = "'storage_options' was provided but unused. 'storage_options' is only used for fsspec filesystem stores."
