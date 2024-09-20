@@ -884,20 +884,6 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
         await foo_group.require_group("bar")
 
 
-async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
-    with pytest.warns(DeprecationWarning):
-        foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
-    assert foo.shape == (10,)
-
-    with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
-        await root.create_dataset("foo", shape=(100,), dtype="int8")
-
-    _ = await root.create_group("bar")
-    with pytest.raises(ContainsGroupError), pytest.warns(DeprecationWarning):
-        await root.create_dataset("bar", shape=(100,), dtype="int8")
-
-
 async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     # create foo group
@@ -917,6 +903,20 @@ async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: Zarr
     # no names
     no_group = await root.require_groups()
     assert no_group == ()
+
+
+async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
+    with pytest.warns(DeprecationWarning):
+        foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
+    assert foo.shape == (10,)
+
+    with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
+        await root.create_dataset("foo", shape=(100,), dtype="int8")
+
+    _ = await root.create_group("bar")
+    with pytest.raises(ContainsGroupError), pytest.warns(DeprecationWarning):
+        await root.create_dataset("bar", shape=(100,), dtype="int8")
 
 
 async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
