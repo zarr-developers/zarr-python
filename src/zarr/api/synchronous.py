@@ -137,6 +137,7 @@ def save_group(
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
+    storage_options: dict[str, Any] | None = None,
     **kwargs: NDArrayLike,
 ) -> None:
     return sync(
@@ -146,6 +147,7 @@ def save_group(
             zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
+            storage_options=storage_options,
             **kwargs,
         )
     )
