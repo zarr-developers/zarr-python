@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -13,12 +14,29 @@ from zarr.api.asynchronous import (
     open,
     open_consolidated,
 )
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
 from zarr.store.common import StorePath
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
+
+
+@pytest.fixture
+async def memory_store_with_hierarchy(memory_store: Store) -> None:
+    g = await group(store=memory_store, attributes={"foo": "bar"})
+    await g.create_array(name="air", shape=(1, 2, 3))
+    await g.create_array(name="lat", shape=(1,))
+    await g.create_array(name="lon", shape=(2,))
+    await g.create_array(name="time", shape=(3,))
+
+    child = await g.create_group("child", attributes={"key": "child"})
+    await child.create_array("array", shape=(4, 4), attributes={"key": "child"})
+
+    grandchild = await child.create_group("grandchild", attributes={"key": "grandchild"})
+    await grandchild.create_array("array", shape=(4, 4), attributes={"key": "grandchild"})
+    return memory_store
 
 
 class TestConsolidated:
@@ -150,6 +168,25 @@ class TestConsolidated:
 
         group4 = await open_consolidated(store=memory_store_with_hierarchy)
         assert group4.metadata == expected
+
+        result_raw = json.loads(
+            (
+                await memory_store_with_hierarchy.get(
+                    "zarr.json", prototype=default_buffer_prototype()
+                )
+            ).to_bytes()
+        )["consolidated_metadata"]
+        assert result_raw["kind"] == "inline"
+        assert sorted(result_raw["metadata"]) == [
+            "air",
+            "child",
+            "child/array",
+            "child/grandchild",
+            "child/grandchild/array",
+            "lat",
+            "lon",
+            "time",
+        ]
 
     def test_consolidated_sync(self, memory_store):
         g = zarr.api.synchronous.group(store=memory_store, attributes={"foo": "bar"})

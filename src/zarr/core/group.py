@@ -1059,7 +1059,7 @@ class AsyncGroup:
                 obj = self._getitem_consolidated(self.store_path, key)  # Metadata -> Group/Array
                 # this is probably  generally useful
                 key = "/".join([prefix, key]).lstrip("/")
-                # yield key, obj
+                yield key, obj
 
                 if ((max_depth is None) or (current_depth < max_depth)) and isinstance(
                     obj, AsyncGroup
