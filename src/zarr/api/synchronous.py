@@ -90,8 +90,10 @@ def open(
         return Group(obj)
 
 
-def open_consolidated(*args: Any, **kwargs: Any) -> Group:
-    return Group(sync(async_api.open_consolidated(*args, **kwargs)))
+def open_consolidated(*args: Any, use_consolidated: bool = True, **kwargs: Any) -> Group:
+    return Group(
+        sync(async_api.open_consolidated(*args, use_consolidated=use_consolidated, **kwargs))
+    )
 
 
 def save(

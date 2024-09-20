@@ -169,7 +169,7 @@ async def consolidate_metadata(
     if path is not None:
         store_path = store_path / path
 
-    group = await AsyncGroup.open(store_path, zarr_format=zarr_format)
+    group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
     group.store_path.store._check_writable()
 
     members = dict([x async for x in group.members(max_depth=None)])
@@ -290,7 +290,7 @@ async def open(
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
 
-async def open_consolidated(*args: Any, **kwargs: Any) -> AsyncGroup:
+async def open_consolidated(*args: Any, use_consolidated: bool = True, **kwargs: Any) -> AsyncGroup:
     """
     Alias for :func:`open_group`.
     """

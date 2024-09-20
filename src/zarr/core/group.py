@@ -391,12 +391,12 @@ class AsyncGroup:
         store_path = await make_store_path(store)
 
         consolidated_key = ".zmetadata"
-        if zarr_format == 2 or zarr_format is None and isinstance(use_consolidated, str):
-            consolidated_key = use_consolidated  # type: ignore[assignment]
+        if (zarr_format == 2 or zarr_format is None) and isinstance(use_consolidated, str):
+            consolidated_key = use_consolidated
 
         if zarr_format == 2:
             paths = [store_path / ZGROUP_JSON, store_path / ZATTRS_JSON]
-            if use_consolidated:
+            if use_consolidated or use_consolidated is None:
                 paths.append(store_path / consolidated_key)
 
             zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
@@ -405,12 +405,14 @@ class AsyncGroup:
             if zgroup_bytes is None:
                 raise FileNotFoundError(store_path)
 
-            if use_consolidated:
-                consolidated_metadata_bytes = rest[0]
-                if consolidated_metadata_bytes is None:
+            if use_consolidated or use_consolidated is None:
+                maybe_consolidated_metadata_bytes = rest[0]
+
+                if use_consolidated and maybe_consolidated_metadata_bytes is None:
+                    # the user requested consolidated metadata, but it was missing
                     raise FileNotFoundError(paths[-1])
             else:
-                consolidated_metadata_bytes = None
+                maybe_consolidated_metadata_bytes = None
 
         elif zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
@@ -421,7 +423,7 @@ class AsyncGroup:
                 zarr_json_bytes,
                 zgroup_bytes,
                 zattrs_bytes,
-                consolidated_metadata_bytes,
+                maybe_consolidated_metadata_bytes,
             ) = await asyncio.gather(
                 (store_path / ZARR_JSON).get(),
                 (store_path / ZGROUP_JSON).get(),
@@ -446,7 +448,7 @@ class AsyncGroup:
             # this is checked above, asserting here for mypy
             assert zgroup_bytes is not None
             return cls._from_bytes_v2(
-                store_path, zgroup_bytes, zattrs_bytes, consolidated_metadata_bytes
+                store_path, zgroup_bytes, zattrs_bytes, maybe_consolidated_metadata_bytes
             )
         else:
             # V3 groups are comprised of a zarr.json object
@@ -632,10 +634,9 @@ class AsyncGroup:
 
         if self.metadata.consolidated_metadata:
             self.metadata.consolidated_metadata.metadata.pop(key, None)
-            # FIXME: This should probably rewrite all the consolidated metadata?
-            # Or do we expect users to reconsolidate?
+            await self._save_metadata(drop_consolidated_metadata=True)
 
-    async def _save_metadata(self) -> None:
+    async def _save_metadata(self, drop_consolidated_metadata: bool = False) -> None:
         to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
         await asyncio.gather(*awaitables)

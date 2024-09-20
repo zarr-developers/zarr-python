@@ -93,7 +93,7 @@ class TestConsolidated:
                 ".zgroup": {"zarr_format": 2},
                 "air/.zarray": {
                     "chunks": [730],
-                    "compressor": {},
+                    "compressor": None,
                     "dtype": "<i2",
                     "fill_value": 0,
                     "filters": None,
@@ -107,7 +107,7 @@ class TestConsolidated:
                 },
                 "time/.zarray": {
                     "chunks": [730],
-                    "compressor": {},
+                    "compressor": None,
                     "dtype": "<f4",
                     "fill_value": "0.0",
                     "filters": None,
@@ -126,7 +126,7 @@ class TestConsolidated:
                 "nested/.zgroup": {"zarr_format": 2},
                 "nested/array/.zarray": {
                     "chunks": [730],
-                    "compressor": {},
+                    "compressor": None,
                     "dtype": "<f4",
                     "fill_value": "0.0",
                     "filters": None,
@@ -204,7 +204,7 @@ class TestConsolidated:
                     order="C",
                     filters=None,
                     dimension_separator=".",
-                    compressor={},
+                    compressor=None,
                 ),
                 "time": ArrayV2Metadata(
                     shape=(730,),
@@ -221,7 +221,7 @@ class TestConsolidated:
                     order="C",
                     filters=None,
                     dimension_separator=".",
-                    compressor={},
+                    compressor=None,
                 ),
                 "nested": GroupMetadata(
                     attributes={"key": "value"},
@@ -239,7 +239,7 @@ class TestConsolidated:
                                 order="C",
                                 filters=None,
                                 dimension_separator=".",
-                                compressor={},
+                                compressor=None,
                             )
                         }
                     ),
