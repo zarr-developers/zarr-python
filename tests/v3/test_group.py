@@ -301,34 +301,28 @@ def test_group_contains(store: Store, zarr_format: ZarrFormat) -> None:
     assert "foo" in group
 
 
-def test_group_subgroups(store: Store, zarr_format: ZarrFormat) -> None:
-    """
-    Test the behavior of `Group` methods for accessing subgroups, namely `Group.group_keys` and `Group.groups`
-    """
+def test_group_child_iterators(store: Store, zarr_format: ZarrFormat):
     group = Group.create(store, zarr_format=zarr_format)
-    keys = ("foo", "bar")
-    subgroups_expected = tuple(group.create_group(k) for k in keys)
-    # create a sub-array as well
-    _ = group.create_array("array", shape=(10,))
-    subgroups_observed = group.groups()
-    assert set(group.group_keys()) == set(keys)
-    assert len(subgroups_observed) == len(subgroups_expected)
-    assert all(a in subgroups_observed for a in subgroups_expected)
+    expected_group_keys = ["g0", "g1"]
+    expected_group_values = [group.create_group(name=name) for name in expected_group_keys]
+    expected_groups = list(zip(expected_group_keys, expected_group_values, strict=False))
 
+    expected_group_values[0].create_group("subgroup")
+    expected_group_values[0].create_array("subarray", shape=(1,))
 
-def test_group_subarrays(store: Store, zarr_format: ZarrFormat) -> None:
-    """
-    Test the behavior of `Group` methods for accessing subgroups, namely `Group.group_keys` and `Group.groups`
-    """
-    group = Group.create(store, zarr_format=zarr_format)
-    keys = ("foo", "bar")
-    subarrays_expected = tuple(group.create_array(k, shape=(10,)) for k in keys)
-    # create a sub-group as well
-    _ = group.create_group("group")
-    subarrays_observed = group.arrays()
-    assert set(group.array_keys()) == set(keys)
-    assert len(subarrays_observed) == len(subarrays_expected)
-    assert all(a in subarrays_observed for a in subarrays_expected)
+    expected_array_keys = ["a0", "a1"]
+    expected_array_values = [
+        group.create_array(name=name, shape=(1,)) for name in expected_array_keys
+    ]
+    expected_arrays = list(zip(expected_array_keys, expected_array_values, strict=False))
+
+    assert sorted(group.groups(), key=lambda x: x[0]) == expected_groups
+    assert sorted(group.group_keys()) == expected_group_keys
+    assert sorted(group.group_values(), key=lambda x: x.name) == expected_group_values
+
+    assert sorted(group.arrays(), key=lambda x: x[0]) == expected_arrays
+    assert sorted(group.array_keys()) == expected_array_keys
+    assert sorted(group.array_values(), key=lambda x: x.name) == expected_array_values
 
 
 def test_group_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:
@@ -388,6 +382,73 @@ def test_group_create_array(
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)
+
+
+def test_group_array_creation(
+    store: Store,
+    zarr_format: ZarrFormat,
+):
+    group = Group.create(store, zarr_format=zarr_format)
+    shape = (10, 10)
+    empty_array = group.empty(name="empty", shape=shape)
+    assert isinstance(empty_array, Array)
+    assert empty_array.fill_value == 0
+    assert empty_array.shape == shape
+    assert empty_array.store_path.store == store
+
+    empty_like_array = group.empty_like(name="empty_like", prototype=empty_array)
+    assert isinstance(empty_like_array, Array)
+    assert empty_like_array.fill_value == 0
+    assert empty_like_array.shape == shape
+    assert empty_like_array.store_path.store == store
+
+    empty_array_bool = group.empty(name="empty_bool", shape=shape, dtype=np.dtype("bool"))
+    assert isinstance(empty_array_bool, Array)
+    assert not empty_array_bool.fill_value
+    assert empty_array_bool.shape == shape
+    assert empty_array_bool.store_path.store == store
+
+    empty_like_array_bool = group.empty_like(name="empty_like_bool", prototype=empty_array_bool)
+    assert isinstance(empty_like_array_bool, Array)
+    assert not empty_like_array_bool.fill_value
+    assert empty_like_array_bool.shape == shape
+    assert empty_like_array_bool.store_path.store == store
+
+    zeros_array = group.zeros(name="zeros", shape=shape)
+    assert isinstance(zeros_array, Array)
+    assert zeros_array.fill_value == 0
+    assert zeros_array.shape == shape
+    assert zeros_array.store_path.store == store
+
+    zeros_like_array = group.zeros_like(name="zeros_like", prototype=zeros_array)
+    assert isinstance(zeros_like_array, Array)
+    assert zeros_like_array.fill_value == 0
+    assert zeros_like_array.shape == shape
+    assert zeros_like_array.store_path.store == store
+
+    ones_array = group.ones(name="ones", shape=shape)
+    assert isinstance(ones_array, Array)
+    assert ones_array.fill_value == 1
+    assert ones_array.shape == shape
+    assert ones_array.store_path.store == store
+
+    ones_like_array = group.ones_like(name="ones_like", prototype=ones_array)
+    assert isinstance(ones_like_array, Array)
+    assert ones_like_array.fill_value == 1
+    assert ones_like_array.shape == shape
+    assert ones_like_array.store_path.store == store
+
+    full_array = group.full(name="full", shape=shape, fill_value=42)
+    assert isinstance(full_array, Array)
+    assert full_array.fill_value == 42
+    assert full_array.shape == shape
+    assert full_array.store_path.store == store
+
+    full_like_array = group.full_like(name="full_like", prototype=full_array, fill_value=43)
+    assert isinstance(full_like_array, Array)
+    assert full_like_array.fill_value == 43
+    assert full_like_array.shape == shape
+    assert full_like_array.store_path.store == store
 
 
 @pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
