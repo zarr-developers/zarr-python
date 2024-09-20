@@ -51,7 +51,7 @@ def test_group_init(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test that initializing a group from an asyncgroup works.
     """
-    agroup = sync(AsyncGroup.create(store=store, zarr_format=zarr_format))
+    agroup = sync(AsyncGroup.from_store(store=store, zarr_format=zarr_format))
     group = Group(agroup)
     assert group._async_group == agroup
 
@@ -60,7 +60,7 @@ def test_group_name_properties(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test basic properties of groups
     """
-    root = Group.create(store=store, zarr_format=zarr_format)
+    root = Group.from_store(store=store, zarr_format=zarr_format)
     assert root.path == ""
     assert root.name == "/"
     assert root.basename == ""
@@ -178,16 +178,18 @@ def test_group(store: Store, zarr_format: ZarrFormat) -> None:
 
 def test_group_create(store: Store, exists_ok: bool, zarr_format: ZarrFormat) -> None:
     """
-    Test that `Group.create` works as expected.
+    Test that `Group.from_store` works as expected.
     """
     attributes = {"foo": 100}
-    group = Group.create(store, attributes=attributes, zarr_format=zarr_format, exists_ok=exists_ok)
+    group = Group.from_store(
+        store, attributes=attributes, zarr_format=zarr_format, exists_ok=exists_ok
+    )
 
     assert group.attrs == attributes
 
     if not exists_ok:
         with pytest.raises(ContainsGroupError):
-            group = Group.create(
+            group = Group.from_store(
                 store, attributes=attributes, exists_ok=exists_ok, zarr_format=zarr_format
             )
 
@@ -203,7 +205,7 @@ def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> N
 
     # create the group
     attrs = {"path": "foo"}
-    group_created = Group.create(
+    group_created = Group.from_store(
         store, attributes=attrs, zarr_format=zarr_format, exists_ok=exists_ok
     )
     assert group_created.attrs == attrs
@@ -214,9 +216,9 @@ def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> N
     new_attrs = {"path": "bar"}
     if not exists_ok:
         with pytest.raises(ContainsGroupError):
-            Group.create(store, attributes=attrs, zarr_format=zarr_format, exists_ok=exists_ok)
+            Group.from_store(store, attributes=attrs, zarr_format=zarr_format, exists_ok=exists_ok)
     else:
-        group_created_again = Group.create(
+        group_created_again = Group.from_store(
             store, attributes=new_attrs, zarr_format=zarr_format, exists_ok=exists_ok
         )
         assert group_created_again.attrs == new_attrs
@@ -229,7 +231,7 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat) -> None:
     Test the `Group.__getitem__` method.
     """
 
-    group = Group.create(store, zarr_format=zarr_format)
+    group = Group.from_store(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
     subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
 
@@ -246,7 +248,7 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat) -> None:
     if not store.supports_deletes:
         pytest.skip("store does not support deletes")
 
-    group = Group.create(store, zarr_format=zarr_format)
+    group = Group.from_store(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
     subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
 
@@ -267,7 +269,7 @@ def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
     Test the `Group.__iter__` method.
     """
 
-    group = Group.create(store, zarr_format=zarr_format)
+    group = Group.from_store(store, zarr_format=zarr_format)
     with pytest.raises(NotImplementedError):
         [x for x in group]  # type: ignore
 
@@ -277,7 +279,7 @@ def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
     Test the `Group.__len__` method.
     """
 
-    group = Group.create(store, zarr_format=zarr_format)
+    group = Group.from_store(store, zarr_format=zarr_format)
     with pytest.raises(NotImplementedError):
         len(group)  # type: ignore
 
@@ -286,7 +288,7 @@ def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__setitem__` method.
     """
-    group = Group.create(store, zarr_format=zarr_format)
+    group = Group.from_store(store, zarr_format=zarr_format)
     with pytest.raises(NotImplementedError):
         group["key"] = 10
 
@@ -295,14 +297,14 @@ def test_group_contains(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__contains__` method
     """
-    group = Group.create(store, zarr_format=zarr_format)
+    group = Group.from_store(store, zarr_format=zarr_format)
     assert "foo" not in group
     _ = group.create_group(name="foo")
     assert "foo" in group
 
 
 def test_group_child_iterators(store: Store, zarr_format: ZarrFormat):
-    group = Group.create(store, zarr_format=zarr_format)
+    group = Group.from_store(store, zarr_format=zarr_format)
     expected_group_keys = ["g0", "g1"]
     expected_group_values = [group.create_group(name=name) for name in expected_group_keys]
     expected_groups = list(zip(expected_group_keys, expected_group_values, strict=False))
@@ -330,7 +332,7 @@ def test_group_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:
     Test the behavior of `Group.update_attributes`
     """
     attrs = {"foo": 100}
-    group = Group.create(store, zarr_format=zarr_format, attributes=attrs)
+    group = Group.from_store(store, zarr_format=zarr_format, attributes=attrs)
     assert group.attrs == attrs
     new_attrs = {"bar": 100}
     new_group = group.update_attributes(new_attrs)
@@ -342,7 +344,7 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
     Test the behavior of `Group.update_attributes_async`
     """
     attrs = {"foo": 100}
-    group = Group.create(store, zarr_format=zarr_format, attributes=attrs)
+    group = Group.from_store(store, zarr_format=zarr_format, attributes=attrs)
     assert group.attrs == attrs
     new_attrs = {"bar": 100}
     new_group = await group.update_attributes_async(new_attrs)
@@ -357,9 +359,9 @@ def test_group_create_array(
     method: Literal["create_array", "array"],
 ) -> None:
     """
-    Test `Group.create_array`
+    Test `Group.from_store`
     """
-    group = Group.create(store, zarr_format=zarr_format)
+    group = Group.from_store(store, zarr_format=zarr_format)
     shape = (10, 10)
     dtype = "uint8"
     data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
@@ -388,7 +390,7 @@ def test_group_array_creation(
     store: Store,
     zarr_format: ZarrFormat,
 ):
-    group = Group.create(store, zarr_format=zarr_format)
+    group = Group.from_store(store, zarr_format=zarr_format)
     shape = (10, 10)
     empty_array = group.empty(name="empty", shape=shape)
     assert isinstance(empty_array, Array)
@@ -465,7 +467,7 @@ def test_group_creation_existing_node(
     Check that an existing array or group is handled as expected during group creation.
     """
     spath = StorePath(store)
-    group = Group.create(spath, zarr_format=zarr_format)
+    group = Group.from_store(spath, zarr_format=zarr_format)
     expected_exception: type[ContainsArrayError] | type[ContainsGroupError]
     attributes: dict[str, JSON] = {"old": True}
 
@@ -481,7 +483,7 @@ def test_group_creation_existing_node(
     new_attributes = {"new": True}
 
     if exists_ok:
-        node_new = Group.create(
+        node_new = Group.from_store(
             spath / "extant",
             attributes=new_attributes,
             zarr_format=zarr_format,
@@ -490,7 +492,7 @@ def test_group_creation_existing_node(
         assert node_new.attrs == new_attributes
     else:
         with pytest.raises(expected_exception):
-            node_new = Group.create(
+            node_new = Group.from_store(
                 spath / "extant",
                 attributes=new_attributes,
                 zarr_format=zarr_format,
@@ -504,11 +506,11 @@ async def test_asyncgroup_create(
     zarr_format: ZarrFormat,
 ) -> None:
     """
-    Test that `AsyncGroup.create` works as expected.
+    Test that `AsyncGroup.from_store` works as expected.
     """
     spath = StorePath(store=store)
     attributes = {"foo": 100}
-    agroup = await AsyncGroup.create(
+    agroup = await AsyncGroup.from_store(
         store,
         attributes=attributes,
         exists_ok=exists_ok,
@@ -520,7 +522,7 @@ async def test_asyncgroup_create(
 
     if not exists_ok:
         with pytest.raises(ContainsGroupError):
-            agroup = await AsyncGroup.create(
+            agroup = await AsyncGroup.from_store(
                 spath,
                 attributes=attributes,
                 exists_ok=exists_ok,
@@ -532,7 +534,7 @@ async def test_asyncgroup_create(
             spath / collision_name, shape=(10,), dtype="uint8", zarr_format=zarr_format
         )
         with pytest.raises(ContainsArrayError):
-            _ = await AsyncGroup.create(
+            _ = await AsyncGroup.from_store(
                 StorePath(store=store) / collision_name,
                 attributes=attributes,
                 exists_ok=exists_ok,
@@ -542,13 +544,13 @@ async def test_asyncgroup_create(
 
 async def test_asyncgroup_attrs(store: Store, zarr_format: ZarrFormat) -> None:
     attributes = {"foo": 100}
-    agroup = await AsyncGroup.create(store, zarr_format=zarr_format, attributes=attributes)
+    agroup = await AsyncGroup.from_store(store, zarr_format=zarr_format, attributes=attributes)
 
     assert agroup.attrs == agroup.metadata.attributes == attributes
 
 
 async def test_asyncgroup_info(store: Store, zarr_format: ZarrFormat) -> None:
-    agroup = await AsyncGroup.create(  # noqa
+    agroup = await AsyncGroup.from_store(  # noqa
         store,
         zarr_format=zarr_format,
     )
@@ -564,7 +566,7 @@ async def test_asyncgroup_open(
     Create an `AsyncGroup`, then ensure that we can open it using `AsyncGroup.open`
     """
     attributes = {"foo": 100}
-    group_w = await AsyncGroup.create(
+    group_w = await AsyncGroup.from_store(
         store=store,
         attributes=attributes,
         exists_ok=False,
@@ -581,7 +583,7 @@ async def test_asyncgroup_open_wrong_format(
     store: Store,
     zarr_format: ZarrFormat,
 ) -> None:
-    _ = await AsyncGroup.create(store=store, exists_ok=False, zarr_format=zarr_format)
+    _ = await AsyncGroup.from_store(store=store, exists_ok=False, zarr_format=zarr_format)
     zarr_format_wrong: ZarrFormat
     # try opening with the wrong zarr format
     if zarr_format == 3:
@@ -624,7 +626,7 @@ async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None
     Create an `AsyncGroup`, then create members of that group, and ensure that we can access those
     members via the `AsyncGroup.getitem` method.
     """
-    agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
 
     array_name = "sub_array"
     sub_array = await agroup.create_array(
@@ -645,7 +647,7 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
     if not store.supports_deletes:
         pytest.skip("store does not support deletes")
 
-    agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     array_name = "sub_array"
     _ = await agroup.create_array(
         name=array_name, shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
@@ -677,7 +679,7 @@ async def test_asyncgroup_create_group(
     store: Store,
     zarr_format: ZarrFormat,
 ) -> None:
-    agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     sub_node_path = "sub_group"
     attributes = {"foo": 999}
     subnode = await agroup.create_group(name=sub_node_path, attributes=attributes)
@@ -697,11 +699,11 @@ async def test_asyncgroup_create_array(
     specified in create_array are present on the resulting array.
     """
 
-    agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
 
     if not exists_ok:
         with pytest.raises(ContainsGroupError):
-            agroup = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+            agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
 
     shape = (10,)
     dtype = "uint8"
@@ -734,7 +736,7 @@ async def test_asyncgroup_update_attributes(store: Store, zarr_format: ZarrForma
     """
     attributes_old = {"foo": 10}
     attributes_new = {"baz": "new"}
-    agroup = await AsyncGroup.create(
+    agroup = await AsyncGroup.from_store(
         store=store, zarr_format=zarr_format, attributes=attributes_old
     )
 
@@ -745,7 +747,7 @@ async def test_asyncgroup_update_attributes(store: Store, zarr_format: ZarrForma
 @pytest.mark.parametrize("store", ("local",), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
-    expected = await AsyncGroup.create(
+    expected = await AsyncGroup.from_store(
         store=store, attributes={"foo": 999}, zarr_format=zarr_format
     )
     p = pickle.dumps(expected)
@@ -756,7 +758,7 @@ async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrForm
 @pytest.mark.parametrize("store", ("local",), indirect=["store"])
 @pytest.mark.parametrize("zarr_format", (2, 3))
 def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
-    expected = Group.create(store=store, attributes={"foo": 999}, zarr_format=zarr_format)
+    expected = Group.from_store(store=store, attributes={"foo": 999}, zarr_format=zarr_format)
     p = pickle.dumps(expected)
     actual = pickle.loads(p)
 
@@ -817,7 +819,7 @@ async def test_group_members_async(store: LocalStore | MemoryStore) -> None:
 
 
 async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
 
     # create foo group
     _ = await root.create_group("foo", attributes={"foo": 100})
@@ -845,7 +847,7 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
 
 
 async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     # create foo group
     _ = await root.create_group("foo", attributes={"foo": 100})
     # create bar group
@@ -866,7 +868,7 @@ async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: Zarr
 
 
 async def test_create_dataset(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     with pytest.warns(DeprecationWarning):
         foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
     assert foo.shape == (10,)
@@ -880,7 +882,7 @@ async def test_create_dataset(store: LocalStore | MemoryStore, zarr_format: Zarr
 
 
 async def test_require_array(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
-    root = await AsyncGroup.create(store=store, zarr_format=zarr_format)
+    root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     foo1 = await root.require_array("foo", shape=(10,), dtype="i8", attributes={"foo": 101})
     assert foo1.attrs == {"foo": 101}
     foo2 = await root.require_array("foo", shape=(10,), dtype="i8")
