@@ -332,7 +332,17 @@ def parse_fill_value(
                 raise ValueError(msg)
         msg = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}."
         raise TypeError(msg)
-    return dtype.type(fill_value)  # type: ignore[arg-type]
+
+    # Cast the fill_value to the given dtype
+    try:
+        casted_value = np.dtype(dtype).type(fill_value)
+    except (ValueError, OverflowError, TypeError) as e:
+        raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}") from e
+    # Check if the value is still representable by the dtype
+    if fill_value != casted_value:
+        raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}")
+
+    return casted_value
 
 
 # For type checking

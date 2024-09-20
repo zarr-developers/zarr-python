@@ -277,3 +277,21 @@ async def test_invalid_dtype_raises() -> None:
 def test_parse_invalid_dtype_raises(data):
     with pytest.raises(ValueError, match=r"Invalid V3 data_type"):
         parse_dtype(data)
+
+
+@pytest.mark.parametrize(
+    "data_type,fill_value", [("uint8", -1), ("int32", 22.5), ("float32", "foo")]
+)
+async def test_invalid_fill_value_raises(data_type: str, fill_value: int | float) -> None:
+    metadata_dict = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (1,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": data_type,
+        "chunk_key_encoding": {"name": "default", "separator": "."},
+        "codecs": (),
+        "fill_value": fill_value,  # this is not a valid fill value for uint8
+    }
+    with pytest.raises(ValueError, match=rf"fill value .* is not valid for dtype {data_type}"):
+        ArrayV3Metadata.from_dict(metadata_dict)
