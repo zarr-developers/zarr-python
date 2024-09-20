@@ -14,7 +14,7 @@ from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
-from zarr.abc.store import set_or_delete
+from zarr.abc.store import Store, set_or_delete
 from zarr.core.array import Array, AsyncArray
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
@@ -338,7 +338,7 @@ class AsyncGroup:
     store_path: StorePath
 
     @classmethod
-    async def create(
+    async def from_store(
         cls,
         store: StoreLike,
         *,
@@ -669,6 +669,21 @@ class AsyncGroup:
     def info(self) -> None:
         raise NotImplementedError
 
+    @property
+    def store(self) -> Store:
+        return self.store_path.store
+
+    @property
+    def read_only(self) -> bool:
+        # Backwards compatibility for 2.x
+        return self.store_path.store.mode.readonly
+
+    @property
+    def synchronizer(self) -> None:
+        # Backwards compatibility for 2.x
+        # Not implemented in 3.x yet.
+        return None
+
     async def create_group(
         self,
         name: str,
@@ -677,7 +692,7 @@ class AsyncGroup:
         attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
         attributes = attributes or {}
-        return await type(self).create(
+        return await type(self).from_store(
             self.store_path / name,
             attributes=attributes,
             exists_ok=exists_ok,
@@ -1151,7 +1166,7 @@ class Group(SyncMixin):
     _async_group: AsyncGroup
 
     @classmethod
-    def create(
+    def from_store(
         cls,
         store: StoreLike,
         *,
@@ -1161,7 +1176,7 @@ class Group(SyncMixin):
     ) -> Group:
         attributes = attributes or {}
         obj = sync(
-            AsyncGroup.create(
+            AsyncGroup.from_store(
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
@@ -1242,6 +1257,22 @@ class Group(SyncMixin):
     def info(self) -> None:
         raise NotImplementedError
 
+    @property
+    def store(self) -> Store:
+        # Backwards compatibility for 2.x
+        return self._async_group.store
+
+    @property
+    def read_only(self) -> bool:
+        # Backwards compatibility for 2.x
+        return self._async_group.read_only
+
+    @property
+    def synchronizer(self) -> None:
+        # Backwards compatibility for 2.x
+        # Not implemented in 3.x yet.
+        return self._async_group.synchronizer
+
     def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
@@ -1311,6 +1342,10 @@ class Group(SyncMixin):
     def require_groups(self, *names: str) -> tuple[Group, ...]:
         """Convenience method to require multiple groups in a single call."""
         return tuple(map(Group, self._sync(self._async_group.require_groups(*names))))
+
+    def create(self, *args: Any, **kwargs: Any) -> Array:
+        # Backwards compatibility for 2.x
+        return self.create_array(*args, **kwargs)
 
     def create_array(
         self,

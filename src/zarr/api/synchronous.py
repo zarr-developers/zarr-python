@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import zarr.api.asynchronous as async_api
+from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
 from zarr.core.group import Group
 from zarr.core.sync import sync
@@ -63,9 +64,10 @@ def load(
     return sync(async_api.load(store=store, zarr_version=zarr_version, path=path))
 
 
+@_deprecate_positional_args
 def open(
-    *,
     store: StoreLike | None = None,
+    *,
     mode: AccessModeLiteral | None = None,  # type and value changed
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
@@ -107,6 +109,7 @@ def save(
     )
 
 
+@_deprecate_positional_args
 def save_array(
     store: StoreLike,
     arr: NDArrayLike,
@@ -159,9 +162,10 @@ def array(data: NDArrayLike, **kwargs: Any) -> Array:
     return Array(sync(async_api.array(data=data, **kwargs)))
 
 
+@_deprecate_positional_args
 def group(
-    *,  # Note: this is a change from v2
     store: StoreLike | None = None,
+    *,  # Note: this is a change from v2
     overwrite: bool = False,
     chunk_store: StoreLike | None = None,  # not used in async_api
     cache_attrs: bool | None = None,  # default changed, not used in async_api
@@ -190,9 +194,10 @@ def group(
     )
 
 
+@_deprecate_positional_args
 def open_group(
-    *,  # Note: this is a change from v2
     store: StoreLike | None = None,
+    *,  # Note: this is a change from v2
     mode: AccessModeLiteral | None = None,  # not used in async api
     cache_attrs: bool | None = None,  # default changed, not used in async api
     synchronizer: Any = None,  # not used in async api

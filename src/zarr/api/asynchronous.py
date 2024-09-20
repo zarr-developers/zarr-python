@@ -560,7 +560,7 @@ async def group(
     try:
         return await AsyncGroup.open(store=store_path, zarr_format=zarr_format)
     except (KeyError, FileNotFoundError):
-        return await AsyncGroup.create(
+        return await AsyncGroup.from_store(
             store=store_path,
             zarr_format=zarr_format or _default_zarr_version(),
             exists_ok=overwrite,
@@ -569,8 +569,8 @@ async def group(
 
 
 async def open_group(
-    *,  # Note: this is a change from v2
     store: StoreLike | None = None,
+    *,  # Note: this is a change from v2
     mode: AccessModeLiteral | None = None,
     cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any = None,  # not used
@@ -666,7 +666,7 @@ async def open_group(
             store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
         )
     except (KeyError, FileNotFoundError):
-        return await AsyncGroup.create(
+        return await AsyncGroup.from_store(
             store_path,
             zarr_format=zarr_format or _default_zarr_version(),
             exists_ok=True,

@@ -32,6 +32,10 @@ except ImportError:
     cp = None
 
 
+if TYPE_CHECKING:
+    import types
+
+
 def test_nd_array_like(xp: types.ModuleType) -> None:
     ary = xp.arange(10)
     assert isinstance(ary, ArrayLike)
