@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
+from asyncio import gather
+from collections.abc import AsyncGenerator, Iterable
 from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from typing_extensions import Self
@@ -158,6 +159,13 @@ class Store(ABC):
         """
         ...
 
+    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
+        """
+        Insert multiple (key, value) pairs into storage.
+        """
+        await gather(*(self.set(key, value) for key, value in values))
+        return None
+
     @property
     @abstractmethod
     def supports_deletes(self) -> bool:
@@ -211,7 +219,9 @@ class Store(ABC):
 
     @abstractmethod
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """Retrieve all keys in the store with a given prefix.
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
 
         Parameters
         ----------
