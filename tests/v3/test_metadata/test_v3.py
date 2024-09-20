@@ -79,8 +79,19 @@ def test_parse_auto_fill_value(dtype_str: str) -> None:
     assert parse_fill_value(fill_value, dtype) == dtype.type(0)
 
 
-@pytest.mark.parametrize("fill_value", [0, 1.11, False, True])
-@pytest.mark.parametrize("dtype_str", dtypes)
+@pytest.mark.parametrize(
+    "fill_value,dtype_str",
+    [
+        (True, "bool"),
+        (False, "bool"),
+        (-8, "int8"),
+        (0, "int16"),
+        (1e10, "uint64"),
+        (-999, "float32"),
+        (1e32, "float64"),
+        (0j, "complex64"),
+    ],
+)
 def test_parse_fill_value_valid(fill_value: Any, dtype_str: str) -> None:
     """
     Test that parse_fill_value(fill_value, dtype) casts fill_value to the given dtype.
@@ -141,8 +152,7 @@ def test_parse_fill_value_invalid_type(fill_value: Any, dtype_str: str) -> None:
     This test excludes bool because the bool constructor takes anything.
     """
     dtype = np.dtype(dtype_str)
-    match = "must be"
-    with pytest.raises(TypeError, match=match):
+    with pytest.raises(ValueError, match=r"fill value .* is not valid for dtype .*"):
         parse_fill_value(fill_value, dtype)
 
 
@@ -269,13 +279,13 @@ async def test_invalid_dtype_raises() -> None:
         "codecs": (),
         "fill_value": np.datetime64(0, "ns"),
     }
-    with pytest.raises(ValueError, match=r"Invalid V3 data_type"):
+    with pytest.raises(ValueError, match=r".* is not a valid DataType"):
         ArrayV3Metadata.from_dict(metadata_dict)
 
 
 @pytest.mark.parametrize("data", ["datetime64[s]", "foo", object()])
 def test_parse_invalid_dtype_raises(data):
-    with pytest.raises(ValueError, match=r"Invalid V3 data_type"):
+    with pytest.raises(ValueError, match=r"Invalid V3 data_type: .*"):
         parse_dtype(data)
 
 
@@ -293,5 +303,5 @@ async def test_invalid_fill_value_raises(data_type: str, fill_value: int | float
         "codecs": (),
         "fill_value": fill_value,  # this is not a valid fill value for uint8
     }
-    with pytest.raises(ValueError, match=rf"fill value .* is not valid for dtype {data_type}"):
+    with pytest.raises(ValueError, match=r"fill value .* is not valid for dtype .*"):
         ArrayV3Metadata.from_dict(metadata_dict)

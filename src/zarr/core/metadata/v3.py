@@ -216,8 +216,7 @@ class ArrayV3Metadata(ArrayMetadata):
         _ = parse_node_type_array(_data.pop("node_type"))
 
         # check that the data_type attribute is valid
-        if _data["data_type"] not in DataType:
-            raise ValueError(f"Invalid V3 data_type: {_data['data_type']}")
+        _ = DataType(_data["data_type"])
 
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)
@@ -264,23 +263,38 @@ COMPLEX = np.complex64 | np.complex128
 
 
 @overload
-def parse_fill_value(fill_value: object, dtype: BOOL_DTYPE) -> BOOL: ...
+def parse_fill_value(
+    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    dtype: BOOL_DTYPE,
+) -> BOOL: ...
 
 
 @overload
-def parse_fill_value(fill_value: object, dtype: INTEGER_DTYPE) -> INTEGER: ...
+def parse_fill_value(
+    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    dtype: INTEGER_DTYPE,
+) -> INTEGER: ...
 
 
 @overload
-def parse_fill_value(fill_value: object, dtype: FLOAT_DTYPE) -> FLOAT: ...
+def parse_fill_value(
+    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    dtype: FLOAT_DTYPE,
+) -> FLOAT: ...
 
 
 @overload
-def parse_fill_value(fill_value: object, dtype: COMPLEX_DTYPE) -> COMPLEX: ...
+def parse_fill_value(
+    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    dtype: COMPLEX_DTYPE,
+) -> COMPLEX: ...
 
 
 @overload
-def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
+def parse_fill_value(
+    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    dtype: np.dtype[Any],
+) -> Any:
     # This dtype[Any] is unfortunately necessary right now.
     # See https://github.com/zarr-developers/zarr-python/issues/2131#issuecomment-2318010899
     # for more details, but `dtype` here (which comes from `parse_dtype`)
@@ -292,7 +306,7 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
 
 
 def parse_fill_value(
-    fill_value: object,
+    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
     dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | np.dtype[Any],
 ) -> BOOL | INTEGER | FLOAT | COMPLEX | Any:
     """
@@ -326,11 +340,11 @@ def parse_fill_value(
             else:
                 msg = (
                     f"Got an invalid fill value for complex data type {dtype}."
-                    f"Expected a sequence with 2 elements, but {fill_value} has "
+                    f"Expected a sequence with 2 elements, but {fill_value!r} has "
                     f"length {len(fill_value)}."
                 )
                 raise ValueError(msg)
-        msg = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}."
+        msg = f"Cannot parse non-string sequence {fill_value!r} as a scalar with type {dtype}."
         raise TypeError(msg)
 
     # Cast the fill_value to the given dtype
@@ -339,7 +353,7 @@ def parse_fill_value(
     except (ValueError, OverflowError, TypeError) as e:
         raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}") from e
     # Check if the value is still representable by the dtype
-    if fill_value != casted_value:
+    if fill_value != casted_value and not (np.isnan(fill_value) and np.isnan(casted_value)):
         raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}")
 
     return casted_value
@@ -434,7 +448,7 @@ class DataType(Enum):
 def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
     try:
         dtype = np.dtype(data)
-    except TypeError as e:
+    except (ValueError, TypeError) as e:
         raise ValueError(f"Invalid V3 data_type: {data}") from e
     # check that this is a valid v3 data_type
     try:
