@@ -34,10 +34,7 @@ if TYPE_CHECKING:
 IntSequence = list[int] | npt.NDArray[np.intp]
 ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
 BasicSelector = int | slice | EllipsisType
-Selector = (
-    BasicSelector | ArrayOfIntOrBool | Array
-)  # help! we want zarr.Array[np.intp] | zarr.Array[np.bool_]
-
+Selector = BasicSelector | ArrayOfIntOrBool
 BasicSelection = BasicSelector | tuple[BasicSelector, ...]  # also used for BlockIndex
 CoordinateSelection = IntSequence | tuple[IntSequence, ...]
 MaskSelection = npt.NDArray[np.bool_]
@@ -75,6 +72,13 @@ class VindexInvalidSelectionError(IndexError):
 
 def err_too_many_indices(selection: Any, shape: ChunkCoords) -> None:
     raise IndexError(f"too many indices for array; expected {len(shape)}, got {len(selection)}")
+
+
+def _zarr_array_to_int_or_bool_array(arr: Array) -> npt.NDArray[np.intp] | npt.NDArray[np.bool_]:
+    if arr.dtype.kind in ("i", "b"):
+        return np.asarray(arr)
+    else:
+        raise IndexError("arrays used as indices must be of integer (or boolean) type")
 
 
 @runtime_checkable
@@ -844,11 +848,13 @@ class OrthogonalIndexer(Indexer):
 class OIndex:
     array: Array
 
-    def __getitem__(self, selection: OrthogonalSelection) -> NDArrayLike:
+    def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayLike:
         from zarr.core.array import Array
 
+        # if input is a Zarr array, we materialize it now.
         if isinstance(selection, Array):
-            selection = np.asarray(selection)
+            selection = _zarr_array_to_int_or_bool_array(selection)
+
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
@@ -1136,11 +1142,12 @@ class MaskIndexer(CoordinateIndexer):
 class VIndex:
     array: Array
 
-    def __getitem__(self, selection: CoordinateSelection | MaskSelection) -> NDArrayLike:
+    def __getitem__(self, selection: CoordinateSelection | MaskSelection | Array) -> NDArrayLike:
         from zarr.core.array import Array
 
+        # if input is a Zarr array, we materialize it now.
         if isinstance(selection, Array):
-            selection = np.asarray(selection)
+            selection = _zarr_array_to_int_or_bool_array(selection)
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
