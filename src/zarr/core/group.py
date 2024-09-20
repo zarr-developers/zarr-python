@@ -102,7 +102,7 @@ class ConsolidatedMetadata:
         return {
             "kind": self.kind,
             "must_understand": self.must_understand,
-            "metadata": {k: v.to_dict() for k, v in self.metadata.items()},
+            "metadata": {k: v.to_dict() for k, v in self.flattened_metadata.items()},
         }
 
     @classmethod
@@ -165,10 +165,17 @@ class ConsolidatedMetadata:
         under the consolidated metadata of their immediate parent.
         """
         # We have a flat mapping from {k: v} where the keys include the *full*
-        # path segment.
+        # path segment:
+        #  {
+        #    "/a/b": { group_metadata },
+        #    "/a/b/array-0": { array_metadata },
+        #    "/a/b/array-1": { array_metadata },
+        #  }
         #
-        # We want a nested representation, so we need to group by Group,
-        # i.e. find all the children with the same prefix.
+        # We want to reorganize the metadata such that each Group contains the
+        # array metadata of its immediate children.
+        # In the example, the group at `/a/b` will have consolidated metadata
+        # for its children `array-0` and `array-1`.
         #
         # metadata = dict(metadata)
 
@@ -972,6 +979,12 @@ class AsyncGroup:
             ``max_depth=None`` to include all nodes, and some positive integer
             to consider children within that many levels of the root Group.
 
+        Returns
+        -------
+        path:
+            A string giving the path to the target, relative to the Group ``self``.
+        value: AsyncArray or AsyncGroup
+            The AsyncArray or AsyncGroup that is a child of ``self``.
         """
         if max_depth is not None and max_depth < 0:
             raise ValueError(f"max_depth must be None or >= 0. Got '{max_depth}' instead")
@@ -1046,7 +1059,7 @@ class AsyncGroup:
                 obj = self._getitem_consolidated(self.store_path, key)  # Metadata -> Group/Array
                 # this is probably  generally useful
                 key = "/".join([prefix, key]).lstrip("/")
-                yield key, obj
+                # yield key, obj
 
                 if ((max_depth is None) or (current_depth < max_depth)) and isinstance(
                     obj, AsyncGroup
@@ -1063,7 +1076,9 @@ class AsyncGroup:
             return True
 
     async def groups(self) -> AsyncGenerator[tuple[str, AsyncGroup], None]:
-        async for name, value in self.members():
+        members = [x async for x in self.members()]
+        # async for name, value in self.members():
+        for name, value in members:
             if isinstance(value, AsyncGroup):
                 yield name, value
 

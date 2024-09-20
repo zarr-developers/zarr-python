@@ -410,6 +410,25 @@ class TestConsolidated:
         group4 = await open_consolidated(store=memory_store_with_hierarchy)
         assert group4.metadata == expected
 
+        result_raw = json.loads(
+            (
+                await memory_store_with_hierarchy.get(
+                    "zarr.json", prototype=default_buffer_prototype()
+                )
+            ).to_bytes()
+        )["consolidated_metadata"]
+        assert result_raw["kind"] == "inline"
+        assert sorted(result_raw["metadata"]) == [
+            "air",
+            "child",
+            "child/array",
+            "child/grandchild",
+            "child/grandchild/array",
+            "lat",
+            "lon",
+            "time",
+        ]
+
     def test_consolidated_sync(self, memory_store):
         g = zarr.api.synchronous.group(store=memory_store, attributes={"foo": "bar"})
         g.create_array(name="air", shape=(1, 2, 3))

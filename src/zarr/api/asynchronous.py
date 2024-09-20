@@ -177,6 +177,7 @@ async def consolidate_metadata(
 
     members_metadata = {k: v.metadata for k, v in members.items()}
 
+    ConsolidatedMetadata._flat_to_nested(members_metadata)
     consolidated_metadata = ConsolidatedMetadata(metadata=members_metadata)
     metadata = dataclasses.replace(group.metadata, consolidated_metadata=consolidated_metadata)
     group = dataclasses.replace(
