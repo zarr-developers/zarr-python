@@ -390,7 +390,7 @@ def test_group_array_creation(
     store: Store,
     zarr_format: ZarrFormat,
 ):
-    group = Group.create(store, zarr_format=zarr_format)
+    group = Group.from_store(store, zarr_format=zarr_format)
     shape = (10, 10)
     empty_array = group.empty(name="empty", shape=shape)
     assert isinstance(empty_array, Array)
