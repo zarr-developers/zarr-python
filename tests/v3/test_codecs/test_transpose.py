@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-import zarr.v2
+import zarr.v2.creation
 from zarr import Array, AsyncArray, config
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec, ShardingCodec, TransposeCodec
@@ -72,7 +72,7 @@ async def test_transpose(
 
     if not with_sharding:
         # Compare with zarr-python
-        z = zarr.v2.create(
+        z = zarr.v2.creation.create(
             shape=data.shape,
             chunks=(1, 32, 8),
             dtype="<u2",

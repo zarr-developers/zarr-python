@@ -87,10 +87,10 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
 
 def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
-        return get_pipeline_class().from_list(metadata.codecs)
+        return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
-        return get_pipeline_class().from_list(
-            [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
+        return get_pipeline_class().from_codecs(
+            [V2Filters(metadata.filters), V2Compressor(metadata.compressor)]
         )
     else:
         raise TypeError
@@ -299,8 +299,6 @@ class AsyncArray:
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray:
-        import numcodecs
-
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=2)
         if order is None:
@@ -316,14 +314,8 @@ class AsyncArray:
             order=order,
             dimension_separator=dimension_separator,
             fill_value=0 if fill_value is None else fill_value,
-            compressor=(
-                numcodecs.get_codec(compressor).get_config() if compressor is not None else None
-            ),
-            filters=(
-                [numcodecs.get_codec(filter).get_config() for filter in filters]
-                if filters is not None
-                else None
-            ),
+            compressor=compressor,
+            filters=filters,
             attributes=attributes,
         )
         array = cls(metadata=metadata, store_path=store_path)

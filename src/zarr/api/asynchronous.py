@@ -9,6 +9,7 @@ import numpy.typing as npt
 
 from zarr.core.array import Array, AsyncArray
 from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
+from zarr.core.config import config
 from zarr.core.group import AsyncGroup
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
@@ -126,8 +127,7 @@ def _handle_zarr_version_or_format(
 
 def _default_zarr_version() -> ZarrFormat:
     """return the default zarr_version"""
-    # TODO: set default value from config
-    return 3
+    return cast(ZarrFormat, int(config.get("default_zarr_version", 3)))
 
 
 async def consolidate_metadata(*args: Any, **kwargs: Any) -> AsyncGroup:
@@ -194,6 +194,7 @@ async def open(
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
+    storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to open_array
 ) -> AsyncArray | AsyncGroup:
     """Convenience function to open a group or array using file-mode-like semantics.
@@ -211,6 +212,9 @@ async def open(
         The zarr format to use when saving.
     path : str or None, optional
         The path within the store to open.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
     **kwargs
         Additional parameters are passed through to :func:`zarr.creation.open_array` or
         :func:`zarr.hierarchy.open_group`.
@@ -221,7 +225,7 @@ async def open(
         Return type depends on what exists in the given store.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-    store_path = await make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
 
     if path is not None:
         store_path = store_path / path
@@ -276,6 +280,7 @@ async def save_array(
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
+    storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to create
 ) -> None:
     """Convenience function to save a NumPy array to the local file system, following a
@@ -291,6 +296,9 @@ async def save_array(
         The zarr format to use when saving.
     path : str or None, optional
         The path within the store where the array will be saved.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
     kwargs
         Passed through to :func:`create`, e.g., compressor.
     """
@@ -299,7 +307,7 @@ async def save_array(
         or _default_zarr_version()
     )
 
-    store_path = await make_store_path(store, mode="w")
+    store_path = await make_store_path(store, mode="w", storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
     new = await AsyncArray.create(
@@ -319,6 +327,7 @@ async def save_group(
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
+    storage_options: dict[str, Any] | None = None,
     **kwargs: NDArrayLike,
 ) -> None:
     """Convenience function to save several NumPy arrays to the local file system, following a
@@ -334,19 +343,40 @@ async def save_group(
         The zarr format to use when saving.
     path : str or None, optional
         Path within the store where the group will be saved.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
     kwargs
         NumPy arrays with data to save.
     """
-    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+    zarr_format = (
+        _handle_zarr_version_or_format(
+            zarr_version=zarr_version,
+            zarr_format=zarr_format,
+        )
+        or _default_zarr_version()
+    )
 
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
     aws = []
     for i, arr in enumerate(args):
-        aws.append(save_array(store, arr, zarr_format=zarr_format, path=f"{path}/arr_{i}"))
+        aws.append(
+            save_array(
+                store,
+                arr,
+                zarr_format=zarr_format,
+                path=f"{path}/arr_{i}",
+                storage_options=storage_options,
+            )
+        )
     for k, arr in kwargs.items():
         _path = f"{path}/{k}" if path is not None else k
-        aws.append(save_array(store, arr, zarr_format=zarr_format, path=_path))
+        aws.append(
+            save_array(
+                store, arr, zarr_format=zarr_format, path=_path, storage_options=storage_options
+            )
+        )
     await asyncio.gather(*aws)
 
 
@@ -415,6 +445,7 @@ async def group(
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
     attributes: dict[str, JSON] | None = None,
+    storage_options: dict[str, Any] | None = None,
 ) -> AsyncGroup:
     """Create a group.
 
@@ -441,6 +472,9 @@ async def group(
         to users. Use `numpy.empty(())` by default.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
 
     Returns
     -------
@@ -448,12 +482,9 @@ async def group(
         The new group.
     """
 
-    zarr_format = (
-        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-        or _default_zarr_version()
-    )
+    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    store_path = await make_store_path(store)
+    store_path = await make_store_path(store, storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
 
@@ -474,7 +505,7 @@ async def group(
     except (KeyError, FileNotFoundError):
         return await AsyncGroup.create(
             store=store_path,
-            zarr_format=zarr_format,
+            zarr_format=zarr_format or _default_zarr_version(),
             exists_ok=overwrite,
             attributes=attributes,
         )
@@ -483,12 +514,12 @@ async def group(
 async def open_group(
     *,  # Note: this is a change from v2
     store: StoreLike | None = None,
-    mode: AccessModeLiteral | None = None,  # not used
+    mode: AccessModeLiteral | None = None,
     cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any = None,  # not used
     path: str | None = None,
     chunk_store: StoreLike | None = None,  # not used
-    storage_options: dict[str, Any] | None = None,  # not used
+    storage_options: dict[str, Any] | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
@@ -538,10 +569,7 @@ async def open_group(
         The new group.
     """
 
-    zarr_format = (
-        _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-        or _default_zarr_version()
-    )
+    zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     if cache_attrs is not None:
         warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -551,10 +579,8 @@ async def open_group(
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
-    if storage_options is not None:
-        warnings.warn("storage_options is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    store_path = await make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
 
@@ -565,7 +591,10 @@ async def open_group(
         return await AsyncGroup.open(store_path, zarr_format=zarr_format)
     except (KeyError, FileNotFoundError):
         return await AsyncGroup.create(
-            store_path, zarr_format=zarr_format, exists_ok=True, attributes=attributes
+            store_path,
+            zarr_format=zarr_format or _default_zarr_version(),
+            exists_ok=True,
+            attributes=attributes,
         )
 
 
@@ -575,7 +604,7 @@ async def create(
     chunks: ChunkCoords | None = None,  # TODO: v2 allowed chunks=True
     dtype: npt.DTypeLike | None = None,
     compressor: dict[str, JSON] | None = None,  # TODO: default and type change
-    fill_value: Any = 0,  # TODO: need type
+    fill_value: Any | None = 0,  # TODO: need type
     order: MemoryOrder | None = None,  # TODO: default change
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
@@ -603,6 +632,7 @@ async def create(
     ) = None,
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
     dimension_names: Iterable[str] | None = None,
+    storage_options: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> AsyncArray:
     """Create an array.
@@ -674,6 +704,9 @@ async def create(
         to users. Use `numpy.empty(())` by default.
 
         .. versionadded:: 2.13
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
 
     Returns
     -------
@@ -687,7 +720,7 @@ async def create(
 
     if zarr_format == 2 and chunks is None:
         chunks = shape
-    if zarr_format == 3 and chunk_shape is None:
+    elif zarr_format == 3 and chunk_shape is None:
         if chunks is not None:
             chunk_shape = chunks
             chunks = None
@@ -725,7 +758,7 @@ async def create(
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
     mode = kwargs.pop("mode", cast(AccessModeLiteral, "r" if read_only else "w"))
-    store_path = await make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
 
@@ -827,7 +860,7 @@ async def full_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
     """
     like_kwargs = _like_args(a, kwargs)
     if isinstance(a, AsyncArray):
-        kwargs.setdefault("fill_value", a.metadata.fill_value)
+        like_kwargs.setdefault("fill_value", a.metadata.fill_value)
     return await full(**like_kwargs)
 
 
@@ -875,6 +908,7 @@ async def open_array(
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: PathLike | None = None,
+    storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
 ) -> AsyncArray:
     """Open an array using file-mode-like semantics.
@@ -887,6 +921,9 @@ async def open_array(
         The zarr format to use when saving.
     path : string, optional
         Path in store to array.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
     **kwargs
         Any keyword arguments to pass to the array constructor.
 
@@ -896,7 +933,7 @@ async def open_array(
         The opened array.
     """
 
-    store_path = await make_store_path(store)
+    store_path = await make_store_path(store, storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
 
@@ -908,7 +945,7 @@ async def open_array(
         if store_path.store.mode.create:
             return await create(
                 store=store_path,
-                zarr_format=zarr_format,
+                zarr_format=zarr_format or _default_zarr_version(),
                 overwrite=store_path.store.mode.overwrite,
                 **kwargs,
             )

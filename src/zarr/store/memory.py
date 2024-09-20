@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator, MutableMapping
 from typing import TYPE_CHECKING
 
 from zarr.abc.store import Store
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 # When that is done, the `MemoryStore` will just be a store that wraps a dict.
 class MemoryStore(Store):
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
 
@@ -45,6 +47,13 @@ class MemoryStore(Store):
 
     def __repr__(self) -> str:
         return f"MemoryStore({str(self)!r})"
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, type(self))
+            and self._store_dict == other._store_dict
+            and self.mode == other.mode
+        )
 
     async def get(
         self,
@@ -109,9 +118,21 @@ class MemoryStore(Store):
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         for key in self._store_dict:
             if key.startswith(prefix):
-                yield key
+                yield key.removeprefix(prefix)
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
+
+        Parameters
+        ----------
+        prefix : str
+
+        Returns
+        -------
+        AsyncGenerator[str, None]
+        """
         if prefix.endswith("/"):
             prefix = prefix[:-1]
 

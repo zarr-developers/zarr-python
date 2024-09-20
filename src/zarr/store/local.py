@@ -73,6 +73,7 @@ def _put(
 
 class LocalStore(Store):
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
 
@@ -190,7 +191,9 @@ class LocalStore(Store):
                 yield str(p).replace(to_strip, "")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """Retrieve all keys in the store with a given prefix.
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
 
         Parameters
         ----------
@@ -200,14 +203,10 @@ class LocalStore(Store):
         -------
         AsyncGenerator[str, None]
         """
+        to_strip = os.path.join(str(self.root / prefix))
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
-                yield str(p)
-
-        to_strip = str(self.root) + "/"
-        for p in (self.root / prefix).rglob("*"):
-            if p.is_file():
-                yield str(p).replace(to_strip, "")
+                yield str(p.relative_to(to_strip))
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         """

@@ -281,6 +281,12 @@ class Buffer(ABC):
         """Concatenate two buffers"""
         ...
 
+    def __eq__(self, other: object) -> bool:
+        # Another Buffer class can override this to choose a more efficient path
+        return isinstance(other, Buffer) and np.array_equal(
+            self.as_numpy_array(), other.as_numpy_array()
+        )
+
 
 class NDBuffer:
     """An n-dimensional memory block
@@ -456,8 +462,12 @@ class NDBuffer:
     def __repr__(self) -> str:
         return f"<NDBuffer shape={self.shape} dtype={self.dtype} {self._data!r}>"
 
-    def all_equal(self, other: Any) -> bool:
-        return bool((self._data == other).all())
+    def all_equal(self, other: Any, equal_nan: bool = True) -> bool:
+        """Compare to `other` using np.array_equal."""
+        # use array_equal to obtain equal_nan=True functionality
+        data, other = np.broadcast_arrays(self._data, other)
+        result = np.array_equal(self._data, other, equal_nan=equal_nan)
+        return result
 
     def fill(self, value: Any) -> None:
         self._data.fill(value)
