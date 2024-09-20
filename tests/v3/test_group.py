@@ -92,7 +92,7 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
     #   subarray
 
     path = "group"
-    group = Group.create(
+    group = Group.from_store(
         store=store,
         zarr_format=zarr_format,
     )
@@ -801,7 +801,7 @@ def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> 
 
 @pytest.mark.parametrize("consolidated_metadata", [True, False])
 async def test_group_members_async(store: Store, consolidated_metadata: bool) -> None:
-    group = await AsyncGroup.create(
+    group = await AsyncGroup.from_store(
         store=store,
     )
     a0 = await group.create_array("a0", shape=(1,))
