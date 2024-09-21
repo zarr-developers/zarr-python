@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, cast, overload
 
 if TYPE_CHECKING:
@@ -349,12 +350,25 @@ def parse_fill_value(
 
     # Cast the fill_value to the given dtype
     try:
-        casted_value = np.dtype(dtype).type(fill_value)
+        # This warning filter can be removed after Zarr supports numpy>=2.0
+        # The warning is saying that the future behavior of out of bounds casting will be to raise
+        # an OverflowError. In the meantime, we allow overflow and catch cases where
+        # fill_value != casted_value below.
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            casted_value = np.dtype(dtype).type(fill_value)
     except (ValueError, OverflowError, TypeError) as e:
         raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}") from e
     # Check if the value is still representable by the dtype
-    if fill_value != casted_value and not (np.isnan(fill_value) and np.isnan(casted_value)):
-        raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}")
+    if dtype.kind == "f":
+        # float comparison is not exact, especially when dtype <float64
+        # so we us np.isclose for this comparison.
+        # this also allows us to compare nan fill_values
+        if not np.isclose(fill_value, casted_value, equal_nan=True):
+            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}")
+    else:
+        if fill_value != casted_value:
+            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}")
 
     return casted_value
 
