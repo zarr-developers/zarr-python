@@ -13,7 +13,7 @@ from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
     from zarr.core.array_spec import ArraySpec
 

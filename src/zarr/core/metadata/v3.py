@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast, overload
 
 if TYPE_CHECKING:
+    from typing import Self
+
     import numpy.typing as npt
-    from typing_extensions import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid

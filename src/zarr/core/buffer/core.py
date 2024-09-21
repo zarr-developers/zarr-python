@@ -23,8 +23,7 @@ from zarr.registry import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
-
-    from typing_extensions import Self
+    from typing import Self
 
     from zarr.codecs.bytes import Endian
     from zarr.core.common import BytesLike, ChunkCoords
