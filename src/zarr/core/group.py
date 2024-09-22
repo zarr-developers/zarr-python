@@ -10,8 +10,9 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
+import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
-from zarr.abc.store import set_or_delete
+from zarr.abc.store import Store, set_or_delete
 from zarr.core.array import Array, AsyncArray
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
@@ -32,7 +33,7 @@ from zarr.storage import StoreLike, StorePath, make_store_path
 from zarr.storage.common import ensure_no_existing_node
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable, Iterator
+    from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
     from typing import Any
 
     from zarr.abc.codec import Codec
@@ -125,7 +126,7 @@ class AsyncGroup:
     store_path: StorePath
 
     @classmethod
-    async def create(
+    async def from_store(
         cls,
         store: StoreLike,
         *,
@@ -313,6 +314,21 @@ class AsyncGroup:
     def info(self) -> None:
         raise NotImplementedError
 
+    @property
+    def store(self) -> Store:
+        return self.store_path.store
+
+    @property
+    def read_only(self) -> bool:
+        # Backwards compatibility for 2.x
+        return self.store_path.store.mode.readonly
+
+    @property
+    def synchronizer(self) -> None:
+        # Backwards compatibility for 2.x
+        # Not implemented in 3.x yet.
+        return None
+
     async def create_group(
         self,
         name: str,
@@ -321,7 +337,7 @@ class AsyncGroup:
         attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
         attributes = attributes or {}
-        return await type(self).create(
+        return await type(self).from_store(
             self.store_path / name,
             attributes=attributes,
             exists_ok=exists_ok,
@@ -679,56 +695,70 @@ class AsyncGroup:
         else:
             return True
 
-    # todo: decide if this method should be separate from `groups`
+    async def groups(self) -> AsyncGenerator[tuple[str, AsyncGroup], None]:
+        async for name, value in self.members():
+            if isinstance(value, AsyncGroup):
+                yield name, value
+
     async def group_keys(self) -> AsyncGenerator[str, None]:
+        async for key, _ in self.groups():
+            yield key
+
+    async def group_values(self) -> AsyncGenerator[AsyncGroup, None]:
+        async for _, group in self.groups():
+            yield group
+
+    async def arrays(self) -> AsyncGenerator[tuple[str, AsyncArray], None]:
         async for key, value in self.members():
-            if isinstance(value, AsyncGroup):
-                yield key
+            if isinstance(value, AsyncArray):
+                yield key, value
 
-    # todo: decide if this method should be separate from `group_keys`
-    async def groups(self) -> AsyncGenerator[AsyncGroup, None]:
-        async for _, value in self.members():
-            if isinstance(value, AsyncGroup):
-                yield value
-
-    # todo: decide if this method should be separate from `arrays`
     async def array_keys(self) -> AsyncGenerator[str, None]:
-        async for key, value in self.members():
-            if isinstance(value, AsyncArray):
-                yield key
+        async for key, _ in self.arrays():
+            yield key
 
-    # todo: decide if this method should be separate from `array_keys`
-    async def arrays(self) -> AsyncGenerator[AsyncArray, None]:
-        async for _, value in self.members():
-            if isinstance(value, AsyncArray):
-                yield value
+    async def array_values(self) -> AsyncGenerator[AsyncArray, None]:
+        async for _, array in self.arrays():
+            yield array
 
     async def tree(self, expand: bool = False, level: int | None = None) -> Any:
         raise NotImplementedError
 
-    async def empty(self, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+    async def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+        return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
 
-    async def zeros(self, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+    async def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+        return await async_api.zeros(shape=shape, store=self.store_path, path=name, **kwargs)
 
-    async def ones(self, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+    async def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+        return await async_api.ones(shape=shape, store=self.store_path, path=name, **kwargs)
 
-    async def full(self, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+    async def full(
+        self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
+    ) -> AsyncArray:
+        return await async_api.full(
+            shape=shape, fill_value=fill_value, store=self.store_path, path=name, **kwargs
+        )
 
-    async def empty_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+    async def empty_like(
+        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+    ) -> AsyncArray:
+        return await async_api.empty_like(a=prototype, store=self.store_path, path=name, **kwargs)
 
-    async def zeros_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+    async def zeros_like(
+        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+    ) -> AsyncArray:
+        return await async_api.zeros_like(a=prototype, store=self.store_path, path=name, **kwargs)
 
-    async def ones_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+    async def ones_like(
+        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+    ) -> AsyncArray:
+        return await async_api.ones_like(a=prototype, store=self.store_path, path=name, **kwargs)
 
-    async def full_like(self, prototype: AsyncArray, **kwargs: Any) -> AsyncArray:
-        raise NotImplementedError
+    async def full_like(
+        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+    ) -> AsyncArray:
+        return await async_api.full_like(a=prototype, store=self.store_path, path=name, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
         raise NotImplementedError
@@ -739,7 +769,7 @@ class Group(SyncMixin):
     _async_group: AsyncGroup
 
     @classmethod
-    def create(
+    def from_store(
         cls,
         store: StoreLike,
         *,
@@ -749,7 +779,7 @@ class Group(SyncMixin):
     ) -> Group:
         attributes = attributes or {}
         obj = sync(
-            AsyncGroup.create(
+            AsyncGroup.from_store(
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
@@ -830,6 +860,22 @@ class Group(SyncMixin):
     def info(self) -> None:
         raise NotImplementedError
 
+    @property
+    def store(self) -> Store:
+        # Backwards compatibility for 2.x
+        return self._async_group.store
+
+    @property
+    def read_only(self) -> bool:
+        # Backwards compatibility for 2.x
+        return self._async_group.read_only
+
+    @property
+    def synchronizer(self) -> None:
+        # Backwards compatibility for 2.x
+        # Not implemented in 3.x yet.
+        return self._async_group.synchronizer
+
     def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
@@ -850,18 +896,29 @@ class Group(SyncMixin):
     def __contains__(self, member: str) -> bool:
         return self._sync(self._async_group.contains(member))
 
-    def group_keys(self) -> tuple[str, ...]:
-        return tuple(self._sync_iter(self._async_group.group_keys()))
+    def groups(self) -> Generator[tuple[str, Group], None]:
+        for name, async_group in self._sync_iter(self._async_group.groups()):
+            yield name, Group(async_group)
 
-    def groups(self) -> tuple[Group, ...]:
-        # TODO: in v2 this was a generator that return key: Group
-        return tuple(Group(obj) for obj in self._sync_iter(self._async_group.groups()))
+    def group_keys(self) -> Generator[str, None]:
+        for name, _ in self.groups():
+            yield name
 
-    def array_keys(self) -> tuple[str, ...]:
-        return tuple(self._sync_iter(self._async_group.array_keys()))
+    def group_values(self) -> Generator[Group, None]:
+        for _, group in self.groups():
+            yield group
 
-    def arrays(self) -> tuple[Array, ...]:
-        return tuple(Array(obj) for obj in self._sync_iter(self._async_group.arrays()))
+    def arrays(self) -> Generator[tuple[str, Array], None]:
+        for name, async_array in self._sync_iter(self._async_group.arrays()):
+            yield name, Array(async_array)
+
+    def array_keys(self) -> Generator[str, None]:
+        for name, _ in self.arrays():
+            yield name
+
+    def array_values(self) -> Generator[Array, None]:
+        for _, array in self.arrays():
+            yield array
 
     def tree(self, expand: bool = False, level: int | None = None) -> Any:
         return self._sync(self._async_group.tree(expand=expand, level=level))
@@ -888,6 +945,10 @@ class Group(SyncMixin):
     def require_groups(self, *names: str) -> tuple[Group, ...]:
         """Convenience method to require multiple groups in a single call."""
         return tuple(map(Group, self._sync(self._async_group.require_groups(*names))))
+
+    def create(self, *args: Any, **kwargs: Any) -> Array:
+        # Backwards compatibility for 2.x
+        return self.create_array(*args, **kwargs)
 
     def create_array(
         self,
@@ -1060,29 +1121,43 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, **kwargs)))
 
-    def empty(self, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.empty(**kwargs)))
+    def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
-    def zeros(self, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.zeros(**kwargs)))
+    def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
 
-    def ones(self, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.ones(**kwargs)))
+    def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.ones(name=name, shape=shape, **kwargs)))
 
-    def full(self, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.full(**kwargs)))
+    def full(
+        self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
+    ) -> Array:
+        return Array(
+            self._sync(
+                self._async_group.full(name=name, shape=shape, fill_value=fill_value, **kwargs)
+            )
+        )
 
-    def empty_like(self, prototype: AsyncArray, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.empty_like(prototype, **kwargs)))
+    def empty_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(
+            self._sync(self._async_group.empty_like(name=name, prototype=prototype, **kwargs))
+        )
 
-    def zeros_like(self, prototype: AsyncArray, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.zeros_like(prototype, **kwargs)))
+    def zeros_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(
+            self._sync(self._async_group.zeros_like(name=name, prototype=prototype, **kwargs))
+        )
 
-    def ones_like(self, prototype: AsyncArray, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.ones_like(prototype, **kwargs)))
+    def ones_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(
+            self._sync(self._async_group.ones_like(name=name, prototype=prototype, **kwargs))
+        )
 
-    def full_like(self, prototype: AsyncArray, **kwargs: Any) -> Array:
-        return Array(self._sync(self._async_group.full_like(prototype, **kwargs)))
+    def full_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(
+            self._sync(self._async_group.full_like(name=name, prototype=prototype, **kwargs))
+        )
 
     def move(self, source: str, dest: str) -> None:
         return self._sync(self._async_group.move(source, dest))

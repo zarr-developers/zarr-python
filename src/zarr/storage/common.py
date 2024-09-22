@@ -11,6 +11,8 @@ from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, Contains
 from zarr.storage.local import LocalStore
 from zarr.storage.memory import MemoryStore
 
+# from zarr.store.remote import RemoteStore
+
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
@@ -75,8 +77,15 @@ StoreLike = Store | StorePath | Path | str | dict[str, Buffer]
 
 
 async def make_store_path(
-    store_like: StoreLike | None, *, mode: AccessModeLiteral | None = None
+    store_like: StoreLike | None,
+    *,
+    mode: AccessModeLiteral | None = None,
+    storage_options: dict[str, Any] | None = None,
 ) -> StorePath:
+    from zarr.store.remote import RemoteStore  # circular import
+
+    used_storage_options = False
+
     if isinstance(store_like, StorePath):
         if (mode is not None) and (AccessMode.from_literal(mode) != store_like.store.mode):
             raise ValueError(
@@ -87,20 +96,52 @@ async def make_store_path(
         if (mode is not None) and (AccessMode.from_literal(mode) != store_like.mode):
             raise ValueError(f"mode mismatch (mode={mode} != store.mode={store_like.mode.str})")
         await store_like._ensure_open()
-        return StorePath(store_like)
+        result = StorePath(store_like)
     elif store_like is None:
         if mode is None:
             mode = "w"  # exception to the default mode = 'r'
-        return StorePath(await MemoryStore.open(mode=mode))
+        result = StorePath(await MemoryStore.open(mode=mode))
     elif isinstance(store_like, Path):
-        return StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
+        result = StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
-        return StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
+        storage_options = storage_options or {}
+
+        if _is_fsspec_uri(store_like):
+            used_storage_options = True
+            result = StorePath(
+                RemoteStore.from_url(store_like, storage_options=storage_options, mode=mode or "r")
+            )
+        else:
+            result = StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
     elif isinstance(store_like, dict):
         # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
         # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
-        return StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
-    raise TypeError
+        result = StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
+    else:
+        msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
+        raise TypeError(msg)
+
+    if storage_options and not used_storage_options:
+        msg = "'storage_options' was provided but unused. 'storage_options' is only used for fsspec filesystem stores."
+        raise TypeError(msg)
+
+    return result
+
+
+def _is_fsspec_uri(uri: str) -> bool:
+    """
+    Check if a URI looks like a non-local fsspec URI.
+
+    Examples
+    --------
+    >>> _is_fsspec_uri("s3://bucket")
+    True
+    >>> _is_fsspec_uri("my-directory")
+    False
+    >>> _is_fsspec_uri("local://my-directory")
+    False
+    """
+    return "://" in uri or "::" in uri and "local://" not in uri
 
 
 async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:

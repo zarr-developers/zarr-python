@@ -27,6 +27,7 @@ ZARRAY_JSON = ".zarray"
 ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
 
+ByteRangeRequest = tuple[int | None, int | None]
 BytesLike = bytes | bytearray | memoryview
 ShapeLike = tuple[int, ...] | int
 ChunkCoords = tuple[int, ...]

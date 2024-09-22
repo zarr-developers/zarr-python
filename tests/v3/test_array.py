@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from zarr import Array, AsyncArray, Group
+from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import ZarrFormat
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore
@@ -25,7 +26,7 @@ def test_array_creation_existing_node(
     Check that an existing array or group is handled as expected during array creation.
     """
     spath = StorePath(store)
-    group = Group.create(spath, zarr_format=zarr_format)
+    group = Group.from_store(spath, zarr_format=zarr_format)
     expected_exception: type[ContainsArrayError] | type[ContainsGroupError]
     if extant_node == "array":
         expected_exception = ContainsArrayError
@@ -76,7 +77,7 @@ def test_array_name_properties_no_group(
 def test_array_name_properties_with_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
-    root = Group.create(store=store, zarr_format=zarr_format)
+    root = Group.from_store(store=store, zarr_format=zarr_format)
     foo = root.create_array("foo", shape=(100,), chunks=(10,), dtype="i4")
     assert foo.path == "foo"
     assert foo.name == "/foo"
@@ -136,6 +137,47 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
     assert arr.fill_value == np.dtype(dtype_str).type(fill_value)
     assert arr.fill_value.dtype == arr.dtype
+
+
+def test_create_positional_args_deprecated() -> None:
+    store = MemoryStore({}, mode="w")
+    with pytest.warns(FutureWarning, match="Pass"):
+        Array.create(store, (2, 2), dtype="f8")
+
+
+def test_selection_positional_args_deprecated() -> None:
+    store = MemoryStore({}, mode="w")
+    arr = Array.create(store, shape=(2, 2), dtype="f8")
+
+    with pytest.warns(FutureWarning, match="Pass out"):
+        arr.get_basic_selection(..., NDBuffer(array=np.empty((2, 2))))
+
+    with pytest.warns(FutureWarning, match="Pass fields"):
+        arr.set_basic_selection(..., 1, None)
+
+    with pytest.warns(FutureWarning, match="Pass out"):
+        arr.get_orthogonal_selection(..., NDBuffer(array=np.empty((2, 2))))
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.set_orthogonal_selection(..., 1, None)
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.get_mask_selection(np.zeros((2, 2), dtype=bool), NDBuffer(array=np.empty((0,))))
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.set_mask_selection(np.zeros((2, 2), dtype=bool), 1, None)
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.get_coordinate_selection(([0, 1], [0, 1]), NDBuffer(array=np.empty((2,))))
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.set_coordinate_selection(([0, 1], [0, 1]), 1, None)
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.get_block_selection((0, slice(None)), NDBuffer(array=np.empty((2, 2))))
+
+    with pytest.warns(FutureWarning, match="Pass"):
+        arr.set_block_selection((0, slice(None)), 1, None)
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)

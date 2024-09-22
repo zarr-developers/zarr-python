@@ -113,6 +113,23 @@ def _get_loop() -> asyncio.AbstractEventLoop:
     return loop[0]
 
 
+async def _collect_aiterator(data: AsyncIterator[T]) -> tuple[T, ...]:
+    """
+    Collect an entire async iterator into a tuple
+    """
+    result = []
+    async for x in data:
+        result.append(x)
+    return tuple(result)
+
+
+def collect_aiterator(data: AsyncIterator[T]) -> tuple[T, ...]:
+    """
+    Synchronously collect an entire async iterator into a tuple.
+    """
+    return sync(_collect_aiterator(data))
+
+
 class SyncMixin:
     def _sync(self, coroutine: Coroutine[Any, Any, T]) -> T:
         # TODO: refactor this to to take *args and **kwargs and pass those to the method

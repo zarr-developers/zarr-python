@@ -89,7 +89,7 @@ async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> As
     param: AsyncGroupRequest = request.param
 
     store = await parse_store(param.store, str(tmpdir))
-    agroup = await AsyncGroup.create(
+    agroup = await AsyncGroup.from_store(
         store,
         attributes=param.attributes,
         zarr_format=param.zarr_format,
