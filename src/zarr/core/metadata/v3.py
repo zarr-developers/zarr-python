@@ -71,6 +71,67 @@ def parse_dimension_names(data: object) -> tuple[str | None, ...] | None:
         raise TypeError(msg)
 
 
+class V3JsonEncoder(json.JSONEncoder):
+    def __init__(self, *args: Any, **kwargs: Any):
+        self.indent = kwargs.pop("indent", config.get("json_indent"))
+        super().__init__(*args, **kwargs)
+
+    def default(self, o: object) -> Any:
+        if isinstance(o, np.dtype):
+            return str(o)
+        if np.isscalar(o):
+            out: Any
+            if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
+                # https://github.com/zarr-developers/zarr-python/issues/2119
+                # `.item()` on a datetime type might or might not return an
+                # integer, depending on the value.
+                # Explicitly cast to an int first, and then grab .item()
+                out = o.view("i8").item()
+            else:
+                # convert numpy scalar to python type, and pass
+                # python types through
+                out = getattr(o, "item", lambda: o)()
+                if isinstance(out, complex):
+                    # python complex types are not JSON serializable, so we use the
+                    # serialization defined in the zarr v3 spec
+                    return [out.real, out.imag]
+                elif np.isnan(out):
+                    return "NaN"
+                elif np.isinf(out):
+                    return "Infinity" if out > 0 else "-Infinity"
+            return out
+        elif isinstance(o, Enum):
+            return o.name
+        # this serializes numcodecs compressors
+        # todo: implement to_dict for codecs
+        elif isinstance(o, numcodecs.abc.Codec):
+            config: dict[str, Any] = o.get_config()
+            return config
+        else:
+            return super().default(o)
+
+
+def _replace_special_floats(obj: object) -> Any:
+    """Helper function to replace NaN/Inf/-Inf values with special strings
+
+    Note: this cannot be done in the V3JsonEncoder because Python's `json.dumps` optimistically
+    converts NaN/Inf values to special types outside of the encoding step.
+    """
+    print(obj)
+    if isinstance(obj, float):
+        if np.isnan(obj):
+            return "NaN"
+        elif np.isinf(obj):
+            return "Infinity" if obj > 0 else "-Infinity"
+    elif isinstance(obj, dict):
+        # Recursively replace in dictionaries
+        return {k: _replace_special_floats(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        # Recursively replace in lists
+        return [_replace_special_floats(item) for item in obj]
+    return obj
+
+
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(ArrayMetadata):
     shape: ChunkCoords
@@ -170,41 +231,8 @@ class ArrayV3Metadata(ArrayMetadata):
         return self.chunk_key_encoding.encode_chunk_key(chunk_coords)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        def _json_convert(o: object) -> Any:
-            if isinstance(o, np.dtype):
-                return str(o)
-            if np.isscalar(o):
-                out: Any
-                if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
-                    # https://github.com/zarr-developers/zarr-python/issues/2119
-                    # `.item()` on a datetime type might or might not return an
-                    # integer, depending on the value.
-                    # Explicitly cast to an int first, and then grab .item()
-                    out = o.view("i8").item()
-                else:
-                    # convert numpy scalar to python type, and pass
-                    # python types through
-                    out = getattr(o, "item", lambda: o)()
-                    if isinstance(out, complex):
-                        # python complex types are not JSON serializable, so we use the
-                        # serialization defined in the zarr v3 spec
-                        return [out.real, out.imag]
-                return out
-            if isinstance(o, Enum):
-                return o.name
-            # this serializes numcodecs compressors
-            # todo: implement to_dict for codecs
-            elif isinstance(o, numcodecs.abc.Codec):
-                config: dict[str, Any] = o.get_config()
-                return config
-            raise TypeError
-
-        json_indent = config.get("json_indent")
-        return {
-            ZARR_JSON: prototype.buffer.from_bytes(
-                json.dumps(self.to_dict(), default=_json_convert, indent=json_indent).encode()
-            )
-        }
+        d = _replace_special_floats(self.to_dict())
+        return {ZARR_JSON: prototype.buffer.from_bytes(json.dumps(d, cls=V3JsonEncoder).encode())}
 
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
@@ -360,7 +388,11 @@ def parse_fill_value(
     except (ValueError, OverflowError, TypeError) as e:
         raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}") from e
     # Check if the value is still representable by the dtype
-    if dtype.kind == "f":
+    if fill_value == "NaN" and np.isnan(casted_value):
+        pass
+    elif fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value):
+        pass
+    elif dtype.kind == "f":
         # float comparison is not exact, especially when dtype <float64
         # so we us np.isclose for this comparison.
         # this also allows us to compare nan fill_values

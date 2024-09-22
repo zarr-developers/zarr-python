@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import re
 from typing import TYPE_CHECKING, Literal
 
 from zarr.codecs.bytes import BytesCodec
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.metadata.v3 import ArrayV3Metadata
 
@@ -89,6 +91,10 @@ def test_parse_auto_fill_value(dtype_str: str) -> None:
         (1e10, "uint64"),
         (-999, "float32"),
         (1e32, "float64"),
+        (float("NaN"), "float64"),
+        (np.nan, "float64"),
+        (np.inf, "float64"),
+        (-1 * np.inf, "float64"),
         (0j, "complex64"),
     ],
 )
@@ -97,7 +103,12 @@ def test_parse_fill_value_valid(fill_value: Any, dtype_str: str) -> None:
     Test that parse_fill_value(fill_value, dtype) casts fill_value to the given dtype.
     """
     dtype = np.dtype(dtype_str)
-    assert parse_fill_value(fill_value, dtype) == dtype.type(fill_value)
+    parsed = parse_fill_value(fill_value, dtype)
+
+    if np.isnan(fill_value):
+        assert np.isnan(parsed)
+    else:
+        assert parsed == dtype.type(fill_value)
 
 
 @pytest.mark.parametrize("fill_value", ["not a valid value"])
@@ -305,3 +316,29 @@ async def test_invalid_fill_value_raises(data_type: str, fill_value: int | float
     }
     with pytest.raises(ValueError, match=r"fill value .* is not valid for dtype .*"):
         ArrayV3Metadata.from_dict(metadata_dict)
+
+
+@pytest.mark.parametrize("fill_value", [("NaN"), "Infinity", "-Infinity"])
+async def test_special_float_fill_values(fill_value: str) -> None:
+    metadata_dict = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (1,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": "float64",
+        "chunk_key_encoding": {"name": "default", "separator": "."},
+        "codecs": (),
+        "fill_value": fill_value,  # this is not a valid fill value for uint8
+    }
+    m = ArrayV3Metadata.from_dict(metadata_dict)
+    d = json.loads(m.to_buffer_dict(default_buffer_prototype())["zarr.json"].to_bytes())
+    assert m.fill_value is not None
+    if fill_value == "NaN":
+        assert np.isnan(m.fill_value)
+        assert d["fill_value"] == "NaN"
+    elif fill_value == "Infinity":
+        assert np.isposinf(m.fill_value)
+        assert d["fill_value"] == "Infinity"
+    elif fill_value == "-Infinity":
+        assert np.isneginf(m.fill_value)
+        assert d["fill_value"] == "-Infinity"
