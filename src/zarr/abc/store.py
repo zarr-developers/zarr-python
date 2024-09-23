@@ -2,17 +2,16 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from asyncio import gather
-from collections.abc import AsyncGenerator, Iterable
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import AsyncGenerator, Iterable
     from typing import Any, TypeAlias
 
     from typing_extensions import Self
 
-from zarr.core.buffer import Buffer, BufferPrototype
-from zarr.core.common import AccessModeLiteral, BytesLike
+    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.common import AccessModeLiteral, BytesLike
 
 __all__ = ["Store", "AccessMode", "ByteGetter", "ByteSetter", "set_or_delete"]
 
@@ -121,7 +120,7 @@ class Store(ABC):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
@@ -288,7 +287,7 @@ class ByteSetter(Protocol):
         self, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
     ) -> Buffer | None: ...
 
-    async def set(self, value: Buffer, byte_range: ByteRangeRequest = None) -> None: ...
+    async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None: ...
 
     async def delete(self) -> None: ...
 
