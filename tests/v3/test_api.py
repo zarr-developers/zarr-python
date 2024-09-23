@@ -119,9 +119,11 @@ def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
     # 'r' means read only (must exist)
     with pytest.raises(FileNotFoundError):
         zarr.open(store=tmp_path, mode="r")
-    zarr.ones(store=tmp_path, shape=(3, 3))
+    z1 = zarr.ones(store=tmp_path, shape=(3, 3))
+    assert z1.fill_value == 1
     z2 = zarr.open(store=tmp_path, mode="r")
     assert isinstance(z2, Array)
+    assert z2.fill_value == 1
     assert (z2[:] == 1).all()
     with pytest.raises(ValueError):
         z2[:] = 3
