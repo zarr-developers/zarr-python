@@ -254,6 +254,9 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
 
     if consolidated:
         group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
+        object.__setattr__(
+            subgroup.metadata, "consolidated_metadata", ConsolidatedMetadata(metadata={})
+        )
 
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
@@ -275,6 +278,9 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
 
     if consolidated:
         group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
+        object.__setattr__(
+            subgroup.metadata, "consolidated_metadata", ConsolidatedMetadata(metadata={})
+        )
 
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
@@ -985,7 +991,7 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
 
 @pytest.mark.parametrize("consolidate", [True, False])
 def test_members_name(store: Store, consolidate: bool):
-    group = Group.create(store=store)
+    group = Group.from_store(store=store)
     a = group.create_group(name="a")
     a.create_array("array", shape=(1,))
     b = a.create_group(name="b")
@@ -1014,7 +1020,7 @@ def test_open_mutable_mapping_sync():
 
 class TestConsolidated:
     async def test_group_getitem_consolidated(self, store: Store) -> None:
-        root = await AsyncGroup.create(store=store)
+        root = await AsyncGroup.from_store(store=store)
         # Set up the test structure with
         # /
         #  g0/      # group /g0
@@ -1061,7 +1067,7 @@ class TestConsolidated:
         if isinstance(store, ZipStore):
             raise pytest.skip("Not implemented")
 
-        root = await AsyncGroup.create(store=store)
+        root = await AsyncGroup.from_store(store=store)
         # Set up the test structure with
         # /
         #  g0/         # group /g0
@@ -1097,7 +1103,7 @@ class TestConsolidated:
         if isinstance(store, ZipStore):
             raise pytest.skip("Not implemented")
 
-        root = Group.create(store=store)
+        root = Group.from_store(store=store)
 
         # fine to be missing by default
         zarr.open_group(store=store)
@@ -1117,7 +1123,7 @@ class TestConsolidated:
         if isinstance(store, ZipStore):
             raise pytest.skip("Not implemented")
 
-        root = await AsyncGroup.create(store=store)
+        root = await AsyncGroup.from_store(store=store)
 
         # fine to be missing by default
         await zarr.api.asynchronous.open_group(store=store)

@@ -544,7 +544,7 @@ class AsyncGroup:
 
         # Consolidated metadata lets us avoid some I/O operations so try that first.
         if self.metadata.consolidated_metadata is not None:
-            return self._getitem_consolidated(store_path, key)
+            return self._getitem_consolidated(store_path, key, prefix=self.name)
 
         # Note:
         # in zarr-python v2, we first check if `key` references an Array, else if `key` references
@@ -595,7 +595,9 @@ class AsyncGroup:
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
-    def _getitem_consolidated(self, store_path: StorePath, key: str) -> AsyncArray | AsyncGroup:
+    def _getitem_consolidated(
+        self, store_path: StorePath, key: str, prefix: str
+    ) -> AsyncArray | AsyncGroup:
         # getitem, in the special case where we have consolidated metadata.
         # Note that this is a regular def (non async) function.
         # This shouldn't do any additional I/O.
@@ -613,6 +615,7 @@ class AsyncGroup:
             raise KeyError(msg) from e
 
         # update store_path to ensure that AsyncArray/Group.name is correct
+        key = "/".join([prefix.lstrip("/"), key])
         store_path = StorePath(store=store_path.store, path=key)
 
         if isinstance(metadata, GroupMetadata):
@@ -1075,8 +1078,9 @@ class AsyncGroup:
         # we kind of just want the top-level keys.
         if consolidated_metadata is not None:
             for key in consolidated_metadata.metadata.keys():
-                obj = self._getitem_consolidated(self.store_path, key)  # Metadata -> Group/Array
-                # this is probably  generally useful
+                obj = self._getitem_consolidated(
+                    self.store_path, key, prefix=self.name
+                )  # Metadata -> Group/Array
                 key = "/".join([prefix, key]).lstrip("/")
                 yield key, obj
 
