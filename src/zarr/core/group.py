@@ -615,7 +615,8 @@ class AsyncGroup:
             raise KeyError(msg) from e
 
         # update store_path to ensure that AsyncArray/Group.name is correct
-        key = "/".join([prefix.lstrip("/"), key])
+        if prefix != "/":
+            key = "/".join([prefix.lstrip("/"), key])
         store_path = StorePath(store=store_path.store, path=key)
 
         if isinstance(metadata, GroupMetadata):
@@ -1082,6 +1083,7 @@ class AsyncGroup:
                     self.store_path, key, prefix=self.name
                 )  # Metadata -> Group/Array
                 key = "/".join([prefix, key]).lstrip("/")
+                # breakpoint()
                 yield key, obj
 
                 if ((max_depth is None) or (current_depth < max_depth)) and isinstance(

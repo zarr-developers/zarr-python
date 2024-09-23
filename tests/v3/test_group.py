@@ -390,6 +390,11 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                 }
             ),
         )
+        object.__setattr__(
+            expected_group_values[1].metadata,
+            "consolidated_metadata",
+            ConsolidatedMetadata(metadata={}),
+        )
 
     result = sorted(group.groups(), key=lambda x: x[0])
     assert result == expected_groups
