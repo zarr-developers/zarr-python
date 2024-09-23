@@ -36,6 +36,7 @@ async def memory_store_with_hierarchy(memory_store: Store) -> None:
 
     grandchild = await child.create_group("grandchild", attributes={"key": "grandchild"})
     await grandchild.create_array("array", shape=(4, 4), attributes={"key": "grandchild"})
+    await grandchild.create_group("empty_group", attributes={"key": "empty"})
     return memory_store
 
 
@@ -137,6 +138,13 @@ class TestConsolidated:
                                     attributes={"key": "grandchild"},
                                     consolidated_metadata=ConsolidatedMetadata(
                                         metadata={
+                                            # known to be empty child group
+                                            "empty_group": GroupMetadata(
+                                                consolidated_metadata=ConsolidatedMetadata(
+                                                    metadata={}
+                                                ),
+                                                attributes={"key": "empty"},
+                                            ),
                                             "array": ArrayV3Metadata.from_dict(
                                                 {
                                                     **array_metadata,
@@ -151,7 +159,7 @@ class TestConsolidated:
                                                         },
                                                     },
                                                 }
-                                            )
+                                            ),
                                         }
                                     ),
                                 ),
@@ -183,6 +191,7 @@ class TestConsolidated:
             "child/array",
             "child/grandchild",
             "child/grandchild/array",
+            "child/grandchild/empty_group",
             "lat",
             "lon",
             "time",
@@ -408,12 +417,19 @@ class TestConsolidated:
         expected = {
             "air": metadata.metadata["air"],
             "lat": metadata.metadata["lat"],
-            "child": GroupMetadata(attributes={"key": "child"}),
+            "child": GroupMetadata(
+                attributes={"key": "child"}, consolidated_metadata=ConsolidatedMetadata(metadata={})
+            ),
             "child/array": metadata.metadata["child"].consolidated_metadata.metadata["array"],
-            "child/grandchild": GroupMetadata(attributes={"key": "grandchild"}),
-            "child/grandchild/array": metadata.metadata["child"]
-            .consolidated_metadata.metadata["grandchild"]
-            .consolidated_metadata.metadata["array"],
+            "child/grandchild": GroupMetadata(
+                attributes={"key": "grandchild"},
+                consolidated_metadata=ConsolidatedMetadata(metadata={}),
+            ),
+            "child/grandchild/array": (
+                metadata.metadata["child"]
+                .consolidated_metadata.metadata["grandchild"]
+                .consolidated_metadata.metadata["array"]
+            ),
         }
         assert result == expected
 
@@ -428,3 +444,31 @@ class TestConsolidated:
 
         with pytest.raises(TypeError, match="key='foo', type='list'"):
             ConsolidatedMetadata.from_dict(payload)
+
+    def test_to_dict_empty(self):
+        meta = ConsolidatedMetadata(
+            metadata={
+                "empty": GroupMetadata(
+                    attributes={"key": "empty"},
+                    consolidated_metadata=ConsolidatedMetadata(metadata={}),
+                )
+            }
+        )
+        result = meta.to_dict()
+        expected = {
+            "kind": "inline",
+            "must_understand": False,
+            "metadata": {
+                "empty": {
+                    "attributes": {"key": "empty"},
+                    "consolidated_metadata": {
+                        "kind": "inline",
+                        "must_understand": False,
+                        "metadata": {},
+                    },
+                    "node_type": "group",
+                    "zarr_format": 3,
+                }
+            },
+        }
+        assert result == expected

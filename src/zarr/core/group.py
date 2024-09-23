@@ -261,15 +261,18 @@ class ConsolidatedMetadata:
             if isinstance(group, ArrayMetadata):
                 children[key] = group
             else:
-                children[key] = replace(group, consolidated_metadata=None)
-                if group.consolidated_metadata and group.consolidated_metadata.metadata:
+                if group.consolidated_metadata and group.consolidated_metadata.metadata is not None:
+                    children[key] = replace(
+                        group, consolidated_metadata=ConsolidatedMetadata(metadata={})
+                    )
                     for name, val in group.consolidated_metadata.metadata.items():
                         full_key = "/".join([key, name])
                         if isinstance(val, GroupMetadata):
                             children.update(flatten(full_key, val))
                         else:
                             children[full_key] = val
-
+                else:
+                    children[key] = replace(group, consolidated_metadata=None)
             return children
 
         for k, v in self.metadata.items():

@@ -19,7 +19,7 @@ from zarr.core.common import (
     ZarrFormat,
 )
 from zarr.core.config import config
-from zarr.core.group import AsyncGroup, ConsolidatedMetadata
+from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.store import (
     StoreLike,
@@ -172,12 +172,17 @@ async def consolidate_metadata(
     group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
     group.store_path.store._check_writable()
 
-    members = dict([x async for x in group.members(max_depth=None)])
-    members_metadata = {}
+    members_metadata = {k: v.metadata async for k, v in group.members(max_depth=None)}
 
-    members_metadata = {k: v.metadata for k, v in members.items()}
+    # While consolidating, we want to be explicit about when child groups
+    # are empty by inserting an empty dict for consolidated_metadata.metadata
+    for k, v in members_metadata.items():
+        if isinstance(v, GroupMetadata) and v.consolidated_metadata is None:
+            v = dataclasses.replace(v, consolidated_metadata=ConsolidatedMetadata(metadata={}))
+            members_metadata[k] = v
 
     ConsolidatedMetadata._flat_to_nested(members_metadata)
+
     consolidated_metadata = ConsolidatedMetadata(metadata=members_metadata)
     metadata = dataclasses.replace(group.metadata, consolidated_metadata=consolidated_metadata)
     group = dataclasses.replace(

@@ -345,6 +345,45 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
 
     if consolidate:
         group = zarr.consolidate_metadata(store)
+        object.__setattr__(
+            expected_group_values[0].metadata,
+            "consolidated_metadata",
+            ConsolidatedMetadata.from_dict(
+                {
+                    "kind": "inline",
+                    "metadata": {
+                        "subarray": {
+                            "attributes": {},
+                            "chunk_grid": {
+                                "configuration": {"chunk_shape": (1,)},
+                                "name": "regular",
+                            },
+                            "chunk_key_encoding": {
+                                "configuration": {"separator": "/"},
+                                "name": "default",
+                            },
+                            "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
+                            "data_type": "float64",
+                            "fill_value": np.float64(0.0),
+                            "node_type": "array",
+                            "shape": (1,),
+                            "zarr_format": 3,
+                        },
+                        "subgroup": {
+                            "attributes": {},
+                            "consolidated_metadata": {
+                                "metadata": {},
+                                "kind": "inline",
+                                "must_understand": False,
+                            },
+                            "node_type": "group",
+                            "zarr_format": 3,
+                        },
+                    },
+                    "must_understand": False,
+                }
+            ),
+        )
 
     result = sorted(group.groups(), key=lambda x: x[0])
     assert result == expected_groups
