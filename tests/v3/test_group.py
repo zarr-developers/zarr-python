@@ -351,41 +351,66 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
 
     if consolidate:
         group = zarr.consolidate_metadata(store)
+        if zarr_format == 2:
+            metadata = {
+                "subarray": {
+                    "attributes": {},
+                    "dtype": "float64",
+                    "fill_value": np.float64(0.0),
+                    "shape": (1,),
+                    "chunks": (1,),
+                    "order": "C",
+                    "zarr_format": zarr_format,
+                },
+                "subgroup": {
+                    "attributes": {},
+                    "consolidated_metadata": {
+                        "metadata": {},
+                        "kind": "inline",
+                        "must_understand": False,
+                    },
+                    "node_type": "group",
+                    "zarr_format": zarr_format,
+                },
+            }
+        else:
+            metadata = {
+                "subarray": {
+                    "attributes": {},
+                    "chunk_grid": {
+                        "configuration": {"chunk_shape": (1,)},
+                        "name": "regular",
+                    },
+                    "chunk_key_encoding": {
+                        "configuration": {"separator": "/"},
+                        "name": "default",
+                    },
+                    "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
+                    "data_type": "float64",
+                    "fill_value": np.float64(0.0),
+                    "node_type": "array",
+                    "shape": (1,),
+                    "zarr_format": zarr_format,
+                },
+                "subgroup": {
+                    "attributes": {},
+                    "consolidated_metadata": {
+                        "metadata": {},
+                        "kind": "inline",
+                        "must_understand": False,
+                    },
+                    "node_type": "group",
+                    "zarr_format": zarr_format,
+                },
+            }
+
         object.__setattr__(
             expected_group_values[0].metadata,
             "consolidated_metadata",
             ConsolidatedMetadata.from_dict(
                 {
                     "kind": "inline",
-                    "metadata": {
-                        "subarray": {
-                            "attributes": {},
-                            "chunk_grid": {
-                                "configuration": {"chunk_shape": (1,)},
-                                "name": "regular",
-                            },
-                            "chunk_key_encoding": {
-                                "configuration": {"separator": "/"},
-                                "name": "default",
-                            },
-                            "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
-                            "data_type": "float64",
-                            "fill_value": np.float64(0.0),
-                            "node_type": "array",
-                            "shape": (1,),
-                            "zarr_format": 3,
-                        },
-                        "subgroup": {
-                            "attributes": {},
-                            "consolidated_metadata": {
-                                "metadata": {},
-                                "kind": "inline",
-                                "must_understand": False,
-                            },
-                            "node_type": "group",
-                            "zarr_format": 3,
-                        },
-                    },
+                    "metadata": metadata,
                     "must_understand": False,
                 }
             ),
@@ -1055,7 +1080,13 @@ class TestConsolidated:
                     attributes={},
                     zarr_format=3,
                     consolidated_metadata=ConsolidatedMetadata(
-                        metadata={"g2": GroupMetadata(attributes={}, zarr_format=3)}
+                        metadata={
+                            "g2": GroupMetadata(
+                                attributes={},
+                                zarr_format=3,
+                                consolidated_metadata=ConsolidatedMetadata(metadata={}),
+                            )
+                        }
                     ),
                 ),
             }
@@ -1066,7 +1097,7 @@ class TestConsolidated:
         assert rg1.metadata.consolidated_metadata == expected.metadata["g1"].consolidated_metadata
 
         rg2 = await rg1.getitem("g2")
-        assert rg2.metadata.consolidated_metadata is None
+        assert rg2.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
 
     async def test_group_delitem_consolidated(self, store: Store) -> None:
         if isinstance(store, ZipStore):

@@ -132,8 +132,10 @@ class ConsolidatedMetadata:
                 node_type = v.get("node_type", None)
                 if node_type == "group":
                     metadata[k] = GroupMetadata.from_dict(v)
-                elif node_type == "array":
+                elif node_type == "array" and v.get("zarr_format") == 3:
                     metadata[k] = ArrayV3Metadata.from_dict(v)
+                elif node_type == "array":
+                    metadata[k] = ArrayV2Metadata.from_dict(v)
                 else:
                     # We either have V2 metadata, or invalid metadata
                     if "shape" in v:

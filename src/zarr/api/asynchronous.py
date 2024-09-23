@@ -139,7 +139,9 @@ def _default_zarr_version() -> ZarrFormat:
 
 
 async def consolidate_metadata(
-    store: StoreLike, path: str | None = None, zarr_format: ZarrFormat = 3
+    store: StoreLike,
+    path: str | None = None,
+    zarr_format: ZarrFormat | None = None,
 ) -> AsyncGroup:
     """
     Consolidate the metadata of all nodes in a hierarchy.
