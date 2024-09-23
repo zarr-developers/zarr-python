@@ -117,7 +117,6 @@ def _replace_special_floats(obj: object) -> Any:
     Note: this cannot be done in the V3JsonEncoder because Python's `json.dumps` optimistically
     converts NaN/Inf values to special types outside of the encoding step.
     """
-    print(obj)
     if isinstance(obj, float):
         if np.isnan(obj):
             return "NaN"
