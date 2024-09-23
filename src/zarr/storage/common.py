@@ -82,7 +82,7 @@ async def make_store_path(
     mode: AccessModeLiteral | None = None,
     storage_options: dict[str, Any] | None = None,
 ) -> StorePath:
-    from zarr.store.remote import RemoteStore  # circular import
+    from zarr.storage.remote import RemoteStore  # circular import
 
     used_storage_options = False
 
@@ -91,10 +91,14 @@ async def make_store_path(
             raise ValueError(
                 f"mode mismatch (mode={mode} != store.mode={store_like.store.mode.str})"
             )
+        if storage_options:
+            raise TypeError("storage_options passed but store has already been initialized")
         return store_like
     elif isinstance(store_like, Store):
         if (mode is not None) and (AccessMode.from_literal(mode) != store_like.mode):
             raise ValueError(f"mode mismatch (mode={mode} != store.mode={store_like.mode.str})")
+        if storage_options:
+            raise TypeError("storage_options passed but store has already been initialized")
         await store_like._ensure_open()
         result = StorePath(store_like)
     elif store_like is None:
@@ -116,6 +120,8 @@ async def make_store_path(
     elif isinstance(store_like, dict):
         # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
         # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
+        if mode is None:
+            mode = "r"
         result = StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
     else:
         msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
