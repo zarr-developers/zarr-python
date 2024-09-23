@@ -95,7 +95,7 @@ class StoreTests(Generic[S, B]):
     def test_store_supports_listing(self, store: S) -> None:
         raise NotImplementedError
 
-    @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
+    @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/c/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     @pytest.mark.parametrize("byte_range", (None, (0, None), (1, None), (1, 2), (None, 1)))
     async def test_get(
@@ -111,7 +111,7 @@ class StoreTests(Generic[S, B]):
         expected = data_buf[start : start + length]
         assert_bytes_equal(observed, expected)
 
-    @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"])
+    @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/c/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     async def test_set(self, store: S, key: str, data: bytes) -> None:
         """
@@ -128,7 +128,7 @@ class StoreTests(Generic[S, B]):
         Test that a dict of key : value pairs can be inserted into the store via the
         `_set_many` method.
         """
-        keys = ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"]
+        keys = ["zarr.json", "c/0", "foo/c/0.0", "foo/c/0/0"]
         data_buf = [self.buffer_cls.from_bytes(k.encode()) for k in keys]
         store_dict = dict(zip(keys, data_buf, strict=True))
         await store._set_many(store_dict.items())
