@@ -66,7 +66,8 @@ test = [
     "flask",
     "requests",
     "mypy",
-    "hypothesis"
+    "hypothesis",
+    "universal-pathlib",
 ]
 
 jupyter = [

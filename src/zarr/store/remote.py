@@ -11,10 +11,16 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from fsspec.asyn import AsyncFileSystem
-    from upath import UPath
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import AccessModeLiteral, BytesLike
+
+
+ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
+    FileNotFoundError,
+    IsADirectoryError,
+    NotADirectoryError,
+)
 
 
 class RemoteStore(Store):
@@ -24,21 +30,15 @@ class RemoteStore(Store):
     supports_partial_writes: bool = False
     supports_listing: bool = True
 
-    _fs: AsyncFileSystem
-    _url: str
-    path: str
+    fs: AsyncFileSystem
     allowed_exceptions: tuple[type[Exception], ...]
 
     def __init__(
         self,
-        url: UPath | str,
+        fs: AsyncFileSystem,
         mode: AccessModeLiteral = "r",
-        allowed_exceptions: tuple[type[Exception], ...] = (
-            FileNotFoundError,
-            IsADirectoryError,
-            NotADirectoryError,
-        ),
-        **storage_options: Any,
+        path: str = "/",
+        allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ):
         """
         Parameters
@@ -51,54 +51,58 @@ class RemoteStore(Store):
             this must not be used.
         """
         super().__init__(mode=mode)
-        self._storage_options = storage_options
-        if isinstance(url, str):
-            self._url = url.rstrip("/")
-            self._fs, _path = fsspec.url_to_fs(url, **storage_options)
-            self.path = _path.rstrip("/")
-        elif hasattr(url, "protocol") and hasattr(url, "fs"):
-            # is UPath-like - but without importing
-            if storage_options:
-                raise ValueError(
-                    "If constructed with a UPath object, no additional "
-                    "storage_options are allowed"
-                )
-            # n.b. UPath returns the url and path attributes with a trailing /, at least for s3
-            # that trailing / must be removed to compose with the store interface
-            self._url = str(url).rstrip("/")
-            self.path = url.path.rstrip("/")
-            self._fs = url.fs
-        else:
-            raise ValueError(f"URL not understood, {url}")
+        self.fs = fs
+        self.path = path
         self.allowed_exceptions = allowed_exceptions
-        # test instantiate file system
-        if not self._fs.async_impl:
-            raise TypeError("FileSystem needs to support async operations")
+
+        if not self.fs.async_impl:
+            raise TypeError("Filesystem needs to support async operations.")
+
+    @classmethod
+    def from_upath(
+        cls,
+        upath: Any,
+        mode: AccessModeLiteral = "r",
+        allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
+    ) -> RemoteStore:
+        return cls(
+            fs=upath.fs,
+            path=upath.path.rstrip("/"),
+            mode=mode,
+            allowed_exceptions=allowed_exceptions,
+        )
+
+    @classmethod
+    def from_url(
+        cls,
+        url: str,
+        storage_options: dict[str, Any] | None = None,
+        mode: AccessModeLiteral = "r",
+        allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
+    ) -> RemoteStore:
+        fs, path = fsspec.url_to_fs(url, **storage_options)
+        return cls(fs=fs, path=path, mode=mode, allowed_exceptions=allowed_exceptions)
 
     async def clear(self) -> None:
         try:
-            for subpath in await self._fs._find(self.path, withdirs=True):
+            for subpath in await self.fs._find(self.path, withdirs=True):
                 if subpath != self.path:
-                    await self._fs._rm(subpath, recursive=True)
+                    await self.fs._rm(subpath, recursive=True)
         except FileNotFoundError:
             pass
 
     async def empty(self) -> bool:
-        return not await self._fs._find(self.path, withdirs=True)
-
-    def __str__(self) -> str:
-        return f"{self._url}"
+        return not await self.fs._find(self.path, withdirs=True)
 
     def __repr__(self) -> str:
-        return f"<RemoteStore({type(self._fs).__name__}, {self.path})>"
+        return f"<RemoteStore({type(self.fs).__name__}, {self.path})>"
 
     def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, type(self))
             and self.path == other.path
             and self.mode == other.mode
-            and self._url == other._url
-            # and self._storage_options == other._storage_options  # FIXME: this isn't working for some reason
+            and self.fs == other.fs
         )
 
     async def get(
@@ -123,9 +127,9 @@ class RemoteStore(Store):
                     end = None
             value = prototype.buffer.from_bytes(
                 await (
-                    self._fs._cat_file(path, start=byte_range[0], end=end)
+                    self.fs._cat_file(path, start=byte_range[0], end=end)
                     if byte_range
-                    else self._fs._cat_file(path)
+                    else self.fs._cat_file(path)
                 )
             )
 
@@ -152,13 +156,13 @@ class RemoteStore(Store):
         # write data
         if byte_range:
             raise NotImplementedError
-        await self._fs._pipe_file(path, value.to_bytes())
+        await self.fs._pipe_file(path, value.to_bytes())
 
     async def delete(self, key: str) -> None:
         self._check_writable()
         path = _dereference_path(self.path, key)
         try:
-            await self._fs._rm(path)
+            await self.fs._rm(path)
         except FileNotFoundError:
             pass
         except self.allowed_exceptions:
@@ -166,7 +170,7 @@ class RemoteStore(Store):
 
     async def exists(self, key: str) -> bool:
         path = _dereference_path(self.path, key)
-        exists: bool = await self._fs._exists(path)
+        exists: bool = await self.fs._exists(path)
         return exists
 
     async def get_partial_values(
@@ -189,7 +193,7 @@ class RemoteStore(Store):
         else:
             return []
         # TODO: expectations for exceptions or missing keys?
-        res = await self._fs._cat_ranges(list(paths), starts, stops, on_error="return")
+        res = await self.fs._cat_ranges(list(paths), starts, stops, on_error="return")
         # the following is an s3-specific condition we probably don't want to leak
         res = [b"" if (isinstance(r, OSError) and "not satisfiable" in str(r)) else r for r in res]
         for r in res:
@@ -202,14 +206,14 @@ class RemoteStore(Store):
         raise NotImplementedError
 
     async def list(self) -> AsyncGenerator[str, None]:
-        allfiles = await self._fs._find(self.path, detail=False, withdirs=False)
+        allfiles = await self.fs._find(self.path, detail=False, withdirs=False)
         for onefile in (a.replace(self.path + "/", "") for a in allfiles):
             yield onefile
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         prefix = f"{self.path}/{prefix.rstrip('/')}"
         try:
-            allfiles = await self._fs._ls(prefix, detail=False)
+            allfiles = await self.fs._ls(prefix, detail=False)
         except FileNotFoundError:
             return
         for onefile in (a.replace(prefix + "/", "") for a in allfiles):
@@ -230,5 +234,5 @@ class RemoteStore(Store):
         """
 
         find_str = "/".join([self.path, prefix])
-        for onefile in await self._fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
+        for onefile in await self.fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
             yield onefile.removeprefix(find_str)

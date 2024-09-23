@@ -10,6 +10,8 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
+from zarr._compat import _deprecate_positional_args
+from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -676,6 +678,7 @@ class Array:
     _async_array: AsyncArray
 
     @classmethod
+    @_deprecate_positional_args
     def create(
         cls,
         store: StoreLike,
@@ -1115,6 +1118,7 @@ class Array:
         else:
             self.set_basic_selection(cast(BasicSelection, pure_selection), value, fields=fields)
 
+    @_deprecate_positional_args
     def get_basic_selection(
         self,
         selection: BasicSelection = Ellipsis,
@@ -1238,6 +1242,7 @@ class Array:
             )
         )
 
+    @_deprecate_positional_args
     def set_basic_selection(
         self,
         selection: BasicSelection,
@@ -1333,6 +1338,7 @@ class Array:
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
+    @_deprecate_positional_args
     def get_orthogonal_selection(
         self,
         selection: OrthogonalSelection,
@@ -1457,6 +1463,7 @@ class Array:
             )
         )
 
+    @_deprecate_positional_args
     def set_orthogonal_selection(
         self,
         selection: OrthogonalSelection,
@@ -1567,6 +1574,7 @@ class Array:
             self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
         )
 
+    @_deprecate_positional_args
     def get_mask_selection(
         self,
         mask: MaskSelection,
@@ -1649,6 +1657,7 @@ class Array:
             )
         )
 
+    @_deprecate_positional_args
     def set_mask_selection(
         self,
         mask: MaskSelection,
@@ -1727,6 +1736,7 @@ class Array:
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
+    @_deprecate_positional_args
     def get_coordinate_selection(
         self,
         selection: CoordinateSelection,
@@ -1816,6 +1826,7 @@ class Array:
             out_array = np.array(out_array).reshape(indexer.sel_shape)
         return out_array
 
+    @_deprecate_positional_args
     def set_coordinate_selection(
         self,
         selection: CoordinateSelection,
@@ -1905,6 +1916,7 @@ class Array:
 
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
+    @_deprecate_positional_args
     def get_block_selection(
         self,
         selection: BasicSelection,
@@ -2003,6 +2015,7 @@ class Array:
             )
         )
 
+    @_deprecate_positional_args
     def set_block_selection(
         self,
         selection: BasicSelection,
