@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ import numpy as np
 from zarr.core.array_spec import ArraySpec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
-from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, parse_dtype, parse_shapelike
+from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 
@@ -100,9 +101,24 @@ class ArrayV2Metadata(ArrayMetadata):
                 else:
                     return o.descr
             if np.isscalar(o):
-                # convert numpy scalar to python type, and pass
-                # python types through
-                return getattr(o, "item", lambda: o)()
+                out: Any
+                if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
+                    # https://github.com/zarr-developers/zarr-python/issues/2119
+                    # `.item()` on a datetime type might or might not return an
+                    # integer, depending on the value.
+                    # Explicitly cast to an int first, and then grab .item()
+                    out = o.view("i8").item()
+                else:
+                    # convert numpy scalar to python type, and pass
+                    # python types through
+                    out = getattr(o, "item", lambda: o)()
+                    if isinstance(out, complex):
+                        # python complex types are not JSON serializable, so we use the
+                        # serialization defined in the zarr v3 spec
+                        return [out.real, out.imag]
+                return out
+            if isinstance(o, Enum):
+                return o.name
             raise TypeError
 
         zarray_dict = self.to_dict()
@@ -155,6 +171,11 @@ class ArrayV2Metadata(ArrayMetadata):
 
     def update_attributes(self, attributes: dict[str, JSON]) -> Self:
         return replace(self, attributes=attributes)
+
+
+def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
+    # todo: real validation
+    return np.dtype(data)
 
 
 def parse_zarr_format(data: object) -> Literal[2]:
