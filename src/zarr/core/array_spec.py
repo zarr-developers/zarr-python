@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
+import numpy as np
+
 from zarr.core.common import parse_fill_value, parse_order, parse_shapelike
 
 if TYPE_CHECKING:
-    import numpy as np
-
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import ChunkCoords
 
@@ -29,11 +29,12 @@ class ArraySpec:
         prototype: BufferPrototype,
     ) -> None:
         shape_parsed = parse_shapelike(shape)
+        dtype_parsed = np.dtype(dtype)
         fill_value_parsed = parse_fill_value(fill_value)
         order_parsed = parse_order(order)
 
         object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "dtype", dtype)
+        object.__setattr__(self, "dtype", dtype_parsed)
         object.__setattr__(self, "fill_value", fill_value_parsed)
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "prototype", prototype)
