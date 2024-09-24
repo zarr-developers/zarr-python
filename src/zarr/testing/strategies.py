@@ -21,7 +21,8 @@ _attr_values = st.recursive(
 
 def dtypes() -> st.SearchStrategy[np.dtype]:
     return (
-        npst.integer_dtypes(endianness="=")
+        npst.boolean_dtypes()
+        | npst.integer_dtypes(endianness="=")
         | npst.unsigned_integer_dtypes(endianness="=")
         | npst.floating_dtypes(endianness="=")
         | npst.complex_number_dtypes(endianness="=")
