@@ -364,7 +364,9 @@ class GroupMetadata(Metadata):
 
                 items[ZMETADATA_V2_JSON] = prototype.buffer.from_bytes(
                     json.dumps(
-                        {"metadata": d, "zarr_consolidated_format": 1}, indent=json_indent
+                        {"metadata": d, "zarr_consolidated_format": 1},
+                        indent=json_indent,
+                        default=_json_convert,
                     ).encode()
                 )
 
