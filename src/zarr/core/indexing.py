@@ -78,7 +78,7 @@ def _zarr_array_to_int_or_bool_array(arr: Array) -> npt.NDArray[np.intp] | npt.N
     if arr.dtype.kind in ("i", "b"):
         return np.asarray(arr)
     else:
-        raise IndexError("arrays used as indices must be of integer (or boolean) type")
+        raise IndexError(f"Invalid array dtype: {arr.dtype}. Arrays used as indices must be of integer or boolean type")
 
 
 @runtime_checkable
