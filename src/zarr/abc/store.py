@@ -108,7 +108,7 @@ class Store(ABC):
         Parameters
         ----------
         key : str
-        byte_range : tuple[int, Optional[int]], optional
+        byte_range : tuple[int | None, int | None], optional
 
         Returns
         -------
@@ -126,7 +126,7 @@ class Store(ABC):
 
         Parameters
         ----------
-        key_ranges : list[tuple[str, tuple[int | None, int | None]]]
+        key_ranges : Iterable[tuple[str, tuple[int | None, int | None]]]
             Ordered set of key, range pairs, a key may occur multiple times with different ranges
 
         Returns
