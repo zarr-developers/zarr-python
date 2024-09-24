@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import deprecated
 
 from zarr._compat import _deprecate_positional_args
 from zarr.abc.codec import Codec, CodecPipeline
@@ -449,7 +448,6 @@ class AsyncArray:
         return None
 
     @property
-    @deprecated("AsyncArray.cdata_shape may be removed in an early zarr-python v3 release.")
     def cdata_shape(self) -> ChunkCoords:
         """
         The shape of the chunk grid for this array.
@@ -457,7 +455,6 @@ class AsyncArray:
         return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
 
     @property
-    @deprecated("AsyncArray.nchunks may be removed in an early zarr-python v3 release.")
     def nchunks(self) -> int:
         """
         The number of chunks in the stored representation of this array.
@@ -806,9 +803,6 @@ class Array:
         return self.metadata.fill_value
 
     @property
-    @deprecated(
-        "cdata_shape is transitional and will be removed in an early zarr-python v3 release."
-    )
     def cdata_shape(self) -> ChunkCoords:
         """
         The shape of the chunk grid for this array.
@@ -816,7 +810,6 @@ class Array:
         return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
 
     @property
-    @deprecated("nchunks is transitional and will be removed in an early zarr-python v3 release.")
     def nchunks(self) -> int:
         """
         The number of chunks in the stored representation of this array.
@@ -2182,18 +2175,19 @@ class Array:
         )
 
 
-@deprecated(
-    "nchunks_initialized is transitional and will be removed in an early zarr-python v3 release."
-)
 def nchunks_initialized(array: Array) -> int:
+    """
+    Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
+    been persisted to the storage backend.
+    """
     return len(chunks_initialized(array))
 
 
 def chunks_initialized(array: Array) -> tuple[str, ...]:
     """
-    Return the keys of all the chunks that exist in storage.
+    Return the keys of the chunks that have been persisted to the storage backend.
     """
-    # todo: make this compose with the underlying async iterator
+    # TODO: make this compose with the underlying async iterator
     store_contents = list(
         collect_aiterator(array.store_path.store.list_prefix(prefix=array.store_path.path))
     )
