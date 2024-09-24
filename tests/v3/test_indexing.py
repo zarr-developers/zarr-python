@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 async def store() -> AsyncGenerator[StorePath]:
-    yield StorePath(await MemoryStore.open(mode="w"))
+    return StorePath(await MemoryStore.open(mode="w"))
 
 
 def zarr_array_from_numpy_array(
@@ -1782,9 +1782,9 @@ async def test_accessed_chunks(
 
         # Combine and generate the cartesian product to determine the chunks keys that
         # will be accessed
-        chunks_accessed = []
-        for comb in itertools.product(*chunks_per_dim):
-            chunks_accessed.append(".".join([str(ci) for ci in comb]))
+        chunks_accessed = [
+            ".".join([str(ci) for ci in comb]) for comb in itertools.product(*chunks_per_dim)
+        ]
 
         counts_before = store.counter.copy()
 

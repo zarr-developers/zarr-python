@@ -207,18 +207,36 @@ extend-exclude = [
 
 [tool.ruff.lint]
 extend-select = [
-    "B",  # flake8-bugbear
-    "I",  # isort
-    "ISC",
-    "UP",  # pyupgrade
-    "RSE",
+    "B",   # flake8-bugbear
+    "I",   # isort
+    "ISC", # flake8-implicit-str-concat
+    "PGH", # pygrep-hooks
+    "PYI", # flake8-pyi
+    "RSE", # flake8-raise
     "RUF",
     "TCH", # flake8-type-checking
     "TRY", # tryceratops
+    "UP",  # pyupgrade
 ]
 ignore = [
+    "PYI013",
     "RUF005",
     "TRY003",
+    # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
+    "W191",
+    "E111",
+    "E114",
+    "E117",
+    "D206",
+    "D300",
+    "Q000",
+    "Q001",
+    "Q002",
+    "Q003",
+    "COM812",
+    "COM819",
+    "ISC001",
+    "ISC002",
 ]
 
 [tool.mypy]

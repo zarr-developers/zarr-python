@@ -9,7 +9,7 @@ from zarr.store import MemoryStore, StorePath
 
 @pytest.fixture
 async def store() -> Iterator[StorePath]:
-    yield StorePath(await MemoryStore.open(mode="w"))
+    return StorePath(await MemoryStore.open(mode="w"))
 
 
 def test_simple(store: StorePath) -> None:

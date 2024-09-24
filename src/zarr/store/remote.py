@@ -39,7 +39,7 @@ class RemoteStore(Store):
         mode: AccessModeLiteral = "r",
         path: str = "/",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
-    ):
+    ) -> None:
         """
         Parameters
         ----------
@@ -49,6 +49,7 @@ class RemoteStore(Store):
             keys, rather than some other IO failure
         storage_options: passed on to fsspec to make the filesystem instance. If url is a UPath,
             this must not be used.
+
         """
         super().__init__(mode=mode)
         self.fs = fs
