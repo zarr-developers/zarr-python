@@ -20,6 +20,8 @@ from zarr.store import LocalStore, ZipStore
 from zarr.testing.strategies import key_ranges
 from zarr.testing.strategies import keys as zarr_keys
 
+MAX_BINARY_SIZE = 100
+
 
 class SyncStoreWrapper(zarr.core.sync.SyncMixin):
     def __init__(self, store: Store) -> None:
@@ -116,7 +118,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     def init_store(self):
         self.store.clear()
 
-    @rule(key=zarr_keys, data=st.binary(min_size=0, max_size=100))
+    @rule(key=zarr_keys, data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
     def set(self, key: str, data: DataObject) -> None:
         note(f"(set) Setting {key!r} with {data}")
         assert not self.store.mode.readonly
@@ -144,7 +146,9 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
     def get_partial_values(self, data: DataObject) -> None:
-        key_range = data.draw(key_ranges(keys=st.sampled_from(sorted(self.model.keys()))))
+        key_range = data.draw(
+            key_ranges(keys=st.sampled_from(sorted(self.model.keys())), max_size=MAX_BINARY_SIZE)
+        )
         note(f"(get partial) {key_range=}")
         obs_maybe = self.store.get_partial_values(key_range, self.prototype)
         observed = []
@@ -246,6 +250,6 @@ def test_zarr_hierarchy(sync_store: Store) -> None:
 
     if isinstance(sync_store, ZipStore):
         pytest.skip(reason="ZipStore does not support delete")
-    if isinstance(sync_store, LocalStore):
-        pytest.skip(reason="This test does not handle subdirectories")
+    # if isinstance(sync_store, LocalStore):
+    #     pytest.skip(reason="This test does not handle subdirectories")
     run_state_machine_as_test(mk_test_instance_sync, settings=Settings(report_multiple_bugs=True))
