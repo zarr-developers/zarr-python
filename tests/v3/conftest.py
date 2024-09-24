@@ -79,8 +79,8 @@ async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
-def sync_store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
-    result = sync(parse_store(request.param, str(tmpdir)))
+def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
+    result = sync(parse_store(request.param, str(tmp_path)))
     if not isinstance(result, Store):
         raise TypeError("Wrong store class returned by test fixture! got " + result + " instead")
     return result

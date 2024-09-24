@@ -17,7 +17,8 @@ import zarr
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import BufferPrototype, cpu, default_buffer_prototype
 from zarr.store import LocalStore, ZipStore
-from zarr.testing.strategies import key_ranges, keys
+from zarr.testing.strategies import key_ranges
+from zarr.testing.strategies import keys as zarr_keys
 
 
 class SyncStoreWrapper(zarr.core.sync.SyncMixin):
@@ -105,7 +106,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         https://hypothesis.readthedocs.io/en/latest/stateful.html
     """
 
-    def __init__(self, store) -> None:
+    def __init__(self, store: Store) -> None:
         super().__init__()
         self.model: dict[str, bytes] = {}
         self.store = SyncStoreWrapper(store)
@@ -115,7 +116,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     def init_store(self):
         self.store.clear()
 
-    @rule(key=keys, data=st.binary(min_size=0, max_size=100))
+    @rule(key=zarr_keys, data=st.binary(min_size=0, max_size=100))
     def set(self, key: str, data: DataObject) -> None:
         note(f"(set) Setting {key!r} with {data}")
         assert not self.store.mode.readonly
@@ -124,7 +125,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.model[key] = data_buf
 
     @precondition(lambda self: len(self.model.keys()) > 0)
-    @rule(key=keys, data=st.data())
+    @rule(key=zarr_keys, data=st.data())
     def get(self, key: str, data: DataObject) -> None:
         key = data.draw(
             st.sampled_from(sorted(self.model.keys()))
@@ -134,8 +135,8 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         # to bytes here necessary because data_buf set to model in set()
         assert self.model[key].to_bytes() == (store_value.to_bytes())
 
-    @rule(key=keys, data=st.data())
-    def get_invalid_keys(self, key: str, data: DataObject) -> None:
+    @rule(key=zarr_keys, data=st.data())
+    def get_invalid_zarr_keys(self, key: str, data: DataObject) -> None:
         note("(get_invalid)")
         assume(key not in self.model.keys())
         assert self.store.get(key, self.prototype) is None
@@ -196,7 +197,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         # make sure they either both are or both aren't empty (same state)
         assert self.store.empty() == (not self.model)
 
-    @rule(key=keys)
+    @rule(key=zarr_keys)
     def exists(self, key: str) -> None:
         note("(exists)")
 
@@ -217,13 +218,13 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
             assert self.model[key].to_bytes() == store_item
 
     @invariant()
-    def check_num_keys_equal(self) -> None:
-        note("check num keys equal")
+    def check_num_zarr_keys_equal(self) -> None:
+        note("check num zarr_keys equal")
 
         assert len(self.model) == len(list(self.store.list()))
 
     @invariant()
-    def check_keys(self) -> None:
+    def check_zarr_keys(self) -> None:
         keys = list(self.store.list())
 
         # NOTE: A local store can be non-empty if there are no files,
@@ -239,7 +240,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         note("checking keys / exists / empty")
 
 
-def test_zarr_hierarchy(sync_store: Store):
+def test_zarr_hierarchy(sync_store: Store) -> None:
     def mk_test_instance_sync():
         return ZarrStoreStateMachine(sync_store)
 
