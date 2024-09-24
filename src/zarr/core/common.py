@@ -28,7 +28,7 @@ ZARR_JSON = "zarr.json"
 ZARRAY_JSON = ".zarray"
 ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
-ZMETADATA_v2_JSON = ".zmetadata"
+ZMETADATA_V2_JSON = ".zmetadata"
 
 ByteRangeRequest = tuple[int | None, int | None]
 BytesLike = bytes | bytearray | memoryview

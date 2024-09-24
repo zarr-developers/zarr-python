@@ -24,6 +24,7 @@ from zarr.core.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
     ZGROUP_JSON,
+    ZMETADATA_V2_JSON,
     ChunkCoords,
     ShapeLike,
     ZarrFormat,
@@ -395,7 +396,7 @@ class AsyncGroup:
         """
         store_path = await make_store_path(store)
 
-        consolidated_key = ".zmetadata"
+        consolidated_key = ZMETADATA_V2_JSON
         if (zarr_format == 2 or zarr_format is None) and isinstance(use_consolidated, str):
             consolidated_key = use_consolidated
 

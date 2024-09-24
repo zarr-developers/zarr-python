@@ -37,11 +37,6 @@ from zarr.core.config import config
 from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 from zarr.registry import get_codec_class
 
-# For type checking
-_bool = bool
-
-__all__ = ["ArrayMetadata"]
-
 
 def parse_zarr_format(data: object) -> Literal[3]:
     if data == 3:
@@ -313,6 +308,10 @@ def parse_fill_value(
         msg = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}."
         raise TypeError(msg)
     return dtype.type(fill_value)  # type: ignore[arg-type]
+
+
+# For type checking
+_bool = bool
 
 
 class DataType(Enum):
