@@ -848,6 +848,7 @@ class OrthogonalIndexer(Indexer):
 class OIndex:
     array: Array
 
+    # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
     def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayLike:
         from zarr.core.array import Array
 
@@ -1142,6 +1143,7 @@ class MaskIndexer(CoordinateIndexer):
 class VIndex:
     array: Array
 
+    # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
     def __getitem__(self, selection: CoordinateSelection | MaskSelection | Array) -> NDArrayLike:
         from zarr.core.array import Array
 
