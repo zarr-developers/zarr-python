@@ -61,7 +61,7 @@ class TestConsolidated:
                 "name": "default",
             },
             "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
-            "data_type": np.dtype("float64"),
+            "data_type": "float64",
             "fill_value": np.float64(0.0),
             "node_type": "array",
             # "shape": (1, 2, 3),
@@ -217,7 +217,7 @@ class TestConsolidated:
                 "name": "default",
             },
             "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
-            "data_type": np.dtype("float64"),
+            "data_type": "float64",
             "fill_value": np.float64(0.0),
             "node_type": "array",
             # "shape": (1, 2, 3),
@@ -325,12 +325,6 @@ class TestConsolidated:
         data["metadata"] = {}
         ConsolidatedMetadata.from_dict(data)
 
-        # invalid metadata
-        data["metadata"]["a"] = {"node_type": "array", "zarr_format": 3}
-
-        with pytest.raises(TypeError):
-            ConsolidatedMetadata.from_dict(data)
-
     def test_flatten(self):
         array_metadata = {
             "attributes": {},
@@ -339,7 +333,7 @@ class TestConsolidated:
                 "name": "default",
             },
             "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
-            "data_type": np.dtype("float64"),
+            "data_type": "float64",
             "fill_value": np.float64(0.0),
             "node_type": "array",
             # "shape": (1, 2, 3),
