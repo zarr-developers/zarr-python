@@ -26,7 +26,7 @@ dependencies = [
     'asciitree',
     'numpy>=1.24',
     'fasteners',
-    'numcodecs>=0.13.0',
+    'numcodecs>=0.10.0',
     'fsspec>2024',
     'crc32c',
     'typing_extensions',
@@ -273,7 +273,6 @@ filterwarnings = [
     "error:::zarr.*",
     "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
-    "ignore:.*may be removed in an early zarr-python v3 release.:DeprecationWarning",
     "ignore:Creating a zarr.buffer.gpu.*:UserWarning",
     "ignore:Duplicate name:UserWarning",  # from ZipFile
 ]
