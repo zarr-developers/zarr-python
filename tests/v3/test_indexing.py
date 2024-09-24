@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 async def store() -> AsyncGenerator[StorePath]:
-    yield StorePath(await MemoryStore.open(mode="w"))
+    return StorePath(await MemoryStore.open(mode="w"))
 
 
 def zarr_array_from_numpy_array(

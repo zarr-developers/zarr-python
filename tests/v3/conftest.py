@@ -105,7 +105,7 @@ def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
     if request.param == "cupy":
         request.node.add_marker(pytest.mark.gpu)
 
-    yield pytest.importorskip(request.param)
+    return pytest.importorskip(request.param)
 
 
 @pytest.fixture(autouse=True)
