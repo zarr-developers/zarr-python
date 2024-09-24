@@ -18,6 +18,19 @@ _attr_values = st.recursive(
     max_leaves=3,
 )
 
+
+def dtypes() -> st.SearchStrategy[np.dtype]:
+    return (
+        npst.integer_dtypes(endianness="=")
+        | npst.unsigned_integer_dtypes(endianness="=")
+        | npst.floating_dtypes(endianness="=")
+        | npst.complex_number_dtypes(endianness="=")
+        # | npst.unicode_string_dtypes()
+        # | npst.datetime64_dtypes()
+        # | npst.timedelta64_dtypes()
+    )
+
+
 # From https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html#node-names
 # 1. must not be the empty string ("")
 # 2. must not include the character "/"
@@ -33,10 +46,7 @@ array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
 paths = st.lists(node_names, min_size=1).map(lambda x: "/".join(x)) | st.just("/")
 np_arrays = npst.arrays(
-    # TODO: re-enable timedeltas once they are supported
-    dtype=npst.scalar_dtypes().filter(
-        lambda x: (x.kind not in ["m", "M"]) and (x.byteorder not in [">"])
-    ),
+    dtype=dtypes(),
     shape=npst.array_shapes(max_dims=4),
 )
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))

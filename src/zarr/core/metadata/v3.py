@@ -391,7 +391,7 @@ def parse_fill_value(
         pass
     elif fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value):
         pass
-    elif dtype.kind == "f":
+    elif dtype.kind in "cf":
         # float comparison is not exact, especially when dtype <float64
         # so we us np.isclose for this comparison.
         # this also allows us to compare nan fill_values
