@@ -5,10 +5,11 @@ from typing import Literal
 import numpy as np
 import pytest
 
-from src.zarr.core.array import chunks_initialized
 from zarr import Array, AsyncArray, Group
+from zarr.core.array import chunks_initialized
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import ZarrFormat
+from zarr.core.indexing import ceildiv
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.store import LocalStore, MemoryStore
@@ -235,6 +236,23 @@ def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> 
 
     assert actual == expected
     np.testing.assert_array_equal(actual[:], expected[:])
+
+
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
+@pytest.mark.parametrize("nchunks", (2, 5, 10))
+def test_nchunks(test_cls: type[Array] | type[AsyncArray], nchunks: int) -> None:
+    """
+    Test that nchunks returns the number of chunks defined for the array.
+    """
+    store = MemoryStore({}, mode="w")
+    shape = 100
+    arr = Array.create(store, shape=(shape,), chunks=(ceildiv(shape, nchunks),), dtype="i4")
+    expected = nchunks
+    if test_cls == Array:
+        observed = arr.nchunks
+    else:
+        observed = arr._async_array.nchunks
+    assert observed == expected
 
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray])
