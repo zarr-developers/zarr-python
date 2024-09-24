@@ -299,9 +299,9 @@ async def open(
 
 async def open_consolidated(*args: Any, use_consolidated: bool = True, **kwargs: Any) -> AsyncGroup:
     """
-    Alias for :func:`open_group`.
+    Alias for :func:`open_group` with ``use_consolidated=True``.
     """
-    return await open_group(*args, **kwargs)
+    return await open_group(*args, use_consolidated=use_consolidated, **kwargs)
 
 
 async def save(

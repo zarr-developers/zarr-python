@@ -6,7 +6,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
+import zarr.api.asynchronous
 import zarr.api.synchronous
+import zarr.store
 from zarr.api.asynchronous import (
     AsyncGroup,
     consolidate_metadata,
@@ -21,6 +23,7 @@ from zarr.store.common import StorePath
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
+    from zarr.core.common import ZarrFormat
 
 
 @pytest.fixture
@@ -472,3 +475,13 @@ class TestConsolidated:
             },
         }
         assert result == expected
+
+    @pytest.mark.parametrize("zarr_format", [2, 3])
+    async def test_open_consolidated_raises_async(self, zarr_format: ZarrFormat):
+        store = zarr.store.MemoryStore(mode="w")
+        await AsyncGroup.from_store(store, zarr_format=zarr_format)
+        with pytest.raises(ValueError):
+            await zarr.api.asynchronous.open_consolidated(store, zarr_format=zarr_format)
+
+        with pytest.raises(ValueError):
+            await zarr.api.asynchronous.open_consolidated(store, zarr_format=None)

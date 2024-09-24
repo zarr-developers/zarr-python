@@ -397,6 +397,7 @@ class AsyncGroup:
         store_path = await make_store_path(store)
 
         consolidated_key = ZMETADATA_V2_JSON
+
         if (zarr_format == 2 or zarr_format is None) and isinstance(use_consolidated, str):
             consolidated_key = use_consolidated
 
@@ -414,9 +415,6 @@ class AsyncGroup:
             if use_consolidated or use_consolidated is None:
                 maybe_consolidated_metadata_bytes = rest[0]
 
-                if use_consolidated and maybe_consolidated_metadata_bytes is None:
-                    # the user requested consolidated metadata, but it was missing
-                    raise FileNotFoundError(paths[-1])
             else:
                 maybe_consolidated_metadata_bytes = None
 
@@ -453,6 +451,11 @@ class AsyncGroup:
         if zarr_format == 2:
             # this is checked above, asserting here for mypy
             assert zgroup_bytes is not None
+
+            if use_consolidated and maybe_consolidated_metadata_bytes is None:
+                # the user requested consolidated metadata, but it was missing
+                raise ValueError(consolidated_key)
+
             return cls._from_bytes_v2(
                 store_path, zgroup_bytes, zattrs_bytes, maybe_consolidated_metadata_bytes
             )
@@ -517,7 +520,6 @@ class AsyncGroup:
         group_metadata = json.loads(zarr_json_bytes.to_bytes())
         if use_consolidated and group_metadata.get("consolidated_metadata") is None:
             msg = f"Consolidated metadata requested with 'use_consolidated=True' but not found in '{store_path.path}'."
-            # Use `FileNotFoundError` here to match the error from v2?
             raise ValueError(msg)
 
         elif use_consolidated is False:
@@ -1086,7 +1088,6 @@ class AsyncGroup:
                     self.store_path, key, prefix=self.name
                 )  # Metadata -> Group/Array
                 key = "/".join([prefix, key]).lstrip("/")
-                # breakpoint()
                 yield key, obj
 
                 if ((max_depth is None) or (current_depth < max_depth)) and isinstance(
