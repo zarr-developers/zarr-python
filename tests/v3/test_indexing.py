@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 from collections import Counter
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -16,6 +17,7 @@ from zarr.core.indexing import (
     CoordinateSelection,
     OrthogonalSelection,
     Selection,
+    _iter_grid,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -1861,3 +1863,53 @@ def test_orthogonal_bool_indexing_like_numpy_ix(
     # note: in python 3.10 z[*selection] is not valid unpacking syntax
     actual = z[(*selection,)]
     assert_array_equal(expected, actual, err_msg=f"{selection=}")
+
+
+@pytest.mark.parametrize("ndim", [1, 2, 3])
+@pytest.mark.parametrize("origin_0d", [None, (0,), (1,)])
+@pytest.mark.parametrize("selection_shape_0d", [None, (2,), (3,)])
+def test_iter_grid(
+    ndim: int, origin_0d: tuple[int] | None, selection_shape_0d: tuple[int] | None
+) -> None:
+    """
+    Test that iter_grid works as expected for 1, 2, and 3 dimensions.
+    """
+    grid_shape = (5,) * ndim
+
+    if origin_0d is not None:
+        origin_kwarg = origin_0d * ndim
+        origin = origin_kwarg
+    else:
+        origin_kwarg = None
+        origin = (0,) * ndim
+
+    if selection_shape_0d is not None:
+        selection_shape_kwarg = selection_shape_0d * ndim
+        selection_shape = selection_shape_kwarg
+    else:
+        selection_shape_kwarg = None
+        selection_shape = tuple(gs - o for gs, o in zip(grid_shape, origin, strict=False))
+
+    observed = tuple(
+        _iter_grid(grid_shape, origin=origin_kwarg, selection_shape=selection_shape_kwarg)
+    )
+
+    # generate a numpy array of indices, and index it
+    coord_array = np.array(list(itertools.product(*[range(s) for s in grid_shape]))).reshape(
+        (*grid_shape, ndim)
+    )
+    coord_array_indexed = coord_array[
+        tuple(slice(o, o + s, 1) for o, s in zip(origin, selection_shape, strict=False))
+        + (range(ndim),)
+    ]
+
+    expected = tuple(map(tuple, coord_array_indexed.reshape(-1, ndim).tolist()))
+    assert observed == expected
+
+
+def test_iter_grid_invalid() -> None:
+    """
+    Ensure that a selection_shape that exceeds the grid_shape + origin produces an indexing error.
+    """
+    with pytest.raises(IndexError):
+        list(_iter_grid((5,), origin=(0,), selection_shape=(10,)))

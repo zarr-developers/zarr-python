@@ -93,23 +93,24 @@ _ArrayIndexingOrder: TypeAlias = Literal["lexicographic"]
 
 
 def _iter_grid(
-    shape: Sequence[int],
+    grid_shape: Sequence[int],
     *,
     origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
     order: _ArrayIndexingOrder = "lexicographic",
 ) -> Iterator[ChunkCoords]:
     """
-    Iterate over the elements of grid of integers.
-
-    Takes a grid shape expressed as a sequence of integers and an optional origin and
-    yields tuples bounded by [origin, origin + grid_shape].
+    Iterate over the elements of grid of integers, with the option to restrict the domain of
+    iteration to those from a contiguous subregion of that grid.
 
     Parameters
     ---------
-    shape: Sequence[int]
+    grid_shape: Sequence[int]
         The size of the domain to iterate over.
     origin: Sequence[int] | None, default=None
-        The first coordinate of the domain.
+        The first coordinate of the domain to return.
+    selection_shape: Sequence[int] | None, default=None
+        The shape of the selection.
     order: Literal["lexicographic"], default="lexicographic"
         The linear indexing order to use.
 
@@ -129,22 +130,37 @@ def _iter_grid(
 
     >>> tuple(iter_grid((2,3)), origin=(1,1))
     ((1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 3))
+
+    >>> tuple(iter_grid((2,3)), origin=(1,1), selection_shape=(2,2))
+    ((1, 1), (1, 2), (1, 3), (2, 1))
     """
     if origin is None:
-        origin_parsed = (0,) * len(shape)
+        origin_parsed = (0,) * len(grid_shape)
     else:
-        if len(origin) != len(shape):
+        if len(origin) != len(grid_shape):
             msg = (
                 "Shape and origin parameters must have the same length."
-                f"Got {len(shape)} elements in shape, but {len(origin)} elements in origin."
+                f"Got {len(grid_shape)} elements in shape, but {len(origin)} elements in origin."
             )
             raise ValueError(msg)
         origin_parsed = tuple(origin)
-
-    if order == "lexicographic":
-        yield from itertools.product(
-            *(range(o, o + s) for o, s in zip(origin_parsed, shape, strict=True))
+    if selection_shape is None:
+        selection_shape_parsed = tuple(
+            g - o for o, g in zip(origin_parsed, grid_shape, strict=True)
         )
+    else:
+        selection_shape_parsed = tuple(selection_shape)
+    if order == "lexicographic":
+        dimensions: tuple[range, ...] = ()
+        for idx, (o, gs, ss) in enumerate(
+            zip(origin_parsed, grid_shape, selection_shape_parsed, strict=True)
+        ):
+            if o + ss > gs:
+                raise IndexError(
+                    f"Invalid selection shape ({selection_shape}) for origin ({origin}) and grid shape ({grid_shape}) at axis {idx}."
+                )
+            dimensions += (range(o, o + ss),)
+        yield from itertools.product(*(dimensions))
 
     else:
         msg = f"Indexing order {order} is not supported at this time."  # type: ignore[unreachable]

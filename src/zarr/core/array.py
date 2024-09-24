@@ -461,25 +461,83 @@ class AsyncArray:
         """
         return product(self.cdata_shape)
 
-    def _iter_chunk_coords(self, origin: Sequence[int] | None = None) -> Iterator[ChunkCoords]:
+    @property
+    def nchunks_initialized(self) -> int:
         """
-        Produce an iterator over the coordinates of each chunk, in chunk grid space, relative to
-        an optional origin.
+        The number of chunks that have been persisted in storage.
         """
-        return _iter_grid(self.cdata_shape, origin=origin)
+        return nchunks_initialized(self)
 
-    def _iter_chunk_keys(self, origin: Sequence[int] | None = None) -> Iterator[str]:
+    def _iter_chunk_coords(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[ChunkCoords]:
         """
-        Return an iterator over the storage keys of each chunk, relative to an optional origin.
+        Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
+        keyword is used, iteration will start at the chunk index specified by `origin`.
+        The default behavior is to start at the origin of the grid coordinate space.
+        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+        ranging from `[origin, origin + selection_shape]`, where the upper bound is exclusive as
+        per python indexing conventions.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        chunk_coords: ChunkCoords
+            The coordinates of each chunk in the selection.
         """
-        for k in self._iter_chunk_coords(origin=origin):
+        return _iter_grid(self.cdata_shape, origin=origin, selection_shape=selection_shape)
+
+    def _iter_chunk_keys(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[str]:
+        """
+        Iterate over the storage keys of each chunk, relative to an optional origin, and optionally
+        limited to a contiguous region in chunk grid coordinates.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        key: str
+            The storage key of each chunk in the selection.
+        """
+        # Iterate over the coordinates of chunks in chunk grid space.
+        for k in self._iter_chunk_coords(origin=origin, selection_shape=selection_shape):
+            # Encode the chunk key from the chunk coordinates.
             yield self.metadata.encode_chunk_key(k)
 
-    def _iter_chunk_regions(self) -> Iterator[tuple[slice, ...]]:
+    def _iter_chunk_regions(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[slice, ...]]:
         """
         Iterate over the regions spanned by each chunk.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        region: tuple[slice, ...]
+            A tuple of slice objects representing the region spanned by each chunk in the selection.
         """
-        for cgrid_position in self._iter_chunk_coords():
+        for cgrid_position in self._iter_chunk_coords(
+            origin=origin, selection_shape=selection_shape
+        ):
             out: tuple[slice, ...] = ()
             for c_pos, c_shape in zip(cgrid_position, self.chunks, strict=False):
                 start = c_pos * c_shape
@@ -816,12 +874,32 @@ class Array:
         """
         return self._async_array.nchunks
 
-    def _iter_chunks(self, origin: Sequence[int] | None = None) -> Iterator[ChunkCoords]:
+    def _iter_chunk_coords(
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[ChunkCoords]:
         """
-        Produce an iterator over the coordinates of each chunk, in chunk grid space, relative
-        to an optional origin.
+        Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
+        keyword is used, iteration will start at the chunk index specified by `origin`.
+        The default behavior is to start at the origin of the grid coordinate space.
+        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+        ranging from `[origin, origin + selection_shape]`, where the upper bound is exclusive as
+        per python indexing conventions.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        chunk_coords: ChunkCoords
+            The coordinates of each chunk in the selection.
         """
-        yield from self._async_array._iter_chunk_coords(origin=origin)
+        yield from self._async_array._iter_chunk_coords(
+            origin=origin, selection_shape=selection_shape
+        )
 
     @property
     def nbytes(self) -> int:
@@ -830,17 +908,57 @@ class Array:
         """
         return self._async_array.nbytes
 
-    def _iter_chunk_keys(self, origin: Sequence[int] | None = None) -> Iterator[str]:
+    @property
+    def nchunks_initialized(self) -> int:
         """
-        Return an iterator over the keys of each chunk, relative to an optional origin
+        The number of chunks that have been initialized in the stored representation of this array.
         """
-        yield from self._async_array._iter_chunk_keys(origin=origin)
+        return self._async_array.nchunks_initialized
 
-    def _iter_chunk_regions(self) -> Iterator[tuple[slice, ...]]:
+    def _iter_chunk_keys(
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[str]:
+        """
+        Iterate over the storage keys of each chunk, relative to an optional origin, and optionally
+        limited to a contiguous region in chunk grid coordinates.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        key: str
+            The storage key of each chunk in the selection.
+        """
+        yield from self._async_array._iter_chunk_keys(
+            origin=origin, selection_shape=selection_shape
+        )
+
+    def _iter_chunk_regions(
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[slice, ...]]:
         """
         Iterate over the regions spanned by each chunk.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        region: tuple[slice, ...]
+            A tuple of slice objects representing the region spanned by each chunk in the selection.
         """
-        yield from self._async_array._iter_chunk_regions()
+        yield from self._async_array._iter_chunk_regions(
+            origin=origin, selection_shape=selection_shape
+        )
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
@@ -2175,17 +2293,46 @@ class Array:
         )
 
 
-def nchunks_initialized(array: Array) -> int:
+def nchunks_initialized(array: AsyncArray | Array) -> int:
     """
     Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
     been persisted to the storage backend.
+
+    Parameters
+    ----------
+    array : Array
+        The array to inspect.
+
+    Returns
+    -------
+    nchunks_initialized : int
+        The number of chunks that have been initialized.
+
+    See Also
+    --------
+    chunks_initialized
     """
     return len(chunks_initialized(array))
 
 
-def chunks_initialized(array: Array) -> tuple[str, ...]:
+def chunks_initialized(array: Array | AsyncArray) -> tuple[str, ...]:
     """
     Return the keys of the chunks that have been persisted to the storage backend.
+
+    Parameters
+    ----------
+    array : Array
+        The array to inspect.
+
+    Returns
+    -------
+    chunks_initialized : tuple[str, ...]
+        The keys of the chunks that have been initialized.
+
+    See Also
+    --------
+    nchunks_initialized
+
     """
     # TODO: make this compose with the underlying async iterator
     store_contents = list(
