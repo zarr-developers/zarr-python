@@ -81,6 +81,13 @@ class Store(ABC):
     @abstractmethod
     async def clear(self) -> None: ...
 
+    @abstractmethod
+    def with_mode(self, mode: AccessModeLiteral) -> Self:
+        """
+        Return a new store pointing to the same location with a new mode.
+        """
+        ...
+
     @property
     def mode(self) -> AccessMode:
         """Access mode of the store."""

@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator, MutableMapping
 from typing import TYPE_CHECKING
 
+from typing_extensions import Self
+
 from zarr.abc.store import Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.common import concurrent_map
@@ -41,6 +43,9 @@ class MemoryStore(Store):
 
     async def clear(self) -> None:
         self._store_dict.clear()
+
+    def with_mode(self, mode: AccessModeLiteral) -> Self:
+        return type(self)(store_dict=self._store_dict, mode=mode)
 
     def __str__(self) -> str:
         return f"memory://{id(self._store_dict)}"

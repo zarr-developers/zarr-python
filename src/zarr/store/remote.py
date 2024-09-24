@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 import fsspec
+from typing_extensions import Self
 
 from zarr.abc.store import Store
 from zarr.store.common import _dereference_path
@@ -94,6 +95,14 @@ class RemoteStore(Store):
 
     async def empty(self) -> bool:
         return not await self.fs._find(self.path, withdirs=True)
+
+    def with_mode(self, mode: AccessModeLiteral) -> Self:
+        return type(self)(
+            fs=self.fs,
+            mode=mode,
+            path=self.path,
+            allowed_exceptions=self.allowed_exceptions,
+        )
 
     def __repr__(self) -> str:
         return f"<RemoteStore({type(self.fs).__name__}, {self.path})>"

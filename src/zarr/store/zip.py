@@ -7,6 +7,8 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from typing_extensions import Self
+
 from zarr.abc.store import Store
 from zarr.core.buffer import Buffer, BufferPrototype
 
@@ -114,6 +116,11 @@ class ZipStore(Store):
                 return False
             else:
                 return True
+
+    def with_mode(self, mode: ZipStoreAccessModeLiteral) -> Self:  # type: ignore[override]
+        return type(self)(
+            path=self.path, mode=mode, compression=self.compression, allowZip64=self.allowZip64
+        )
 
     def __str__(self) -> str:
         return f"zip://{self.path}"

@@ -6,6 +6,8 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from typing_extensions import Self
+
 from zarr.abc.store import Store
 from zarr.core.buffer import Buffer
 from zarr.core.common import concurrent_map, to_thread
@@ -102,6 +104,9 @@ class LocalStore(Store):
             return True
         else:
             return True
+
+    def with_mode(self, mode: AccessModeLiteral) -> Self:
+        return type(self)(root=self.root, mode=mode)
 
     def __str__(self) -> str:
         return f"file://{self.root}"

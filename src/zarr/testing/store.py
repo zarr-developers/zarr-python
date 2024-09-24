@@ -1,10 +1,11 @@
 import pickle
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
 
 import pytest
 
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.core.common import AccessModeLiteral
 from zarr.core.sync import _collect_aiterator
 from zarr.store._utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
@@ -251,3 +252,10 @@ class StoreTests(Generic[S, B]):
 
         keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
         assert sorted(keys_expected) == sorted(keys_observed)
+
+    async def test_with_mode(self, store: S) -> None:
+        for mode in ["r", "w"]:
+            mode = cast(AccessModeLiteral, mode)
+            result = store.with_mode(mode)
+            assert result.mode == AccessMode.from_literal(mode)
+            assert isinstance(result, type(store))
