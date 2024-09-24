@@ -31,7 +31,6 @@ def test_basic_indexing(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
-@settings(report_multiple_bugs=False)
 @given(data=st.data())
 def test_vindex(data: st.DataObject) -> None:
     zarray = data.draw(arrays())
