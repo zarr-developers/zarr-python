@@ -19,6 +19,7 @@ from zarr.api.asynchronous import (
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
+from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.store.common import StorePath
 
 if TYPE_CHECKING:
@@ -479,3 +480,44 @@ class TestConsolidated:
 
         with pytest.raises(ValueError):
             await zarr.api.asynchronous.open_consolidated(store, zarr_format=None)
+
+    async def test_consolidated_metadata_v2(self):
+        store = zarr.store.MemoryStore(mode="w")
+        g = await AsyncGroup.from_store(store, attributes={"key": "root"}, zarr_format=2)
+        await g.create_array(name="a", shape=(1,), attributes={"key": "a"})
+        g1 = await g.create_group(name="g1", attributes={"key": "g1"})
+        await g1.create_group(name="g2", attributes={"key": "g2"})
+
+        await zarr.api.asynchronous.consolidate_metadata(store)
+        result = await zarr.api.asynchronous.open_consolidated(store, zarr_format=2)
+
+        expected = GroupMetadata(
+            attributes={"key": "root"},
+            zarr_format=2,
+            consolidated_metadata=ConsolidatedMetadata(
+                metadata={
+                    "a": ArrayV2Metadata(
+                        shape=(1,),
+                        dtype="float64",
+                        attributes={"key": "a"},
+                        chunks=(1,),
+                        fill_value=0.0,
+                        order="C",
+                    ),
+                    "g1": GroupMetadata(
+                        attributes={"key": "g1"},
+                        zarr_format=2,
+                        consolidated_metadata=ConsolidatedMetadata(
+                            metadata={
+                                "g2": GroupMetadata(
+                                    attributes={"key": "g2"},
+                                    zarr_format=2,
+                                    consolidated_metadata=ConsolidatedMetadata(metadata={}),
+                                )
+                            }
+                        ),
+                    ),
+                }
+            ),
+        )
+        assert result.metadata == expected

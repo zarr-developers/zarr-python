@@ -331,7 +331,7 @@ class GroupMetadata(Metadata):
                 )
             }
         else:
-            return {
+            items = {
                 ZGROUP_JSON: prototype.buffer.from_bytes(
                     json.dumps({"zarr_format": self.zarr_format}, indent=json_indent).encode()
                 ),
@@ -339,6 +339,36 @@ class GroupMetadata(Metadata):
                     json.dumps(self.attributes, indent=json_indent).encode()
                 ),
             }
+            if self.consolidated_metadata:
+                d = {
+                    ZGROUP_JSON: {"zarr_format": self.zarr_format},
+                    ZATTRS_JSON: self.attributes,
+                }
+                consolidated_metadata = self.consolidated_metadata.to_dict()["metadata"]
+                assert isinstance(consolidated_metadata, dict)
+                for k, v in consolidated_metadata.items():
+                    attrs = v.pop("attributes", None)
+                    d[f"{k}/{ZATTRS_JSON}"] = attrs
+                    if "shape" in v:
+                        # it's an array
+                        d[f"{k}/{ZARRAY_JSON}"] = v
+                    else:
+                        d[f"{k}/{ZGROUP_JSON}"] = {
+                            "zarr_format": self.zarr_format,
+                            "consolidated_metadata": {
+                                "metadata": {},
+                                "must_understand": False,
+                                "kind": "inline",
+                            },
+                        }
+
+                items[ZMETADATA_V2_JSON] = prototype.buffer.from_bytes(
+                    json.dumps(
+                        {"metadata": d, "zarr_consolidated_format": 1}, indent=json_indent
+                    ).encode()
+                )
+
+            return items
 
     def __init__(
         self,
