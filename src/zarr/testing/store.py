@@ -3,9 +3,9 @@ from typing import Any, Generic, TypeVar
 
 import pytest
 
-import zarr.api.asynchronous
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.core.sync import _collect_aiterator
 from zarr.store._utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
 
@@ -58,7 +58,7 @@ class StoreTests(Generic[S, B]):
         store2 = self.store_cls(**store_kwargs)
         assert store == store2
 
-    def test_serizalizable_store(self, store: S) -> None:
+    def test_serializable_store(self, store: S) -> None:
         foo = pickle.dumps(store)
         assert pickle.loads(foo) == store
 
@@ -123,6 +123,18 @@ class StoreTests(Generic[S, B]):
         observed = self.get(store, key)
         assert_bytes_equal(observed, data_buf)
 
+    async def test_set_many(self, store: S) -> None:
+        """
+        Test that a dict of key : value pairs can be inserted into the store via the
+        `_set_many` method.
+        """
+        keys = ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"]
+        data_buf = [self.buffer_cls.from_bytes(k.encode()) for k in keys]
+        store_dict = dict(zip(keys, data_buf, strict=True))
+        await store._set_many(store_dict.items())
+        for k, v in store_dict.items():
+            assert self.get(store, k).to_bytes() == v.to_bytes()
+
     @pytest.mark.parametrize(
         "key_ranges",
         (
@@ -185,76 +197,57 @@ class StoreTests(Generic[S, B]):
         assert await store.empty()
 
     async def test_list(self, store: S) -> None:
-        assert [k async for k in store.list()] == []
-        await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
-        keys = [k async for k in store.list()]
-        assert keys == ["foo/zarr.json"], keys
+        assert await _collect_aiterator(store.list()) == ()
+        prefix = "foo"
+        data = self.buffer_cls.from_bytes(b"")
+        store_dict = {
+            prefix + "/zarr.json": data,
+            **{prefix + f"/c/{idx}": data for idx in range(10)},
+        }
+        await store._set_many(store_dict.items())
+        expected_sorted = sorted(store_dict.keys())
+        observed = await _collect_aiterator(store.list())
+        observed_sorted = sorted(observed)
+        assert observed_sorted == expected_sorted
 
-        expected = ["foo/zarr.json"]
-        for i in range(10):
-            key = f"foo/c/{i}"
-            expected.append(key)
-            await store.set(
-                f"foo/c/{i}", self.buffer_cls.from_bytes(i.to_bytes(length=3, byteorder="little"))
-            )
-
-    @pytest.mark.xfail
     async def test_list_prefix(self, store: S) -> None:
-        # TODO: we currently don't use list_prefix anywhere
-        raise NotImplementedError
+        """
+        Test that the `list_prefix` method works as intended. Given a prefix, it should return
+        all the keys in storage that start with this prefix. Keys should be returned with the shared
+        prefix removed.
+        """
+        prefixes = ("", "a/", "a/b/", "a/b/c/")
+        data = self.buffer_cls.from_bytes(b"")
+        fname = "zarr.json"
+        store_dict = {p + fname: data for p in prefixes}
+
+        await store._set_many(store_dict.items())
+
+        for prefix in prefixes:
+            observed = tuple(sorted(await _collect_aiterator(store.list_prefix(prefix))))
+            expected: tuple[str, ...] = ()
+            for key in store_dict.keys():
+                if key.startswith(prefix):
+                    expected += (key.removeprefix(prefix),)
+            expected = tuple(sorted(expected))
+            assert observed == expected
 
     async def test_list_dir(self, store: S) -> None:
-        out = [k async for k in store.list_dir("")]
-        assert out == []
-        assert [k async for k in store.list_dir("foo")] == []
-        await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
-        await store.set("group-0/zarr.json", self.buffer_cls.from_bytes(b"\x01"))  # group
-        await store.set("group-0/group-1/zarr.json", self.buffer_cls.from_bytes(b"\x01"))  # group
-        await store.set("group-0/group-1/a1/zarr.json", self.buffer_cls.from_bytes(b"\x01"))
-        await store.set("group-0/group-1/a2/zarr.json", self.buffer_cls.from_bytes(b"\x01"))
-        await store.set("group-0/group-1/a3/zarr.json", self.buffer_cls.from_bytes(b"\x01"))
+        root = "foo"
+        store_dict = {
+            root + "/zarr.json": self.buffer_cls.from_bytes(b"bar"),
+            root + "/c/1": self.buffer_cls.from_bytes(b"\x01"),
+        }
 
-        keys_expected = ["foo", "group-0"]
-        keys_observed = [k async for k in store.list_dir("")]
-        assert set(keys_observed) == set(keys_expected)
+        assert await _collect_aiterator(store.list_dir("")) == ()
+        assert await _collect_aiterator(store.list_dir(root)) == ()
 
-        keys_expected = ["zarr.json"]
-        keys_observed = [k async for k in store.list_dir("foo")]
+        await store._set_many(store_dict.items())
 
-        assert len(keys_observed) == len(keys_expected), keys_observed
-        assert set(keys_observed) == set(keys_expected), keys_observed
+        keys_observed = await _collect_aiterator(store.list_dir(root))
+        keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict.keys()}
 
-        keys_observed = [k async for k in store.list_dir("foo/")]
-        assert len(keys_expected) == len(keys_observed), keys_observed
-        assert set(keys_observed) == set(keys_expected), keys_observed
+        assert sorted(keys_observed) == sorted(keys_expected)
 
-        keys_observed = [k async for k in store.list_dir("group-0")]
-        keys_expected = ["zarr.json", "group-1"]
-
-        assert len(keys_observed) == len(keys_expected), keys_observed
-        assert set(keys_observed) == set(keys_expected), keys_observed
-
-        keys_observed = [k async for k in store.list_dir("group-0/")]
-        assert len(keys_expected) == len(keys_observed), keys_observed
-        assert set(keys_observed) == set(keys_expected), keys_observed
-
-        keys_observed = [k async for k in store.list_dir("group-0/group-1")]
-        keys_expected = ["zarr.json", "a1", "a2", "a3"]
-
-        assert len(keys_observed) == len(keys_expected), keys_observed
-        assert set(keys_observed) == set(keys_expected), keys_observed
-
-        keys_observed = [k async for k in store.list_dir("group-0/group-1")]
-        assert len(keys_expected) == len(keys_observed), keys_observed
-        assert set(keys_observed) == set(keys_expected), keys_observed
-
-    async def test_set_get(self, store_kwargs: dict[str, Any]) -> None:
-        kwargs = {**store_kwargs, **{"mode": "w"}}
-        store = self.store_cls(**kwargs)
-        await zarr.api.asynchronous.open_array(store=store, path="a", mode="w", shape=(4,))
-        keys = [x async for x in store.list()]
-        assert keys == ["a/zarr.json"]
-
-        # no errors
-        await zarr.api.asynchronous.open_array(store=store, path="a", mode="r")
-        await zarr.api.asynchronous.open_array(store=store, path="a", mode="a")
+        keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
+        assert sorted(keys_expected) == sorted(keys_observed)

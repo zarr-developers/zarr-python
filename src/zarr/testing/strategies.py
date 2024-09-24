@@ -36,11 +36,14 @@ keys = st.lists(node_names, min_size=1).map(lambda x: "/".join(x))
 paths = st.just("/") | keys
 np_arrays = npst.arrays(
     # TODO: re-enable timedeltas once they are supported
-    dtype=npst.scalar_dtypes().filter(lambda x: x.kind != "m"),
+    dtype=npst.scalar_dtypes().filter(
+        lambda x: (x.kind not in ["m", "M"]) and (x.byteorder not in [">"])
+    ),
     shape=npst.array_shapes(max_dims=4),
 )
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
 compressors = st.sampled_from([None, "default"])
+format = st.sampled_from([2, 3])
 
 
 @st.composite  # type: ignore[misc]
@@ -70,12 +73,14 @@ def arrays(
     paths: st.SearchStrategy[None | str] = paths,
     array_names: st.SearchStrategy = array_names,
     attrs: st.SearchStrategy = attrs,
+    format: st.SearchStrategy = format,
 ) -> Array:
     store = draw(stores)
     nparray, chunks = draw(np_array_and_chunks(arrays=arrays))
     path = draw(paths)
     name = draw(array_names)
     attributes = draw(attrs)
+    zarr_format = draw(format)
     # compressor = draw(compressors)
 
     # TODO: clean this up
@@ -100,7 +105,7 @@ def arrays(
     expected_attrs = {} if attributes is None else attributes
 
     array_path = path + ("/" if not path.endswith("/") else "") + name
-    root = Group.create(store)
+    root = Group.from_store(store, zarr_format=zarr_format)
     fill_value_args: tuple[Any, ...] = tuple()
     if nparray.dtype.kind == "M":
         m = re.search(r"\[(.+)\]", nparray.dtype.str)
