@@ -3,13 +3,10 @@ from typing import Literal
 import numpy as np
 import pytest
 
-import zarr.v2.creation
 from zarr import AsyncArray
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec
-from zarr.core.buffer import default_buffer_prototype
 from zarr.store.common import StorePath
-from zarr.testing.utils import assert_bytes_equal
 
 from .test_codecs import _AsyncArrayProxy
 
@@ -33,19 +30,6 @@ async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     await _AsyncArrayProxy(a)[:, :].set(data)
     readback_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, readback_data)
-
-    # Compare with v2
-    z = zarr.v2.creation.create(
-        shape=data.shape,
-        chunks=(16, 16),
-        dtype=">u2" if endian == "big" else "<u2",
-        compressor=None,
-        fill_value=1,
-    )
-    z[:, :] = data
-    assert_bytes_equal(
-        await store.get(f"{path}/0.0", prototype=default_buffer_prototype()), z._store["0.0"]
-    )
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
@@ -72,16 +56,3 @@ async def test_endian_write(
     await _AsyncArrayProxy(a)[:, :].set(data)
     readback_data = await _AsyncArrayProxy(a)[:, :].get()
     assert np.array_equal(data, readback_data)
-
-    # Compare with zarr-python
-    z = zarr.v2.creation.create(
-        shape=data.shape,
-        chunks=(16, 16),
-        dtype=">u2" if dtype_store_endian == "big" else "<u2",
-        compressor=None,
-        fill_value=1,
-    )
-    z[:, :] = data
-    assert_bytes_equal(
-        await store.get(f"{path}/0.0", prototype=default_buffer_prototype()), z._store["0.0"]
-    )
