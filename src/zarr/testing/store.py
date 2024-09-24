@@ -58,7 +58,7 @@ class StoreTests(Generic[S, B]):
         store2 = self.store_cls(**store_kwargs)
         assert store == store2
 
-    def test_serizalizable_store(self, store: S) -> None:
+    def test_serializable_store(self, store: S) -> None:
         foo = pickle.dumps(store)
         assert pickle.loads(foo) == store
 

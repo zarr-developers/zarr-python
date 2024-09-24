@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-import zarr.v2.creation
 from zarr import Array, AsyncArray, config
 from zarr.codecs import (
     BytesCodec,
@@ -18,7 +17,6 @@ from zarr.codecs import (
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import Selection, morton_order_iter
 from zarr.store import StorePath
-from zarr.testing.utils import assert_bytes_equal
 
 if TYPE_CHECKING:
     from zarr.abc.codec import Codec
@@ -117,21 +115,6 @@ async def test_order(
     else:
         assert not read_data.flags["F_CONTIGUOUS"]
         assert read_data.flags["C_CONTIGUOUS"]
-
-    if not with_sharding:
-        # Compare with zarr-python
-        z = zarr.v2.creation.create(
-            shape=data.shape,
-            chunks=(32, 8),
-            dtype="<u2",
-            order=store_order,
-            compressor=None,
-            fill_value=1,
-        )
-        z[:, :] = data
-        assert_bytes_equal(
-            await store.get(f"{path}/0.0", prototype=default_buffer_prototype()), z._store["0.0"]
-        )
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
@@ -253,90 +236,6 @@ async def test_delete_empty_chunks(store: Store) -> None:
     await _AsyncArrayProxy(a)[:16, :16].set(data)
     assert np.array_equal(await _AsyncArrayProxy(a)[:16, :16].get(), data)
     assert await store.get(f"{path}/c0/0", prototype=default_buffer_prototype()) is None
-
-
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-async def test_zarr_compat(store: Store) -> None:
-    data = np.zeros((16, 18), dtype="uint16")
-    path = "zarr_compat3"
-    spath = StorePath(store, path)
-    a = await AsyncArray.create(
-        spath,
-        shape=data.shape,
-        chunk_shape=(10, 10),
-        dtype=data.dtype,
-        chunk_key_encoding=("v2", "."),
-        fill_value=1,
-    )
-
-    z2 = zarr.v2.creation.create(
-        shape=data.shape,
-        chunks=(10, 10),
-        dtype=data.dtype,
-        compressor=None,
-        fill_value=1,
-    )
-
-    await _AsyncArrayProxy(a)[:16, :18].set(data)
-    z2[:16, :18] = data
-    assert np.array_equal(data, await _AsyncArrayProxy(a)[:16, :18].get())
-    assert np.array_equal(data, z2[:16, :18])
-
-    assert_bytes_equal(
-        z2._store["0.0"], await store.get(f"{path}/0.0", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["0.1"], await store.get(f"{path}/0.1", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["1.0"], await store.get(f"{path}/1.0", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["1.1"], await store.get(f"{path}/1.1", prototype=default_buffer_prototype())
-    )
-
-
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-async def test_zarr_compat_F(store: Store) -> None:
-    data = np.zeros((16, 18), dtype="uint16", order="F")
-    path = "zarr_compatF3"
-    spath = StorePath(store, path)
-    a = await AsyncArray.create(
-        spath,
-        shape=data.shape,
-        chunk_shape=(10, 10),
-        dtype=data.dtype,
-        chunk_key_encoding=("v2", "."),
-        fill_value=1,
-        codecs=[TransposeCodec(order=order_from_dim("F", data.ndim)), BytesCodec()],
-    )
-
-    z2 = zarr.v2.creation.create(
-        shape=data.shape,
-        chunks=(10, 10),
-        dtype=data.dtype,
-        compressor=None,
-        order="F",
-        fill_value=1,
-    )
-
-    await _AsyncArrayProxy(a)[:16, :18].set(data)
-    z2[:16, :18] = data
-    assert np.array_equal(data, await _AsyncArrayProxy(a)[:16, :18].get())
-    assert np.array_equal(data, z2[:16, :18])
-
-    assert_bytes_equal(
-        z2._store["0.0"], await store.get(f"{path}/0.0", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["0.1"], await store.get(f"{path}/0.1", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["1.0"], await store.get(f"{path}/1.0", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["1.1"], await store.get(f"{path}/1.1", prototype=default_buffer_prototype())
-    )
 
 
 @pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
