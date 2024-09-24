@@ -101,10 +101,10 @@ def _iter_grid(
 ) -> Iterator[ChunkCoords]:
     """
     Iterate over the elements of grid of integers, with the option to restrict the domain of
-    iteration to those from a contiguous subregion of that grid.
+    iteration to a contiguous subregion of that grid.
 
     Parameters
-    ---------
+    ----------
     grid_shape: Sequence[int]
         The size of the domain to iterate over.
     origin: Sequence[int] | None, default=None
