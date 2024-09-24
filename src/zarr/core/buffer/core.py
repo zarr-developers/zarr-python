@@ -469,7 +469,9 @@ class NDBuffer:
             return False
         # use array_equal to obtain equal_nan=True functionality
         data, other = np.broadcast_arrays(self._data, other)
-        result = np.array_equal(self._data, other, equal_nan=equal_nan)
+        result = np.array_equal(
+            self._data, other, equal_nan=equal_nan if self._data.dtype.kind not in "US" else False
+        )
         return result
 
     def fill(self, value: Any) -> None:

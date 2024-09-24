@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
@@ -19,15 +19,30 @@ _attr_values = st.recursive(
 )
 
 
-def dtypes() -> st.SearchStrategy[np.dtype]:
+def v3_dtypes() -> st.SearchStrategy[np.dtype]:
     return (
         npst.boolean_dtypes()
         | npst.integer_dtypes(endianness="=")
         | npst.unsigned_integer_dtypes(endianness="=")
         | npst.floating_dtypes(endianness="=")
         | npst.complex_number_dtypes(endianness="=")
+        # | npst.byte_string_dtypes(endianness="=")
         # | npst.unicode_string_dtypes()
         # | npst.datetime64_dtypes()
+        # | npst.timedelta64_dtypes()
+    )
+
+
+def v2_dtypes() -> st.SearchStrategy[np.dtype]:
+    return (
+        npst.boolean_dtypes()
+        | npst.integer_dtypes(endianness="=")
+        | npst.unsigned_integer_dtypes(endianness="=")
+        | npst.floating_dtypes(endianness="=")
+        | npst.complex_number_dtypes(endianness="=")
+        | npst.byte_string_dtypes(endianness="=")
+        | npst.unicode_string_dtypes(endianness="=")
+        | npst.datetime64_dtypes()
         # | npst.timedelta64_dtypes()
     )
 
@@ -46,18 +61,29 @@ node_names = st.text(zarr_key_chars, min_size=1).filter(
 array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
 paths = st.lists(node_names, min_size=1).map(lambda x: "/".join(x)) | st.just("/")
-np_arrays = npst.arrays(
-    dtype=dtypes(),
-    shape=npst.array_shapes(max_dims=4),
-)
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
 compressors = st.sampled_from([None, "default"])
-zarr_formats = st.sampled_from([2, 3])
+zarr_formats: st.SearchStrategy[Literal[2, 3]] = st.sampled_from([2, 3])
+array_shapes = npst.array_shapes(max_dims=4)
+
+
+@st.composite  # type: ignore[misc]
+def numpy_arrays(
+    draw: st.DrawFn,
+    *,
+    shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
+    zarr_formats: st.SearchStrategy[Literal[2, 3]] = zarr_formats,
+) -> Any:
+    """
+    Generate numpy arrays that can be saved in the provided Zarr format.
+    """
+    zarr_format = draw(zarr_formats)
+    return draw(npst.arrays(dtype=v3_dtypes() if zarr_format == 3 else v2_dtypes(), shape=shapes))
 
 
 @st.composite  # type: ignore[misc]
 def np_array_and_chunks(
-    draw: st.DrawFn, *, arrays: st.SearchStrategy[np.ndarray] = np_arrays
+    draw: st.DrawFn, *, arrays: st.SearchStrategy[np.ndarray] = numpy_arrays
 ) -> tuple[np.ndarray, tuple[int]]:  # type: ignore[type-arg]
     """A hypothesis strategy to generate small sized random arrays.
 
@@ -76,20 +102,23 @@ def np_array_and_chunks(
 def arrays(
     draw: st.DrawFn,
     *,
+    shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
     compressors: st.SearchStrategy = compressors,
     stores: st.SearchStrategy[StoreLike] = stores,
-    arrays: st.SearchStrategy[np.ndarray] = np_arrays,
     paths: st.SearchStrategy[None | str] = paths,
     array_names: st.SearchStrategy = array_names,
+    arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
     zarr_formats: st.SearchStrategy = zarr_formats,
 ) -> Array:
     store = draw(stores)
-    nparray, chunks = draw(np_array_and_chunks(arrays=arrays))
     path = draw(paths)
     name = draw(array_names)
     attributes = draw(attrs)
     zarr_format = draw(zarr_formats)
+    if arrays is None:
+        arrays = numpy_arrays(shapes=shapes, zarr_formats=st.just(zarr_format))
+    nparray, chunks = draw(np_array_and_chunks(arrays=arrays))
     # test that None works too.
     fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
     # compressor = draw(compressors)
