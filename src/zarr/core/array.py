@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from asyncio import gather
-from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -71,7 +70,7 @@ from zarr.store.common import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Iterator, Sequence
 
     from zarr.abc.codec import Codec, CodecPipeline
     from zarr.core.metadata.common import ArrayMetadata

@@ -129,7 +129,7 @@ class StoreTests(Generic[S, B]):
                 )
             )
         )
-        observed_kvs = sorted(tuple((k, b.to_bytes()) for k, b in observed_buffers))
+        observed_kvs = sorted(tuple((k, b.to_bytes()) for k, b in observed_buffers))  # type: ignore[union-attr]
         expected_kvs = sorted(tuple((k, b) for k, b in zip(keys, values, strict=False)))
         assert observed_kvs == expected_kvs
 
