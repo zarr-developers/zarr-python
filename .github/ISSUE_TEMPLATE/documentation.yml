@@ -1,5 +1,6 @@
 name: Documentation Improvement
 description: Report missing or wrong documentation. Alternatively, you can just open a pull request with the suggested change.
+title: "DOC: "
 labels: [documentation, help wanted]
 
 body:
