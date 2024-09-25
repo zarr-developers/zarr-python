@@ -30,7 +30,7 @@ class MemoryStore(Store):
         store_dict: MutableMapping[str, Buffer] | None = None,
         *,
         mode: AccessModeLiteral = "r",
-    ):
+    ) -> None:
         super().__init__(mode=mode)
         if store_dict is None:
             store_dict = {}
@@ -80,8 +80,7 @@ class MemoryStore(Store):
         async def _get(key: str, byte_range: tuple[int, int | None]) -> Buffer | None:
             return await self.get(key, prototype=prototype, byte_range=byte_range)
 
-        vals = await concurrent_map(key_ranges, _get, limit=None)
-        return vals
+        return await concurrent_map(key_ranges, _get, limit=None)
 
     async def exists(self, key: str) -> bool:
         return key in self._store_dict
@@ -137,7 +136,7 @@ class MemoryStore(Store):
             prefix = prefix[:-1]
 
         if prefix == "":
-            keys_unique = set(k.split("/")[0] for k in self._store_dict.keys())
+            keys_unique = set(k.split("/")[0] for k in self._store_dict)
         else:
             # Our dictionary doesn't contain directory markers, but we want to include
             # a pseudo directory when there's a nested item and we're listing an
@@ -166,7 +165,7 @@ class GpuMemoryStore(MemoryStore):
         store_dict: MutableMapping[str, Buffer] | None = None,
         *,
         mode: AccessModeLiteral = "r",
-    ):
+    ) -> None:
         super().__init__(mode=mode)
         if store_dict:
             self._store_dict = {k: gpu.Buffer.from_buffer(store_dict[k]) for k in iter(store_dict)}

@@ -3,7 +3,7 @@ from typing import Any, Literal
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 import numpy as np
-from hypothesis import given, settings  # noqa
+from hypothesis import given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
 from zarr.core.array import Array
@@ -183,5 +183,4 @@ def key_ranges(keys: SearchStrategy = node_names) -> SearchStrategy[list]:
         st.none() | st.integers(min_value=0), st.none() | st.integers(min_value=0)
     )
     key_tuple = st.tuples(keys, byte_ranges)
-    key_range_st = st.lists(key_tuple, min_size=1, max_size=10)
-    return key_range_st
+    return st.lists(key_tuple, min_size=1, max_size=10)

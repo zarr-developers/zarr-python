@@ -292,35 +292,35 @@ COMPLEX = np.complex64 | np.complex128
 
 @overload
 def parse_fill_value(
-    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
     dtype: BOOL_DTYPE,
 ) -> BOOL: ...
 
 
 @overload
 def parse_fill_value(
-    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
     dtype: INTEGER_DTYPE,
 ) -> INTEGER: ...
 
 
 @overload
 def parse_fill_value(
-    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
     dtype: FLOAT_DTYPE,
 ) -> FLOAT: ...
 
 
 @overload
 def parse_fill_value(
-    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
     dtype: COMPLEX_DTYPE,
 ) -> COMPLEX: ...
 
 
 @overload
 def parse_fill_value(
-    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
     dtype: np.dtype[Any],
 ) -> Any:
     # This dtype[Any] is unfortunately necessary right now.
@@ -334,7 +334,7 @@ def parse_fill_value(
 
 
 def parse_fill_value(
-    fill_value: int | float | complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
     dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | np.dtype[Any],
 ) -> BOOL | INTEGER | FLOAT | COMPLEX | Any:
     """
