@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, Union, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -33,6 +33,10 @@ if TYPE_CHECKING:
     from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
+    # TODO: this type could use some more thought
+    ArrayLike = AsyncArray | Array | npt.NDArray[Any]
+    PathLike = str
+
 __all__ = [
     "consolidate_metadata",
     "copy",
@@ -60,10 +64,6 @@ __all__ = [
     "zeros",
     "zeros_like",
 ]
-
-# TODO: this type could use some more thought, noqa to avoid "Variable "asynchronous.ArrayLike" is not valid as a type"
-ArrayLike = Union[AsyncArray | Array | npt.NDArray[Any]]  # noqa
-PathLike = str
 
 
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:

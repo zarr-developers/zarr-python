@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 async def store() -> AsyncGenerator[StorePath]:
-    yield StorePath(await MemoryStore.open(mode="w"))
+    return StorePath(await MemoryStore.open(mode="w"))
 
 
 def zarr_array_from_numpy_array(
@@ -1782,9 +1782,9 @@ async def test_accessed_chunks(
 
         # Combine and generate the cartesian product to determine the chunks keys that
         # will be accessed
-        chunks_accessed = []
-        for comb in itertools.product(*chunks_per_dim):
-            chunks_accessed.append(".".join([str(ci) for ci in comb]))
+        chunks_accessed = [
+            ".".join([str(ci) for ci in comb]) for comb in itertools.product(*chunks_per_dim)
+        ]
 
         counts_before = store.counter.copy()
 
@@ -1861,3 +1861,20 @@ def test_orthogonal_bool_indexing_like_numpy_ix(
     # note: in python 3.10 z[*selection] is not valid unpacking syntax
     actual = z[(*selection,)]
     assert_array_equal(expected, actual, err_msg=f"{selection=}")
+
+
+def test_indexing_with_zarr_array(store: StorePath) -> None:
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/2133
+    a = np.arange(10)
+    za = zarr.array(a, chunks=2, store=store, path="a")
+    ix = [False, True, False, True, False, True, False, True, False, True]
+    ii = [0, 2, 4, 5]
+
+    zix = zarr.array(ix, chunks=2, store=store, dtype="bool", path="ix")
+    zii = zarr.array(ii, chunks=2, store=store, dtype="i4", path="ii")
+    assert_array_equal(a[ix], za[zix])
+    assert_array_equal(a[ix], za.oindex[zix])
+    assert_array_equal(a[ix], za.vindex[zix])
+
+    assert_array_equal(a[ii], za[zii])
+    assert_array_equal(a[ii], za.oindex[zii])

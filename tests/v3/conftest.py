@@ -14,8 +14,7 @@ from zarr.store import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.store.remote import RemoteStore
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterator
-    from types import ModuleType
+    from collections.abc import Generator
     from typing import Any, Literal
 
     from _pytest.compat import LEGACY_PATH
@@ -99,13 +98,13 @@ async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> As
 
 
 @pytest.fixture(params=["numpy", "cupy"])
-def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
+def xp(request: pytest.FixtureRequest) -> Any:
     """Fixture to parametrize over numpy-like libraries"""
 
     if request.param == "cupy":
         request.node.add_marker(pytest.mark.gpu)
 
-    yield pytest.importorskip(request.param)
+    return pytest.importorskip(request.param)
 
 
 @pytest.fixture(autouse=True)

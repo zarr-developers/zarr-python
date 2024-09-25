@@ -101,8 +101,8 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
     members_expected["subgroup"] = group.create_group("subgroup")
     # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
     # too deep in the hierarchy
-    subsubgroup = members_expected["subgroup"].create_group("subsubgroup")  # type: ignore
-    subsubsubgroup = subsubgroup.create_group("subsubsubgroup")  # type: ignore
+    subsubgroup = members_expected["subgroup"].create_group("subsubgroup")
+    subsubsubgroup = subsubgroup.create_group("subsubsubgroup")
 
     members_expected["subarray"] = group.create_array(
         "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
@@ -301,7 +301,7 @@ def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
 
     group = Group.from_store(store, zarr_format=zarr_format)
     with pytest.raises(NotImplementedError):
-        [x for x in group]  # type: ignore
+        [x for x in group]
 
 
 def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
@@ -311,7 +311,7 @@ def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
 
     group = Group.from_store(store, zarr_format=zarr_format)
     with pytest.raises(NotImplementedError):
-        len(group)  # type: ignore
+        len(group)
 
 
 def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
@@ -574,7 +574,7 @@ def test_group_creation_existing_node(
     """
     spath = StorePath(store)
     group = Group.from_store(spath, zarr_format=zarr_format)
-    expected_exception: type[ContainsArrayError] | type[ContainsGroupError]
+    expected_exception: type[ContainsArrayError | ContainsGroupError]
     attributes: dict[str, JSON] = {"old": True}
 
     if extant_node == "array":
@@ -656,7 +656,7 @@ async def test_asyncgroup_attrs(store: Store, zarr_format: ZarrFormat) -> None:
 
 
 async def test_asyncgroup_info(store: Store, zarr_format: ZarrFormat) -> None:
-    agroup = await AsyncGroup.from_store(  # noqa
+    agroup = await AsyncGroup.from_store(  # noqa: F841
         store,
         zarr_format=zarr_format,
     )
