@@ -208,6 +208,7 @@ extend-exclude = [
 [tool.ruff.lint]
 extend-select = [
     "B",   # flake8-bugbear
+    "FLY", # flynt
     "I",   # isort
     "ISC", # flake8-implicit-str-concat
     "PGH", # pygrep-hooks
