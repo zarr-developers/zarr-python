@@ -136,7 +136,7 @@ class MemoryStore(Store):
             prefix = prefix[:-1]
 
         if prefix == "":
-            keys_unique = set(k.split("/")[0] for k in self._store_dict)
+            keys_unique = {k.split("/")[0] for k in self._store_dict}
         else:
             # Our dictionary doesn't contain directory markers, but we want to include
             # a pseudo directory when there's a nested item and we're listing an

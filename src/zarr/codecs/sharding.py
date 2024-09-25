@@ -151,7 +151,7 @@ class _ShardIndex(NamedTuple):
 
         # Are all non-empty offsets unique?
         if len(
-            set(offset for offset, _ in sorted_offsets_and_lengths if offset != MAX_UINT_64)
+            {offset for offset, _ in sorted_offsets_and_lengths if offset != MAX_UINT_64}
         ) != len(sorted_offsets_and_lengths):
             return False
 
@@ -477,7 +477,7 @@ class ShardingCodec(
         )
 
         indexed_chunks = list(indexer)
-        all_chunk_coords = set(chunk_coords for chunk_coords, _, _ in indexed_chunks)
+        all_chunk_coords = {chunk_coords for chunk_coords, _, _ in indexed_chunks}
 
         # reading bytes of all requested chunks
         shard_dict: ShardMapping = {}
