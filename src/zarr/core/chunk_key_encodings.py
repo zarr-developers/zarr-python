@@ -55,11 +55,11 @@ class ChunkKeyEncoding(Metadata):
 
     @abstractmethod
     def decode_chunk_key(self, chunk_key: str) -> ChunkCoords:
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        pass
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)

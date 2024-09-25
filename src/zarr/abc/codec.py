@@ -276,15 +276,17 @@ class CodecPipeline:
         -------
         Self
         """
-        ...
+        raise NotImplementedError
 
     @property
     @abstractmethod
-    def supports_partial_decode(self) -> bool: ...
+    def supports_partial_decode(self) -> bool:
+        raise NotImplementedError
 
     @property
     @abstractmethod
-    def supports_partial_encode(self) -> bool: ...
+    def supports_partial_encode(self) -> bool:
+        raise NotImplementedError
 
     @abstractmethod
     def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
@@ -300,7 +302,7 @@ class CodecPipeline:
         chunk_grid: ChunkGrid
             The array chunk grid
         """
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     def compute_encoded_size(self, byte_length: int, array_spec: ArraySpec) -> int:
@@ -316,7 +318,7 @@ class CodecPipeline:
         -------
         int
         """
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     async def decode(
@@ -335,7 +337,7 @@ class CodecPipeline:
         -------
         Iterable[NDBuffer | None]
         """
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     async def encode(
@@ -354,7 +356,7 @@ class CodecPipeline:
         -------
         Iterable[Buffer | None]
         """
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     async def read(
@@ -376,7 +378,7 @@ class CodecPipeline:
             The chunk spec contains information about the construction of an array from the bytes.
         out : NDBuffer
         """
-        ...
+        raise NotImplementedError
 
     @abstractmethod
     async def write(
@@ -399,7 +401,7 @@ class CodecPipeline:
             The chunk spec contains information about the chunk.
         value : NDBuffer
         """
-        ...
+        raise NotImplementedError
 
 
 async def _batching_helper(

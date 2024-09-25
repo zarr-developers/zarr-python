@@ -112,11 +112,11 @@ class ChunkGrid(Metadata):
 
     @abstractmethod
     def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def get_nchunks(self, array_shape: ChunkCoords) -> int:
-        pass
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)

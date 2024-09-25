@@ -419,7 +419,7 @@ class NDBuffer:
         -------
             NumPy array of this buffer (might be a data copy)
         """
-        ...
+        raise NotImplementedError
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -451,10 +451,12 @@ class NDBuffer:
         return self.__class__(self._data.astype(dtype=dtype, order=order))
 
     @abstractmethod
-    def __getitem__(self, key: Any) -> Self: ...
+    def __getitem__(self, key: Any) -> Self:
+        raise NotImplementedError
 
     @abstractmethod
-    def __setitem__(self, key: Any, value: Any) -> None: ...
+    def __setitem__(self, key: Any, value: Any) -> None:
+        raise NotImplementedError
 
     def __len__(self) -> int:
         return self._data.__len__()
