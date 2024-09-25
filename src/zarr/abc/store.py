@@ -84,7 +84,25 @@ class Store(ABC):
     @abstractmethod
     def with_mode(self, mode: AccessModeLiteral) -> Self:
         """
-        Return a new store pointing to the same location with a new mode.
+        Return a new store of the same type pointing to the same location with a new mode.
+
+        The returned Store is not automatically opened. Call :meth:`Store.open` before
+        using.
+
+        Parameters
+        ----------
+        mode: AccessModeLiteral
+            The new mode to use.
+
+        Returns
+        -------
+        store:
+            A new store of the same type with the new mode.
+
+        Examples
+        --------
+        >>> writer = zarr.store.MemoryStore(mode="w")
+        >>> reader = writer.with_mode("r")
         """
         ...
 

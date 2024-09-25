@@ -118,9 +118,7 @@ class ZipStore(Store):
                 return True
 
     def with_mode(self, mode: ZipStoreAccessModeLiteral) -> Self:  # type: ignore[override]
-        return type(self)(
-            path=self.path, mode=mode, compression=self.compression, allowZip64=self.allowZip64
-        )
+        raise NotImplementedError("ZipStore cannot be reopened with a new mode.")
 
     def __str__(self) -> str:
         return f"zip://{self.path}"

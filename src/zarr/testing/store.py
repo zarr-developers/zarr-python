@@ -254,8 +254,26 @@ class StoreTests(Generic[S, B]):
         assert sorted(keys_expected) == sorted(keys_observed)
 
     async def test_with_mode(self, store: S) -> None:
-        for mode in ["r", "w"]:
+        data = b"0000"
+        self.set(store, "key", self.buffer_cls.from_bytes(data))
+        assert self.get(store, "key").to_bytes() == data
+
+        for mode in ["r", "a"]:
             mode = cast(AccessModeLiteral, mode)
-            result = store.with_mode(mode)
-            assert result.mode == AccessMode.from_literal(mode)
-            assert isinstance(result, type(store))
+            clone = store.with_mode(mode)
+            # await store.close()
+            await clone._ensure_open()
+            assert clone.mode == AccessMode.from_literal(mode)
+            assert isinstance(clone, type(store))
+
+            # earlier writes are visible
+            assert self.get(clone, "key").to_bytes() == data
+
+            # writes to original after with_mode is visible
+            self.set(store, "key-2", self.buffer_cls.from_bytes(data))
+            assert self.get(clone, "key-2").to_bytes() == data
+
+            if mode == "w":
+                # writes to clone is visible in the original
+                self.set(store, "key-3", self.buffer_cls.from_bytes(data))
+                assert self.get(clone, "key-3").to_bytes() == data
