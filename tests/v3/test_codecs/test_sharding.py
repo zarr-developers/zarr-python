@@ -323,7 +323,8 @@ async def test_delete_empty_shards(store: Store) -> None:
     assert np.array_equal(data, await _AsyncArrayProxy(a)[:, :].get())
     assert await store.get(f"{path}/c/1/0", prototype=default_buffer_prototype()) is None
     chunk_bytes = await store.get(f"{path}/c/0/0", prototype=default_buffer_prototype())
-    assert chunk_bytes is not None and len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
+    assert chunk_bytes is not None
+    assert len(chunk_bytes) == 16 * 2 + 8 * 8 * 2 + 4
 
 
 def test_pickle() -> None:
