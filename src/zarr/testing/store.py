@@ -97,7 +97,7 @@ class StoreTests(Generic[S, B]):
 
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
-    @pytest.mark.parametrize("byte_range", (None, (0, None), (1, None), (1, 2), (None, 1)))
+    @pytest.mark.parametrize("byte_range", [None, (0, None), (1, None), (1, 2), (None, 1)])
     async def test_get(
         self, store: S, key: str, data: bytes, byte_range: None | tuple[int | None, int | None]
     ) -> None:
@@ -137,12 +137,12 @@ class StoreTests(Generic[S, B]):
 
     @pytest.mark.parametrize(
         "key_ranges",
-        (
+        [
             [],
             [("zarr.json", (0, 1))],
             [("c/0", (0, 1)), ("zarr.json", (0, None))],
             [("c/0/0", (0, 1)), ("c/0/1", (None, 2)), ("c/0/2", (0, 3))],
-        ),
+        ],
     )
     async def test_get_partial_values(
         self, store: S, key_ranges: list[tuple[str, tuple[int | None, int | None]]]

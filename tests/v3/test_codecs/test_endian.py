@@ -11,7 +11,7 @@ from zarr.store.common import StorePath
 from .test_codecs import _AsyncArrayProxy
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("endian", ["big", "little"])
 async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
@@ -32,7 +32,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     assert np.array_equal(data, readback_data)
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("dtype_input_endian", [">u2", "<u2"])
 @pytest.mark.parametrize("dtype_store_endian", ["big", "little"])
 async def test_endian_write(

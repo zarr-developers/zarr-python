@@ -138,7 +138,7 @@ def test_replace_ellipsis() -> None:
         ),
     ],
 )
-@pytest.mark.parametrize("use_out", (True, False))
+@pytest.mark.parametrize("use_out", [True, False])
 def test_get_basic_selection_0d(store: StorePath, use_out: bool, value: Any, dtype: Any) -> None:
     # setup
     arr_np = np.array(value, dtype=dtype)
