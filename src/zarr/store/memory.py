@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, MutableMapping
 from typing import TYPE_CHECKING
 
 from zarr.abc.store import Store
