@@ -271,7 +271,7 @@ def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
 
     group = Group.from_store(store, zarr_format=zarr_format)
     with pytest.raises(NotImplementedError):
-        [x for x in group]
+        list(group)
 
 
 def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
