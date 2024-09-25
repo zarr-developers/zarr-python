@@ -34,7 +34,7 @@ CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 
 
-class _Codec(Generic[CodecInput, CodecOutput], Metadata):
+class _Codec(Metadata, Generic[CodecInput, CodecOutput]):
     """Generic base class for codecs.
     Please use ArrayArrayCodec, ArrayBytesCodec or BytesBytesCodec for subclassing.
 
