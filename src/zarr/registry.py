@@ -28,7 +28,7 @@ __all__ = [
 T = TypeVar("T")
 
 
-class Registry(Generic[T], dict[str, type[T]]):
+class Registry(dict[str, type[T]], Generic[T]):
     def __init__(self) -> None:
         super().__init__()
         self.lazy_load_list: list[EntryPoint] = []
