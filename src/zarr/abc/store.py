@@ -9,7 +9,7 @@ from typing_extensions import Self
 from zarr.core.buffer import Buffer, BufferPrototype
 from zarr.core.common import AccessModeLiteral, BytesLike
 
-__all__ = ["Store", "AccessMode", "ByteGetter", "ByteSetter", "set_or_delete"]
+__all__ = ["AccessMode", "ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
 
 class AccessMode(NamedTuple):

@@ -15,14 +15,14 @@ if TYPE_CHECKING:
 
 __all__ = [
     "Registry",
-    "register_codec",
-    "register_pipeline",
-    "register_buffer",
-    "register_ndbuffer",
-    "get_codec_class",
-    "get_pipeline_class",
     "get_buffer_class",
+    "get_codec_class",
     "get_ndbuffer_class",
+    "get_pipeline_class",
+    "register_buffer",
+    "register_codec",
+    "register_ndbuffer",
+    "register_pipeline",
 ]
 
 T = TypeVar("T")
