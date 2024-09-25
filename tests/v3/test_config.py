@@ -41,7 +41,7 @@ def test_config_defaults_set() -> None:
         {
             "default_zarr_version": 3,
             "array": {"order": "C"},
-            "async": {"concurrency": None, "timeout": None},
+            "async": {"concurrency": 10, "timeout": None},
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.codecs.pipeline.BatchedCodecPipeline",
@@ -62,7 +62,7 @@ def test_config_defaults_set() -> None:
         }
     ]
     assert config.get("array.order") == "C"
-    assert config.get("async.concurrency") is None
+    assert config.get("async.concurrency") == 10
     assert config.get("async.timeout") is None
     assert config.get("codec_pipeline.batch_size") == 1
     assert config.get("json_indent") == 2
@@ -70,7 +70,7 @@ def test_config_defaults_set() -> None:
 
 @pytest.mark.parametrize(
     "key, old_val, new_val",
-    [("array.order", "C", "F"), ("async.concurrency", None, 10), ("json_indent", 2, 0)],
+    [("array.order", "C", "F"), ("async.concurrency", 10, 20), ("json_indent", 2, 0)],
 )
 def test_config_defaults_can_be_overridden(key: str, old_val: Any, new_val: Any) -> None:
     assert config.get(key) == old_val
