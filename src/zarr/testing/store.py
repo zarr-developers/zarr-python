@@ -37,11 +37,11 @@ class StoreTests(Generic[S, B]):
 
         raise NotImplementedError
 
-    @pytest.fixture()
+    @pytest.fixture
     def store_kwargs(self) -> dict[str, Any]:
         return {"mode": "r+"}
 
-    @pytest.fixture()
+    @pytest.fixture
     async def store(self, store_kwargs: dict[str, Any]) -> Store:
         return await self.store_cls.open(**store_kwargs)
 
