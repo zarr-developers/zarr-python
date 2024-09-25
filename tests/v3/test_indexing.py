@@ -130,7 +130,7 @@ def test_replace_ellipsis() -> None:
 
 
 @pytest.mark.parametrize(
-    "value, dtype",
+    ("value", "dtype"),
     [
         (42, "uint8"),
         pytest.param(
@@ -385,7 +385,7 @@ def test_fancy_indexing_fallback_on_get_setitem(store: StorePath) -> None:
 
 
 @pytest.mark.parametrize(
-    "index,expected_result",
+    ("index", "expected_result"),
     [
         # Single iterable of integers
         ([0, 1], [[0, 1, 2], [3, 4, 5]]),
@@ -426,7 +426,7 @@ Index = list[int] | tuple[slice | int | list[int], ...]
 
 
 @pytest.mark.parametrize(
-    "index,expected_result",
+    ("index", "expected_result"),
     [
         # Single iterable of integers
         ([0, 1], [[[0, 1, 2], [3, 4, 5], [6, 7, 8]], [[9, 10, 11], [12, 13, 14], [15, 16, 17]]]),
@@ -466,7 +466,7 @@ def test_orthogonal_indexing_fallback_on_getitem_3d(
 
 
 @pytest.mark.parametrize(
-    "index,expected_result",
+    ("index", "expected_result"),
     [
         # Single iterable of integers
         ([0, 1], [[1, 1, 1], [1, 1, 1], [0, 0, 0]]),
@@ -509,7 +509,7 @@ def test_fancy_indexing_doesnt_mix_with_implicit_slicing(store: StorePath) -> No
 
 
 @pytest.mark.parametrize(
-    "value, dtype",
+    ("value", "dtype"),
     [
         (42, "uint8"),
         pytest.param(
@@ -1735,7 +1735,7 @@ def test_numpy_int_indexing(store: StorePath) -> None:
 
 
 @pytest.mark.parametrize(
-    "shape, chunks, ops",
+    ("shape", "chunks", "ops"),
     [
         # 1D test cases
         ((1070,), (50,), [("__getitem__", (slice(200, 400),))]),

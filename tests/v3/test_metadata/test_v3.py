@@ -82,7 +82,7 @@ def test_parse_auto_fill_value(dtype_str: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "fill_value,dtype_str",
+    ("fill_value", "dtype_str"),
     [
         (True, "bool"),
         (False, "bool"),
@@ -301,7 +301,7 @@ def test_parse_invalid_dtype_raises(data):
 
 
 @pytest.mark.parametrize(
-    "data_type,fill_value", [("uint8", -1), ("int32", 22.5), ("float32", "foo")]
+    ("data_type", "fill_value"), [("uint8", -1), ("int32", 22.5), ("float32", "foo")]
 )
 async def test_invalid_fill_value_raises(data_type: str, fill_value: float) -> None:
     metadata_dict = {

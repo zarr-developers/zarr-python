@@ -69,7 +69,7 @@ def test_config_defaults_set() -> None:
 
 
 @pytest.mark.parametrize(
-    "key, old_val, new_val",
+    ("key", "old_val", "new_val"),
     [("array.order", "C", "F"), ("async.concurrency", None, 10), ("json_indent", 2, 0)],
 )
 def test_config_defaults_can_be_overridden(key: str, old_val: Any, new_val: Any) -> None:
