@@ -73,7 +73,7 @@ if TYPE_CHECKING:
     from zarr.core.metadata.common import ArrayMetadata
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
-__all__ = ["parse_array_metadata", "create_codec_pipeline"]
+__all__ = ["create_codec_pipeline", "parse_array_metadata"]
 
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
