@@ -93,7 +93,7 @@ async def test_basic() -> None:
     store = RemoteStore.from_url(
         f"s3://{test_bucket_name}",
         mode="w",
-        storage_options=dict(endpoint_url=endpoint_url, anon=False),
+        storage_options={"endpoint_url": endpoint_url, "anon": False},
     )
     assert await _collect_aiterator(store.list()) == ()
     assert not await store.exists("foo")
