@@ -234,6 +234,6 @@ class RemoteStore(Store):
         AsyncGenerator[str, None]
         """
 
-        find_str = "/".join([self.path, prefix])
+        find_str = f"{self.path}/{prefix}"
         for onefile in await self.fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
             yield onefile.removeprefix(find_str)

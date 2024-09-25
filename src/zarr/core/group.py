@@ -676,7 +676,7 @@ class AsyncGroup:
                     async for child_key, val in obj._members(
                         max_depth=max_depth, current_depth=current_depth + 1
                     ):
-                        yield "/".join([key, child_key]), val
+                        yield f"{key}/{child_key}", val
             except KeyError:
                 # keyerror is raised when `key` names an object (in the object storage sense),
                 # as opposed to a prefix, in the store under the prefix associated with this group

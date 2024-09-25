@@ -208,18 +208,26 @@ extend-exclude = [
 [tool.ruff.lint]
 extend-select = [
     "B",   # flake8-bugbear
+    "FLY", # flynt
     "I",   # isort
     "ISC", # flake8-implicit-str-concat
     "PGH", # pygrep-hooks
+    "PT",  # flake8-pytest-style
     "PYI", # flake8-pyi
     "RSE", # flake8-raise
+    "RET", # flake8-return
     "RUF",
     "TCH", # flake8-type-checking
     "TRY", # tryceratops
     "UP",  # pyupgrade
 ]
 ignore = [
+    "PT004",  # deprecated
+    "PT011",  # TODO: apply this rule
+    "PT012",  # TODO: apply this rule
     "PYI013",
+    "RET505",
+    "RET506",
     "RUF005",
     "TRY003",
     # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
