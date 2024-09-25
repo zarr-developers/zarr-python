@@ -100,6 +100,8 @@ class ArrayV2Metadata(ArrayMetadata):
                     return o.str
                 else:
                     return o.descr
+            if isinstance(o, numcodecs.abc.Codec):
+                return o.get_config()
             if np.isscalar(o):
                 out: Any
                 if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
