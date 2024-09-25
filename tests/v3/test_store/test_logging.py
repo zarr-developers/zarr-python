@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import zarr
 from zarr.core.buffer import default_buffer_prototype
 from zarr.store.logging import LoggingStore
 
@@ -33,3 +34,17 @@ async def test_logging_store(store: Store, caplog) -> None:
         assert str(store) in tup[0]
     assert f"Calling {type(store).__name__}.list" in caplog.record_tuples[0][2]
     assert f"Finished {type(store).__name__}.list" in caplog.record_tuples[1][2]
+
+
+@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
+async def test_logging_store_counter(store: Store) -> None:
+    wrapped = LoggingStore(store=store, log_level="DEBUG")
+
+    arr = zarr.create(shape=(10,), store=wrapped, overwrite=True)
+    arr[:] = 1
+
+    assert wrapped.counter["set"] == 2
+    assert wrapped.counter["get"] == 0  # 1 if overwrite=False
+    assert wrapped.counter["list"] == 0
+    assert wrapped.counter["list_dir"] == 0
+    assert wrapped.counter["list_prefix"] == 0

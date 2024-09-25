@@ -3,10 +3,11 @@ from __future__ import annotations
 import inspect
 import logging
 import time
+from collections import defaultdict
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from zarr.abc.store import Store
+from zarr.abc.store import AccessMode, Store
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
 
 class LoggingStore(Store):
     _store: Store
+    counter: defaultdict[str, int]
 
     def __init__(
         self,
@@ -24,6 +26,7 @@ class LoggingStore(Store):
         log_handler: logging.Handler | None = None,
     ):
         self._store = store
+        self.counter = defaultdict(int)
 
         self._configure_logger(log_level, log_handler)
 
@@ -44,16 +47,19 @@ class LoggingStore(Store):
         """Define a default log handler"""
         handler = logging.StreamHandler()
         handler.setLevel(self.log_level)
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        handler.setFormatter(formatter)
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
         return handler
 
     @contextmanager
     def log(self) -> Generator[None, None, None]:
-        op = f"{type(self._store).__name__}.{inspect.stack()[2].function}"
+        method = inspect.stack()[2].function
+        op = f"{type(self._store).__name__}.{method}"
         self.logger.info(f"Calling {op}")
         start_time = time.time()
         try:
+            self.counter[method] += 1
             yield
         finally:
             end_time = time.time()
@@ -78,6 +84,16 @@ class LoggingStore(Store):
     def supports_listing(self) -> bool:
         with self.log():
             return self._store.supports_listing
+
+    @property
+    def _mode(self) -> AccessMode:  # type: ignore[override]
+        with self.log():
+            return self._store._mode
+
+    @property
+    def _is_open(self) -> bool:  # type: ignore[override]
+        with self.log():
+            return self._store._is_open
 
     async def empty(self) -> bool:
         with self.log():
