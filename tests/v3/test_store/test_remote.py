@@ -56,7 +56,7 @@ def get_boto3_client() -> botocore.client.BaseClient:
     return session.create_client("s3", endpoint_url=endpoint_url)
 
 
-@pytest.fixture(autouse=True, scope="function")
+@pytest.fixture(autouse=True)
 def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
     """
     Quoting Martin Durant:
@@ -111,14 +111,14 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     store_cls = RemoteStore
     buffer_cls = cpu.Buffer
 
-    @pytest.fixture(scope="function")
+    @pytest.fixture()
     def store_kwargs(self, request) -> dict[str, str | bool]:
         fs, path = fsspec.url_to_fs(
             f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False
         )
         return {"fs": fs, "path": path, "mode": "r+"}
 
-    @pytest.fixture(scope="function")
+    @pytest.fixture()
     def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
         return self.store_cls(**store_kwargs)
 

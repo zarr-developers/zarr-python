@@ -22,7 +22,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     store_cls = ZipStore
     buffer_cls = cpu.Buffer
 
-    @pytest.fixture(scope="function")
+    @pytest.fixture()
     def store_kwargs(self, request) -> dict[str, str | bool]:
         fd, temp_path = tempfile.mkstemp()
         os.close(fd)
