@@ -8,13 +8,13 @@ import hypothesis.extra.numpy as npst  # noqa: E402
 import hypothesis.strategies as st  # noqa: E402
 from hypothesis import given  # noqa: E402
 
-from zarr.testing.strategies import arrays, basic_indices, np_arrays  # noqa: E402
+from zarr.testing.strategies import arrays, basic_indices, numpy_arrays, zarr_formats  # noqa: E402
 
 
-@given(st.data())
-def test_roundtrip(data: st.DataObject) -> None:
-    nparray = data.draw(np_arrays)
-    zarray = data.draw(arrays(arrays=st.just(nparray)))
+@given(data=st.data(), zarr_format=zarr_formats)
+def test_roundtrip(data: st.DataObject, zarr_format: int) -> None:
+    nparray = data.draw(numpy_arrays(zarr_formats=st.just(zarr_format)))
+    zarray = data.draw(arrays(arrays=st.just(nparray), zarr_formats=st.just(zarr_format)))
     assert_array_equal(nparray, zarray[:])
 
 
