@@ -46,8 +46,7 @@ def path_type(request: pytest.FixtureRequest) -> Any:
 @pytest.fixture
 async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
     store = await LocalStore.open(str(tmpdir), mode="w")
-    p = StorePath(store)
-    return p
+    return StorePath(store)
 
 
 @pytest.fixture(scope="function")
@@ -88,13 +87,12 @@ async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> As
     param: AsyncGroupRequest = request.param
 
     store = await parse_store(param.store, str(tmpdir))
-    agroup = await AsyncGroup.from_store(
+    return await AsyncGroup.from_store(
         store,
         attributes=param.attributes,
         zarr_format=param.zarr_format,
         exists_ok=False,
     )
-    return agroup
 
 
 @pytest.fixture(params=["numpy", "cupy"])

@@ -40,16 +40,12 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
         return self._sync_iter(self.store.list())
 
     def get(self, key: str, prototype: BufferPrototype) -> zarr.core.buffer.Buffer:
-        obs = self._sync(self.store.get(key, prototype=prototype))
-        return obs
+        return self._sync(self.store.get(key, prototype=prototype))
 
     def get_partial_values(
         self, key_ranges: list, prototype: BufferPrototype
     ) -> zarr.core.buffer.Buffer:
-        obs_partial = self._sync(
-            self.store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
-        )
-        return obs_partial
+        return self._sync(self.store.get_partial_values(prototype=prototype, key_ranges=key_ranges))
 
     def delete(self, path: str) -> None:
         return self._sync(self.store.delete(path))
