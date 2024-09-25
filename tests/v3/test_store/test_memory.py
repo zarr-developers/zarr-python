@@ -80,3 +80,8 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
 
     def test_list_prefix(self, store: GpuMemoryStore) -> None:
         assert True
+
+    def test_dict_reference(self, store: GpuMemoryStore) -> None:
+        store_dict = {}
+        result = GpuMemoryStore(store_dict=store_dict)
+        assert result._store_dict is store_dict

@@ -17,6 +17,12 @@ if TYPE_CHECKING:
     from zarr.core.common import AccessModeLiteral
 
 
+# T = TypeVar("T", bound=Buffer | gpu.Buffer)
+
+
+# class _MemoryStore
+
+
 # TODO: this store could easily be extended to wrap any MutableMapping store from v2
 # When that is done, the `MemoryStore` will just be a store that wraps a dict.
 class MemoryStore(Store):
@@ -161,19 +167,23 @@ class GpuMemoryStore(MemoryStore):
     of the original location. This guarantees that chunks will always be in GPU
     memory for downstream processing. For location agnostic use cases, it would
     be better to use `MemoryStore` instead.
+
+    Parameters
+    ----------
+    store_dict: MutableMapping, optional
+        A mutable mapping with string keys and :class:`zarr.core.buffer.gpu.Buffer`
+        values.
     """
 
     _store_dict: MutableMapping[str, Buffer]
 
     def __init__(
         self,
-        store_dict: MutableMapping[str, Buffer] | None = None,
+        store_dict: MutableMapping[str, gpu.Buffer] | None = None,
         *,
         mode: AccessModeLiteral = "r",
     ) -> None:
-        super().__init__(mode=mode)
-        if store_dict:
-            self._store_dict = {k: gpu.Buffer.from_buffer(store_dict[k]) for k in iter(store_dict)}
+        super().__init__(store_dict=store_dict, mode=mode)  # type: ignore[arg-type]
 
     def __str__(self) -> str:
         return f"gpumemory://{id(self._store_dict)}"
