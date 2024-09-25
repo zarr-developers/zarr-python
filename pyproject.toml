@@ -211,6 +211,7 @@ extend-select = [
     "I",   # isort
     "ISC", # flake8-implicit-str-concat
     "PGH", # pygrep-hooks
+    "PT",  # flake8-pytest-style
     "PYI", # flake8-pyi
     "RSE", # flake8-raise
     "RUF",
@@ -219,6 +220,9 @@ extend-select = [
     "UP",  # pyupgrade
 ]
 ignore = [
+    "PT004",  # deprecated
+    "PT011",  # TODO: apply this rule
+    "PT012",  # TODO: apply this rule
     "PYI013",
     "RUF005",
     "TRY003",
