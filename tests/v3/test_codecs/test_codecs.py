@@ -59,7 +59,7 @@ def test_sharding_pickle() -> None:
     pass
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("input_order", ["F", "C"])
 @pytest.mark.parametrize("store_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_write_order", ["F", "C"])
@@ -117,7 +117,7 @@ async def test_order(
         assert read_data.flags["C_CONTIGUOUS"]
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("input_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_write_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_read_order", ["F", "C"])
@@ -159,7 +159,7 @@ def test_order_implicit(
         assert read_data.flags["C_CONTIGUOUS"]
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_open(store: Store) -> None:
     spath = StorePath(store)
     a = Array.create(
@@ -205,7 +205,7 @@ def test_morton() -> None:
     ]
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_write_partial_chunks(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
     spath = StorePath(store)
@@ -220,7 +220,7 @@ def test_write_partial_chunks(store: Store) -> None:
     assert np.array_equal(a[0:16, 0:16], data)
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 async def test_delete_empty_chunks(store: Store) -> None:
     data = np.ones((16, 16))
     path = "delete_empty_chunks"
@@ -238,7 +238,7 @@ async def test_delete_empty_chunks(store: Store) -> None:
     assert await store.get(f"{path}/c0/0", prototype=default_buffer_prototype()) is None
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 async def test_dimension_names(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
     path = "dimension_names"
@@ -272,7 +272,7 @@ async def test_dimension_names(store: Store) -> None:
     assert "dimension_names" not in json.loads(zarr_json_buffer.to_bytes())
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_invalid_metadata(store: Store) -> None:
     spath = StorePath(store, "invalid_metadata")
     with pytest.raises(ValueError):
@@ -360,7 +360,7 @@ def test_invalid_metadata(store: Store) -> None:
         )
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 async def test_resize(store: Store) -> None:
     data = np.zeros((16, 18), dtype="uint16")
     path = "resize"

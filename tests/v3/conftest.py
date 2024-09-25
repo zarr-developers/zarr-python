@@ -49,27 +49,27 @@ async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
     return StorePath(store)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
     return await LocalStore.open(str(tmpdir), mode="w")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def remote_store(url: str) -> RemoteStore:
     return await RemoteStore.open(url, mode="w")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def memory_store() -> MemoryStore:
     return await MemoryStore.open(mode="w")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def zip_store(tmpdir: LEGACY_PATH) -> ZipStore:
     return await ZipStore.open(str(tmpdir / "zarr.zip"), mode="w")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     param = request.param
     return await parse_store(param, str(tmpdir))
@@ -82,7 +82,7 @@ class AsyncGroupRequest:
     attributes: dict[str, Any] = field(default_factory=dict)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
