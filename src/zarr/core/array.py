@@ -9,7 +9,6 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr._compat import _deprecate_positional_args
-from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -252,12 +251,6 @@ class AsyncArray:
         shape = parse_shapelike(shape)
         codecs = list(codecs) if codecs is not None else [BytesCodec()]
 
-        if fill_value is None:
-            if dtype == np.dtype("bool"):
-                fill_value = False
-            else:
-                fill_value = 0
-
         if chunk_key_encoding is None:
             chunk_key_encoding = ("default", "/")
         assert chunk_key_encoding is not None
@@ -281,7 +274,6 @@ class AsyncArray:
         )
 
         array = cls(metadata=metadata, store_path=store_path)
-
         await array._save_metadata(metadata)
         return array
 
