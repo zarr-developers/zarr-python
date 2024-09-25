@@ -48,6 +48,7 @@ classifiers = [
     'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
 ]
 license = {text = "MIT License"}
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
@@ -130,17 +131,17 @@ dependencies = [
 features = ["test", "extra"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11", "3.12"]
+python = ["3.10", "3.11", "3.12", "3.13"]
 numpy = ["1.24", "1.26", "2.0"]
 version = ["minimal"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11", "3.12"]
+python = ["3.10", "3.11", "3.12", "3.13"]
 numpy = ["1.24", "1.26", "2.0"]
 features = ["optional"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11", "3.12"]
+python = ["3.10", "3.11", "3.12", "3.13"]
 numpy = ["1.24", "1.26", "2.0"]
 features = ["gpu"]
 
@@ -161,7 +162,7 @@ dependencies = [
 features = ["test", "extra", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
-python = ["3.10", "3.11", "3.12"]
+python = ["3.10", "3.11", "3.12", "3.13"]
 numpy = ["1.24", "1.26", "2.0"]
 version = ["minimal"]
 
