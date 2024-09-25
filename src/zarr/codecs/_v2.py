@@ -8,16 +8,18 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer, default_buffer_prototype
-from zarr.core.common import JSON, to_thread
+from zarr.core.common import to_thread
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
+    import numcodecs.abc
+
     from zarr.core.array_spec import ArraySpec
 
 
 @dataclass(frozen=True)
 class V2Compressor(ArrayBytesCodec):
-    compressor: dict[str, JSON] | None
+    compressor: numcodecs.abc.Codec | None
 
     is_fixed_size = False
 
@@ -27,9 +29,8 @@ class V2Compressor(ArrayBytesCodec):
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
         if self.compressor is not None:
-            compressor = numcodecs.get_codec(self.compressor)
             chunk_numpy_array = ensure_ndarray(
-                await to_thread(compressor.decode, chunk_bytes.as_array_like())
+                await to_thread(self.compressor.decode, chunk_bytes.as_array_like())
             )
         else:
             chunk_numpy_array = ensure_ndarray(chunk_bytes.as_array_like())
@@ -47,14 +48,13 @@ class V2Compressor(ArrayBytesCodec):
     ) -> Buffer | None:
         chunk_numpy_array = chunk_array.as_numpy_array()
         if self.compressor is not None:
-            compressor = numcodecs.get_codec(self.compressor)
             if (
                 not chunk_numpy_array.flags.c_contiguous
                 and not chunk_numpy_array.flags.f_contiguous
             ):
                 chunk_numpy_array = chunk_numpy_array.copy(order="A")
             encoded_chunk_bytes = ensure_bytes(
-                await to_thread(compressor.encode, chunk_numpy_array)
+                await to_thread(self.compressor.encode, chunk_numpy_array)
             )
         else:
             encoded_chunk_bytes = ensure_bytes(chunk_numpy_array)
