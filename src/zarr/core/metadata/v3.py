@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING, cast, overload
 
 if TYPE_CHECKING:
@@ -72,24 +71,20 @@ def parse_dimension_names(data: object) -> tuple[str | None, ...] | None:
 
 
 def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
+    """
+    Parse storage_transformers. Zarr python cannot use storage transformers
+    at this time, so this function doesn't attempt to validate them.
+    """
     if data is None:
         return ()
     if isinstance(data, Iterable):
         if len(tuple(data)) >= 1:
-            msg = (
-                "Got a non-null storage_transformers keyword argument. "
-                "Storage transformers are not supported by zarr-python at this time. "
-                "The storage transformer(s) will be retained in array metadata but will not "
-                "influence storage routines"
-            )
-            warnings.warn(msg, UserWarning, stacklevel=1)
             return data  # type: ignore[return-value]
         else:
             return ()
-    else:
-        raise TypeError(
-            f"Invalid storage_transformers. Expected an iterable of dicts. Got {type(data)} instead."
-        )
+    raise TypeError(
+        f"Invalid storage_transformers. Expected an iterable of dicts. Got {type(data)} instead."
+    )
 
 
 @dataclass(frozen=True, kw_only=True)

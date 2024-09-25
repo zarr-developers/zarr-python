@@ -264,24 +264,3 @@ async def test_datetime_metadata(fill_value: int, precision: str) -> None:
 
     result = json.loads(d["zarr.json"].to_bytes())
     assert result["fill_value"] == fill_value
-
-
-def test_storage_transformers() -> None:
-    """
-    Test that providing an actual storage transformer produces a warning and otherwise passes through
-    """
-    metadata_dict = {
-        "zarr_format": 3,
-        "node_type": "array",
-        "shape": (10,),
-        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
-        "data_type": "uint8",
-        "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
-        "codecs": (BytesCodec(),),
-        "fill_value": 0,
-        "storage_transformers": ({"test": "should_warn"}),
-    }
-    with pytest.warns():
-        meta = ArrayV3Metadata.from_dict(metadata_dict)
-
-    assert meta.to_dict()["storage_transformers"] == metadata_dict["storage_transformers"]
