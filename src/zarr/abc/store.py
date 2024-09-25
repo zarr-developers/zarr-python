@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from asyncio import gather
 from collections.abc import AsyncGenerator, Iterable
+from types import TracebackType
 from typing import Any, NamedTuple, Protocol, runtime_checkable
 
 from typing_extensions import Self
@@ -35,7 +36,7 @@ class Store(ABC):
     _mode: AccessMode
     _is_open: bool
 
-    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any):
+    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any) -> None:
         self._is_open = False
         self._mode = AccessMode.from_literal(mode)
 
@@ -49,7 +50,12 @@ class Store(ABC):
         """Enter a context manager that will close the store upon exiting."""
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         """Close the store."""
         self.close()
 

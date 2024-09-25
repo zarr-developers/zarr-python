@@ -12,7 +12,7 @@ from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
-from zarr.abc.store import set_or_delete
+from zarr.abc.store import Store, set_or_delete
 from zarr.core.array import Array, AsyncArray
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
@@ -54,7 +54,7 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 def parse_attributes(data: Any) -> dict[str, Any]:
     if data is None:
         return {}
-    elif isinstance(data, dict) and all(map(lambda v: isinstance(v, str), data.keys())):
+    elif isinstance(data, dict) and all(isinstance(k, str) for k in data):
         return data
     msg = f"Expected dict with string keys. Got {type(data)} instead."
     raise TypeError(msg)
@@ -104,7 +104,9 @@ class GroupMetadata(Metadata):
                 ),
             }
 
-    def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3):
+    def __init__(
+        self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3
+    ) -> None:
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
 
@@ -126,7 +128,7 @@ class AsyncGroup:
     store_path: StorePath
 
     @classmethod
-    async def create(
+    async def from_store(
         cls,
         store: StoreLike,
         *,
@@ -202,11 +204,10 @@ class AsyncGroup:
         store_path: StorePath,
         data: dict[str, Any],
     ) -> AsyncGroup:
-        group = cls(
+        return cls(
             metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
         )
-        return group
 
     async def getitem(
         self,
@@ -312,6 +313,21 @@ class AsyncGroup:
     def info(self) -> None:
         raise NotImplementedError
 
+    @property
+    def store(self) -> Store:
+        return self.store_path.store
+
+    @property
+    def read_only(self) -> bool:
+        # Backwards compatibility for 2.x
+        return self.store_path.store.mode.readonly
+
+    @property
+    def synchronizer(self) -> None:
+        # Backwards compatibility for 2.x
+        # Not implemented in 3.x yet.
+        return None
+
     async def create_group(
         self,
         name: str,
@@ -320,7 +336,7 @@ class AsyncGroup:
         attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
         attributes = attributes or {}
-        return await type(self).create(
+        return await type(self).from_store(
             self.store_path / name,
             attributes=attributes,
             exists_ok=exists_ok,
@@ -752,7 +768,7 @@ class Group(SyncMixin):
     _async_group: AsyncGroup
 
     @classmethod
-    def create(
+    def from_store(
         cls,
         store: StoreLike,
         *,
@@ -762,7 +778,7 @@ class Group(SyncMixin):
     ) -> Group:
         attributes = attributes or {}
         obj = sync(
-            AsyncGroup.create(
+            AsyncGroup.from_store(
                 store,
                 attributes=attributes,
                 exists_ok=exists_ok,
@@ -843,6 +859,22 @@ class Group(SyncMixin):
     def info(self) -> None:
         raise NotImplementedError
 
+    @property
+    def store(self) -> Store:
+        # Backwards compatibility for 2.x
+        return self._async_group.store
+
+    @property
+    def read_only(self) -> bool:
+        # Backwards compatibility for 2.x
+        return self._async_group.read_only
+
+    @property
+    def synchronizer(self) -> None:
+        # Backwards compatibility for 2.x
+        # Not implemented in 3.x yet.
+        return self._async_group.synchronizer
+
     def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
@@ -857,8 +889,7 @@ class Group(SyncMixin):
         """
         _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
-        result = tuple(map(lambda kv: (kv[0], _parse_async_node(kv[1])), _members))
-        return result
+        return tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
 
     def __contains__(self, member: str) -> bool:
         return self._sync(self._async_group.contains(member))
@@ -912,6 +943,10 @@ class Group(SyncMixin):
     def require_groups(self, *names: str) -> tuple[Group, ...]:
         """Convenience method to require multiple groups in a single call."""
         return tuple(map(Group, self._sync(self._async_group.require_groups(*names))))
+
+    def create(self, *args: Any, **kwargs: Any) -> Array:
+        # Backwards compatibility for 2.x
+        return self.create_array(*args, **kwargs)
 
     def create_array(
         self,
