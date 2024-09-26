@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from zarr.abc.store import Store
 
 
-@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 async def test_logging_store(store: Store, caplog) -> None:
     wrapped = LoggingStore(store=store, log_level="DEBUG")
     buffer = default_buffer_prototype().buffer
@@ -36,7 +36,7 @@ async def test_logging_store(store: Store, caplog) -> None:
     assert f"Finished {type(store).__name__}.list" in caplog.record_tuples[1][2]
 
 
-@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 async def test_logging_store_counter(store: Store) -> None:
     wrapped = LoggingStore(store=store, log_level="DEBUG")
 
