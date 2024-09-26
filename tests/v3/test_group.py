@@ -80,6 +80,11 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
 
     assert result == expected
 
+    paths = ["a", "a/b", "a/b/c"]
+    for path in paths:
+        g = await zarr.api.asynchronous.open_group(store=store, path=path)
+        assert isinstance(g, AsyncGroup)
+
 
 def test_group_name_properties(store: Store, zarr_format: ZarrFormat) -> None:
     """

@@ -10,6 +10,7 @@ from zarr import Array, AsyncArray, Group
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import ZarrFormat
+from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
@@ -94,6 +95,11 @@ async def test_create_creates_parents(
     result = sorted([x async for x in store.list_prefix("")])
 
     assert result == expected
+
+    paths = ["a", "a/b", "a/b/c"]
+    for path in paths:
+        g = await zarr.api.asynchronous.open_group(store=store, path=path)
+        assert isinstance(g, AsyncGroup)
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
