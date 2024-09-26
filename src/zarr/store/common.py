@@ -51,6 +51,9 @@ class StorePath:
     async def delete(self) -> None:
         await self.store.delete(self.path)
 
+    async def setdefault(self, default: Buffer) -> None:
+        await self.store.setdefault(self.path, default)
+
     async def exists(self) -> bool:
         return await self.store.exists(self.path)
 

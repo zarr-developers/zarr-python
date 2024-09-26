@@ -13,7 +13,12 @@ from zarr.abc.store import set_or_delete
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
 from zarr.core.attributes import Attributes
-from zarr.core.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
+from zarr.core.buffer import (
+    BufferPrototype,
+    NDArrayLike,
+    NDBuffer,
+    default_buffer_prototype,
+)
 from zarr.core.chunk_grids import RegularChunkGrid, _guess_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -71,6 +76,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
 
     from zarr.abc.codec import Codec, CodecPipeline
+    from zarr.core.group import AsyncGroup
     from zarr.core.metadata.common import ArrayMetadata
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
@@ -276,7 +282,7 @@ class AsyncArray:
         )
 
         array = cls(metadata=metadata, store_path=store_path)
-        await array._save_metadata(metadata)
+        await array._save_metadata(metadata, ensure_parents=True)
         return array
 
     @classmethod
@@ -315,7 +321,7 @@ class AsyncArray:
             attributes=attributes,
         )
         array = cls(metadata=metadata, store_path=store_path)
-        await array._save_metadata(metadata)
+        await array._save_metadata(metadata, ensure_parents=True)
         return array
 
     @classmethod
@@ -603,9 +609,24 @@ class AsyncArray:
         )
         return await self._get_selection(indexer, prototype=prototype)
 
-    async def _save_metadata(self, metadata: ArrayMetadata) -> None:
+    async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
+
+        if ensure_parents:
+            # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediates.
+            parents = _build_parents(self)
+
+            for parent in parents:
+                awaitables.extend(
+                    [
+                        (parent.store_path / key).setdefault(value)
+                        for key, value in parent.metadata.to_buffer_dict(
+                            default_buffer_prototype()
+                        ).items()
+                    ]
+                )
+
         await gather(*awaitables)
 
     async def _set_selection(
@@ -2336,3 +2357,21 @@ def chunks_initialized(array: Array | AsyncArray) -> tuple[str, ...]:
             out.append(chunk_key)
 
     return tuple(out)
+
+
+def _build_parents(node: AsyncArray | AsyncGroup) -> list[AsyncGroup]:
+    from zarr.core.group import AsyncGroup, GroupMetadata
+
+    required_parts = node.store_path.path.split("/")[:-1]
+    parents = []
+
+    for i, part in enumerate(required_parts):
+        path = "/".join(required_parts[:i] + [part])
+        parents.append(
+            AsyncGroup(
+                metadata=GroupMetadata(zarr_format=node.metadata.zarr_format),
+                store_path=StorePath(store=node.store_path.store, path=path),
+            )
+        )
+
+    return parents

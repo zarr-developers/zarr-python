@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from zarr.abc.store import ByteRangeRequest, Store
+from zarr.core.buffer import Buffer
 from zarr.store.common import _dereference_path
 
 if TYPE_CHECKING:
@@ -207,6 +208,11 @@ class RemoteStore(Store):
         self, key_start_values: Iterable[tuple[str, int, BytesLike]]
     ) -> None:
         raise NotImplementedError
+
+    async def setdefault(self, key: str, default: Buffer) -> None:
+        # this isn't safe for concurrent writers, but that's probably unavoidable.
+        if not await self.fs._exists(_dereference_path(self.path, key)):
+            await self.set(key, default)
 
     async def list(self) -> AsyncGenerator[str, None]:
         allfiles = await self.fs._find(self.path, detail=False, withdirs=False)

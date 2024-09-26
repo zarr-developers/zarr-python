@@ -173,6 +173,16 @@ class Store(ABC):
         """
         ...
 
+    @abstractmethod
+    async def setdefault(self, key: str, default: Buffer) -> None:
+        """
+        Store a key with a value of ``default`` if the key is not already present.
+
+        Unlike MutableMapping.default, this method does not provide any way to
+        know whether ``default`` was actually set.
+        """
+        ...
+
     async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
         """
         Insert multiple (key, value) pairs into storage.
@@ -298,8 +308,17 @@ class ByteSetter(Protocol):
 
     async def delete(self) -> None: ...
 
+    async def setdefault(self, default: Buffer) -> None: ...
+
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:
+    if value is None:
+        await byte_setter.delete()
+    else:
+        await byte_setter.set(value)
+
+
+async def setdefault(byte_setter: ByteSetter, value: Buffer | None) -> None:
     if value is None:
         await byte_setter.delete()
     else:
