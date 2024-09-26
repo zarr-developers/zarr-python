@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from asyncio import gather
+from collections.abc import AsyncGenerator, Iterable
 from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
+    from types import TracebackType
     from typing import Any, TypeAlias
 
     from typing_extensions import Self
@@ -42,7 +44,7 @@ class Store(ABC):
     _mode: AccessMode
     _is_open: bool
 
-    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any):
+    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any) -> None:
         self._is_open = False
         self._mode = AccessMode.from_literal(mode)
 
@@ -56,7 +58,12 @@ class Store(ABC):
         """Enter a context manager that will close the store upon exiting."""
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         """Close the store."""
         self.close()
 
@@ -171,7 +178,7 @@ class Store(ABC):
         Insert multiple (key, value) pairs into storage.
         """
         await gather(*(self.set(key, value) for key, value in values))
-        return None
+        return
 
     @property
     @abstractmethod

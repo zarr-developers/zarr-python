@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 async def store() -> AsyncGenerator[StorePath]:
-    yield StorePath(await MemoryStore.open(mode="w"))
+    return StorePath(await MemoryStore.open(mode="w"))
 
 
 def zarr_array_from_numpy_array(
@@ -132,7 +132,7 @@ def test_replace_ellipsis() -> None:
 
 
 @pytest.mark.parametrize(
-    "value, dtype",
+    ("value", "dtype"),
     [
         (42, "uint8"),
         pytest.param(
@@ -140,7 +140,7 @@ def test_replace_ellipsis() -> None:
         ),
     ],
 )
-@pytest.mark.parametrize("use_out", (True, False))
+@pytest.mark.parametrize("use_out", [True, False])
 def test_get_basic_selection_0d(store: StorePath, use_out: bool, value: Any, dtype: Any) -> None:
     # setup
     arr_np = np.array(value, dtype=dtype)
@@ -387,7 +387,7 @@ def test_fancy_indexing_fallback_on_get_setitem(store: StorePath) -> None:
 
 
 @pytest.mark.parametrize(
-    "index,expected_result",
+    ("index", "expected_result"),
     [
         # Single iterable of integers
         ([0, 1], [[0, 1, 2], [3, 4, 5]]),
@@ -428,7 +428,7 @@ Index = list[int] | tuple[slice | int | list[int], ...]
 
 
 @pytest.mark.parametrize(
-    "index,expected_result",
+    ("index", "expected_result"),
     [
         # Single iterable of integers
         ([0, 1], [[[0, 1, 2], [3, 4, 5], [6, 7, 8]], [[9, 10, 11], [12, 13, 14], [15, 16, 17]]]),
@@ -468,7 +468,7 @@ def test_orthogonal_indexing_fallback_on_getitem_3d(
 
 
 @pytest.mark.parametrize(
-    "index,expected_result",
+    ("index", "expected_result"),
     [
         # Single iterable of integers
         ([0, 1], [[1, 1, 1], [1, 1, 1], [0, 0, 0]]),
@@ -511,7 +511,7 @@ def test_fancy_indexing_doesnt_mix_with_implicit_slicing(store: StorePath) -> No
 
 
 @pytest.mark.parametrize(
-    "value, dtype",
+    ("value", "dtype"),
     [
         (42, "uint8"),
         pytest.param(
@@ -1737,7 +1737,7 @@ def test_numpy_int_indexing(store: StorePath) -> None:
 
 
 @pytest.mark.parametrize(
-    "shape, chunks, ops",
+    ("shape", "chunks", "ops"),
     [
         # 1D test cases
         ((1070,), (50,), [("__getitem__", (slice(200, 400),))]),
@@ -1784,9 +1784,7 @@ async def test_accessed_chunks(
 
         # Combine and generate the cartesian product to determine the chunks keys that
         # will be accessed
-        chunks_accessed = []
-        for comb in itertools.product(*chunks_per_dim):
-            chunks_accessed.append(".".join([str(ci) for ci in comb]))
+        chunks_accessed = [".".join(map(str, comb)) for comb in itertools.product(*chunks_per_dim)]
 
         counts_before = store.counter.copy()
 
@@ -1913,3 +1911,20 @@ def test_iter_grid_invalid() -> None:
     """
     with pytest.raises(IndexError):
         list(_iter_grid((5,), origin=(0,), selection_shape=(10,)))
+
+
+def test_indexing_with_zarr_array(store: StorePath) -> None:
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/2133
+    a = np.arange(10)
+    za = zarr.array(a, chunks=2, store=store, path="a")
+    ix = [False, True, False, True, False, True, False, True, False, True]
+    ii = [0, 2, 4, 5]
+
+    zix = zarr.array(ix, chunks=2, store=store, dtype="bool", path="ix")
+    zii = zarr.array(ii, chunks=2, store=store, dtype="i4", path="ii")
+    assert_array_equal(a[ix], za[zix])
+    assert_array_equal(a[ix], za.oindex[zix])
+    assert_array_equal(a[ix], za.vindex[zix])
+
+    assert_array_equal(a[ii], za[zii])
+    assert_array_equal(a[ii], za.oindex[zii])

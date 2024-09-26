@@ -52,7 +52,7 @@ class ArrayV2Metadata(ArrayMetadata):
         compressor: numcodecs.abc.Codec | dict[str, JSON] | None = None,
         filters: Iterable[numcodecs.abc.Codec | dict[str, JSON]] | None = None,
         attributes: dict[str, JSON] | None = None,
-    ):
+    ) -> None:
         """
         Metadata for a Zarr version 2 array.
         """
@@ -100,6 +100,8 @@ class ArrayV2Metadata(ArrayMetadata):
                     return o.str
                 else:
                     return o.descr
+            if isinstance(o, numcodecs.abc.Codec):
+                return o.get_config()
             if np.isscalar(o):
                 out: Any
                 if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):

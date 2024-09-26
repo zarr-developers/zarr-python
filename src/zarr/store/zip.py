@@ -56,7 +56,7 @@ class ZipStore(Store):
         mode: ZipStoreAccessModeLiteral = "r",
         compression: int = zipfile.ZIP_STORED,
         allowZip64: bool = True,
-    ):
+    ) -> None:
         super().__init__(mode=mode)
 
         if isinstance(path, str):
@@ -232,7 +232,7 @@ class ZipStore(Store):
         keys = self._zf.namelist()
         seen = set()
         if prefix == "":
-            keys_unique = set(k.split("/")[0] for k in keys)
+            keys_unique = {k.split("/")[0] for k in keys}
             for key in keys_unique:
                 if key not in seen:
                     seen.add(key)

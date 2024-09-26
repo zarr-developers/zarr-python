@@ -84,3 +84,5 @@ fixture/
 .DS_Store
 tests/.hypothesis
 .hypothesis/
+
+zarr/version.py

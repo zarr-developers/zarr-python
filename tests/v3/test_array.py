@@ -16,8 +16,8 @@ from zarr.store import LocalStore, MemoryStore
 from zarr.store.common import StorePath
 
 
-@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("exists_ok", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
 def test_array_creation_existing_node(
@@ -31,7 +31,7 @@ def test_array_creation_existing_node(
     """
     spath = StorePath(store)
     group = Group.from_store(spath, zarr_format=zarr_format)
-    expected_exception: type[ContainsArrayError] | type[ContainsGroupError]
+    expected_exception: type[ContainsArrayError | ContainsGroupError]
     if extant_node == "array":
         expected_exception = ContainsArrayError
         _ = group.create_array("extant", shape=(10,), dtype="uint8")
@@ -65,8 +65,8 @@ def test_array_creation_existing_node(
             )
 
 
-@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_array_name_properties_no_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -76,8 +76,8 @@ def test_array_name_properties_no_group(
     assert arr.basename is None
 
 
-@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_array_name_properties_with_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -127,7 +127,7 @@ def test_array_v3_fill_value_default(
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize(
-    "dtype_str,fill_value",
+    ("dtype_str", "fill_value"),
     [("bool", True), ("uint8", 99), ("float32", -99.9), ("complex64", 3 + 4j)],
 )
 def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str) -> None:
@@ -205,8 +205,8 @@ async def test_array_v3_nan_fill_value(store: MemoryStore) -> None:
     assert len([a async for a in store.list_prefix("/")]) == 0
 
 
-@pytest.mark.parametrize("store", ("local",), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_serializable_async_array(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -223,8 +223,8 @@ async def test_serializable_async_array(
     # TODO: uncomment the parts of this test that will be impacted by the config/prototype changes in flight
 
 
-@pytest.mark.parametrize("store", ("local",), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = Array.create(
         store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
@@ -239,7 +239,7 @@ def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> 
 
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray])
-@pytest.mark.parametrize("nchunks", (2, 5, 10))
+@pytest.mark.parametrize("nchunks", [2, 5, 10])
 def test_nchunks(test_cls: type[Array] | type[AsyncArray], nchunks: int) -> None:
     """
     Test that nchunks returns the number of chunks defined for the array.
@@ -293,7 +293,7 @@ def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray]) -> None:
     arr = Array.create(store, shape=(100,), chunks=(10,), dtype="i4")
 
     chunks_accumulated = tuple(
-        accumulate(tuple(map(lambda v: tuple(v.split(" ")), arr._iter_chunk_keys())))
+        accumulate(tuple(tuple(v.split(" ")) for v in arr._iter_chunk_keys()))
     )
     for keys, region in zip(chunks_accumulated, arr._iter_chunk_regions(), strict=False):
         arr[region] = 1

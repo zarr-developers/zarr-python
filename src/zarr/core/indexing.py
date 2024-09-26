@@ -37,7 +37,6 @@ IntSequence = list[int] | npt.NDArray[np.intp]
 ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
 BasicSelector = int | slice | EllipsisType
 Selector = BasicSelector | ArrayOfIntOrBool
-
 BasicSelection = BasicSelector | tuple[BasicSelector, ...]  # also used for BlockIndex
 CoordinateSelection = IntSequence | tuple[IntSequence, ...]
 MaskSelection = npt.NDArray[np.bool_]
@@ -57,7 +56,7 @@ class ArrayIndexError(IndexError):
 class BoundsCheckError(IndexError):
     _msg = ""
 
-    def __init__(self, dim_len: int):
+    def __init__(self, dim_len: int) -> None:
         self._msg = f"index out of bounds for dimension with length {dim_len}"
 
 
@@ -75,6 +74,15 @@ class VindexInvalidSelectionError(IndexError):
 
 def err_too_many_indices(selection: Any, shape: ChunkCoords) -> None:
     raise IndexError(f"too many indices for array; expected {len(shape)}, got {len(selection)}")
+
+
+def _zarr_array_to_int_or_bool_array(arr: Array) -> npt.NDArray[np.intp] | npt.NDArray[np.bool_]:
+    if arr.dtype.kind in ("i", "b"):
+        return np.asarray(arr)
+    else:
+        raise IndexError(
+            f"Invalid array dtype: {arr.dtype}. Arrays used as indices must be of integer or boolean type"
+        )
 
 
 @runtime_checkable
@@ -327,7 +335,7 @@ class IntDimIndexer:
     dim_chunk_len: int
     nitems: int = 1
 
-    def __init__(self, dim_sel: int, dim_len: int, dim_chunk_len: int):
+    def __init__(self, dim_sel: int, dim_len: int, dim_chunk_len: int) -> None:
         object.__setattr__(self, "dim_sel", normalize_integer_selection(dim_sel, dim_len))
         object.__setattr__(self, "dim_len", dim_len)
         object.__setattr__(self, "dim_chunk_len", dim_chunk_len)
@@ -351,7 +359,7 @@ class SliceDimIndexer:
     stop: int
     step: int
 
-    def __init__(self, dim_sel: slice, dim_len: int, dim_chunk_len: int):
+    def __init__(self, dim_sel: slice, dim_len: int, dim_chunk_len: int) -> None:
         # normalize
         start, stop, step = dim_sel.indices(dim_len)
         if step < 1:
@@ -525,7 +533,7 @@ class BasicIndexer(Indexer):
         selection: BasicSelection,
         shape: ChunkCoords,
         chunk_grid: ChunkGrid,
-    ):
+    ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
         # handle ellipsis
         selection_normalized = replace_ellipsis(selection, shape)
@@ -581,7 +589,7 @@ class BoolArrayDimIndexer:
     nitems: int
     dim_chunk_ixs: npt.NDArray[np.intp]
 
-    def __init__(self, dim_sel: npt.NDArray[np.bool_], dim_len: int, dim_chunk_len: int):
+    def __init__(self, dim_sel: npt.NDArray[np.bool_], dim_len: int, dim_chunk_len: int) -> None:
         # check number of dimensions
         if not is_bool_array(dim_sel, 1):
             raise IndexError("Boolean arrays in an orthogonal selection must be 1-dimensional only")
@@ -698,7 +706,7 @@ class IntArrayDimIndexer:
         wraparound: bool = True,
         boundscheck: bool = True,
         order: Order = Order.UNKNOWN,
-    ):
+    ) -> None:
         # ensure 1d array
         dim_sel = np.asanyarray(dim_sel)
         if not is_integer_array(dim_sel, 1):
@@ -838,7 +846,7 @@ class OrthogonalIndexer(Indexer):
     is_advanced: bool
     drop_axes: tuple[int, ...]
 
-    def __init__(self, selection: Selection, shape: ChunkCoords, chunk_grid: ChunkGrid):
+    def __init__(self, selection: Selection, shape: ChunkCoords, chunk_grid: ChunkGrid) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
         # handle ellipsis
@@ -922,7 +930,14 @@ class OrthogonalIndexer(Indexer):
 class OIndex:
     array: Array
 
-    def __getitem__(self, selection: OrthogonalSelection) -> NDArrayLike:
+    # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
+    def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayLike:
+        from zarr.core.array import Array
+
+        # if input is a Zarr array, we materialize it now.
+        if isinstance(selection, Array):
+            selection = _zarr_array_to_int_or_bool_array(selection)
+
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
@@ -945,7 +960,9 @@ class BlockIndexer(Indexer):
     shape: ChunkCoords
     drop_axes: ChunkCoords
 
-    def __init__(self, selection: BasicSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
+    def __init__(
+        self, selection: BasicSelection, shape: ChunkCoords, chunk_grid: ChunkGrid
+    ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
         # handle ellipsis
@@ -1070,7 +1087,9 @@ class CoordinateIndexer(Indexer):
     chunk_shape: ChunkCoords
     drop_axes: ChunkCoords
 
-    def __init__(self, selection: CoordinateSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
+    def __init__(
+        self, selection: CoordinateSelection, shape: ChunkCoords, chunk_grid: ChunkGrid
+    ) -> None:
         chunk_shape = get_chunk_shape(chunk_grid)
 
         cdata_shape: ChunkCoords
@@ -1187,7 +1206,7 @@ class CoordinateIndexer(Indexer):
 
 @dataclass(frozen=True)
 class MaskIndexer(CoordinateIndexer):
-    def __init__(self, selection: MaskSelection, shape: ChunkCoords, chunk_grid: ChunkGrid):
+    def __init__(self, selection: MaskSelection, shape: ChunkCoords, chunk_grid: ChunkGrid) -> None:
         # some initial normalization
         selection_normalized = cast(tuple[MaskSelection], ensure_tuple(selection))
         selection_normalized = cast(tuple[MaskSelection], replace_lists(selection_normalized))
@@ -1210,7 +1229,13 @@ class MaskIndexer(CoordinateIndexer):
 class VIndex:
     array: Array
 
-    def __getitem__(self, selection: CoordinateSelection | MaskSelection) -> NDArrayLike:
+    # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
+    def __getitem__(self, selection: CoordinateSelection | MaskSelection | Array) -> NDArrayLike:
+        from zarr.core.array import Array
+
+        # if input is a Zarr array, we materialize it now.
+        if isinstance(selection, Array):
+            selection = _zarr_array_to_int_or_bool_array(selection)
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
