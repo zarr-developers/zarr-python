@@ -90,3 +90,12 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
         store_dict = {}
         result = GpuMemoryStore(store_dict=store_dict)
         assert result._store_dict is store_dict
+
+    def test_from_dict(self):
+        d = {
+            "a": gpu.Buffer.from_bytes(b"aaaa"),
+            "b": cpu.Buffer.from_bytes(b"bbbb"),
+        }
+        result = GpuMemoryStore.from_dict(d)
+        for v in result._store_dict.values():
+            assert type(v) is gpu.Buffer

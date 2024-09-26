@@ -16,12 +16,6 @@ if TYPE_CHECKING:
     from zarr.core.common import AccessModeLiteral
 
 
-# T = TypeVar("T", bound=Buffer | gpu.Buffer)
-
-
-# class _MemoryStore
-
-
 # TODO: this store could easily be extended to wrap any MutableMapping store from v2
 # When that is done, the `MemoryStore` will just be a store that wraps a dict.
 class MemoryStore(Store):
@@ -163,9 +157,13 @@ class MemoryStore(Store):
 
 class GpuMemoryStore(MemoryStore):
     """A GPU only memory store that stores every chunk in GPU memory irrespective
-    of the original location. This guarantees that chunks will always be in GPU
-    memory for downstream processing. For location agnostic use cases, it would
-    be better to use `MemoryStore` instead.
+    of the original location.
+
+    The dictionary of buffers to initialize this memory store with *must* be
+    GPU Buffers.
+
+    Writing data to this store through ``.set`` will move the buffer to the GPU
+    if necessary.
 
     Parameters
     ----------
@@ -174,7 +172,7 @@ class GpuMemoryStore(MemoryStore):
         values.
     """
 
-    _store_dict: MutableMapping[str, Buffer]
+    _store_dict: MutableMapping[str, gpu.Buffer]  # type: ignore[assignment]
 
     def __init__(
         self,
@@ -189,6 +187,27 @@ class GpuMemoryStore(MemoryStore):
 
     def __repr__(self) -> str:
         return f"GpuMemoryStore({str(self)!r})"
+
+    @classmethod
+    def from_dict(cls, store_dict: MutableMapping[str, Buffer]) -> Self:
+        """
+        Create a GpuMemoryStore from a dictionary of buffers at any location.
+
+        The dictionary backing the newly created ``GpuMemoryStore`` will not be
+        the same as ``store_dict``.
+
+        Parameters
+        ----------
+        store_dict: mapping
+            A mapping of strings keys to arbitrary Buffers. The buffer data
+            will be moved into a :class:`gpu.Buffer`.
+
+        Returns
+        -------
+        GpuMemoryStore
+        """
+        gpu_store_dict = {k: gpu.Buffer.from_buffer(v) for k, v in store_dict.items()}
+        return cls(gpu_store_dict)
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         self._check_writable()

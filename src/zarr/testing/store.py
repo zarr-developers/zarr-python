@@ -267,13 +267,23 @@ class StoreTests(Generic[S, B]):
             assert isinstance(clone, type(store))
 
             # earlier writes are visible
-            assert self.get(clone, "key").to_bytes() == data
+            result = await clone.get("key", default_buffer_prototype())
+            assert result is not None
+            assert result.to_bytes() == data
 
-            # writes to original after with_mode is visible
+            # # writes to original after with_mode is visible
             self.set(store, "key-2", self.buffer_cls.from_bytes(data))
-            assert self.get(clone, "key-2").to_bytes() == data
+            result = await clone.get("key-2", default_buffer_prototype())
+            assert result is not None
+            assert result.to_bytes() == data
 
-            if mode == "w":
+            if mode == "a":
                 # writes to clone is visible in the original
-                self.set(store, "key-3", self.buffer_cls.from_bytes(data))
-                assert self.get(clone, "key-3").to_bytes() == data
+                await clone.set("key-3", self.buffer_cls.from_bytes(data))
+                result = await clone.get("key-3", default_buffer_prototype())
+                assert result is not None
+                assert result.to_bytes() == data
+
+            else:
+                with pytest.raises(ValueError):
+                    await clone.set("key-3", self.buffer_cls.from_bytes(data))
