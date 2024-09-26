@@ -138,9 +138,7 @@ def is_scalar(value: Any, dtype: np.dtype[Any]) -> bool:
         return True
     if hasattr(value, "shape") and value.shape == ():
         return True
-    if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
-        return True
-    return False
+    return isinstance(value, tuple) and dtype.names is not None and len(value) == len(dtype.names)
 
 
 def is_pure_fancy_indexing(selection: Any, ndim: int) -> bool:
