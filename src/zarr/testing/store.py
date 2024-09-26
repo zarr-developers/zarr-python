@@ -226,7 +226,7 @@ class StoreTests(Generic[S, B]):
         for prefix in prefixes:
             observed = tuple(sorted(await _collect_aiterator(store.list_prefix(prefix))))
             expected: tuple[str, ...] = ()
-            for key in store_dict.keys():
+            for key in store_dict:
                 if key.startswith(prefix):
                     expected += (key.removeprefix(prefix),)
             expected = tuple(sorted(expected))
@@ -245,7 +245,7 @@ class StoreTests(Generic[S, B]):
         await store._set_many(store_dict.items())
 
         keys_observed = await _collect_aiterator(store.list_dir(root))
-        keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict.keys()}
+        keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict}
 
         assert sorted(keys_observed) == sorted(keys_expected)
 
