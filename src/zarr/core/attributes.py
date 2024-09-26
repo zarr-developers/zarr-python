@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 class Attributes(MutableMapping[str, JSON]):
-    def __init__(self, obj: Array | Group):
+    def __init__(self, obj: Array | Group) -> None:
         # key=".zattrs", read_only=False, cache=True, synchronizer=None
         self._obj = obj
 

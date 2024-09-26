@@ -48,7 +48,7 @@ class Buffer(core.Buffer):
         array-like object that must be 1-dim, contiguous, and byte dtype.
     """
 
-    def __init__(self, array_like: ArrayLike):
+    def __init__(self, array_like: ArrayLike) -> None:
         if cp is None:
             raise ImportError(
                 "Cannot use zarr.buffer.gpu.Buffer without cupy. Please install cupy."
@@ -137,7 +137,7 @@ class NDBuffer(core.NDBuffer):
         ndarray-like object that is convertible to a regular Numpy array.
     """
 
-    def __init__(self, array: NDArrayLike):
+    def __init__(self, array: NDArrayLike) -> None:
         if cp is None:
             raise ImportError(
                 "Cannot use zarr.buffer.gpu.NDBuffer without cupy. Please install cupy."

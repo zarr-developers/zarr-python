@@ -54,7 +54,7 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 def parse_attributes(data: Any) -> dict[str, Any]:
     if data is None:
         return {}
-    elif isinstance(data, dict) and all(map(lambda v: isinstance(v, str), data.keys())):
+    elif isinstance(data, dict) and all(isinstance(k, str) for k in data):
         return data
     msg = f"Expected dict with string keys. Got {type(data)} instead."
     raise TypeError(msg)
@@ -104,7 +104,9 @@ class GroupMetadata(Metadata):
                 ),
             }
 
-    def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3):
+    def __init__(
+        self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3
+    ) -> None:
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
 
@@ -202,11 +204,10 @@ class AsyncGroup:
         store_path: StorePath,
         data: dict[str, Any],
     ) -> AsyncGroup:
-        group = cls(
+        return cls(
             metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
         )
-        return group
 
     async def getitem(
         self,
@@ -675,7 +676,7 @@ class AsyncGroup:
                     async for child_key, val in obj._members(
                         max_depth=max_depth, current_depth=current_depth + 1
                     ):
-                        yield "/".join([key, child_key]), val
+                        yield f"{key}/{child_key}", val
             except KeyError:
                 # keyerror is raised when `key` names an object (in the object storage sense),
                 # as opposed to a prefix, in the store under the prefix associated with this group
@@ -888,8 +889,7 @@ class Group(SyncMixin):
         """
         _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
-        result = tuple(map(lambda kv: (kv[0], _parse_async_node(kv[1])), _members))
-        return result
+        return tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
 
     def __contains__(self, member: str) -> bool:
         return self._sync(self._async_group.contains(member))

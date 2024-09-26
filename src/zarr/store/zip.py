@@ -232,7 +232,7 @@ class ZipStore(Store):
         keys = self._zf.namelist()
         seen = set()
         if prefix == "":
-            keys_unique = set(k.split("/")[0] for k in keys)
+            keys_unique = {k.split("/")[0] for k in keys}
             for key in keys_unique:
                 if key not in seen:
                     seen.add(key)
