@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
     from types import TracebackType
-    from typing import Any, TypeAlias, Self
+    from typing import Any, Self, TypeAlias
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import AccessModeLiteral, BytesLike
