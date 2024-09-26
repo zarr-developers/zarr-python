@@ -110,10 +110,7 @@ class ZipStore(Store):
 
     async def empty(self) -> bool:
         with self._lock:
-            if self._zf.namelist():
-                return False
-            else:
-                return True
+            return not self._zf.namelist()
 
     def __str__(self) -> str:
         return f"zip://{self.path}"
