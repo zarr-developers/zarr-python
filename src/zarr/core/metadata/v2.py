@@ -52,7 +52,7 @@ class ArrayV2Metadata(ArrayMetadata):
         compressor: numcodecs.abc.Codec | dict[str, JSON] | None = None,
         filters: Iterable[numcodecs.abc.Codec | dict[str, JSON]] | None = None,
         attributes: dict[str, JSON] | None = None,
-    ):
+    ) -> None:
         """
         Metadata for a Zarr version 2 array.
         """

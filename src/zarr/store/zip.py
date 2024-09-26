@@ -56,7 +56,7 @@ class ZipStore(Store):
         mode: ZipStoreAccessModeLiteral = "r",
         compression: int = zipfile.ZIP_STORED,
         allowZip64: bool = True,
-    ):
+    ) -> None:
         super().__init__(mode=mode)
 
         if isinstance(path, str):

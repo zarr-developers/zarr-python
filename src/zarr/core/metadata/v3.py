@@ -72,7 +72,7 @@ def parse_dimension_names(data: object) -> tuple[str | None, ...] | None:
 
 
 class V3JsonEncoder(json.JSONEncoder):
-    def __init__(self, *args: Any, **kwargs: Any):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.indent = kwargs.pop("indent", config.get("json_indent"))
         super().__init__(*args, **kwargs)
 
