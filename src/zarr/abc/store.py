@@ -195,7 +195,7 @@ class Store(ABC):
         Insert multiple (key, value) pairs into storage.
         """
         await gather(*(self.set(key, value) for key, value in values))
-        return None
+        return
 
     @property
     @abstractmethod

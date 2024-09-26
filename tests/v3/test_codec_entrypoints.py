@@ -10,7 +10,7 @@ from zarr import config
 here = os.path.abspath(os.path.dirname(__file__))
 
 
-@pytest.fixture()
+@pytest.fixture
 def set_path() -> Generator[None, None, None]:
     sys.path.append(here)
     zarr.registry._collect_entrypoints()
