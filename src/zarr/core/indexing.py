@@ -12,8 +12,10 @@ from types import EllipsisType
 from typing import (
     TYPE_CHECKING,
     Any,
+    Literal,
     NamedTuple,
     Protocol,
+    TypeAlias,
     TypeGuard,
     TypeVar,
     cast,
@@ -93,6 +95,84 @@ class Indexer(Protocol):
 
 def ceildiv(a: float, b: float) -> int:
     return math.ceil(a / b)
+
+
+_ArrayIndexingOrder: TypeAlias = Literal["lexicographic"]
+
+
+def _iter_grid(
+    grid_shape: Sequence[int],
+    *,
+    origin: Sequence[int] | None = None,
+    selection_shape: Sequence[int] | None = None,
+    order: _ArrayIndexingOrder = "lexicographic",
+) -> Iterator[ChunkCoords]:
+    """
+    Iterate over the elements of grid of integers, with the option to restrict the domain of
+    iteration to a contiguous subregion of that grid.
+
+    Parameters
+    ----------
+    grid_shape: Sequence[int]
+        The size of the domain to iterate over.
+    origin: Sequence[int] | None, default=None
+        The first coordinate of the domain to return.
+    selection_shape: Sequence[int] | None, default=None
+        The shape of the selection.
+    order: Literal["lexicographic"], default="lexicographic"
+        The linear indexing order to use.
+
+    Returns
+    -------
+
+    itertools.product object
+        An iterator over tuples of integers
+
+    Examples
+    --------
+    >>> tuple(iter_grid((1,)))
+    ((0,),)
+
+    >>> tuple(iter_grid((2,3)))
+    ((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2))
+
+    >>> tuple(iter_grid((2,3)), origin=(1,1))
+    ((1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 3))
+
+    >>> tuple(iter_grid((2,3)), origin=(1,1), selection_shape=(2,2))
+    ((1, 1), (1, 2), (1, 3), (2, 1))
+    """
+    if origin is None:
+        origin_parsed = (0,) * len(grid_shape)
+    else:
+        if len(origin) != len(grid_shape):
+            msg = (
+                "Shape and origin parameters must have the same length."
+                f"Got {len(grid_shape)} elements in shape, but {len(origin)} elements in origin."
+            )
+            raise ValueError(msg)
+        origin_parsed = tuple(origin)
+    if selection_shape is None:
+        selection_shape_parsed = tuple(
+            g - o for o, g in zip(origin_parsed, grid_shape, strict=True)
+        )
+    else:
+        selection_shape_parsed = tuple(selection_shape)
+    if order == "lexicographic":
+        dimensions: tuple[range, ...] = ()
+        for idx, (o, gs, ss) in enumerate(
+            zip(origin_parsed, grid_shape, selection_shape_parsed, strict=True)
+        ):
+            if o + ss > gs:
+                raise IndexError(
+                    f"Invalid selection shape ({selection_shape}) for origin ({origin}) and grid shape ({grid_shape}) at axis {idx}."
+                )
+            dimensions += (range(o, o + ss),)
+        yield from itertools.product(*(dimensions))
+
+    else:
+        msg = f"Indexing order {order} is not supported at this time."  # type: ignore[unreachable]
+        raise NotImplementedError(msg)
 
 
 def is_integer(x: Any) -> TypeGuard[int]:

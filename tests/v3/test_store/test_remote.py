@@ -84,10 +84,6 @@ def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
 # ### end from s3fs ### #
 
 
-async def alist(it):
-    return [a async for a in it]
-
-
 async def test_basic() -> None:
     store = RemoteStore.from_url(
         f"s3://{test_bucket_name}",
