@@ -9,7 +9,6 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr._compat import _deprecate_positional_args
-from zarr.abc.codec import Codec, CodecPipeline
 from zarr.abc.store import set_or_delete
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
