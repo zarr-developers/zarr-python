@@ -40,16 +40,12 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
         return self._sync_iter(self.store.list())
 
     def get(self, key: str, prototype: BufferPrototype) -> zarr.core.buffer.Buffer:
-        obs = self._sync(self.store.get(key, prototype=prototype))
-        return obs
+        return self._sync(self.store.get(key, prototype=prototype))
 
     def get_partial_values(
         self, key_ranges: list, prototype: BufferPrototype
     ) -> zarr.core.buffer.Buffer:
-        obs_partial = self._sync(
-            self.store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
-        )
-        return obs_partial
+        return self._sync(self.store.get_partial_values(prototype=prototype, key_ranges=key_ranges))
 
     def delete(self, path: str) -> None:
         return self._sync(self.store.delete(path))
@@ -131,7 +127,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @rule(key=paths, data=st.data())
     def get_invalid_keys(self, key: str, data: DataObject) -> None:
         note("(get_invalid)")
-        assume(key not in self.model.keys())
+        assume(key not in self.model)
         assert self.store.get(key, self.prototype) is None
 
     @precondition(lambda self: len(self.model.keys()) > 0)
@@ -202,9 +198,9 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @invariant()
     def check_vals_equal(self) -> None:
         note("Checking values equal")
-        for key, _val in self.model.items():
+        for key, val in self.model.items():
             store_item = self.store.get(key, self.prototype).to_bytes()
-            assert self.model[key].to_bytes() == store_item
+            assert val.to_bytes() == store_item
 
     @invariant()
     def check_num_keys_equal(self) -> None:

@@ -117,9 +117,7 @@ async def _collect_aiterator(data: AsyncIterator[T]) -> tuple[T, ...]:
     """
     Collect an entire async iterator into a tuple
     """
-    result = []
-    async for x in data:
-        result.append(x)
+    result = [x async for x in data]
     return tuple(result)
 
 

@@ -79,7 +79,7 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r"):
+    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r") -> None:
         super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
@@ -93,11 +93,15 @@ class LocalStore(Store):
 
     async def empty(self) -> bool:
         try:
-            subpaths = os.listdir(self.root)
+            with os.scandir(self.root) as it:
+                for entry in it:
+                    if entry.is_file():
+                        # stop once a file is found
+                        return False
         except FileNotFoundError:
             return True
         else:
-            return not subpaths
+            return True
 
     def __str__(self) -> str:
         return f"file://{self.root}"
