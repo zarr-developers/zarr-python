@@ -7,10 +7,10 @@ from collections import defaultdict
 from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
-from zarr.abc.store import AccessMode, Store
+from zarr.abc.store import AccessMode, ByteRangeRequest, Store
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Generator
+    from collections.abc import AsyncGenerator, Generator, Iterable
 
     from zarr.core.buffer import Buffer, BufferPrototype
 
@@ -125,7 +125,7 @@ class LoggingStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         with self.log():
             return await self._store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
@@ -142,7 +142,9 @@ class LoggingStore(Store):
         with self.log():
             return await self._store.delete(key=key)
 
-    async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
+    ) -> None:
         with self.log():
             return await self._store.set_partial_values(key_start_values=key_start_values)
 

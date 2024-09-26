@@ -49,8 +49,7 @@ from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
-
-    from typing_extensions import Self
+    from typing import Self
 
     from zarr.core.common import JSON
 
