@@ -10,9 +10,9 @@ from zarr.core.config import config
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterable
+    from typing import Self
 
     import numpy as np
-    from typing_extensions import Self
 
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec

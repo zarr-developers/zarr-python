@@ -16,8 +16,7 @@ from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
-
-    from typing_extensions import Self
+    from typing import Self
 
     from zarr.core.common import BytesLike
 
