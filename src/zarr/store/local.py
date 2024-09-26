@@ -79,7 +79,7 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r"):
+    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r") -> None:
         super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
