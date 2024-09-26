@@ -285,5 +285,5 @@ class StoreTests(Generic[S, B]):
                 assert result.to_bytes() == data
 
             else:
-                with pytest.raises(ValueError):
+                with pytest.raises(ValueError, match="store mode"):
                     await clone.set("key-3", self.buffer_cls.from_bytes(data))
