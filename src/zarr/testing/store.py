@@ -275,7 +275,6 @@ class StoreTests(Generic[S, B]):
         keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
         assert sorted(keys_expected) == sorted(keys_observed)
 
-
     async def test_with_mode(self, store: S) -> None:
         data = b"0000"
         self.set(store, "key", self.buffer_cls.from_bytes(data))
@@ -326,4 +325,3 @@ class StoreTests(Generic[S, B]):
 
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
-
