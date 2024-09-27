@@ -5,11 +5,11 @@ from zarr.store.remote import RemoteStore
 from zarr.store.zip import ZipStore
 
 __all__ = [
-    "StorePath",
-    "StoreLike",
-    "make_store_path",
-    "RemoteStore",
     "LocalStore",
     "MemoryStore",
+    "RemoteStore",
+    "StoreLike",
+    "StorePath",
     "ZipStore",
+    "make_store_path",
 ]

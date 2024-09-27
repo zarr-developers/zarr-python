@@ -15,9 +15,9 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    "TestBuffer",
     "NDBufferUsingTestNDArrayLike",
     "StoreExpectingTestBuffer",
+    "TestBuffer",
 ]
 
 
