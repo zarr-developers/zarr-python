@@ -129,6 +129,16 @@ def array_fixture(request: pytest.FixtureRequest) -> npt.NDArray[Any]:
     )
 
 
+@pytest.fixture(params=(2, 3))
+def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
+    if request.param == 2:
+        return 2
+    elif request.param == 3:
+        return 3
+    msg = f"Invalid zarr format requested. Got {request.param}, expected on of (2,3)."
+    raise ValueError(msg)
+
+
 settings.register_profile(
     "ci",
     max_examples=1000,

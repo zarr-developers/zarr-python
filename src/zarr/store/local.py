@@ -4,16 +4,14 @@ import io
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
-from typing_extensions import Self
-
-from zarr.abc.store import Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
 from zarr.core.common import concurrent_map, to_thread
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Iterable
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
@@ -136,7 +134,7 @@ class LocalStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         """
         Read byte ranges from multiple keys.
@@ -166,7 +164,9 @@ class LocalStore(Store):
         path = self.root / key
         await to_thread(_put, path, value)
 
-    async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
+    ) -> None:
         self._check_writable()
         args = []
         for key, start, value in key_start_values:

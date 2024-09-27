@@ -5,15 +5,13 @@ import threading
 import time
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Self
 
-from typing_extensions import Self
-
-from zarr.abc.store import Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Iterable
 
 ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
@@ -58,7 +56,7 @@ class ZipStore(Store):
         mode: ZipStoreAccessModeLiteral = "r",
         compression: int = zipfile.ZIP_STORED,
         allowZip64: bool = True,
-    ):
+    ) -> None:
         super().__init__(mode=mode)
 
         if isinstance(path, str):
@@ -112,10 +110,7 @@ class ZipStore(Store):
 
     async def empty(self) -> bool:
         with self._lock:
-            if self._zf.namelist():
-                return False
-            else:
-                return True
+            return not self._zf.namelist()
 
     def with_mode(self, mode: ZipStoreAccessModeLiteral) -> Self:  # type: ignore[override]
         raise NotImplementedError("ZipStore cannot be reopened with a new mode.")
@@ -133,7 +128,7 @@ class ZipStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         try:
             with self._zf.open(key) as f:  # will raise KeyError
@@ -156,7 +151,7 @@ class ZipStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         assert isinstance(key, str)
 
@@ -166,7 +161,7 @@ class ZipStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         out = []
         with self._lock:
@@ -193,7 +188,7 @@ class ZipStore(Store):
         with self._lock:
             self._set(key, value)
 
-    async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
         raise NotImplementedError
 
     async def delete(self, key: str) -> None:

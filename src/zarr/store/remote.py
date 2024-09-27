@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 import fsspec
-from typing_extensions import Self
 
-from zarr.abc.store import Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.store.common import _dereference_path
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Iterable
 
     from fsspec.asyn import AsyncFileSystem
 
@@ -119,7 +118,7 @@ class RemoteStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         if not self._is_open:
             await self._open()
@@ -186,7 +185,7 @@ class RemoteStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         if key_ranges:
             paths, starts, stops = zip(
@@ -212,7 +211,9 @@ class RemoteStore(Store):
 
         return [None if isinstance(r, Exception) else prototype.buffer.from_bytes(r) for r in res]
 
-    async def set_partial_values(self, key_start_values: list[tuple[str, int, BytesLike]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
+    ) -> None:
         raise NotImplementedError
 
     async def list(self) -> AsyncGenerator[str, None]:
