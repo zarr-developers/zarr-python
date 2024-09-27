@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, Union, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.array import Array, AsyncArray
+from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup
@@ -24,6 +24,10 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+
+    # TODO: this type could use some more thought
+    ArrayLike = AsyncArray | Array | npt.NDArray[Any]
+    PathLike = str
 
 __all__ = [
     "consolidate_metadata",
@@ -52,10 +56,6 @@ __all__ = [
     "zeros",
     "zeros_like",
 ]
-
-# TODO: this type could use some more thought, noqa to avoid "Variable "asynchronous.ArrayLike" is not valid as a type"
-ArrayLike = Union[AsyncArray | Array | npt.NDArray[Any]]  # noqa
-PathLike = str
 
 
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
@@ -229,6 +229,18 @@ async def open(
 
     if path is not None:
         store_path = store_path / path
+
+    if "shape" not in kwargs and mode in {"a", "w", "w-"}:
+        try:
+            metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+            # for v2, the above would already have raised an exception if not an array
+            zarr_format = metadata_dict["zarr_format"]
+            is_v3_array = zarr_format == 3 and metadata_dict.get("node_type") == "array"
+            if is_v3_array or zarr_format == 2:
+                return AsyncArray(store_path=store_path, metadata=metadata_dict)
+        except (AssertionError, FileNotFoundError):
+            pass
+        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)

@@ -5,10 +5,9 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Any, Literal
+    from typing import Any, Literal, Self
 
     import numpy.typing as npt
-    from typing_extensions import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import JSON, ChunkCoords
@@ -52,7 +51,7 @@ class ArrayV2Metadata(ArrayMetadata):
         compressor: numcodecs.abc.Codec | dict[str, JSON] | None = None,
         filters: Iterable[numcodecs.abc.Codec | dict[str, JSON]] | None = None,
         attributes: dict[str, JSON] | None = None,
-    ):
+    ) -> None:
         """
         Metadata for a Zarr version 2 array.
         """
@@ -100,6 +99,8 @@ class ArrayV2Metadata(ArrayMetadata):
                     return o.str
                 else:
                     return o.descr
+            if isinstance(o, numcodecs.abc.Codec):
+                return o.get_config()
             if np.isscalar(o):
                 out: Any
                 if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):

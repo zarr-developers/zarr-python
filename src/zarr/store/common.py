@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import AccessMode, Store
+from zarr.abc.store import AccessMode, ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
@@ -23,28 +23,27 @@ def _dereference_path(root: str, path: str) -> str:
     assert isinstance(path, str)
     root = root.rstrip("/")
     path = f"{root}/{path}" if root else path
-    path = path.rstrip("/")
-    return path
+    return path.rstrip("/")
 
 
 class StorePath:
     store: Store
     path: str
 
-    def __init__(self, store: Store, path: str | None = None):
+    def __init__(self, store: Store, path: str | None = None) -> None:
         self.store = store
         self.path = path or ""
 
     async def get(
         self,
         prototype: BufferPrototype | None = None,
-        byte_range: tuple[int, int | None] | None = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         if prototype is None:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
-    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+    async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None:
         if byte_range is not None:
             raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)
@@ -64,10 +63,9 @@ class StorePath:
     def __repr__(self) -> str:
         return f"StorePath({self.store.__class__.__name__}, {str(self)!r})"
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         try:
-            if self.store == other.store and self.path == other.path:
-                return True
+            return self.store == other.store and self.path == other.path  # type: ignore[attr-defined, no-any-return]
         except Exception:
             pass
         return False
@@ -266,8 +264,7 @@ async def contains_array(store_path: StorePath, zarr_format: ZarrFormat) -> bool
             except (ValueError, KeyError):
                 return False
     elif zarr_format == 2:
-        result = await (store_path / ZARRAY_JSON).exists()
-        return result
+        return await (store_path / ZARRAY_JSON).exists()
     msg = f"Invalid zarr_format provided. Got {zarr_format}, expected 2 or 3"
     raise ValueError(msg)
 

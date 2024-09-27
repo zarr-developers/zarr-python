@@ -16,8 +16,7 @@ from zarr.store import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.store.remote import RemoteStore
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, Iterator
-    from types import ModuleType
+    from collections.abc import Generator
     from typing import Any, Literal
 
     from _pytest.compat import LEGACY_PATH
@@ -48,31 +47,30 @@ def path_type(request: pytest.FixtureRequest) -> Any:
 @pytest.fixture
 async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
     store = await LocalStore.open(str(tmpdir), mode="w")
-    p = StorePath(store)
-    return p
+    return StorePath(store)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
     return await LocalStore.open(str(tmpdir), mode="w")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def remote_store(url: str) -> RemoteStore:
     return await RemoteStore.open(url, mode="w")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def memory_store() -> MemoryStore:
     return await MemoryStore.open(mode="w")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def zip_store(tmpdir: LEGACY_PATH) -> ZipStore:
     return await ZipStore.open(str(tmpdir / "zarr.zip"), mode="w")
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     param = request.param
     return await parse_store(param, str(tmpdir))
@@ -93,28 +91,27 @@ class AsyncGroupRequest:
     attributes: dict[str, Any] = field(default_factory=dict)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
     store = await parse_store(param.store, str(tmpdir))
-    agroup = await AsyncGroup.from_store(
+    return await AsyncGroup.from_store(
         store,
         attributes=param.attributes,
         zarr_format=param.zarr_format,
         exists_ok=False,
     )
-    return agroup
 
 
 @pytest.fixture(params=["numpy", "cupy"])
-def xp(request: pytest.FixtureRequest) -> Iterator[ModuleType]:
+def xp(request: pytest.FixtureRequest) -> Any:
     """Fixture to parametrize over numpy-like libraries"""
 
     if request.param == "cupy":
         request.node.add_marker(pytest.mark.gpu)
 
-    yield pytest.importorskip(request.param)
+    return pytest.importorskip(request.param)
 
 
 @pytest.fixture(autouse=True)
@@ -139,6 +136,16 @@ def array_fixture(request: pytest.FixtureRequest) -> npt.NDArray[Any]:
         .reshape(array_request.shape, order=array_request.order)
         .astype(array_request.dtype)
     )
+
+
+@pytest.fixture(params=(2, 3))
+def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
+    if request.param == 2:
+        return 2
+    elif request.param == 3:
+        return 3
+    msg = f"Invalid zarr format requested. Got {request.param}, expected on of (2,3)."
+    raise ValueError(msg)
 
 
 settings.register_profile(
