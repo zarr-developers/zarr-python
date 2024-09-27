@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 from zarr.abc.store import AccessMode, ByteRangeRequest, Store
+from zarr.core.buffer import Buffer
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
@@ -137,6 +138,10 @@ class LoggingStore(Store):
     async def set(self, key: str, value: Buffer) -> None:
         with self.log():
             return await self._store.set(key=key, value=value)
+
+    async def setdefault(self, key: str, default: Buffer) -> None:
+        with self.log():
+            return await self._store.set(key=key, value=default)
 
     async def delete(self, key: str) -> None:
         with self.log():
