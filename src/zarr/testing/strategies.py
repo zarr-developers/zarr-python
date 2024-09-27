@@ -60,7 +60,8 @@ node_names = st.text(zarr_key_chars, min_size=1).filter(
 )
 array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
-paths = st.lists(node_names, min_size=1).map("/".join) | st.just("/")
+keys = st.lists(node_names, min_size=1).map(lambda x: "/".join(x))
+paths = st.just("/") | keys
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
 compressors = st.sampled_from([None, "default"])
 zarr_formats: st.SearchStrategy[Literal[2, 3]] = st.sampled_from([2, 3])
@@ -157,7 +158,7 @@ def is_negative_slice(idx: Any) -> bool:
 
 
 @st.composite  # type: ignore[misc]
-def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs):  # type: ignore[no-untyped-def]
+def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs) -> Any:  # type: ignore[no-untyped-def]
     """Basic indices without unsupported negative slices."""
     return draw(
         npst.basic_indices(shape=shape, **kwargs).filter(
@@ -171,7 +172,9 @@ def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs):  # type: ign
     )
 
 
-def key_ranges(keys: SearchStrategy = node_names) -> SearchStrategy[list]:
+def key_ranges(
+    keys: SearchStrategy = node_names, max_size: int | None = None
+) -> SearchStrategy[list[int]]:
     """
     Function to generate key_ranges strategy for get_partial_values()
     returns list strategy w/ form::
@@ -180,7 +183,8 @@ def key_ranges(keys: SearchStrategy = node_names) -> SearchStrategy[list]:
          (key, (range_start, range_step)),...]
     """
     byte_ranges = st.tuples(
-        st.none() | st.integers(min_value=0), st.none() | st.integers(min_value=0)
+        st.none() | st.integers(min_value=0, max_value=max_size),
+        st.none() | st.integers(min_value=0, max_value=max_size),
     )
     key_tuple = st.tuples(keys, byte_ranges)
     return st.lists(key_tuple, min_size=1, max_size=10)

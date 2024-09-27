@@ -25,7 +25,7 @@ class LoggingStore(Store):
         store: Store,
         log_level: str = "DEBUG",
         log_handler: logging.Handler | None = None,
-    ):
+    ) -> None:
         self._store = store
         self.counter = defaultdict(int)
 

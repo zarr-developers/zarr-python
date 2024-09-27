@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.array import Array, AsyncArray
+from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup
@@ -30,29 +30,29 @@ if TYPE_CHECKING:
     PathLike = str
 
 __all__ = [
+    "array",
     "consolidate_metadata",
     "copy",
     "copy_all",
     "copy_store",
-    "load",
-    "open",
-    "open_consolidated",
-    "save",
-    "save_array",
-    "save_group",
-    "tree",
-    "array",
-    "group",
-    "open_group",
     "create",
     "empty",
     "empty_like",
     "full",
     "full_like",
+    "group",
+    "load",
     "ones",
     "ones_like",
+    "open",
     "open_array",
+    "open_consolidated",
+    "open_group",
     "open_like",
+    "save",
+    "save_array",
+    "save_group",
+    "tree",
     "zeros",
     "zeros_like",
 ]
@@ -229,6 +229,18 @@ async def open(
 
     if path is not None:
         store_path = store_path / path
+
+    if "shape" not in kwargs and mode in {"a", "w", "w-"}:
+        try:
+            metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+            # for v2, the above would already have raised an exception if not an array
+            zarr_format = metadata_dict["zarr_format"]
+            is_v3_array = zarr_format == 3 and metadata_dict.get("node_type") == "array"
+            if is_v3_array or zarr_format == 2:
+                return AsyncArray(store_path=store_path, metadata=metadata_dict)
+        except (AssertionError, FileNotFoundError):
+            pass
+        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
