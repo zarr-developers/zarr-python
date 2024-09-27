@@ -99,10 +99,12 @@ class LoggingStore(Store):
             return self._store._is_open
 
     async def _open(self) -> None:
-        return await self._store._open()
+        with self.log():
+            return await self._store._open()
 
     async def _ensure_open(self) -> None:
-        return await self._store._ensure_open()
+        with self.log():
+            return await self._store._ensure_open()
 
     async def empty(self) -> bool:
         with self.log():
@@ -173,8 +175,9 @@ class LoggingStore(Store):
                 yield key
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
-        return type(self)(
-            self._store.with_mode(mode),
-            log_level=self.log_level,
-            log_handler=self.log_handler,
-        )
+        with self.log():
+            return type(self)(
+                self._store.with_mode(mode),
+                log_level=self.log_level,
+                log_handler=self.log_handler,
+            )
