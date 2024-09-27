@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 import zarr
+import zarr.store
 from zarr.core.buffer import default_buffer_prototype
 from zarr.store.logging import LoggingStore
 
@@ -48,3 +49,10 @@ async def test_logging_store_counter(store: Store) -> None:
     assert wrapped.counter["list"] == 0
     assert wrapped.counter["list_dir"] == 0
     assert wrapped.counter["list_prefix"] == 0
+
+
+async def test_with_mode():
+    wrapped = LoggingStore(store=zarr.store.MemoryStore(mode="w"), log_level="INFO")
+    new = wrapped.with_mode(mode="r")
+    assert new.mode.str == "r"
+    assert new.log_level == "INFO"

@@ -96,3 +96,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             del root["bar"]
 
         store.close()
+
+    async def test_with_mode(self, store: ZipStore) -> None:
+        with pytest.raises(NotImplementedError, match="new mode"):
+            await super().test_with_mode(store)

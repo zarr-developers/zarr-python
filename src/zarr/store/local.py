@@ -4,7 +4,7 @@ import io
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
@@ -109,6 +109,9 @@ class LocalStore(Store):
             return True
         else:
             return True
+
+    def with_mode(self, mode: AccessModeLiteral) -> Self:
+        return type(self)(root=self.root, mode=mode)
 
     def __str__(self) -> str:
         return f"file://{self.root}"
