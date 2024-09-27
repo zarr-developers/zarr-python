@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import AccessMode, Store
+from zarr.abc.store import AccessMode, ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
@@ -37,13 +37,13 @@ class StorePath:
     async def get(
         self,
         prototype: BufferPrototype | None = None,
-        byte_range: tuple[int, int | None] | None = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         if prototype is None:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
-    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+    async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None:
         if byte_range is not None:
             raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)

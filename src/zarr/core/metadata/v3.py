@@ -4,8 +4,9 @@ import warnings
 from typing import TYPE_CHECKING, cast, overload
 
 if TYPE_CHECKING:
+    from typing import Self
+
     import numpy.typing as npt
-    from typing_extensions import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
@@ -89,7 +90,7 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
 
 
 class V3JsonEncoder(json.JSONEncoder):
-    def __init__(self, *args: Any, **kwargs: Any):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.indent = kwargs.pop("indent", config.get("json_indent"))
         super().__init__(*args, **kwargs)
 

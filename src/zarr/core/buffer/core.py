@@ -23,8 +23,7 @@ from zarr.registry import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
-
-    from typing_extensions import Self
+    from typing import Self
 
     from zarr.codecs.bytes import Endian
     from zarr.core.common import BytesLike, ChunkCoords
@@ -469,10 +468,9 @@ class NDBuffer:
             return False
         # use array_equal to obtain equal_nan=True functionality
         data, other = np.broadcast_arrays(self._data, other)
-        result = np.array_equal(
+        return np.array_equal(
             self._data, other, equal_nan=equal_nan if self._data.dtype.kind not in "US" else False
         )
-        return result
 
     def fill(self, value: Any) -> None:
         self._data.fill(value)

@@ -60,7 +60,7 @@ node_names = st.text(zarr_key_chars, min_size=1).filter(
 )
 array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
-paths = st.lists(node_names, min_size=1).map(lambda x: "/".join(x)) | st.just("/")
+paths = st.lists(node_names, min_size=1).map("/".join) | st.just("/")
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
 compressors = st.sampled_from([None, "default"])
 zarr_formats: st.SearchStrategy[Literal[2, 3]] = st.sampled_from([2, 3])

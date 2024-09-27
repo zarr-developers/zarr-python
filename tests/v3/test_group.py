@@ -271,7 +271,7 @@ def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
 
     group = Group.from_store(store, zarr_format=zarr_format)
     with pytest.raises(NotImplementedError):
-        [x for x in group]
+        list(group)
 
 
 def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
@@ -453,8 +453,8 @@ def test_group_array_creation(
     assert full_like_array.store_path.store == store
 
 
-@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("exists_ok", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
 def test_group_creation_existing_node(
@@ -601,10 +601,10 @@ async def test_asyncgroup_open_wrong_format(
 # should this be async?
 @pytest.mark.parametrize(
     "data",
-    (
+    [
         {"zarr_format": 3, "node_type": "group", "attributes": {"foo": 100}},
         {"zarr_format": 2, "attributes": {"foo": 100}},
-    ),
+    ],
 )
 def test_asyncgroup_from_dict(store: Store, data: dict[str, Any]) -> None:
     """
@@ -744,8 +744,8 @@ async def test_asyncgroup_update_attributes(store: Store, zarr_format: ZarrForma
     assert agroup_new_attributes.attrs == attributes_new
 
 
-@pytest.mark.parametrize("store", ("local",), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = await AsyncGroup.from_store(
         store=store, attributes={"foo": 999}, zarr_format=zarr_format
@@ -755,8 +755,8 @@ async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrForm
     assert actual == expected
 
 
-@pytest.mark.parametrize("store", ("local",), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = Group.from_store(store=store, attributes={"foo": 999}, zarr_format=zarr_format)
     p = pickle.dumps(expected)

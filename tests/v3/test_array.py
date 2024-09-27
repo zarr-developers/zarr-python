@@ -1,4 +1,5 @@
 import pickle
+from itertools import accumulate
 from typing import Literal
 
 import numpy as np
@@ -6,15 +7,18 @@ import pytest
 
 from zarr import Array, AsyncArray, Group
 from zarr.codecs.bytes import BytesCodec
+from zarr.core.array import chunks_initialized
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import JSON, ZarrFormat
+from zarr.core.indexing import ceildiv
+from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.store import LocalStore, MemoryStore
 from zarr.store.common import StorePath
 
 
-@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("exists_ok", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
 def test_array_creation_existing_node(
@@ -62,8 +66,8 @@ def test_array_creation_existing_node(
             )
 
 
-@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_array_name_properties_no_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -73,8 +77,8 @@ def test_array_name_properties_no_group(
     assert arr.basename is None
 
 
-@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_array_name_properties_with_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -124,7 +128,7 @@ def test_array_v3_fill_value_default(
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize(
-    "dtype_str,fill_value",
+    ("dtype_str", "fill_value"),
     [("bool", True), ("uint8", 99), ("float32", -99.9), ("complex64", 3 + 4j)],
 )
 def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str) -> None:
@@ -202,8 +206,8 @@ async def test_array_v3_nan_fill_value(store: MemoryStore) -> None:
     assert len([a async for a in store.list_prefix("/")]) == 0
 
 
-@pytest.mark.parametrize("store", ("local",), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_serializable_async_array(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -220,8 +224,8 @@ async def test_serializable_async_array(
     # TODO: uncomment the parts of this test that will be impacted by the config/prototype changes in flight
 
 
-@pytest.mark.parametrize("store", ("local",), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = Array.create(
         store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
@@ -235,7 +239,7 @@ def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> 
     np.testing.assert_array_equal(actual[:], expected[:])
 
 
-@pytest.mark.parametrize("store", ("memory",), indirect=True)
+@pytest.mark.parametrize("store", ["memory",), indirect=True)
 def test_storage_transformers(store: MemoryStore) -> None:
     """
     Test that providing an actual storage transformer produces a warning and otherwise passes through
@@ -254,3 +258,72 @@ def test_storage_transformers(store: MemoryStore) -> None:
     match = "Arrays with storage transformers are not supported in zarr-python at this time."
     with pytest.raises(ValueError, match=match):
         Array.from_dict(StorePath(store), data=metadata_dict)
+
+
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
+@pytest.mark.parametrize("nchunks", [2, 5, 10])
+def test_nchunks(test_cls: type[Array] | type[AsyncArray], nchunks: int) -> None:
+    """
+    Test that nchunks returns the number of chunks defined for the array.
+    """
+    store = MemoryStore({}, mode="w")
+    shape = 100
+    arr = Array.create(store, shape=(shape,), chunks=(ceildiv(shape, nchunks),), dtype="i4")
+    expected = nchunks
+    if test_cls == Array:
+        observed = arr.nchunks
+    else:
+        observed = arr._async_array.nchunks
+    assert observed == expected
+
+
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
+def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray]) -> None:
+    """
+    Test that nchunks_initialized accurately returns the number of stored chunks.
+    """
+    store = MemoryStore({}, mode="w")
+    arr = Array.create(store, shape=(100,), chunks=(10,), dtype="i4")
+
+    # write chunks one at a time
+    for idx, region in enumerate(arr._iter_chunk_regions()):
+        arr[region] = 1
+        expected = idx + 1
+        if test_cls == Array:
+            observed = arr.nchunks_initialized
+        else:
+            observed = arr._async_array.nchunks_initialized
+        assert observed == expected
+
+    # delete chunks
+    for idx, key in enumerate(arr._iter_chunk_keys()):
+        sync(arr.store_path.store.delete(key))
+        if test_cls == Array:
+            observed = arr.nchunks_initialized
+        else:
+            observed = arr._async_array.nchunks_initialized
+        expected = arr.nchunks - idx - 1
+        assert observed == expected
+
+
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
+def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray]) -> None:
+    """
+    Test that chunks_initialized accurately returns the keys of stored chunks.
+    """
+    store = MemoryStore({}, mode="w")
+    arr = Array.create(store, shape=(100,), chunks=(10,), dtype="i4")
+
+    chunks_accumulated = tuple(
+        accumulate(tuple(tuple(v.split(" ")) for v in arr._iter_chunk_keys()))
+    )
+    for keys, region in zip(chunks_accumulated, arr._iter_chunk_regions(), strict=False):
+        arr[region] = 1
+
+        if test_cls == Array:
+            observed = sorted(chunks_initialized(arr))
+        else:
+            observed = sorted(chunks_initialized(arr._async_array))
+
+        expected = sorted(keys)
+        assert observed == expected

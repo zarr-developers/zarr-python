@@ -5,7 +5,7 @@ import pytest
 
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.core.sync import _collect_aiterator
+from zarr.core.sync import _collect_aiterator, collect_aiterator
 from zarr.store._utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
 
@@ -37,11 +37,11 @@ class StoreTests(Generic[S, B]):
 
         raise NotImplementedError
 
-    @pytest.fixture(scope="function")
+    @pytest.fixture
     def store_kwargs(self) -> dict[str, Any]:
         return {"mode": "r+"}
 
-    @pytest.fixture(scope="function")
+    @pytest.fixture
     async def store(self, store_kwargs: dict[str, Any]) -> Store:
         return await self.store_cls.open(**store_kwargs)
 
@@ -97,7 +97,7 @@ class StoreTests(Generic[S, B]):
 
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
-    @pytest.mark.parametrize("byte_range", (None, (0, None), (1, None), (1, 2), (None, 1)))
+    @pytest.mark.parametrize("byte_range", [None, (0, None), (1, None), (1, 2), (None, 1)])
     async def test_get(
         self, store: S, key: str, data: bytes, byte_range: None | tuple[int | None, int | None]
     ) -> None:
@@ -110,6 +110,28 @@ class StoreTests(Generic[S, B]):
         start, length = _normalize_interval_index(data_buf, interval=byte_range)
         expected = data_buf[start : start + length]
         assert_bytes_equal(observed, expected)
+
+    async def test_get_many(self, store: S) -> None:
+        """
+        Ensure that multiple keys can be retrieved at once with the _get_many method.
+        """
+        keys = tuple(map(str, range(10)))
+        values = tuple(f"{k}".encode() for k in keys)
+        for k, v in zip(keys, values, strict=False):
+            self.set(store, k, self.buffer_cls.from_bytes(v))
+        observed_buffers = collect_aiterator(
+            store._get_many(
+                zip(
+                    keys,
+                    (default_buffer_prototype(),) * len(keys),
+                    (None,) * len(keys),
+                    strict=False,
+                )
+            )
+        )
+        observed_kvs = sorted(((k, b.to_bytes()) for k, b in observed_buffers))  # type: ignore[union-attr]
+        expected_kvs = sorted(((k, b) for k, b in zip(keys, values, strict=False)))
+        assert observed_kvs == expected_kvs
 
     @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
@@ -137,12 +159,12 @@ class StoreTests(Generic[S, B]):
 
     @pytest.mark.parametrize(
         "key_ranges",
-        (
+        [
             [],
             [("zarr.json", (0, 1))],
             [("c/0", (0, 1)), ("zarr.json", (0, None))],
             [("c/0/0", (0, 1)), ("c/0/1", (None, 2)), ("c/0/2", (0, 3))],
-        ),
+        ],
     )
     async def test_get_partial_values(
         self, store: S, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
@@ -226,7 +248,7 @@ class StoreTests(Generic[S, B]):
         for prefix in prefixes:
             observed = tuple(sorted(await _collect_aiterator(store.list_prefix(prefix))))
             expected: tuple[str, ...] = ()
-            for key in store_dict.keys():
+            for key in store_dict:
                 if key.startswith(prefix):
                     expected += (key.removeprefix(prefix),)
             expected = tuple(sorted(expected))
@@ -245,7 +267,7 @@ class StoreTests(Generic[S, B]):
         await store._set_many(store_dict.items())
 
         keys_observed = await _collect_aiterator(store.list_dir(root))
-        keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict.keys()}
+        keys_expected = {k.removeprefix(root + "/").split("/")[0] for k in store_dict}
 
         assert sorted(keys_observed) == sorted(keys_expected)
 

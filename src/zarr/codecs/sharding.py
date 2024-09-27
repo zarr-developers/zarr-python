@@ -17,7 +17,7 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
-from zarr.abc.store import ByteGetter, ByteSetter
+from zarr.abc.store import ByteGetter, ByteRangeRequest, ByteSetter
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.core.array_spec import ArraySpec
@@ -49,8 +49,7 @@ from zarr.registry import get_ndbuffer_class, get_pipeline_class, register_codec
 
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
-
-    from typing_extensions import Self
+    from typing import Self
 
     from zarr.core.common import JSON
 
@@ -78,7 +77,7 @@ class _ShardingByteGetter(ByteGetter):
     chunk_coords: ChunkCoords
 
     async def get(
-        self, prototype: BufferPrototype, byte_range: tuple[int, int | None] | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
     ) -> Buffer | None:
         assert byte_range is None, "byte_range is not supported within shards"
         assert (
@@ -91,7 +90,7 @@ class _ShardingByteGetter(ByteGetter):
 class _ShardingByteSetter(_ShardingByteGetter, ByteSetter):
     shard_dict: ShardMutableMapping
 
-    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+    async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None:
         assert byte_range is None, "byte_range is not supported within shards"
         self.shard_dict[self.chunk_coords] = value
 
@@ -151,7 +150,7 @@ class _ShardIndex(NamedTuple):
 
         # Are all non-empty offsets unique?
         if len(
-            set(offset for offset, _ in sorted_offsets_and_lengths if offset != MAX_UINT_64)
+            {offset for offset, _ in sorted_offsets_and_lengths if offset != MAX_UINT_64}
         ) != len(sorted_offsets_and_lengths):
             return False
 
@@ -380,8 +379,8 @@ class ShardingCodec(
             "name": "sharding_indexed",
             "configuration": {
                 "chunk_shape": self.chunk_shape,
-                "codecs": tuple([s.to_dict() for s in self.codecs]),
-                "index_codecs": tuple([s.to_dict() for s in self.index_codecs]),
+                "codecs": tuple(s.to_dict() for s in self.codecs),
+                "index_codecs": tuple(s.to_dict() for s in self.index_codecs),
                 "index_location": self.index_location.value,
             },
         }
@@ -477,7 +476,7 @@ class ShardingCodec(
         )
 
         indexed_chunks = list(indexer)
-        all_chunk_coords = set(chunk_coords for chunk_coords, _, _ in indexed_chunks)
+        all_chunk_coords = {chunk_coords for chunk_coords, _, _ in indexed_chunks}
 
         # reading bytes of all requested chunks
         shard_dict: ShardMapping = {}
