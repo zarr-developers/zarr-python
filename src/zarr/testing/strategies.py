@@ -158,7 +158,7 @@ def is_negative_slice(idx: Any) -> bool:
 
 
 @st.composite  # type: ignore[misc]
-def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs):  # type: ignore[no-untyped-def]
+def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs) -> Any:  # type: ignore[no-untyped-def]
     """Basic indices without unsupported negative slices."""
     return draw(
         npst.basic_indices(shape=shape, **kwargs).filter(
