@@ -10,6 +10,8 @@ import pytest
 from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr import AsyncGroup, config
+from zarr.abc.store import Store
+from zarr.core.sync import sync
 from zarr.store import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.store.remote import RemoteStore
 
@@ -19,7 +21,6 @@ if TYPE_CHECKING:
 
     from _pytest.compat import LEGACY_PATH
 
-    from zarr.abc.store import Store
     from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
 
 
@@ -73,6 +74,14 @@ async def zip_store(tmpdir: LEGACY_PATH) -> ZipStore:
 async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     param = request.param
     return await parse_store(param, str(tmpdir))
+
+
+@pytest.fixture(params=["local", "memory", "zip"])
+def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
+    result = sync(parse_store(request.param, str(tmp_path)))
+    if not isinstance(result, Store):
+        raise TypeError("Wrong store class returned by test fixture! got " + result + " instead")
+    return result
 
 
 @dataclass
