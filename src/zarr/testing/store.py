@@ -286,7 +286,6 @@ class StoreTests(Generic[S, B]):
         assert result == data_buf
 
         await store.setdefault("k2", new)  # no error
-        await store.get("k2", default_buffer_prototype())
 
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
