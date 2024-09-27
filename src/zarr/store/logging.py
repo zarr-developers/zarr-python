@@ -5,7 +5,7 @@ import logging
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import AccessMode, ByteRangeRequest, Store
 
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
 
     from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.common import AccessModeLiteral
 
 
 class LoggingStore(Store):
@@ -27,6 +28,8 @@ class LoggingStore(Store):
     ):
         self._store = store
         self.counter = defaultdict(int)
+        self.log_level = log_level
+        self.log_handler = log_handler
 
         self._configure_logger(log_level, log_handler)
 
@@ -162,3 +165,10 @@ class LoggingStore(Store):
         with self.log():
             async for key in self._store.list_dir(prefix=prefix):
                 yield key
+
+    def with_mode(self, mode: AccessModeLiteral) -> Self:
+        return type(self)(
+            self._store.with_mode(mode),
+            log_level=self.log_level,
+            log_handler=self.log_handler,
+        )
