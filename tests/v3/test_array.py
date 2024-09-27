@@ -73,6 +73,12 @@ def test_array_creation_existing_node(
 async def test_create_creates_parents(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
+    # prepare a root node, with some data set
+    await zarr.api.asynchronous.open_group(
+        store=store, path="a", zarr_format=zarr_format, attributes={"key": "value"}
+    )
+
+    # create a child node with a couple intermediates
     await zarr.api.asynchronous.create(
         shape=(2, 2), store=store, path="a/b/c/d", zarr_format=zarr_format
     )

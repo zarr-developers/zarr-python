@@ -58,6 +58,11 @@ def test_group_init(store: Store, zarr_format: ZarrFormat) -> None:
 
 
 async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> None:
+    # prepare a root node, with some data set
+    await zarr.api.asynchronous.open_group(
+        store=store, path="a", zarr_format=zarr_format, attributes={"key": "value"}
+    )
+    # create a child node with a couple intermediates
     await zarr.api.asynchronous.open_group(store=store, path="a/b/c/d", zarr_format=zarr_format)
     parts = ["a", "a/b", "a/b/c"]
 
@@ -84,6 +89,12 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     for path in paths:
         g = await zarr.api.asynchronous.open_group(store=store, path=path)
         assert isinstance(g, AsyncGroup)
+
+        if path == "a":
+            # ensure we didn't overwrite the root attributes
+            assert g.attrs == {"key": "value"}
+        else:
+            assert g.attrs == {}
 
 
 def test_group_name_properties(store: Store, zarr_format: ZarrFormat) -> None:
