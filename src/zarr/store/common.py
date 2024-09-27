@@ -137,7 +137,7 @@ def _is_fsspec_uri(uri: str) -> bool:
     >>> _is_fsspec_uri("local://my-directory")
     False
     """
-    return "://" in uri or "::" in uri and "local://" not in uri
+    return "://" in uri or ("::" in uri and "local://" not in uri)
 
 
 async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:
