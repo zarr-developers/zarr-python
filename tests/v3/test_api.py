@@ -140,7 +140,12 @@ def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
     z2[:] = 3
 
 
-def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
+async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
+    # Open without shape argument should default to group
+    g = zarr.open(store=tmp_path, mode="a")
+    assert isinstance(g, Group)
+    await g.store_path.delete()
+
     # 'a' means read/write (create if doesn't exist)
     arr = zarr.open(store=tmp_path, mode="a", shape=(3, 3))
     assert isinstance(arr, Array)
