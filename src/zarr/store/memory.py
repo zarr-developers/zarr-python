@@ -98,7 +98,7 @@ class MemoryStore(Store):
         else:
             self._store_dict[key] = value
 
-    async def setdefault(self, key: str, default: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, default: Buffer) -> None:
         self._check_writable()
         await self._ensure_open()
         self._store_dict.setdefault(key, default)

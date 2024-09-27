@@ -288,7 +288,7 @@ class AsyncGroup:
             for parent in parents:
                 awaitables.extend(
                     [
-                        (parent.store_path / key).setdefault(value)
+                        (parent.store_path / key).set_if_not_exists(value)
                         for key, value in parent.metadata.to_buffer_dict(
                             default_buffer_prototype()
                         ).items()

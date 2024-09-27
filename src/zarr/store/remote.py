@@ -209,11 +209,6 @@ class RemoteStore(Store):
     ) -> None:
         raise NotImplementedError
 
-    async def setdefault(self, key: str, default: Buffer) -> None:
-        # this isn't safe for concurrent writers, but that's probably unavoidable.
-        if not await self.fs._exists(_dereference_path(self.path, key)):
-            await self.set(key, default)
-
     async def list(self) -> AsyncGenerator[str, None]:
         allfiles = await self.fs._find(self.path, detail=False, withdirs=False)
         for onefile in (a.replace(self.path + "/", "") for a in allfiles):

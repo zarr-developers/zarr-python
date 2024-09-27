@@ -172,15 +172,21 @@ class Store(ABC):
         """
         ...
 
-    @abstractmethod
-    async def setdefault(self, key: str, default: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         """
-        Store a key with a value of ``default`` if the key is not already present.
+        Store a key to ``value`` if the key is not already present.
 
-        Unlike MutableMapping.default, this method does not provide any way to
-        know whether ``default`` was actually set.
+        Parameters
+        -----------
+        key : str
+        value : Buffer
         """
-        ...
+        # Note for implementers: the default implementation provided here
+        # is not safe for concurrent writers. There's a race condition between
+        # the `exists` check and the `set` where another writer could set some
+        # value at `key` or delete `key`.
+        if not await self.exists(key):
+            await self.set(key, value)
 
     async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
         """
@@ -307,7 +313,7 @@ class ByteSetter(Protocol):
 
     async def delete(self) -> None: ...
 
-    async def setdefault(self, default: Buffer) -> None: ...
+    async def set_if_not_exists(self, default: Buffer) -> None: ...
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:

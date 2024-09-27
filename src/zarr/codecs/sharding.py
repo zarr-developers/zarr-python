@@ -97,7 +97,7 @@ class _ShardingByteSetter(_ShardingByteGetter, ByteSetter):
     async def delete(self) -> None:
         del self.shard_dict[self.chunk_coords]
 
-    async def setdefault(self, default: Buffer) -> None:
+    async def set_if_not_exists(self, default: Buffer) -> None:
         self.shard_dict.setdefault(self.chunk_coords, default)
 
 

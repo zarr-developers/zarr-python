@@ -161,7 +161,7 @@ class LocalStore(Store):
     async def set(self, key: str, value: Buffer) -> None:
         return await self._set(key, value)
 
-    async def setdefault(self, key: str, value: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         try:
             return await self._set(key, value, exclusive=True)
         except FileExistsError:
