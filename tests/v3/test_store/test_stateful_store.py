@@ -239,7 +239,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
 
 def test_zarr_hierarchy(sync_store: Store) -> None:
-    def mk_test_instance_sync():
+    def mk_test_instance_sync() -> None:
         return ZarrStoreStateMachine(sync_store)
 
     if isinstance(sync_store, ZipStore):
