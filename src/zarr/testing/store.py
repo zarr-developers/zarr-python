@@ -293,7 +293,7 @@ class StoreTests(Generic[S, B]):
             assert result is not None
             assert result.to_bytes() == data
 
-            # # writes to original after with_mode is visible
+            # writes to original after with_mode is visible
             self.set(store, "key-2", self.buffer_cls.from_bytes(data))
             result = await clone.get("key-2", default_buffer_prototype())
             assert result is not None
