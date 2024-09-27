@@ -239,7 +239,7 @@ def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> 
     np.testing.assert_array_equal(actual[:], expected[:])
 
 
-@pytest.mark.parametrize("store", ["memory",), indirect=True)
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_storage_transformers(store: MemoryStore) -> None:
     """
     Test that providing an actual storage transformer produces a warning and otherwise passes through
