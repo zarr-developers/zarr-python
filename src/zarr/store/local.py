@@ -60,6 +60,7 @@ def _put(
     path: Path,
     value: Buffer,
     start: int | None = None,
+    exclusive: bool = False,
 ) -> int | None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if start is not None:
@@ -68,7 +69,13 @@ def _put(
             f.write(value.as_numpy_array().tobytes())
         return None
     else:
-        return path.write_bytes(value.as_numpy_array().tobytes())
+        view = memoryview(value.as_numpy_array().tobytes())
+        if exclusive:
+            mode = "xb"
+        else:
+            mode = "wb"
+        with path.open(mode=mode) as f:
+            return f.write(view)
 
 
 class LocalStore(Store):
@@ -155,6 +162,15 @@ class LocalStore(Store):
         return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: Buffer) -> None:
+        return await self._set(key, value)
+
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        try:
+            return await self._set(key, value, exclusive=True)
+        except FileExistsError:
+            pass
+
+    async def _set(self, key: str, value: Buffer, exclusive: bool = False) -> None:
         if not self._is_open:
             await self._open()
         self._check_writable()
@@ -162,7 +178,7 @@ class LocalStore(Store):
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
         path = self.root / key
-        await to_thread(_put, path, value)
+        await to_thread(_put, path, value, start=None, exclusive=exclusive)
 
     async def set_partial_values(
         self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]

@@ -5,11 +5,13 @@ from typing import Literal
 import numpy as np
 import pytest
 
+import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import JSON, ZarrFormat
+from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
@@ -64,6 +66,47 @@ def test_array_creation_existing_node(
                 exists_ok=exists_ok,
                 zarr_format=zarr_format,
             )
+
+
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_create_creates_parents(
+    store: LocalStore | MemoryStore, zarr_format: ZarrFormat
+) -> None:
+    # prepare a root node, with some data set
+    await zarr.api.asynchronous.open_group(
+        store=store, path="a", zarr_format=zarr_format, attributes={"key": "value"}
+    )
+
+    # create a child node with a couple intermediates
+    await zarr.api.asynchronous.create(
+        shape=(2, 2), store=store, path="a/b/c/d", zarr_format=zarr_format
+    )
+    parts = ["a", "a/b", "a/b/c"]
+
+    if zarr_format == 2:
+        files = [".zattrs", ".zgroup"]
+    else:
+        files = ["zarr.json"]
+
+    expected = [f"{part}/{file}" for file in files for part in parts]
+
+    if zarr_format == 2:
+        expected.append("a/b/c/d/.zarray")
+        expected.append("a/b/c/d/.zattrs")
+    else:
+        expected.append("a/b/c/d/zarr.json")
+
+    expected = sorted(expected)
+
+    result = sorted([x async for x in store.list_prefix("")])
+
+    assert result == expected
+
+    paths = ["a", "a/b", "a/b/c"]
+    for path in paths:
+        g = await zarr.api.asynchronous.open_group(store=store, path=path)
+        assert isinstance(g, AsyncGroup)
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
