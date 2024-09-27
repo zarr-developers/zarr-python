@@ -89,7 +89,7 @@ async def make_store_path(
             assert AccessMode.from_literal(mode) == store_like.store.mode
         result = store_like
     elif isinstance(store_like, Store):
-        if mode is not None:
+        if mode is not None and mode != store_like.mode.str:
             store_like = store_like.with_mode(mode)
         await store_like._ensure_open()
         result = StorePath(store_like)
