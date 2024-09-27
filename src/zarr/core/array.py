@@ -614,7 +614,7 @@ class AsyncArray:
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
 
         if ensure_parents:
-            # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediates.
+            # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.
             parents = _build_parents(self)
 
             for parent in parents:

@@ -141,7 +141,7 @@ class LoggingStore(Store):
 
     async def setdefault(self, key: str, default: Buffer) -> None:
         with self.log():
-            return await self._store.set(key=key, value=default)
+            return await self._store.setdefault(key=key, default=default)
 
     async def delete(self, key: str) -> None:
         with self.log():

@@ -315,10 +315,3 @@ async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:
         await byte_setter.delete()
     else:
         await byte_setter.set(value)
-
-
-async def setdefault(byte_setter: ByteSetter, value: Buffer | None) -> None:
-    if value is None:
-        await byte_setter.delete()
-    else:
-        await byte_setter.set(value)
