@@ -98,6 +98,12 @@ class LoggingStore(Store):
         with self.log():
             return self._store._is_open
 
+    async def _open(self) -> None:
+        return await self._store._open()
+
+    async def _ensure_open(self) -> None:
+        return await self._store._ensure_open()
+
     async def empty(self) -> bool:
         with self.log():
             return await self._store.empty()
