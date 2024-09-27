@@ -7,9 +7,10 @@ import pytest
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
+from zarr.codecs.bytes import BytesCodec
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer.cpu import NDBuffer
-from zarr.core.common import ZarrFormat
+from zarr.core.common import JSON, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
 from zarr.core.sync import sync
@@ -273,6 +274,27 @@ def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> 
 
     assert actual == expected
     np.testing.assert_array_equal(actual[:], expected[:])
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_storage_transformers(store: MemoryStore) -> None:
+    """
+    Test that providing an actual storage transformer produces a warning and otherwise passes through
+    """
+    metadata_dict: dict[str, JSON] = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (10,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": "uint8",
+        "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
+        "codecs": (BytesCodec().to_dict(),),
+        "fill_value": 0,
+        "storage_transformers": ({"test": "should_raise"}),
+    }
+    match = "Arrays with storage transformers are not supported in zarr-python at this time."
+    with pytest.raises(ValueError, match=match):
+        Array.from_dict(StorePath(store), data=metadata_dict)
 
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray])

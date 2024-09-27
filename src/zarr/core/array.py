@@ -88,7 +88,14 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
         return data
     elif isinstance(data, dict):
         if data["zarr_format"] == 3:
-            return ArrayV3Metadata.from_dict(data)
+            meta_out = ArrayV3Metadata.from_dict(data)
+            if len(meta_out.storage_transformers) > 0:
+                msg = (
+                    f"Array metadata contains storage transformers: {meta_out.storage_transformers}."
+                    "Arrays with storage transformers are not supported in zarr-python at this time."
+                )
+                raise ValueError(msg)
+            return meta_out
         elif data["zarr_format"] == 2:
             return ArrayV2Metadata.from_dict(data)
     raise TypeError
