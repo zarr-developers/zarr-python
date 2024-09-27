@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
+from enum import Enum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Any, Literal
+    from typing import Any, Literal, Self
 
     import numpy.typing as npt
-    from typing_extensions import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import JSON, ChunkCoords
@@ -14,12 +15,13 @@ if TYPE_CHECKING:
 import json
 from dataclasses import dataclass, field, replace
 
+import numcodecs
 import numpy as np
 
 from zarr.core.array_spec import ArraySpec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
-from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, parse_dtype, parse_shapelike
+from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 
@@ -31,9 +33,9 @@ class ArrayV2Metadata(ArrayMetadata):
     data_type: np.dtype[Any]
     fill_value: None | int | float = 0
     order: Literal["C", "F"] = "C"
-    filters: list[dict[str, JSON]] | None = None
+    filters: tuple[numcodecs.abc.Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
-    compressor: dict[str, JSON] | None = None
+    compressor: numcodecs.abc.Codec | None = None
     attributes: dict[str, JSON] = field(default_factory=dict)
     zarr_format: Literal[2] = field(init=False, default=2)
 
@@ -46,10 +48,10 @@ class ArrayV2Metadata(ArrayMetadata):
         fill_value: Any,
         order: Literal["C", "F"],
         dimension_separator: Literal[".", "/"] = ".",
-        compressor: dict[str, JSON] | None = None,
-        filters: list[dict[str, JSON]] | None = None,
+        compressor: numcodecs.abc.Codec | dict[str, JSON] | None = None,
+        filters: Iterable[numcodecs.abc.Codec | dict[str, JSON]] | None = None,
         attributes: dict[str, JSON] | None = None,
-    ):
+    ) -> None:
         """
         Metadata for a Zarr version 2 array.
         """
@@ -97,18 +99,30 @@ class ArrayV2Metadata(ArrayMetadata):
                     return o.str
                 else:
                     return o.descr
+            if isinstance(o, numcodecs.abc.Codec):
+                return o.get_config()
             if np.isscalar(o):
-                # convert numpy scalar to python type, and pass
-                # python types through
-                return getattr(o, "item", lambda: o)()
+                out: Any
+                if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
+                    # https://github.com/zarr-developers/zarr-python/issues/2119
+                    # `.item()` on a datetime type might or might not return an
+                    # integer, depending on the value.
+                    # Explicitly cast to an int first, and then grab .item()
+                    out = o.view("i8").item()
+                else:
+                    # convert numpy scalar to python type, and pass
+                    # python types through
+                    out = getattr(o, "item", lambda: o)()
+                    if isinstance(out, complex):
+                        # python complex types are not JSON serializable, so we use the
+                        # serialization defined in the zarr v3 spec
+                        return [out.real, out.imag]
+                return out
+            if isinstance(o, Enum):
+                return o.name
             raise TypeError
 
         zarray_dict = self.to_dict()
-
-        # todo: remove this check when we can ensure that to_dict always returns dicts.
-        if not isinstance(zarray_dict, dict):
-            raise TypeError(f"Invalid type: got {type(zarray_dict)}, expected dict.")
-
         zattrs_dict = zarray_dict.pop("attributes", {})
         json_indent = config.get("json_indent")
         return {
@@ -128,13 +142,8 @@ class ArrayV2Metadata(ArrayMetadata):
         _ = parse_zarr_format(_data.pop("zarr_format"))
         return cls(**_data)
 
-    def to_dict(self) -> JSON:
+    def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
-
-        # todo: remove this check when we can ensure that to_dict always returns dicts.
-        if not isinstance(zarray_dict, dict):
-            raise TypeError(f"Invalid type: got {type(zarray_dict)}, expected dict.")
-
         _ = zarray_dict.pop("chunk_grid")
         zarray_dict["chunks"] = self.chunk_grid.chunk_shape
 
@@ -165,18 +174,49 @@ class ArrayV2Metadata(ArrayMetadata):
         return replace(self, attributes=attributes)
 
 
-def parse_zarr_format(data: Literal[2]) -> Literal[2]:
+def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
+    # todo: real validation
+    return np.dtype(data)
+
+
+def parse_zarr_format(data: object) -> Literal[2]:
     if data == 2:
-        return data
+        return 2
     raise ValueError(f"Invalid value. Expected 2. Got {data}.")
 
 
-def parse_filters(data: list[dict[str, JSON]] | None) -> list[dict[str, JSON]] | None:
-    return data
+def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
+    """
+    Parse a potential tuple of filters
+    """
+    out: list[numcodecs.abc.Codec] = []
+
+    if data is None:
+        return data
+    if isinstance(data, Iterable):
+        for idx, val in enumerate(data):
+            if isinstance(val, numcodecs.abc.Codec):
+                out.append(val)
+            elif isinstance(val, dict):
+                out.append(numcodecs.get_codec(val))
+            else:
+                msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
+                raise TypeError(msg)
+        return tuple(out)
+    msg = f"Invalid filters. Expected None, an iterable of numcodecs.abc.Codec or dict representations of numcodecs.abc.Codec. Got {type(data)} instead."
+    raise TypeError(msg)
 
 
-def parse_compressor(data: dict[str, JSON] | None) -> dict[str, JSON] | None:
-    return data
+def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
+    """
+    Parse a potential compressor.
+    """
+    if data is None or isinstance(data, numcodecs.abc.Codec):
+        return data
+    if isinstance(data, dict):
+        return numcodecs.get_codec(data)
+    msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
+    raise ValueError(msg)
 
 
 def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
@@ -189,7 +229,7 @@ def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
     return data
 
 
-def parse_fill_value(fill_value: Any, dtype: np.dtype[Any]) -> Any:
+def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
     """
     Parse a potential fill value into a value that is compatible with the provided dtype.
 

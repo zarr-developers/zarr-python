@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
     from zarr.core.common import JSON
 
@@ -15,7 +15,7 @@ __all__ = ["Metadata"]
 
 @dataclass(frozen=True)
 class Metadata:
-    def to_dict(self) -> JSON:
+    def to_dict(self) -> dict[str, JSON]:
         """
         Recursively serialize this model to a dictionary.
         This method inspects the fields of self and calls `x.to_dict()` for any fields that

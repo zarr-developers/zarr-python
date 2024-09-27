@@ -1,13 +1,22 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
-from typing import Any, NamedTuple, Protocol, runtime_checkable
+from asyncio import gather
+from collections.abc import AsyncGenerator, Iterable
+from types import TracebackType
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
-from typing_extensions import Self
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Iterable
+    from types import TracebackType
+    from typing import Any, Self, TypeAlias
 
-from zarr.core.buffer import Buffer, BufferPrototype
-from zarr.core.common import AccessModeLiteral, BytesLike
+    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.common import AccessModeLiteral, BytesLike
 
 __all__ = ["Store", "AccessMode", "ByteGetter", "ByteSetter", "set_or_delete"]
+
+ByteRangeRequest: TypeAlias = tuple[int | None, int | None]
 
 
 class AccessMode(NamedTuple):
@@ -34,7 +43,7 @@ class Store(ABC):
     _mode: AccessMode
     _is_open: bool
 
-    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any):
+    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any) -> None:
         self._is_open = False
         self._mode = AccessMode.from_literal(mode)
 
@@ -48,7 +57,12 @@ class Store(ABC):
         """Enter a context manager that will close the store upon exiting."""
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         """Close the store."""
         self.close()
 
@@ -93,14 +107,14 @@ class Store(ABC):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
 
         Parameters
         ----------
         key : str
-        byte_range : tuple[int, Optional[int]], optional
+        byte_range : tuple[int | None, int | None], optional
 
         Returns
         -------
@@ -112,13 +126,13 @@ class Store(ABC):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
         ----------
-        key_ranges : list[tuple[str, tuple[int, int]]]
+        key_ranges : Iterable[tuple[str, tuple[int | None, int | None]]]
             Ordered set of key, range pairs, a key may occur multiple times with different ranges
 
         Returns
@@ -158,6 +172,13 @@ class Store(ABC):
         """
         ...
 
+    async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
+        """
+        Insert multiple (key, value) pairs into storage.
+        """
+        await gather(*(self.set(key, value) for key, value in values))
+        return
+
     @property
     @abstractmethod
     def supports_deletes(self) -> bool:
@@ -181,7 +202,9 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def set_partial_values(self, key_start_values: list[tuple[str, int, BytesLike]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
+    ) -> None:
         """Store values at a given key, starting at byte range_start.
 
         Parameters
@@ -211,7 +234,9 @@ class Store(ABC):
 
     @abstractmethod
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """Retrieve all keys in the store with a given prefix.
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
 
         Parameters
         ----------
@@ -243,21 +268,32 @@ class Store(ABC):
         """Close the store."""
         self._is_open = False
 
+    async def _get_many(
+        self, requests: Iterable[tuple[str, BufferPrototype, ByteRangeRequest | None]]
+    ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
+        """
+        Retrieve a collection of objects from storage. In general this method does not guarantee
+        that objects will be retrieved in the order in which they were requested, so this method
+        yields tuple[str, Buffer | None] instead of just Buffer | None
+        """
+        for req in requests:
+            yield (req[0], await self.get(*req))
+
 
 @runtime_checkable
 class ByteGetter(Protocol):
     async def get(
-        self, prototype: BufferPrototype, byte_range: tuple[int, int | None] | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
     ) -> Buffer | None: ...
 
 
 @runtime_checkable
 class ByteSetter(Protocol):
     async def get(
-        self, prototype: BufferPrototype, byte_range: tuple[int, int | None] | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
     ) -> Buffer | None: ...
 
-    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None: ...
+    async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None: ...
 
     async def delete(self) -> None: ...
 

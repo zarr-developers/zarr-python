@@ -6,12 +6,12 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zarr.abc.store import Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
 from zarr.core.common import concurrent_map, to_thread
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Iterable
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
@@ -79,7 +79,7 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r"):
+    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r") -> None:
         super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
@@ -93,11 +93,15 @@ class LocalStore(Store):
 
     async def empty(self) -> bool:
         try:
-            subpaths = os.listdir(self.root)
+            with os.scandir(self.root) as it:
+                for entry in it:
+                    if entry.is_file():
+                        # stop once a file is found
+                        return False
         except FileNotFoundError:
             return True
         else:
-            return not subpaths
+            return True
 
     def __str__(self) -> str:
         return f"file://{self.root}"
@@ -127,7 +131,7 @@ class LocalStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         """
         Read byte ranges from multiple keys.
@@ -157,7 +161,9 @@ class LocalStore(Store):
         path = self.root / key
         await to_thread(_put, path, value)
 
-    async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
+    ) -> None:
         self._check_writable()
         args = []
         for key, start, value in key_start_values:
@@ -191,7 +197,9 @@ class LocalStore(Store):
                 yield str(p).replace(to_strip, "")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """Retrieve all keys in the store with a given prefix.
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
 
         Parameters
         ----------
@@ -201,14 +209,10 @@ class LocalStore(Store):
         -------
         AsyncGenerator[str, None]
         """
+        to_strip = os.path.join(str(self.root / prefix))
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
-                yield str(p)
-
-        to_strip = str(self.root) + "/"
-        for p in (self.root / prefix).rglob("*"):
-            if p.is_file():
-                yield str(p).replace(to_strip, "")
+                yield str(p.relative_to(to_strip))
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         """

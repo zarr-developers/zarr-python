@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, MutableMapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from zarr.abc.store import Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.common import concurrent_map
 from zarr.store._utils import _normalize_interval_index
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, MutableMapping
+    from collections.abc import AsyncGenerator, Iterable, MutableMapping
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
@@ -30,7 +29,7 @@ class MemoryStore(Store):
         store_dict: MutableMapping[str, Buffer] | None = None,
         *,
         mode: AccessModeLiteral = "r",
-    ):
+    ) -> None:
         super().__init__(mode=mode)
         if store_dict is None:
             store_dict = {}
@@ -55,12 +54,6 @@ class MemoryStore(Store):
             and self.mode == other.mode
         )
 
-    def __setstate__(self, state: Any) -> None:
-        raise NotImplementedError(f"{type(self)} cannot be pickled")
-
-    def __getstate__(self) -> None:
-        raise NotImplementedError(f"{type(self)} cannot be pickled")
-
     async def get(
         self,
         key: str,
@@ -80,14 +73,13 @@ class MemoryStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         # All the key-ranges arguments goes with the same prototype
-        async def _get(key: str, byte_range: tuple[int, int | None]) -> Buffer | None:
+        async def _get(key: str, byte_range: ByteRangeRequest) -> Buffer | None:
             return await self.get(key, prototype=prototype, byte_range=byte_range)
 
-        vals = await concurrent_map(key_ranges, _get, limit=None)
-        return vals
+        return await concurrent_map(key_ranges, _get, limit=None)
 
     async def exists(self, key: str) -> bool:
         return key in self._store_dict
@@ -114,7 +106,7 @@ class MemoryStore(Store):
         except KeyError:
             pass  # Q(JH): why not raise?
 
-    async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
         raise NotImplementedError
 
     async def list(self) -> AsyncGenerator[str, None]:
@@ -124,14 +116,26 @@ class MemoryStore(Store):
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         for key in self._store_dict:
             if key.startswith(prefix):
-                yield key
+                yield key.removeprefix(prefix)
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
+
+        Parameters
+        ----------
+        prefix : str
+
+        Returns
+        -------
+        AsyncGenerator[str, None]
+        """
         if prefix.endswith("/"):
             prefix = prefix[:-1]
 
         if prefix == "":
-            keys_unique = set(k.split("/")[0] for k in self._store_dict.keys())
+            keys_unique = {k.split("/")[0] for k in self._store_dict}
         else:
             # Our dictionary doesn't contain directory markers, but we want to include
             # a pseudo directory when there's a nested item and we're listing an
@@ -160,7 +164,7 @@ class GpuMemoryStore(MemoryStore):
         store_dict: MutableMapping[str, Buffer] | None = None,
         *,
         mode: AccessModeLiteral = "r",
-    ):
+    ) -> None:
         super().__init__(mode=mode)
         if store_dict:
             self._store_dict = {k: gpu.Buffer.from_buffer(store_dict[k]) for k in iter(store_dict)}

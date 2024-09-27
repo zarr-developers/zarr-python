@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import numpy.typing as npt
 
+from zarr._compat import _deprecate_positional_args
 from zarr.abc.store import set_or_delete
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -48,6 +49,8 @@ from zarr.core.indexing import (
     OrthogonalSelection,
     Selection,
     VIndex,
+    _iter_grid,
+    ceildiv,
     check_fields,
     check_no_multi_fields,
     is_pure_fancy_indexing,
@@ -57,7 +60,7 @@ from zarr.core.indexing import (
 )
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
-from zarr.core.sync import sync
+from zarr.core.sync import collect_aiterator, sync
 from zarr.registry import get_pipeline_class
 from zarr.store import StoreLike, StorePath, make_store_path
 from zarr.store.common import (
@@ -65,7 +68,7 @@ from zarr.store.common import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Iterator, Sequence
 
     from zarr.abc.codec import Codec, CodecPipeline
     from zarr.core.metadata.common import ArrayMetadata
@@ -79,7 +82,14 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
         return data
     elif isinstance(data, dict):
         if data["zarr_format"] == 3:
-            return ArrayV3Metadata.from_dict(data)
+            meta_out = ArrayV3Metadata.from_dict(data)
+            if len(meta_out.storage_transformers) > 0:
+                msg = (
+                    f"Array metadata contains storage transformers: {meta_out.storage_transformers}."
+                    "Arrays with storage transformers are not supported in zarr-python at this time."
+                )
+                raise ValueError(msg)
+            return meta_out
         elif data["zarr_format"] == 2:
             return ArrayV2Metadata.from_dict(data)
     raise TypeError
@@ -87,10 +97,10 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
 
 def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
-        return get_pipeline_class().from_list(metadata.codecs)
+        return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
-        return get_pipeline_class().from_list(
-            [V2Filters(metadata.filters or []), V2Compressor(metadata.compressor)]
+        return get_pipeline_class().from_codecs(
+            [V2Filters(metadata.filters), V2Compressor(metadata.compressor)]
         )
     else:
         raise TypeError
@@ -155,13 +165,14 @@ class AsyncArray:
         metadata: ArrayMetadata | dict[str, Any],
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
-    ):
+    ): -> None:
         if isinstance(metadata, dict):
             zarr_format = metadata["zarr_format"]
             if zarr_format == 2:
                 metadata = ArrayV2Metadata.from_dict(metadata)
             else:
                 metadata = ArrayV3Metadata.from_dict(metadata)
+
         metadata_parsed = parse_array_metadata(metadata)
         order_parsed = parse_indexing_order(order or config.get("array.order"))
 
@@ -303,12 +314,6 @@ class AsyncArray:
         shape = parse_shapelike(shape)
         codecs = list(codecs) if codecs is not None else [BytesCodec()]
 
-        if fill_value is None:
-            if dtype == np.dtype("bool"):
-                fill_value = False
-            else:
-                fill_value = 0
-
         if chunk_key_encoding is None:
             chunk_key_encoding = ("default", "/")
         assert chunk_key_encoding is not None
@@ -332,7 +337,6 @@ class AsyncArray:
         )
 
         array = cls(metadata=metadata, store_path=store_path)
-
         await array._save_metadata(metadata)
         return array
 
@@ -345,15 +349,13 @@ class AsyncArray:
         dtype: npt.DTypeLike,
         chunks: ChunkCoords,
         dimension_separator: Literal[".", "/"] | None = None,
-        fill_value: None | int | float = None,
+        fill_value: None | float = None,
         order: Literal["C", "F"] | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray:
-        import numcodecs
-
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=2)
         if order is None:
@@ -369,14 +371,8 @@ class AsyncArray:
             order=order,
             dimension_separator=dimension_separator,
             fill_value=0 if fill_value is None else fill_value,
-            compressor=(
-                numcodecs.get_codec(compressor).get_config() if compressor is not None else None
-            ),
-            filters=(
-                [numcodecs.get_codec(filter).get_config() for filter in filters]
-                if filters is not None
-                else None
-            ),
+            compressor=compressor,
+            filters=filters,
             attributes=attributes,
         )
         array = cls(metadata=metadata, store_path=store_path)
@@ -390,8 +386,7 @@ class AsyncArray:
         data: dict[str, JSON],
     ) -> AsyncArray:
         metadata = parse_array_metadata(data)
-        async_array = cls(metadata=metadata, store_path=store_path)
-        return async_array
+        return cls(metadata=metadata, store_path=store_path)
 
     @classmethod
     async def open(
@@ -415,10 +410,12 @@ class AsyncArray:
     def chunks(self) -> ChunkCoords:
         if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
             return self.metadata.chunk_grid.chunk_shape
-        else:
-            raise TypeError(
-                f"chunk attribute is only available for RegularChunkGrid, this array has a {self.metadata.chunk_grid}"
-            )
+
+        msg = (
+            f"The `chunks` attribute is only defined for arrays using `RegularChunkGrid`."
+            f"This array has a {self.metadata.chunk_grid} instead."
+        )
+        raise NotImplementedError(msg)
 
     @property
     def size(self) -> int:
@@ -458,6 +455,111 @@ class AsyncArray:
         if self.name is not None:
             return self.name.split("/")[-1]
         return None
+
+    @property
+    def cdata_shape(self) -> ChunkCoords:
+        """
+        The shape of the chunk grid for this array.
+        """
+        return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
+
+    @property
+    def nchunks(self) -> int:
+        """
+        The number of chunks in the stored representation of this array.
+        """
+        return product(self.cdata_shape)
+
+    @property
+    def nchunks_initialized(self) -> int:
+        """
+        The number of chunks that have been persisted in storage.
+        """
+        return nchunks_initialized(self)
+
+    def _iter_chunk_coords(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[ChunkCoords]:
+        """
+        Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
+        keyword is used, iteration will start at the chunk index specified by `origin`.
+        The default behavior is to start at the origin of the grid coordinate space.
+        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+        ranging from `[origin, origin + selection_shape]`, where the upper bound is exclusive as
+        per python indexing conventions.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        chunk_coords: ChunkCoords
+            The coordinates of each chunk in the selection.
+        """
+        return _iter_grid(self.cdata_shape, origin=origin, selection_shape=selection_shape)
+
+    def _iter_chunk_keys(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[str]:
+        """
+        Iterate over the storage keys of each chunk, relative to an optional origin, and optionally
+        limited to a contiguous region in chunk grid coordinates.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        key: str
+            The storage key of each chunk in the selection.
+        """
+        # Iterate over the coordinates of chunks in chunk grid space.
+        for k in self._iter_chunk_coords(origin=origin, selection_shape=selection_shape):
+            # Encode the chunk key from the chunk coordinates.
+            yield self.metadata.encode_chunk_key(k)
+
+    def _iter_chunk_regions(
+        self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[slice, ...]]:
+        """
+        Iterate over the regions spanned by each chunk.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        region: tuple[slice, ...]
+            A tuple of slice objects representing the region spanned by each chunk in the selection.
+        """
+        for cgrid_position in self._iter_chunk_coords(
+            origin=origin, selection_shape=selection_shape
+        ):
+            out: tuple[slice, ...] = ()
+            for c_pos, c_shape in zip(cgrid_position, self.chunks, strict=False):
+                start = c_pos * c_shape
+                stop = start + c_shape
+                out += (slice(start, stop, 1),)
+            yield out
+
+    @property
+    def nbytes(self) -> int:
+        """
+        The number of bytes that can be stored in this array.
+        """
+        return self.nchunks * self.dtype.itemsize
 
     async def _get_selection(
         self,
@@ -639,6 +741,7 @@ class Array:
     _async_array: AsyncArray
 
     @classmethod
+    @_deprecate_positional_args
     def create(
         cls,
         store: StoreLike,
@@ -765,6 +868,106 @@ class Array:
     @property
     def fill_value(self) -> Any:
         return self.metadata.fill_value
+
+    @property
+    def cdata_shape(self) -> ChunkCoords:
+        """
+        The shape of the chunk grid for this array.
+        """
+        return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
+
+    @property
+    def nchunks(self) -> int:
+        """
+        The number of chunks in the stored representation of this array.
+        """
+        return self._async_array.nchunks
+
+    def _iter_chunk_coords(
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[ChunkCoords]:
+        """
+        Create an iterator over the coordinates of chunks in chunk grid space. If the `origin`
+        keyword is used, iteration will start at the chunk index specified by `origin`.
+        The default behavior is to start at the origin of the grid coordinate space.
+        If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
+        ranging from `[origin, origin + selection_shape]`, where the upper bound is exclusive as
+        per python indexing conventions.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        chunk_coords: ChunkCoords
+            The coordinates of each chunk in the selection.
+        """
+        yield from self._async_array._iter_chunk_coords(
+            origin=origin, selection_shape=selection_shape
+        )
+
+    @property
+    def nbytes(self) -> int:
+        """
+        The number of bytes that can be stored in this array.
+        """
+        return self._async_array.nbytes
+
+    @property
+    def nchunks_initialized(self) -> int:
+        """
+        The number of chunks that have been initialized in the stored representation of this array.
+        """
+        return self._async_array.nchunks_initialized
+
+    def _iter_chunk_keys(
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[str]:
+        """
+        Iterate over the storage keys of each chunk, relative to an optional origin, and optionally
+        limited to a contiguous region in chunk grid coordinates.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        key: str
+            The storage key of each chunk in the selection.
+        """
+        yield from self._async_array._iter_chunk_keys(
+            origin=origin, selection_shape=selection_shape
+        )
+
+    def _iter_chunk_regions(
+        self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
+    ) -> Iterator[tuple[slice, ...]]:
+        """
+        Iterate over the regions spanned by each chunk.
+
+        Parameters
+        ----------
+        origin: Sequence[int] | None, default=None
+            The origin of the selection relative to the array's chunk grid.
+        selection_shape: Sequence[int] | None, default=None
+            The shape of the selection in chunk grid coordinates.
+
+        Yields
+        ------
+        region: tuple[slice, ...]
+            A tuple of slice objects representing the region spanned by each chunk in the selection.
+        """
+        yield from self._async_array._iter_chunk_regions(
+            origin=origin, selection_shape=selection_shape
+        )
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
@@ -1034,6 +1237,7 @@ class Array:
         else:
             self.set_basic_selection(cast(BasicSelection, pure_selection), value, fields=fields)
 
+    @_deprecate_positional_args
     def get_basic_selection(
         self,
         selection: BasicSelection = Ellipsis,
@@ -1157,6 +1361,7 @@ class Array:
             )
         )
 
+    @_deprecate_positional_args
     def set_basic_selection(
         self,
         selection: BasicSelection,
@@ -1252,6 +1457,7 @@ class Array:
         indexer = BasicIndexer(selection, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
+    @_deprecate_positional_args
     def get_orthogonal_selection(
         self,
         selection: OrthogonalSelection,
@@ -1376,6 +1582,7 @@ class Array:
             )
         )
 
+    @_deprecate_positional_args
     def set_orthogonal_selection(
         self,
         selection: OrthogonalSelection,
@@ -1486,6 +1693,7 @@ class Array:
             self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype)
         )
 
+    @_deprecate_positional_args
     def get_mask_selection(
         self,
         mask: MaskSelection,
@@ -1568,6 +1776,7 @@ class Array:
             )
         )
 
+    @_deprecate_positional_args
     def set_mask_selection(
         self,
         mask: MaskSelection,
@@ -1646,6 +1855,7 @@ class Array:
         indexer = MaskIndexer(mask, self.shape, self.metadata.chunk_grid)
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
+    @_deprecate_positional_args
     def get_coordinate_selection(
         self,
         selection: CoordinateSelection,
@@ -1735,6 +1945,7 @@ class Array:
             out_array = np.array(out_array).reshape(indexer.sel_shape)
         return out_array
 
+    @_deprecate_positional_args
     def set_coordinate_selection(
         self,
         selection: CoordinateSelection,
@@ -1824,6 +2035,7 @@ class Array:
 
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
+    @_deprecate_positional_args
     def get_block_selection(
         self,
         selection: BasicSelection,
@@ -1922,6 +2134,7 @@ class Array:
             )
         )
 
+    @_deprecate_positional_args
     def set_block_selection(
         self,
         selection: BasicSelection,
@@ -2087,3 +2300,57 @@ class Array:
         return sync(
             self._async_array.info(),
         )
+
+
+def nchunks_initialized(array: AsyncArray | Array) -> int:
+    """
+    Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
+    been persisted to the storage backend.
+
+    Parameters
+    ----------
+    array : Array
+        The array to inspect.
+
+    Returns
+    -------
+    nchunks_initialized : int
+        The number of chunks that have been initialized.
+
+    See Also
+    --------
+    chunks_initialized
+    """
+    return len(chunks_initialized(array))
+
+
+def chunks_initialized(array: Array | AsyncArray) -> tuple[str, ...]:
+    """
+    Return the keys of the chunks that have been persisted to the storage backend.
+
+    Parameters
+    ----------
+    array : Array
+        The array to inspect.
+
+    Returns
+    -------
+    chunks_initialized : tuple[str, ...]
+        The keys of the chunks that have been initialized.
+
+    See Also
+    --------
+    nchunks_initialized
+
+    """
+    # TODO: make this compose with the underlying async iterator
+    store_contents = list(
+        collect_aiterator(array.store_path.store.list_prefix(prefix=array.store_path.path))
+    )
+    out: list[str] = []
+
+    for chunk_key in array._iter_chunk_keys():
+        if chunk_key in store_contents:
+            out.append(chunk_key)
+
+    return tuple(out)

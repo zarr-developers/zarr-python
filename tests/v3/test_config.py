@@ -41,7 +41,7 @@ def test_config_defaults_set() -> None:
         {
             "default_zarr_version": 3,
             "array": {"order": "C"},
-            "async": {"concurrency": None, "timeout": None},
+            "async": {"concurrency": 10, "timeout": None},
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.codecs.pipeline.BatchedCodecPipeline",
@@ -62,15 +62,15 @@ def test_config_defaults_set() -> None:
         }
     ]
     assert config.get("array.order") == "C"
-    assert config.get("async.concurrency") is None
+    assert config.get("async.concurrency") == 10
     assert config.get("async.timeout") is None
     assert config.get("codec_pipeline.batch_size") == 1
     assert config.get("json_indent") == 2
 
 
 @pytest.mark.parametrize(
-    "key, old_val, new_val",
-    [("array.order", "C", "F"), ("async.concurrency", None, 10), ("json_indent", 2, 0)],
+    ("key", "old_val", "new_val"),
+    [("array.order", "C", "F"), ("async.concurrency", 10, 20), ("json_indent", 2, 0)],
 )
 def test_config_defaults_can_be_overridden(key: str, old_val: Any, new_val: Any) -> None:
     assert config.get(key) == old_val
@@ -88,7 +88,7 @@ def test_fully_qualified_name() -> None:
     )
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_config_codec_pipeline_class(store: Store) -> None:
     # has default value
     assert get_pipeline_class().__name__ != ""
@@ -139,7 +139,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
         assert get_pipeline_class(reload_config=True) == MockEnvCodecPipeline
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_config_codec_implementation(store: Store) -> None:
     # has default value
     assert fully_qualified_name(get_codec_class("blosc")) == config.defaults[0]["codecs"]["blosc"]
@@ -172,7 +172,7 @@ def test_config_codec_implementation(store: Store) -> None:
         assert get_codec_class("blosc", reload_config=True) == BloscCodec
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_config_ndbuffer_implementation(store: Store) -> None:
     # has default value
     assert fully_qualified_name(get_ndbuffer_class()) == config.defaults[0]["ndbuffer"]

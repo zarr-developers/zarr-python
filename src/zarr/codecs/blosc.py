@@ -14,7 +14,7 @@ from zarr.core.common import JSON, parse_enum, parse_named_configuration, to_thr
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer
@@ -127,9 +127,9 @@ class BloscCodec(BytesBytesCodec):
             "name": "blosc",
             "configuration": {
                 "typesize": self.typesize,
-                "cname": self.cname,
+                "cname": self.cname.value,
                 "clevel": self.clevel,
-                "shuffle": self.shuffle,
+                "shuffle": self.shuffle.value,
                 "blocksize": self.blocksize,
             },
         }

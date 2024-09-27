@@ -20,13 +20,13 @@ maintainers = [
     { name = "Norman Rzepka" },
     { name = "Ryan Abernathey" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'asciitree',
-    'numpy>=1.24',
+    'numpy>=1.25',
     'fasteners',
-    'numcodecs>=0.10.0',
+    'numcodecs>=0.10.2',
     'fsspec>2024',
     'crc32c',
     'typing_extensions',
@@ -45,7 +45,6 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Operating System :: Unix',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
 ]
@@ -66,7 +65,8 @@ test = [
     "flask",
     "requests",
     "mypy",
-    "hypothesis"
+    "hypothesis",
+    "universal-pathlib",
 ]
 
 jupyter = [
@@ -129,18 +129,18 @@ dependencies = [
 features = ["test", "extra"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11", "3.12"]
-numpy = ["1.24", "1.26", "2.0"]
+python = ["3.11", "3.12"]
+numpy = ["1.25", "1.26", "2.0"]
 version = ["minimal"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11", "3.12"]
-numpy = ["1.24", "1.26", "2.0"]
+python = ["3.11", "3.12"]
+numpy = ["1.25", "1.26", "2.0"]
 features = ["optional"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11", "3.12"]
-numpy = ["1.24", "1.26", "2.0"]
+python = ["3.11", "3.12"]
+numpy = ["1.25", "1.26", "2.0"]
 features = ["gpu"]
 
 [tool.hatch.envs.test.scripts]
@@ -160,8 +160,8 @@ dependencies = [
 features = ["test", "extra", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
-python = ["3.10", "3.11", "3.12"]
-numpy = ["1.24", "1.26", "2.0"]
+python = ["3.11", "3.12"]
+numpy = ["1.25", "1.26", "2.0"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
@@ -206,22 +206,49 @@ extend-exclude = [
 
 [tool.ruff.lint]
 extend-select = [
-    "B",  # flake8-bugbear
-    "I",  # isort
-    "ISC",
-    "UP",  # pyupgrade
-    "RSE",
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "FLY", # flynt
+    "I",   # isort
+    "ISC", # flake8-implicit-str-concat
+    "PGH", # pygrep-hooks
+    "PT",  # flake8-pytest-style
+    "PYI", # flake8-pyi
+    "RSE", # flake8-raise
+    "RET", # flake8-return
     "RUF",
     "TCH", # flake8-type-checking
     "TRY", # tryceratops
+    "UP",  # pyupgrade
 ]
 ignore = [
+    "PT004",  # deprecated
+    "PT011",  # TODO: apply this rule
+    "PT012",  # TODO: apply this rule
+    "PYI013",
+    "RET505",
+    "RET506",
     "RUF005",
     "TRY003",
+    # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
+    "W191",
+    "E111",
+    "E114",
+    "E117",
+    "D206",
+    "D300",
+    "Q000",
+    "Q001",
+    "Q002",
+    "Q003",
+    "COM812",
+    "COM819",
+    "ISC001",
+    "ISC002",
 ]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 ignore_missing_imports = true
 namespace_packages = false
 
@@ -273,6 +300,7 @@ filterwarnings = [
     "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
     "ignore:Creating a zarr.buffer.gpu.*:UserWarning",
+    "ignore:Duplicate name:UserWarning",  # from ZipFile
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU"

@@ -3,10 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from typing import Any, Literal
+    from typing import Any, Literal, Self
 
     import numpy as np
-    from typing_extensions import Self
 
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype

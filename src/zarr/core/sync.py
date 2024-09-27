@@ -83,7 +83,7 @@ def sync(
 
     finished, unfinished = wait([future], return_when=asyncio.ALL_COMPLETED, timeout=timeout)
     if len(unfinished) > 0:
-        raise asyncio.TimeoutError(f"Coroutine {coro} failed to finish in within {timeout}s")
+        raise TimeoutError(f"Coroutine {coro} failed to finish in within {timeout}s")
     assert len(finished) == 1
     return_result = next(iter(finished)).result()
 
@@ -111,6 +111,21 @@ def _get_loop() -> asyncio.AbstractEventLoop:
                 iothread[0] = th
     assert loop[0] is not None
     return loop[0]
+
+
+async def _collect_aiterator(data: AsyncIterator[T]) -> tuple[T, ...]:
+    """
+    Collect an entire async iterator into a tuple
+    """
+    result = [x async for x in data]
+    return tuple(result)
+
+
+def collect_aiterator(data: AsyncIterator[T]) -> tuple[T, ...]:
+    """
+    Synchronously collect an entire async iterator into a tuple.
+    """
+    return sync(_collect_aiterator(data))
 
 
 class SyncMixin:
