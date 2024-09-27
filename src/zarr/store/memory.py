@@ -26,14 +26,17 @@ class MemoryStore(Store):
 
     def __init__(
         self,
+        path: str = "",
         store_dict: MutableMapping[str, Buffer] | None = None,
         *,
         mode: AccessModeLiteral = "r",
     ) -> None:
-        super().__init__(mode=mode)
+        super().__init__(mode=mode, path=path)
+
         if store_dict is None:
             store_dict = {}
-        self._store_dict = store_dict
+
+        object.__setattr__(self, "_store_dict", store_dict)
 
     async def empty(self) -> bool:
         return not self._store_dict

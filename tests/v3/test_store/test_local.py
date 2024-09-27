@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from zarr.core.buffer import Buffer, cpu
@@ -12,20 +14,21 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
     buffer_cls = cpu.Buffer
 
     def get(self, store: LocalStore, key: str) -> Buffer:
-        return self.buffer_cls.from_bytes((store.root / key).read_bytes())
+        return self.buffer_cls.from_bytes((Path(store.path) / key).read_bytes())
 
     def set(self, store: LocalStore, key: str, value: Buffer) -> None:
-        parent = (store.root / key).parent
+        target = Path(store.path) / key
+        parent = target.parent
         if not parent.exists():
             parent.mkdir(parents=True)
-        (store.root / key).write_bytes(value.to_bytes())
+        target.write_bytes(value.to_bytes())
 
     @pytest.fixture
     def store_kwargs(self, tmpdir) -> dict[str, str]:
-        return {"root": str(tmpdir), "mode": "r+"}
+        return {"path": str(tmpdir), "mode": "r+"}
 
     def test_store_repr(self, store: LocalStore) -> None:
-        assert str(store) == f"file://{store.root!s}"
+        assert str(store) == f"file://{store.path!s}"
 
     def test_store_supports_writes(self, store: LocalStore) -> None:
         assert store.supports_writes
@@ -38,5 +41,5 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
     async def test_empty_with_empty_subdir(self, store: LocalStore) -> None:
         assert await store.empty()
-        (store.root / "foo/bar").mkdir(parents=True)
+        (Path(store.path) / "foo/bar").mkdir(parents=True)
         assert await store.empty()

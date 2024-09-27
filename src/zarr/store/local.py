@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 def _get(
-    path: Path, prototype: BufferPrototype, byte_range: tuple[int | None, int | None] | None
+    path: str, prototype: BufferPrototype, byte_range: tuple[int | None, int | None] | None
 ) -> Buffer:
     """
     Fetch a contiguous region of bytes from a file.
@@ -33,6 +33,7 @@ def _get(
         and the second value specifies the total number of bytes to read. If the total value is
         `None`, then the entire file after the first byte will be read.
     """
+    target = Path(path)
     if byte_range is not None:
         if byte_range[0] is None:
             start = 0
@@ -41,8 +42,8 @@ def _get(
 
         end = (start + byte_range[1]) if byte_range[1] is not None else None
     else:
-        return prototype.buffer.from_bytes(path.read_bytes())
-    with path.open("rb") as f:
+        return prototype.buffer.from_bytes(target.read_bytes())
+    with target.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
         if start is not None:
             if start >= 0:
@@ -77,23 +78,17 @@ class LocalStore(Store):
     supports_partial_writes: bool = True
     supports_listing: bool = True
 
-    root: Path
-
-    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r") -> None:
-        super().__init__(mode=mode)
-        if isinstance(root, str):
-            root = Path(root)
-        assert isinstance(root, Path)
-        self.root = root
+    def __init__(self, path: Path | str, *, mode: AccessModeLiteral = "r") -> None:
+        super().__init__(mode=mode, path=str(path))
 
     async def clear(self) -> None:
         self._check_writable()
-        shutil.rmtree(self.root)
-        self.root.mkdir()
+        shutil.rmtree(self.path)
+        os.mkdir(self.path)
 
     async def empty(self) -> bool:
         try:
-            with os.scandir(self.root) as it:
+            with os.scandir(self.path) as it:
                 for entry in it:
                     if entry.is_file():
                         # stop once a file is found
@@ -104,13 +99,13 @@ class LocalStore(Store):
             return True
 
     def __str__(self) -> str:
-        return f"file://{self.root}"
+        return f"file://{self.path}"
 
     def __repr__(self) -> str:
         return f"LocalStore({str(self)!r})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, type(self)) and self.root == other.root
+        return isinstance(other, type(self)) and self.path == other.path
 
     async def get(
         self,
@@ -121,7 +116,7 @@ class LocalStore(Store):
         if not self._is_open:
             await self._open()
         assert isinstance(key, str)
-        path = self.root / key
+        path = os.path.join(self.path, key)
 
         try:
             return await to_thread(_get, path, prototype, byte_range)
@@ -147,7 +142,7 @@ class LocalStore(Store):
         args = []
         for key, byte_range in key_ranges:
             assert isinstance(key, str)
-            path = self.root / key
+            path = os.path.join(self.path, key)
             args.append((_get, path, prototype, byte_range))
         return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
@@ -158,7 +153,7 @@ class LocalStore(Store):
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
-        path = self.root / key
+        path = Path(self.path) / key
         await to_thread(_put, path, value)
 
     async def set_partial_values(
@@ -168,20 +163,20 @@ class LocalStore(Store):
         args = []
         for key, start, value in key_start_values:
             assert isinstance(key, str)
-            path = self.root / key
+            path = os.path.join(self.path, key)
             args.append((_put, path, value, start))
         await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def delete(self, key: str) -> None:
         self._check_writable()
-        path = self.root / key
+        path = Path(self.path) / key
         if path.is_dir():  # TODO: support deleting directories? shutil.rmtree?
             shutil.rmtree(path)
         else:
             await to_thread(path.unlink, True)  # Q: we may want to raise if path is missing
 
     async def exists(self, key: str) -> bool:
-        path = self.root / key
+        path = Path(self.path) / key
         return await to_thread(path.is_file)
 
     async def list(self) -> AsyncGenerator[str, None]:
@@ -191,10 +186,11 @@ class LocalStore(Store):
         -------
         AsyncGenerator[str, None]
         """
-        to_strip = str(self.root) + "/"
-        for p in list(self.root.rglob("*")):
+        # TODO: just invoke list_prefix with the prefix "/"
+        to_strip = self.path + "/"
+        for p in Path(self.path).rglob("*"):
             if p.is_file():
-                yield str(p).replace(to_strip, "")
+                yield str(p.relative_to(to_strip))
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         """
@@ -209,8 +205,8 @@ class LocalStore(Store):
         -------
         AsyncGenerator[str, None]
         """
-        to_strip = os.path.join(str(self.root / prefix))
-        for p in (self.root / prefix).rglob("*"):
+        to_strip = os.path.join(self.path, prefix)
+        for p in (Path(self.path) / prefix).rglob("*"):
             if p.is_file():
                 yield str(p.relative_to(to_strip))
 
@@ -228,12 +224,12 @@ class LocalStore(Store):
         AsyncGenerator[str, None]
         """
 
-        base = self.root / prefix
+        base = os.path.join(self.path, prefix)
         to_strip = str(base) + "/"
 
         try:
-            key_iter = base.iterdir()
+            key_iter = Path(base).iterdir()
             for key in key_iter:
-                yield str(key).replace(to_strip, "")
+                yield str(key.relative_to(to_strip))
         except (FileNotFoundError, NotADirectoryError):
             pass

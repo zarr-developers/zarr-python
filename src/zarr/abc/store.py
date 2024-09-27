@@ -42,10 +42,21 @@ class AccessMode(NamedTuple):
 class Store(ABC):
     _mode: AccessMode
     _is_open: bool
+    path: str
 
-    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any) -> None:
-        self._is_open = False
-        self._mode = AccessMode.from_literal(mode)
+    # TODO: Make store immutable
+    # def __setattr__(self, *args: Any, **kwargs: Any) -> None:
+    #     msg = (
+    #         'Stores are immutable. To modify a Store object, create a new one with the desired'
+    #         'attributes')
+    #     raise NotImplementedError(msg)
+
+    def __init__(
+        self, path: str = "", mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any
+    ) -> None:
+        object.__setattr__(self, "_is_open", False)
+        object.__setattr__(self, "_mode", AccessMode.from_literal(mode))
+        object.__setattr__(self, "path", path)
 
     @classmethod
     async def open(cls, *args: Any, **kwargs: Any) -> Self:
@@ -278,6 +289,13 @@ class Store(ABC):
         """
         for req in requests:
             yield (req[0], await self.get(*req))
+
+    def with_path(self, path: str) -> Self:
+        """
+        Return a copy of this store with a new path attribute
+        """
+        # TODO: implement this
+        return self
 
 
 @runtime_checkable
