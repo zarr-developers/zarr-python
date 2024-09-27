@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 import fsspec
 
 from zarr.abc.store import ByteRangeRequest, Store
+from zarr.core.buffer import Buffer
 from zarr.store.common import _dereference_path
 
 if TYPE_CHECKING:

@@ -85,9 +85,8 @@ class MemoryStore(Store):
         return key in self._store_dict
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
-        if not self._is_open:
-            await self._open()
         self._check_writable()
+        await self._ensure_open()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(f"Expected Buffer. Got {type(value)}.")
@@ -98,6 +97,11 @@ class MemoryStore(Store):
             self._store_dict[key] = buf
         else:
             self._store_dict[key] = value
+
+    async def set_if_not_exists(self, key: str, default: Buffer) -> None:
+        self._check_writable()
+        await self._ensure_open()
+        self._store_dict.setdefault(key, default)
 
     async def delete(self, key: str) -> None:
         self._check_writable()

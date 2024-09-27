@@ -273,3 +273,19 @@ class StoreTests(Generic[S, B]):
 
         keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
         assert sorted(keys_expected) == sorted(keys_observed)
+
+    async def test_set_if_not_exists(self, store: S) -> None:
+        key = "k"
+        data_buf = self.buffer_cls.from_bytes(b"0000")
+        self.set(store, key, data_buf)
+
+        new = self.buffer_cls.from_bytes(b"1111")
+        await store.set_if_not_exists("k", new)  # no error
+
+        result = await store.get(key, default_buffer_prototype())
+        assert result == data_buf
+
+        await store.set_if_not_exists("k2", new)  # no error
+
+        result = await store.get("k2", default_buffer_prototype())
+        assert result == new
