@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 import fsspec
 
-from zarr.abc.store import Store
+from zarr.abc.store import ByteRangeRequest, Store
+from zarr.core.buffer import Buffer
 from zarr.store.common import _dereference_path
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator
+    from collections.abc import AsyncGenerator, Iterable
 
     from fsspec.asyn import AsyncFileSystem
 
@@ -95,6 +96,14 @@ class RemoteStore(Store):
     async def empty(self) -> bool:
         return not await self.fs._find(self.path, withdirs=True)
 
+    def with_mode(self, mode: AccessModeLiteral) -> Self:
+        return type(self)(
+            fs=self.fs,
+            mode=mode,
+            path=self.path,
+            allowed_exceptions=self.allowed_exceptions,
+        )
+
     def __repr__(self) -> str:
         return f"<RemoteStore({type(self.fs).__name__}, {self.path})>"
 
@@ -110,7 +119,7 @@ class RemoteStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         if not self._is_open:
             await self._open()
@@ -177,7 +186,7 @@ class RemoteStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         if key_ranges:
             paths, starts, stops = zip(
@@ -203,7 +212,9 @@ class RemoteStore(Store):
 
         return [None if isinstance(r, Exception) else prototype.buffer.from_bytes(r) for r in res]
 
-    async def set_partial_values(self, key_start_values: list[tuple[str, int, BytesLike]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
+    ) -> None:
         raise NotImplementedError
 
     async def list(self) -> AsyncGenerator[str, None]:
@@ -234,6 +245,6 @@ class RemoteStore(Store):
         AsyncGenerator[str, None]
         """
 
-        find_str = "/".join([self.path, prefix])
+        find_str = f"{self.path}/{prefix}"
         for onefile in await self.fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
             yield onefile.removeprefix(find_str)

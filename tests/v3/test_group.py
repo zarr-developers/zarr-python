@@ -59,6 +59,46 @@ def test_group_init(store: Store, zarr_format: ZarrFormat) -> None:
     assert group._async_group == agroup
 
 
+async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> None:
+    # prepare a root node, with some data set
+    await zarr.api.asynchronous.open_group(
+        store=store, path="a", zarr_format=zarr_format, attributes={"key": "value"}
+    )
+    # create a child node with a couple intermediates
+    await zarr.api.asynchronous.open_group(store=store, path="a/b/c/d", zarr_format=zarr_format)
+    parts = ["a", "a/b", "a/b/c"]
+
+    if zarr_format == 2:
+        files = [".zattrs", ".zgroup"]
+    else:
+        files = ["zarr.json"]
+
+    expected = [f"{part}/{file}" for file in files for part in parts]
+
+    if zarr_format == 2:
+        expected.append("a/b/c/d/.zgroup")
+        expected.append("a/b/c/d/.zattrs")
+    else:
+        expected.append("a/b/c/d/zarr.json")
+
+    expected = sorted(expected)
+
+    result = sorted([x async for x in store.list_prefix("")])
+
+    assert result == expected
+
+    paths = ["a", "a/b", "a/b/c"]
+    for path in paths:
+        g = await zarr.api.asynchronous.open_group(store=store, path=path)
+        assert isinstance(g, AsyncGroup)
+
+        if path == "a":
+            # ensure we didn't overwrite the root attributes
+            assert g.attrs == {"key": "value"}
+        else:
+            assert g.attrs == {}
+
+
 def test_group_name_properties(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test basic properties of groups
@@ -301,7 +341,7 @@ def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
 
     group = Group.from_store(store, zarr_format=zarr_format)
     with pytest.raises(NotImplementedError):
-        [x for x in group]
+        list(group)
 
 
 def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
@@ -559,8 +599,8 @@ def test_group_array_creation(
     assert full_like_array.store_path.store == store
 
 
-@pytest.mark.parametrize("store", ("local", "memory", "zip"), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("exists_ok", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
 def test_group_creation_existing_node(
@@ -707,10 +747,10 @@ async def test_asyncgroup_open_wrong_format(
 # should this be async?
 @pytest.mark.parametrize(
     "data",
-    (
+    [
         {"zarr_format": 3, "node_type": "group", "attributes": {"foo": 100}},
         {"zarr_format": 2, "attributes": {"foo": 100}},
-    ),
+    ],
 )
 def test_asyncgroup_from_dict(store: Store, data: dict[str, Any]) -> None:
     """
@@ -854,8 +894,8 @@ async def test_asyncgroup_update_attributes(store: Store, zarr_format: ZarrForma
     assert agroup_new_attributes.attrs == attributes_new
 
 
-@pytest.mark.parametrize("store", ("local",), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = await AsyncGroup.from_store(
         store=store, attributes={"foo": 999}, zarr_format=zarr_format
@@ -865,8 +905,8 @@ async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrForm
     assert actual == expected
 
 
-@pytest.mark.parametrize("store", ("local",), indirect=["store"])
-@pytest.mark.parametrize("zarr_format", (2, 3))
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = Group.from_store(store=store, attributes={"foo": 999}, zarr_format=zarr_format)
     p = pickle.dumps(expected)

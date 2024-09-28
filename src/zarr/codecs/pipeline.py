@@ -21,9 +21,9 @@ from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
+    from typing import Self
 
     import numpy as np
-    from typing_extensions import Self
 
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec

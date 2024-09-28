@@ -1,5 +1,5 @@
-name: 🐛 File a bug report
-description: X's behavior is deviating from its documented behavior.
+name: Bug Report
+description: Report incorrect behaviour in the library.
 labels: ["bug"]
 body:
   - type: markdown

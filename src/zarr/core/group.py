@@ -17,7 +17,7 @@ from typing_extensions import deprecated
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
-from zarr.core.array import Array, AsyncArray
+from zarr.core.array import Array, AsyncArray, _build_parents
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
@@ -244,17 +244,16 @@ class ConsolidatedMetadata:
                 # These are already present, either thanks to being an array in the
                 # root, or by being collected as a child in the else clause
                 continue
-            else:
-                children_keys = list(children_keys)
-                # We pop from metadata, since we're *moving* this under group
-                children = {
-                    child_key.split("/")[-1]: metadata.pop(child_key)
-                    for child_key in children_keys
-                    if child_key != key
-                }
-                parent[name] = replace(
-                    node, consolidated_metadata=ConsolidatedMetadata(metadata=children)
-                )
+            children_keys = list(children_keys)
+            # We pop from metadata, since we're *moving* this under group
+            children = {
+                child_key.split("/")[-1]: metadata.pop(child_key)
+                for child_key in children_keys
+                if child_key != key
+            }
+            parent[name] = replace(
+                node, consolidated_metadata=ConsolidatedMetadata(metadata=children)
+            )
 
     @property
     def flattened_metadata(self) -> dict[str, ArrayMetadata | GroupMetadata]:
@@ -300,7 +299,7 @@ class ConsolidatedMetadata:
                         group, consolidated_metadata=ConsolidatedMetadata(metadata={})
                     )
                     for name, val in group.consolidated_metadata.metadata.items():
-                        full_key = "/".join([key, name])
+                        full_key = f"{key}/{name}"
                         if isinstance(val, GroupMetadata):
                             children.update(flatten(full_key, val))
                         else:
@@ -423,7 +422,7 @@ class AsyncGroup:
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
         )
-        await group._save_metadata()
+        await group._save_metadata(ensure_parents=True)
         return group
 
     @classmethod
@@ -708,11 +707,24 @@ class AsyncGroup:
 
         if self.metadata.consolidated_metadata:
             self.metadata.consolidated_metadata.metadata.pop(key, None)
-            await self._save_metadata(drop_consolidated_metadata=True)
+            await self._save_metadata()
 
-    async def _save_metadata(self, drop_consolidated_metadata: bool = False) -> None:
+    async def _save_metadata(self, ensure_parents: bool = False) -> None:
         to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
+
+        if ensure_parents:
+            parents = _build_parents(self)
+            for parent in parents:
+                awaitables.extend(
+                    [
+                        (parent.store_path / key).set_if_not_exists(value)
+                        for key, value in parent.metadata.to_buffer_dict(
+                            default_buffer_prototype()
+                        ).items()
+                    ]
+                )
+
         await asyncio.gather(*awaitables)
 
     @property
@@ -1128,7 +1140,7 @@ class AsyncGroup:
                     async for child_key, val in obj._members(
                         max_depth=max_depth, current_depth=current_depth + 1
                     ):
-                        yield "/".join([key, child_key]), val
+                        yield f"{key}/{child_key}", val
             except KeyError:
                 # keyerror is raised when `key` names an object (in the object storage sense),
                 # as opposed to a prefix, in the store under the prefix associated with this group
@@ -1149,7 +1161,7 @@ class AsyncGroup:
                 obj = self._getitem_consolidated(
                     self.store_path, key, prefix=self.name
                 )  # Metadata -> Group/Array
-                key = "/".join([prefix, key]).lstrip("/")
+                key = f"{prefix}/{key}".lstrip("/")
                 yield key, obj
 
                 if ((max_depth is None) or (current_depth < max_depth)) and isinstance(

@@ -18,7 +18,7 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     def get(self, store: MemoryStore, key: str) -> Buffer:
         return store._store_dict[key]
 
-    @pytest.fixture(scope="function", params=[None, True])
+    @pytest.fixture(params=[None, True])
     def store_kwargs(
         self, request: pytest.FixtureRequest
     ) -> dict[str, str | None | dict[str, Buffer]]:
@@ -27,7 +27,7 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
             kwargs["store_dict"] = {}
         return kwargs
 
-    @pytest.fixture(scope="function")
+    @pytest.fixture
     def store(self, store_kwargs: str | None | dict[str, Buffer]) -> MemoryStore:
         return self.store_cls(**store_kwargs)
 
@@ -58,11 +58,16 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
     def get(self, store: MemoryStore, key: str) -> Buffer:
         return store._store_dict[key]
 
-    @pytest.fixture(scope="function", params=[None, {}])
-    def store_kwargs(self, request) -> dict[str, str | None | dict[str, Buffer]]:
-        return {"store_dict": request.param, "mode": "r+"}
+    @pytest.fixture(params=[None, True])
+    def store_kwargs(
+        self, request: pytest.FixtureRequest
+    ) -> dict[str, str | None | dict[str, Buffer]]:
+        kwargs = {"store_dict": None, "mode": "r+"}
+        if request.param is True:
+            kwargs["store_dict"] = {}
+        return kwargs
 
-    @pytest.fixture(scope="function")
+    @pytest.fixture
     def store(self, store_kwargs: str | None | dict[str, gpu.Buffer]) -> GpuMemoryStore:
         return self.store_cls(**store_kwargs)
 
@@ -80,3 +85,17 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
 
     def test_list_prefix(self, store: GpuMemoryStore) -> None:
         assert True
+
+    def test_dict_reference(self, store: GpuMemoryStore) -> None:
+        store_dict = {}
+        result = GpuMemoryStore(store_dict=store_dict)
+        assert result._store_dict is store_dict
+
+    def test_from_dict(self):
+        d = {
+            "a": gpu.Buffer.from_bytes(b"aaaa"),
+            "b": cpu.Buffer.from_bytes(b"bbbb"),
+        }
+        result = GpuMemoryStore.from_dict(d)
+        for v in result._store_dict.values():
+            assert type(v) is gpu.Buffer

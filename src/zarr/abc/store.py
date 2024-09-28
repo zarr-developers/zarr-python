@@ -1,15 +1,22 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from asyncio import gather
 from collections.abc import AsyncGenerator, Iterable
 from types import TracebackType
-from typing import Any, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
 
-from typing_extensions import Self
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Iterable
+    from types import TracebackType
+    from typing import Any, Self, TypeAlias
 
-from zarr.core.buffer import Buffer, BufferPrototype
-from zarr.core.common import AccessModeLiteral, BytesLike
+    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.common import AccessModeLiteral, BytesLike
 
-__all__ = ["Store", "AccessMode", "ByteGetter", "ByteSetter", "set_or_delete"]
+__all__ = ["AccessMode", "ByteGetter", "ByteSetter", "Store", "set_or_delete"]
+
+ByteRangeRequest: TypeAlias = tuple[int | None, int | None]
 
 
 class AccessMode(NamedTuple):
@@ -81,6 +88,31 @@ class Store(ABC):
     @abstractmethod
     async def clear(self) -> None: ...
 
+    @abstractmethod
+    def with_mode(self, mode: AccessModeLiteral) -> Self:
+        """
+        Return a new store of the same type pointing to the same location with a new mode.
+
+        The returned Store is not automatically opened. Call :meth:`Store.open` before
+        using.
+
+        Parameters
+        ----------
+        mode: AccessModeLiteral
+            The new mode to use.
+
+        Returns
+        -------
+        store:
+            A new store of the same type with the new mode.
+
+        Examples
+        --------
+        >>> writer = zarr.store.MemoryStore(mode="w")
+        >>> reader = writer.with_mode("r")
+        """
+        ...
+
     @property
     def mode(self) -> AccessMode:
         """Access mode of the store."""
@@ -100,14 +132,14 @@ class Store(ABC):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
 
         Parameters
         ----------
         key : str
-        byte_range : tuple[int, Optional[int]], optional
+        byte_range : tuple[int | None, int | None], optional
 
         Returns
         -------
@@ -119,13 +151,13 @@ class Store(ABC):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
         Parameters
         ----------
-        key_ranges : list[tuple[str, tuple[int, int]]]
+        key_ranges : Iterable[tuple[str, tuple[int | None, int | None]]]
             Ordered set of key, range pairs, a key may occur multiple times with different ranges
 
         Returns
@@ -165,12 +197,28 @@ class Store(ABC):
         """
         ...
 
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        """
+        Store a key to ``value`` if the key is not already present.
+
+        Parameters
+        -----------
+        key : str
+        value : Buffer
+        """
+        # Note for implementers: the default implementation provided here
+        # is not safe for concurrent writers. There's a race condition between
+        # the `exists` check and the `set` where another writer could set some
+        # value at `key` or delete `key`.
+        if not await self.exists(key):
+            await self.set(key, value)
+
     async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
         """
         Insert multiple (key, value) pairs into storage.
         """
         await gather(*(self.set(key, value) for key, value in values))
-        return None
+        return
 
     @property
     @abstractmethod
@@ -195,7 +243,9 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def set_partial_values(self, key_start_values: list[tuple[str, int, BytesLike]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
+    ) -> None:
         """Store values at a given key, starting at byte range_start.
 
         Parameters
@@ -259,23 +309,36 @@ class Store(ABC):
         """Close the store."""
         self._is_open = False
 
+    async def _get_many(
+        self, requests: Iterable[tuple[str, BufferPrototype, ByteRangeRequest | None]]
+    ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
+        """
+        Retrieve a collection of objects from storage. In general this method does not guarantee
+        that objects will be retrieved in the order in which they were requested, so this method
+        yields tuple[str, Buffer | None] instead of just Buffer | None
+        """
+        for req in requests:
+            yield (req[0], await self.get(*req))
+
 
 @runtime_checkable
 class ByteGetter(Protocol):
     async def get(
-        self, prototype: BufferPrototype, byte_range: tuple[int, int | None] | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
     ) -> Buffer | None: ...
 
 
 @runtime_checkable
 class ByteSetter(Protocol):
     async def get(
-        self, prototype: BufferPrototype, byte_range: tuple[int, int | None] | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
     ) -> Buffer | None: ...
 
-    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None: ...
+    async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None: ...
 
     async def delete(self) -> None: ...
+
+    async def set_if_not_exists(self, default: Buffer) -> None: ...
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:

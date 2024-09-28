@@ -12,9 +12,7 @@ from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing import Any
-
-    from typing_extensions import Self
+    from typing import Any, Self
 
     from zarr.core.buffer import NDBuffer
     from zarr.core.chunk_grids import ChunkGrid

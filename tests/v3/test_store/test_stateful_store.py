@@ -1,21 +1,26 @@
 # Stateful tests for arbitrary Zarr stores.
-
-
 import hypothesis.strategies as st
+import pytest
 from hypothesis import assume, note
 from hypothesis.stateful import (
     RuleBasedStateMachine,
+    Settings,
+    initialize,
     invariant,
     precondition,
     rule,
+    run_state_machine_as_test,
 )
 from hypothesis.strategies import DataObject
 
 import zarr
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import BufferPrototype, cpu, default_buffer_prototype
-from zarr.store import MemoryStore
-from zarr.testing.strategies import key_ranges, paths
+from zarr.store import LocalStore, ZipStore
+from zarr.testing.strategies import key_ranges
+from zarr.testing.strategies import keys as zarr_keys
+
+MAX_BINARY_SIZE = 100
 
 
 class SyncStoreWrapper(zarr.core.sync.SyncMixin):
@@ -40,16 +45,12 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
         return self._sync_iter(self.store.list())
 
     def get(self, key: str, prototype: BufferPrototype) -> zarr.core.buffer.Buffer:
-        obs = self._sync(self.store.get(key, prototype=prototype))
-        return obs
+        return self._sync(self.store.get(key, prototype=prototype))
 
     def get_partial_values(
         self, key_ranges: list, prototype: BufferPrototype
     ) -> zarr.core.buffer.Buffer:
-        obs_partial = self._sync(
-            self.store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
-        )
-        return obs_partial
+        return self._sync(self.store.get_partial_values(prototype=prototype, key_ranges=key_ranges))
 
     def delete(self, path: str) -> None:
         return self._sync(self.store.delete(path))
@@ -103,13 +104,17 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         https://hypothesis.readthedocs.io/en/latest/stateful.html
     """
 
-    def __init__(self) -> None:
+    def __init__(self, store: Store) -> None:
         super().__init__()
         self.model: dict[str, bytes] = {}
-        self.store = SyncStoreWrapper(MemoryStore(mode="w"))
+        self.store = SyncStoreWrapper(store)
         self.prototype = default_buffer_prototype()
 
-    @rule(key=paths, data=st.binary(min_size=0, max_size=100))
+    @initialize()
+    def init_store(self):
+        self.store.clear()
+
+    @rule(key=zarr_keys, data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
     def set(self, key: str, data: DataObject) -> None:
         note(f"(set) Setting {key!r} with {data}")
         assert not self.store.mode.readonly
@@ -118,7 +123,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.model[key] = data_buf
 
     @precondition(lambda self: len(self.model.keys()) > 0)
-    @rule(key=paths, data=st.data())
+    @rule(key=zarr_keys, data=st.data())
     def get(self, key: str, data: DataObject) -> None:
         key = data.draw(
             st.sampled_from(sorted(self.model.keys()))
@@ -128,8 +133,8 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         # to bytes here necessary because data_buf set to model in set()
         assert self.model[key].to_bytes() == (store_value.to_bytes())
 
-    @rule(key=paths, data=st.data())
-    def get_invalid_keys(self, key: str, data: DataObject) -> None:
+    @rule(key=zarr_keys, data=st.data())
+    def get_invalid_zarr_keys(self, key: str, data: DataObject) -> None:
         note("(get_invalid)")
         assume(key not in self.model)
         assert self.store.get(key, self.prototype) is None
@@ -137,7 +142,9 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
     def get_partial_values(self, data: DataObject) -> None:
-        key_range = data.draw(key_ranges(keys=st.sampled_from(sorted(self.model.keys()))))
+        key_range = data.draw(
+            key_ranges(keys=st.sampled_from(sorted(self.model.keys())), max_size=MAX_BINARY_SIZE)
+        )
         note(f"(get partial) {key_range=}")
         obs_maybe = self.store.get_partial_values(key_range, self.prototype)
         observed = []
@@ -177,16 +184,20 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.store.clear()
         self.model.clear()
 
+        assert self.store.empty()
+
         assert len(self.model.keys()) == len(list(self.store.list())) == 0
 
     @rule()
+    # Local store can be non-empty when there are subdirectories but no files
+    @precondition(lambda self: not isinstance(self.store.store, LocalStore))
     def empty(self) -> None:
         note("(empty)")
 
         # make sure they either both are or both aren't empty (same state)
         assert self.store.empty() == (not self.model)
 
-    @rule(key=paths)
+    @rule(key=zarr_keys)
     def exists(self, key: str) -> None:
         note("(exists)")
 
@@ -195,9 +206,9 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @invariant()
     def check_paths_equal(self) -> None:
         note("Checking that paths are equal")
-        paths = list(self.store.list())
+        paths = sorted(self.store.list())
 
-        assert list(self.model.keys()) == paths
+        assert sorted(self.model.keys()) == paths
 
     @invariant()
     def check_vals_equal(self) -> None:
@@ -207,19 +218,19 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
             assert val.to_bytes() == store_item
 
     @invariant()
-    def check_num_keys_equal(self) -> None:
-        note("check num keys equal")
+    def check_num_zarr_keys_equal(self) -> None:
+        note("check num zarr_keys equal")
 
         assert len(self.model) == len(list(self.store.list()))
 
     @invariant()
-    def check_keys(self) -> None:
+    def check_zarr_keys(self) -> None:
         keys = list(self.store.list())
 
-        if len(keys) == 0:
+        if not keys:
             assert self.store.empty() is True
 
-        elif len(keys) != 0:
+        else:
             assert self.store.empty() is False
 
             for key in keys:
@@ -227,4 +238,12 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         note("checking keys / exists / empty")
 
 
-StatefulStoreTest = ZarrStoreStateMachine.TestCase
+def test_zarr_hierarchy(sync_store: Store) -> None:
+    def mk_test_instance_sync() -> None:
+        return ZarrStoreStateMachine(sync_store)
+
+    if isinstance(sync_store, ZipStore):
+        pytest.skip(reason="ZipStore does not support delete")
+    if isinstance(sync_store, LocalStore):
+        pytest.skip(reason="This test has errors")
+    run_state_machine_as_test(mk_test_instance_sync, settings=Settings(report_multiple_bugs=True))

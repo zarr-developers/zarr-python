@@ -23,8 +23,7 @@ from zarr.registry import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
-
-    from typing_extensions import Self
+    from typing import Self
 
     from zarr.codecs.bytes import Endian
     from zarr.core.common import BytesLike, ChunkCoords
@@ -464,10 +463,14 @@ class NDBuffer:
 
     def all_equal(self, other: Any, equal_nan: bool = True) -> bool:
         """Compare to `other` using np.array_equal."""
+        if other is None:
+            # Handle None fill_value for Zarr V2
+            return False
         # use array_equal to obtain equal_nan=True functionality
-        data, other = np.broadcast_arrays(self._data, other)
-        result = np.array_equal(self._data, other, equal_nan=equal_nan)
-        return result
+        _data, other = np.broadcast_arrays(self._data, other)
+        return np.array_equal(
+            self._data, other, equal_nan=equal_nan if self._data.dtype.kind not in "US" else False
+        )
 
     def fill(self, value: Any) -> None:
         self._data.fill(value)
