@@ -156,6 +156,12 @@ async def get_array_metadata(
         # V3 arrays are comprised of a zarr.json object
         assert zarr_json_bytes is not None
         metadata_dict = json.loads(zarr_json_bytes.to_bytes())
+
+        if metadata_dict.get("node_type") != "array":
+            # This KeyError is load bearing for `open`. That currently tries
+            # to open the node as an `array` and then falls back to opening
+            # as a group.
+            raise KeyError
     return metadata_dict
 
 
