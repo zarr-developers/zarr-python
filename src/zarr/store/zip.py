@@ -5,7 +5,7 @@ import threading
 import time
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
@@ -112,6 +112,9 @@ class ZipStore(Store):
         with self._lock:
             return not self._zf.namelist()
 
+    def with_mode(self, mode: ZipStoreAccessModeLiteral) -> Self:  # type: ignore[override]
+        raise NotImplementedError("ZipStore cannot be reopened with a new mode.")
+
     def __str__(self) -> str:
         return f"zip://{self.path}"
 
@@ -187,6 +190,13 @@ class ZipStore(Store):
 
     async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
         raise NotImplementedError
+
+    async def set_if_not_exists(self, key: str, default: Buffer) -> None:
+        self._check_writable()
+        with self._lock:
+            members = self._zf.namelist()
+            if key not in members:
+                self._set(key, default)
 
     async def delete(self, key: str) -> None:
         raise NotImplementedError

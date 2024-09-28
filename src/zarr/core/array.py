@@ -13,7 +13,12 @@ from zarr.abc.store import set_or_delete
 from zarr.codecs import BytesCodec
 from zarr.codecs._v2 import V2Compressor, V2Filters
 from zarr.core.attributes import Attributes
-from zarr.core.buffer import BufferPrototype, NDArrayLike, NDBuffer, default_buffer_prototype
+from zarr.core.buffer import (
+    BufferPrototype,
+    NDArrayLike,
+    NDBuffer,
+    default_buffer_prototype,
+)
 from zarr.core.chunk_grids import RegularChunkGrid, _guess_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -71,10 +76,11 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
 
     from zarr.abc.codec import Codec, CodecPipeline
+    from zarr.core.group import AsyncGroup
     from zarr.core.metadata.common import ArrayMetadata
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
-__all__ = ["parse_array_metadata", "create_codec_pipeline"]
+__all__ = ["create_codec_pipeline", "parse_array_metadata"]
 
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
@@ -82,7 +88,14 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
         return data
     elif isinstance(data, dict):
         if data["zarr_format"] == 3:
-            return ArrayV3Metadata.from_dict(data)
+            meta_out = ArrayV3Metadata.from_dict(data)
+            if len(meta_out.storage_transformers) > 0:
+                msg = (
+                    f"Array metadata contains storage transformers: {meta_out.storage_transformers}."
+                    "Arrays with storage transformers are not supported in zarr-python at this time."
+                )
+                raise ValueError(msg)
+            return meta_out
         elif data["zarr_format"] == 2:
             return ArrayV2Metadata.from_dict(data)
     raise TypeError
@@ -99,6 +112,53 @@ def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecP
         raise TypeError
 
 
+async def get_array_metadata(
+    store_path: StorePath, zarr_format: ZarrFormat | None = 3
+) -> dict[str, Any]:
+    if zarr_format == 2:
+        zarray_bytes, zattrs_bytes = await gather(
+            (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
+        )
+        if zarray_bytes is None:
+            raise FileNotFoundError(store_path)
+    elif zarr_format == 3:
+        zarr_json_bytes = await (store_path / ZARR_JSON).get()
+        if zarr_json_bytes is None:
+            raise FileNotFoundError(store_path)
+    elif zarr_format is None:
+        zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
+            (store_path / ZARR_JSON).get(),
+            (store_path / ZARRAY_JSON).get(),
+            (store_path / ZATTRS_JSON).get(),
+        )
+        if zarr_json_bytes is not None and zarray_bytes is not None:
+            # TODO: revisit this exception type
+            # alternatively, we could warn and favor v3
+            raise ValueError("Both zarr.json and .zarray objects exist")
+        if zarr_json_bytes is None and zarray_bytes is None:
+            raise FileNotFoundError(store_path)
+        # set zarr_format based on which keys were found
+        if zarr_json_bytes is not None:
+            zarr_format = 3
+        else:
+            zarr_format = 2
+    else:
+        raise ValueError(f"unexpected zarr_format: {zarr_format}")
+
+    metadata_dict: dict[str, Any]
+    if zarr_format == 2:
+        # V2 arrays are comprised of a .zarray and .zattrs objects
+        assert zarray_bytes is not None
+        metadata_dict = json.loads(zarray_bytes.to_bytes())
+        zattrs_dict = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
+        metadata_dict["attributes"] = zattrs_dict
+    else:
+        # V3 arrays are comprised of a zarr.json object
+        assert zarr_json_bytes is not None
+        metadata_dict = json.loads(zarr_json_bytes.to_bytes())
+    return metadata_dict
+
+
 @dataclass(frozen=True)
 class AsyncArray:
     metadata: ArrayMetadata
@@ -108,10 +168,17 @@ class AsyncArray:
 
     def __init__(
         self,
-        metadata: ArrayMetadata,
+        metadata: ArrayMetadata | dict[str, Any],
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
     ) -> None:
+        if isinstance(metadata, dict):
+            zarr_format = metadata["zarr_format"]
+            if zarr_format == 2:
+                metadata = ArrayV2Metadata.from_dict(metadata)
+            else:
+                metadata = ArrayV3Metadata.from_dict(metadata)
+
         metadata_parsed = parse_array_metadata(metadata)
         order_parsed = parse_indexing_order(order or config.get("array.order"))
 
@@ -276,7 +343,7 @@ class AsyncArray:
         )
 
         array = cls(metadata=metadata, store_path=store_path)
-        await array._save_metadata(metadata)
+        await array._save_metadata(metadata, ensure_parents=True)
         return array
 
     @classmethod
@@ -315,7 +382,7 @@ class AsyncArray:
             attributes=attributes,
         )
         array = cls(metadata=metadata, store_path=store_path)
-        await array._save_metadata(metadata)
+        await array._save_metadata(metadata, ensure_parents=True)
         return array
 
     @classmethod
@@ -334,51 +401,8 @@ class AsyncArray:
         zarr_format: ZarrFormat | None = 3,
     ) -> AsyncArray:
         store_path = await make_store_path(store)
-
-        if zarr_format == 2:
-            zarray_bytes, zattrs_bytes = await gather(
-                (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
-            )
-            if zarray_bytes is None:
-                raise FileNotFoundError(store_path)
-        elif zarr_format == 3:
-            zarr_json_bytes = await (store_path / ZARR_JSON).get()
-            if zarr_json_bytes is None:
-                raise FileNotFoundError(store_path)
-        elif zarr_format is None:
-            zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
-                (store_path / ZARR_JSON).get(),
-                (store_path / ZARRAY_JSON).get(),
-                (store_path / ZATTRS_JSON).get(),
-            )
-            if zarr_json_bytes is not None and zarray_bytes is not None:
-                # TODO: revisit this exception type
-                # alternatively, we could warn and favor v3
-                raise ValueError("Both zarr.json and .zarray objects exist")
-            if zarr_json_bytes is None and zarray_bytes is None:
-                raise FileNotFoundError(store_path)
-            # set zarr_format based on which keys were found
-            if zarr_json_bytes is not None:
-                zarr_format = 3
-            else:
-                zarr_format = 2
-        else:
-            raise ValueError(f"unexpected zarr_format: {zarr_format}")
-
-        if zarr_format == 2:
-            # V2 arrays are comprised of a .zarray and .zattrs objects
-            assert zarray_bytes is not None
-            zarray_dict = json.loads(zarray_bytes.to_bytes())
-            zattrs_dict = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
-            zarray_dict["attributes"] = zattrs_dict
-            return cls(store_path=store_path, metadata=ArrayV2Metadata.from_dict(zarray_dict))
-        else:
-            # V3 arrays are comprised of a zarr.json object
-            assert zarr_json_bytes is not None
-            return cls(
-                store_path=store_path,
-                metadata=ArrayV3Metadata.from_dict(json.loads(zarr_json_bytes.to_bytes())),
-            )
+        metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+        return cls(store_path=store_path, metadata=metadata_dict)
 
     @property
     def ndim(self) -> int:
@@ -603,9 +627,24 @@ class AsyncArray:
         )
         return await self._get_selection(indexer, prototype=prototype)
 
-    async def _save_metadata(self, metadata: ArrayMetadata) -> None:
+    async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
+
+        if ensure_parents:
+            # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.
+            parents = _build_parents(self)
+
+            for parent in parents:
+                awaitables.extend(
+                    [
+                        (parent.store_path / key).set_if_not_exists(value)
+                        for key, value in parent.metadata.to_buffer_dict(
+                            default_buffer_prototype()
+                        ).items()
+                    ]
+                )
+
         await gather(*awaitables)
 
     async def _set_selection(
@@ -2336,3 +2375,21 @@ def chunks_initialized(array: Array | AsyncArray) -> tuple[str, ...]:
             out.append(chunk_key)
 
     return tuple(out)
+
+
+def _build_parents(node: AsyncArray | AsyncGroup) -> list[AsyncGroup]:
+    from zarr.core.group import AsyncGroup, GroupMetadata
+
+    required_parts = node.store_path.path.split("/")[:-1]
+    parents = []
+
+    for i, part in enumerate(required_parts):
+        path = "/".join(required_parts[:i] + [part])
+        parents.append(
+            AsyncGroup(
+                metadata=GroupMetadata(zarr_format=node.metadata.zarr_format),
+                store_path=StorePath(store=node.store_path.store, path=path),
+            )
+        )
+
+    return parents

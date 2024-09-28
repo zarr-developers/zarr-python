@@ -5,10 +5,13 @@ from typing import Literal
 import numpy as np
 import pytest
 
+import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
+from zarr.codecs.bytes import BytesCodec
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer.cpu import NDBuffer
-from zarr.core.common import ZarrFormat
+from zarr.core.common import JSON, ZarrFormat
+from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
@@ -63,6 +66,47 @@ def test_array_creation_existing_node(
                 exists_ok=exists_ok,
                 zarr_format=zarr_format,
             )
+
+
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_create_creates_parents(
+    store: LocalStore | MemoryStore, zarr_format: ZarrFormat
+) -> None:
+    # prepare a root node, with some data set
+    await zarr.api.asynchronous.open_group(
+        store=store, path="a", zarr_format=zarr_format, attributes={"key": "value"}
+    )
+
+    # create a child node with a couple intermediates
+    await zarr.api.asynchronous.create(
+        shape=(2, 2), store=store, path="a/b/c/d", zarr_format=zarr_format
+    )
+    parts = ["a", "a/b", "a/b/c"]
+
+    if zarr_format == 2:
+        files = [".zattrs", ".zgroup"]
+    else:
+        files = ["zarr.json"]
+
+    expected = [f"{part}/{file}" for file in files for part in parts]
+
+    if zarr_format == 2:
+        expected.append("a/b/c/d/.zarray")
+        expected.append("a/b/c/d/.zattrs")
+    else:
+        expected.append("a/b/c/d/zarr.json")
+
+    expected = sorted(expected)
+
+    result = sorted([x async for x in store.list_prefix("")])
+
+    assert result == expected
+
+    paths = ["a", "a/b", "a/b/c"]
+    for path in paths:
+        g = await zarr.api.asynchronous.open_group(store=store, path=path)
+        assert isinstance(g, AsyncGroup)
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -236,6 +280,27 @@ def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> 
 
     assert actual == expected
     np.testing.assert_array_equal(actual[:], expected[:])
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_storage_transformers(store: MemoryStore) -> None:
+    """
+    Test that providing an actual storage transformer produces a warning and otherwise passes through
+    """
+    metadata_dict: dict[str, JSON] = {
+        "zarr_format": 3,
+        "node_type": "array",
+        "shape": (10,),
+        "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
+        "data_type": "uint8",
+        "chunk_key_encoding": {"name": "v2", "configuration": {"separator": "/"}},
+        "codecs": (BytesCodec().to_dict(),),
+        "fill_value": 0,
+        "storage_transformers": ({"test": "should_raise"}),
+    }
+    match = "Arrays with storage transformers are not supported in zarr-python at this time."
+    with pytest.raises(ValueError, match=match):
+        Array.from_dict(StorePath(store), data=metadata_dict)
 
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray])

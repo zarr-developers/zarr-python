@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import AccessModeLiteral, BytesLike
 
-__all__ = ["Store", "AccessMode", "ByteGetter", "ByteSetter", "set_or_delete"]
+__all__ = ["AccessMode", "ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
 ByteRangeRequest: TypeAlias = tuple[int | None, int | None]
 
@@ -99,6 +99,31 @@ class Store(ABC):
     @abstractmethod
     async def clear(self) -> None: ...
 
+    @abstractmethod
+    def with_mode(self, mode: AccessModeLiteral) -> Self:
+        """
+        Return a new store of the same type pointing to the same location with a new mode.
+
+        The returned Store is not automatically opened. Call :meth:`Store.open` before
+        using.
+
+        Parameters
+        ----------
+        mode: AccessModeLiteral
+            The new mode to use.
+
+        Returns
+        -------
+        store:
+            A new store of the same type with the new mode.
+
+        Examples
+        --------
+        >>> writer = zarr.store.MemoryStore(mode="w")
+        >>> reader = writer.with_mode("r")
+        """
+        ...
+
     @property
     def mode(self) -> AccessMode:
         """Access mode of the store."""
@@ -182,6 +207,22 @@ class Store(ABC):
         value : Buffer
         """
         ...
+
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        """
+        Store a key to ``value`` if the key is not already present.
+
+        Parameters
+        -----------
+        key : str
+        value : Buffer
+        """
+        # Note for implementers: the default implementation provided here
+        # is not safe for concurrent writers. There's a race condition between
+        # the `exists` check and the `set` where another writer could set some
+        # value at `key` or delete `key`.
+        if not await self.exists(key):
+            await self.set(key, value)
 
     async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
         """
@@ -314,6 +355,8 @@ class ByteSetter(Protocol):
     async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None: ...
 
     async def delete(self) -> None: ...
+
+    async def set_if_not_exists(self, default: Buffer) -> None: ...
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:

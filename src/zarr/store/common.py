@@ -51,6 +51,9 @@ class StorePath:
     async def delete(self) -> None:
         await self.store.delete(self.path)
 
+    async def set_if_not_exists(self, default: Buffer) -> None:
+        await self.store.set_if_not_exists(self.path, default)
+
     async def exists(self) -> bool:
         return await self.store.exists(self.path)
 
@@ -89,8 +92,8 @@ async def make_store_path(
             assert AccessMode.from_literal(mode) == store_like.store.mode
         result = store_like
     elif isinstance(store_like, Store):
-        if mode is not None:
-            assert AccessMode.from_literal(mode) == store_like.mode
+        if mode is not None and mode != store_like.mode.str:
+            store_like = store_like.with_mode(mode)
         await store_like._ensure_open()
         result = StorePath(store_like)
     elif store_like is None:
@@ -137,7 +140,7 @@ def _is_fsspec_uri(uri: str) -> bool:
     >>> _is_fsspec_uri("local://my-directory")
     False
     """
-    return "://" in uri or "::" in uri and "local://" not in uri
+    return "://" in uri or ("::" in uri and "local://" not in uri)
 
 
 async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:

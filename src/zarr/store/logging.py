@@ -5,14 +5,16 @@ import logging
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import AccessMode, ByteRangeRequest, Store
+from zarr.core.buffer import Buffer
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
 
     from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.common import AccessModeLiteral
 
 
 class LoggingStore(Store):
@@ -24,9 +26,11 @@ class LoggingStore(Store):
         store: Store,
         log_level: str = "DEBUG",
         log_handler: logging.Handler | None = None,
-    ):
+    ) -> None:
         self._store = store
         self.counter = defaultdict(int)
+        self.log_level = log_level
+        self.log_handler = log_handler
 
         self._configure_logger(log_level, log_handler)
 
@@ -95,6 +99,14 @@ class LoggingStore(Store):
         with self.log():
             return self._store._is_open
 
+    async def _open(self) -> None:
+        with self.log():
+            return await self._store._open()
+
+    async def _ensure_open(self) -> None:
+        with self.log():
+            return await self._store._ensure_open()
+
     async def empty(self) -> bool:
         with self.log():
             return await self._store.empty()
@@ -138,6 +150,10 @@ class LoggingStore(Store):
         with self.log():
             return await self._store.set(key=key, value=value)
 
+    async def set_if_not_exists(self, key: str, default: Buffer) -> None:
+        with self.log():
+            return await self._store.set_if_not_exists(key=key, value=default)
+
     async def delete(self, key: str) -> None:
         with self.log():
             return await self._store.delete(key=key)
@@ -162,3 +178,11 @@ class LoggingStore(Store):
         with self.log():
             async for key in self._store.list_dir(prefix=prefix):
                 yield key
+
+    def with_mode(self, mode: AccessModeLiteral) -> Self:
+        with self.log():
+            return type(self)(
+                self._store.with_mode(mode),
+                log_level=self.log_level,
+                log_handler=self.log_handler,
+            )

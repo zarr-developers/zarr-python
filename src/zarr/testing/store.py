@@ -1,10 +1,11 @@
 import pickle
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, TypeVar, cast
 
 import pytest
 
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.core.common import AccessModeLiteral
 from zarr.core.sync import _collect_aiterator, collect_aiterator
 from zarr.store._utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
@@ -276,3 +277,54 @@ class StoreTests(Generic[S, B]):
 
         keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
         assert sorted(keys_expected) == sorted(keys_observed)
+
+    async def test_with_mode(self, store: S) -> None:
+        data = b"0000"
+        self.set(store, "key", self.buffer_cls.from_bytes(data))
+        assert self.get(store, "key").to_bytes() == data
+
+        for mode in ["r", "a"]:
+            mode = cast(AccessModeLiteral, mode)
+            clone = store.with_mode(mode)
+            # await store.close()
+            await clone._ensure_open()
+            assert clone.mode == AccessMode.from_literal(mode)
+            assert isinstance(clone, type(store))
+
+            # earlier writes are visible
+            result = await clone.get("key", default_buffer_prototype())
+            assert result is not None
+            assert result.to_bytes() == data
+
+            # writes to original after with_mode is visible
+            self.set(store, "key-2", self.buffer_cls.from_bytes(data))
+            result = await clone.get("key-2", default_buffer_prototype())
+            assert result is not None
+            assert result.to_bytes() == data
+
+            if mode == "a":
+                # writes to clone is visible in the original
+                await clone.set("key-3", self.buffer_cls.from_bytes(data))
+                result = await clone.get("key-3", default_buffer_prototype())
+                assert result is not None
+                assert result.to_bytes() == data
+
+            else:
+                with pytest.raises(ValueError, match="store mode"):
+                    await clone.set("key-3", self.buffer_cls.from_bytes(data))
+
+    async def test_set_if_not_exists(self, store: S) -> None:
+        key = "k"
+        data_buf = self.buffer_cls.from_bytes(b"0000")
+        self.set(store, key, data_buf)
+
+        new = self.buffer_cls.from_bytes(b"1111")
+        await store.set_if_not_exists("k", new)  # no error
+
+        result = await store.get(key, default_buffer_prototype())
+        assert result == data_buf
+
+        await store.set_if_not_exists("k2", new)  # no error
+
+        result = await store.get("k2", default_buffer_prototype())
+        assert result == new

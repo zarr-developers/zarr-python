@@ -15,17 +15,17 @@ from zarr.api.synchronous import (
 )
 
 __all__ = [
-    "open",
-    "save",
-    "load",
-    "save_array",
-    "save_group",
+    "consolidate_metadata",
     "copy",
     "copy_all",
     "copy_store",
-    "tree",
-    "consolidate_metadata",
+    "load",
+    "open",
     "open_consolidated",
+    "save",
+    "save_array",
+    "save_group",
+    "tree",
 ]
 
 warnings.warn(

@@ -97,6 +97,9 @@ class _ShardingByteSetter(_ShardingByteGetter, ByteSetter):
     async def delete(self) -> None:
         del self.shard_dict[self.chunk_coords]
 
+    async def set_if_not_exists(self, default: Buffer) -> None:
+        self.shard_dict.setdefault(self.chunk_coords, default)
+
 
 class _ShardIndex(NamedTuple):
     # dtype uint64, shape (chunks_per_shard_0, chunks_per_shard_1, ..., 2)
