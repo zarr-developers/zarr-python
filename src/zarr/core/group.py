@@ -700,6 +700,10 @@ class AsyncGroup:
                     "Object at %s is not recognized as a component of a Zarr hierarchy.", key
                 )
 
+    async def keys(self) -> AsyncGenerator[str, None]:
+        async for key, _ in self.members():
+            yield key
+
     async def contains(self, member: str) -> bool:
         # TODO: this can be made more efficient.
         try:
@@ -823,10 +827,10 @@ class Group(SyncMixin):
         self._sync(self._async_group.delitem(key))
 
     def __iter__(self) -> Iterator[str]:
-        raise NotImplementedError
+        yield from self.keys()
 
     def __len__(self) -> int:
-        raise NotImplementedError
+        return self.nmembers()
 
     def __setitem__(self, key: str, value: Any) -> None:
         """__setitem__ is not supported in v3"""
@@ -905,6 +909,9 @@ class Group(SyncMixin):
         _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
         return tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
+
+    def keys(self) -> Generator[str, None]:
+        yield from self._sync_iter(self._async_group.keys())
 
     def __contains__(self, member: str) -> bool:
         return self._sync(self._async_group.contains(member))

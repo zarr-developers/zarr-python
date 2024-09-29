@@ -74,10 +74,9 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     expected = [f"{part}/{file}" for file in files for part in parts]
 
     if zarr_format == 2:
-        expected.append("a/b/c/d/.zgroup")
-        expected.append("a/b/c/d/.zattrs")
+        expected.extend([".zgroup", ".zattrs", "a/b/c/d/.zgroup", "a/b/c/d/.zattrs"])
     else:
-        expected.append("a/b/c/d/zarr.json")
+        expected.extend(["zarr.json", "a/b/c/d/zarr.json"])
 
     expected = sorted(expected)
 
@@ -311,8 +310,7 @@ def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
     """
 
     group = Group.from_store(store, zarr_format=zarr_format)
-    with pytest.raises(NotImplementedError):
-        list(group)
+    assert list(group) == []
 
 
 def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
@@ -321,8 +319,7 @@ def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
     """
 
     group = Group.from_store(store, zarr_format=zarr_format)
-    with pytest.raises(NotImplementedError):
-        len(group)
+    assert len(group) == 0
 
 
 def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:

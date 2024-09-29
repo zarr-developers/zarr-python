@@ -92,10 +92,9 @@ async def test_create_creates_parents(
     expected = [f"{part}/{file}" for file in files for part in parts]
 
     if zarr_format == 2:
-        expected.append("a/b/c/d/.zarray")
-        expected.append("a/b/c/d/.zattrs")
+        expected.extend([".zattrs", ".zgroup", "a/b/c/d/.zarray", "a/b/c/d/.zattrs"])
     else:
-        expected.append("a/b/c/d/zarr.json")
+        expected.extend(["zarr.json", "a/b/c/d/zarr.json"])
 
     expected = sorted(expected)
 
