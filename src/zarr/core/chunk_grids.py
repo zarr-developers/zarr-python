@@ -23,8 +23,7 @@ from zarr.core.indexing import ceildiv
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-    from typing_extensions import Self
+    from typing import Self
 
 
 def _guess_chunks(

@@ -23,8 +23,7 @@ from zarr.registry import (
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
-
-    from typing_extensions import Self
+    from typing import Self
 
     from zarr.codecs.bytes import Endian
     from zarr.core.common import BytesLike, ChunkCoords
@@ -93,7 +92,7 @@ class NDArrayLike(Protocol):
 
     def all(self) -> bool: ...
 
-    def __eq__(self, other: Any) -> Self:  # type: ignore[explicit-override, override]
+    def __eq__(self, other: object) -> Self:  # type: ignore[explicit-override, override]
         """Element-wise equal
 
         Notes
@@ -136,7 +135,7 @@ class Buffer(ABC):
         array-like object that must be 1-dim, contiguous, and byte dtype.
     """
 
-    def __init__(self, array_like: ArrayLike):
+    def __init__(self, array_like: ArrayLike) -> None:
         if array_like.ndim != 1:
             raise ValueError("array_like: only 1-dim allowed")
         if array_like.dtype != np.dtype("b"):
@@ -313,7 +312,7 @@ class NDBuffer:
         ndarray-like object that is convertible to a regular Numpy array.
     """
 
-    def __init__(self, array: NDArrayLike):
+    def __init__(self, array: NDArrayLike) -> None:
         # assert array.ndim > 0
         assert array.dtype != object
         self._data = array
@@ -464,10 +463,14 @@ class NDBuffer:
 
     def all_equal(self, other: Any, equal_nan: bool = True) -> bool:
         """Compare to `other` using np.array_equal."""
+        if other is None:
+            # Handle None fill_value for Zarr V2
+            return False
         # use array_equal to obtain equal_nan=True functionality
-        data, other = np.broadcast_arrays(self._data, other)
-        result = np.array_equal(self._data, other, equal_nan=equal_nan)
-        return result
+        _data, other = np.broadcast_arrays(self._data, other)
+        return np.array_equal(
+            self._data, other, equal_nan=equal_nan if self._data.dtype.kind not in "US" else False
+        )
 
     def fill(self, value: Any) -> None:
         self._data.fill(value)

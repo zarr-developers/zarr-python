@@ -7,7 +7,7 @@ from zarr.codecs import BytesCodec, GzipCodec
 from zarr.store.common import StorePath
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_gzip(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 

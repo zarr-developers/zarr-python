@@ -26,7 +26,7 @@ class ContainsArrayAndGroupError(_BaseZarrError):
 
 
 __all__ = [
-    "ContainsGroupError",
-    "ContainsArrayError",
     "ContainsArrayAndGroupError",
+    "ContainsArrayError",
+    "ContainsGroupError",
 ]

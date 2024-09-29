@@ -1142,7 +1142,7 @@ Documentation
 * Update docs to use ``python -m pytest``.
   By :user:`Ray Bell <raybellwaves>` :issue:`923`.
 
-* Fix versionadded tag in zarr.core.Array docstring.
+* Fix versionadded tag in zarr.Array docstring.
   By :user:`Juan Nunez-Iglesias <jni>` :issue:`852`.
 
 * Doctest seem to be stricter now, updating tostring() to tobytes().
@@ -1896,7 +1896,7 @@ Enhancements
   :user:`John Kirkham <jakirkham>`, :issue:`92`, :issue:`122`.
 
 * **Viewing an array as a different dtype**. The ``Array`` class has a new
-  :func:`zarr.core.Array.astype` method, which is a convenience that enables an
+  :func:`zarr.Array.astype` method, which is a convenience that enables an
   array to be viewed as a different dtype. By :user:`John Kirkham <jakirkham>`,
   :issue:`94`, :issue:`96`.
 

@@ -1,4 +1,5 @@
 import pathlib
+import warnings
 
 import numpy as np
 import pytest
@@ -7,7 +8,7 @@ from numpy.testing import assert_array_equal
 import zarr
 from zarr import Array, Group
 from zarr.abc.store import Store
-from zarr.api.synchronous import create, load, open, open_group, save, save_array, save_group
+from zarr.api.synchronous import create, group, load, open, open_group, save, save_array, save_group
 from zarr.core.common import ZarrFormat
 from zarr.store.memory import MemoryStore
 
@@ -108,7 +109,7 @@ def test_save_errors() -> None:
         save_group("data/group.zarr")
     with pytest.raises(TypeError):
         # no array provided
-        save_array("data/group.zarr")  # type: ignore[call-arg]
+        save_array("data/group.zarr")
     with pytest.raises(ValueError):
         # no arrays provided
         save("data/group.zarr")
@@ -118,9 +119,11 @@ def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
     # 'r' means read only (must exist)
     with pytest.raises(FileNotFoundError):
         zarr.open(store=tmp_path, mode="r")
-    zarr.ones(store=tmp_path, shape=(3, 3))
+    z1 = zarr.ones(store=tmp_path, shape=(3, 3))
+    assert z1.fill_value == 1
     z2 = zarr.open(store=tmp_path, mode="r")
     assert isinstance(z2, Array)
+    assert z2.fill_value == 1
     assert (z2[:] == 1).all()
     with pytest.raises(ValueError):
         z2[:] = 3
@@ -137,7 +140,12 @@ def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
     z2[:] = 3
 
 
-def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
+async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
+    # Open without shape argument should default to group
+    g = zarr.open(store=tmp_path, mode="a")
+    assert isinstance(g, Group)
+    await g.store_path.delete()
+
     # 'a' means read/write (create if doesn't exist)
     arr = zarr.open(store=tmp_path, mode="a", shape=(3, 3))
     assert isinstance(arr, Array)
@@ -878,3 +886,37 @@ def test_tree() -> None:
 #         # bad option
 #         with pytest.raises(TypeError):
 #             copy(source["foo"], dest, dry_run=True, log=True)
+
+
+def test_open_positional_args_deprecated() -> None:
+    store = MemoryStore({}, mode="w")
+    with pytest.warns(FutureWarning, match="pass"):
+        open(store, "w", shape=(1,))
+
+
+def test_save_array_positional_args_deprecated() -> None:
+    store = MemoryStore({}, mode="w")
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message="zarr_version is deprecated", category=DeprecationWarning
+        )
+        with pytest.warns(FutureWarning, match="pass"):
+            save_array(
+                store,
+                np.ones(
+                    1,
+                ),
+                3,
+            )
+
+
+def test_group_positional_args_deprecated() -> None:
+    store = MemoryStore({}, mode="w")
+    with pytest.warns(FutureWarning, match="pass"):
+        group(store, True)
+
+
+def test_open_group_positional_args_deprecated() -> None:
+    store = MemoryStore({}, mode="w")
+    with pytest.warns(FutureWarning, match="pass"):
+        open_group(store, "w")

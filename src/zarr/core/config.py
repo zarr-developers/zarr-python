@@ -43,7 +43,7 @@ config = Config(
         {
             "default_zarr_version": 3,
             "array": {"order": "C"},
-            "async": {"concurrency": None, "timeout": None},
+            "async": {"concurrency": 10, "timeout": None},
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.codecs.pipeline.BatchedCodecPipeline",

@@ -4,12 +4,14 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import AccessMode, Store
+from zarr.abc.store import AccessMode, ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.store.local import LocalStore
 from zarr.store.memory import MemoryStore
+
+# from zarr.store.remote import RemoteStore
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
@@ -21,34 +23,36 @@ def _dereference_path(root: str, path: str) -> str:
     assert isinstance(path, str)
     root = root.rstrip("/")
     path = f"{root}/{path}" if root else path
-    path = path.rstrip("/")
-    return path
+    return path.rstrip("/")
 
 
 class StorePath:
     store: Store
     path: str
 
-    def __init__(self, store: Store, path: str | None = None):
+    def __init__(self, store: Store, path: str | None = None) -> None:
         self.store = store
         self.path = path or ""
 
     async def get(
         self,
         prototype: BufferPrototype | None = None,
-        byte_range: tuple[int, int | None] | None = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         if prototype is None:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
-    async def set(self, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+    async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None:
         if byte_range is not None:
             raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)
 
     async def delete(self) -> None:
         await self.store.delete(self.path)
+
+    async def set_if_not_exists(self, default: Buffer) -> None:
+        await self.store.set_if_not_exists(self.path, default)
 
     async def exists(self) -> bool:
         return await self.store.exists(self.path)
@@ -62,10 +66,9 @@ class StorePath:
     def __repr__(self) -> str:
         return f"StorePath({self.store.__class__.__name__}, {str(self)!r})"
 
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         try:
-            if self.store == other.store and self.path == other.path:
-                return True
+            return self.store == other.store and self.path == other.path  # type: ignore[attr-defined, no-any-return]
         except Exception:
             pass
         return False
@@ -75,30 +78,69 @@ StoreLike = Store | StorePath | Path | str | dict[str, Buffer]
 
 
 async def make_store_path(
-    store_like: StoreLike | None, *, mode: AccessModeLiteral | None = None
+    store_like: StoreLike | None,
+    *,
+    mode: AccessModeLiteral | None = None,
+    storage_options: dict[str, Any] | None = None,
 ) -> StorePath:
+    from zarr.store.remote import RemoteStore  # circular import
+
+    used_storage_options = False
+
     if isinstance(store_like, StorePath):
         if mode is not None:
             assert AccessMode.from_literal(mode) == store_like.store.mode
-        return store_like
+        result = store_like
     elif isinstance(store_like, Store):
-        if mode is not None:
-            assert AccessMode.from_literal(mode) == store_like.mode
+        if mode is not None and mode != store_like.mode.str:
+            store_like = store_like.with_mode(mode)
         await store_like._ensure_open()
-        return StorePath(store_like)
+        result = StorePath(store_like)
     elif store_like is None:
         if mode is None:
             mode = "w"  # exception to the default mode = 'r'
-        return StorePath(await MemoryStore.open(mode=mode))
+        result = StorePath(await MemoryStore.open(mode=mode))
     elif isinstance(store_like, Path):
-        return StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
+        result = StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
-        return StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
+        storage_options = storage_options or {}
+
+        if _is_fsspec_uri(store_like):
+            used_storage_options = True
+            result = StorePath(
+                RemoteStore.from_url(store_like, storage_options=storage_options, mode=mode or "r")
+            )
+        else:
+            result = StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
     elif isinstance(store_like, dict):
         # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
         # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
-        return StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
-    raise TypeError
+        result = StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
+    else:
+        msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
+        raise TypeError(msg)
+
+    if storage_options and not used_storage_options:
+        msg = "'storage_options' was provided but unused. 'storage_options' is only used for fsspec filesystem stores."
+        raise TypeError(msg)
+
+    return result
+
+
+def _is_fsspec_uri(uri: str) -> bool:
+    """
+    Check if a URI looks like a non-local fsspec URI.
+
+    Examples
+    --------
+    >>> _is_fsspec_uri("s3://bucket")
+    True
+    >>> _is_fsspec_uri("my-directory")
+    False
+    >>> _is_fsspec_uri("local://my-directory")
+    False
+    """
+    return "://" in uri or ("::" in uri and "local://" not in uri)
 
 
 async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat) -> None:
@@ -225,8 +267,7 @@ async def contains_array(store_path: StorePath, zarr_format: ZarrFormat) -> bool
             except (ValueError, KeyError):
                 return False
     elif zarr_format == 2:
-        result = await (store_path / ZARRAY_JSON).exists()
-        return result
+        return await (store_path / ZARRAY_JSON).exists()
     msg = f"Invalid zarr_format provided. Got {zarr_format}, expected 2 or 3"
     raise ValueError(msg)
 
