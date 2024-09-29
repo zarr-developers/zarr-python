@@ -228,7 +228,7 @@ async def open(
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    store_path = await make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
 
     if path is not None:
         store_path = store_path / path
@@ -323,7 +323,7 @@ async def save_array(
     )
 
     mode = kwargs.pop("mode", None)
-    store_path = await make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
     new = await AsyncArray.create(
@@ -502,7 +502,7 @@ async def group(
 
     mode = None if isinstance(store, Store) else cast(AccessModeLiteral, "a")
 
-    store_path = await make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
 
@@ -780,7 +780,7 @@ async def create(
         if not isinstance(store, Store | StorePath):
             mode = "a"
 
-    store_path = await make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
 
@@ -957,9 +957,7 @@ async def open_array(
 
     mode = kwargs.pop("mode", None)
     store_path = await make_store_path(store, mode=mode)
-    if (
-        path is not None
-    ):  # FIXME: apply path before opening store in w or risk deleting existing data
+    if path is not None:
         store_path = store_path / path
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
