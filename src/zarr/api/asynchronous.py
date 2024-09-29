@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, Union, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
 
 from zarr.abc.store import Store
-from zarr.core.array import Array, AsyncArray
+from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup
@@ -27,37 +27,37 @@ if TYPE_CHECKING:
     from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
+    # TODO: this type could use some more thought
+    ArrayLike = AsyncArray | Array | npt.NDArray[Any]
+    PathLike = str
+
 __all__ = [
+    "array",
     "consolidate_metadata",
     "copy",
     "copy_all",
     "copy_store",
-    "load",
-    "open",
-    "open_consolidated",
-    "save",
-    "save_array",
-    "save_group",
-    "tree",
-    "array",
-    "group",
-    "open_group",
     "create",
     "empty",
     "empty_like",
     "full",
     "full_like",
+    "group",
+    "load",
     "ones",
     "ones_like",
+    "open",
     "open_array",
+    "open_consolidated",
+    "open_group",
     "open_like",
+    "save",
+    "save_array",
+    "save_group",
+    "tree",
     "zeros",
     "zeros_like",
 ]
-
-# TODO: this type could use some more thought, noqa to avoid "Variable "asynchronous.ArrayLike" is not valid as a type"
-ArrayLike = Union[AsyncArray | Array | npt.NDArray[Any]]  # noqa
-PathLike = str
 
 
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
@@ -233,6 +233,18 @@ async def open(
     if path is not None:
         store_path = store_path / path
 
+    if "shape" not in kwargs and mode in {"a", "w", "w-"}:
+        try:
+            metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+            # for v2, the above would already have raised an exception if not an array
+            zarr_format = metadata_dict["zarr_format"]
+            is_v3_array = zarr_format == 3 and metadata_dict.get("node_type") == "array"
+            if is_v3_array or zarr_format == 2:
+                return AsyncArray(store_path=store_path, metadata=metadata_dict)
+        except (AssertionError, FileNotFoundError):
+            pass
+        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
     except KeyError:
@@ -311,12 +323,6 @@ async def save_array(
     )
 
     mode = kwargs.pop("mode", None)
-    if isinstance(store, Store | StorePath):
-        if mode is not None:
-            raise ValueError("mode cannot be set when store is already initialized")
-    elif mode is None:
-        mode = cast(AccessModeLiteral, "a")
-
     store_path = await make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
@@ -770,11 +776,9 @@ async def create(
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
     mode = kwargs.pop("mode", None)
-    if isinstance(store, Store | StorePath):
-        if mode is not None:
-            raise ValueError("mode cannot be set when store is already initialized")
-    elif mode is None:
-        mode = cast(AccessModeLiteral, "r" if read_only else "a")
+    if mode is None:
+        if not isinstance(store, Store | StorePath):
+            mode = "a"
 
     store_path = await make_store_path(store, mode=mode)
     if path is not None:

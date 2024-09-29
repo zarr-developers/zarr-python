@@ -24,8 +24,7 @@ from zarr.core.indexing import ceildiv
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-    from typing_extensions import Self
+    from typing import Self
 
 
 def _guess_chunks(
@@ -139,8 +138,7 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
             s if c == -1 or c is None else int(c) for s, c in zip(shape, chunks, strict=False)
         )
 
-    out = tuple(int(c) for c in chunks)
-    return out
+    return tuple(int(c) for c in chunks)
 
 
 @dataclass(frozen=True)

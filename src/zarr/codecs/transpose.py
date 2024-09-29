@@ -12,9 +12,7 @@ from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing import Any
-
-    from typing_extensions import Self
+    from typing import Any, Self
 
     from zarr.core.buffer import NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
@@ -96,16 +94,14 @@ class TransposeCodec(ArrayArrayCodec):
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
         inverse_order = np.argsort(self.order)
-        chunk_array = chunk_array.transpose(inverse_order)
-        return chunk_array
+        return chunk_array.transpose(inverse_order)
 
     async def _encode_single(
         self,
         chunk_array: NDBuffer,
         _chunk_spec: ArraySpec,
     ) -> NDBuffer | None:
-        chunk_array = chunk_array.transpose(self.order)
-        return chunk_array
+        return chunk_array.transpose(self.order)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length

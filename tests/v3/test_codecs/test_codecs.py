@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-import zarr.v2.creation
 from zarr import Array, AsyncArray, config
 from zarr.codecs import (
     BytesCodec,
@@ -18,7 +17,6 @@ from zarr.codecs import (
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import Selection, morton_order_iter
 from zarr.storage import StorePath
-from zarr.testing.utils import assert_bytes_equal
 
 if TYPE_CHECKING:
     from zarr.abc.codec import Codec
@@ -61,7 +59,7 @@ def test_sharding_pickle() -> None:
     pass
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("input_order", ["F", "C"])
 @pytest.mark.parametrize("store_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_write_order", ["F", "C"])
@@ -118,23 +116,8 @@ async def test_order(
         assert not read_data.flags["F_CONTIGUOUS"]
         assert read_data.flags["C_CONTIGUOUS"]
 
-    if not with_sharding:
-        # Compare with zarr-python
-        z = zarr.v2.creation.create(
-            shape=data.shape,
-            chunks=(32, 8),
-            dtype="<u2",
-            order=store_order,
-            compressor=None,
-            fill_value=1,
-        )
-        z[:, :] = data
-        assert_bytes_equal(
-            await store.get(f"{path}/0.0", prototype=default_buffer_prototype()), z._store["0.0"]
-        )
 
-
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("input_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_write_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_read_order", ["F", "C"])
@@ -176,7 +159,7 @@ def test_order_implicit(
         assert read_data.flags["C_CONTIGUOUS"]
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_open(store: Store) -> None:
     spath = StorePath(store)
     a = Array.create(
@@ -222,7 +205,7 @@ def test_morton() -> None:
     ]
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_write_partial_chunks(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
     spath = StorePath(store)
@@ -237,7 +220,7 @@ def test_write_partial_chunks(store: Store) -> None:
     assert np.array_equal(a[0:16, 0:16], data)
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 async def test_delete_empty_chunks(store: Store) -> None:
     data = np.ones((16, 16))
     path = "delete_empty_chunks"
@@ -255,91 +238,7 @@ async def test_delete_empty_chunks(store: Store) -> None:
     assert await store.get(f"{path}/c0/0", prototype=default_buffer_prototype()) is None
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-async def test_zarr_compat(store: Store) -> None:
-    data = np.zeros((16, 18), dtype="uint16")
-    path = "zarr_compat3"
-    spath = StorePath(store, path)
-    a = await AsyncArray.create(
-        spath,
-        shape=data.shape,
-        chunk_shape=(10, 10),
-        dtype=data.dtype,
-        chunk_key_encoding=("v2", "."),
-        fill_value=1,
-    )
-
-    z2 = zarr.v2.creation.create(
-        shape=data.shape,
-        chunks=(10, 10),
-        dtype=data.dtype,
-        compressor=None,
-        fill_value=1,
-    )
-
-    await _AsyncArrayProxy(a)[:16, :18].set(data)
-    z2[:16, :18] = data
-    assert np.array_equal(data, await _AsyncArrayProxy(a)[:16, :18].get())
-    assert np.array_equal(data, z2[:16, :18])
-
-    assert_bytes_equal(
-        z2._store["0.0"], await store.get(f"{path}/0.0", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["0.1"], await store.get(f"{path}/0.1", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["1.0"], await store.get(f"{path}/1.0", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["1.1"], await store.get(f"{path}/1.1", prototype=default_buffer_prototype())
-    )
-
-
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
-async def test_zarr_compat_F(store: Store) -> None:
-    data = np.zeros((16, 18), dtype="uint16", order="F")
-    path = "zarr_compatF3"
-    spath = StorePath(store, path)
-    a = await AsyncArray.create(
-        spath,
-        shape=data.shape,
-        chunk_shape=(10, 10),
-        dtype=data.dtype,
-        chunk_key_encoding=("v2", "."),
-        fill_value=1,
-        codecs=[TransposeCodec(order=order_from_dim("F", data.ndim)), BytesCodec()],
-    )
-
-    z2 = zarr.v2.creation.create(
-        shape=data.shape,
-        chunks=(10, 10),
-        dtype=data.dtype,
-        compressor=None,
-        order="F",
-        fill_value=1,
-    )
-
-    await _AsyncArrayProxy(a)[:16, :18].set(data)
-    z2[:16, :18] = data
-    assert np.array_equal(data, await _AsyncArrayProxy(a)[:16, :18].get())
-    assert np.array_equal(data, z2[:16, :18])
-
-    assert_bytes_equal(
-        z2._store["0.0"], await store.get(f"{path}/0.0", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["0.1"], await store.get(f"{path}/0.1", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["1.0"], await store.get(f"{path}/1.0", prototype=default_buffer_prototype())
-    )
-    assert_bytes_equal(
-        z2._store["1.1"], await store.get(f"{path}/1.1", prototype=default_buffer_prototype())
-    )
-
-
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 async def test_dimension_names(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
     path = "dimension_names"
@@ -373,7 +272,7 @@ async def test_dimension_names(store: Store) -> None:
     assert "dimension_names" not in json.loads(zarr_json_buffer.to_bytes())
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_invalid_metadata(store: Store) -> None:
     spath2 = StorePath(store, "invalid_endian")
     with pytest.raises(TypeError):
@@ -452,7 +351,7 @@ def test_invalid_metadata(store: Store) -> None:
         )
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 async def test_resize(store: Store) -> None:
     data = np.zeros((16, 18), dtype="uint16")
     path = "resize"

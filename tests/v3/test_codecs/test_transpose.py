@@ -3,11 +3,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-import zarr.v2.creation
 from zarr import Array, AsyncArray, config
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec, ShardingCodec, TransposeCodec
-from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import MemoryOrder
 from zarr.storage.common import StorePath
 
@@ -21,7 +19,7 @@ if TYPE_CHECKING:
 @pytest.mark.parametrize("runtime_write_order", ["F", "C"])
 @pytest.mark.parametrize("runtime_read_order", ["F", "C"])
 @pytest.mark.parametrize("with_sharding", [True, False])
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 async def test_transpose(
     store: Store,
     input_order: MemoryOrder,
@@ -70,23 +68,8 @@ async def test_transpose(
         assert not read_data.flags["F_CONTIGUOUS"]
         assert read_data.flags["C_CONTIGUOUS"]
 
-    if not with_sharding:
-        # Compare with zarr-python
-        z = zarr.v2.creation.create(
-            shape=data.shape,
-            chunks=(1, 32, 8),
-            dtype="<u2",
-            order="F",
-            compressor=None,
-            fill_value=1,
-        )
-        z[:, :] = data
-        assert await store.get(
-            "transpose/0.0", prototype=default_buffer_prototype()
-        ) == await store.get("transpose_zarr/0.0", default_buffer_prototype())
 
-
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("order", [[1, 2, 0], [1, 2, 3, 0], [3, 2, 4, 0, 1]])
 def test_transpose_non_self_inverse(store: Store, order: list[int]) -> None:
     shape = [i + 3 for i in range(len(order))]
@@ -105,7 +88,7 @@ def test_transpose_non_self_inverse(store: Store, order: list[int]) -> None:
     assert np.array_equal(data, read_data)
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_transpose_invalid(
     store: Store,
 ) -> None:

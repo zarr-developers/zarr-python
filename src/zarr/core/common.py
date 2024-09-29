@@ -19,8 +19,6 @@ from typing import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
 
-import numpy as np
-import numpy.typing as npt
 
 ZARR_JSON = "zarr.json"
 ZARRAY_JSON = ".zarray"
@@ -47,7 +45,7 @@ V = TypeVar("V")
 
 
 async def concurrent_map(
-    items: list[T], func: Callable[..., Awaitable[V]], limit: int | None = None
+    items: Iterable[T], func: Callable[..., Awaitable[V]], limit: int | None = None
 ) -> list[V]:
     if limit is None:
         return await asyncio.gather(*[func(*item) for item in items])
@@ -153,11 +151,6 @@ def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
         msg = f"Expected all values to be non-negative. Got {data} instead."
         raise ValueError(msg)
     return data_tuple
-
-
-def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
-    # todo: real validation
-    return np.dtype(data)
 
 
 def parse_fill_value(data: Any) -> Any:

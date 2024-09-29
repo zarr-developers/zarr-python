@@ -13,7 +13,7 @@ from typing_extensions import deprecated
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
-from zarr.core.array import Array, AsyncArray
+from zarr.core.array import Array, AsyncArray, _build_parents
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
@@ -29,8 +29,8 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.sync import SyncMixin, sync
-from zarr.storage import StoreLike, StorePath, make_store_path
-from zarr.storage.common import ensure_no_existing_node
+from zarr.storage import StoreLike, make_store_path
+from zarr.storage.common import StorePath, ensure_no_existing_node
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
@@ -54,7 +54,7 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 def parse_attributes(data: Any) -> dict[str, Any]:
     if data is None:
         return {}
-    elif isinstance(data, dict) and all(map(lambda v: isinstance(v, str), data.keys())):
+    elif isinstance(data, dict) and all(isinstance(k, str) for k in data):
         return data
     msg = f"Expected dict with string keys. Got {type(data)} instead."
     raise TypeError(msg)
@@ -104,7 +104,9 @@ class GroupMetadata(Metadata):
                 ),
             }
 
-    def __init__(self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3):
+    def __init__(
+        self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3
+    ) -> None:
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
 
@@ -142,7 +144,7 @@ class AsyncGroup:
             metadata=GroupMetadata(attributes=attributes, zarr_format=zarr_format),
             store_path=store_path,
         )
-        await group._save_metadata()
+        await group._save_metadata(ensure_parents=True)
         return group
 
     @classmethod
@@ -204,11 +206,10 @@ class AsyncGroup:
         store_path: StorePath,
         data: dict[str, Any],
     ) -> AsyncGroup:
-        group = cls(
+        return cls(
             metadata=GroupMetadata.from_dict(data),
             store_path=store_path,
         )
-        return group
 
     async def getitem(
         self,
@@ -280,9 +281,22 @@ class AsyncGroup:
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
-    async def _save_metadata(self) -> None:
+    async def _save_metadata(self, ensure_parents: bool = False) -> None:
         to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
+
+        if ensure_parents:
+            parents = _build_parents(self)
+            for parent in parents:
+                awaitables.extend(
+                    [
+                        (parent.store_path / key).set_if_not_exists(value)
+                        for key, value in parent.metadata.to_buffer_dict(
+                            default_buffer_prototype()
+                        ).items()
+                    ]
+                )
+
         await asyncio.gather(*awaitables)
 
     @property
@@ -677,7 +691,7 @@ class AsyncGroup:
                     async for child_key, val in obj._members(
                         max_depth=max_depth, current_depth=current_depth + 1
                     ):
-                        yield "/".join([key, child_key]), val
+                        yield f"{key}/{child_key}", val
             except KeyError:
                 # keyerror is raised when `key` names an object (in the object storage sense),
                 # as opposed to a prefix, in the store under the prefix associated with this group
@@ -890,8 +904,7 @@ class Group(SyncMixin):
         """
         _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
-        result = tuple(map(lambda kv: (kv[0], _parse_async_node(kv[1])), _members))
-        return result
+        return tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
 
     def __contains__(self, member: str) -> bool:
         return self._sync(self._async_group.contains(member))

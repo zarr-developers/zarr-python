@@ -21,8 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.10', '3.11', '3.12']
-        numpy-version: ['1.24', '1.26', '2.0']
+        python-version: ['3.11', '3.12']
+        numpy-version: ['1.25', '1.26', '2.0']
         dependency-set: ["minimal", "optional"]
 
     steps:

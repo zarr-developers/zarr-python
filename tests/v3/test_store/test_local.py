@@ -35,3 +35,8 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
     def test_store_supports_listing(self, store: LocalStore) -> None:
         assert store.supports_listing
+
+    async def test_empty_with_empty_subdir(self, store: LocalStore) -> None:
+        assert await store.empty()
+        (store.root / "foo/bar").mkdir(parents=True)
+        assert await store.empty()

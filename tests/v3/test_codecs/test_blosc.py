@@ -10,7 +10,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.storage.common import StorePath
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("dtype", ["uint8", "uint16"])
 async def test_blosc_evolve(store: Store, dtype: str) -> None:
     typesize = np.dtype(dtype).itemsize

@@ -15,20 +15,20 @@ if TYPE_CHECKING:
 
 __all__ = [
     "Registry",
-    "register_codec",
-    "register_pipeline",
-    "register_buffer",
-    "register_ndbuffer",
-    "get_codec_class",
-    "get_pipeline_class",
     "get_buffer_class",
+    "get_codec_class",
     "get_ndbuffer_class",
+    "get_pipeline_class",
+    "register_buffer",
+    "register_codec",
+    "register_ndbuffer",
+    "register_pipeline",
 ]
 
 T = TypeVar("T")
 
 
-class Registry(Generic[T], dict[str, type[T]]):
+class Registry(dict[str, type[T]], Generic[T]):
     def __init__(self) -> None:
         super().__init__()
         self.lazy_load_list: list[EntryPoint] = []
@@ -107,7 +107,7 @@ def fully_qualified_name(cls: type) -> str:
 
 
 def register_codec(key: str, codec_cls: type[Codec]) -> None:
-    if key not in __codec_registries.keys():
+    if key not in __codec_registries:
         __codec_registries[key] = Registry()
     __codec_registries[key].register(codec_cls)
 
@@ -158,7 +158,7 @@ def get_pipeline_class(reload_config: bool = False) -> type[CodecPipeline]:
     if pipeline_class:
         return pipeline_class
     raise BadConfigError(
-        f"Pipeline class '{path}' not found in registered pipelines: {list(__pipeline_registry.keys())}."
+        f"Pipeline class '{path}' not found in registered pipelines: {list(__pipeline_registry)}."
     )
 
 
@@ -172,7 +172,7 @@ def get_buffer_class(reload_config: bool = False) -> type[Buffer]:
     if buffer_class:
         return buffer_class
     raise BadConfigError(
-        f"Buffer class '{path}' not found in registered buffers: {list(__buffer_registry.keys())}."
+        f"Buffer class '{path}' not found in registered buffers: {list(__buffer_registry)}."
     )
 
 
@@ -185,7 +185,7 @@ def get_ndbuffer_class(reload_config: bool = False) -> type[NDBuffer]:
     if ndbuffer_class:
         return ndbuffer_class
     raise BadConfigError(
-        f"NDBuffer class '{path}' not found in registered buffers: {list(__ndbuffer_registry.keys())}."
+        f"NDBuffer class '{path}' not found in registered buffers: {list(__ndbuffer_registry)}."
     )
 
 
