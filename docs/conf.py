@@ -57,10 +57,11 @@ issues_github_path = "zarr-developers/zarr-python"
 
 autoapi_dirs = ['../src/zarr']
 autoapi_add_toctree_entry = False
-autoapi_generate_api_docs = False
+autoapi_generate_api_docs = True
 autoapi_member_order = "groupwise"
-autoapi_root = "api"
-
+autoapi_root = "_autoapi"
+autoapi_keep_files = True
+autoapi_options = [ 'members', 'undoc-members', 'show-inheritance', 'show-module-summary', 'imported-members', ]
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -339,7 +340,7 @@ texinfo_documents = [
 # use in refs e.g:
 # :ref:`comparison manual <python:comparisons>`
 intersphinx_mapping = {
-    "python": ("https://docs.python.org/", None),
+    "python": ("https://docs.python.org/3/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
     "numcodecs": ("https://numcodecs.readthedocs.io/en/stable/", None),
 }

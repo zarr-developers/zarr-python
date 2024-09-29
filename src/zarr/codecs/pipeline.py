@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from itertools import islice, pairwise
 from typing import TYPE_CHECKING, Any, TypeVar
 from warnings import warn
-
-import numpy as np
 
 from zarr.abc.codec import (
     ArrayArrayCodec,
@@ -17,18 +14,21 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
-from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.buffer import Buffer, BufferPrototype, NDBuffer
-from zarr.chunk_grids import ChunkGrid
-from zarr.codecs.registry import get_codec_class
-from zarr.common import JSON, ChunkCoords, concurrent_map, parse_named_configuration
-from zarr.config import config
-from zarr.indexing import SelectorTuple, is_scalar, is_total_slice
+from zarr.core.common import ChunkCoords, concurrent_map
+from zarr.core.config import config
+from zarr.core.indexing import SelectorTuple, is_scalar, is_total_slice
+from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from collections.abc import Iterable, Iterator
+    from typing import Self
 
-    from zarr.array_spec import ArraySpec
+    import numpy as np
+
+    from zarr.abc.store import ByteGetter, ByteSetter
+    from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
+    from zarr.core.chunk_grids import ChunkGrid
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -69,30 +69,11 @@ class BatchedCodecPipeline(CodecPipeline):
     bytes_bytes_codecs: tuple[BytesBytesCodec, ...]
     batch_size: int
 
-    @classmethod
-    def from_dict(cls, data: Iterable[JSON | Codec], *, batch_size: int | None = None) -> Self:
-        out: list[Codec] = []
-        if not isinstance(data, Iterable):
-            raise TypeError(f"Expected iterable, got {type(data)}")
-
-        for c in data:
-            if isinstance(
-                c, ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
-            ):  # Can't use Codec here because of mypy limitation
-                out.append(c)
-            else:
-                name_parsed, _ = parse_named_configuration(c, require_configuration=False)
-                out.append(get_codec_class(name_parsed).from_dict(c))  # type: ignore[arg-type]
-        return cls.from_list(out, batch_size=batch_size)
-
-    def to_dict(self) -> JSON:
-        return [c.to_dict() for c in self]
-
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
-        return type(self).from_list([c.evolve_from_array_spec(array_spec=array_spec) for c in self])
+        return type(self).from_codecs(c.evolve_from_array_spec(array_spec=array_spec) for c in self)
 
     @classmethod
-    def from_list(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
+    def from_codecs(cls, codecs: Iterable[Codec], *, batch_size: int | None = None) -> Self:
         array_array_codecs, array_bytes_codec, bytes_bytes_codecs = codecs_from_list(codecs)
 
         return cls(
@@ -492,7 +473,7 @@ def codecs_from_list(
                     "must be preceded by another ArrayArrayCodec. "
                     f"Got {type(prev_codec)} instead."
                 )
-                raise ValueError(msg)
+                raise TypeError(msg)
             array_array += (cur_codec,)
 
         elif isinstance(cur_codec, ArrayBytesCodec):
@@ -501,7 +482,7 @@ def codecs_from_list(
                     f"Invalid codec order. ArrayBytes codec {cur_codec}"
                     f" must be preceded by an ArrayArrayCodec. Got {type(prev_codec)} instead."
                 )
-                raise ValueError(msg)
+                raise TypeError(msg)
 
             if array_bytes_maybe is not None:
                 msg = (
@@ -521,9 +502,12 @@ def codecs_from_list(
                 )
             bytes_bytes += (cur_codec,)
         else:
-            raise AssertionError
+            raise TypeError
 
     if array_bytes_maybe is None:
         raise ValueError("Required ArrayBytesCodec was not found.")
     else:
         return array_array, array_bytes_maybe, bytes_bytes
+
+
+register_pipeline(BatchedCodecPipeline)

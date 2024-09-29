@@ -1,13 +1,20 @@
 from __future__ import annotations
 
 import io
+import os
 import shutil
-from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import TYPE_CHECKING, Self
 
-from zarr.abc.store import Store
-from zarr.buffer import Buffer, BufferPrototype
-from zarr.common import OpenMode, concurrent_map, to_thread
+from zarr.abc.store import ByteRangeRequest, Store
+from zarr.core.buffer import Buffer
+from zarr.core.common import concurrent_map, to_thread
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator, Iterable
+
+    from zarr.core.buffer import BufferPrototype
+    from zarr.core.common import AccessModeLiteral
 
 
 def _get(
@@ -53,6 +60,7 @@ def _put(
     path: Path,
     value: Buffer,
     start: int | None = None,
+    exclusive: bool = False,
 ) -> int | None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if start is not None:
@@ -61,23 +69,49 @@ def _put(
             f.write(value.as_numpy_array().tobytes())
         return None
     else:
-        return path.write_bytes(value.as_numpy_array().tobytes())
+        view = memoryview(value.as_numpy_array().tobytes())
+        if exclusive:
+            mode = "xb"
+        else:
+            mode = "wb"
+        with path.open(mode=mode) as f:
+            return f.write(view)
 
 
 class LocalStore(Store):
     supports_writes: bool = True
+    supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
 
     root: Path
 
-    def __init__(self, root: Path | str, *, mode: OpenMode = "r"):
+    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r") -> None:
         super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
         assert isinstance(root, Path)
-
         self.root = root
+
+    async def clear(self) -> None:
+        self._check_writable()
+        shutil.rmtree(self.root)
+        self.root.mkdir()
+
+    async def empty(self) -> bool:
+        try:
+            with os.scandir(self.root) as it:
+                for entry in it:
+                    if entry.is_file():
+                        # stop once a file is found
+                        return False
+        except FileNotFoundError:
+            return True
+        else:
+            return True
+
+    def with_mode(self, mode: AccessModeLiteral) -> Self:
+        return type(self)(root=self.root, mode=mode)
 
     def __str__(self) -> str:
         return f"file://{self.root}"
@@ -94,6 +128,8 @@ class LocalStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
+        if not self._is_open:
+            await self._open()
         assert isinstance(key, str)
         path = self.root / key
 
@@ -105,7 +141,7 @@ class LocalStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: list[tuple[str, tuple[int | None, int | None]]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
         """
         Read byte ranges from multiple keys.
@@ -126,14 +162,27 @@ class LocalStore(Store):
         return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: Buffer) -> None:
+        return await self._set(key, value)
+
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        try:
+            return await self._set(key, value, exclusive=True)
+        except FileExistsError:
+            pass
+
+    async def _set(self, key: str, value: Buffer, exclusive: bool = False) -> None:
+        if not self._is_open:
+            await self._open()
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
         path = self.root / key
-        await to_thread(_put, path, value)
+        await to_thread(_put, path, value, start=None, exclusive=exclusive)
 
-    async def set_partial_values(self, key_start_values: list[tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(
+        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
+    ) -> None:
         self._check_writable()
         args = []
         for key, start, value in key_start_values:
@@ -167,7 +216,9 @@ class LocalStore(Store):
                 yield str(p).replace(to_strip, "")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """Retrieve all keys in the store with a given prefix.
+        """
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
+        common leading prefix removed.
 
         Parameters
         ----------
@@ -177,14 +228,10 @@ class LocalStore(Store):
         -------
         AsyncGenerator[str, None]
         """
+        to_strip = os.path.join(str(self.root / prefix))
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
-                yield str(p)
-
-        to_strip = str(self.root) + "/"
-        for p in (self.root / prefix).rglob("*"):
-            if p.is_file():
-                yield str(p).replace(to_strip, "")
+                yield str(p.relative_to(to_strip))
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         """

@@ -1,13 +1,13 @@
 import numpy as np
 import pytest
 
+from zarr import Array
 from zarr.abc.store import Store
-from zarr.array import Array
 from zarr.codecs import BytesCodec, ZstdCodec
-from zarr.store.core import StorePath
+from zarr.store.common import StorePath
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("checksum", [True, False])
 def test_zstd(store: Store, checksum: bool) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))

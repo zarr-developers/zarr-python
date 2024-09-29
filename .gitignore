@@ -51,6 +51,7 @@ coverage.xml
 
 # Sphinx documentation
 docs/_build/
+docs/_autoapi
 
 # PyBuilder
 target/
@@ -78,5 +79,10 @@ src/zarr/_version.py
 #test_sync*
 data/*
 src/fixture/
+fixture/
 
 .DS_Store
+tests/.hypothesis
+.hypothesis/
+
+zarr/version.py
