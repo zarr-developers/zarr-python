@@ -445,6 +445,7 @@ class DataType(Enum):
     float64 = "float64"
     complex64 = "complex64"
     complex128 = "complex128"
+    string = "string"
 
     @property
     def byte_count(self) -> int:
@@ -492,6 +493,8 @@ class DataType(Enum):
 
     @classmethod
     def from_dtype(cls, dtype: np.dtype[Any]) -> DataType:
+        if np.issubdtype(np.str_, dtype):
+            return DataType.string
         dtype_to_data_type = {
             "|b1": "bool",
             "bool": "bool",

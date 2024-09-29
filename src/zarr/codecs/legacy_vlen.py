@@ -6,13 +6,14 @@ from typing import TYPE_CHECKING
 from numcodecs.vlen import VLenUTF8
 
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.array_spec import ArraySpec
-from zarr.buffer import Buffer, NDBuffer
-from zarr.codecs.registry import register_codec
-from zarr.common import JSON, parse_named_configuration
+from zarr.core.buffer import Buffer, NDBuffer
+from zarr.core.common import JSON, parse_named_configuration
+from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
+
+    from zarr.core.array_spec import ArraySpec
 
 
 # can use a global because there are no parameters
