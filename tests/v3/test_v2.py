@@ -46,3 +46,16 @@ def test_codec_pipeline() -> None:
     result = array[:]
     expected = np.ones(1)
     np.testing.assert_array_equal(result, expected)
+
+
+def test_attrs(store: StorePath) -> None:
+    data = np.arange(0, 8, dtype="uint16")
+    a = Array.create(
+        store / "simple_v2",
+        zarr_format=2,
+        shape=data.shape,
+        chunks=(4,),
+        dtype=data.dtype,
+        fill_value=0,
+    )
+    a.attrs.put({"key": 0})

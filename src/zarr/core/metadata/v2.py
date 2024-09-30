@@ -43,8 +43,8 @@ class ArrayV2Metadata(ArrayMetadata):
         self,
         *,
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
-        chunks: ChunkCoords,
+        data_type: npt.DTypeLike,
+        chunk_grid: ChunkCoords,
         fill_value: Any,
         order: Literal["C", "F"],
         dimension_separator: Literal[".", "/"] = ".",
@@ -56,8 +56,8 @@ class ArrayV2Metadata(ArrayMetadata):
         Metadata for a Zarr version 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        data_type_parsed = parse_dtype(dtype)
-        chunks_parsed = parse_shapelike(chunks)
+        data_type_parsed = parse_dtype(data_type)
+        chunks_parsed = parse_shapelike(chunk_grid)
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
@@ -140,6 +140,9 @@ class ArrayV2Metadata(ArrayMetadata):
         _data = data.copy()
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))
+
+        _data["chunk_grid"] = _data.pop("chunks")
+        _data["data_type"] = _data.pop("dtype")
         return cls(**_data)
 
     def to_dict(self) -> dict[str, JSON]:

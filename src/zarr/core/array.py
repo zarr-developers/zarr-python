@@ -372,8 +372,8 @@ class AsyncArray:
 
         metadata = ArrayV2Metadata(
             shape=shape,
-            dtype=np.dtype(dtype),
-            chunks=chunks,
+            data_type=np.dtype(dtype),
+            chunk_grid=chunks,
             order=order,
             dimension_separator=dimension_separator,
             fill_value=0 if fill_value is None else fill_value,

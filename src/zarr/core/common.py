@@ -19,6 +19,8 @@ from typing import (
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
 
+    from zarr.core.chunk_grids import RegularChunkGrid
+
 
 ZARR_JSON = "zarr.json"
 ZARRAY_JSON = ".zarray"
@@ -133,11 +135,15 @@ def parse_named_configuration(
     return name_parsed, configuration_parsed
 
 
-def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
+def parse_shapelike(data: int | Iterable[int] | RegularChunkGrid) -> tuple[int, ...]:
+    from zarr.core.chunk_grids import RegularChunkGrid
+
     if isinstance(data, int):
         if data < 0:
             raise ValueError(f"Expected a non-negative integer. Got {data} instead")
         return (data,)
+    elif isinstance(data, RegularChunkGrid):
+        return data.chunk_shape
     try:
         data_tuple = tuple(data)
     except TypeError as e:
