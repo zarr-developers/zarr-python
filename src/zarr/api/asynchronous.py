@@ -598,7 +598,7 @@ async def open_group(
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    store_path = await make_store_path(store, mode=mode)
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
 
