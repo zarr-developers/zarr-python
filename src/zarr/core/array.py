@@ -651,10 +651,7 @@ class AsyncArray:
                     ]
                 )
 
-        for awaitable in awaitables:
-            await awaitable
-
-        # await gather(*awaitables)
+        await gather(*awaitables)
 
     async def _set_selection(
         self,
@@ -2393,21 +2390,26 @@ def chunks_initialized(array: Array | AsyncArray) -> tuple[str, ...]:
 def _build_parents(node: AsyncArray | AsyncGroup) -> list[AsyncGroup]:
     from zarr.core.group import AsyncGroup, GroupMetadata
 
-    required_parts = node.store_path.path.split("/")[:-1]
+    store = node.store_path.store
+    path = node.store_path.path
+    if not path:
+        return []
+
+    required_parts = path.split("/")[:-1]
     parents = [
         # the root group
         AsyncGroup(
             metadata=GroupMetadata(zarr_format=node.metadata.zarr_format),
-            store_path=StorePath(store=node.store_path.store, path=""),
+            store_path=StorePath(store=store, path=""),
         )
     ]
 
     for i, part in enumerate(required_parts):
-        path = "/".join(required_parts[:i] + [part])
+        p = "/".join(required_parts[:i] + [part])
         parents.append(
             AsyncGroup(
                 metadata=GroupMetadata(zarr_format=node.metadata.zarr_format),
-                store_path=StorePath(store=node.store_path.store, path=path),
+                store_path=StorePath(store=store, path=p),
             )
         )
 

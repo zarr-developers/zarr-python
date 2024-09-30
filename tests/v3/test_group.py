@@ -62,6 +62,11 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     await zarr.api.asynchronous.open_group(
         store=store, path="a", zarr_format=zarr_format, attributes={"key": "value"}
     )
+    objs = {x async for x in store.list()}
+    if zarr_format == 2:
+        assert objs == {".zgroup", ".zattrs", "a/.zgroup", "a/.zattrs"}
+    else:
+        assert objs == {"zarr.json", "a/zarr.json"}
 
     # test that root group node was created
     root = await zarr.api.asynchronous.open_group(
