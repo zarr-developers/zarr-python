@@ -17,6 +17,7 @@ from zarr.abc.codec import (
 from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar, is_total_slice
+from zarr.core.metadata.v2 import default_fill_value
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
@@ -247,7 +248,13 @@ class BatchedCodecPipeline(CodecPipeline):
                 if chunk_array is not None:
                     out[out_selection] = chunk_array
                 else:
-                    out[out_selection] = chunk_spec.fill_value
+                    fill_value = chunk_spec.fill_value
+
+                    # this should maybe be version specific?
+                    if fill_value is None:
+                        fill_value = default_fill_value(dtype=chunk_spec.dtype)
+
+                    out[out_selection] = fill_value
         else:
             chunk_bytes_batch = await concurrent_map(
                 [
@@ -274,7 +281,10 @@ class BatchedCodecPipeline(CodecPipeline):
                         tmp = tmp.squeeze(axis=drop_axes)
                     out[out_selection] = tmp
                 else:
-                    out[out_selection] = chunk_spec.fill_value
+                    fill_value = chunk_spec.fill_value
+                    if fill_value is None:
+                        fill_value = default_fill_value(dtype=chunk_spec.dtype)
+                    out[out_selection] = fill_value
 
     def _merge_chunk_array(
         self,

@@ -376,7 +376,7 @@ class AsyncArray:
             chunks=chunks,
             order=order,
             dimension_separator=dimension_separator,
-            fill_value=0 if fill_value is None else fill_value,
+            fill_value=fill_value,
             compressor=compressor,
             filters=filters,
             attributes=attributes,

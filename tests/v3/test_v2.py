@@ -31,6 +31,15 @@ def test_simple(store: StorePath) -> None:
     assert np.array_equal(data, a[:, :])
 
 
+def test_implicit_fill_value(store: StorePath) -> None:
+    arr = zarr.open_array(store=store, shape=(4,), fill_value=None, zarr_format=2)
+    assert arr.metadata.fill_value is None
+    assert arr.metadata.to_dict()["fill_value"] is None
+    result = arr[:]
+    expected = np.zeros(arr.shape, dtype=arr.dtype)
+    np.testing.assert_array_equal(result, expected)
+
+
 def test_codec_pipeline() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2243
     store = MemoryStore(mode="w")
@@ -46,3 +55,5 @@ def test_codec_pipeline() -> None:
     result = array[:]
     expected = np.ones(1)
     np.testing.assert_array_equal(result, expected)
+
+

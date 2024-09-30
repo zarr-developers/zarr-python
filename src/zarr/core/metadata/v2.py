@@ -62,7 +62,10 @@ class ArrayV2Metadata(ArrayMetadata):
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
         filters_parsed = parse_filters(filters)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed)
+        if fill_value is None:
+            fill_value_parsed = None
+        else:
+            fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed)
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
@@ -273,3 +276,7 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
             raise ValueError(msg) from e
 
     return fill_value
+
+
+def default_fill_value(dtype: np.dtype[Any]) -> Any:
+    return dtype.type(0)
