@@ -651,7 +651,10 @@ class AsyncArray:
                     ]
                 )
 
-        await gather(*awaitables)
+        for awaitable in awaitables:
+            await awaitable
+
+        # await gather(*awaitables)
 
     async def _set_selection(
         self,
