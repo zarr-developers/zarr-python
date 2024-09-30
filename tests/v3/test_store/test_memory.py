@@ -13,10 +13,10 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     buffer_cls = cpu.Buffer
 
     def set(self, store: MemoryStore, key: str, value: Buffer) -> None:
-        store._store_dict[key] = value
+        store._store_dict[store.resolve_key(key)] = value
 
     def get(self, store: MemoryStore, key: str) -> Buffer:
-        return store._store_dict[key]
+        return store._store_dict[store.resolve_key(key)]
 
     @pytest.fixture(params=[None, True])
     def store_kwargs(

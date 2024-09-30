@@ -4,7 +4,7 @@ import io
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
@@ -12,6 +12,7 @@ from zarr.core.common import concurrent_map, to_thread
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
+    from typing import Self
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
@@ -125,7 +126,7 @@ class LocalStore(Store):
     ) -> Buffer | None:
         if not self._is_open:
             await self._open()
-        assert isinstance(key, str)
+
         path = os.path.join(self.path, key)
 
         try:

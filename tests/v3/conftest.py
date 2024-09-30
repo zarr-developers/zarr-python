@@ -34,7 +34,7 @@ async def parse_store(
     if store == "remote":
         return await RemoteStore.open(url=path, mode="w")
     if store == "zip":
-        return await ZipStore.open(path + "/zarr.zip", mode="w")
+        return await ZipStore.open(file_path=path + "/zarr.zip", mode="w")
     raise AssertionError
 
 

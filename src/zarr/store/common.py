@@ -101,7 +101,7 @@ async def make_store_path(
             mode = "w"  # exception to the default mode = 'r'
         result = StorePath(await MemoryStore.open(mode=mode))
     elif isinstance(store_like, Path):
-        result = StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
+        result = StorePath(await LocalStore.open(path=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
         storage_options = storage_options or {}
 
@@ -111,7 +111,7 @@ async def make_store_path(
                 RemoteStore.from_url(store_like, storage_options=storage_options, mode=mode or "r")
             )
         else:
-            result = StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
+            result = StorePath(await LocalStore.open(path=store_like, mode=mode or "r"))
     elif isinstance(store_like, dict):
         # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
         # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.

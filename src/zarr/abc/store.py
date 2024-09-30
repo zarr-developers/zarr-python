@@ -51,12 +51,17 @@ class Store(ABC):
     #         'attributes')
     #     raise NotImplementedError(msg)
 
-    def __init__(
-        self, path: str = "", mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any
-    ) -> None:
+    def __init__(self, path: str = "", mode: AccessModeLiteral = "r") -> None:
         object.__setattr__(self, "_is_open", False)
         object.__setattr__(self, "_mode", AccessMode.from_literal(mode))
-        object.__setattr__(self, "path", path)
+        object.__setattr__(self, "path", validate_path(path))
+
+    def resolve_key(self, key: str) -> str:
+        key = parse_path(key)
+        if self.path == "":
+            return key
+        else:
+            return f"{self.path}/{key}"
 
     @classmethod
     async def open(cls, *args: Any, **kwargs: Any) -> Self:
@@ -335,8 +340,8 @@ class Store(ABC):
         """
         Return a copy of this store with a new path attribute
         """
-        # TODO: implement this
-        return self
+        # TODO: implement me
+        raise NotImplementedError
 
 
 @runtime_checkable
@@ -364,3 +369,20 @@ async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:
         await byte_setter.delete()
     else:
         await byte_setter.set(value)
+
+
+def validate_path(path: str) -> str:
+    """
+    Ensure that the input string is a valid relative path in the abstract zarr object storage scheme.
+    """
+    if path.endswith("/"):
+        raise ValueError(f"Invalid path: {path} ends with '/'.")
+    if "//" in path:
+        raise ValueError(f"Invalid path: {path} contains '//'.")
+    if "\\" in path:
+        raise ValueError(f"Invalid path: {path} contains '\"'.")
+    return path
+
+
+def parse_path(path: str) -> str:
+    return path.rstrip("/").lstrip("/")

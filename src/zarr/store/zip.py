@@ -5,13 +5,14 @@ import threading
 import time
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING, Literal
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
+    from typing import Self
 
 ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
@@ -42,7 +43,7 @@ class ZipStore(Store):
     supports_partial_writes: bool = False
     supports_listing: bool = True
 
-    path: Path
+    file_path: Path
     compression: int
     allowZip64: bool
 
@@ -51,18 +52,18 @@ class ZipStore(Store):
 
     def __init__(
         self,
-        path: Path | str,
+        file_path: Path | str,
         *,
+        path: str = "",
         mode: ZipStoreAccessModeLiteral = "r",
         compression: int = zipfile.ZIP_STORED,
         allowZip64: bool = True,
     ) -> None:
-        super().__init__(mode=mode)
+        super().__init__(mode=mode, path=path)
 
-        if isinstance(path, str):
-            path = Path(path)
-        assert isinstance(path, Path)
-        self.path = path  # root?
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
+        self.file_path = file_path
 
         self._zmode = mode
         self.compression = compression
@@ -75,7 +76,7 @@ class ZipStore(Store):
         self._lock = threading.RLock()
 
         self._zf = zipfile.ZipFile(
-            self.path,
+            self.file_path,
             mode=self._zmode,
             compression=self.compression,
             allowZip64=self.allowZip64,
@@ -86,11 +87,11 @@ class ZipStore(Store):
     async def _open(self) -> None:
         self._sync_open()
 
-    def __getstate__(self) -> tuple[Path, ZipStoreAccessModeLiteral, int, bool]:
-        return self.path, self._zmode, self.compression, self.allowZip64
+    def __getstate__(self) -> tuple[str, Path, ZipStoreAccessModeLiteral, int, bool]:
+        return self.path, self.file_path, self._zmode, self.compression, self.allowZip64
 
-    def __setstate__(self, state: Any) -> None:
-        self.path, self._zmode, self.compression, self.allowZip64 = state
+    def __setstate__(self, state: tuple[str, Path, ZipStoreAccessModeLiteral, int, bool]) -> None:
+        self.path, self.file_path, self._zmode, self.compression, self.allowZip64 = state
         self._is_open = False
         self._sync_open()
 
@@ -103,9 +104,9 @@ class ZipStore(Store):
         with self._lock:
             self._check_writable()
             self._zf.close()
-            os.remove(self.path)
+            os.remove(self.file_path)
             self._zf = zipfile.ZipFile(
-                self.path, mode="w", compression=self.compression, allowZip64=self.allowZip64
+                self.file_path, mode="w", compression=self.compression, allowZip64=self.allowZip64
             )
 
     async def empty(self) -> bool:
@@ -116,13 +117,19 @@ class ZipStore(Store):
         raise NotImplementedError("ZipStore cannot be reopened with a new mode.")
 
     def __str__(self) -> str:
-        return f"zip://{self.path}"
+        # lets try https://github.com/zarr-developers/zeps/pull/48/files
+        return f"file://{self.file_path}|zip://{self.path}"
 
     def __repr__(self) -> str:
         return f"ZipStore({str(self)!r})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, type(self)) and self.path == other.path
+        return (
+            isinstance(other, type(self))
+            and self.file_path == other.file_path
+            and self.path == other.path
+            and self._zmode == other._zmode
+        )
 
     def _get(
         self,
@@ -131,7 +138,7 @@ class ZipStore(Store):
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         try:
-            with self._zf.open(key) as f:  # will raise KeyError
+            with self._zf.open(self.resolve_key(key)) as f:  # will raise KeyError
                 if byte_range is None:
                     return prototype.buffer.from_bytes(f.read())
                 start, length = byte_range
@@ -156,7 +163,7 @@ class ZipStore(Store):
         assert isinstance(key, str)
 
         with self._lock:
-            return self._get(key, prototype=prototype, byte_range=byte_range)
+            return self._get(self.resolve_key(key), prototype=prototype, byte_range=byte_range)
 
     async def get_partial_values(
         self,
@@ -166,11 +173,14 @@ class ZipStore(Store):
         out = []
         with self._lock:
             for key, byte_range in key_ranges:
-                out.append(self._get(key, prototype=prototype, byte_range=byte_range))
+                out.append(
+                    self._get(self.resolve_key(key), prototype=prototype, byte_range=byte_range)
+                )
         return out
 
     def _set(self, key: str, value: Buffer) -> None:
         # generally, this should be called inside a lock
+        # assume that the key has already been made absolute
         keyinfo = zipfile.ZipInfo(filename=key, date_time=time.localtime(time.time())[:6])
         keyinfo.compress_type = self.compression
         if keyinfo.filename[-1] == os.sep:
@@ -186,17 +196,18 @@ class ZipStore(Store):
         if not isinstance(value, Buffer):
             raise TypeError("ZipStore.set(): `value` must a Buffer instance")
         with self._lock:
-            self._set(key, value)
+            self._set(self.resolve_key(key), value)
 
     async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
         raise NotImplementedError
 
     async def set_if_not_exists(self, key: str, default: Buffer) -> None:
+        key_abs = self.resolve_key(key)
         self._check_writable()
         with self._lock:
             members = self._zf.namelist()
-            if key not in members:
-                self._set(key, default)
+            if key_abs not in members:
+                self._set(key_abs, default)
 
     async def delete(self, key: str) -> None:
         raise NotImplementedError
@@ -204,7 +215,7 @@ class ZipStore(Store):
     async def exists(self, key: str) -> bool:
         with self._lock:
             try:
-                self._zf.getinfo(key)
+                self._zf.getinfo(self.resolve_key(key))
             except KeyError:
                 return False
             else:
@@ -213,7 +224,7 @@ class ZipStore(Store):
     async def list(self) -> AsyncGenerator[str, None]:
         with self._lock:
             for key in self._zf.namelist():
-                yield key
+                yield key.lstrip("/")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         """
@@ -233,12 +244,11 @@ class ZipStore(Store):
                 yield key.removeprefix(prefix)
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
-        if prefix.endswith("/"):
-            prefix = prefix[:-1]
+        prefix_abs = self.resolve_key(prefix)
 
         keys = self._zf.namelist()
         seen = set()
-        if prefix == "":
+        if prefix_abs == "":
             keys_unique = {k.split("/")[0] for k in keys}
             for key in keys_unique:
                 if key not in seen:
@@ -246,8 +256,8 @@ class ZipStore(Store):
                     yield key
         else:
             for key in keys:
-                if key.startswith(prefix + "/") and key != prefix:
-                    k = key.removeprefix(prefix + "/").split("/")[0]
+                if key.startswith(prefix_abs + "/") and key != prefix_abs:
+                    k = key.removeprefix(prefix_abs + "/").split("/")[0]
                     if k not in seen:
                         seen.add(k)
                         yield k

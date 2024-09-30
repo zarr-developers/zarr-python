@@ -322,7 +322,7 @@ class StoreTests(Generic[S, B]):
         await store.set_if_not_exists("k", new)  # no error
 
         result = await store.get(key, default_buffer_prototype())
-        assert result == data_buf
+        assert result.to_bytes() == data_buf.to_bytes()  # type: ignore[union-attr]
 
         await store.set_if_not_exists("k2", new)  # no error
 

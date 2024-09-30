@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any
 
 import fsspec
 
@@ -10,6 +10,7 @@ from zarr.store.common import _dereference_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
+    from typing import Self
 
     from fsspec.asyn import AsyncFileSystem
 

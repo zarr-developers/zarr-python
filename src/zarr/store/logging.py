@@ -5,13 +5,14 @@ import logging
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING
 
 from zarr.abc.store import AccessMode, ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
+    from typing import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import AccessModeLiteral
