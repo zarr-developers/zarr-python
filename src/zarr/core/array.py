@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from asyncio import gather
 from dataclasses import dataclass, field, replace
+from logging import getLogger
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
@@ -79,6 +80,8 @@ if TYPE_CHECKING:
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
 __all__ = ["create_codec_pipeline", "parse_array_metadata"]
+
+logger = getLogger(__name__)
 
 
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
@@ -635,6 +638,8 @@ class AsyncArray:
         if ensure_parents:
             # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.
             parents = _build_parents(self)
+
+            logger.debug("Ensure parents: %s", parents)
 
             for parent in parents:
                 awaitables.extend(
@@ -2385,11 +2390,9 @@ def chunks_initialized(array: Array | AsyncArray) -> tuple[str, ...]:
 def _build_parents(node: AsyncArray | AsyncGroup) -> list[AsyncGroup]:
     from zarr.core.group import AsyncGroup, GroupMetadata
 
-    if "/" in node.store_path.path:
-        required_parts = node.store_path.path.split("/")[:-1]
-    else:
-        required_parts = []
+    required_parts = node.store_path.path.split("/")[:-1]
     parents = [
+        # the root group
         AsyncGroup(
             metadata=GroupMetadata(zarr_format=node.metadata.zarr_format),
             store_path=StorePath(store=node.store_path.store, path=""),

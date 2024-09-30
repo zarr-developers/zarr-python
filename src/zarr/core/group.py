@@ -836,6 +836,9 @@ class Group(SyncMixin):
         """__setitem__ is not supported in v3"""
         raise NotImplementedError
 
+    def __repr__(self) -> str:
+        return f"<Group {self.store_path}>"
+
     async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
         new_metadata = replace(self.metadata, attributes=new_attributes)
 

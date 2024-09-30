@@ -237,9 +237,7 @@ def test_group_create(store: Store, exists_ok: bool, zarr_format: ZarrFormat) ->
 
     if not exists_ok:
         with pytest.raises(ContainsGroupError):
-            group = Group.from_store(
-                store, attributes=attributes, exists_ok=exists_ok, zarr_format=zarr_format
-            )
+            _ = Group.from_store(store, exists_ok=exists_ok, zarr_format=zarr_format)
 
 
 def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> None:
