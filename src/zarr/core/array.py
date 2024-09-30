@@ -2385,7 +2385,6 @@ def chunks_initialized(array: Array | AsyncArray) -> tuple[str, ...]:
 def _build_parents(node: AsyncArray | AsyncGroup) -> list[AsyncGroup]:
     from zarr.core.group import AsyncGroup, GroupMetadata
 
-
     if "/" in node.store_path.path:
         required_parts = node.store_path.path.split("/")[:-1]
     else:
