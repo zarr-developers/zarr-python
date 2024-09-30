@@ -62,6 +62,14 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     await zarr.api.asynchronous.open_group(
         store=store, path="a", zarr_format=zarr_format, attributes={"key": "value"}
     )
+
+    # test that root group node was created
+    root = await zarr.api.asynchronous.open_group(
+        store=store,
+    )
+    agroup = await root.getitem("a")
+    assert agroup.attrs == {"key": "value"}
+
     # create a child node with a couple intermediates
     await zarr.api.asynchronous.open_group(store=store, path="a/b/c/d", zarr_format=zarr_format)
     parts = ["a", "a/b", "a/b/c"]
