@@ -521,3 +521,34 @@ class TestConsolidated:
             ),
         )
         assert result.metadata == expected
+
+    @pytest.mark.parametrize("zarr_format", [2, 3])
+    async def test_use_consolidated_false(
+        self, memory_store: zarr.storage.MemoryStore, zarr_format: ZarrFormat
+    ) -> None:
+        with zarr.config.set(default_zarr_version=zarr_format):
+            g = await group(store=memory_store, attributes={"foo": "bar"})
+            await g.create_group(name="a")
+
+            # test a stale read
+            await zarr.api.asynchronous.consolidate_metadata(memory_store)
+            await g.create_group(name="b")
+
+            stale = await zarr.api.asynchronous.open_group(store=memory_store)
+            assert len([x async for x in stale.members()]) == 1
+            assert stale.metadata.consolidated_metadata
+            assert list(stale.metadata.consolidated_metadata.metadata) == ["a"]
+
+            # bypass stale data
+            good = await zarr.api.asynchronous.open_group(
+                store=memory_store, use_consolidated=False
+            )
+            assert len([x async for x in good.members()]) == 2
+
+            # reconsolidate
+            await zarr.api.asynchronous.consolidate_metadata(memory_store)
+
+            good = await zarr.api.asynchronous.open_group(store=memory_store)
+            assert len([x async for x in good.members()]) == 2
+            assert good.metadata.consolidated_metadata
+            assert sorted(good.metadata.consolidated_metadata.metadata) == ["a", "b"]

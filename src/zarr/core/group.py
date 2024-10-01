@@ -520,6 +520,11 @@ class AsyncGroup:
                 # the user requested consolidated metadata, but it was missing
                 raise ValueError(consolidated_key)
 
+            elif use_consolidated is False:
+                # the user explicitly opted out of consolidated_metadata.
+                # Discard anything we might have read.
+                maybe_consolidated_metadata_bytes = None
+
             return cls._from_bytes_v2(
                 store_path, zgroup_bytes, zattrs_bytes, maybe_consolidated_metadata_bytes
             )
