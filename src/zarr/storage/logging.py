@@ -18,6 +18,26 @@ if TYPE_CHECKING:
 
 
 class LoggingStore(Store):
+    """
+    Store wrapper that logs all calls to the wrapped store.
+
+    Parameters
+    ----------
+    store: Store
+        Store to wrap
+    log_level: str
+        Log level
+    log_handler: logging.Handler
+        Log handler
+
+    Attributes
+    ----------
+    _store: Store
+        Wrapped store
+    counter: dict
+        Counter of number of times each method has been called
+    """
+
     _store: Store
     counter: defaultdict[str, int]
 
@@ -58,6 +78,11 @@ class LoggingStore(Store):
 
     @contextmanager
     def log(self) -> Generator[None, None, None]:
+        """context manager to log method calls
+
+        Each call to the wrapped store is logged to the configured logger and added to
+        the counter dict.
+        """
         method = inspect.stack()[2].function
         op = f"{type(self._store).__name__}.{method}"
         self.logger.info(f"Calling {op}")

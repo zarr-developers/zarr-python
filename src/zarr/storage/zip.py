@@ -35,6 +35,17 @@ class ZipStore(Store):
         One of 'r' to read an existing file, 'w' to truncate and write a new
         file, 'a' to append to an existing file, or 'x' to exclusively create
         and write a new file.
+
+    Attributes
+    ----------
+    allowed_exceptions
+    supports_writes
+    supports_deletes
+    supports_partial_writes
+    supports_listing
+    path
+    compression
+    allowZip64
     """
 
     supports_writes: bool = True
@@ -216,18 +227,6 @@ class ZipStore(Store):
                 yield key
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """
-        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
-        common leading prefix removed.
-
-        Parameters
-        ----------
-        prefix : str
-
-        Returns
-        -------
-        AsyncGenerator[str, None]
-        """
         async for key in self.list():
             if key.startswith(prefix):
                 yield key.removeprefix(prefix)

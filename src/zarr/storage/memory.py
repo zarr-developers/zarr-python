@@ -14,9 +14,25 @@ if TYPE_CHECKING:
     from zarr.core.common import AccessModeLiteral
 
 
-# TODO: this store could easily be extended to wrap any MutableMapping store from v2
-# When that is done, the `MemoryStore` will just be a store that wraps a dict.
 class MemoryStore(Store):
+    """
+    In-memory store for testing purposes.
+
+    Parameters
+    ----------
+    store_dict : dict
+        Initial data
+    mode : str
+        Access mode
+
+    Attributes
+    ----------
+    supports_writes
+    supports_deletes
+    supports_partial_writes
+    supports_listing
+    """
+
     supports_writes: bool = True
     supports_deletes: bool = True
     supports_partial_writes: bool = True
@@ -126,18 +142,6 @@ class MemoryStore(Store):
                 yield key.removeprefix(prefix)
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
-        """
-        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
-        common leading prefix removed.
-
-        Parameters
-        ----------
-        prefix : str
-
-        Returns
-        -------
-        AsyncGenerator[str, None]
-        """
         if prefix.endswith("/"):
             prefix = prefix[:-1]
 

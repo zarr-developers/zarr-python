@@ -20,6 +20,8 @@ ByteRangeRequest: TypeAlias = tuple[int | None, int | None]
 
 
 class AccessMode(NamedTuple):
+    """Access mode flags."""
+
     str: AccessModeLiteral
     readonly: bool
     overwrite: bool
@@ -28,6 +30,24 @@ class AccessMode(NamedTuple):
 
     @classmethod
     def from_literal(cls, mode: AccessModeLiteral) -> Self:
+        """
+        Create an AccessMode instance from a literal.
+
+        Parameters
+        ----------
+        mode : AccessModeLiteral
+            One of 'r', 'r+', 'w', 'w-', 'a'.
+
+        Returns
+        -------
+        AccessMode
+            The created instance.
+
+        Raises
+        ------
+        ValueError
+            If mode is not one of 'r', 'r+', 'w', 'w-', 'a'.
+        """
         if mode in ("r", "r+", "a", "w", "w-"):
             return cls(
                 str=mode,
@@ -40,6 +60,17 @@ class AccessMode(NamedTuple):
 
 
 class Store(ABC):
+    """
+    Abstract base class for Zarr stores.
+
+    Attributes
+    ----------
+    _mode : AccessMode
+        Access mode flags.
+    _is_open : bool
+        Whether the store is open.
+    """
+
     _mode: AccessMode
     _is_open: bool
 
@@ -49,6 +80,21 @@ class Store(ABC):
 
     @classmethod
     async def open(cls, *args: Any, **kwargs: Any) -> Self:
+        """
+        Create and open the store.
+
+        Parameters
+        ----------
+        *args : Any
+            Positional arguments to pass to the store constructor.
+        **kwargs : Any
+            Keyword arguments to pass to the store constructor.
+
+        Returns
+        -------
+        store
+            The opened store instance.
+        """
         store = cls(*args, **kwargs)
         await store._open()
         return store
@@ -67,6 +113,20 @@ class Store(ABC):
         self.close()
 
     async def _open(self) -> None:
+        """
+        Open the store.
+
+        Notes
+        -----
+        * When `mode='w'` and the store already exists, it will be cleared.
+
+        Raises
+        ------
+        ValueError
+            If the store is already open.
+        FileExistsError
+            If `mode='w-'` and the store already exists.
+        """
         if self._is_open:
             raise ValueError("store is already open")
         if not await self.empty():
@@ -79,14 +139,31 @@ class Store(ABC):
         self._is_open = True
 
     async def _ensure_open(self) -> None:
+        """Open the store if it is not already open."""
         if not self._is_open:
             await self._open()
 
     @abstractmethod
-    async def empty(self) -> bool: ...
+    async def empty(self) -> bool:
+        """
+        Check if the store is empty.
+
+        Returns
+        -------
+        bool
+            True if the store is empty, False otherwise.
+        """
+        ...
 
     @abstractmethod
-    async def clear(self) -> None: ...
+    async def clear(self) -> None:
+        """
+        Clear the store.
+
+        Remove all keys and values from the store.
+
+        """
+        ...
 
     @abstractmethod
     def with_mode(self, mode: AccessModeLiteral) -> Self:
@@ -119,6 +196,7 @@ class Store(ABC):
         return self._mode
 
     def _check_writable(self) -> None:
+        """Raise an exception if the store is not writable."""
         if self.mode.readonly:
             raise ValueError("store mode does not support writing")
 
@@ -342,6 +420,18 @@ class ByteSetter(Protocol):
 
 
 async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:
+    """Set or delete a value in a byte setter
+
+    Parameters
+    ----------
+    byte_setter : ByteSetter
+    value : Buffer | None
+
+    Notes
+    -----
+    If value is None, the key will be deleted.
+
+    """
     if value is None:
         await byte_setter.delete()
     else:

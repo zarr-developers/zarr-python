@@ -25,6 +25,30 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 
 
 class RemoteStore(Store):
+    """
+    A remote Store based on FSSpec
+
+    Parameters
+    ----------
+    fs: AsyncFileSystem
+        The Async FSSpec filesystem to use with this store.
+    mode: AccessModeLiteral
+        The access mode to use.
+    path: str
+        The root path of the store.
+    allowed_exceptions: tuple[type[Exception], ...]
+        When fetching data, these cases will be deemed to correspond to missing
+
+    Attributes
+    ----------
+    fs
+    allowed_exceptions
+    supports_writes
+    supports_deletes
+    supports_partial_writes
+    supports_listing
+    """
+
     # based on FSSpec
     supports_writes: bool = True
     supports_deletes: bool = True
@@ -41,17 +65,6 @@ class RemoteStore(Store):
         path: str = "/",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> None:
-        """
-        Parameters
-        ----------
-        url: root of the datastore. In fsspec notation, this is usually like "protocol://path/to".
-            Can also be a upath.UPath instance/
-        allowed_exceptions: when fetching data, these cases will be deemed to correspond to missing
-            keys, rather than some other IO failure
-        storage_options: passed on to fsspec to make the filesystem instance. If url is a UPath,
-            this must not be used.
-
-        """
         super().__init__(mode=mode)
         self.fs = fs
         self.path = path
@@ -232,19 +245,6 @@ class RemoteStore(Store):
             yield onefile.removeprefix(self.path).removeprefix("/")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """
-        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
-        common leading prefix removed.
-
-        Parameters
-        ----------
-        prefix : str
-
-        Returns
-        -------
-        AsyncGenerator[str, None]
-        """
-
         find_str = f"{self.path}/{prefix}"
         for onefile in await self.fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
             yield onefile.removeprefix(find_str)
