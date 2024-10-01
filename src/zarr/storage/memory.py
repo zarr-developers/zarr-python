@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Self
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.common import concurrent_map
-from zarr.store._utils import _normalize_interval_index
+from zarr.storage._utils import _normalize_interval_index
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable, MutableMapping
@@ -101,10 +101,10 @@ class MemoryStore(Store):
         else:
             self._store_dict[key] = value
 
-    async def set_if_not_exists(self, key: str, default: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         self._check_writable()
         await self._ensure_open()
-        self._store_dict.setdefault(key, default)
+        self._store_dict.setdefault(key, value)
 
     async def delete(self, key: str) -> None:
         self._check_writable()

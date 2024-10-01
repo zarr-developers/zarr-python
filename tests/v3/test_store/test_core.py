@@ -3,10 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from zarr.store.common import StoreLike, StorePath, make_store_path
-from zarr.store.local import LocalStore
-from zarr.store.memory import MemoryStore
-from zarr.store.remote import RemoteStore
+from zarr.storage.common import StoreLike, StorePath, make_store_path
+from zarr.storage.local import LocalStore
+from zarr.storage.memory import MemoryStore
+from zarr.storage.remote import RemoteStore
 
 
 async def test_make_store_path(tmpdir: str) -> None:
@@ -59,7 +59,7 @@ async def test_make_store_path_fsspec(monkeypatch) -> None:
 )
 async def test_make_store_path_storage_options_raises(store_like: StoreLike) -> None:
     with pytest.raises(TypeError, match="storage_options"):
-        await make_store_path(store_like, storage_options={"foo": "bar"}, mode="w")
+        await make_store_path(store_like, storage_options={"foo": "bar"})
 
 
 async def test_unsupported() -> None:

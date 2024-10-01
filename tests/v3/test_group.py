@@ -15,8 +15,8 @@ from zarr.core.common import JSON, ZarrFormat
 from zarr.core.group import GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.store import LocalStore, MemoryStore, StorePath
-from zarr.store.common import make_store_path
+from zarr.storage import LocalStore, MemoryStore, StorePath
+from zarr.storage.common import make_store_path
 
 from .conftest import parse_store
 
@@ -62,6 +62,19 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     await zarr.api.asynchronous.open_group(
         store=store, path="a", zarr_format=zarr_format, attributes={"key": "value"}
     )
+    objs = {x async for x in store.list()}
+    if zarr_format == 2:
+        assert objs == {".zgroup", ".zattrs", "a/.zgroup", "a/.zattrs"}
+    else:
+        assert objs == {"zarr.json", "a/zarr.json"}
+
+    # test that root group node was created
+    root = await zarr.api.asynchronous.open_group(
+        store=store,
+    )
+    agroup = await root.getitem("a")
+    assert agroup.attrs == {"key": "value"}
+
     # create a child node with a couple intermediates
     await zarr.api.asynchronous.open_group(store=store, path="a/b/c/d", zarr_format=zarr_format)
     parts = ["a", "a/b", "a/b/c"]
@@ -74,10 +87,9 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     expected = [f"{part}/{file}" for file in files for part in parts]
 
     if zarr_format == 2:
-        expected.append("a/b/c/d/.zgroup")
-        expected.append("a/b/c/d/.zattrs")
+        expected.extend([".zgroup", ".zattrs", "a/b/c/d/.zgroup", "a/b/c/d/.zattrs"])
     else:
-        expected.append("a/b/c/d/zarr.json")
+        expected.extend(["zarr.json", "a/b/c/d/zarr.json"])
 
     expected = sorted(expected)
 
@@ -230,9 +242,7 @@ def test_group_create(store: Store, exists_ok: bool, zarr_format: ZarrFormat) ->
 
     if not exists_ok:
         with pytest.raises(ContainsGroupError):
-            group = Group.from_store(
-                store, attributes=attributes, exists_ok=exists_ok, zarr_format=zarr_format
-            )
+            _ = Group.from_store(store, exists_ok=exists_ok, zarr_format=zarr_format)
 
 
 def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> None:
@@ -311,8 +321,7 @@ def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
     """
 
     group = Group.from_store(store, zarr_format=zarr_format)
-    with pytest.raises(NotImplementedError):
-        list(group)
+    assert list(group) == []
 
 
 def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
@@ -321,8 +330,7 @@ def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
     """
 
     group = Group.from_store(store, zarr_format=zarr_format)
-    with pytest.raises(NotImplementedError):
-        len(group)
+    assert len(group) == 0
 
 
 def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:

@@ -6,8 +6,8 @@ import pytest
 from zarr.abc.store import AccessMode, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import AccessModeLiteral
-from zarr.core.sync import _collect_aiterator, collect_aiterator
-from zarr.store._utils import _normalize_interval_index
+from zarr.core.sync import _collect_aiterator
+from zarr.storage._utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
 
 __all__ = ["StoreTests"]
@@ -120,7 +120,7 @@ class StoreTests(Generic[S, B]):
         values = tuple(f"{k}".encode() for k in keys)
         for k, v in zip(keys, values, strict=False):
             self.set(store, k, self.buffer_cls.from_bytes(v))
-        observed_buffers = collect_aiterator(
+        observed_buffers = await _collect_aiterator(
             store._get_many(
                 zip(
                     keys,
