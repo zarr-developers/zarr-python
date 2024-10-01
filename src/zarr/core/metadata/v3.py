@@ -530,14 +530,17 @@ class DataType(Enum):
             return DataType.float64
         if isinstance(dtype, DataType):
             return dtype
-        else:
-            try:
-                dtype = np.dtype(dtype)
-            except (ValueError, TypeError) as e:
-                raise ValueError(f"Invalid V3 data_type: {dtype}") from e
-            # check that this is a valid v3 data_type
-            try:
-                data_type = DataType.from_numpy_dtype(dtype)
-            except KeyError as e:
-                raise ValueError(f"Invalid V3 data_type: {dtype}") from e
-            return data_type
+        try:
+            return DataType(dtype)
+        except ValueError:
+            pass
+        try:
+            dtype = np.dtype(dtype)
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid V3 data_type: {dtype}") from e
+        # check that this is a valid v3 data_type
+        try:
+            data_type = DataType.from_numpy_dtype(dtype)
+        except KeyError as e:
+            raise ValueError(f"Invalid V3 data_type: {dtype}") from e
+        return data_type
