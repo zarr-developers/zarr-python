@@ -524,7 +524,7 @@ class AsyncArray:
         Examples
         --------
         >>> import zarr
-        >>>  store = zarr.store.MemoryStore(mode='w')
+        >>>  store = zarr.storage.MemoryStore(mode='w')
         >>>  async_arr = await AsyncArray.open(store) # doctest: +ELLIPSIS
         <AsyncArray memory://... shape=(100, 100) dtype=int32>
         """
@@ -854,7 +854,7 @@ class AsyncArray:
         Examples
         --------
         >>> import zarr
-        >>>  store = zarr.store.MemoryStore(mode='w')
+        >>>  store = zarr.storage.MemoryStore(mode='w')
         >>>  async_arr = await zarr.core.array.AsyncArray.create(
         ...      store=store,
         ...      shape=(100,100),
