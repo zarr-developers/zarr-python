@@ -335,11 +335,11 @@ class AsyncArray:
             The default value to use for uninitialized regions of the array. Default is None.
 
         chunk_key_encoding : ChunkKeyEncoding or tuple, optional
-            The encoding to use for chunk keys. Can be either 'default' or 'v2' along with a separator, 
+            The encoding to use for chunk keys. Can be either 'default' or 'v2' along with a separator,
             either "." or "/". Default is None.
 
         codecs : Iterable of Codec or dict of str to JSON, optional
-            The codecs to apply to each chunk. These can be codec objects or dictionaries specifying codec 
+            The codecs to apply to each chunk. These can be codec objects or dictionaries specifying codec
             configurations. Default is None.
 
         dimension_names : Iterable of str or None, optional
@@ -438,11 +438,11 @@ class AsyncArray:
             The default value to use for uninitialized regions of the array. Default is None.
 
         order : {'C', 'F'} or None, optional
-            The memory layout order for the array. 'C' is row-major (C-style), 'F' is column-major 
+            The memory layout order for the array. 'C' is row-major (C-style), 'F' is column-major
             (Fortran-style). Default is None.
 
         filters : list of dict of str to JSON or None, optional
-            Filters to apply to each chunk. These can be dictionaries specifying filter configurations. 
+            Filters to apply to each chunk. These can be dictionaries specifying filter configurations.
             Default is None.
 
         compressor : dict of str to JSON or None, optional
@@ -505,7 +505,7 @@ class AsyncArray:
         ----------
         store_path : StorePath
             The path within the store where the array should be created.
-        
+
         data : dict of str to JSON
             A dictionary representing the array data and metadata in JSON-serializable format.
         Returns
@@ -709,16 +709,16 @@ class AsyncArray:
         ----------
         indexer : Indexer
             An object representing the indices to be used for selecting data from the array.
-        
+
         prototype : BufferPrototype
             A prototype buffer that defines the structure and properties of the output data.
-        
+
         out : NDBuffer or None, optional
-            An optional output buffer to write the selected data into. If None, a new buffer 
+            An optional output buffer to write the selected data into. If None, a new buffer
             will be created. Default is None.
-        
+
         fields : Fields or None, optional
-            Specifies which fields to select if the array has structured data. If None, all fields 
+            Specifies which fields to select if the array has structured data. If None, all fields
             are selected. Default is None.
 
         Returns
@@ -795,9 +795,9 @@ class AsyncArray:
         Parameters
         ----------
         metadata : ArrayMetadata
-            The metadata to be saved for the array. This typically includes information about the 
+            The metadata to be saved for the array. This typically includes information about the
             array's shape, dtype, chunking, etc.
-        
+
         ensure_parents : bool, optional
             If True, ensures that any necessary parent directories are created before saving the metadata.
             Default is False.
@@ -806,7 +806,7 @@ class AsyncArray:
         -------
         None
             This method does not return any value.
-        
+
         Notes
         -----
         - This method is asynchronous and should be awaited.
@@ -845,13 +845,13 @@ class AsyncArray:
         ----------
         indexer : Indexer
             An object representing the indices to be used for selecting locations in the array where data will be written.
-        
+
         value : numpy.typing.ArrayLike
             The values to be written into the array at the selected locations. Must be compatible with the array's dtype and shape.
-        
+
         prototype : BufferPrototype
             A prototype buffer that defines the structure and properties of the array chunks being modified.
-        
+
         fields : Fields or None, optional
             Specifies which fields to set if the array has structured data. If None, all fields are set. Default is None.
 
@@ -927,12 +927,12 @@ class AsyncArray:
         ----------
         selection : BasicSelection
             The selection defining the region of the array to set.
-        
+
         value : numpy.typing.ArrayLike
             The values to be written into the selected region of the array.
-        
+
         prototype : BufferPrototype or None, optional
-            A prototype buffer that defines the structure and properties of the array chunks being modified. 
+            A prototype buffer that defines the structure and properties of the array chunks being modified.
             If None, the default buffer prototype is used. Default is None.
 
         Returns
@@ -944,7 +944,7 @@ class AsyncArray:
         ------
         IndexError
             If the selection is out of bounds for the array.
-        
+
         ValueError
             If the values are not compatible with the array's dtype or shape.
 
@@ -972,9 +972,9 @@ class AsyncArray:
         ----------
         new_shape : ChunkCoords
             The desired new shape of the array.
-        
+
         delete_outside_chunks : bool, optional
-            If True (default), chunks that fall outside the new shape will be deleted. If False, 
+            If True (default), chunks that fall outside the new shape will be deleted. If False,
             the data in those chunks will be preserved.
 
         Returns
@@ -1023,7 +1023,7 @@ class AsyncArray:
         Parameters
         ----------
         new_attributes : dict of str to JSON
-            A dictionary of new attributes to update or add to the array. The keys represent attribute 
+            A dictionary of new attributes to update or add to the array. The keys represent attribute
             names, and the values must be JSON-compatible.
 
         Returns
@@ -1039,7 +1039,7 @@ class AsyncArray:
         Notes
         -----
         - This method is asynchronous and should be awaited.
-        - The updated attributes will be merged with existing attributes, and any conflicts will be 
+        - The updated attributes will be merged with existing attributes, and any conflicts will be
           overwritten by the new values.
         """
         new_metadata = self.metadata.update_attributes(new_attributes)
