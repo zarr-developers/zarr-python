@@ -163,7 +163,7 @@ class ArrayV2Metadata(ArrayMetadata):
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
 
-        if self.dtype.kind in "SV":
+        if self.dtype.kind in "SV" and self.fill_value is not None:
             # There's a relationship between self.dtype and self.fill_value
             # that mypy isn't aware of. The fact that we have S or V dtype here
             # means we should have a bytes-type fill_value.

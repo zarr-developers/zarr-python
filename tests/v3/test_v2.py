@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator
 
 import numpy as np
@@ -7,6 +8,7 @@ from numcodecs.blosc import Blosc
 
 import zarr
 import zarr.core.buffer.cpu
+import zarr.storage
 from zarr import Array
 from zarr.storage import MemoryStore, StorePath
 
@@ -50,11 +52,6 @@ def test_codec_pipeline() -> None:
 
 
 async def test_v2_encode_decode():
-    import json
-
-    import zarr.core.buffer.cpu
-    import zarr.storage
-
     store = zarr.storage.MemoryStore(mode="w")
     g = zarr.group(store=store, zarr_format=2)
     g.create_array(
