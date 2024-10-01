@@ -314,6 +314,58 @@ class AsyncArray:
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray:
+        """
+        Asynchronously create a Zarr V3 array.
+
+        Parameters
+        ----------
+        store_path : StorePath
+            The path within the store where the array should be created.
+
+        shape : ShapeLike
+            The shape of the array.
+
+        dtype : numpy.typing.DTypeLike
+            The data type of the array elements.
+
+        chunk_shape : ChunkCoords
+            The shape of the chunks in the array.
+
+        fill_value : Any, optional
+            The default value to use for uninitialized regions of the array. Default is None.
+
+        chunk_key_encoding : ChunkKeyEncoding or tuple, optional
+            The encoding to use for chunk keys. Can be either 'default' or 'v2' along with a separator, 
+            either "." or "/". Default is None.
+
+        codecs : Iterable of Codec or dict of str to JSON, optional
+            The codecs to apply to each chunk. These can be codec objects or dictionaries specifying codec 
+            configurations. Default is None.
+
+        dimension_names : Iterable of str or None, optional
+            The names of the array dimensions. Default is None.
+
+        attributes : dict of str to JSON, optional
+            User-defined attributes to be associated with the array. Default is None.
+
+        exists_ok : bool, optional
+            If False (default), raise an error if the array already exists. If True, overwrite the existing array.
+
+        Returns
+        -------
+        AsyncArray
+            The created Zarr v3 array.
+
+        Raises
+        ------
+        ValueError
+            If the parameters are incompatible or invalid.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        - This function is specific to Zarr V3 format arrays.
+        """
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=3)
 
@@ -362,6 +414,61 @@ class AsyncArray:
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray:
+        """
+        Asynchronously create a Zarr V2 array.
+
+        Parameters
+        ----------
+        store_path : StorePath
+            The path within the store where the array should be created.
+
+        shape : ChunkCoords
+            The shape of the array.
+
+        dtype : numpy.typing.DTypeLike
+            The data type of the array elements.
+
+        chunks : ChunkCoords
+            The shape of the chunks in the array.
+
+        dimension_separator : {'.', '/'} or None, optional
+            The separator to use between chunk dimensions. Default is None.
+
+        fill_value : float or None, optional
+            The default value to use for uninitialized regions of the array. Default is None.
+
+        order : {'C', 'F'} or None, optional
+            The memory layout order for the array. 'C' is row-major (C-style), 'F' is column-major 
+            (Fortran-style). Default is None.
+
+        filters : list of dict of str to JSON or None, optional
+            Filters to apply to each chunk. These can be dictionaries specifying filter configurations. 
+            Default is None.
+
+        compressor : dict of str to JSON or None, optional
+            The compression algorithm to use for chunks. Default is None.
+
+        attributes : dict of str to JSON, optional
+            User-defined attributes to be associated with the array. Default is None.
+
+        exists_ok : bool, optional
+            If False (default), raise an error if the array already exists. If True, overwrite the existing array.
+
+        Returns
+        -------
+        AsyncArray
+            The created Zarr V2 array.
+
+        Raises
+        ------
+        ValueError
+            If the parameters are incompatible or invalid.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        - This function is specific to Zarr v2 format arrays.
+        """
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=2)
         if order is None:
@@ -391,6 +498,26 @@ class AsyncArray:
         store_path: StorePath,
         data: dict[str, JSON],
     ) -> AsyncArray:
+        """
+        Create a Zarr array from a dictionary.
+
+        Parameters
+        ----------
+        store_path : StorePath
+            The path within the store where the array should be created.
+        
+        data : dict of str to JSON
+            A dictionary representing the array data and metadata in JSON-serializable format.
+        Returns
+        -------
+        AsyncArray
+            The created Zarr array.
+
+        Raises
+        ------
+        ValueError
+            If the provided dictionary is not compatible with the Zarr array format.
+        """
         metadata = parse_array_metadata(data)
         return cls(metadata=metadata, store_path=store_path)
 
@@ -575,6 +702,40 @@ class AsyncArray:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
+        """
+        Asynchronously retrieve a selection from the array.
+
+        Parameters
+        ----------
+        indexer : Indexer
+            An object representing the indices to be used for selecting data from the array.
+        
+        prototype : BufferPrototype
+            A prototype buffer that defines the structure and properties of the output data.
+        
+        out : NDBuffer or None, optional
+            An optional output buffer to write the selected data into. If None, a new buffer 
+            will be created. Default is None.
+        
+        fields : Fields or None, optional
+            Specifies which fields to select if the array has structured data. If None, all fields 
+            are selected. Default is None.
+
+        Returns
+        -------
+        NDArrayLike
+            The selected data from the array.
+
+        Raises
+        ------
+        ValueError
+            If the indices or selection criteria are invalid.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        - The selection can be made using advanced indexing and supports structured arrays.
+        """
         # check fields are sensible
         out_dtype = check_fields(fields, self.dtype)
 
@@ -628,6 +789,28 @@ class AsyncArray:
         return await self._get_selection(indexer, prototype=prototype)
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
+        """
+        Asynchronously save the array metadata.
+
+        Parameters
+        ----------
+        metadata : ArrayMetadata
+            The metadata to be saved for the array. This typically includes information about the 
+            array's shape, dtype, chunking, etc.
+        
+        ensure_parents : bool, optional
+            If True, ensures that any necessary parent directories are created before saving the metadata.
+            Default is False.
+
+        Returns
+        -------
+        None
+            This method does not return any value.
+        
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        """
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
 
@@ -655,6 +838,37 @@ class AsyncArray:
         prototype: BufferPrototype,
         fields: Fields | None = None,
     ) -> None:
+        """
+        Asynchronously set a selection of values in the array.
+
+        Parameters
+        ----------
+        indexer : Indexer
+            An object representing the indices to be used for selecting locations in the array where data will be written.
+        
+        value : numpy.typing.ArrayLike
+            The values to be written into the array at the selected locations. Must be compatible with the array's dtype and shape.
+        
+        prototype : BufferPrototype
+            A prototype buffer that defines the structure and properties of the array chunks being modified.
+        
+        fields : Fields or None, optional
+            Specifies which fields to set if the array has structured data. If None, all fields are set. Default is None.
+
+        Returns
+        -------
+        None
+            This method does not return any value.
+
+        Raises
+        ------
+        ValueError
+            If the indices or values are incompatible with the array's shape or dtype.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        """
         # check fields are sensible
         check_fields(fields, self.dtype)
         fields = check_no_multi_fields(fields)
@@ -706,6 +920,39 @@ class AsyncArray:
         value: npt.ArrayLike,
         prototype: BufferPrototype | None = None,
     ) -> None:
+        """
+        Asynchronously set values in the array using basic indexing.
+
+        Parameters
+        ----------
+        selection : BasicSelection
+            The selection defining the region of the array to set.
+        
+        value : numpy.typing.ArrayLike
+            The values to be written into the selected region of the array.
+        
+        prototype : BufferPrototype or None, optional
+            A prototype buffer that defines the structure and properties of the array chunks being modified. 
+            If None, the default buffer prototype is used. Default is None.
+
+        Returns
+        -------
+        None
+            This method does not return any value.
+
+        Raises
+        ------
+        IndexError
+            If the selection is out of bounds for the array.
+        
+        ValueError
+            If the values are not compatible with the array's dtype or shape.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        - Supports basic indexing, where the selection is contiguous and does not involve advanced indexing.
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BasicIndexer(
@@ -718,6 +965,32 @@ class AsyncArray:
     async def resize(
         self, new_shape: ChunkCoords, delete_outside_chunks: bool = True
     ) -> AsyncArray:
+        """
+        Asynchronously resize the array to a new shape.
+
+        Parameters
+        ----------
+        new_shape : ChunkCoords
+            The desired new shape of the array.
+        
+        delete_outside_chunks : bool, optional
+            If True (default), chunks that fall outside the new shape will be deleted. If False, 
+            the data in those chunks will be preserved.
+
+        Returns
+        -------
+        AsyncArray
+            The resized array.
+
+        Raises
+        ------
+        ValueError
+            If the new shape is incompatible with the current array's chunking configuration.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        """
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = self.metadata.update_shape(new_shape)
 
@@ -744,6 +1017,31 @@ class AsyncArray:
         return replace(self, metadata=new_metadata)
 
     async def update_attributes(self, new_attributes: dict[str, JSON]) -> AsyncArray:
+        """
+        Asynchronously update the array's attributes.
+
+        Parameters
+        ----------
+        new_attributes : dict of str to JSON
+            A dictionary of new attributes to update or add to the array. The keys represent attribute 
+            names, and the values must be JSON-compatible.
+
+        Returns
+        -------
+        AsyncArray
+            The array with the updated attributes.
+
+        Raises
+        ------
+        ValueError
+            If the attributes are invalid or incompatible with the array's metadata.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        - The updated attributes will be merged with existing attributes, and any conflicts will be 
+          overwritten by the new values.
+        """
         new_metadata = self.metadata.update_attributes(new_attributes)
 
         # Write new metadata
