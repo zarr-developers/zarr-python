@@ -6,6 +6,7 @@ from numcodecs import Delta
 from numcodecs.blosc import Blosc
 
 import zarr
+import zarr.core.buffer.cpu
 from zarr import Array
 from zarr.storage import MemoryStore, StorePath
 
@@ -46,3 +47,41 @@ def test_codec_pipeline() -> None:
     result = array[:]
     expected = np.ones(1)
     np.testing.assert_array_equal(result, expected)
+
+
+async def test_v2_encode_decode():
+    import json
+
+    import zarr.core.buffer.cpu
+    import zarr.storage
+
+    store = zarr.storage.MemoryStore(mode="w")
+    g = zarr.group(store=store, zarr_format=2)
+    g.create_array(
+        name="foo",
+        shape=(3,),
+        dtype="|S4",
+        fill_value=b"X",
+    )
+
+    result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
+    assert result is not None
+
+    serialized = json.loads(result.to_bytes())
+    expected = {
+        "chunks": [3],
+        # "compressor": {"blocksize": 0, "clevel": 5, "cname": "lz4", "id": "blosc", "shuffle": 1},
+        "compressor": None,
+        "dtype": "|S4",
+        "fill_value": "WA==",
+        "filters": None,
+        "order": "C",
+        "shape": [3],
+        "zarr_format": 2,
+        "dimension_separator": ".",
+    }
+    assert serialized == expected
+
+    data = zarr.open_array(store=store, path="foo")[:]
+    expected = np.full((3,), b"X", dtype="|S4")
+    np.testing.assert_equal(data, expected)
