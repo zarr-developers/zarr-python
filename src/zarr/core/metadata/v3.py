@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, cast, overload
 if TYPE_CHECKING:
     from typing import Self
 
-    import numpy.typing as npt
-
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import JSON, ChunkCoords
@@ -20,6 +18,7 @@ from typing import Any, Literal
 
 import numcodecs.abc
 import numpy as np
+import numpy.typing as npt
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArraySpec
@@ -167,7 +166,7 @@ class ArrayV3Metadata(ArrayMetadata):
         self,
         *,
         shape: Iterable[int],
-        data_type: str | np.dtype[Any] | DataType,
+        data_type: npt.DTypeLike | DataType,
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
@@ -269,13 +268,13 @@ class ArrayV3Metadata(ArrayMetadata):
         _ = parse_node_type_array(_data.pop("node_type"))
 
         # check that the data_type attribute is valid
-        _data["data_type"] = DataType.parse(_data.pop("data_type"))
+        data_type = DataType.parse(_data.pop("data_type"))
 
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)
         # attributes key is optional, normalize missing to `None`
         _data["attributes"] = _data.pop("attributes", None)
-        return cls(**_data)  # type: ignore[arg-type]
+        return cls(**_data, data_type=data_type)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()
@@ -525,30 +524,20 @@ class DataType(Enum):
         return DataType[dtype_to_data_type[dtype.str]]
 
     @classmethod
-    def parse(cls, dtype: str | np.dtype[Any] | DataType) -> DataType:
+    def parse(cls, dtype: None | DataType | Any) -> DataType:
+        if dtype is None:
+            # the default dtype
+            return DataType.float64
         if isinstance(dtype, DataType):
             return dtype
-        elif isinstance(dtype, np.dtype):
-            return cls.from_numpy_dtype(dtype)
-        elif isinstance(dtype, str):
-            try:
-                return cls(dtype)
-            except ValueError as e:
-                raise TypeError(f"Invalid V3 data_type: {dtype}") from e
         else:
-            raise TypeError(f"Invalid V3 data_type: {dtype}")
-
-
-def numpy_dtype_to_zarr_data_type(data: npt.DTypeLike) -> DataType:
-    try:
-        dtype = np.dtype(data)
-    except (ValueError, TypeError) as e:
-        raise ValueError(f"Invalid V3 data_type: {data}") from e
-    # check that this is a valid v3 data_type
-    try:
-        # dtype = DataType.from_dtype(dtype)
-        _ = DataType.from_numpy_dtype(dtype)
-    except KeyError as e:
-        raise ValueError(f"Invalid V3 data_type: {dtype}") from e
-
-    return dtype
+            try:
+                dtype = np.dtype(dtype)
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid V3 data_type: {dtype}") from e
+            # check that this is a valid v3 data_type
+            try:
+                data_type = DataType.from_numpy_dtype(dtype)
+            except KeyError as e:
+                raise ValueError(f"Invalid V3 data_type: {dtype}") from e
+            return data_type
