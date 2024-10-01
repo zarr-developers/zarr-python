@@ -186,50 +186,22 @@ class AsyncArray:
     order : {'C', 'F'}
         The order of the array data in memory.
 
-    Methods
-    -------
-    create(store, ...)
-        Create a new AsyncArray in the given store.
-    open(store, ...)
-        Open an existing AsyncArray from the given store.
-    resize(new_shape, ...)
-        Resize the AsyncArray to the specified shape.
-    update_attributes(new_attributes, ...)
-        Update the attributes of the AsyncArray.
-    info()
-        Print information about the AsyncArray.
-
     Properties
     ----------
-    ndim : int
-        The number of dimensions of the array.
-    shape : Tuple[int]
-        The shape of the array.
-    chunks : Tuple[int]
-        The shape of the chunks in the array.
-    size : int
-        The total number of elements in the array.
-    dtype : numpy.dtype
-        The data type of the array.
-    attrs : dict
-        The attributes of the array.
-    read_only : bool
-        Whether the array is read-only.
-    path : str
-        The path to the array in the Zarr store.
-    name : str or None
-        The name of the array.
-    basename : str or None
-        The basename of the array.
-    cdata_shape : Tuple[int]
-        The shape of the array in chunk grid coordinates.
-    nchunks : int
-        The total number of chunks in the array.
-    nchunks_initialized : int
-        The number of initialized chunks in the array.
-    nbytes : int
-        The total number of bytes used by the array data.
-
+    ndim
+    shape
+    chunks
+    size
+    dtype
+    attrs
+    read_only
+    path
+    name
+    basename
+    cdata_shape
+    nchunks
+    nchunks_initialized
+    nbytes
     """
 
     metadata: ArrayMetadata
@@ -552,9 +524,9 @@ class AsyncArray:
         Examples
         --------
         >>> import zarr
-        >>> store = zarr.store.MemoryStore(mode='w')
-        >>> async_arr = await AsyncArray.open(store)
-        <AsyncArray memory://140349042942400 shape=(100, 100) dtype=int32>
+        >>>  store = zarr.store.MemoryStore(mode='w')
+        >>>  async_arr = await AsyncArray.open(store) # doctest: +ELLIPSIS
+        <AsyncArray memory://... shape=(100, 100) dtype=int32>
         """
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
@@ -605,28 +577,72 @@ class AsyncArray:
 
     @property
     def size(self) -> int:
+        """Returns the total number of elements in the array
+
+        Returns
+        -------
+        int
+            Total number of elements in the array
+        """
         return np.prod(self.metadata.shape).item()
 
     @property
     def dtype(self) -> np.dtype[Any]:
+        """Returns the data type of the array.
+
+        Returns
+        -------
+        np.dtype
+            Data type of the array
+        """
         return self.metadata.dtype
 
     @property
     def attrs(self) -> dict[str, JSON]:
-        return self.metadata.attributes
+        """Returns the attributes of the array.
+
+        Returns
+        -------
+        dict
+            Attributes of the array
+        """
+        if self.metadata.attributes is None:
+            return {}
+        else:
+            return self.metadata.attributes
 
     @property
     def read_only(self) -> bool:
+        """Returns True if the array is read-only.
+
+        Returns
+        -------
+        bool
+            True if the array is read-only
+        """
+        # Backwards compatibility for 2.x
         return self.store_path.store.mode.readonly
 
     @property
     def path(self) -> str:
-        """Storage path."""
+        """Storage path.
+
+        Returns
+        -------
+        str
+            The path to the array in the Zarr store.
+        """
         return self.store_path.path
 
     @property
     def name(self) -> str | None:
-        """Array name following h5py convention."""
+        """Array name following h5py convention.
+
+        Returns
+        -------
+        str
+            The name of the array.
+        """
         if self.path:
             # follow h5py convention: add leading slash
             name = self.path
@@ -637,7 +653,13 @@ class AsyncArray:
 
     @property
     def basename(self) -> str | None:
-        """Final component of name."""
+        """Final component of name.
+
+        Returns
+        -------
+        str
+            The basename or final component of the array name.
+        """
         if self.name is not None:
             return self.name.split("/")[-1]
         return None
@@ -646,6 +668,11 @@ class AsyncArray:
     def cdata_shape(self) -> ChunkCoords:
         """
         The shape of the chunk grid for this array.
+
+        Returns
+        -------
+        Tuple[int]
+            The shape of the chunk grid for this array.
         """
         return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
 
@@ -653,6 +680,11 @@ class AsyncArray:
     def nchunks(self) -> int:
         """
         The number of chunks in the stored representation of this array.
+
+        Returns
+        -------
+        int
+            The total number of chunks in the array.
         """
         return product(self.cdata_shape)
 
@@ -660,6 +692,11 @@ class AsyncArray:
     def nchunks_initialized(self) -> int:
         """
         The number of chunks that have been persisted in storage.
+
+        Returns
+        -------
+        int
+            The number of initialized chunks in the array.
         """
         return nchunks_initialized(self)
 
@@ -816,15 +853,15 @@ class AsyncArray:
         Examples
         --------
         >>> import zarr
-        >>> store = zarr.store.MemoryStore(mode='w')
-        >>> async_arr = await zarr.core.array.AsyncArray.create(
-        >>>     store=store,
-        >>>     shape=(100,100),
-        >>>     chunks=(10,10),
-        >>>     dtype='i4',
-        >>>     fill_value=0)
-        <AsyncArray memory://140349042942400 shape=(100, 100) dtype=int32>
-        >>> await async_arr.getitem((0,1))
+        >>>  store = zarr.store.MemoryStore(mode='w')
+        >>>  async_arr = await zarr.core.array.AsyncArray.create(
+        ...      store=store,
+        ...      shape=(100,100),
+        ...      chunks=(10,10),
+        ...      dtype='i4',
+        ...      fill_value=0)
+        <AsyncArray memory://... shape=(100, 100) dtype=int32>
+        >>> await async_arr.getitem((0,1)) # doctest: +ELLIPSIS
         array(0, dtype=int32)
 
         """
