@@ -22,9 +22,6 @@ vlen_utf8_codec = VLenUTF8()
 
 @dataclass(frozen=True)
 class VLenUTF8Codec(ArrayBytesCodec):
-    def __init__(self) -> None:
-        pass
-
     @classmethod
     def from_dict(cls, data: dict[str, JSON]) -> Self:
         _, configuration_parsed = parse_named_configuration(
@@ -34,7 +31,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
         return cls(**configuration_parsed)
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "vlen-utf8"}
+        return {"name": "vlen-utf8", "configuration": {}}
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self

@@ -152,7 +152,7 @@ def _replace_special_floats(obj: object) -> Any:
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(ArrayMetadata):
     shape: ChunkCoords
-    data_type: np.dtype[Any]
+    data_type: DataType
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
@@ -167,7 +167,7 @@ class ArrayV3Metadata(ArrayMetadata):
         self,
         *,
         shape: Iterable[int],
-        data_type: npt.DTypeLike,
+        data_type: str | np.dtype[Any] | DataType,
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
@@ -180,18 +180,18 @@ class ArrayV3Metadata(ArrayMetadata):
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
         shape_parsed = parse_shapelike(shape)
-        data_type_parsed = parse_dtype(data_type)
+        data_type_parsed = DataType.parse(data_type)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed)
+        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed.to_numpy_dtype())
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
 
         array_spec = ArraySpec(
             shape=shape_parsed,
-            dtype=data_type_parsed,
+            dtype=data_type_parsed.to_numpy_dtype(),
             fill_value=fill_value_parsed,
             order="C",  # TODO: order is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
@@ -224,11 +224,14 @@ class ArrayV3Metadata(ArrayMetadata):
         if self.fill_value is None:
             raise ValueError("`fill_value` is required.")
         for codec in self.codecs:
-            codec.validate(shape=self.shape, dtype=self.data_type, chunk_grid=self.chunk_grid)
+            codec.validate(
+                shape=self.shape, dtype=self.data_type.to_numpy_dtype(), chunk_grid=self.chunk_grid
+            )
 
     @property
     def dtype(self) -> np.dtype[Any]:
-        return self.data_type
+        """Interpret Zarr dtype as NumPy dtype"""
+        return self.data_type.to_numpy_dtype()
 
     @property
     def ndim(self) -> int:
@@ -266,7 +269,7 @@ class ArrayV3Metadata(ArrayMetadata):
         _ = parse_node_type_array(_data.pop("node_type"))
 
         # check that the data_type attribute is valid
-        _ = DataType(_data["data_type"])
+        _data["data_type"] = DataType.parse(_data.pop("data_type"))
 
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)
@@ -310,6 +313,7 @@ FLOAT_DTYPE = np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float6
 FLOAT = np.float16 | np.float32 | np.float64
 COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
 COMPLEX = np.complex64 | np.complex128
+STRING = np.str_
 
 
 @overload
@@ -491,8 +495,14 @@ class DataType(Enum):
         }
         return data_type_to_numpy[self]
 
+    def to_numpy_dtype(self) -> np.dtype[Any]:
+        if self == DataType.string:
+            return np.dtypes.StringDType()
+        else:
+            return np.dtype(self.to_numpy_shortname())
+
     @classmethod
-    def from_dtype(cls, dtype: np.dtype[Any]) -> DataType:
+    def from_numpy_dtype(cls, dtype: np.dtype[Any]) -> DataType:
         if np.issubdtype(np.str_, dtype):
             return DataType.string
         dtype_to_data_type = {
@@ -514,15 +524,30 @@ class DataType(Enum):
         }
         return DataType[dtype_to_data_type[dtype.str]]
 
+    @classmethod
+    def parse(cls, dtype: str | np.dtype[Any] | DataType) -> DataType:
+        if isinstance(dtype, DataType):
+            return dtype
+        elif isinstance(dtype, np.dtype):
+            return cls.from_numpy_dtype(dtype)
+        elif isinstance(dtype, str):
+            try:
+                return cls(dtype)
+            except ValueError as e:
+                raise TypeError(f"Invalid V3 data_type: {dtype}") from e
+        else:
+            raise TypeError(f"Invalid V3 data_type: {dtype}")
 
-def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
+
+def numpy_dtype_to_zarr_data_type(data: npt.DTypeLike) -> DataType:
     try:
         dtype = np.dtype(data)
     except (ValueError, TypeError) as e:
         raise ValueError(f"Invalid V3 data_type: {data}") from e
     # check that this is a valid v3 data_type
     try:
-        _ = DataType.from_dtype(dtype)
+        # dtype = DataType.from_dtype(dtype)
+        _ = DataType.from_numpy_dtype(dtype)
     except KeyError as e:
         raise ValueError(f"Invalid V3 data_type: {dtype}") from e
 
