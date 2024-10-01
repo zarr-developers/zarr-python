@@ -1118,6 +1118,26 @@ class Array:
         store_path: StorePath,
         data: dict[str, JSON],
     ) -> Array:
+        """
+        Create a Zarr array from a dictionary.
+
+        Parameters
+        ----------
+        store_path : StorePath
+            The path within the store where the array should be created.
+
+        data : dict of str to JSON
+            A dictionary representing the array data and metadata in JSON-serializable format.
+        Returns
+        -------
+        AsyncArray
+            The created Zarr array.
+
+        Raises
+        ------
+        ValueError
+            If the provided dictionary is not compatible with the Zarr array format.
+        """
         async_array = AsyncArray.from_dict(store_path=store_path, data=data)
         return cls(async_array)
 
@@ -2606,6 +2626,30 @@ class Array:
         )
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
+        """
+        Update the array's attributes.
+
+        Parameters
+        ----------
+        new_attributes : dict of str to JSON
+            A dictionary of new attributes to update or add to the array. The keys represent attribute
+            names, and the values must be JSON-compatible.
+
+        Returns
+        -------
+        Array
+            The array with the updated attributes.
+
+        Raises
+        ------
+        ValueError
+            If the attributes are invalid or incompatible with the array's metadata.
+
+        Notes
+        -----
+        - The updated attributes will be merged with existing attributes, and any conflicts will be
+          overwritten by the new values.
+        """
         return type(self)(
             sync(
                 self._async_array.update_attributes(new_attributes),
