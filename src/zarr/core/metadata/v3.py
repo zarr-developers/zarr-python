@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, cast, overload
 if TYPE_CHECKING:
     from typing import Self
 
-    import numpy.typing as npt
-
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import JSON, ChunkCoords
@@ -20,6 +18,7 @@ from typing import Any, Literal
 
 import numcodecs.abc
 import numpy as np
+import numpy.typing as npt
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArraySpec
@@ -152,7 +151,7 @@ def _replace_special_floats(obj: object) -> Any:
 @dataclass(frozen=True, kw_only=True)
 class ArrayV3Metadata(ArrayMetadata):
     shape: ChunkCoords
-    data_type: np.dtype[Any]
+    data_type: DataType
     chunk_grid: ChunkGrid
     chunk_key_encoding: ChunkKeyEncoding
     fill_value: Any
@@ -167,7 +166,7 @@ class ArrayV3Metadata(ArrayMetadata):
         self,
         *,
         shape: Iterable[int],
-        data_type: npt.DTypeLike,
+        data_type: npt.DTypeLike | DataType,
         chunk_grid: dict[str, JSON] | ChunkGrid,
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
@@ -180,18 +179,18 @@ class ArrayV3Metadata(ArrayMetadata):
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
         """
         shape_parsed = parse_shapelike(shape)
-        data_type_parsed = parse_dtype(data_type)
+        data_type_parsed = DataType.parse(data_type)
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed)
+        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed.to_numpy_dtype())
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
 
         array_spec = ArraySpec(
             shape=shape_parsed,
-            dtype=data_type_parsed,
+            dtype=data_type_parsed.to_numpy_dtype(),
             fill_value=fill_value_parsed,
             order="C",  # TODO: order is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
@@ -224,11 +223,14 @@ class ArrayV3Metadata(ArrayMetadata):
         if self.fill_value is None:
             raise ValueError("`fill_value` is required.")
         for codec in self.codecs:
-            codec.validate(shape=self.shape, dtype=self.data_type, chunk_grid=self.chunk_grid)
+            codec.validate(
+                shape=self.shape, dtype=self.data_type.to_numpy_dtype(), chunk_grid=self.chunk_grid
+            )
 
     @property
     def dtype(self) -> np.dtype[Any]:
-        return self.data_type
+        """Interpret Zarr dtype as NumPy dtype"""
+        return self.data_type.to_numpy_dtype()
 
     @property
     def ndim(self) -> int:
@@ -266,13 +268,13 @@ class ArrayV3Metadata(ArrayMetadata):
         _ = parse_node_type_array(_data.pop("node_type"))
 
         # check that the data_type attribute is valid
-        _ = DataType(_data["data_type"])
+        data_type = DataType.parse(_data.pop("data_type"))
 
         # dimension_names key is optional, normalize missing to `None`
         _data["dimension_names"] = _data.pop("dimension_names", None)
         # attributes key is optional, normalize missing to `None`
         _data["attributes"] = _data.pop("attributes", None)
-        return cls(**_data)  # type: ignore[arg-type]
+        return cls(**_data, data_type=data_type)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
         out_dict = super().to_dict()
@@ -490,8 +492,11 @@ class DataType(Enum):
         }
         return data_type_to_numpy[self]
 
+    def to_numpy_dtype(self) -> np.dtype[Any]:
+        return np.dtype(self.to_numpy_shortname())
+
     @classmethod
-    def from_dtype(cls, dtype: np.dtype[Any]) -> DataType:
+    def from_numpy_dtype(cls, dtype: np.dtype[Any]) -> DataType:
         dtype_to_data_type = {
             "|b1": "bool",
             "bool": "bool",
@@ -511,16 +516,21 @@ class DataType(Enum):
         }
         return DataType[dtype_to_data_type[dtype.str]]
 
-
-def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
-    try:
-        dtype = np.dtype(data)
-    except (ValueError, TypeError) as e:
-        raise ValueError(f"Invalid V3 data_type: {data}") from e
-    # check that this is a valid v3 data_type
-    try:
-        _ = DataType.from_dtype(dtype)
-    except KeyError as e:
-        raise ValueError(f"Invalid V3 data_type: {dtype}") from e
-
-    return dtype
+    @classmethod
+    def parse(cls, dtype: None | DataType | Any) -> DataType:
+        if dtype is None:
+            # the default dtype
+            return DataType.float64
+        if isinstance(dtype, DataType):
+            return dtype
+        else:
+            try:
+                dtype = np.dtype(dtype)
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Invalid V3 data_type: {dtype}") from e
+            # check that this is a valid v3 data_type
+            try:
+                data_type = DataType.from_numpy_dtype(dtype)
+            except KeyError as e:
+                raise ValueError(f"Invalid V3 data_type: {dtype}") from e
+            return data_type
