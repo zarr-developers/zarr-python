@@ -6,7 +6,7 @@ import fsspec
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
-from zarr.store.common import _dereference_path
+from zarr.storage.common import _dereference_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable

@@ -29,8 +29,8 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.sync import SyncMixin, sync
-from zarr.store import StoreLike, StorePath, make_store_path
-from zarr.store.common import ensure_no_existing_node
+from zarr.storage import StoreLike, make_store_path
+from zarr.storage.common import StorePath, ensure_no_existing_node
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
@@ -176,7 +176,9 @@ class AsyncGroup:
                 # alternatively, we could warn and favor v3
                 raise ValueError("Both zarr.json and .zgroup objects exist")
             if zarr_json_bytes is None and zgroup_bytes is None:
-                raise FileNotFoundError(store_path)
+                raise FileNotFoundError(
+                    f"could not find zarr.json or .zgroup objects in {store_path}"
+                )
             # set zarr_format based on which keys were found
             if zarr_json_bytes is not None:
                 zarr_format = 3
@@ -698,6 +700,10 @@ class AsyncGroup:
                     "Object at %s is not recognized as a component of a Zarr hierarchy.", key
                 )
 
+    async def keys(self) -> AsyncGenerator[str, None]:
+        async for key, _ in self.members():
+            yield key
+
     async def contains(self, member: str) -> bool:
         # TODO: this can be made more efficient.
         try:
@@ -821,14 +827,17 @@ class Group(SyncMixin):
         self._sync(self._async_group.delitem(key))
 
     def __iter__(self) -> Iterator[str]:
-        raise NotImplementedError
+        yield from self.keys()
 
     def __len__(self) -> int:
-        raise NotImplementedError
+        return self.nmembers()
 
     def __setitem__(self, key: str, value: Any) -> None:
         """__setitem__ is not supported in v3"""
         raise NotImplementedError
+
+    def __repr__(self) -> str:
+        return f"<Group {self.store_path}>"
 
     async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
         new_metadata = replace(self.metadata, attributes=new_attributes)
@@ -903,6 +912,9 @@ class Group(SyncMixin):
         _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
         return tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
+
+    def keys(self) -> Generator[str, None]:
+        yield from self._sync_iter(self._async_group.keys())
 
     def __contains__(self, member: str) -> bool:
         return self._sync(self._async_group.contains(member))
