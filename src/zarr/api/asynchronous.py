@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import numpy.typing as npt
 
+from zarr.abc.store import Store
 from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.buffer import NDArrayLike
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
@@ -21,8 +22,9 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.store import (
+from zarr.storage import (
     StoreLike,
+    StorePath,
     make_store_path,
 )
 
@@ -286,6 +288,7 @@ async def open(
         Return type depends on what exists in the given store.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
 
     if path is not None:
@@ -304,9 +307,9 @@ async def open(
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
     try:
-        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+        return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
     except KeyError:
-        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+        return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
 
 
 async def open_consolidated(*args: Any, use_consolidated: bool = True, **kwargs: Any) -> AsyncGroup:
@@ -383,7 +386,8 @@ async def save_array(
         or _default_zarr_version()
     )
 
-    store_path = await make_store_path(store, mode="w", storage_options=storage_options)
+    mode = kwargs.pop("mode", None)
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
     new = await AsyncArray.create(
@@ -560,7 +564,9 @@ async def group(
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    store_path = await make_store_path(store, storage_options=storage_options)
+    mode = None if isinstance(store, Store) else cast(AccessModeLiteral, "a")
+
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
 
@@ -854,7 +860,11 @@ async def create(
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    mode = kwargs.pop("mode", cast(AccessModeLiteral, "r" if read_only else "w"))
+    mode = kwargs.pop("mode", None)
+    if mode is None:
+        if not isinstance(store, Store | StorePath):
+            mode = "a"
+
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
         store_path = store_path / path
@@ -1030,7 +1040,8 @@ async def open_array(
         The opened array.
     """
 
-    store_path = await make_store_path(store, storage_options=storage_options)
+    mode = kwargs.pop("mode", None)
+    store_path = await make_store_path(store, mode=mode)
     if path is not None:
         store_path = store_path / path
 

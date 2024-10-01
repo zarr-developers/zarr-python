@@ -6,7 +6,7 @@ import pytest
 
 import zarr
 from zarr.core.sync import SyncError, SyncMixin, _get_lock, _get_loop, sync
-from zarr.store.memory import MemoryStore
+from zarr.storage.memory import MemoryStore
 
 
 @pytest.fixture(params=[True, False])
