@@ -606,10 +606,7 @@ class AsyncArray:
         dict
             Attributes of the array
         """
-        if self.metadata.attributes is None:
-            return {}
-        else:
-            return self.metadata.attributes
+        return self.metadata.attributes
 
     @property
     def read_only(self) -> bool:
