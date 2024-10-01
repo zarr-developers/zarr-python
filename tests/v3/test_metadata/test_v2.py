@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 import zarr.api.asynchronous
-import zarr.store
+import zarr.storage
 from zarr.core.buffer import cpu
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata
@@ -83,8 +83,8 @@ def test_metadata_to_dict(
 class TestConsolidated:
     @pytest.fixture
     async def v2_consolidated_metadata(
-        self, memory_store: zarr.store.MemoryStore
-    ) -> zarr.store.MemoryStore:
+        self, memory_store: zarr.storage.MemoryStore
+    ) -> zarr.storage.MemoryStore:
         zmetadata = {
             "metadata": {
                 ".zattrs": {
@@ -141,7 +141,7 @@ class TestConsolidated:
             "zarr_consolidated_format": 1,
         }
         store_dict = {}
-        store = zarr.store.MemoryStore(store_dict=store_dict, mode="a")
+        store = zarr.storage.MemoryStore(store_dict=store_dict, mode="a")
         await store.set(
             ".zattrs", cpu.Buffer.from_bytes(json.dumps({"Conventions": "COARDS"}).encode())
         )
@@ -187,7 +187,7 @@ class TestConsolidated:
         return store
 
     async def test_read_consolidated_metadata(
-        self, v2_consolidated_metadata: zarr.store.MemoryStore
+        self, v2_consolidated_metadata: zarr.storage.MemoryStore
     ):
         # .zgroup, .zattrs, .metadata
         store = v2_consolidated_metadata
