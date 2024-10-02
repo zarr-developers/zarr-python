@@ -639,8 +639,6 @@ class AsyncArray:
             # To enable zarr.create(store, path="a/b/c"), we need to create all the intermediate groups.
             parents = _build_parents(self)
 
-            logger.debug("Ensure parents: %s", parents)
-
             for parent in parents:
                 awaitables.extend(
                     [
