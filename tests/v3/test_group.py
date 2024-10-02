@@ -963,3 +963,15 @@ async def test_open_mutable_mapping():
 def test_open_mutable_mapping_sync():
     group = zarr.open_group(store={}, mode="w")
     assert isinstance(group.store_path.store, MemoryStore)
+
+
+class TestGroupMetadata:
+    def test_from_dict_extra_fields(self):
+        data = {
+            "attributes": {"key": "value"},
+            "_nczarr_superblock": {"version": "2.0.0"},
+            "zarr_format": 2,
+        }
+        result = GroupMetadata.from_dict(data)
+        expected = GroupMetadata(attributes={"key": "value"}, zarr_format=2)
+        assert result == expected
