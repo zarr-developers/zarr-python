@@ -146,7 +146,7 @@ class ArrayV2Metadata(ArrayMetadata):
         # extra key in the metadata.
         expected = {x.name for x in fields(cls)}
         # https://github.com/zarr-developers/zarr-python/issues/2269
-        # add some extra
+        # handle the renames
         expected |= {"dtype", "chunks"}
 
         _data = {k: v for k, v in _data.items() if k in expected}
