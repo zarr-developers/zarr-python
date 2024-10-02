@@ -145,6 +145,10 @@ class ArrayV2Metadata(ArrayMetadata):
         # We don't want the ArrayV2Metadata constructor to fail just because someone put an
         # extra key in the metadata.
         expected = {x.name for x in fields(cls)}
+        # https://github.com/zarr-developers/zarr-python/issues/2269
+        # add some extra
+        expected |= {"dtype", "chunks"}
+
         _data = {k: v for k, v in _data.items() if k in expected}
 
         return cls(**_data)
