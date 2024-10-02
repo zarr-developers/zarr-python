@@ -155,7 +155,7 @@ class ArrayV2Metadata(ArrayMetadata):
                         # encoding and may work as fill values, e.g., the number 0
                         pass
                 elif dtype.kind == "V":
-                    fill_value = base64.standard_b64encode(fill_value_encoded)
+                    fill_value = base64.standard_b64decode(fill_value_encoded)
                     _data["fill_value"] = fill_value
 
         # zarr v2 allowed arbitrary keys here.

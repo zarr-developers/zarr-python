@@ -51,13 +51,15 @@ def test_codec_pipeline() -> None:
     np.testing.assert_array_equal(result, expected)
 
 
-async def test_v2_encode_decode():
+@pytest.mark.parametrize("dtype", ["|S", "|V"])
+async def test_v2_encode_decode(dtype):
     store = zarr.storage.MemoryStore(mode="w")
     g = zarr.group(store=store, zarr_format=2)
     g.create_array(
         name="foo",
         shape=(3,),
-        dtype="|S4",
+        chunks=(3,),
+        dtype=dtype,
         fill_value=b"X",
     )
 
@@ -67,9 +69,8 @@ async def test_v2_encode_decode():
     serialized = json.loads(result.to_bytes())
     expected = {
         "chunks": [3],
-        # "compressor": {"blocksize": 0, "clevel": 5, "cname": "lz4", "id": "blosc", "shuffle": 1},
         "compressor": None,
-        "dtype": "|S4",
+        "dtype": f"{dtype}0",
         "fill_value": "WA==",
         "filters": None,
         "order": "C",
@@ -80,5 +81,5 @@ async def test_v2_encode_decode():
     assert serialized == expected
 
     data = zarr.open_array(store=store, path="foo")[:]
-    expected = np.full((3,), b"X", dtype="|S4")
+    expected = np.full((3,), b"X", dtype=dtype)
     np.testing.assert_equal(data, expected)
