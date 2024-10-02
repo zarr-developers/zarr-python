@@ -11,7 +11,7 @@ azure-storage-blob==12.21.0 # pyup: ignore
 redis==5.1.0
 types-redis
 types-setuptools
-pymongo==4.10.0
+pymongo==4.10.1
 # optional test requirements
 coverage
 pytest-cov==5.0.0
