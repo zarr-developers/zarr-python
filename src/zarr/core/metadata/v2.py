@@ -29,8 +29,8 @@ from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 @dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(ArrayMetadata):
     shape: ChunkCoords
-    chunk_grid: RegularChunkGrid
-    data_type: np.dtype[Any]
+    chunks: RegularChunkGrid
+    dtype: np.dtype[Any]
     fill_value: None | int | float = 0
     order: Literal["C", "F"] = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None
@@ -56,18 +56,18 @@ class ArrayV2Metadata(ArrayMetadata):
         Metadata for a Zarr version 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        data_type_parsed = parse_dtype(dtype)
+        dtype_parsed = parse_dtype(dtype)
         chunks_parsed = parse_shapelike(chunks)
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
         filters_parsed = parse_filters(filters)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed)
+        fill_value_parsed = parse_fill_value(fill_value, dtype=dtype_parsed)
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "data_type", data_type_parsed)
-        object.__setattr__(self, "chunk_grid", RegularChunkGrid(chunk_shape=chunks_parsed))
+        object.__setattr__(self, "dtype", dtype_parsed)
+        object.__setattr__(self, "chunks", RegularChunkGrid(chunk_shape=chunks_parsed))
         object.__setattr__(self, "compressor", compressor_parsed)
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "dimension_separator", dimension_separator_parsed)
@@ -83,12 +83,12 @@ class ArrayV2Metadata(ArrayMetadata):
         return len(self.shape)
 
     @property
-    def dtype(self) -> np.dtype[Any]:
-        return self.data_type
+    def data_type(self) -> np.dtype[Any]:
+        return self.dtype
 
     @property
-    def chunks(self) -> ChunkCoords:
-        return self.chunk_grid.chunk_shape
+    def chunk_grid(self) -> RegularChunkGrid:
+        return self.chunks
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         def _json_convert(
@@ -145,10 +145,10 @@ class ArrayV2Metadata(ArrayMetadata):
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
         _ = zarray_dict.pop("chunk_grid")
-        zarray_dict["chunks"] = self.chunk_grid.chunk_shape
+        zarray_dict["chunks"] = self.chunks.chunk_shape
 
-        _ = zarray_dict.pop("data_type")
-        zarray_dict["dtype"] = self.data_type.str
+        _ = zarray_dict.pop("dtype")
+        zarray_dict["dtype"] = self.dtype.str
 
         return zarray_dict
 
@@ -156,7 +156,7 @@ class ArrayV2Metadata(ArrayMetadata):
         self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
     ) -> ArraySpec:
         return ArraySpec(
-            shape=self.chunk_grid.chunk_shape,
+            shape=self.chunks.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
             order=order,
@@ -220,7 +220,7 @@ def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
 
 
 def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
-    if (l_chunks := len(data.chunks)) != (l_shape := len(data.shape)):
+    if (l_chunks := len(data.chunk_grid.chunk_shape)) != (l_shape := len(data.shape)):
         msg = (
             f"The `shape` and `chunks` attributes must have the same length. "
             f"`chunks` has length {l_chunks}, but `shape` has length {l_shape}."

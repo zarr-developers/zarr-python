@@ -28,11 +28,6 @@ class ArrayMetadata(Metadata, ABC):
 
     @property
     @abstractmethod
-    def dtype(self) -> np.dtype[Any]:
-        pass
-
-    @property
-    @abstractmethod
     def ndim(self) -> int:
         pass
 
