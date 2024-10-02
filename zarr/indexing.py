@@ -52,6 +52,8 @@ def is_scalar(value, dtype):
         return True
     if isinstance(value, tuple) and dtype.names and len(value) == len(dtype.names):
         return True
+    if dtype.kind == "O" and not isinstance(value, np.ndarray):
+        return True
     return False
 
 
@@ -932,7 +934,7 @@ def check_fields(fields, dtype):
                 # multiple field selection
                 out_dtype = np.dtype([(f, dtype[f]) for f in fields])
         except KeyError as e:
-            raise IndexError(f"invalid 'fields' argument, field not found: {e!r}")
+            raise IndexError(f"invalid 'fields' argument, field not found: {e!r}") from e
         else:
             return out_dtype
     else:

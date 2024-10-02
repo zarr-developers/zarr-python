@@ -5,7 +5,14 @@ import warnings
 
 from numcodecs.compat import ensure_bytes
 from zarr.util import normalize_storage_path
-from zarr._storage.store import _get_metadata_suffix, data_root, meta_root, Store, StoreV3
+from zarr._storage.store import (
+    _get_metadata_suffix,
+    data_root,
+    meta_root,
+    Store,
+    StoreV3,
+    V3_DEPRECATION_MESSAGE,
+)
 from zarr.types import DIMENSION_SEPARATOR
 
 __doctest_requires__ = {
@@ -73,6 +80,12 @@ class ABSStore(Store):
         dimension_separator: Optional[DIMENSION_SEPARATOR] = None,
         client=None,
     ):
+        warnings.warn(
+            V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
+            FutureWarning,
+            stacklevel=3,
+        )
+
         self._dimension_separator = dimension_separator
         self.prefix = normalize_storage_path(prefix)
         if client is None:
@@ -143,8 +156,8 @@ class ABSStore(Store):
         blob_name = self._append_path_to_prefix(key)
         try:
             return self.client.download_blob(blob_name).readall()
-        except ResourceNotFoundError:
-            raise KeyError(f"Blob {blob_name} not found")
+        except ResourceNotFoundError as e:
+            raise KeyError(f"Blob {blob_name} not found") from e
 
     def __setitem__(self, key, value):
         value = ensure_bytes(value)
@@ -156,8 +169,8 @@ class ABSStore(Store):
 
         try:
             self.client.delete_blob(self._append_path_to_prefix(key))
-        except ResourceNotFoundError:
-            raise KeyError(f"Blob {key} not found")
+        except ResourceNotFoundError as e:
+            raise KeyError(f"Blob {key} not found") from e
 
     def __eq__(self, other):
         return (

@@ -13,10 +13,162 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-.. _unreleased:
+.. note::
+   Zarr-Python 2.18.* is expected be the final release in the 2.* series. Work on Zarr-Python 3.0 is underway.
+   See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
+   3.0 release.
 
-Unreleased
-----------
+.. _release_2.18.4:
+
+2.18.4 (unreleased)
+-------------------
+
+Enhancements
+~~~~~~~~~~~~
+
+Maintenance
+~~~~~~~~~~~
+
+Deprecations
+~~~~~~~~~~~~
+
+.. _release_2.18.3:
+
+2.18.3
+------
+
+Enhancements
+~~~~~~~~~~~~
+* Added support for creating a copy of data when converting a `zarr.Array`
+  to a numpy array.
+  By :user:`David Stansby <dstansby>` (:issue:`2106`) and 
+  :user:`Joe Hamman <jhamman>` (:issue:`2123`).
+
+Maintenance
+~~~~~~~~~~~
+* Removed support for Python 3.9.
+  By :user:`David Stansby <dstansby>` (:issue:`2074`).
+
+* Fix a regression when using orthogonal indexing with a scalar.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1931`
+
+* Added compatibility with NumPy 2.1.
+  By :user:`David Stansby <dstansby>`
+
+* Bump minimum NumPy version to 1.24.
+  :user:`Joe Hamman <jhamman>` (:issue:`2127`).
+
+Deprecations
+~~~~~~~~~~~~
+
+* Deprecate :class:`zarr.n5.N5Store` and :class:`zarr.n5.N5FSStore`. These
+  stores are slated to be removed in Zarr Python 3.0.
+  By :user:`Joe Hamman <jhamman>` :issue:`2085`.
+
+.. _release_2.18.2:
+
+2.18.2
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Add Zstd codec to old V3 code path.
+  By :user:`Ryan Abernathey <rabernat>`
+
+.. _release_2.18.1:
+
+2.18.1
+------
+
+Maintenance
+~~~~~~~~~~~
+* Fix a regression when getting or setting a single value from arrays with size-1 chunks.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1874`
+
+.. _release_2.18.0:
+
+2.18.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+* Performance improvement for reading and writing chunks if any of the dimensions is size 1.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1730`.
+
+Maintenance
+~~~~~~~~~~~
+* Enable ruff/bugbear rules (B) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1702`.
+
+* Minor updates to use `np.inf` instead of `np.PINF` / `np.NINF` in preparation for NumPy 2.0.0 release.
+  By :user:`Joe Hamman <jhamman>` :issue:`1842`.
+
+Deprecations
+~~~~~~~~~~~~
+
+* Deprecate experimental v3 support by issuing a `FutureWarning`.
+  Also updated docs to warn about using the experimental v3 version.
+  By :user:`Joe Hamman <jhamman>` :issue:`1802` and :issue:`1807`.
+
+* Deprecate the following stores: :class:`zarr.storage.DBMStore`, :class:`zarr.storage.LMDBStore`,
+  :class:`zarr.storage.SQLiteStore`, :class:`zarr.storage.MongoDBStore`, :class:`zarr.storage.RedisStore`,
+  and :class:`zarr.storage.ABSStore`. These stores are slated to be removed from Zarr-Python in version 3.0.
+  By :user:`Joe Hamman <jhamman>` :issue:`1801`.
+
+.. _release_2.17.2:
+
+2.17.2
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* [v3] Dramatically reduce number of ``__contains__`` requests in favor of optimistically calling `__getitem__`
+  and handling any error that may arise.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1741`.
+
+* [v3] Reuse the downloaded array metadata when creating an ``Array``.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1734`.
+
+* Optimize ``Array.info`` so that it calls `getsize` only once.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1733`.
+
+* Override IPython ``_repr_*_`` methods to avoid expensive lookups against object stores.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1716`.
+
+* FSStore now raises rather than return bad data.
+  By :user:`Martin Durant <martindurant>` and :user:`Ian Carroll <itcarroll>` :issue:`1604`.
+
+* Avoid redundant ``__contains__``.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1739`.
+
+Docs
+~~~~
+
+* Fix link to GCSMap in ``tutorial.rst``.
+  By :user:`Daniel Jahn <dahnj>` :issue:`1689`.
+
+* Endorse `SPEC0000 <https://scientific-python.org/specs/spec-0000/>`_ and state version support policy in ``installation.rst``.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1665`.
+
+* Migrate v1 and v2 specification to `Zarr-Specs <https://zarr-specs.readthedocs.io/en/latest/specs.html>`_.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1582`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Add CI test environment for Python 3.12
+  By :user:`Joe Hamman <jhamman>` :issue:`1719`.
+
+* Bump minimum supported NumPy version to 1.23 (per spec 0000)
+  By :user:`Joe Hamman <jhamman>` :issue:`1719`.
+
+* Minor fixes: Using ``is`` instead of ``type`` and removing unnecessary ``None``.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1737`.
+
+* Fix tests failure related to Pytest 8.
+  By :user:`David Stansby <dstansby>` :issue:`1714`.
 
 .. _release_2.17.1:
 
@@ -1610,11 +1762,11 @@ Bug fixes
 Documentation
 ~~~~~~~~~~~~~
 
-* Some changes have been made to the :ref:`spec_v2` document to clarify
+* Some changes have been made to the Zarr Specification v2 document to clarify
   ambiguities and add some missing information. These changes do not break compatibility
   with any of the material as previously implemented, and so the changes have been made
   in-place in the document without incrementing the document version number. See the
-  section on :ref:`spec_v2_changes` in the specification document for more information.
+  section on changes in the specification document for more information.
 * A new :ref:`tutorial_indexing` section has been added to the tutorial.
 * A new :ref:`tutorial_strings` section has been added to the tutorial
   (:issue:`135`, :issue:`175`).

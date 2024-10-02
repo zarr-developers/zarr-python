@@ -198,11 +198,11 @@ def normalize_dtype(dtype: Union[str, np.dtype], object_codec) -> Tuple[np.dtype
                     args = []
                 try:
                     object_codec = codec_registry[codec_id](*args)
-                except KeyError:  # pragma: no cover
+                except KeyError as e:  # pragma: no cover
                     raise ValueError(
                         f"codec {codec_id!r} for object type {key!r} is not "
                         f"available; please provide an object_codec manually"
-                    )
+                    ) from e
             return dtype, object_codec
 
     dtype = np.dtype(dtype)
@@ -234,8 +234,17 @@ def is_total_slice(item, shape: Tuple[int]) -> bool:
     if isinstance(item, tuple):
         return all(
             (
-                isinstance(it, slice)
-                and ((it == slice(None)) or ((it.stop - it.start == sh) and (it.step in [1, None])))
+                (
+                    isinstance(it, slice)
+                    and (
+                        (it == slice(None))
+                        or ((it.stop - it.start == sh) and (it.step in [1, None]))
+                    )
+                )
+                # The only scalar edge case, indexing with int 0 along a size-1 dimension
+                # is identical to a total slice
+                # https://github.com/zarr-developers/zarr-python/issues/1730
+                or (isinstance(it, int) and it == 0 and sh == 1)
             )
             for it, sh in zip(item, shape)
         )
@@ -323,7 +332,7 @@ def normalize_fill_value(fill_value, dtype: np.dtype):
             raise ValueError(
                 f"fill_value {fill_value!r} is not valid for dtype {dtype}; "
                 f"nested exception: {e}"
-            )
+            ) from e
 
     return fill_value
 
@@ -408,14 +417,13 @@ def info_html_report(items) -> str:
 class InfoReporter:
     def __init__(self, obj):
         self.obj = obj
+        self.items = self.obj.info_items()
 
     def __repr__(self):
-        items = self.obj.info_items()
-        return info_text_report(items)
+        return info_text_report(self.items)
 
     def _repr_html_(self):
-        items = self.obj.info_items()
-        return info_html_report(items)
+        return info_html_report(self.items)
 
 
 class TreeNode:
@@ -484,13 +492,13 @@ def tree_widget_sublist(node, root=False, expand=False):
 def tree_widget(group, expand, level):
     try:
         import ipytree
-    except ImportError as error:
+    except ImportError as e:
         raise ImportError(
-            f"{error}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
+            f"{e}: Run `pip install zarr[jupyter]` or `conda install ipytree`"
             f"to get the required ipytree dependency for displaying the tree "
             f"widget. If using jupyterlab<3, you also need to run "
             f"`jupyter labextension install ipytree`"
-        )
+        ) from e
 
     result = ipytree.Tree()
     root = TreeNode(group, level=level)

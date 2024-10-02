@@ -69,7 +69,19 @@ class N5Store(NestedDirectoryStore):
 
     Safe to write in multiple threads or processes.
 
+    .. deprecated:: 2.18.3
+        `N5Store` will be removed in Zarr 3.0.0.
     """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        warnings.warn(
+            "The N5Store is deprecated and will be removed in a Zarr-Python version 3, "
+            "see https://github.com/zarr-developers/zarr-python/issues/1274 and "
+            "https://github.com/zarr-developers/n5py for more information.",
+            FutureWarning,
+            stacklevel=2,
+        )
 
     def __getitem__(self, key: str) -> bytes:
         if key.endswith(zarr_group_meta_key):
@@ -125,7 +137,11 @@ class N5Store(NestedDirectoryStore):
 
             for k in n5_keywords:
                 if k in zarr_attrs:
-                    warnings.warn(f"Attribute {k} is a reserved N5 keyword", UserWarning)
+                    warnings.warn(
+                        f"Attribute {k} is a reserved N5 keyword",
+                        UserWarning,
+                        stacklevel=2,
+                    )
 
             # remove previous user attributes
             for k in list(n5_attrs.keys()):
@@ -318,6 +334,9 @@ class N5FSStore(FSStore):
     storage, and this procedure requires chunk keys with "." separated
     dimensions, hence the Zarr arrays targeting N5 have the deceptive
     "." dimension separator.
+
+    .. deprecated:: 2.18.3
+        `N5FSStore` will be removed in Zarr 3.0.0.
     """
 
     _array_meta_key = "attributes.json"
@@ -325,9 +344,19 @@ class N5FSStore(FSStore):
     _attrs_key = "attributes.json"
 
     def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "The N5FSStore is deprecated and will be removed in a Zarr-Python version 3, "
+            "see https://github.com/zarr-developers/zarr-python/issues/1274 and "
+            "https://github.com/zarr-developers/n5py for more information.",
+            FutureWarning,
+            stacklevel=2,
+        )
         if "dimension_separator" in kwargs:
             kwargs.pop("dimension_separator")
-            warnings.warn("Keyword argument `dimension_separator` will be ignored")
+            warnings.warn(
+                "Keyword argument `dimension_separator` will be ignored",
+                stacklevel=2,
+            )
         dimension_separator = "."
         super().__init__(*args, dimension_separator=dimension_separator, **kwargs)
 
@@ -411,7 +440,11 @@ class N5FSStore(FSStore):
 
             for k in n5_keywords:
                 if k in zarr_attrs.keys():
-                    warnings.warn(f"Attribute {k} is a reserved N5 keyword", UserWarning)
+                    warnings.warn(
+                        f"Attribute {k} is a reserved N5 keyword",
+                        UserWarning,
+                        stacklevel=2,
+                    )
 
             # replace previous user attributes
             for k in list(n5_attrs.keys()):
@@ -597,8 +630,8 @@ def array_metadata_to_n5(array_metadata: Dict[str, Any], top_level=False) -> Dic
         array_metadata["n5"] = N5_FORMAT
     try:
         dtype = np.dtype(array_metadata["dataType"])
-    except TypeError:
-        raise TypeError(f"Data type {array_metadata['dataType']} is not supported by N5")
+    except TypeError as e:
+        raise TypeError(f"Data type {array_metadata['dataType']} is not supported by N5") from e
 
     array_metadata["dataType"] = dtype.name
     array_metadata["dimensions"] = array_metadata["dimensions"][::-1]
@@ -711,6 +744,7 @@ def compressor_config_to_n5(compressor_config: Optional[Dict[str, Any]]) -> Dict
                 "Not all N5 implementations support lzma compression (yet). You "
                 "might not be able to open the dataset with another N5 library.",
                 RuntimeWarning,
+                stacklevel=2,
             )
             n5_config["format"] = _compressor_config["format"]
             n5_config["check"] = _compressor_config["check"]

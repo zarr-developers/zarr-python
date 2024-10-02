@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from zarr.codecs import Blosc, Delta, Pickle, Zlib
+from zarr.codecs import Blosc, Delta, Pickle, Zlib, Zstd
 from zarr.errors import MetadataError
 from zarr.meta import (
     ZARR_FORMAT,
@@ -268,39 +268,42 @@ def test_encode_decode_array_dtype_shape():
     assert meta_dec["filters"] is None
 
 
-def test_encode_decode_array_dtype_shape_v3():
+@pytest.mark.parametrize("cname", ["zlib", "zstd"])
+def test_encode_decode_array_dtype_shape_v3(cname):
+    if cname == "zlib":
+        compressor = Zlib(1)
+    elif cname == "zstd":
+        compressor = Zstd(1)
     meta = dict(
         shape=(100,),
         chunk_grid=dict(type="regular", chunk_shape=(10,), separator=("/")),
         data_type=np.dtype("(10, 10)<f8"),
-        compressor=Zlib(1),
+        compressor=compressor,
         fill_value=None,
         chunk_memory_layout="C",
     )
-
-    meta_json = """{
+    meta_expected = {
         "attributes": {},
-        "chunk_grid": {
-            "chunk_shape": [10],
-            "separator": "/",
-            "type": "regular"
-        },
+        "chunk_grid": {"chunk_shape": [10], "separator": "/", "type": "regular"},
         "chunk_memory_layout": "C",
         "compressor": {
-            "codec": "https://purl.org/zarr/spec/codec/zlib/1.0",
-            "configuration": {
-                "level": 1
-            }
+            "codec": f"https://purl.org/zarr/spec/codec/{cname}/1.0",
+            "configuration": {"level": 1},
         },
         "data_type": "<f8",
         "extensions": [],
-        "fill_value": null,
-        "shape": [100, 10, 10 ]
-    }"""
+        "fill_value": None,
+        "shape": [100, 10, 10],
+    }
+
+    if cname == "zstd":
+        meta_expected["compressor"]["configuration"]["checksum"] = False
+
+    meta_expected_json = json.dumps(meta_expected)
 
     # test encoding
     meta_enc = Metadata3.encode_array_metadata(meta)
-    assert_json_equal(meta_json, meta_enc)
+    assert_json_equal(meta_enc, meta_expected_json)
 
     # test decoding
     meta_dec = Metadata3.decode_array_metadata(meta_enc)
@@ -315,7 +318,7 @@ def test_encode_decode_array_dtype_shape_v3():
     assert "filters" not in meta_dec
 
 
-@pytest.mark.parametrize("comp_id", ["gzip", "zlib", "blosc", "bz2", "lz4", "lzma"])
+@pytest.mark.parametrize("comp_id", ["gzip", "zlib", "blosc", "bz2", "lz4", "lzma", "zstd"])
 def test_decode_metadata_implicit_compressor_config_v3(comp_id):
     meta = {
         "attributes": {},
@@ -382,8 +385,8 @@ def test_encode_decode_array_structured():
 def test_encode_decode_fill_values_nan():
     fills = (
         (np.nan, "NaN", np.isnan),
-        (np.NINF, "-Infinity", np.isneginf),
-        (np.PINF, "Infinity", np.isposinf),
+        (-np.inf, "-Infinity", np.isneginf),
+        (np.inf, "Infinity", np.isposinf),
     )
 
     for v, s, f in fills:
@@ -601,7 +604,7 @@ def test_metadata3_exceptions():
     required = ["zarr_format", "metadata_encoding", "metadata_key_suffix", "extensions"]
     for key in required:
         meta = copy.copy(_default_entry_point_metadata_v3)
-        meta.pop("zarr_format")
+        meta.pop(key)
         with pytest.raises(ValueError):
             # cannot encode metadata that is missing a required key
             Metadata3.encode_hierarchy_metadata(meta)

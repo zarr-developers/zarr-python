@@ -27,6 +27,7 @@ from zarr.creation import (
 from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,
+    ArrayNotFoundError,
     GroupNotFoundError,
     ReadOnlyError,
 )
@@ -186,16 +187,16 @@ class Group(MutableMapping):
             mkey = _prefix_to_group_key(self._store, self._key_prefix)
             assert not mkey.endswith("root/.group")
             meta_bytes = store[mkey]
-        except KeyError:
+        except KeyError as e:
             if self._version == 2:
-                raise GroupNotFoundError(path)
+                raise GroupNotFoundError(path) from e
             else:
                 implicit_prefix = meta_root + self._key_prefix
                 if self._store.list_prefix(implicit_prefix):
                     # implicit group does not have any metadata
                     self._meta = None
                 else:
-                    raise GroupNotFoundError(path)
+                    raise GroupNotFoundError(path) from e
         else:
             self._meta = self._store._metadata_class.decode_group_metadata(meta_bytes)
 
@@ -207,11 +208,15 @@ class Group(MutableMapping):
             # object can still be created.
             akey = mkey
         self._attrs = Attributes(
-            store, key=akey, read_only=read_only, cache=cache_attrs, synchronizer=synchronizer
+            store,
+            key=akey,
+            read_only=read_only,
+            cache=cache_attrs,
+            synchronizer=synchronizer,
+            cached_dict=self._meta["attributes"] if self._version == 3 and self._meta else None,
         )
 
         # setup info
-        self._info = InfoReporter(self)
 
     @property
     def store(self):
@@ -266,7 +271,7 @@ class Group(MutableMapping):
     @property
     def info(self):
         """Return diagnostic information about the group."""
-        return self._info
+        return InfoReporter(self)
 
     @property
     def meta_array(self):
@@ -458,7 +463,7 @@ class Group(MutableMapping):
 
         """
         path = self._item_path(item)
-        if contains_array(self._store, path):
+        try:
             return Array(
                 self._store,
                 read_only=self._read_only,
@@ -469,7 +474,10 @@ class Group(MutableMapping):
                 zarr_version=self._version,
                 meta_array=self._meta_array,
             )
-        elif contains_group(self._store, path, explicit_only=True):
+        except ArrayNotFoundError:
+            pass
+
+        try:
             return Group(
                 self._store,
                 read_only=self._read_only,
@@ -480,7 +488,10 @@ class Group(MutableMapping):
                 zarr_version=self._version,
                 meta_array=self._meta_array,
             )
-        elif self._version == 3:
+        except GroupNotFoundError:
+            pass
+
+        if self._version == 3:
             implicit_group = meta_root + path + "/"
             # non-empty folder in the metadata path implies an implicit group
             if self._store.list_prefix(implicit_group):
@@ -515,11 +526,18 @@ class Group(MutableMapping):
             raise KeyError(item)
 
     def __getattr__(self, item):
+        # https://github.com/jupyter/notebook/issues/2014
+        # Save a possibly expensive lookup (for e.g. against cloud stores)
+        # Note: The _ipython_display_ method is required to display the right info as a side-effect.
+        # It is simpler to pretend it doesn't exist.
+        if item in ["_ipython_canary_method_should_not_exist_", "_ipython_display_"]:
+            raise AttributeError
+
         # allow access to group members via dot notation
         try:
             return self.__getitem__(item)
-        except KeyError:
-            raise AttributeError
+        except KeyError as e:
+            raise AttributeError from e
 
     def __dir__(self):
         # noinspection PyUnresolvedReferences
@@ -1330,6 +1348,40 @@ class Group(MutableMapping):
             self.require_group("/" + dest.rsplit("/", 1)[0])
 
         self._write_op(self._move_nosync, source, dest)
+
+    # Override ipython repr methods, GH1716
+    # https://ipython.readthedocs.io/en/stable/config/integrating.html#custom-methods
+    #     " If the methods don’t exist, the standard repr() is used. If a method exists and
+    #       returns None, it is treated the same as if it does not exist."
+    def _repr_html_(self):
+        return None
+
+    def _repr_latex_(self):
+        return None
+
+    def _repr_mimebundle_(self, **kwargs):
+        return None
+
+    def _repr_svg_(self):
+        return None
+
+    def _repr_png_(self):
+        return None
+
+    def _repr_jpeg_(self):
+        return None
+
+    def _repr_markdown_(self):
+        return None
+
+    def _repr_javascript_(self):
+        return None
+
+    def _repr_pdf_(self):
+        return None
+
+    def _repr_json_(self):
+        return None
 
 
 def _normalize_store_arg(store, *, storage_options=None, mode="r", zarr_version=None):

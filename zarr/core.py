@@ -172,11 +172,15 @@ class Array:
         # initialize attributes
         akey = _prefix_to_attrs_key(self._store, self._key_prefix)
         self._attrs = Attributes(
-            store, key=akey, read_only=read_only, synchronizer=synchronizer, cache=cache_attrs
+            store,
+            key=akey,
+            read_only=read_only,
+            synchronizer=synchronizer,
+            cache=cache_attrs,
+            cached_dict=self._meta["attributes"] if self._version == 3 else None,
         )
 
         # initialize info reporter
-        self._info_reporter = InfoReporter(self)
 
         # initialize indexing helpers
         self._oindex = OIndex(self)
@@ -196,8 +200,8 @@ class Array:
         try:
             mkey = _prefix_to_array_key(self._store, self._key_prefix)
             meta_bytes = self._store[mkey]
-        except KeyError:
-            raise ArrayNotFoundError(self._path)
+        except KeyError as e:
+            raise ArrayNotFoundError(self._path) from e
         else:
             # decode and store metadata as instance members
             meta = self._store._metadata_class.decode_array_metadata(meta_bytes)
@@ -571,11 +575,8 @@ class Array:
             # store comparison
         )
 
-    def __array__(self, *args):
-        a = self[...]
-        if args:
-            a = a.astype(args[0])
-        return a
+    def __array__(self, *args, **kwargs):
+        return np.array(self[...], *args, **kwargs)
 
     def islice(self, start=None, end=None):
         """
@@ -605,11 +606,11 @@ class Array:
 
         Iterate over part of the array:
             >>> for value in z.islice(25, 30): value;
-            25
-            26
-            27
-            28
-            29
+            np.int64(25)
+            np.int64(26)
+            np.int64(27)
+            np.int64(28)
+            np.int64(29)
         """
 
         if len(self.shape) == 0:
@@ -675,7 +676,7 @@ class Array:
         Retrieve a single item::
 
             >>> z[5]
-            5
+            np.int64(5)
 
         Retrieve a region via slicing::
 
@@ -702,7 +703,7 @@ class Array:
         Retrieve an item::
 
             >>> z[2, 2]
-            22
+            np.int64(22)
 
         Retrieve a region via slicing::
 
@@ -826,7 +827,7 @@ class Array:
         Retrieve a single item::
 
             >>> z.get_basic_selection(5)
-            5
+            np.int64(5)
 
         Retrieve a region via slicing::
 
@@ -848,7 +849,7 @@ class Array:
         Retrieve an item::
 
             >>> z.get_basic_selection((2, 2))
-            22
+            np.int64(22)
 
         Retrieve a region via slicing::
 
@@ -2026,7 +2027,9 @@ class Array:
             and not self._filters
             and self._dtype != object
         ):
-            dest = out[out_selection]
+            # For 0D arrays out_selection = () and out[out_selection] is a scalar
+            # Avoid that
+            dest = out[out_selection] if out_selection else out
             # Assume that array-like objects that doesn't have a
             # `writeable` flag is writable.
             dest_is_writable = getattr(dest, "writeable", True)
@@ -2047,7 +2050,12 @@ class Array:
                     if isinstance(cdata, UncompressedPartialReadBufferV3):
                         cdata = cdata.read_full()
                     chunk = ensure_ndarray_like(cdata).view(self._dtype)
-                    chunk = chunk.reshape(self._chunks, order=self._order)
+                    # dest.shape is not self._chunks when a dimensions is squeezed out
+                    # For example, assume self._chunks = (5, 5, 1)
+                    # and the selection is [:, :, 0]
+                    # Then out_selection is (slice(5), slice(5))
+                    # See https://github.com/zarr-developers/zarr-python/issues/1931
+                    chunk = chunk.reshape(dest.shape, order=self._order)
                     np.copyto(dest, chunk)
                 return
 
@@ -2429,7 +2437,7 @@ class Array:
         Chunks initialized : 0/10
 
         """
-        return self._info_reporter
+        return InfoReporter(self)
 
     def info_items(self):
         return self._synchronized_op(self._info_items_nosync)
@@ -2471,14 +2479,16 @@ class Array:
             items += [("Synchronizer type", typestr(self._synchronizer))]
 
         # storage info
+        nbytes = self.nbytes
+        nbytes_stored = self.nbytes_stored
         items += [("Store type", typestr(self._store))]
         if self._chunk_store is not None:
             items += [("Chunk store type", typestr(self._chunk_store))]
-        items += [("No. bytes", bytestr(self.nbytes))]
-        if self.nbytes_stored > 0:
+        items += [("No. bytes", bytestr(nbytes))]
+        if nbytes_stored > 0:
             items += [
-                ("No. bytes stored", bytestr(self.nbytes_stored)),
-                ("Storage ratio", f"{self.nbytes / self.nbytes_stored:.1f}"),
+                ("No. bytes stored", bytestr(nbytes_stored)),
+                ("Storage ratio", f"{nbytes / nbytes_stored:.1f}"),
             ]
         items += [("Chunks initialized", f"{self.nchunks_initialized}/{self.nchunks}")]
 
@@ -2811,7 +2821,7 @@ class Array:
             >>> v[:]
             array([False, False,  True, ...,  True, False, False])
             >>> np.all(a[:].view(dtype=bool) == v[:])
-            True
+            np.True_
 
         An array can be viewed with a dtype with a different item size, however
         some care is needed to adjust the shape and chunk shape so that chunk
@@ -2825,7 +2835,7 @@ class Array:
             >>> v[:10]
             array([0, 0, 1, 0, 2, 0, 3, 0, 4, 0], dtype=uint8)
             >>> np.all(a[:].view('u1') == v[:])
-            True
+            np.True_
 
         Change fill value for uninitialized chunks:
 

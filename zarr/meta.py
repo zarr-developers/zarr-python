@@ -227,9 +227,9 @@ class Metadata2:
             if v == "NaN":
                 return np.nan
             elif v == "Infinity":
-                return np.PINF
+                return np.inf
             elif v == "-Infinity":
-                return np.NINF
+                return -np.inf
             else:
                 return np.array(v, dtype=dtype)[()]
         elif dtype.kind in "c":
@@ -310,8 +310,8 @@ class Metadata3(Metadata2):
             # extract the type from the extension info
             try:
                 d = d["type"]
-            except KeyError:
-                raise KeyError("Extended dtype info must provide a key named 'type'.")
+            except KeyError as e:
+                raise KeyError("Extended dtype info must provide a key named 'type'.") from e
         d = cls._decode_dtype_descr(d)
         dtype = np.dtype(d)
         if validate:
@@ -414,6 +414,8 @@ class Metadata3(Metadata2):
             uri = uri + "lz4/1.0"
         elif isinstance(codec, numcodecs.LZMA):
             uri = uri + "lzma/1.0"
+        elif isinstance(codec, numcodecs.Zstd):
+            uri = uri + "zstd/1.0"
         meta = {
             "codec": uri,
             "configuration": config,
@@ -439,6 +441,8 @@ class Metadata3(Metadata2):
             conf["id"] = "lz4"
         elif meta["codec"].startswith(uri + "lzma/"):
             conf["id"] = "lzma"
+        elif meta["codec"].startswith(uri + "zstd/"):
+            conf["id"] = "zstd"
         else:
             raise NotImplementedError
 
@@ -518,7 +522,7 @@ class Metadata3(Metadata2):
                 meta["storage_transformers"] = storage_transformers
 
         except Exception as e:
-            raise MetadataError(f"error decoding metadata: {e}")
+            raise MetadataError(f"error decoding metadata: {e}") from e
         else:
             return meta
 

@@ -4,12 +4,18 @@ import copy
 import inspect
 import os
 import tempfile
+import warnings
 
 import numpy as np
 import pytest
 
 import zarr
-from zarr._storage.store import _get_hierarchy_metadata, v3_api_available, StorageTransformer
+from zarr._storage.store import (
+    _get_hierarchy_metadata,
+    assert_zarr_v3_api_available,
+    v3_api_available,
+    StorageTransformer,
+)
 from zarr._storage.v3_storage_transformers import ShardingStorageTransformer, v3_sharding_available
 from zarr.core import Array
 from zarr.meta import _default_entry_point_metadata_v3
@@ -280,7 +286,7 @@ class StoreV3Tests(_StoreTests):
 
     def test_get_partial_values(self):
         store = self.create_store()
-        store.supports_efficient_get_partial_values in [True, False]
+        assert store.supports_efficient_get_partial_values in [True, False]
         store[data_root + "foo"] = b"abcdefg"
         store[data_root + "baz"] = b"z"
         assert [b"a"] == store.get_partial_values([(data_root + "foo", (0, 1))])
@@ -666,6 +672,18 @@ def test_top_level_imports():
             assert hasattr(zarr, store_name)  # pragma: no cover
         else:
             assert not hasattr(zarr, store_name)  # pragma: no cover
+
+
+def test_assert_zarr_v3_api_available_warns_once():
+    import zarr._storage.store
+
+    zarr._storage.store._has_warned_about_v3 = False
+    warnings.resetwarnings()
+    with pytest.warns() as record:
+        assert_zarr_v3_api_available()
+        assert_zarr_v3_api_available()
+    assert len(record) == 1
+    assert "The experimental Zarr V3 implementation" in str(record[0].message)
 
 
 def _get_public_and_dunder_methods(some_class):

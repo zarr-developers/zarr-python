@@ -123,7 +123,7 @@ class TestArray:
             "compressor": kwargs.pop("compressor", self.compressor),
             "chunk_store": chunk_store,
             "storage_transformers": self.create_storage_transformers(shape),
-            "filters": kwargs.pop("filters", self.create_filters(kwargs.get("dtype", None))),
+            "filters": kwargs.pop("filters", self.create_filters(kwargs.get("dtype"))),
         }
 
         # keyword arguments for array instantiation
@@ -3157,3 +3157,69 @@ def test_issue_1279(tmpdir):
 
     written_data = ds_reopened[:]
     assert_array_equal(data, written_data)
+
+
+def test_scalar_indexing():
+    store = zarr.KVStore({})
+
+    store["a"] = zarr.create((3,), chunks=(1,), store=store)
+    store["a"][:] = [1, 2, 3]
+
+    assert store["a"][1] == np.array(2.0)
+    assert store["a"][(1,)] == np.array(2.0)
+
+    store["a"][slice(1)] = [-1]
+    assert store["a"][0] == np.array(-1)
+
+    store["a"][0] = -2
+    assert store["a"][0] == np.array(-2)
+
+    store["a"][slice(1)] = (-3,)
+    assert store["a"][0] == np.array(-3)
+
+
+def test_object_array_indexing():
+    # regression test for #1874
+    from numcodecs import MsgPack
+
+    root = zarr.group()
+    arr = root.create_dataset(
+        name="my_dataset",
+        shape=0,
+        dtype=object,
+        object_codec=MsgPack(),
+    )
+    new_items = [
+        ["A", 1],
+        ["B", 2, "hello"],
+    ]
+    arr_add = np.empty(len(new_items), dtype=object)
+    arr_add[:] = new_items
+    arr.append(arr_add)
+
+    # heterogeneous elements
+    elem = ["C", 3]
+    arr[0] = elem
+    assert arr[0] == elem
+
+    # homogeneous elements
+    elem = [1, 3]
+    arr[1] = elem
+    assert arr[1] == elem
+
+
+@pytest.mark.parametrize("shape", ((1, 1, 1), (5, 5, 1), (1, 5, 5)))
+def test_scalar_orthogonal_indexing(shape):
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/1931
+    store = zarr.MemoryStore({})
+    data = np.random.randint(0, 255, shape)
+    arr = zarr.zeros(
+        shape=shape, chunks=shape[:-1] + (1,), compressor=None, store=store, dtype="u1"
+    )
+    arr[:, :, :] = data
+    store.close()
+
+    zf = zarr.open(store, "r")
+    assert_array_equal(zf[0, :, :], data[0, :, :])
+    assert_array_equal(zf[:, 0, :], data[:, 0, :])
+    assert_array_equal(zf[:, :, 0], data[:, :, 0])
