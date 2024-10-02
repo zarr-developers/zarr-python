@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy as np
@@ -116,6 +116,15 @@ class GroupMetadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
         assert data.pop("node_type", None) in ("group", None)
+
+        zarr_format = data.get("zarr_format")
+        if zarr_format == 2 or zarr_format is None:
+            # zarr v2 allowed arbitrary keys here.
+            # We don't want the GroupMetadata constructor to fail just because someone put an
+            # extra key in the metadata.
+            expected = {x.name for x in fields(cls)}
+            data = {k: v for k, v in data.items() if k in expected}
+
         return cls(**data)
 
     def to_dict(self) -> dict[str, Any]:

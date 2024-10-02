@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ChunkCoords
 
 import json
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 
 import numcodecs
 import numpy as np
@@ -157,6 +157,16 @@ class ArrayV2Metadata(ArrayMetadata):
                 elif dtype.kind == "V":
                     fill_value = base64.standard_b64encode(fill_value_encoded)
                     _data["fill_value"] = fill_value
+
+        # zarr v2 allowed arbitrary keys here.
+        # We don't want the ArrayV2Metadata constructor to fail just because someone put an
+        # extra key in the metadata.
+        expected = {x.name for x in fields(cls)}
+        # https://github.com/zarr-developers/zarr-python/issues/2269
+        # handle the renames
+        expected |= {"dtype", "chunks"}
+
+        _data = {k: v for k, v in _data.items() if k in expected}
 
         return cls(**_data)
 
