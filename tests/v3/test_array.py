@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 import zarr.api.asynchronous
+import zarr.storage
 from zarr import Array, AsyncArray, Group
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.array import chunks_initialized
