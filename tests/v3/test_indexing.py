@@ -25,8 +25,8 @@ from zarr.core.indexing import (
     replace_ellipsis,
 )
 from zarr.registry import get_ndbuffer_class
-from zarr.store.common import StorePath
-from zarr.store.memory import MemoryStore
+from zarr.storage.common import StorePath
+from zarr.storage.memory import MemoryStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator

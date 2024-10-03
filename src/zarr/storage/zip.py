@@ -191,12 +191,12 @@ class ZipStore(Store):
     async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
         raise NotImplementedError
 
-    async def set_if_not_exists(self, key: str, default: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         self._check_writable()
         with self._lock:
             members = self._zf.namelist()
             if key not in members:
-                self._set(key, default)
+                self._set(key, value)
 
     async def delete(self, key: str) -> None:
         raise NotImplementedError

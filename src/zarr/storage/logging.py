@@ -150,9 +150,9 @@ class LoggingStore(Store):
         with self.log():
             return await self._store.set(key=key, value=value)
 
-    async def set_if_not_exists(self, key: str, default: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         with self.log():
-            return await self._store.set_if_not_exists(key=key, value=default)
+            return await self._store.set_if_not_exists(key=key, value=value)
 
     async def delete(self, key: str) -> None:
         with self.log():
