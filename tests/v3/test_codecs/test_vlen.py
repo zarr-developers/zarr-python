@@ -8,10 +8,19 @@ from zarr.abc.store import Store
 from zarr.codecs import VLenUTF8Codec
 from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.store.common import StorePath
+from zarr.strings import NUMPY_SUPPORTS_VLEN_STRING
+
+numpy_str_dtypes: list[type | None] = [None, str, np.dtypes.StrDType]
+expected_zarr_string_dtype: np.dtype[Any]
+if NUMPY_SUPPORTS_VLEN_STRING:
+    numpy_str_dtypes.append(np.dtypes.StringDType)
+    expected_zarr_string_dtype = np.dtypes.StringDType()
+else:
+    expected_zarr_string_dtype = np.dtype("O")
 
 
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
-@pytest.mark.parametrize("dtype", [None, np.dtypes.StrDType])
+@pytest.mark.parametrize("dtype", numpy_str_dtypes)
 async def test_vlen_string(store: Store, dtype: None | np.dtype[Any]) -> None:
     strings = ["hello", "world", "this", "is", "a", "test"]
     data = np.array(strings).reshape((2, 3))
@@ -32,11 +41,11 @@ async def test_vlen_string(store: Store, dtype: None | np.dtype[Any]) -> None:
     a[:, :] = data
     assert np.array_equal(data, a[:, :])
     assert a.metadata.data_type == DataType.string
-    assert a.dtype == np.dtypes.StringDType()
+    assert a.dtype == expected_zarr_string_dtype
 
     # test round trip
     b = Array.open(sp)
     assert isinstance(b.metadata, ArrayV3Metadata)  # needed for mypy
     assert np.array_equal(data, b[:, :])
     assert b.metadata.data_type == DataType.string
-    assert b.dtype == np.dtypes.StringDType()
+    assert a.dtype == expected_zarr_string_dtype

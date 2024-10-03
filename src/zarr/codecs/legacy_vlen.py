@@ -3,12 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import numpy as np
 from numcodecs.vlen import VLenUTF8
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_named_configuration
 from zarr.registry import register_codec
+from zarr.strings import cast_to_string_dtype
 
 if TYPE_CHECKING:
     from typing import Self
@@ -45,8 +47,11 @@ class VLenUTF8Codec(ArrayBytesCodec):
 
         raw_bytes = chunk_bytes.as_array_like()
         decoded = vlen_utf8_codec.decode(raw_bytes)
+        assert decoded.dtype == np.object_
         decoded.shape = chunk_spec.shape
-        return chunk_spec.prototype.nd_buffer.from_numpy_array(decoded)
+        # coming out of the code, we know this is safe, so don't issue a warning
+        as_string_dtype = cast_to_string_dtype(decoded, safe=True)
+        return chunk_spec.prototype.nd_buffer.from_numpy_array(as_string_dtype)
 
     async def _encode_single(
         self,

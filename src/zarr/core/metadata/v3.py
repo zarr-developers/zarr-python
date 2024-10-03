@@ -29,6 +29,7 @@ from zarr.core.common import ZARR_JSON, parse_named_configuration, parse_shapeli
 from zarr.core.config import config
 from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 from zarr.registry import get_codec_class
+from zarr.strings import STRING_DTYPE
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -312,7 +313,6 @@ FLOAT_DTYPE = np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float6
 FLOAT = np.float16 | np.float32 | np.float64
 COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
 COMPLEX = np.complex64 | np.complex128
-STRING = np.str_
 
 
 @overload
@@ -496,7 +496,7 @@ class DataType(Enum):
 
     def to_numpy_dtype(self) -> np.dtype[Any]:
         if self == DataType.string:
-            return np.dtypes.StringDType()
+            return STRING_DTYPE
         else:
             return np.dtype(self.to_numpy_shortname())
 
