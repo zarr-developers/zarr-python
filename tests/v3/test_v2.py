@@ -8,6 +8,7 @@ from numcodecs.blosc import Blosc
 
 import zarr
 import zarr.core.buffer.cpu
+import zarr.core.metadata
 import zarr.storage
 from zarr import Array
 from zarr.storage import MemoryStore, StorePath

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import base64
-import binascii
 from collections.abc import Iterable
 from enum import Enum
 from typing import TYPE_CHECKING, cast
@@ -147,17 +146,8 @@ class ArrayV2Metadata(ArrayMetadata):
         if dtype.kind in "SV":
             fill_value_encoded = _data.get("fill_value")
             if fill_value_encoded is not None:
-                if dtype.kind == "S":
-                    try:
-                        fill_value = base64.standard_b64decode(fill_value_encoded)
-                        _data["fill_value"] = fill_value
-                    except (TypeError, binascii.Error, ValueError):
-                        # be lenient, allow for other values that may have been used before base64
-                        # encoding and may work as fill values, e.g., the number 0
-                        pass
-                elif dtype.kind == "V":
-                    fill_value = base64.standard_b64decode(fill_value_encoded)
-                    _data["fill_value"] = fill_value
+                fill_value = base64.standard_b64decode(fill_value_encoded)
+                _data["fill_value"] = fill_value
 
         # zarr v2 allowed arbitrary keys here.
         # We don't want the ArrayV2Metadata constructor to fail just because someone put an
