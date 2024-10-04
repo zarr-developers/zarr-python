@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 from collections.abc import Iterable
 from enum import Enum
 from typing import TYPE_CHECKING, cast
@@ -150,7 +151,7 @@ class ArrayV2Metadata(ArrayMetadata):
                     try:
                         fill_value = base64.standard_b64decode(fill_value_encoded)
                         _data["fill_value"] = fill_value
-                    except Exception:
+                    except (TypeError, binascii.Error, ValueError):
                         # be lenient, allow for other values that may have been used before base64
                         # encoding and may work as fill values, e.g., the number 0
                         pass
