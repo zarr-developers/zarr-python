@@ -7,7 +7,7 @@ from zarr import Array, AsyncArray, config
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec, ShardingCodec, TransposeCodec
 from zarr.core.common import MemoryOrder
-from zarr.store.common import StorePath
+from zarr.storage.common import StorePath
 
 from .test_codecs import _AsyncArrayProxy
 

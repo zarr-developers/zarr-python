@@ -7,7 +7,7 @@ from numcodecs.blosc import Blosc
 
 import zarr
 from zarr import Array
-from zarr.store import MemoryStore, StorePath
+from zarr.storage import MemoryStore, StorePath
 
 
 @pytest.fixture

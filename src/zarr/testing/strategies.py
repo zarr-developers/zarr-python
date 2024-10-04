@@ -8,7 +8,7 @@ from hypothesis.strategies import SearchStrategy
 
 from zarr.core.array import Array
 from zarr.core.group import Group
-from zarr.store import MemoryStore, StoreLike
+from zarr.storage import MemoryStore, StoreLike
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)
