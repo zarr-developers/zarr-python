@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
     # TODO: this type could use some more thought
-    ArrayLike = AsyncArray | Array | npt.NDArray[Any]
+    ArrayLike = AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any]
     PathLike = str
 
 __all__ = [
@@ -198,7 +198,7 @@ async def open(
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to open_array
-) -> AsyncArray | AsyncGroup:
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
     """Convenience function to open a group or array using file-mode-like semantics.
 
     Parameters
@@ -400,7 +400,9 @@ async def tree(*args: Any, **kwargs: Any) -> None:
     raise NotImplementedError
 
 
-async def array(data: npt.ArrayLike, **kwargs: Any) -> AsyncArray:
+async def array(
+    data: npt.ArrayLike, **kwargs: Any
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array filled with `data`.
 
     Parameters
@@ -652,7 +654,7 @@ async def create(
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,
-) -> AsyncArray:
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array.
 
     Parameters
@@ -804,7 +806,9 @@ async def create(
     )
 
 
-async def empty(shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+async def empty(
+    shape: ChunkCoords, **kwargs: Any
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an empty array.
 
     Parameters
@@ -823,7 +827,9 @@ async def empty(shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
     return await create(shape=shape, fill_value=None, **kwargs)
 
 
-async def empty_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
+async def empty_like(
+    a: ArrayLike, **kwargs: Any
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an empty array like `a`.
 
     Parameters
@@ -843,7 +849,9 @@ async def empty_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
 
 
 # TODO: add type annotations for fill_value and kwargs
-async def full(shape: ChunkCoords, fill_value: Any, **kwargs: Any) -> AsyncArray:
+async def full(
+    shape: ChunkCoords, fill_value: Any, **kwargs: Any
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with `fill_value` being used as the default value for
     uninitialized portions of the array.
 
@@ -865,7 +873,9 @@ async def full(shape: ChunkCoords, fill_value: Any, **kwargs: Any) -> AsyncArray
 
 
 # TODO: add type annotations for kwargs
-async def full_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
+async def full_like(
+    a: ArrayLike, **kwargs: Any
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create a filled array like `a`.
 
     Parameters
@@ -886,7 +896,9 @@ async def full_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
     return await full(**like_kwargs)
 
 
-async def ones(shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+async def ones(
+    shape: ChunkCoords, **kwargs: Any
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with one being used as the default value for
     uninitialized portions of the array.
 
@@ -905,7 +917,9 @@ async def ones(shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
     return await create(shape=shape, fill_value=1, **kwargs)
 
 
-async def ones_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
+async def ones_like(
+    a: ArrayLike, **kwargs: Any
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array of ones like `a`.
 
     Parameters
@@ -932,7 +946,7 @@ async def open_array(
     path: PathLike | None = None,
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
-) -> AsyncArray:
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Open an array using file-mode-like semantics.
 
     Parameters
@@ -975,7 +989,9 @@ async def open_array(
         raise
 
 
-async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AsyncArray:
+async def open_like(
+    a: ArrayLike, path: str, **kwargs: Any
+) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
     """Open a persistent array like `a`.
 
     Parameters
@@ -998,7 +1014,9 @@ async def open_like(a: ArrayLike, path: str, **kwargs: Any) -> AsyncArray:
     return await open_array(path=path, **like_kwargs)
 
 
-async def zeros(shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+async def zeros(
+    shape: ChunkCoords, **kwargs: Any
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array, with zero being used as the default value for
     uninitialized portions of the array.
 
@@ -1017,7 +1035,9 @@ async def zeros(shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
     return await create(shape=shape, fill_value=0, **kwargs)
 
 
-async def zeros_like(a: ArrayLike, **kwargs: Any) -> AsyncArray:
+async def zeros_like(
+    a: ArrayLike, **kwargs: Any
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array of zeros like `a`.
 
     Parameters

@@ -4,7 +4,7 @@ import json
 from asyncio import gather
 from dataclasses import dataclass, field, replace
 from logging import getLogger
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -73,10 +73,10 @@ from zarr.storage.common import StorePath, ensure_no_existing_node
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
+    from typing import Self
 
     from zarr.abc.codec import Codec, CodecPipeline
     from zarr.core.group import AsyncGroup
-    from zarr.core.metadata.common import ArrayMetadata
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
 __all__ = ["create_codec_pipeline", "parse_array_metadata"]
@@ -160,16 +160,19 @@ async def get_array_metadata(
     return metadata_dict
 
 
+TArrayMeta = TypeVar("TArrayMeta", ArrayV2Metadata, ArrayV3Metadata)
+
+
 @dataclass(frozen=True)
-class AsyncArray:
-    metadata: ArrayMetadata
+class AsyncArray(Generic[TArrayMeta]):
+    metadata: TArrayMeta
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
     order: Literal["C", "F"]
 
     def __init__(
         self,
-        metadata: ArrayMetadata | dict[str, Any],
+        metadata: ArrayV2Metadata | ArrayV3Metadata | dict[str, Any],
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
     ) -> None:
@@ -218,7 +221,7 @@ class AsyncArray:
         # runtime
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         store_path = await make_store_path(store)
 
         shape = parse_shapelike(shape)
@@ -231,7 +234,7 @@ class AsyncArray:
             _chunks = normalize_chunks(chunks, shape, dtype.itemsize)
         else:
             _chunks = normalize_chunks(chunk_shape, shape, dtype.itemsize)
-
+        result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
         if zarr_format == 3:
             if dimension_separator is not None:
                 raise ValueError(
@@ -313,7 +316,7 @@ class AsyncArray:
         dimension_names: Iterable[str] | None = None,
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV3Metadata]:
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=3)
 
@@ -344,7 +347,9 @@ class AsyncArray:
 
         array = cls(metadata=metadata, store_path=store_path)
         await array._save_metadata(metadata, ensure_parents=True)
-        return array
+        # type inference is inconsistent here and seems to conclude
+        # that array has type Array[ArrayV2Metadata]
+        return array  # type: ignore[return-value]
 
     @classmethod
     async def _create_v2(
@@ -361,7 +366,7 @@ class AsyncArray:
         compressor: dict[str, JSON] | None = None,
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata]:
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=2)
         if order is None:
@@ -383,14 +388,14 @@ class AsyncArray:
         )
         array = cls(metadata=metadata, store_path=store_path)
         await array._save_metadata(metadata, ensure_parents=True)
-        return array
+        return array  # type: ignore[return-value]
 
     @classmethod
     def from_dict(
         cls,
         store_path: StorePath,
         data: dict[str, JSON],
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
         metadata = parse_array_metadata(data)
         return cls(metadata=metadata, store_path=store_path)
 
@@ -399,7 +404,7 @@ class AsyncArray:
         cls,
         store: StoreLike,
         zarr_format: ZarrFormat | None = 3,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
         return cls(store_path=store_path, metadata=metadata_dict)
@@ -631,7 +636,9 @@ class AsyncArray:
         )
         return await self._get_selection(indexer, prototype=prototype)
 
-    async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
+    async def _save_metadata(
+        self, metadata: ArrayV2Metadata | ArrayV3Metadata, ensure_parents: bool = False
+    ) -> None:
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
 
@@ -719,9 +726,7 @@ class AsyncArray:
         )
         return await self._set_selection(indexer, value, prototype=prototype)
 
-    async def resize(
-        self, new_shape: ChunkCoords, delete_outside_chunks: bool = True
-    ) -> AsyncArray:
+    async def resize(self, new_shape: ChunkCoords, delete_outside_chunks: bool = True) -> Self:
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = self.metadata.update_shape(new_shape)
 
@@ -747,7 +752,7 @@ class AsyncArray:
         await self._save_metadata(new_metadata)
         return replace(self, metadata=new_metadata)
 
-    async def update_attributes(self, new_attributes: dict[str, JSON]) -> AsyncArray:
+    async def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         new_metadata = self.metadata.update_attributes(new_attributes)
 
         # Write new metadata
@@ -763,7 +768,7 @@ class AsyncArray:
 
 @dataclass(frozen=True)
 class Array:
-    _async_array: AsyncArray
+    _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
 
     @classmethod
     @_deprecate_positional_args
@@ -879,7 +884,7 @@ class Array:
         return self._async_array.basename
 
     @property
-    def metadata(self) -> ArrayMetadata:
+    def metadata(self) -> ArrayV2Metadata | ArrayV3Metadata:
         return self._async_array.metadata
 
     @property
@@ -2309,18 +2314,10 @@ class Array:
         the data falling outside the new array but inside the boundary chunks
         would be restored by a subsequent resize operation that grows the array size.
         """
-        return type(self)(
-            sync(
-                self._async_array.resize(new_shape),
-            )
-        )
+        return type(self)(sync(self._async_array.resize(new_shape)))  # type: ignore[arg-type]
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
-        return type(self)(
-            sync(
-                self._async_array.update_attributes(new_attributes),
-            )
-        )
+        return type(self)(sync(self._async_array.update_attributes(new_attributes)))  # type: ignore[arg-type]
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
@@ -2331,7 +2328,9 @@ class Array:
         )
 
 
-def nchunks_initialized(array: AsyncArray | Array) -> int:
+def nchunks_initialized(
+    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array,
+) -> int:
     """
     Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
     been persisted to the storage backend.
@@ -2353,7 +2352,9 @@ def nchunks_initialized(array: AsyncArray | Array) -> int:
     return len(chunks_initialized(array))
 
 
-def chunks_initialized(array: Array | AsyncArray) -> tuple[str, ...]:
+def chunks_initialized(
+    array: Array | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+) -> tuple[str, ...]:
     """
     Return the keys of the chunks that have been persisted to the storage backend.
 
@@ -2385,7 +2386,9 @@ def chunks_initialized(array: Array | AsyncArray) -> tuple[str, ...]:
     return tuple(out)
 
 
-def _build_parents(node: AsyncArray | AsyncGroup) -> list[AsyncGroup]:
+def _build_parents(
+    node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
+) -> list[AsyncGroup]:
     from zarr.core.group import AsyncGroup, GroupMetadata
 
     store = node.store_path.store
