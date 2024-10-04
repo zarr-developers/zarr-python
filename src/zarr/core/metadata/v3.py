@@ -30,6 +30,8 @@ from zarr.core.config import config
 from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 from zarr.registry import get_codec_class
 
+DEFAULT_DTYPE = "float64"
+
 
 def parse_zarr_format(data: object) -> Literal[3]:
     if data == 3:
@@ -183,14 +185,14 @@ class ArrayV3Metadata(ArrayMetadata):
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed.to_numpy_dtype())
+        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed.to_numpy())
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
 
         array_spec = ArraySpec(
             shape=shape_parsed,
-            dtype=data_type_parsed.to_numpy_dtype(),
+            dtype=data_type_parsed.to_numpy(),
             fill_value=fill_value_parsed,
             order="C",  # TODO: order is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
@@ -224,13 +226,13 @@ class ArrayV3Metadata(ArrayMetadata):
             raise ValueError("`fill_value` is required.")
         for codec in self.codecs:
             codec.validate(
-                shape=self.shape, dtype=self.data_type.to_numpy_dtype(), chunk_grid=self.chunk_grid
+                shape=self.shape, dtype=self.data_type.to_numpy(), chunk_grid=self.chunk_grid
             )
 
     @property
     def dtype(self) -> np.dtype[Any]:
         """Interpret Zarr dtype as NumPy dtype"""
-        return self.data_type.to_numpy_dtype()
+        return self.data_type.to_numpy()
 
     @property
     def ndim(self) -> int:
@@ -492,11 +494,11 @@ class DataType(Enum):
         }
         return data_type_to_numpy[self]
 
-    def to_numpy_dtype(self) -> np.dtype[Any]:
+    def to_numpy(self) -> np.dtype[Any]:
         return np.dtype(self.to_numpy_shortname())
 
     @classmethod
-    def from_numpy_dtype(cls, dtype: np.dtype[Any]) -> DataType:
+    def from_numpy(cls, dtype: np.dtype[Any]) -> DataType:
         dtype_to_data_type = {
             "|b1": "bool",
             "bool": "bool",
@@ -520,7 +522,7 @@ class DataType(Enum):
     def parse(cls, dtype: None | DataType | Any) -> DataType:
         if dtype is None:
             # the default dtype
-            return DataType.float64
+            return DataType[DEFAULT_DTYPE]
         if isinstance(dtype, DataType):
             return dtype
         else:
@@ -530,7 +532,7 @@ class DataType(Enum):
                 raise ValueError(f"Invalid V3 data_type: {dtype}") from e
             # check that this is a valid v3 data_type
             try:
-                data_type = DataType.from_numpy_dtype(dtype)
+                data_type = DataType.from_numpy(dtype)
             except KeyError as e:
                 raise ValueError(f"Invalid V3 data_type: {dtype}") from e
             return data_type
