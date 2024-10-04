@@ -4,6 +4,8 @@ from collections.abc import Iterable
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from zarr.abc.metadata import Metadata
+
 if TYPE_CHECKING:
     from typing import Any, Literal, Self
 
@@ -23,11 +25,11 @@ from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
-from zarr.core.metadata.common import ArrayMetadata, parse_attributes
+from zarr.core.metadata.common import parse_attributes
 
 
 @dataclass(frozen=True, kw_only=True)
-class ArrayV2Metadata(ArrayMetadata):
+class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
     chunks: RegularChunkGrid
     dtype: np.dtype[Any]
@@ -144,7 +146,7 @@ class ArrayV2Metadata(ArrayMetadata):
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
-        _ = zarray_dict.pop("chunk_grid")
+        _ = zarray_dict.pop("chunks")
         zarray_dict["chunks"] = self.chunks.chunk_shape
 
         _ = zarray_dict.pop("dtype")

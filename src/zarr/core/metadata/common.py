@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any, Literal, Self
 
-    import numpy as np
-
     from zarr.core.array_spec import ArraySpec
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
