@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from zarr.core.indexing import SelectorTuple
 
 __all__ = [
+    "BaseCodec",
     "ArrayArrayCodec",
     "ArrayBytesCodec",
     "ArrayBytesCodecPartialDecodeMixin",
@@ -34,11 +35,15 @@ CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 
 
-class _Codec(Metadata, Generic[CodecInput, CodecOutput]):
+class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
     """Generic base class for codecs.
-    Please use ArrayArrayCodec, ArrayBytesCodec or BytesBytesCodec for subclassing.
 
     Codecs can be registered via zarr.codecs.registry.
+
+    Warnings
+    --------
+    This class is not intended to be directly, please use
+    ArrayArrayCodec, ArrayBytesCodec or BytesBytesCodec for subclassing.
     """
 
     is_fixed_size: bool
@@ -148,19 +153,19 @@ class _Codec(Metadata, Generic[CodecInput, CodecOutput]):
         return await _batching_helper(self._encode_single, chunks_and_specs)
 
 
-class ArrayArrayCodec(_Codec[NDBuffer, NDBuffer]):
+class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
     """Base class for array-to-array codecs."""
 
     ...
 
 
-class ArrayBytesCodec(_Codec[NDBuffer, Buffer]):
+class ArrayBytesCodec(BaseCodec[NDBuffer, Buffer]):
     """Base class for array-to-bytes codecs."""
 
     ...
 
 
-class BytesBytesCodec(_Codec[Buffer, Buffer]):
+class BytesBytesCodec(BaseCodec[Buffer, Buffer]):
     """Base class for bytes-to-bytes codecs."""
 
     ...
