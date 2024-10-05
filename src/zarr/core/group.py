@@ -3,8 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Iterator
 from dataclasses import asdict, dataclass, field, fields, replace
-from typing import TYPE_CHECKING, Literal, TypedDict, TypeVar, cast, overload
+from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict, TypeVar, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -33,7 +34,7 @@ from zarr.storage import StoreLike, make_store_path
 from zarr.storage.common import StorePath, ensure_no_existing_node
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
+    from collections.abc import AsyncGenerator, Generator, Iterable, Iterator, Mapping
     from typing import Any
 
     from zarr.abc.codec import Codec
@@ -85,13 +86,12 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
 class GroupMetadataDict(TypedDict):
     """A dictionary representing a group metadata."""
 
-    attributes: dict[str, Any]
-    zarr_format: ZarrFormat
-    node_type: Literal["group"]
+    attributes: Mapping[str, Any]
+    node_type: NotRequired[Literal["group"]]
 
 
 @dataclass(frozen=True)
-class GroupMetadata(Metadata):
+class GroupMetadata(Metadata[GroupMetadataDict]):
     # TODO: Should attributes be a dict[str, JSON] instead?
     attributes: dict[str, Any] = field(default_factory=dict)
     zarr_format: ZarrFormat = 3
@@ -125,8 +125,9 @@ class GroupMetadata(Metadata):
         object.__setattr__(self, "zarr_format", zarr_format_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
-        assert data.pop("node_type", None) in ("group", None)
+    def from_dict(cls, data: GroupMetadataDict) -> GroupMetadata:
+        _data = dict(data)
+        assert _data.pop("node_type", None) in ("group", None)
 
         zarr_format = data.get("zarr_format")
         if zarr_format == 2 or zarr_format is None:
@@ -134,9 +135,9 @@ class GroupMetadata(Metadata):
             # We don't want the GroupMetadata constructor to fail just because someone put an
             # extra key in the metadata.
             expected = {x.name for x in fields(cls)}
-            data = {k: v for k, v in data.items() if k in expected}
+            _data = {k: v for k, v in data.items() if k in expected}
 
-        return cls(**data)
+        return cls(**_data)  # type: ignore[arg-type]
 
     def to_dict(self) -> GroupMetadataDict:
         return cast(GroupMetadataDict, asdict(self))
@@ -207,11 +208,13 @@ class AsyncGroup:
         else:
             raise ValueError(f"unexpected zarr_format: {zarr_format}")
 
+        group_metadata: GroupMetadataDict
         if zarr_format == 2:
             # V2 groups are comprised of a .zgroup and .zattrs objects
             assert zgroup_bytes is not None
             zgroup = json.loads(zgroup_bytes.to_bytes())
             zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
+            # TODO: Mypy Non-required key "node_type" not explicitly found in any ** item
             group_metadata = {**zgroup, "attributes": zattrs}
         else:
             # V3 groups are comprised of a zarr.json object
@@ -224,7 +227,7 @@ class AsyncGroup:
     def from_dict(
         cls,
         store_path: StorePath,
-        data: dict[str, Any],
+        data: GroupMetadataDict,
     ) -> AsyncGroup:
         return cls(
             metadata=GroupMetadata.from_dict(data),

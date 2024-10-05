@@ -1,21 +1,22 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import TYPE_CHECKING
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Generic, TypeVar, cast
 
 if TYPE_CHECKING:
     from typing import Self
 
-    from zarr.core.common import JSON
 
 from dataclasses import dataclass, fields
 
 __all__ = ["Metadata"]
 
+T = TypeVar("T", bound=Mapping[str, object])
+
 
 @dataclass(frozen=True)
-class Metadata:
-    def to_dict(self) -> dict[str, JSON]:
+class Metadata(Generic[T]):
+    def to_dict(self) -> T:
         """
         Recursively serialize this model to a dictionary.
         This method inspects the fields of self and calls `x.to_dict()` for any fields that
@@ -35,10 +36,10 @@ class Metadata:
             else:
                 out_dict[key] = value
 
-        return out_dict
+        return cast(T, out_dict)
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: T) -> Self:
         """
         Create an instance of the model from a dictionary
         """

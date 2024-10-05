@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Generic, NotRequired, TypedDict, TypeVar
 
-from zarr.abc.metadata import Metadata
+from zarr.abc.metadata import Metadata, T
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
@@ -35,7 +35,7 @@ CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 
 
-class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
+class BaseCodec(Generic[CodecInput, CodecOutput, T], Metadata[T]):
     """Generic base class for codecs.
 
     Codecs can be registered via zarr.codecs.registry.
@@ -153,25 +153,25 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         return await _batching_helper(self._encode_single, chunks_and_specs)
 
 
-class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
+class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer, T]):
     """Base class for array-to-array codecs."""
 
     ...
 
 
-class ArrayBytesCodec(BaseCodec[NDBuffer, Buffer]):
+class ArrayBytesCodec(BaseCodec[NDBuffer, Buffer, T]):
     """Base class for array-to-bytes codecs."""
 
     ...
 
 
-class BytesBytesCodec(BaseCodec[Buffer, Buffer]):
+class BytesBytesCodec(BaseCodec[Buffer, Buffer, T]):
     """Base class for bytes-to-bytes codecs."""
 
     ...
 
 
-Codec = ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
+Codec = ArrayArrayCodec[Any] | ArrayBytesCodec[Any] | BytesBytesCodec[Any]
 
 
 class CodecConfigDict(TypedDict):
@@ -180,14 +180,14 @@ class CodecConfigDict(TypedDict):
     ...
 
 
-T = TypeVar("T", bound=CodecConfigDict)
+CodecConfigDictType = TypeVar("CodecConfigDictType", bound=CodecConfigDict)
 
 
-class CodecDict(TypedDict, Generic[T]):
+class CodecDict(Generic[CodecConfigDictType], TypedDict):
     """A generic dictionary representing a codec."""
 
     name: str
-    configuration: NotRequired[T]
+    configuration: NotRequired[CodecConfigDictType]
 
 
 class ArrayBytesCodecPartialDecodeMixin:

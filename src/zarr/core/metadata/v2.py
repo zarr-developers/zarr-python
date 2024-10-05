@@ -37,11 +37,10 @@ class ArrayV2MetadataDict(ArrayMetadataDict):
     filters: NotRequired[Iterable[numcodecs.abc.Codec | dict[str, JSON]]]
     dimension_separator: NotRequired[Literal[".", "/"]]
     compressor: NotRequired[numcodecs.abc.Codec]
-    zarr_format: Literal[2]
 
 
 @dataclass(frozen=True, kw_only=True)
-class ArrayV2Metadata(ArrayMetadata):
+class ArrayV2Metadata(ArrayMetadata[ArrayV2MetadataDict]):
     shape: ChunkCoords
     chunk_grid: RegularChunkGrid
     data_type: np.dtype[Any]
@@ -149,9 +148,10 @@ class ArrayV2Metadata(ArrayMetadata):
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
+    def from_dict(cls, data: ArrayV2MetadataDict) -> ArrayV2Metadata:
         # make a copy to protect the original from modification
-        _data = data.copy()
+        _data = dict(data)
+
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))
         dtype = parse_dtype(_data["dtype"])
@@ -172,10 +172,10 @@ class ArrayV2Metadata(ArrayMetadata):
 
         _data = {k: v for k, v in _data.items() if k in expected}
 
-        return cls(**_data)
+        return cls(**_data)  # type: ignore[arg-type]
 
     def to_dict(self) -> ArrayV2MetadataDict:
-        zarray_dict = super().to_dict()
+        zarray_dict = dict(super().to_dict())
 
         if self.dtype.kind in "SV" and self.fill_value is not None:
             # There's a relationship between self.dtype and self.fill_value

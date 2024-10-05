@@ -7,13 +7,12 @@ import operator
 from abc import abstractmethod
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Generic, TypedDict, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 import numpy as np
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
-    JSON,
     ChunkCoords,
     ChunkCoordsLike,
     ShapeLike,
@@ -147,20 +146,17 @@ class ChunkGridConfigDict(TypedDict):
     chunk_shape: tuple[int, ...]
 
 
-T = TypeVar("T", bound=ChunkGridConfigDict)
-
-
-class ChunkGridDict(TypedDict, Generic[T]):
+class ChunkGridDict(TypedDict):
     """A generic dictionary representing a chunk grid."""
 
     name: str
-    configuration: T
+    configuration: ChunkGridConfigDict
 
 
 @dataclass(frozen=True)
-class ChunkGrid(Metadata):
+class ChunkGrid(Metadata[ChunkGridDict]):
     @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkGrid) -> ChunkGrid:
+    def from_dict(cls, data: ChunkGridDict | ChunkGrid) -> ChunkGrid:
         if isinstance(data, ChunkGrid):
             return data
 
@@ -178,12 +174,6 @@ class ChunkGrid(Metadata):
         pass
 
 
-class RegularChunkGridDict(ChunkGridDict[ChunkGridConfigDict]):
-    """A dictionary representing a regular chunk grid."""
-
-    ...
-
-
 @dataclass(frozen=True)
 class RegularChunkGrid(ChunkGrid):
     chunk_shape: ChunkCoords
@@ -194,14 +184,13 @@ class RegularChunkGrid(ChunkGrid):
         object.__setattr__(self, "chunk_shape", chunk_shape_parsed)
 
     @classmethod
-    def _from_dict(cls, data: dict[str, JSON]) -> Self:
+    def _from_dict(cls, data: ChunkGridDict) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "regular")
-
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
-    def to_dict(self) -> RegularChunkGridDict:
+    def to_dict(self) -> ChunkGridDict:
         out_dict = {"name": "regular", "configuration": {"chunk_shape": tuple(self.chunk_shape)}}
-        return cast(RegularChunkGridDict, out_dict)
+        return cast(ChunkGridDict, out_dict)
 
     def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
         return itertools.product(

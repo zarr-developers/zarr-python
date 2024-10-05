@@ -8,7 +8,7 @@ import typing_extensions
 from crc32c import crc32c
 
 from zarr.abc.codec import BytesBytesCodec, CodecConfigDict, CodecDict
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -25,11 +25,11 @@ class Crc32cCodecDict(CodecDict[CodecConfigDict]):
 
 
 @dataclass(frozen=True)
-class Crc32cCodec(BytesBytesCodec):
+class Crc32cCodec(BytesBytesCodec[Crc32cCodecDict]):
     is_fixed_size = True
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: Crc32cCodecDict) -> Self:
         parse_named_configuration(data, "crc32c", require_configuration=False)
         return cls()
 

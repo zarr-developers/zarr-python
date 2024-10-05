@@ -99,7 +99,7 @@ def parse_blocksize(data: JSON) -> int:
 
 
 @dataclass(frozen=True)
-class BloscCodec(BytesBytesCodec):
+class BloscCodec(BytesBytesCodec[BloscCodecDict]):
     is_fixed_size = False
 
     typesize: int | None
@@ -130,7 +130,7 @@ class BloscCodec(BytesBytesCodec):
         object.__setattr__(self, "blocksize", blocksize_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: BloscCodecDict) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "blosc")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 

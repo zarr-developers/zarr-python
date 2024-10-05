@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from asyncio import gather
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -64,8 +65,8 @@ from zarr.core.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.core.metadata.v2 import ArrayV2Metadata, ArrayV2MetadataDict
+from zarr.core.metadata.v3 import ArrayV3Metadata, ArrayV3MetadataDict
 from zarr.core.sync import collect_aiterator, sync
 from zarr.registry import get_pipeline_class
 from zarr.storage import StoreLike, make_store_path
@@ -87,9 +88,9 @@ logger = getLogger(__name__)
 def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
     if isinstance(data, ArrayV2Metadata | ArrayV3Metadata):
         return data
-    elif isinstance(data, dict):
+    elif isinstance(data, Mapping):
         if data["zarr_format"] == 3:
-            meta_out = ArrayV3Metadata.from_dict(data)
+            meta_out = ArrayV3Metadata.from_dict(cast(ArrayV3MetadataDict, data))
             if len(meta_out.storage_transformers) > 0:
                 msg = (
                     f"Array metadata contains storage transformers: {meta_out.storage_transformers}."
@@ -98,7 +99,7 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
                 raise ValueError(msg)
             return meta_out
         elif data["zarr_format"] == 2:
-            return ArrayV2Metadata.from_dict(data)
+            return ArrayV2Metadata.from_dict(cast(ArrayV2MetadataDict, data))
     raise TypeError
 
 
@@ -162,23 +163,23 @@ async def get_array_metadata(
 
 @dataclass(frozen=True)
 class AsyncArray:
-    metadata: ArrayMetadata
+    metadata: ArrayMetadata[Any]
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
     order: Literal["C", "F"]
 
     def __init__(
         self,
-        metadata: ArrayMetadata | dict[str, Any],
+        metadata: ArrayMetadata[Any] | Mapping[str, Any],
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
     ) -> None:
-        if isinstance(metadata, dict):
+        if isinstance(metadata, Mapping):
             zarr_format = metadata["zarr_format"]
             if zarr_format == 2:
-                metadata = ArrayV2Metadata.from_dict(metadata)
+                metadata = ArrayV2Metadata.from_dict(metadata)  # type: ignore[arg-type]
             else:
-                metadata = ArrayV3Metadata.from_dict(metadata)
+                metadata = ArrayV3Metadata.from_dict(metadata)  # type: ignore[arg-type]
 
         metadata_parsed = parse_array_metadata(metadata)
         order_parsed = parse_indexing_order(order or config.get("array.order"))
@@ -635,7 +636,9 @@ class AsyncArray:
         )
         return await self._get_selection(indexer, prototype=prototype)
 
-    async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
+    async def _save_metadata(
+        self, metadata: ArrayMetadata[Any], ensure_parents: bool = False
+    ) -> None:
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
 
@@ -883,7 +886,7 @@ class Array:
         return self._async_array.basename
 
     @property
-    def metadata(self) -> ArrayMetadata:
+    def metadata(self) -> ArrayMetadata[Any]:
         return self._async_array.metadata
 
     @property

@@ -339,7 +339,9 @@ class ShardingCodecDict(CodecDict[ShardingCodecConfigDict]):
 
 @dataclass(frozen=True)
 class ShardingCodec(
-    ArrayBytesCodec, ArrayBytesCodecPartialDecodeMixin, ArrayBytesCodecPartialEncodeMixin
+    ArrayBytesCodec[ShardingCodecDict],
+    ArrayBytesCodecPartialDecodeMixin,
+    ArrayBytesCodecPartialEncodeMixin,
 ):
     chunk_shape: ChunkCoords
     codecs: tuple[Codec, ...]
@@ -370,7 +372,7 @@ class ShardingCodec(
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
 
     # todo: typedict return type
-    def __getstate__(self) -> dict[str, Any]:
+    def __getstate__(self) -> ShardingCodecDict:
         return self.to_dict()
 
     def __setstate__(self, state: dict[str, Any]) -> None:
@@ -386,7 +388,7 @@ class ShardingCodec(
         object.__setattr__(self, "_get_chunks_per_shard", lru_cache()(self._get_chunks_per_shard))
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: ShardingCodecDict) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "sharding_indexed")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 

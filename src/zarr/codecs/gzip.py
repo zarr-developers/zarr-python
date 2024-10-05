@@ -40,7 +40,7 @@ def parse_gzip_level(data: JSON) -> int:
 
 
 @dataclass(frozen=True)
-class GzipCodec(BytesBytesCodec):
+class GzipCodec(BytesBytesCodec[GzipCodecDict]):
     is_fixed_size = False
 
     level: int = 5
@@ -51,7 +51,7 @@ class GzipCodec(BytesBytesCodec):
         object.__setattr__(self, "level", level_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: GzipCodecDict) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "gzip")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 

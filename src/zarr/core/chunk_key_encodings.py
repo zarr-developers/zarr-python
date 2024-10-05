@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Literal, TypedDict, cast
+from typing import TYPE_CHECKING, Literal, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
@@ -10,6 +10,9 @@ from zarr.core.common import (
     ChunkCoords,
     parse_named_configuration,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 SeparatorLiteral = Literal[".", "/"]
 
@@ -24,11 +27,11 @@ class ChunkKeyEncodingDict(TypedDict):
     """A dictionary representing a chunk key encoding configuration."""
 
     name: str
-    configuration: dict[Literal["separator"], SeparatorLiteral]
+    configuration: Mapping[Literal["separator"], SeparatorLiteral]
 
 
 @dataclass(frozen=True)
-class ChunkKeyEncoding(Metadata):
+class ChunkKeyEncoding(Metadata[ChunkKeyEncodingDict]):
     name: str
     separator: SeparatorLiteral = "."
 
@@ -38,12 +41,14 @@ class ChunkKeyEncoding(Metadata):
         object.__setattr__(self, "separator", separator_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkKeyEncoding) -> ChunkKeyEncoding:
+    def from_dict(cls, data: ChunkKeyEncodingDict | ChunkKeyEncoding) -> ChunkKeyEncoding:
         if isinstance(data, ChunkKeyEncoding):
             return data
 
+        _data = dict(data)
+
         # configuration is optional for chunk key encodings
-        name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)
+        name_parsed, config_parsed = parse_named_configuration(_data, require_configuration=False)  # type: ignore[arg-type]
         if name_parsed == "default":
             if config_parsed is None:
                 # for default, normalize missing configuration to use the "/" separator.

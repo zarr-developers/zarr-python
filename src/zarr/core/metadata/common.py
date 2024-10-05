@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TypedDict
 
-from zarr.abc.metadata import Metadata
+from zarr.abc.metadata import Metadata, T
 
 
 # TODO: Revisit Optional vs ... | None
@@ -25,10 +25,11 @@ class ArrayMetadataDict(TypedDict):
 
     shape: ChunkCoords
     attributes: NotRequired[dict[str, JSON]]  # TODO: Double-check if NotRequired is appropriate
+    zarr_format: Literal[2, 3]
 
 
 @dataclass(frozen=True, kw_only=True)
-class ArrayMetadata(Metadata, ABC):
+class ArrayMetadata(Metadata[T], ABC):
     shape: ChunkCoords
     fill_value: Any
     chunk_grid: ChunkGrid

@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 from numcodecs.vlen import VLenBytes, VLenUTF8
 
-from zarr.abc.codec import ArrayBytesCodec
+from zarr.abc.codec import ArrayBytesCodec, CodecConfigDict, CodecDict
 from zarr.core.buffer import Buffer, NDBuffer
-from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.common import parse_named_configuration
 from zarr.core.strings import cast_to_string_dtype
 from zarr.registry import register_codec
 
@@ -23,18 +23,25 @@ _vlen_utf8_codec = VLenUTF8()
 _vlen_bytes_codec = VLenBytes()
 
 
+class VLenUTF8CodecConfigDict(CodecConfigDict): ...
+
+
+class VLenUTF8CodecDict(CodecDict[VLenUTF8CodecConfigDict]): ...
+
+
 @dataclass(frozen=True)
-class VLenUTF8Codec(ArrayBytesCodec):
+class VLenUTF8Codec(ArrayBytesCodec[VLenUTF8CodecDict]):
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: VLenUTF8CodecDict) -> Self:
         _, configuration_parsed = parse_named_configuration(
             data, "vlen-utf8", require_configuration=False
         )
         configuration_parsed = configuration_parsed or {}
         return cls(**configuration_parsed)
 
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": "vlen-utf8", "configuration": {}}
+    def to_dict(self) -> VLenUTF8CodecDict:
+        out_dict = {"name": "vlen-utf8", "configuration": {}}
+        return cast(VLenUTF8CodecDict, out_dict)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self
@@ -69,18 +76,25 @@ class VLenUTF8Codec(ArrayBytesCodec):
         raise NotImplementedError("compute_encoded_size is not implemented for VLen codecs")
 
 
+class VLenBytesCodecConfigDict(CodecConfigDict): ...
+
+
+class VLenBytesCodecDict(CodecDict[VLenBytesCodecConfigDict]): ...
+
+
 @dataclass(frozen=True)
-class VLenBytesCodec(ArrayBytesCodec):
+class VLenBytesCodec(ArrayBytesCodec[VLenBytesCodecDict]):
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: VLenBytesCodecDict) -> Self:
         _, configuration_parsed = parse_named_configuration(
             data, "vlen-bytes", require_configuration=False
         )
         configuration_parsed = configuration_parsed or {}
         return cls(**configuration_parsed)
 
-    def to_dict(self) -> dict[str, JSON]:
-        return {"name": "vlen-bytes", "configuration": {}}
+    def to_dict(self) -> VLenBytesCodecDict:
+        out_dict = {"name": "vlen-bytes", "configuration": {}}
+        return cast(VLenBytesCodecDict, out_dict)
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         return self

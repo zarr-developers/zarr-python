@@ -39,7 +39,7 @@ class TransposeCodecDict(CodecDict[TransposeCodecConfigDict]):
 
 
 @dataclass(frozen=True)
-class TransposeCodec(ArrayArrayCodec):
+class TransposeCodec(ArrayArrayCodec[TransposeCodecDict]):
     is_fixed_size = True
 
     order: tuple[int, ...]
@@ -50,7 +50,7 @@ class TransposeCodec(ArrayArrayCodec):
         object.__setattr__(self, "order", order_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: TransposeCodecDict) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "transpose")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 

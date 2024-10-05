@@ -56,6 +56,7 @@ def resolve_batched(codec: Codec, chunk_specs: Iterable[ArraySpec]) -> Iterable[
     return [codec.resolve_metadata(chunk_spec) for chunk_spec in chunk_specs]
 
 
+# TODO: Double-check whether `CodecDict[Any]` is appropriate
 @dataclass(frozen=True)
 class BatchedCodecPipeline(CodecPipeline):
     """Default codec pipeline.
@@ -65,9 +66,9 @@ class BatchedCodecPipeline(CodecPipeline):
     lock step for each mini-batch. Multiple mini-batches are processing concurrently.
     """
 
-    array_array_codecs: tuple[ArrayArrayCodec, ...]
-    array_bytes_codec: ArrayBytesCodec
-    bytes_bytes_codecs: tuple[BytesBytesCodec, ...]
+    array_array_codecs: tuple[ArrayArrayCodec[Any], ...]
+    array_bytes_codec: ArrayBytesCodec[Any]
+    bytes_bytes_codecs: tuple[BytesBytesCodec[Any], ...]
     batch_size: int
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
@@ -134,11 +135,11 @@ class BatchedCodecPipeline(CodecPipeline):
     def _codecs_with_resolved_metadata_batched(
         self, chunk_specs: Iterable[ArraySpec]
     ) -> tuple[
-        list[tuple[ArrayArrayCodec, list[ArraySpec]]],
-        tuple[ArrayBytesCodec, list[ArraySpec]],
-        list[tuple[BytesBytesCodec, list[ArraySpec]]],
+        list[tuple[ArrayArrayCodec[Any], list[ArraySpec]]],
+        tuple[ArrayBytesCodec[Any], list[ArraySpec]],
+        list[tuple[BytesBytesCodec[Any], list[ArraySpec]]],
     ]:
-        aa_codecs_with_spec: list[tuple[ArrayArrayCodec, list[ArraySpec]]] = []
+        aa_codecs_with_spec: list[tuple[ArrayArrayCodec[Any], list[ArraySpec]]] = []
         chunk_specs = list(chunk_specs)
         for aa_codec in self.array_array_codecs:
             aa_codecs_with_spec.append((aa_codec, chunk_specs))
@@ -149,7 +150,7 @@ class BatchedCodecPipeline(CodecPipeline):
             self.array_bytes_codec.resolve_metadata(chunk_spec) for chunk_spec in chunk_specs
         ]
 
-        bb_codecs_with_spec: list[tuple[BytesBytesCodec, list[ArraySpec]]] = []
+        bb_codecs_with_spec: list[tuple[BytesBytesCodec[Any], list[ArraySpec]]] = []
         for bb_codec in self.bytes_bytes_codecs:
             bb_codecs_with_spec.append((bb_codec, chunk_specs))
             chunk_specs = [bb_codec.resolve_metadata(chunk_spec) for chunk_spec in chunk_specs]
@@ -465,12 +466,14 @@ class BatchedCodecPipeline(CodecPipeline):
 
 def codecs_from_list(
     codecs: Iterable[Codec],
-) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
+) -> tuple[
+    tuple[ArrayArrayCodec[Any], ...], ArrayBytesCodec[Any], tuple[BytesBytesCodec[Any], ...]
+]:
     from zarr.codecs.sharding import ShardingCodec
 
-    array_array: tuple[ArrayArrayCodec, ...] = ()
-    array_bytes_maybe: ArrayBytesCodec | None = None
-    bytes_bytes: tuple[BytesBytesCodec, ...] = ()
+    array_array: tuple[ArrayArrayCodec[Any], ...] = ()
+    array_bytes_maybe: ArrayBytesCodec[Any] | None = None
+    bytes_bytes: tuple[BytesBytesCodec[Any], ...] = ()
 
     if any(isinstance(codec, ShardingCodec) for codec in codecs) and len(tuple(codecs)) > 1:
         warn(

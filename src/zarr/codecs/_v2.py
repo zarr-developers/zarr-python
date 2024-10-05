@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numcodecs
 from numcodecs.compat import ensure_bytes, ensure_ndarray
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class V2Compressor(ArrayBytesCodec):
+class V2Compressor(ArrayBytesCodec[Any]):
     compressor: numcodecs.abc.Codec | None
 
     is_fixed_size = False
@@ -66,7 +66,7 @@ class V2Compressor(ArrayBytesCodec):
 
 
 @dataclass(frozen=True)
-class V2Filters(ArrayArrayCodec):
+class V2Filters(ArrayArrayCodec[Any]):
     filters: tuple[numcodecs.abc.Codec, ...] | None
 
     is_fixed_size = False

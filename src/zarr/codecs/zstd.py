@@ -47,7 +47,7 @@ class ZstdCodecDict(CodecDict[ZstdCodecConfigDict]):
 
 
 @dataclass(frozen=True)
-class ZstdCodec(BytesBytesCodec):
+class ZstdCodec(BytesBytesCodec[ZstdCodecDict]):
     is_fixed_size = True
 
     level: int = 0
@@ -69,7 +69,7 @@ class ZstdCodec(BytesBytesCodec):
         object.__setattr__(self, "checksum", checksum_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: ZstdCodecDict) -> Self:
         _, configuration_parsed = parse_named_configuration(data, "zstd")
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 

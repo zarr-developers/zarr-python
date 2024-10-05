@@ -9,11 +9,11 @@ import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec, CodecConfigDict, CodecDict
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
-from zarr.core.common import JSON, parse_enum, parse_named_configuration
+from zarr.core.common import parse_enum, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing import Self
+    from typing import Literal, Self
 
     from zarr.core.array_spec import ArraySpec
 
@@ -33,7 +33,8 @@ default_system_endian = Endian(sys.byteorder)
 class BytesCodecConfigDict(CodecConfigDict):
     """A dictionary representing a bytes codec configuration."""
 
-    endian: Endian
+    # TODO: Why not type this w/ the Endian Enum
+    endian: Literal["big", "little"]
 
 
 class BytesCodecDict(CodecDict[BytesCodecConfigDict]):
@@ -43,7 +44,7 @@ class BytesCodecDict(CodecDict[BytesCodecConfigDict]):
 
 
 @dataclass(frozen=True)
-class BytesCodec(ArrayBytesCodec):
+class BytesCodec(ArrayBytesCodec[BytesCodecDict]):
     is_fixed_size = True
 
     endian: Endian | None
@@ -54,10 +55,11 @@ class BytesCodec(ArrayBytesCodec):
         object.__setattr__(self, "endian", endian_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> Self:
+    def from_dict(cls, data: BytesCodecDict) -> Self:
         _, configuration_parsed = parse_named_configuration(
             data, "bytes", require_configuration=False
         )
+
         configuration_parsed = configuration_parsed or {}
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 

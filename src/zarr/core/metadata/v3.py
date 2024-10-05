@@ -23,8 +23,8 @@ import numpy.typing as npt
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
-from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+from zarr.core.chunk_grids import ChunkGrid, ChunkGridDict, RegularChunkGrid
+from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingDict
 from zarr.core.common import ZARR_JSON, parse_named_configuration, parse_shapelike
 from zarr.core.config import config
 from zarr.core.metadata.common import ArrayMetadata, ArrayMetadataDict, parse_attributes
@@ -68,7 +68,7 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
     """Check that the codecs are valid for the given dtype"""
 
     # ensure that we have at least one ArrayBytesCodec
-    abcs: list[ArrayBytesCodec] = []
+    abcs: list[ArrayBytesCodec[Any]] = []
     for codec in codecs:
         if isinstance(codec, ArrayBytesCodec):
             abcs.append(codec)
@@ -188,13 +188,12 @@ class ArrayV3MetadataDict(ArrayMetadataDict):
     fill_value: Any
     codecs: tuple[Codec, ...]
     dimension_names: NotRequired[tuple[str, ...]]
-    zarr_format: Literal[3]
     node_type: Literal["array"]
     storage_transformers: tuple[dict[str, JSON], ...]
 
 
 @dataclass(frozen=True, kw_only=True)
-class ArrayV3Metadata(ArrayMetadata):
+class ArrayV3Metadata(ArrayMetadata[ArrayV3MetadataDict]):
     shape: ChunkCoords
     data_type: DataType
     chunk_grid: ChunkGrid
@@ -212,8 +211,8 @@ class ArrayV3Metadata(ArrayMetadata):
         *,
         shape: Iterable[int],
         data_type: npt.DTypeLike | DataType,
-        chunk_grid: dict[str, JSON] | ChunkGrid,
-        chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
+        chunk_grid: ChunkGridDict | ChunkGrid,
+        chunk_key_encoding: ChunkKeyEncodingDict | ChunkKeyEncoding,
         fill_value: Any,
         codecs: Iterable[Codec | dict[str, JSON]],
         attributes: None | dict[str, JSON],
@@ -309,9 +308,9 @@ class ArrayV3Metadata(ArrayMetadata):
         return {ZARR_JSON: prototype.buffer.from_bytes(json.dumps(d, cls=V3JsonEncoder).encode())}
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON]) -> ArrayV3Metadata:
+    def from_dict(cls, data: ArrayV3MetadataDict) -> ArrayV3Metadata:
         # make a copy because we are modifying the dict
-        _data = data.copy()
+        _data = dict(data)
 
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))
@@ -325,10 +324,11 @@ class ArrayV3Metadata(ArrayMetadata):
         _data["dimension_names"] = _data.pop("dimension_names", None)
         # attributes key is optional, normalize missing to `None`
         _data["attributes"] = _data.pop("attributes", None)
+
         return cls(**_data, data_type=data_type)  # type: ignore[arg-type]
 
     def to_dict(self) -> ArrayV3MetadataDict:
-        out_dict = super().to_dict()
+        out_dict = dict(super().to_dict())
 
         if not isinstance(out_dict, dict):
             raise TypeError(f"Expected dict. Got {type(out_dict)}.")
