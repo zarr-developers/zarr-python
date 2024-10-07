@@ -346,9 +346,10 @@ FLOAT_DTYPE = np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float6
 FLOAT = np.float16 | np.float32 | np.float64
 COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
 COMPLEX = np.complex64 | np.complex128
-STRING_DTYPE = Literal[DataType.string]
 STRING = np.str_
+BYTES_DTYPE = np.dtypes.BytesDType
 BYTES = np.bytes_
+
 
 @overload
 def parse_fill_value(

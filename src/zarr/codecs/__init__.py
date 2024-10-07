@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import numpy as np
+if TYPE_CHECKING:
+    import numpy as np
 
 from zarr.codecs.blosc import BloscCname, BloscCodec, BloscShuffle
 from zarr.codecs.bytes import BytesCodec, Endian
