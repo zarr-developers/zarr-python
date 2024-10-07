@@ -72,3 +72,29 @@ def test_metadata_to_dict(
         observed.pop("dimension_separator")
 
     assert observed == expected
+
+
+def test_from_dict_extra_fields() -> None:
+    data = {
+        "_nczarr_array": {"dimrefs": ["/dim1", "/dim2"], "storage": "chunked"},
+        "attributes": {"key": "value"},
+        "chunks": [8],
+        "compressor": None,
+        "dtype": "<f8",
+        "fill_value": 0.0,
+        "filters": None,
+        "order": "C",
+        "shape": [8],
+        "zarr_format": 2,
+    }
+
+    result = ArrayV2Metadata.from_dict(data)
+    expected = ArrayV2Metadata(
+        attributes={"key": "value"},
+        shape=(8,),
+        dtype="float64",
+        chunks=(8,),
+        fill_value=0.0,
+        order="C",
+    )
+    assert result == expected
