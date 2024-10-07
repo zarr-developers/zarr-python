@@ -8,7 +8,7 @@ ipywidgets==8.1.5
 # don't let pyup change pinning for azure-storage-blob, need to pin to older
 # version to get compatibility with azure storage emulator on appveyor (FIXME)
 azure-storage-blob==12.21.0 # pyup: ignore
-redis==5.1.0
+redis==5.1.1
 types-redis
 types-setuptools
 pymongo==4.10.1
