@@ -59,6 +59,7 @@ def test_config_defaults_set() -> None:
                 "sharding_indexed": "zarr.codecs.sharding.ShardingCodec",
                 "transpose": "zarr.codecs.transpose.TransposeCodec",
                 "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
+                "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
             },
         }
     ]

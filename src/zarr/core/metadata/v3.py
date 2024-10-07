@@ -386,6 +386,8 @@ def parse_fill_value(
     """
     if fill_value is None:
         return dtype.type(0)
+    if dtype.kind == "O":
+        return fill_value
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if dtype.type in (np.complex64, np.complex128):
             dtype = cast(COMPLEX_DTYPE, dtype)
@@ -451,6 +453,7 @@ class DataType(Enum):
     complex64 = "complex64"
     complex128 = "complex128"
     string = "string"
+    bytes = "bytes"
 
     @property
     def byte_count(self) -> int:
@@ -499,13 +502,19 @@ class DataType(Enum):
     def to_numpy(self) -> np.dtype[Any]:
         if self == DataType.string:
             return STRING_DTYPE
+        elif self == DataType.bytes:
+            # for now always use object dtype for bytestrings
+            # TODO: consider whether we can use fixed-width types (e.g. '|S5') instead
+            return np.dtype("O")
         else:
             return np.dtype(self.to_numpy_shortname())
 
     @classmethod
     def from_numpy(cls, dtype: np.dtype[Any]) -> DataType:
-        if np.issubdtype(np.str_, dtype):
+        if dtype.kind in "UT":
             return DataType.string
+        elif dtype.kind == "S":
+            return DataType.bytes
         dtype_to_data_type = {
             "|b1": "bool",
             "bool": "bool",

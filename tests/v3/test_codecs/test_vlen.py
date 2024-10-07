@@ -5,7 +5,7 @@ import pytest
 
 from zarr import Array
 from zarr.abc.store import Store
-from zarr.codecs import VLenUTF8Codec
+from zarr.codecs import VLenBytesCodec, VLenUTF8Codec
 from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.storage.common import StorePath
 from zarr.strings import NUMPY_SUPPORTS_VLEN_STRING
@@ -49,3 +49,33 @@ async def test_vlen_string(store: Store, dtype: None | np.dtype[Any]) -> None:
     assert np.array_equal(data, b[:, :])
     assert b.metadata.data_type == DataType.string
     assert a.dtype == expected_zarr_string_dtype
+
+
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
+async def test_vlen_bytes(store: Store) -> None:
+    bstrings = [b"hello", b"world", b"this", b"is", b"a", b"test"]
+    data = np.array(bstrings).reshape((2, 3))
+    assert data.dtype == "|S5"
+
+    sp = StorePath(store, path="string")
+    a = Array.create(
+        sp,
+        shape=data.shape,
+        chunk_shape=data.shape,
+        dtype=data.dtype,
+        fill_value=b"",
+        codecs=[VLenBytesCodec()],
+    )
+    assert isinstance(a.metadata, ArrayV3Metadata)  # needed for mypy
+
+    a[:, :] = data
+    assert np.array_equal(data, a[:, :])
+    # assert a.metadata.data_type == DataType.string
+    # assert a.dtype == expected_zarr_string_dtype
+
+    # test round trip
+    b = Array.open(sp)
+    assert isinstance(b.metadata, ArrayV3Metadata)  # needed for mypy
+    assert np.array_equal(data, b[:, :])
+    # assert b.metadata.data_type == DataType.string
+    # assert a.dtype == expected_zarr_string_dtype

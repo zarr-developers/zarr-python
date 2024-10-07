@@ -7,7 +7,7 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.pipeline import BatchedCodecPipeline
 from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 from zarr.codecs.transpose import TransposeCodec
-from zarr.codecs.vlen_utf8 import VLenUTF8Codec
+from zarr.codecs.vlen_utf8 import VLenBytesCodec, VLenUTF8Codec
 from zarr.codecs.zstd import ZstdCodec
 
 __all__ = [
@@ -23,5 +23,6 @@ __all__ = [
     "ShardingCodecIndexLocation",
     "TransposeCodec",
     "VLenUTF8Codec",
+    "VLenBytesCodec",
     "ZstdCodec",
 ]
