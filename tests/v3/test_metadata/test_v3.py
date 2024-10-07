@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 
 from zarr.core.metadata.v3 import (
+    default_fill_value,
     parse_dimension_names,
     parse_fill_value,
     parse_zarr_format,
@@ -46,8 +47,9 @@ float_dtypes = (
 )
 
 complex_dtypes = ("complex64", "complex128")
+vlen_dtypes = ("string", "bytes")
 
-dtypes = (*bool_dtypes, *int_dtypes, *float_dtypes, *complex_dtypes)
+dtypes = (*bool_dtypes, *int_dtypes, *float_dtypes, *complex_dtypes, *vlen_dtypes)
 
 
 @pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
@@ -72,13 +74,18 @@ def parse_dimension_names_valid(data: Sequence[str] | None) -> None:
 
 
 @pytest.mark.parametrize("dtype_str", dtypes)
-def test_parse_auto_fill_value(dtype_str: str) -> None:
+def test_default_fill_value(dtype_str: str) -> None:
     """
     Test that parse_fill_value(None, dtype) results in the 0 value for the given dtype.
     """
-    dtype = np.dtype(dtype_str)
-    fill_value = None
-    assert parse_fill_value(fill_value, dtype) == dtype.type(0)
+    dtype = DataType(dtype_str)
+    fill_value = default_fill_value(dtype)
+    if dtype == DataType.string:
+        assert fill_value == ""
+    elif dtype == DataType.bytes:
+        assert fill_value == b""
+    else:
+        assert fill_value == dtype.to_numpy().type(0)
 
 
 @pytest.mark.parametrize(
@@ -337,7 +344,7 @@ async def test_special_float_fill_values(fill_value: str) -> None:
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
         "data_type": "float64",
         "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": (),
+        "codecs": [{"name": "bytes"}],
         "fill_value": fill_value,  # this is not a valid fill value for uint8
     }
     m = ArrayV3Metadata.from_dict(metadata_dict)

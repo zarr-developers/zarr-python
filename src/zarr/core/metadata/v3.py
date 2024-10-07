@@ -64,6 +64,34 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
     return out
 
 
+def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
+    """Check that the codecs are valid for the given dtype"""
+
+    # ensure that we have at least one ArrayBytesCodec
+    abcs: list[ArrayBytesCodec] = []
+    for codec in codecs:
+        if isinstance(codec, ArrayBytesCodec):
+            abcs.append(codec)
+    if len(abcs) == 0:
+        raise ValueError("At least one ArrayBytesCodec is required.")
+    elif len(abcs) > 1:
+        raise ValueError("Only one ArrayBytesCodec is allowed.")
+
+    abc = abcs[0]
+
+    # we need to have special codecs if we are decoding vlen strings or bytestrings
+    # TODO: use codec ID instead of class name
+    codec_id = abc.__class__.__name__
+    if dtype == DataType.string and not codec_id == "VLenUTF8Codec":
+        raise ValueError(
+            f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_id}`."
+        )
+    if dtype == DataType.bytes and not codec_id == "VLenBytesCodec":
+        raise ValueError(
+            f"For bytes dtype, ArrayBytesCodec must be `VLenBytesCodec`, got `{codec_id}`."
+        )
+
+
 def parse_dimension_names(data: object) -> tuple[str | None, ...] | None:
     if data is None:
         return data
@@ -186,6 +214,8 @@ class ArrayV3Metadata(ArrayMetadata):
         chunk_grid_parsed = ChunkGrid.from_dict(chunk_grid)
         chunk_key_encoding_parsed = ChunkKeyEncoding.from_dict(chunk_key_encoding)
         dimension_names_parsed = parse_dimension_names(dimension_names)
+        if fill_value is None:
+            fill_value = default_fill_value(data_type_parsed)
         fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed.to_numpy())
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
@@ -199,6 +229,7 @@ class ArrayV3Metadata(ArrayMetadata):
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
         codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]
+        validate_codecs(codecs_parsed_partial, data_type_parsed)
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "data_type", data_type_parsed)
@@ -360,8 +391,17 @@ def parse_fill_value(
     ...
 
 
+def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
+    if dtype == DataType.string:
+        return ""
+    elif dtype == DataType.bytes:
+        return b""
+    else:
+        return dtype.to_numpy().type(0)
+
+
 def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
     dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | np.dtype[Any],
 ) -> BOOL | INTEGER | FLOAT | COMPLEX | Any:
     """
@@ -385,7 +425,7 @@ def parse_fill_value(
     A scalar instance of `dtype`
     """
     if fill_value is None:
-        return dtype.type(0)
+        raise ValueError("Fill value cannot be None")
     if dtype.kind == "O":
         return fill_value
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
