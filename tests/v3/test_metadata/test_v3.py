@@ -109,13 +109,13 @@ def test_parse_fill_value_valid(fill_value: Any, dtype_str: str) -> None:
     """
     Test that parse_fill_value(fill_value, dtype) casts fill_value to the given dtype.
     """
-    dtype = np.dtype(dtype_str)
+    dtype = DataType(dtype_str)
     parsed = parse_fill_value(fill_value, dtype)
 
     if np.isnan(fill_value):
         assert np.isnan(parsed)
     else:
-        assert parsed == dtype.type(fill_value)
+        assert parsed == dtype.to_numpy().type(fill_value)
 
 
 @pytest.mark.parametrize("fill_value", ["not a valid value"])
@@ -125,7 +125,7 @@ def test_parse_fill_value_invalid_value(fill_value: Any, dtype_str: str) -> None
     Test that parse_fill_value(fill_value, dtype) raises ValueError for invalid values.
     This test excludes bool because the bool constructor takes anything.
     """
-    dtype = np.dtype(dtype_str)
+    dtype = DataType(dtype_str)
     with pytest.raises(ValueError):
         parse_fill_value(fill_value, dtype)
 
@@ -137,11 +137,11 @@ def test_parse_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
     Test that parse_fill_value(fill_value, dtype) correctly handles complex values represented
     as length-2 sequences
     """
-    dtype = np.dtype(dtype_str)
+    dtype = DataType(dtype_str)
     if isinstance(fill_value, list):
-        expected = dtype.type(complex(*fill_value))
+        expected = dtype.to_numpy().type(complex(*fill_value))
     else:
-        expected = dtype.type(fill_value)
+        expected = dtype.to_numpy().type(fill_value)
     assert expected == parse_fill_value(fill_value, dtype)
 
 
@@ -152,7 +152,7 @@ def test_parse_fill_value_complex_invalid(fill_value: Any, dtype_str: str) -> No
     Test that parse_fill_value(fill_value, dtype) correctly rejects sequences with length not
     equal to 2
     """
-    dtype = np.dtype(dtype_str)
+    dtype = DataType(dtype_str)
     match = (
         f"Got an invalid fill value for complex data type {dtype}."
         f"Expected a sequence with 2 elements, but {fill_value} has "
@@ -169,7 +169,7 @@ def test_parse_fill_value_invalid_type(fill_value: Any, dtype_str: str) -> None:
     Test that parse_fill_value(fill_value, dtype) raises TypeError for invalid non-sequential types.
     This test excludes bool because the bool constructor takes anything.
     """
-    dtype = np.dtype(dtype_str)
+    dtype = DataType(dtype_str)
     with pytest.raises(ValueError, match=r"fill value .* is not valid for dtype .*"):
         parse_fill_value(fill_value, dtype)
 
@@ -190,7 +190,7 @@ def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str)
     This test excludes bool because the bool constructor takes anything, and complex because
     complex values can be created from length-2 sequences.
     """
-    dtype = np.dtype(dtype_str)
+    dtype = DataType(dtype_str)
     match = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}"
     with pytest.raises(TypeError, match=re.escape(match)):
         parse_fill_value(fill_value, dtype)

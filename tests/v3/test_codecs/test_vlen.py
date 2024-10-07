@@ -6,7 +6,7 @@ import pytest
 from zarr import Array
 from zarr.abc.codec import Codec
 from zarr.abc.store import Store
-from zarr.codecs import VLenBytesCodec, VLenUTF8Codec, ZstdCodec
+from zarr.codecs import BytesCodec, VLenBytesCodec, VLenUTF8Codec, ZstdCodec
 from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.storage.common import StorePath
 from zarr.strings import NUMPY_SUPPORTS_VLEN_STRING
@@ -95,19 +95,34 @@ def test_vlen_bytes(store: Store, as_object_array: bool, codecs: None | list[Cod
     assert a.dtype == "O"
 
 
+# TODO: move these tests out of codecs and into a more appropriate location
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+def test_default_fill_values(store: Store) -> None:
+    a = Array.create(StorePath(store, path="string"), shape=5, chunk_shape=5, dtype="<U4")
+    assert a.fill_value == ""
+
+    b = Array.create(StorePath(store, path="bytes"), shape=5, chunk_shape=5, dtype="<S4")
+    assert b.fill_value == b""
+
+
 @pytest.mark.parametrize("store", ["memory"], indirect=["store"])
 def test_vlen_errors(store: Store) -> None:
-    sp = StorePath(store, path="string")
+    with pytest.raises(ValueError, match="At least one ArrayBytesCodec is required."):
+        Array.create(StorePath(store, path="a"), shape=5, chunk_shape=5, dtype="<U4", codecs=[])
 
-    # fill value must be a compatible type
-    with pytest.raises(ValueError, match="fill value 0 is not valid"):
-        Array.create(sp, shape=5, chunk_shape=5, dtype="<U4", fill_value=0)
+    with pytest.raises(
+        ValueError,
+        match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
+    ):
+        Array.create(
+            StorePath(store, path="b"), shape=5, chunk_shape=5, dtype="<U4", codecs=[BytesCodec()]
+        )
 
-    # FIXME: this should raise but doesn't; need to fix parse_fill_value
-    # Problem is that parse_fill_value compares with numpy dtype('O') instead
-    # of DataType.bytes, and anything can be cast to Object
-    # with pytest.raises(ValueError, match="fill value X is not valid"):
-    #    Array.create(sp, shape=5, chunk_shape=5, dtype='|S4', fill_value='')
-
-    a = Array.create(sp, shape=5, chunk_shape=5, dtype="<U4")
-    assert a.fill_value == ""
+    with pytest.raises(ValueError, match="Only one ArrayBytesCodec is allowed."):
+        Array.create(
+            StorePath(store, path="b"),
+            shape=5,
+            chunk_shape=5,
+            dtype="<U4",
+            codecs=[BytesCodec(), VLenBytesCodec()],
+        )

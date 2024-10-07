@@ -216,7 +216,7 @@ class ArrayV3Metadata(ArrayMetadata):
         dimension_names_parsed = parse_dimension_names(dimension_names)
         if fill_value is None:
             fill_value = default_fill_value(data_type_parsed)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed.to_numpy())
+        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed)
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
@@ -346,18 +346,20 @@ FLOAT_DTYPE = np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float6
 FLOAT = np.float16 | np.float32 | np.float64
 COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
 COMPLEX = np.complex64 | np.complex128
-
+STRING_DTYPE = Literal[DataType.string]
+STRING = np.str_
+BYTES = np.bytes_
 
 @overload
 def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
     dtype: BOOL_DTYPE,
 ) -> BOOL: ...
 
 
 @overload
 def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
     dtype: INTEGER_DTYPE,
 ) -> INTEGER: ...
 
@@ -402,7 +404,7 @@ def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
 
 def parse_fill_value(
     fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
-    dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | np.dtype[Any],
+    dtype: DataType,
 ) -> BOOL | INTEGER | FLOAT | COMPLEX | Any:
     """
     Parse `fill_value`, a potential fill value, into an instance of `dtype`, a data type.
@@ -417,8 +419,8 @@ def parse_fill_value(
     ----------
     fill_value: Any
         A potential fill value.
-    dtype: BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE
-        A numpy data type that models a data type defined in the Zarr V3 specification.
+    dtype: DataType
+        A valid Zarr V3 DataType.
 
     Returns
     -------
@@ -426,14 +428,20 @@ def parse_fill_value(
     """
     if fill_value is None:
         raise ValueError("Fill value cannot be None")
-    if dtype.kind == "O":
-        return fill_value
+    if dtype == DataType.string:
+        return np.str_(fill_value)
+    if dtype == DataType.bytes:
+        return np.bytes_(fill_value)
+
+    # the rest are numeric types
+    np_dtype = dtype.to_numpy()
+
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
-        if dtype.type in (np.complex64, np.complex128):
+        if dtype in (DataType.complex64, DataType.complex128):
             dtype = cast(COMPLEX_DTYPE, dtype)
             if len(fill_value) == 2:
                 # complex datatypes serialize to JSON arrays with two elements
-                return dtype.type(complex(*fill_value))
+                return np_dtype.type(complex(*fill_value))
             else:
                 msg = (
                     f"Got an invalid fill value for complex data type {dtype}."
@@ -452,7 +460,7 @@ def parse_fill_value(
         # fill_value != casted_value below.
         with warnings.catch_warnings():
             warnings.filterwarnings("ignore", category=DeprecationWarning)
-            casted_value = np.dtype(dtype).type(fill_value)
+            casted_value = np.dtype(np_dtype).type(fill_value)
     except (ValueError, OverflowError, TypeError) as e:
         raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}") from e
     # Check if the value is still representable by the dtype
@@ -460,7 +468,7 @@ def parse_fill_value(
         pass
     elif fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value):
         pass
-    elif dtype.kind in "cf":
+    elif np_dtype.kind in "cf":
         # float comparison is not exact, especially when dtype <float64
         # so we us np.isclose for this comparison.
         # this also allows us to compare nan fill_values
