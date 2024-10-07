@@ -1221,3 +1221,15 @@ class TestConsolidated:
         # and explicitly ignore it.
         group = await zarr.api.asynchronous.open_group(store=store, use_consolidated=False)
         assert group.metadata.consolidated_metadata is None
+
+
+class TestGroupMetadata:
+    def test_from_dict_extra_fields(self):
+        data = {
+            "attributes": {"key": "value"},
+            "_nczarr_superblock": {"version": "2.0.0"},
+            "zarr_format": 2,
+        }
+        result = GroupMetadata.from_dict(data)
+        expected = GroupMetadata(attributes={"key": "value"}, zarr_format=2)
+        assert result == expected

@@ -10,8 +10,13 @@ import pytest
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-from zarr.core.metadata import ArrayV3Metadata
-from zarr.core.metadata.v3 import parse_dimension_names, parse_fill_value, parse_zarr_format
+from zarr.core.metadata.v3 import (
+    ArrayV3Metadata,
+    DataType,
+    parse_dimension_names,
+    parse_fill_value,
+    parse_zarr_format,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -20,10 +25,6 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.core.common import JSON
 
-
-from zarr.core.metadata.v3 import (
-    parse_dtype,
-)
 
 bool_dtypes = ("bool",)
 
@@ -207,7 +208,7 @@ def test_metadata_to_dict(
     storage_transformers: None | tuple[dict[str, JSON]],
 ) -> None:
     shape = (1, 2, 3)
-    data_type = "uint8"
+    data_type = DataType.uint8
     if chunk_grid == "regular":
         cgrid = {"name": "regular", "configuration": {"chunk_shape": (1, 1, 1)}}
 
@@ -288,7 +289,7 @@ def test_metadata_to_dict(
 #     assert result["fill_value"] == fill_value
 
 
-async def test_invalid_dtype_raises() -> None:
+def test_invalid_dtype_raises() -> None:
     metadata_dict = {
         "zarr_format": 3,
         "node_type": "array",
@@ -299,14 +300,14 @@ async def test_invalid_dtype_raises() -> None:
         "codecs": (),
         "fill_value": np.datetime64(0, "ns"),
     }
-    with pytest.raises(ValueError, match=r".* is not a valid DataType"):
+    with pytest.raises(ValueError, match=r"Invalid V3 data_type: .*"):
         ArrayV3Metadata.from_dict(metadata_dict)
 
 
 @pytest.mark.parametrize("data", ["datetime64[s]", "foo", object()])
 def test_parse_invalid_dtype_raises(data):
     with pytest.raises(ValueError, match=r"Invalid V3 data_type: .*"):
-        parse_dtype(data)
+        DataType.parse(data)
 
 
 @pytest.mark.parametrize(

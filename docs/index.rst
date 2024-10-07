@@ -15,7 +15,6 @@ Zarr-Python
     spec
     release
     license
-    acknowledgments
     contributing
 
 **Version**: |version|

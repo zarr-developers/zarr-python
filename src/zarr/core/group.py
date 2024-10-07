@@ -5,7 +5,7 @@ import itertools
 import json
 import logging
 from collections import defaultdict
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 from enum import Enum
 from typing import TYPE_CHECKING, Literal, cast, overload
 
@@ -391,6 +391,15 @@ class GroupMetadata(Metadata):
         consolidated_metadata = data.pop("consolidated_metadata", None)
         if consolidated_metadata:
             data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
+
+        zarr_format = data.get("zarr_format")
+        if zarr_format == 2 or zarr_format is None:
+            # zarr v2 allowed arbitrary keys here.
+            # We don't want the GroupMetadata constructor to fail just because someone put an
+            # extra key in the metadata.
+            expected = {x.name for x in fields(cls)}
+            data = {k: v for k, v in data.items() if k in expected}
+
         return cls(**data)
 
     def to_dict(self) -> dict[str, Any]:
