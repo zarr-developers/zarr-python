@@ -55,5 +55,3 @@ def test_codec_pipeline() -> None:
     result = array[:]
     expected = np.ones(1)
     np.testing.assert_array_equal(result, expected)
-
-

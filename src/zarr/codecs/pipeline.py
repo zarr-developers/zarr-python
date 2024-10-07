@@ -250,8 +250,12 @@ class BatchedCodecPipeline(CodecPipeline):
                 else:
                     fill_value = chunk_spec.fill_value
 
-                    # this should maybe be version specific?
                     if fill_value is None:
+                        # Zarr V2 allowed `fill_value` to be null in the metadata.
+                        # Zarr V3 requires it to be set. This has already been
+                        # validated when decoding the metadata, but we support reading
+                        # Zarr V2 data and need to support the case where fill_value
+                        # is None.
                         fill_value = default_fill_value(dtype=chunk_spec.dtype)
 
                     out[out_selection] = fill_value

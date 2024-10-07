@@ -62,10 +62,7 @@ class ArrayV2Metadata(ArrayMetadata):
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
         filters_parsed = parse_filters(filters)
-        if fill_value is None:
-            fill_value_parsed = None
-        else:
-            fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed)
+        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed)
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
@@ -290,4 +287,16 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
 
 
 def default_fill_value(dtype: np.dtype[Any]) -> Any:
+    """
+    Get the default fill value for a type.
+
+    Notes
+    -----
+    This differs from :func:`parse_fill_value`, which parses a fill value
+    stored in the Array metadata into an in-memory value. This only gives
+    the default fill value for some type.
+
+    This is useful for reading Zarr V2 arrays, which allow the fill
+    value to be unspecified.
+    """
     return dtype.type(0)
