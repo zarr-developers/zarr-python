@@ -318,7 +318,9 @@ class AsyncArray:
             await ensure_no_existing_node(store_path, zarr_format=3)
 
         shape = parse_shapelike(shape)
-        codecs = list(codecs) if codecs is not None else [get_default_array_bytes_codec(dtype)]
+        codecs = (
+            list(codecs) if codecs is not None else [get_default_array_bytes_codec(np.dtype(dtype))]
+        )
 
         if chunk_key_encoding is None:
             chunk_key_encoding = ("default", "/")

@@ -218,7 +218,7 @@ class ArrayV3Metadata(ArrayMetadata):
             fill_value = default_fill_value(data_type_parsed)
         # we pass a string here rather than an enum to make mypy happy
         fill_value_parsed = parse_fill_value(
-            fill_value, dtype_value=cast(ALL_DTYPES, data_type_parsed.value)
+            fill_value, dtype=cast(ALL_DTYPES, data_type_parsed.value)
         )
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
@@ -362,7 +362,7 @@ STRING = np.str_
 BYTES_DTYPE = Literal["bytes"]
 BYTES = np.bytes_
 
-ALL_DTYPES = INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | STRING_DTYPE | BYTES_DTYPE
+ALL_DTYPES = BOOL_DTYPE | INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | STRING_DTYPE | BYTES_DTYPE
 
 
 @overload
@@ -407,25 +407,10 @@ def parse_fill_value(
 ) -> BYTES: ...
 
 
-# @overload
-# def parse_fill_value(
-#     fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
-#     dtype: np.dtype[Any],
-# ) -> Any:
-# # This dtype[Any] is unfortunately necessary right now.
-# # See https://github.com/zarr-developers/zarr-python/issues/2131#issuecomment-2318010899
-# # for more details, but `dtype` here (which comes from `parse_dtype`)
-# # is np.dtype[Any].
-# #
-# # If you want the specialized types rather than Any, you need to use `np.dtypes.<dtype>`
-# # rather than np.dtypes(<type>)
-# ...
-
-
 def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
-    dtype_value: ALL_DTYPES,
-) -> BOOL | INTEGER | FLOAT | COMPLEX | Any:
+    fill_value: Any,
+    dtype: ALL_DTYPES,
+) -> Any:
     """
     Parse `fill_value`, a potential fill value, into an instance of `dtype`, a data type.
     If `fill_value` is `None`, then this function will return the result of casting the value 0
@@ -446,34 +431,32 @@ def parse_fill_value(
     -------
     A scalar instance of `dtype`
     """
-    print("dtype_value", dtype_value)
-    dtype = DataType(dtype_value)
+    print("dtype_value", dtype)
+    data_type = DataType(dtype)
     if fill_value is None:
         raise ValueError("Fill value cannot be None")
-    if dtype == DataType.string:
+    if data_type == DataType.string:
         return np.str_(fill_value)
-    if dtype == DataType.bytes:
+    if data_type == DataType.bytes:
         return np.bytes_(fill_value)
 
     # the rest are numeric types
-    np_dtype = dtype.to_numpy()
+    np_dtype = data_type.to_numpy()
 
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
-        if dtype in (DataType.complex64, DataType.complex128):
+        if data_type in (DataType.complex64, DataType.complex128):
             # dtype = cast(np.dtypes.Complex64DType | np.dtypes.Complex128DType, np_dtype)
             if len(fill_value) == 2:
                 # complex datatypes serialize to JSON arrays with two elements
                 return np_dtype.type(complex(*fill_value))
             else:
                 msg = (
-                    f"Got an invalid fill value for complex data type {dtype.value}."
+                    f"Got an invalid fill value for complex data type {data_type.value}."
                     f"Expected a sequence with 2 elements, but {fill_value!r} has "
                     f"length {len(fill_value)}."
                 )
                 raise ValueError(msg)
-        msg = (
-            f"Cannot parse non-string sequence {fill_value!r} as a scalar with type {dtype.value}."
-        )
+        msg = f"Cannot parse non-string sequence {fill_value!r} as a scalar with type {data_type.value}."
         raise TypeError(msg)
 
     # Cast the fill_value to the given dtype
@@ -486,7 +469,7 @@ def parse_fill_value(
             warnings.filterwarnings("ignore", category=DeprecationWarning)
             casted_value = np.dtype(np_dtype).type(fill_value)
     except (ValueError, OverflowError, TypeError) as e:
-        raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}") from e
+        raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}") from e
     # Check if the value is still representable by the dtype
     if fill_value == "NaN" and np.isnan(casted_value):
         pass
@@ -497,15 +480,18 @@ def parse_fill_value(
         # so we us np.isclose for this comparison.
         # this also allows us to compare nan fill_values
         if not np.isclose(fill_value, casted_value, equal_nan=True):
-            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}")
+            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
     else:
         if fill_value != casted_value:
-            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}")
+            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
 
     return casted_value
 
 
-def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
+def default_fill_value(dtype: DataType) -> Any:
+    # TODO: the static types could maybe be narrowed here.
+    # mypy knows that np.dtype("int64").type(0) is an int64.
+    # so maybe DataType needs to be generic?
     if dtype == DataType.string:
         return ""
     elif dtype == DataType.bytes:
