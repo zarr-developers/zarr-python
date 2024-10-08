@@ -15,8 +15,8 @@ from zarr.core.common import JSON, ZarrFormat
 from zarr.core.group import GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.store import LocalStore, MemoryStore, StorePath
-from zarr.store.common import make_store_path
+from zarr.storage import LocalStore, MemoryStore, StorePath
+from zarr.storage.common import make_store_path
 
 from .conftest import parse_store
 
@@ -62,6 +62,19 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     await zarr.api.asynchronous.open_group(
         store=store, path="a", zarr_format=zarr_format, attributes={"key": "value"}
     )
+    objs = {x async for x in store.list()}
+    if zarr_format == 2:
+        assert objs == {".zgroup", ".zattrs", "a/.zgroup", "a/.zattrs"}
+    else:
+        assert objs == {"zarr.json", "a/zarr.json"}
+
+    # test that root group node was created
+    root = await zarr.api.asynchronous.open_group(
+        store=store,
+    )
+    agroup = await root.getitem("a")
+    assert agroup.attrs == {"key": "value"}
+
     # create a child node with a couple intermediates
     await zarr.api.asynchronous.open_group(store=store, path="a/b/c/d", zarr_format=zarr_format)
     parts = ["a", "a/b", "a/b/c"]
@@ -74,10 +87,9 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     expected = [f"{part}/{file}" for file in files for part in parts]
 
     if zarr_format == 2:
-        expected.append("a/b/c/d/.zgroup")
-        expected.append("a/b/c/d/.zattrs")
+        expected.extend([".zgroup", ".zattrs", "a/b/c/d/.zgroup", "a/b/c/d/.zattrs"])
     else:
-        expected.append("a/b/c/d/zarr.json")
+        expected.extend(["zarr.json", "a/b/c/d/zarr.json"])
 
     expected = sorted(expected)
 
@@ -230,9 +242,7 @@ def test_group_create(store: Store, exists_ok: bool, zarr_format: ZarrFormat) ->
 
     if not exists_ok:
         with pytest.raises(ContainsGroupError):
-            group = Group.from_store(
-                store, attributes=attributes, exists_ok=exists_ok, zarr_format=zarr_format
-            )
+            _ = Group.from_store(store, exists_ok=exists_ok, zarr_format=zarr_format)
 
 
 def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> None:
@@ -311,8 +321,7 @@ def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
     """
 
     group = Group.from_store(store, zarr_format=zarr_format)
-    with pytest.raises(NotImplementedError):
-        list(group)
+    assert list(group) == []
 
 
 def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
@@ -321,8 +330,7 @@ def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
     """
 
     group = Group.from_store(store, zarr_format=zarr_format)
-    with pytest.raises(NotImplementedError):
-        len(group)
+    assert len(group) == 0
 
 
 def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
@@ -439,7 +447,7 @@ def test_group_array_creation(
     assert empty_array.shape == shape
     assert empty_array.store_path.store == store
 
-    empty_like_array = group.empty_like(name="empty_like", prototype=empty_array)
+    empty_like_array = group.empty_like(name="empty_like", data=empty_array)
     assert isinstance(empty_like_array, Array)
     assert empty_like_array.fill_value == 0
     assert empty_like_array.shape == shape
@@ -451,7 +459,7 @@ def test_group_array_creation(
     assert empty_array_bool.shape == shape
     assert empty_array_bool.store_path.store == store
 
-    empty_like_array_bool = group.empty_like(name="empty_like_bool", prototype=empty_array_bool)
+    empty_like_array_bool = group.empty_like(name="empty_like_bool", data=empty_array_bool)
     assert isinstance(empty_like_array_bool, Array)
     assert not empty_like_array_bool.fill_value
     assert empty_like_array_bool.shape == shape
@@ -463,7 +471,7 @@ def test_group_array_creation(
     assert zeros_array.shape == shape
     assert zeros_array.store_path.store == store
 
-    zeros_like_array = group.zeros_like(name="zeros_like", prototype=zeros_array)
+    zeros_like_array = group.zeros_like(name="zeros_like", data=zeros_array)
     assert isinstance(zeros_like_array, Array)
     assert zeros_like_array.fill_value == 0
     assert zeros_like_array.shape == shape
@@ -475,7 +483,7 @@ def test_group_array_creation(
     assert ones_array.shape == shape
     assert ones_array.store_path.store == store
 
-    ones_like_array = group.ones_like(name="ones_like", prototype=ones_array)
+    ones_like_array = group.ones_like(name="ones_like", data=ones_array)
     assert isinstance(ones_like_array, Array)
     assert ones_like_array.fill_value == 1
     assert ones_like_array.shape == shape
@@ -487,7 +495,7 @@ def test_group_array_creation(
     assert full_array.shape == shape
     assert full_array.store_path.store == store
 
-    full_like_array = group.full_like(name="full_like", prototype=full_array, fill_value=43)
+    full_like_array = group.full_like(name="full_like", data=full_array, fill_value=43)
     assert isinstance(full_like_array, Array)
     assert full_like_array.fill_value == 43
     assert full_like_array.shape == shape
@@ -955,3 +963,15 @@ async def test_open_mutable_mapping():
 def test_open_mutable_mapping_sync():
     group = zarr.open_group(store={}, mode="w")
     assert isinstance(group.store_path.store, MemoryStore)
+
+
+class TestGroupMetadata:
+    def test_from_dict_extra_fields(self):
+        data = {
+            "attributes": {"key": "value"},
+            "_nczarr_superblock": {"version": "2.0.0"},
+            "zarr_format": 2,
+        }
+        result = GroupMetadata.from_dict(data)
+        expected = GroupMetadata(attributes={"key": "value"}, zarr_format=2)
+        assert result == expected

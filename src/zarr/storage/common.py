@@ -4,12 +4,12 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import AccessMode, ByteRangeRequest, Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
-from zarr.store.local import LocalStore
-from zarr.store.memory import MemoryStore
+from zarr.storage.local import LocalStore
+from zarr.storage.memory import MemoryStore
 
 # from zarr.store.remote import RemoteStore
 
@@ -83,13 +83,15 @@ async def make_store_path(
     mode: AccessModeLiteral | None = None,
     storage_options: dict[str, Any] | None = None,
 ) -> StorePath:
-    from zarr.store.remote import RemoteStore  # circular import
+    from zarr.storage.remote import RemoteStore  # circular import
 
     used_storage_options = False
 
     if isinstance(store_like, StorePath):
-        if mode is not None:
-            assert AccessMode.from_literal(mode) == store_like.store.mode
+        if mode is not None and mode != store_like.store.mode.str:
+            _store = store_like.store.with_mode(mode)
+            await _store._ensure_open()
+            store_like = StorePath(_store)
         result = store_like
     elif isinstance(store_like, Store):
         if mode is not None and mode != store_like.mode.str:
@@ -97,9 +99,8 @@ async def make_store_path(
         await store_like._ensure_open()
         result = StorePath(store_like)
     elif store_like is None:
-        if mode is None:
-            mode = "w"  # exception to the default mode = 'r'
-        result = StorePath(await MemoryStore.open(mode=mode))
+        # mode = "w" is an exception to the default mode = 'r'
+        result = StorePath(await MemoryStore.open(mode=mode or "w"))
     elif isinstance(store_like, Path):
         result = StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
     elif isinstance(store_like, str):
@@ -115,7 +116,7 @@ async def make_store_path(
     elif isinstance(store_like, dict):
         # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
         # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
-        result = StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
+        result = StorePath(await MemoryStore.open(store_dict=store_like, mode=mode or "r"))
     else:
         msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
         raise TypeError(msg)

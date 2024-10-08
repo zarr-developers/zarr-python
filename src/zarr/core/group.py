@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy as np
@@ -29,8 +29,8 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.sync import SyncMixin, sync
-from zarr.store import StoreLike, StorePath, make_store_path
-from zarr.store.common import ensure_no_existing_node
+from zarr.storage import StoreLike, make_store_path
+from zarr.storage.common import StorePath, ensure_no_existing_node
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
@@ -116,6 +116,15 @@ class GroupMetadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
         assert data.pop("node_type", None) in ("group", None)
+
+        zarr_format = data.get("zarr_format")
+        if zarr_format == 2 or zarr_format is None:
+            # zarr v2 allowed arbitrary keys here.
+            # We don't want the GroupMetadata constructor to fail just because someone put an
+            # extra key in the metadata.
+            expected = {x.name for x in fields(cls)}
+            data = {k: v for k, v in data.items() if k in expected}
+
         return cls(**data)
 
     def to_dict(self) -> dict[str, Any]:
@@ -176,7 +185,9 @@ class AsyncGroup:
                 # alternatively, we could warn and favor v3
                 raise ValueError("Both zarr.json and .zgroup objects exist")
             if zarr_json_bytes is None and zgroup_bytes is None:
-                raise FileNotFoundError(store_path)
+                raise FileNotFoundError(
+                    f"could not find zarr.json or .zgroup objects in {store_path}"
+                )
             # set zarr_format based on which keys were found
             if zarr_json_bytes is not None:
                 zarr_format = 3
@@ -698,6 +709,10 @@ class AsyncGroup:
                     "Object at %s is not recognized as a component of a Zarr hierarchy.", key
                 )
 
+    async def keys(self) -> AsyncGenerator[str, None]:
+        async for key, _ in self.members():
+            yield key
+
     async def contains(self, member: str) -> bool:
         # TODO: this can be made more efficient.
         try:
@@ -753,24 +768,20 @@ class AsyncGroup:
         )
 
     async def empty_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray:
-        return await async_api.empty_like(a=prototype, store=self.store_path, path=name, **kwargs)
+        return await async_api.empty_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def zeros_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray:
-        return await async_api.zeros_like(a=prototype, store=self.store_path, path=name, **kwargs)
+        return await async_api.zeros_like(a=data, store=self.store_path, path=name, **kwargs)
 
-    async def ones_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray:
-        return await async_api.ones_like(a=prototype, store=self.store_path, path=name, **kwargs)
+    async def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
+        return await async_api.ones_like(a=data, store=self.store_path, path=name, **kwargs)
 
-    async def full_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray:
-        return await async_api.full_like(a=prototype, store=self.store_path, path=name, **kwargs)
+    async def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
+        return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
         raise NotImplementedError
@@ -821,14 +832,17 @@ class Group(SyncMixin):
         self._sync(self._async_group.delitem(key))
 
     def __iter__(self) -> Iterator[str]:
-        raise NotImplementedError
+        yield from self.keys()
 
     def __len__(self) -> int:
-        raise NotImplementedError
+        return self.nmembers()
 
     def __setitem__(self, key: str, value: Any) -> None:
         """__setitem__ is not supported in v3"""
         raise NotImplementedError
+
+    def __repr__(self) -> str:
+        return f"<Group {self.store_path}>"
 
     async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
         new_metadata = replace(self.metadata, attributes=new_attributes)
@@ -903,6 +917,9 @@ class Group(SyncMixin):
         _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
         return tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
+
+    def keys(self) -> Generator[str, None]:
+        yield from self._sync_iter(self._async_group.keys())
 
     def __contains__(self, member: str) -> bool:
         return self._sync(self._async_group.contains(member))
@@ -1150,25 +1167,17 @@ class Group(SyncMixin):
             )
         )
 
-    def empty_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.empty_like(name=name, prototype=prototype, **kwargs))
-        )
+    def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 
-    def zeros_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.zeros_like(name=name, prototype=prototype, **kwargs))
-        )
+    def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
 
-    def ones_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.ones_like(name=name, prototype=prototype, **kwargs))
-        )
+    def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
 
-    def full_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.full_like(name=name, prototype=prototype, **kwargs))
-        )
+    def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.full_like(name=name, data=data, **kwargs)))
 
     def move(self, source: str, dest: str) -> None:
         return self._sync(self._async_group.move(source, dest))

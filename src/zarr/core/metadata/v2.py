@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import base64
 from collections.abc import Iterable
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from typing import Any, Literal, Self
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ChunkCoords
 
 import json
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 
 import numcodecs
 import numpy as np
@@ -31,7 +32,7 @@ class ArrayV2Metadata(ArrayMetadata):
     shape: ChunkCoords
     chunk_grid: RegularChunkGrid
     data_type: np.dtype[Any]
-    fill_value: None | int | float = 0
+    fill_value: None | int | float | str | bytes = 0
     order: Literal["C", "F"] = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
@@ -143,10 +144,36 @@ class ArrayV2Metadata(ArrayMetadata):
 
         _data["chunk_grid"] = _data.pop("chunks")
         _data["data_type"] = _data.pop("dtype")
+        dtype = parse_dtype(_data["dtype"])
+
+        if dtype.kind in "SV":
+            fill_value_encoded = _data.get("fill_value")
+            if fill_value_encoded is not None:
+                fill_value = base64.standard_b64decode(fill_value_encoded)
+                _data["fill_value"] = fill_value
+
+        # zarr v2 allowed arbitrary keys here.
+        # We don't want the ArrayV2Metadata constructor to fail just because someone put an
+        # extra key in the metadata.
+        expected = {x.name for x in fields(cls)}
+        # # https://github.com/zarr-developers/zarr-python/issues/2269
+        # # handle the renames
+        # expected |= {"dtype", "chunks"}
+
+        _data = {k: v for k, v in _data.items() if k in expected}
+
         return cls(**_data)
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
+
+        if self.dtype.kind in "SV" and self.fill_value is not None:
+            # There's a relationship between self.dtype and self.fill_value
+            # that mypy isn't aware of. The fact that we have S or V dtype here
+            # means we should have a bytes-type fill_value.
+            fill_value = base64.standard_b64encode(cast(bytes, self.fill_value)).decode("ascii")
+            zarray_dict["fill_value"] = fill_value
+
         _ = zarray_dict.pop("chunk_grid")
         zarray_dict["chunks"] = self.chunk_grid.chunk_shape
 
