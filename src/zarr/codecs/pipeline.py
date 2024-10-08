@@ -17,7 +17,7 @@ from zarr.abc.codec import (
 from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar, is_total_slice
-from zarr.core.metadata.v2 import default_fill_value
+from zarr.core.metadata.v2 import _default_fill_value
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:
@@ -256,7 +256,7 @@ class BatchedCodecPipeline(CodecPipeline):
                         # validated when decoding the metadata, but we support reading
                         # Zarr V2 data and need to support the case where fill_value
                         # is None.
-                        fill_value = default_fill_value(dtype=chunk_spec.dtype)
+                        fill_value = _default_fill_value(dtype=chunk_spec.dtype)
 
                     out[out_selection] = fill_value
         else:
@@ -287,7 +287,7 @@ class BatchedCodecPipeline(CodecPipeline):
                 else:
                     fill_value = chunk_spec.fill_value
                     if fill_value is None:
-                        fill_value = default_fill_value(dtype=chunk_spec.dtype)
+                        fill_value = _default_fill_value(dtype=chunk_spec.dtype)
                     out[out_selection] = fill_value
 
     def _merge_chunk_array(

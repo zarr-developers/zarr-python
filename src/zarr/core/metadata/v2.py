@@ -302,7 +302,7 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
     return fill_value
 
 
-def default_fill_value(dtype: np.dtype[Any]) -> Any:
+def _default_fill_value(dtype: np.dtype[Any]) -> Any:
     """
     Get the default fill value for a type.
 
@@ -315,4 +315,9 @@ def default_fill_value(dtype: np.dtype[Any]) -> Any:
     This is useful for reading Zarr V2 arrays, which allow the fill
     value to be unspecified.
     """
-    return dtype.type(0)
+    if dtype.kind == "S":
+        return b""
+    elif dtype.kind == "U":
+        return ""
+    else:
+        return dtype.type(0)
