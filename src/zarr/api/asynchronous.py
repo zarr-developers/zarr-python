@@ -14,6 +14,7 @@ from zarr.core.config import config
 from zarr.core.group import AsyncGroup
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
     StoreLike,
     StorePath,
@@ -247,9 +248,9 @@ async def open(
 
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
-    except (KeyError, ValueError):
+    except (KeyError, NodeTypeValidationError):
         # KeyError for a missing key
-        # ValueError for failing to parse node metadata as an array when it's
+        # NodeTypeValidationError for failing to parse node metadata as an array when it's
         # actually a group
         return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
 
