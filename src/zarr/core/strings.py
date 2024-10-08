@@ -7,12 +7,12 @@ from warnings import warn
 
 import numpy as np
 
-# STRING_DTYPE is the in-memory datatype that will be used for V3 string arrays
+# _STRING_DTYPE is the in-memory datatype that will be used for V3 string arrays
 # when reading data back from Zarr.
 # Any valid string-like datatype should be fine for *setting* data.
 
-STRING_DTYPE: Union["np.dtypes.StringDType", "np.dtypes.ObjectDType"]
-NUMPY_SUPPORTS_VLEN_STRING: bool
+_STRING_DTYPE: Union["np.dtypes.StringDType", "np.dtypes.ObjectDType"]
+_NUMPY_SUPPORTS_VLEN_STRING: bool
 
 
 def cast_array(
@@ -23,24 +23,24 @@ def cast_array(
 
 try:
     # this new vlen string dtype was added in NumPy 2.0
-    STRING_DTYPE = np.dtypes.StringDType()
-    NUMPY_SUPPORTS_VLEN_STRING = True
+    _STRING_DTYPE = np.dtypes.StringDType()
+    _NUMPY_SUPPORTS_VLEN_STRING = True
 
     def cast_array(
         data: np.ndarray[Any, np.dtype[Any]],
     ) -> np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType]:
-        out = data.astype(STRING_DTYPE, copy=False)
+        out = data.astype(_STRING_DTYPE, copy=False)
         return cast(np.ndarray[Any, np.dtypes.StringDType], out)
 
 except AttributeError:
     # if not available, we fall back on an object array of strings, as in Zarr < 3
-    STRING_DTYPE = np.dtypes.ObjectDType()
-    NUMPY_SUPPORTS_VLEN_STRING = False
+    _STRING_DTYPE = np.dtypes.ObjectDType()
+    _NUMPY_SUPPORTS_VLEN_STRING = False
 
     def cast_array(
         data: np.ndarray[Any, np.dtype[Any]],
     ) -> np.ndarray[Any, Union["np.dtypes.StringDType", "np.dtypes.ObjectDType"]]:
-        out = data.astype(STRING_DTYPE, copy=False)
+        out = data.astype(_STRING_DTYPE, copy=False)
         return cast(np.ndarray[Any, np.dtypes.ObjectDType], out)
 
 
@@ -61,13 +61,13 @@ def cast_to_string_dtype(
         return cast_array(data)
         # out = data.astype(STRING_DTYPE, copy=False)
         # return cast(np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType], out)
-    if NUMPY_SUPPORTS_VLEN_STRING:
-        if np.issubdtype(data.dtype, STRING_DTYPE):
+    if _NUMPY_SUPPORTS_VLEN_STRING:
+        if np.issubdtype(data.dtype, _STRING_DTYPE):
             # already a valid string variable length string dtype
             return cast_array(data)
     if np.issubdtype(data.dtype, np.object_):
         # object arrays require more careful handling
-        if NUMPY_SUPPORTS_VLEN_STRING:
+        if _NUMPY_SUPPORTS_VLEN_STRING:
             try:
                 # cast to variable-length string dtype, fail if object contains non-string data
                 # mypy says "error: Unexpected keyword argument "coerce" for "StringDType"  [call-arg]"
