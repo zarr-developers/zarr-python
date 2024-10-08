@@ -431,7 +431,6 @@ def parse_fill_value(
     -------
     A scalar instance of `dtype`
     """
-    print("dtype_value", dtype)
     data_type = DataType(dtype)
     if fill_value is None:
         raise ValueError("Fill value cannot be None")
@@ -488,10 +487,7 @@ def parse_fill_value(
     return casted_value
 
 
-def default_fill_value(dtype: DataType) -> Any:
-    # TODO: the static types could maybe be narrowed here.
-    # mypy knows that np.dtype("int64").type(0) is an int64.
-    # so maybe DataType needs to be generic?
+def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
     if dtype == DataType.string:
         return ""
     elif dtype == DataType.bytes:
@@ -523,7 +519,7 @@ class DataType(Enum):
     bytes = "bytes"
 
     @property
-    def byte_count(self) -> int:
+    def byte_count(self) -> None | int:
         data_type_byte_counts = {
             DataType.bool: 1,
             DataType.int8: 1,
@@ -540,12 +536,15 @@ class DataType(Enum):
             DataType.complex64: 8,
             DataType.complex128: 16,
         }
-        return data_type_byte_counts[self]
+        try:
+            return data_type_byte_counts[self]
+        except KeyError:
+            # string and bytes have variable length
+            return None
 
     @property
     def has_endianness(self) -> _bool:
-        # This might change in the future, e.g. for a complex with 2 8-bit floats
-        return self.byte_count != 1
+        return self.byte_count is not None and self.byte_count != 1
 
     def to_numpy_shortname(self) -> str:
         data_type_to_numpy = {
@@ -566,7 +565,11 @@ class DataType(Enum):
         }
         return data_type_to_numpy[self]
 
-    def to_numpy(self) -> np.dtype[Any]:
+    def to_numpy(self) -> np.dtype[np.generic]:
+        # note: it is not possible to round trip DataType <-> np.dtype
+        # due to the fact that DataType.string and DataType.bytes both
+        # generally return np.dtype("O") from this function, even though
+        # they can originate as fixed-length types (e.g. "<U10", "|S5")
         if self == DataType.string:
             return STRING_NP_DTYPE
         elif self == DataType.bytes:

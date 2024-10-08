@@ -354,3 +354,17 @@ async def test_special_float_fill_values(fill_value: str) -> None:
     elif fill_value == "-Infinity":
         assert np.isneginf(m.fill_value)
         assert d["fill_value"] == "-Infinity"
+
+
+@pytest.mark.parametrize("dtype_str", dtypes)
+def test_dtypes(dtype_str: str) -> None:
+    dt = DataType(dtype_str)
+    np_dtype = dt.to_numpy()
+    if dtype_str not in vlen_dtypes:
+        # we can round trip "normal" dtypes
+        assert dt == DataType.from_numpy(np_dtype)
+        assert dt.byte_count == np_dtype.itemsize
+        assert dt.has_endianness == (dt.byte_count > 1)
+    else:
+        # return type for vlen types may vary depending on numpy version
+        assert dt.byte_count is None
