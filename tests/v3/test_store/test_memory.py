@@ -52,10 +52,10 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
     store_cls = GpuMemoryStore
     buffer_cls = gpu.Buffer
 
-    def set(self, store: GpuMemoryStore, key: str, value: Buffer) -> None:
+    async def set(self, store: GpuMemoryStore, key: str, value: Buffer) -> None:
         store._store_dict[key] = value
 
-    def get(self, store: MemoryStore, key: str) -> Buffer:
+    async def get(self, store: MemoryStore, key: str) -> Buffer:
         return store._store_dict[key]
 
     @pytest.fixture(params=[None, True])
