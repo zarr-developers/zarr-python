@@ -247,7 +247,10 @@ async def open(
 
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
-    except KeyError:
+    except (KeyError, ValueError):
+        # KeyError for a missing key
+        # ValueError for failing to parse node metadata as an array when it's
+        # actually a group
         return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
 
 
@@ -580,6 +583,8 @@ async def open_group(
     meta_array : array-like, optional
         An array instance to use for determining arrays to create and return
         to users. Use `numpy.empty(())` by default.
+    attributes : dict
+        A dictionary of JSON-serializable values with user-defined attributes.
 
     Returns
     -------
