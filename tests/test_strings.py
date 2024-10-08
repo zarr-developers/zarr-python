@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from zarr.strings import NUMPY_SUPPORTS_VLEN_STRING, STRING_DTYPE, cast_to_string_dtype
+from zarr.core.strings import NUMPY_SUPPORTS_VLEN_STRING, STRING_DTYPE, cast_to_string_dtype
 
 
 def test_string_defaults() -> None:

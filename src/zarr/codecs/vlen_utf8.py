@@ -9,8 +9,8 @@ from numcodecs.vlen import VLenBytes, VLenUTF8
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_named_configuration
+from zarr.core.strings import cast_to_string_dtype
 from zarr.registry import register_codec
-from zarr.strings import cast_to_string_dtype
 
 if TYPE_CHECKING:
     from typing import Self
@@ -47,7 +47,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
         assert isinstance(chunk_bytes, Buffer)
 
         raw_bytes = chunk_bytes.as_array_like()
-        decoded = vlen_utf8_codec.decode(raw_bytes)
+        decoded = _vlen_utf8_codec.decode(raw_bytes)
         assert decoded.dtype == np.object_
         decoded.shape = chunk_spec.shape
         # coming out of the code, we know this is safe, so don't issue a warning
@@ -61,7 +61,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
     ) -> Buffer | None:
         assert isinstance(chunk_array, NDBuffer)
         return chunk_spec.prototype.buffer.from_bytes(
-            vlen_utf8_codec.encode(chunk_array.as_numpy_array())
+            _vlen_utf8_codec.encode(chunk_array.as_numpy_array())
         )
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
@@ -93,7 +93,7 @@ class VLenBytesCodec(ArrayBytesCodec):
         assert isinstance(chunk_bytes, Buffer)
 
         raw_bytes = chunk_bytes.as_array_like()
-        decoded = vlen_bytes_codec.decode(raw_bytes)
+        decoded = _vlen_bytes_codec.decode(raw_bytes)
         assert decoded.dtype == np.object_
         decoded.shape = chunk_spec.shape
         return chunk_spec.prototype.nd_buffer.from_numpy_array(decoded)
@@ -105,7 +105,7 @@ class VLenBytesCodec(ArrayBytesCodec):
     ) -> Buffer | None:
         assert isinstance(chunk_array, NDBuffer)
         return chunk_spec.prototype.buffer.from_bytes(
-            vlen_bytes_codec.encode(chunk_array.as_numpy_array())
+            _vlen_bytes_codec.encode(chunk_array.as_numpy_array())
         )
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
