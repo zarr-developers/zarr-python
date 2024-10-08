@@ -156,7 +156,7 @@ def test_parse_fill_value_complex_invalid(fill_value: Any, dtype_str: str) -> No
         f"length {len(fill_value)}."
     )
     with pytest.raises(ValueError, match=re.escape(match)):
-        parse_fill_value(fill_value=fill_value, dtype_value=dtype_str)
+        parse_fill_value(fill_value=fill_value, dtype=dtype_str)
 
 
 @pytest.mark.parametrize("fill_value", [{"foo": 10}])
