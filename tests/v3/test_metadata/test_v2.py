@@ -92,8 +92,8 @@ def test_from_dict_extra_fields() -> None:
     expected = ArrayV2Metadata(
         attributes={"key": "value"},
         shape=(8,),
-        dtype="float64",
-        chunks=(8,),
+        data_type="float64",
+        chunk_grid=(8,),
         fill_value=0.0,
         order="C",
     )

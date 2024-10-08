@@ -144,7 +144,7 @@ class ArrayV2Metadata(ArrayMetadata):
 
         _data["chunk_grid"] = _data.pop("chunks")
         _data["data_type"] = _data.pop("dtype")
-        dtype = parse_dtype(_data["dtype"])
+        dtype = parse_dtype(_data["data_type"])
 
         if dtype.kind in "SV":
             fill_value_encoded = _data.get("fill_value")
