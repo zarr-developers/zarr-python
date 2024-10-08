@@ -426,12 +426,10 @@ def parse_fill_value(
         return np.bytes_(fill_value)
 
     # the rest are numeric types
-    np_dtype = data_type.to_numpy()
-    np_dtype = cast(np.dtype[np.generic], np_dtype)
+    np_dtype = cast(np.dtype[np.generic], data_type.to_numpy())
 
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if data_type in (DataType.complex64, DataType.complex128):
-            # dtype = cast(np.dtypes.Complex64DType | np.dtypes.Complex128DType, np_dtype)
             if len(fill_value) == 2:
                 # complex datatypes serialize to JSON arrays with two elements
                 return np_dtype.type(complex(*fill_value))
