@@ -178,7 +178,7 @@ class ArrayV2Metadata(Metadata):
             fill_value = base64.standard_b64encode(cast(bytes, self.fill_value)).decode("ascii")
             zarray_dict["fill_value"] = fill_value
 
-        _ = zarray_dict.pop("chunk_grid")
+        _ = zarray_dict.pop("chunks")
         zarray_dict["chunks"] = self.chunks.chunk_shape
 
         _ = zarray_dict.pop("dtype")

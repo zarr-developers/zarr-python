@@ -64,9 +64,14 @@ from zarr.core.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.core.metadata.common import ArrayMetadata, ArrayMetadataDict
-from zarr.core.metadata.v2 import ArrayV2Metadata, ArrayV2MetadataDict
-from zarr.core.metadata.v3 import ArrayV3Metadata, ArrayV3MetadataDict
+from zarr.core.metadata import (
+    ArrayMetadata,
+    ArrayMetadataDict,
+    ArrayV2Metadata,
+    ArrayV2MetadataDict,
+    ArrayV3Metadata,
+    ArrayV3MetadataDict,
+)
 from zarr.core.sync import collect_aiterator, sync
 from zarr.registry import get_pipeline_class
 from zarr.storage import StoreLike, make_store_path
