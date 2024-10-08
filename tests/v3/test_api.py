@@ -7,6 +7,7 @@ from numpy.testing import assert_array_equal
 
 import zarr
 import zarr.api.asynchronous
+import zarr.core.group
 from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.api.synchronous import create, group, load, open, open_group, save, save_array, save_group
@@ -940,5 +941,5 @@ async def test_open_falls_back_to_open_group_async() -> None:
     await zarr.api.asynchronous.open_group(store, attributes={"key": "value"})
 
     group = await zarr.api.asynchronous.open(store=store)
-    assert isinstance(group, zarr.api.asynchronous.AsyncGroup)
+    assert isinstance(group, zarr.core.group.AsyncGroup)
     assert group.attrs == {"key": "value"}
