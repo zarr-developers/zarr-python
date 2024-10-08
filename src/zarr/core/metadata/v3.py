@@ -335,30 +335,16 @@ class ArrayV3Metadata(ArrayMetadata):
 # enum Literals can't be used in typing, so we have to restate all of the V3 dtypes as types
 # https://github.com/python/typing/issues/781
 
-BOOL = np.bool_
-# BOOL_DTYPE = np.dtypes.BoolDType
 BOOL_DTYPE = Literal["bool"]
+BOOL = np.bool_
 INTEGER_DTYPE = Literal["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64"]
-# INTEGER_DTYPE = (
-#     np.dtypes.Int8DType
-#     | np.dtypes.Int16DType
-#     | np.dtypes.Int32DType
-#     | np.dtypes.Int64DType
-#     | np.dtypes.UInt8DType
-#     | np.dtypes.UInt16DType
-#     | np.dtypes.UInt32DType
-#     | np.dtypes.UInt64DType
-# )
 INTEGER = np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64
-# FLOAT_DTYPE = np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float64DType
 FLOAT_DTYPE = Literal["float16", "float32", "float64"]
 FLOAT = np.float16 | np.float32 | np.float64
-# COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
 COMPLEX_DTYPE = Literal["complex64", "complex128"]
 COMPLEX = np.complex64 | np.complex128
 STRING_DTYPE = Literal["string"]
 STRING = np.str_
-# BYTES_DTYPE = np.dtypes.BytesDType
 BYTES_DTYPE = Literal["bytes"]
 BYTES = np.bytes_
 
@@ -565,7 +551,7 @@ class DataType(Enum):
         }
         return data_type_to_numpy[self]
 
-    def to_numpy(self) -> np.dtype[np.generic]:
+    def to_numpy(self) -> np.dtypes.StringDType | np.dtypes.ObjectDType | np.dtype[np.generic]:
         # note: it is not possible to round trip DataType <-> np.dtype
         # due to the fact that DataType.string and DataType.bytes both
         # generally return np.dtype("O") from this function, even though
