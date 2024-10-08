@@ -34,7 +34,7 @@ __all__ = [
 ]
 
 
-def get_default_array_bytes_codec(
+def _get_default_array_bytes_codec(
     np_dtype: np.dtype[Any],
 ) -> BytesCodec | VLenUTF8Codec | VLenBytesCodec:
     dtype = DataType.from_numpy(np_dtype)

@@ -19,8 +19,8 @@ if TYPE_CHECKING:
 
 
 # can use a global because there are no parameters
-vlen_utf8_codec = VLenUTF8()
-vlen_bytes_codec = VLenBytes()
+_vlen_utf8_codec = VLenUTF8()
+_vlen_bytes_codec = VLenBytes()
 
 
 @dataclass(frozen=True)
