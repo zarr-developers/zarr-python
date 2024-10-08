@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, cast, overload
+from typing import TYPE_CHECKING, overload
 
 if TYPE_CHECKING:
     from typing import Self
@@ -14,7 +14,7 @@ import json
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import numcodecs.abc
 import numpy as np
@@ -29,7 +29,7 @@ from zarr.core.common import ZARR_JSON, parse_named_configuration, parse_shapeli
 from zarr.core.config import config
 from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 from zarr.registry import get_codec_class
-from zarr.strings import STRING_DTYPE
+from zarr.strings import STRING_DTYPE as STRING_NP_DTYPE
 
 DEFAULT_DTYPE = "float64"
 
@@ -216,7 +216,10 @@ class ArrayV3Metadata(ArrayMetadata):
         dimension_names_parsed = parse_dimension_names(dimension_names)
         if fill_value is None:
             fill_value = default_fill_value(data_type_parsed)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed)
+        # we pass a string here rather than an enum to make mypy happy
+        fill_value_parsed = parse_fill_value(
+            fill_value, dtype_value=cast(ALL_DTYPES, data_type_parsed.value)
+        )
         attributes_parsed = parse_attributes(attributes)
         codecs_parsed_partial = parse_codecs(codecs)
         storage_transformers_parsed = parse_storage_transformers(storage_transformers)
@@ -329,26 +332,37 @@ class ArrayV3Metadata(ArrayMetadata):
         return replace(self, attributes=attributes)
 
 
+# enum Literals can't be used in typing, so we have to restate all of the V3 dtypes as types
+# https://github.com/python/typing/issues/781
+
 BOOL = np.bool_
-BOOL_DTYPE = np.dtypes.BoolDType
-INTEGER_DTYPE = (
-    np.dtypes.Int8DType
-    | np.dtypes.Int16DType
-    | np.dtypes.Int32DType
-    | np.dtypes.Int64DType
-    | np.dtypes.UInt8DType
-    | np.dtypes.UInt16DType
-    | np.dtypes.UInt32DType
-    | np.dtypes.UInt64DType
-)
+# BOOL_DTYPE = np.dtypes.BoolDType
+BOOL_DTYPE = Literal["bool"]
+INTEGER_DTYPE = Literal["int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64"]
+# INTEGER_DTYPE = (
+#     np.dtypes.Int8DType
+#     | np.dtypes.Int16DType
+#     | np.dtypes.Int32DType
+#     | np.dtypes.Int64DType
+#     | np.dtypes.UInt8DType
+#     | np.dtypes.UInt16DType
+#     | np.dtypes.UInt32DType
+#     | np.dtypes.UInt64DType
+# )
 INTEGER = np.int8 | np.int16 | np.int32 | np.int64 | np.uint8 | np.uint16 | np.uint32 | np.uint64
-FLOAT_DTYPE = np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float64DType
+# FLOAT_DTYPE = np.dtypes.Float16DType | np.dtypes.Float32DType | np.dtypes.Float64DType
+FLOAT_DTYPE = Literal["float16", "float32", "float64"]
 FLOAT = np.float16 | np.float32 | np.float64
-COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
+# COMPLEX_DTYPE = np.dtypes.Complex64DType | np.dtypes.Complex128DType
+COMPLEX_DTYPE = Literal["complex64", "complex128"]
 COMPLEX = np.complex64 | np.complex128
+STRING_DTYPE = Literal["string"]
 STRING = np.str_
-BYTES_DTYPE = np.dtypes.BytesDType
+# BYTES_DTYPE = np.dtypes.BytesDType
+BYTES_DTYPE = Literal["bytes"]
 BYTES = np.bytes_
+
+ALL_DTYPES = INTEGER_DTYPE | FLOAT_DTYPE | COMPLEX_DTYPE | STRING_DTYPE | BYTES_DTYPE
 
 
 @overload
@@ -367,45 +381,50 @@ def parse_fill_value(
 
 @overload
 def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
     dtype: FLOAT_DTYPE,
 ) -> FLOAT: ...
 
 
 @overload
 def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
     dtype: COMPLEX_DTYPE,
 ) -> COMPLEX: ...
 
 
 @overload
 def parse_fill_value(
-    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
-    dtype: np.dtype[Any],
-) -> Any:
-    # This dtype[Any] is unfortunately necessary right now.
-    # See https://github.com/zarr-developers/zarr-python/issues/2131#issuecomment-2318010899
-    # for more details, but `dtype` here (which comes from `parse_dtype`)
-    # is np.dtype[Any].
-    #
-    # If you want the specialized types rather than Any, you need to use `np.dtypes.<dtype>`
-    # rather than np.dtypes(<type>)
-    ...
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
+    dtype: STRING_DTYPE,
+) -> STRING: ...
 
 
-def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
-    if dtype == DataType.string:
-        return ""
-    elif dtype == DataType.bytes:
-        return b""
-    else:
-        return dtype.to_numpy().type(0)
+@overload
+def parse_fill_value(
+    fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
+    dtype: BYTES_DTYPE,
+) -> BYTES: ...
+
+
+# @overload
+# def parse_fill_value(
+#     fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool | None,
+#     dtype: np.dtype[Any],
+# ) -> Any:
+# # This dtype[Any] is unfortunately necessary right now.
+# # See https://github.com/zarr-developers/zarr-python/issues/2131#issuecomment-2318010899
+# # for more details, but `dtype` here (which comes from `parse_dtype`)
+# # is np.dtype[Any].
+# #
+# # If you want the specialized types rather than Any, you need to use `np.dtypes.<dtype>`
+# # rather than np.dtypes(<type>)
+# ...
 
 
 def parse_fill_value(
     fill_value: complex | str | bytes | np.generic | Sequence[Any] | bool,
-    dtype: DataType,
+    dtype_value: ALL_DTYPES,
 ) -> BOOL | INTEGER | FLOAT | COMPLEX | Any:
     """
     Parse `fill_value`, a potential fill value, into an instance of `dtype`, a data type.
@@ -420,13 +439,15 @@ def parse_fill_value(
     ----------
     fill_value: Any
         A potential fill value.
-    dtype: DataType
+    dtype_value: str
         A valid Zarr V3 DataType.
 
     Returns
     -------
     A scalar instance of `dtype`
     """
+    print("dtype_value", dtype_value)
+    dtype = DataType(dtype_value)
     if fill_value is None:
         raise ValueError("Fill value cannot be None")
     if dtype == DataType.string:
@@ -439,18 +460,20 @@ def parse_fill_value(
 
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if dtype in (DataType.complex64, DataType.complex128):
-            dtype = cast(COMPLEX_DTYPE, dtype)
+            # dtype = cast(np.dtypes.Complex64DType | np.dtypes.Complex128DType, np_dtype)
             if len(fill_value) == 2:
                 # complex datatypes serialize to JSON arrays with two elements
                 return np_dtype.type(complex(*fill_value))
             else:
                 msg = (
-                    f"Got an invalid fill value for complex data type {dtype}."
+                    f"Got an invalid fill value for complex data type {dtype.value}."
                     f"Expected a sequence with 2 elements, but {fill_value!r} has "
                     f"length {len(fill_value)}."
                 )
                 raise ValueError(msg)
-        msg = f"Cannot parse non-string sequence {fill_value!r} as a scalar with type {dtype}."
+        msg = (
+            f"Cannot parse non-string sequence {fill_value!r} as a scalar with type {dtype.value}."
+        )
         raise TypeError(msg)
 
     # Cast the fill_value to the given dtype
@@ -480,6 +503,15 @@ def parse_fill_value(
             raise ValueError(f"fill value {fill_value!r} is not valid for dtype {dtype}")
 
     return casted_value
+
+
+def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
+    if dtype == DataType.string:
+        return ""
+    elif dtype == DataType.bytes:
+        return b""
+    else:
+        return dtype.to_numpy().type(0)
 
 
 # For type checking
@@ -550,7 +582,7 @@ class DataType(Enum):
 
     def to_numpy(self) -> np.dtype[Any]:
         if self == DataType.string:
-            return STRING_DTYPE
+            return STRING_NP_DTYPE
         elif self == DataType.bytes:
             # for now always use object dtype for bytestrings
             # TODO: consider whether we can use fixed-width types (e.g. '|S5') instead
