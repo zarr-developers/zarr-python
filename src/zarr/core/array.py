@@ -4,7 +4,7 @@ import json
 from asyncio import gather
 from dataclasses import dataclass, field, replace
 from logging import getLogger
-from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -191,6 +191,72 @@ class AsyncArray(Generic[TArrayMeta]):
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "codec_pipeline", create_codec_pipeline(metadata=metadata_parsed))
 
+    @overload
+    @classmethod
+    async def create(
+        cls,
+        store: StoreLike,
+        *,
+        # v2 and v3
+        shape: ShapeLike,
+        dtype: npt.DTypeLike,
+        zarr_format: Literal[2],
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ShapeLike | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
+    ) -> AsyncArray[ArrayV2Metadata]:...
+
+    @overload
+    @classmethod
+    async def create(
+        cls,
+        store: StoreLike,
+        *,
+        # v2 and v3
+        shape: ShapeLike,
+        dtype: npt.DTypeLike,
+        zarr_format: Literal[3],
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ShapeLike | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
+    ) -> AsyncArray[ArrayV3Metadata]:...
+
     @classmethod
     async def create(
         cls,
@@ -347,9 +413,7 @@ class AsyncArray(Generic[TArrayMeta]):
 
         array = cls(metadata=metadata, store_path=store_path)
         await array._save_metadata(metadata, ensure_parents=True)
-        # type inference is inconsistent here and seems to conclude
-        # that array has type Array[ArrayV2Metadata]
-        return array  # type: ignore[return-value]
+        return array
 
     @classmethod
     async def _create_v2(
@@ -388,7 +452,7 @@ class AsyncArray(Generic[TArrayMeta]):
         )
         array = cls(metadata=metadata, store_path=store_path)
         await array._save_metadata(metadata, ensure_parents=True)
-        return array  # type: ignore[return-value]
+        return array
 
     @classmethod
     def from_dict(
@@ -500,7 +564,7 @@ class AsyncArray(Generic[TArrayMeta]):
         keyword is used, iteration will start at the chunk index specified by `origin`.
         The default behavior is to start at the origin of the grid coordinate space.
         If the `selection_shape` keyword is used, iteration will be bounded over a contiguous region
-        ranging from `[origin, origin + selection_shape]`, where the upper bound is exclusive as
+        ranging from `[origin, origin selection_shape]`, where the upper bound is exclusive as
         per python indexing conventions.
 
         Parameters
@@ -2314,10 +2378,10 @@ class Array:
         the data falling outside the new array but inside the boundary chunks
         would be restored by a subsequent resize operation that grows the array size.
         """
-        return type(self)(sync(self._async_array.resize(new_shape)))  # type: ignore[arg-type]
+        return type(self)(sync(self._async_array.resize(new_shape)))
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
-        return type(self)(sync(self._async_array.update_attributes(new_attributes)))  # type: ignore[arg-type]
+        return type(self)(sync(self._async_array.update_attributes(new_attributes)))
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
