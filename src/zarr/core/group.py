@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import asdict, dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy as np
@@ -120,6 +120,15 @@ class GroupMetadata(Metadata):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
         assert data.pop("node_type", None) in ("group", None)
+
+        zarr_format = data.get("zarr_format")
+        if zarr_format == 2 or zarr_format is None:
+            # zarr v2 allowed arbitrary keys here.
+            # We don't want the GroupMetadata constructor to fail just because someone put an
+            # extra key in the metadata.
+            expected = {x.name for x in fields(cls)}
+            data = {k: v for k, v in data.items() if k in expected}
+
         return cls(**data)
 
     def to_dict(self) -> dict[str, Any]:
@@ -783,24 +792,24 @@ class AsyncGroup:
         )
 
     async def empty_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-        return await async_api.empty_like(a=prototype, store=self.store_path, path=name, **kwargs)
+        return await async_api.empty_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def zeros_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-        return await async_api.zeros_like(a=prototype, store=self.store_path, path=name, **kwargs)
+        return await async_api.zeros_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def ones_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-        return await async_api.ones_like(a=prototype, store=self.store_path, path=name, **kwargs)
+        return await async_api.ones_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def full_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-        return await async_api.full_like(a=prototype, store=self.store_path, path=name, **kwargs)
+        return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
         raise NotImplementedError
@@ -1186,25 +1195,17 @@ class Group(SyncMixin):
             )
         )
 
-    def empty_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.empty_like(name=name, prototype=prototype, **kwargs))
-        )
+    def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 
-    def zeros_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.zeros_like(name=name, prototype=prototype, **kwargs))
-        )
+    def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
 
-    def ones_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.ones_like(name=name, prototype=prototype, **kwargs))
-        )
+    def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
 
-    def full_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.full_like(name=name, prototype=prototype, **kwargs))
-        )
+    def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.full_like(name=name, data=data, **kwargs)))
 
     def move(self, source: str, dest: str) -> None:
         return self._sync(self._async_group.move(source, dest))

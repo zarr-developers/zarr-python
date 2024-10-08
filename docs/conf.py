@@ -255,6 +255,8 @@ html_js_files = [
 # Output file base name for HTML help builder.
 htmlhelp_basename = "zarrdoc"
 
+maximum_signature_line_length = 80
+
 # -- Options for LaTeX output ---------------------------------------------
 
 latex_elements = {
