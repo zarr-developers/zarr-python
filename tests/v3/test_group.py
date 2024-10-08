@@ -292,6 +292,25 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat) -> None:
         group["nope"]
 
 
+def test_group_get_with_default(store: Store, zarr_format: ZarrFormat) -> None:
+    group = Group.from_store(store, zarr_format=zarr_format)
+
+    # default behavior
+    result = group.get("subgroup")
+    assert result is None
+
+    # custom default
+    result = group.get("subgroup", 8)
+    assert result == 8
+
+    # now with a group
+    subgroup = group.require_group("subgroup")
+    subgroup.attrs["foo"] = "bar"
+
+    result = group.get("subgroup", 8)
+    assert result.attrs["foo"] == "bar"
+
+
 def test_group_delitem(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__delitem__` method.
