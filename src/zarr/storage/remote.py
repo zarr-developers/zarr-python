@@ -94,7 +94,11 @@ class RemoteStore(Store):
             pass
 
     async def empty(self) -> bool:
-        return not await self.fs._find(self.path, withdirs=True)
+        async for _path, _dirs, files in self.fs._walk(self.path):
+            # stop once a file is found
+            if files:
+                return False
+        return True
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
         return type(self)(
