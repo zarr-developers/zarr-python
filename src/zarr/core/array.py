@@ -64,8 +64,9 @@ from zarr.core.indexing import (
     is_scalar,
     pop_fields,
 )
-from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.core.metadata.common import ArrayMetadata, ArrayMetadataDict
+from zarr.core.metadata.v2 import ArrayV2Metadata, ArrayV2MetadataDict
+from zarr.core.metadata.v3 import ArrayV3Metadata, ArrayV3MetadataDict
 from zarr.core.sync import collect_aiterator, sync
 from zarr.registry import get_pipeline_class
 from zarr.storage import StoreLike, make_store_path
@@ -84,8 +85,8 @@ __all__ = ["create_codec_pipeline", "parse_array_metadata"]
 logger = getLogger(__name__)
 
 
-def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
-    if isinstance(data, ArrayV2Metadata | ArrayV3Metadata):
+def parse_array_metadata(data: Any) -> ArrayMetadata:
+    if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
         if data["zarr_format"] == 3:
@@ -102,7 +103,7 @@ def parse_array_metadata(data: Any) -> ArrayV2Metadata | ArrayV3Metadata:
     raise TypeError
 
 
-def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecPipeline:
+def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
         return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
@@ -115,7 +116,7 @@ def create_codec_pipeline(metadata: ArrayV2Metadata | ArrayV3Metadata) -> CodecP
 
 async def get_array_metadata(
     store_path: StorePath, zarr_format: ZarrFormat | None = 3
-) -> dict[str, Any]:
+) -> dict[str, JSON]:
     if zarr_format == 2:
         zarray_bytes, zattrs_bytes = await gather(
             (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
@@ -146,7 +147,7 @@ async def get_array_metadata(
     else:
         raise ValueError(f"unexpected zarr_format: {zarr_format}")
 
-    metadata_dict: dict[str, Any]
+    metadata_dict: dict[str, JSON]
     if zarr_format == 2:
         # V2 arrays are comprised of a .zarray and .zattrs objects
         assert zarray_bytes is not None
@@ -170,18 +171,38 @@ class AsyncArray(Generic[TArrayMeta]):
     codec_pipeline: CodecPipeline = field(init=False)
     order: Literal["C", "F"]
 
+    @overload
+    def __init__(
+        self: AsyncArray[ArrayV2Metadata],
+        metadata: ArrayV2Metadata | ArrayV2MetadataDict,
+        store_path: StorePath,
+        order: Literal["C", "F"] | None = None,
+    ) -> None: ...
+
+    @overload
+    def __init__(
+        self: AsyncArray[ArrayV3Metadata],
+        metadata: ArrayV3Metadata | ArrayV3MetadataDict,
+        store_path: StorePath,
+        order: Literal["C", "F"] | None = None,
+    ) -> None: ...
+
     def __init__(
         self,
-        metadata: ArrayV2Metadata | ArrayV3Metadata | dict[str, Any],
+        metadata: ArrayMetadata | ArrayMetadataDict,
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
     ) -> None:
         if isinstance(metadata, dict):
             zarr_format = metadata["zarr_format"]
+            # TODO: remove this when we extensively type the dict representation of metadata
+            _metadata = cast(dict[str, JSON], metadata)
             if zarr_format == 2:
-                metadata = ArrayV2Metadata.from_dict(metadata)
+                metadata = ArrayV2Metadata.from_dict(_metadata)
+            elif zarr_format == 3:
+                metadata = ArrayV3Metadata.from_dict(_metadata)
             else:
-                metadata = ArrayV3Metadata.from_dict(metadata)
+                raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
 
         metadata_parsed = parse_array_metadata(metadata)
         order_parsed = parse_indexing_order(order or config.get("array.order"))
@@ -222,7 +243,7 @@ class AsyncArray(Generic[TArrayMeta]):
         # runtime
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
-    ) -> AsyncArray[ArrayV2Metadata]:...
+    ) -> AsyncArray[ArrayV2Metadata]: ...
 
     @overload
     @classmethod
@@ -255,7 +276,74 @@ class AsyncArray(Generic[TArrayMeta]):
         # runtime
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata]:...
+    ) -> AsyncArray[ArrayV3Metadata]: ...
+
+    # this overload is necessary to handle the case where the `zarr_format` kwarg is unspecified
+    @overload
+    @classmethod
+    async def create(
+        cls,
+        store: StoreLike,
+        *,
+        # v2 and v3
+        shape: ShapeLike,
+        dtype: npt.DTypeLike,
+        zarr_format: Literal[3] = 3,
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ShapeLike | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
+    ) -> AsyncArray[ArrayV3Metadata]: ...
+
+    @overload
+    @classmethod
+    async def create(
+        cls,
+        store: StoreLike,
+        *,
+        # v2 and v3
+        shape: ShapeLike,
+        dtype: npt.DTypeLike,
+        zarr_format: ZarrFormat,
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ShapeLike | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: Literal["C", "F"] | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        exists_ok: bool = False,
+        data: npt.ArrayLike | None = None,
+    ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
     async def create(
@@ -471,7 +559,9 @@ class AsyncArray(Generic[TArrayMeta]):
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
         store_path = await make_store_path(store)
         metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
-        return cls(store_path=store_path, metadata=metadata_dict)
+        # TODO: remove this cast when we have better type hints
+        _metadata_dict = cast(ArrayV3MetadataDict, metadata_dict)
+        return cls(store_path=store_path, metadata=_metadata_dict)
 
     @property
     def store(self) -> Store:
@@ -700,9 +790,7 @@ class AsyncArray(Generic[TArrayMeta]):
         )
         return await self._get_selection(indexer, prototype=prototype)
 
-    async def _save_metadata(
-        self, metadata: ArrayV2Metadata | ArrayV3Metadata, ensure_parents: bool = False
-    ) -> None:
+    async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
 
@@ -948,7 +1036,7 @@ class Array:
         return self._async_array.basename
 
     @property
-    def metadata(self) -> ArrayV2Metadata | ArrayV3Metadata:
+    def metadata(self) -> ArrayMetadata:
         return self._async_array.metadata
 
     @property
@@ -2378,7 +2466,8 @@ class Array:
         the data falling outside the new array but inside the boundary chunks
         would be restored by a subsequent resize operation that grows the array size.
         """
-        return type(self)(sync(self._async_array.resize(new_shape)))
+        resized = sync(self._async_array.resize(new_shape))
+        return type(self)(resized)
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
         return type(self)(sync(self._async_array.update_attributes(new_attributes)))

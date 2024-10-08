@@ -12,6 +12,7 @@ from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup
+from zarr.core.metadata.common import ArrayMetadataDict
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.storage import (
@@ -236,11 +237,13 @@ async def open(
     if "shape" not in kwargs and mode in {"a", "w", "w-"}:
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
+            # TODO: remove this cast when we fix typing for array metadata dicts
+            _metadata_dict = cast(ArrayMetadataDict, metadata_dict)
             # for v2, the above would already have raised an exception if not an array
-            zarr_format = metadata_dict["zarr_format"]
-            is_v3_array = zarr_format == 3 and metadata_dict.get("node_type") == "array"
+            zarr_format = _metadata_dict["zarr_format"]
+            is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
-                return AsyncArray(store_path=store_path, metadata=metadata_dict)
+                return AsyncArray(store_path=store_path, metadata=_metadata_dict)
         except (AssertionError, FileNotFoundError):
             pass
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)

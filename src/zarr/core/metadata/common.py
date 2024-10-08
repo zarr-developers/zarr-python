@@ -2,54 +2,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .v2 import ArrayV2Metadata, ArrayV2MetadataDict
+from .v3 import ArrayV3Metadata, ArrayV3MetadataDict
+
 if TYPE_CHECKING:
-    from typing import Any, Literal, Self
+    from typing import TypeAlias
 
-    from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.chunk_grids import ChunkGrid
-    from zarr.core.common import JSON, ChunkCoords, ZarrFormat
+    from zarr.core.common import JSON
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
-
-from zarr.abc.metadata import Metadata
-
-
-@dataclass(frozen=True, kw_only=True)
-class ArrayMetadata(Metadata, ABC):
-    shape: ChunkCoords
-    fill_value: Any
-    chunk_grid: ChunkGrid
-    attributes: dict[str, JSON]
-    zarr_format: ZarrFormat
-
-    @property
-    @abstractmethod
-    def ndim(self) -> int:
-        pass
-
-    @abstractmethod
-    def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
-    ) -> ArraySpec:
-        pass
-
-    @abstractmethod
-    def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
-        pass
-
-    @abstractmethod
-    def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
-        pass
-
-    @abstractmethod
-    def update_shape(self, shape: ChunkCoords) -> Self:
-        pass
-
-    @abstractmethod
-    def update_attributes(self, attributes: dict[str, JSON]) -> Self:
-        pass
+ArrayMetadata: TypeAlias = ArrayV2Metadata | ArrayV3Metadata
+ArrayMetadataDict: TypeAlias = ArrayV2MetadataDict | ArrayV3MetadataDict
 
 
 def parse_attributes(data: None | dict[str, JSON]) -> dict[str, JSON]:

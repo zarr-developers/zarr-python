@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, cast, overload
+from typing import TYPE_CHECKING, TypedDict, cast, overload
 
 from zarr.abc.metadata import Metadata
 
@@ -149,6 +149,15 @@ def _replace_special_floats(obj: object) -> Any:
         # Recursively replace in lists
         return [_replace_special_floats(item) for item in obj]
     return obj
+
+
+class ArrayV3MetadataDict(TypedDict):
+    """
+    A typed dictionary model for zarr v3 metadata.
+    """
+
+    zarr_format: Literal[3]
+    attributes: dict[str, JSON]
 
 
 @dataclass(frozen=True, kw_only=True)

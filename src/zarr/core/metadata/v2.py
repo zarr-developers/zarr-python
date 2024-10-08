@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from zarr.abc.metadata import Metadata
 
@@ -26,6 +26,15 @@ from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import parse_attributes
+
+
+class ArrayV2MetadataDict(TypedDict):
+    """
+    A typed dictionary model for zarr v2 metadata.
+    """
+
+    zarr_format: Literal[2]
+    attributes: dict[str, JSON]
 
 
 @dataclass(frozen=True, kw_only=True)
