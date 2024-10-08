@@ -427,6 +427,7 @@ def parse_fill_value(
 
     # the rest are numeric types
     np_dtype = data_type.to_numpy()
+    np_dtype = cast(np.dtype[np.generic], np_dtype)
 
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if data_type in (DataType.complex64, DataType.complex128):
@@ -479,7 +480,9 @@ def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
     elif dtype == DataType.bytes:
         return b""
     else:
-        return dtype.to_numpy().type(0)
+        np_dtype = dtype.to_numpy()
+        np_dtype = cast(np.dtype[np.generic], np_dtype)
+        return np_dtype.type(0)
 
 
 # For type checking
