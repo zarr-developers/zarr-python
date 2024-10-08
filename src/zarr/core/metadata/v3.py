@@ -618,8 +618,7 @@ class DataType(Enum):
     @classmethod
     def parse(cls, dtype: None | DataType | Any) -> DataType:
         if dtype is None:
-            # the default dtype
-            return DataType.float64
+            return DataType[DEFAULT_DTYPE]
         if isinstance(dtype, DataType):
             return dtype
         try:
