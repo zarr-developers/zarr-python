@@ -21,7 +21,7 @@ class StoreTests(Generic[S, B]):
     store_cls: type[S]
     buffer_cls: type[B]
 
-    def set(self, store: S, key: str, value: Buffer) -> None:
+    async def set(self, store: S, key: str, value: Buffer) -> None:
         """
         Insert a value into a storage backend, with a specific key.
         This should not not use any store methods. Bypassing the store methods allows them to be
@@ -29,7 +29,7 @@ class StoreTests(Generic[S, B]):
         """
         raise NotImplementedError
 
-    def get(self, store: S, key: str) -> Buffer:
+    async def get(self, store: S, key: str) -> Buffer:
         """
         Retrieve a value from a storage backend, by key.
         This should not not use any store methods. Bypassing the store methods allows them to be
@@ -70,6 +70,15 @@ class StoreTests(Generic[S, B]):
         with pytest.raises(AttributeError):
             store.mode = AccessMode.from_literal("w")  # type: ignore[misc]
 
+    @pytest.mark.parametrize("mode", ["r", "r+", "a", "w", "w-"])
+    async def test_store_open_mode(
+        self, store_kwargs: dict[str, Any], mode: AccessModeLiteral
+    ) -> None:
+        store_kwargs["mode"] = mode
+        store = await self.store_cls.open(**store_kwargs)
+        assert store._is_open
+        assert store.mode == AccessMode.from_literal(mode)
+
     async def test_not_writable_store_raises(self, store_kwargs: dict[str, Any]) -> None:
         kwargs = {**store_kwargs, "mode": "r"}
         store = await self.store_cls.open(**kwargs)
@@ -106,7 +115,7 @@ class StoreTests(Generic[S, B]):
         Ensure that data can be read from the store using the store.get method.
         """
         data_buf = self.buffer_cls.from_bytes(data)
-        self.set(store, key, data_buf)
+        await self.set(store, key, data_buf)
         observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
         start, length = _normalize_interval_index(data_buf, interval=byte_range)
         expected = data_buf[start : start + length]
@@ -119,7 +128,7 @@ class StoreTests(Generic[S, B]):
         keys = tuple(map(str, range(10)))
         values = tuple(f"{k}".encode() for k in keys)
         for k, v in zip(keys, values, strict=False):
-            self.set(store, k, self.buffer_cls.from_bytes(v))
+            await self.set(store, k, self.buffer_cls.from_bytes(v))
         observed_buffers = await _collect_aiterator(
             store._get_many(
                 zip(
@@ -143,7 +152,7 @@ class StoreTests(Generic[S, B]):
         assert not store.mode.readonly
         data_buf = self.buffer_cls.from_bytes(data)
         await store.set(key, data_buf)
-        observed = self.get(store, key)
+        observed = await self.get(store, key)
         assert_bytes_equal(observed, data_buf)
 
     async def test_set_many(self, store: S) -> None:
@@ -156,7 +165,7 @@ class StoreTests(Generic[S, B]):
         store_dict = dict(zip(keys, data_buf, strict=True))
         await store._set_many(store_dict.items())
         for k, v in store_dict.items():
-            assert self.get(store, k).to_bytes() == v.to_bytes()
+            assert (await self.get(store, k)).to_bytes() == v.to_bytes()
 
     @pytest.mark.parametrize(
         "key_ranges",
@@ -172,7 +181,7 @@ class StoreTests(Generic[S, B]):
     ) -> None:
         # put all of the data
         for key, _ in key_ranges:
-            self.set(store, key, self.buffer_cls.from_bytes(bytes(key, encoding="utf-8")))
+            await self.set(store, key, self.buffer_cls.from_bytes(bytes(key, encoding="utf-8")))
 
         # read back just part of it
         observed_maybe = await store.get_partial_values(
@@ -211,11 +220,15 @@ class StoreTests(Generic[S, B]):
 
     async def test_empty(self, store: S) -> None:
         assert await store.empty()
-        self.set(store, "key", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8")))
+        await self.set(
+            store, "key", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8"))
+        )
         assert not await store.empty()
 
     async def test_clear(self, store: S) -> None:
-        self.set(store, "key", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8")))
+        await self.set(
+            store, "key", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8"))
+        )
         await store.clear()
         assert await store.empty()
 
@@ -277,8 +290,8 @@ class StoreTests(Generic[S, B]):
 
     async def test_with_mode(self, store: S) -> None:
         data = b"0000"
-        self.set(store, "key", self.buffer_cls.from_bytes(data))
-        assert self.get(store, "key").to_bytes() == data
+        await self.set(store, "key", self.buffer_cls.from_bytes(data))
+        assert (await self.get(store, "key")).to_bytes() == data
 
         for mode in ["r", "a"]:
             mode = cast(AccessModeLiteral, mode)
@@ -294,7 +307,7 @@ class StoreTests(Generic[S, B]):
             assert result.to_bytes() == data
 
             # writes to original after with_mode is visible
-            self.set(store, "key-2", self.buffer_cls.from_bytes(data))
+            await self.set(store, "key-2", self.buffer_cls.from_bytes(data))
             result = await clone.get("key-2", default_buffer_prototype())
             assert result is not None
             assert result.to_bytes() == data
@@ -313,7 +326,7 @@ class StoreTests(Generic[S, B]):
     async def test_set_if_not_exists(self, store: S) -> None:
         key = "k"
         data_buf = self.buffer_cls.from_bytes(b"0000")
-        self.set(store, key, data_buf)
+        await self.set(store, key, data_buf)
 
         new = self.buffer_cls.from_bytes(b"1111")
         await store.set_if_not_exists("k", new)  # no error

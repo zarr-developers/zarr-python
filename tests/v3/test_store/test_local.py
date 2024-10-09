@@ -11,10 +11,10 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
     store_cls = LocalStore
     buffer_cls = cpu.Buffer
 
-    def get(self, store: LocalStore, key: str) -> Buffer:
+    async def get(self, store: LocalStore, key: str) -> Buffer:
         return self.buffer_cls.from_bytes((store.root / key).read_bytes())
 
-    def set(self, store: LocalStore, key: str, value: Buffer) -> None:
+    async def set(self, store: LocalStore, key: str, value: Buffer) -> None:
         parent = (store.root / key).parent
         if not parent.exists():
             parent.mkdir(parents=True)

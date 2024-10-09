@@ -13,6 +13,7 @@ from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEnc
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
     DataType,
+    default_fill_value,
     parse_dimension_names,
     parse_fill_value,
     parse_zarr_format,
@@ -46,8 +47,9 @@ float_dtypes = (
 )
 
 complex_dtypes = ("complex64", "complex128")
+vlen_dtypes = ("string", "bytes")
 
-dtypes = (*bool_dtypes, *int_dtypes, *float_dtypes, *complex_dtypes)
+dtypes = (*bool_dtypes, *int_dtypes, *float_dtypes, *complex_dtypes, *vlen_dtypes)
 
 
 @pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
@@ -72,13 +74,18 @@ def parse_dimension_names_valid(data: Sequence[str] | None) -> None:
 
 
 @pytest.mark.parametrize("dtype_str", dtypes)
-def test_parse_auto_fill_value(dtype_str: str) -> None:
+def test_default_fill_value(dtype_str: str) -> None:
     """
     Test that parse_fill_value(None, dtype) results in the 0 value for the given dtype.
     """
-    dtype = np.dtype(dtype_str)
-    fill_value = None
-    assert parse_fill_value(fill_value, dtype) == dtype.type(0)
+    dtype = DataType(dtype_str)
+    fill_value = default_fill_value(dtype)
+    if dtype == DataType.string:
+        assert fill_value == ""
+    elif dtype == DataType.bytes:
+        assert fill_value == b""
+    else:
+        assert fill_value == dtype.to_numpy().type(0)
 
 
 @pytest.mark.parametrize(
@@ -102,13 +109,12 @@ def test_parse_fill_value_valid(fill_value: Any, dtype_str: str) -> None:
     """
     Test that parse_fill_value(fill_value, dtype) casts fill_value to the given dtype.
     """
-    dtype = np.dtype(dtype_str)
-    parsed = parse_fill_value(fill_value, dtype)
+    parsed = parse_fill_value(fill_value, dtype_str)
 
     if np.isnan(fill_value):
         assert np.isnan(parsed)
     else:
-        assert parsed == dtype.type(fill_value)
+        assert parsed == DataType(dtype_str).to_numpy().type(fill_value)
 
 
 @pytest.mark.parametrize("fill_value", ["not a valid value"])
@@ -118,9 +124,8 @@ def test_parse_fill_value_invalid_value(fill_value: Any, dtype_str: str) -> None
     Test that parse_fill_value(fill_value, dtype) raises ValueError for invalid values.
     This test excludes bool because the bool constructor takes anything.
     """
-    dtype = np.dtype(dtype_str)
     with pytest.raises(ValueError):
-        parse_fill_value(fill_value, dtype)
+        parse_fill_value(fill_value, dtype_str)
 
 
 @pytest.mark.parametrize("fill_value", [[1.0, 0.0], [0, 1], complex(1, 1), np.complex64(0)])
@@ -130,12 +135,12 @@ def test_parse_fill_value_complex(fill_value: Any, dtype_str: str) -> None:
     Test that parse_fill_value(fill_value, dtype) correctly handles complex values represented
     as length-2 sequences
     """
-    dtype = np.dtype(dtype_str)
+    dtype = DataType(dtype_str)
     if isinstance(fill_value, list):
-        expected = dtype.type(complex(*fill_value))
+        expected = dtype.to_numpy().type(complex(*fill_value))
     else:
-        expected = dtype.type(fill_value)
-    assert expected == parse_fill_value(fill_value, dtype)
+        expected = dtype.to_numpy().type(fill_value)
+    assert expected == parse_fill_value(fill_value, dtype_str)
 
 
 @pytest.mark.parametrize("fill_value", [[1.0, 0.0, 3.0], [0, 1, 3], [1]])
@@ -145,14 +150,13 @@ def test_parse_fill_value_complex_invalid(fill_value: Any, dtype_str: str) -> No
     Test that parse_fill_value(fill_value, dtype) correctly rejects sequences with length not
     equal to 2
     """
-    dtype = np.dtype(dtype_str)
     match = (
-        f"Got an invalid fill value for complex data type {dtype}."
+        f"Got an invalid fill value for complex data type {dtype_str}."
         f"Expected a sequence with 2 elements, but {fill_value} has "
         f"length {len(fill_value)}."
     )
     with pytest.raises(ValueError, match=re.escape(match)):
-        parse_fill_value(fill_value=fill_value, dtype=dtype)
+        parse_fill_value(fill_value=fill_value, dtype=dtype_str)
 
 
 @pytest.mark.parametrize("fill_value", [{"foo": 10}])
@@ -162,9 +166,8 @@ def test_parse_fill_value_invalid_type(fill_value: Any, dtype_str: str) -> None:
     Test that parse_fill_value(fill_value, dtype) raises TypeError for invalid non-sequential types.
     This test excludes bool because the bool constructor takes anything.
     """
-    dtype = np.dtype(dtype_str)
     with pytest.raises(ValueError, match=r"fill value .* is not valid for dtype .*"):
-        parse_fill_value(fill_value, dtype)
+        parse_fill_value(fill_value, dtype_str)
 
 
 @pytest.mark.parametrize(
@@ -183,10 +186,9 @@ def test_parse_fill_value_invalid_type_sequence(fill_value: Any, dtype_str: str)
     This test excludes bool because the bool constructor takes anything, and complex because
     complex values can be created from length-2 sequences.
     """
-    dtype = np.dtype(dtype_str)
-    match = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype}"
+    match = f"Cannot parse non-string sequence {fill_value} as a scalar with type {dtype_str}"
     with pytest.raises(TypeError, match=re.escape(match)):
-        parse_fill_value(fill_value, dtype)
+        parse_fill_value(fill_value, dtype_str)
 
 
 @pytest.mark.parametrize("chunk_grid", ["regular"])
@@ -337,7 +339,7 @@ async def test_special_float_fill_values(fill_value: str) -> None:
         "chunk_grid": {"name": "regular", "configuration": {"chunk_shape": (1,)}},
         "data_type": "float64",
         "chunk_key_encoding": {"name": "default", "separator": "."},
-        "codecs": (),
+        "codecs": [{"name": "bytes"}],
         "fill_value": fill_value,  # this is not a valid fill value for uint8
     }
     m = ArrayV3Metadata.from_dict(metadata_dict)
@@ -352,3 +354,17 @@ async def test_special_float_fill_values(fill_value: str) -> None:
     elif fill_value == "-Infinity":
         assert np.isneginf(m.fill_value)
         assert d["fill_value"] == "-Infinity"
+
+
+@pytest.mark.parametrize("dtype_str", dtypes)
+def test_dtypes(dtype_str: str) -> None:
+    dt = DataType(dtype_str)
+    np_dtype = dt.to_numpy()
+    if dtype_str not in vlen_dtypes:
+        # we can round trip "normal" dtypes
+        assert dt == DataType.from_numpy(np_dtype)
+        assert dt.byte_count == np_dtype.itemsize
+        assert dt.has_endianness == (dt.byte_count > 1)
+    else:
+        # return type for vlen types may vary depending on numpy version
+        assert dt.byte_count is None

@@ -7,7 +7,7 @@ import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Literal, cast, overload
+from typing import TYPE_CHECKING, Literal, TypeVar, cast, overload
 
 import numcodecs.abc
 import numpy as np
@@ -48,6 +48,8 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
 logger = logging.getLogger("zarr.group")
+
+DefaultT = TypeVar("DefaultT")
 
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
@@ -725,6 +727,28 @@ class AsyncGroup:
             self.metadata.consolidated_metadata.metadata.pop(key, None)
             await self._save_metadata()
 
+    async def get(
+        self, key: str, default: DefaultT | None = None
+    ) -> AsyncArray | AsyncGroup | DefaultT | None:
+        """Obtain a group member, returning default if not found.
+
+        Parameters
+        ----------
+        key : string
+            Group member name.
+        default : object
+            Default value to return if key is not found (default: None).
+
+        Returns
+        -------
+        object
+            Group member (AsyncArray or AsyncGroup) or default if not found.
+        """
+        try:
+            return await self.getitem(key)
+        except KeyError:
+            return default
+
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
         to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
@@ -1246,24 +1270,20 @@ class AsyncGroup:
         )
 
     async def empty_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray:
-        return await async_api.empty_like(a=prototype, store=self.store_path, path=name, **kwargs)
+        return await async_api.empty_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def zeros_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray:
-        return await async_api.zeros_like(a=prototype, store=self.store_path, path=name, **kwargs)
+        return await async_api.zeros_like(a=data, store=self.store_path, path=name, **kwargs)
 
-    async def ones_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray:
-        return await async_api.ones_like(a=prototype, store=self.store_path, path=name, **kwargs)
+    async def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
+        return await async_api.ones_like(a=data, store=self.store_path, path=name, **kwargs)
 
-    async def full_like(
-        self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray:
-        return await async_api.full_like(a=prototype, store=self.store_path, path=name, **kwargs)
+    async def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
+        return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
         raise NotImplementedError
@@ -1309,6 +1329,26 @@ class Group(SyncMixin):
             return Array(obj)
         else:
             return Group(obj)
+
+    def get(self, path: str, default: DefaultT | None = None) -> Array | Group | DefaultT | None:
+        """Obtain a group member, returning default if not found.
+
+        Parameters
+        ----------
+        key : string
+            Group member name.
+        default : object
+            Default value to return if key is not found (default: None).
+
+        Returns
+        -------
+        object
+            Group member (Array or Group) or default if not found.
+        """
+        try:
+            return self[path]
+        except KeyError:
+            return default
 
     def __delitem__(self, key: str) -> None:
         self._sync(self._async_group.delitem(key))
@@ -1649,25 +1689,17 @@ class Group(SyncMixin):
             )
         )
 
-    def empty_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.empty_like(name=name, prototype=prototype, **kwargs))
-        )
+    def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 
-    def zeros_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.zeros_like(name=name, prototype=prototype, **kwargs))
-        )
+    def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
 
-    def ones_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.ones_like(name=name, prototype=prototype, **kwargs))
-        )
+    def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
 
-    def full_like(self, *, name: str, prototype: async_api.ArrayLike, **kwargs: Any) -> Array:
-        return Array(
-            self._sync(self._async_group.full_like(name=name, prototype=prototype, **kwargs))
-        )
+    def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        return Array(self._sync(self._async_group.full_like(name=name, data=data, **kwargs)))
 
     def move(self, source: str, dest: str) -> None:
         return self._sync(self._async_group.move(source, dest))
