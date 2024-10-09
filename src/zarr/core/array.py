@@ -65,8 +65,8 @@ from zarr.core.indexing import (
     pop_fields,
 )
 from zarr.core.metadata import (
-    ArrayMetadata,
-    ArrayMetadataDict,
+    ArrayMetadataDictT,
+    ArrayMetadataT,
     ArrayV2Metadata,
     ArrayV2MetadataDict,
     ArrayV3Metadata,
@@ -90,8 +90,8 @@ __all__ = ["create_codec_pipeline", "parse_array_metadata"]
 logger = getLogger(__name__)
 
 
-def parse_array_metadata(data: Any) -> ArrayMetadata:
-    if isinstance(data, ArrayMetadata):
+def parse_array_metadata(data: Any) -> ArrayMetadataT:
+    if isinstance(data, ArrayMetadataT):
         return data
     elif isinstance(data, dict):
         if data["zarr_format"] == 3:
@@ -108,7 +108,7 @@ def parse_array_metadata(data: Any) -> ArrayMetadata:
     raise TypeError
 
 
-def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
+def create_codec_pipeline(metadata: ArrayMetadataT) -> CodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
         return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
@@ -194,7 +194,7 @@ class AsyncArray(Generic[TArrayMeta]):
 
     def __init__(
         self,
-        metadata: ArrayMetadata | ArrayMetadataDict,
+        metadata: ArrayMetadataT | ArrayMetadataDictT,
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
     ) -> None:
@@ -799,7 +799,7 @@ class AsyncArray(Generic[TArrayMeta]):
         )
         return await self._get_selection(indexer, prototype=prototype)
 
-    async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
+    async def _save_metadata(self, metadata: ArrayMetadataT, ensure_parents: bool = False) -> None:
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
 
@@ -1045,7 +1045,7 @@ class Array:
         return self._async_array.basename
 
     @property
-    def metadata(self) -> ArrayMetadata:
+    def metadata(self) -> ArrayMetadataT:
         return self._async_array.metadata
 
     @property
