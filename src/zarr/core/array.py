@@ -222,13 +222,12 @@ class AsyncArray:
     ) -> AsyncArray:
         store_path = await make_store_path(store)
 
+        dtype = parse_dtype(dtype, zarr_format)
         shape = parse_shapelike(shape)
 
         if chunks is not None and chunk_shape is not None:
             raise ValueError("Only one of chunk_shape or chunks can be provided.")
 
-        dtype = parse_dtype(dtype, zarr_format)
-        # dtype = np.dtype(dtype)
         if chunks:
             _chunks = normalize_chunks(chunks, shape, dtype.itemsize)
         else:
