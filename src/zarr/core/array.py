@@ -1296,11 +1296,11 @@ class Array:
             array. May be any combination of int and/or slice or ellipsis for multidimensional arrays.
         out : NDBuffer, optional
             If given, load the selected data directly into this buffer.
+        prototype : BufferPrototype, optional
+            The prototype of the buffer to use for the output data. If not provided, the default buffer prototype is used.
         fields : str or sequence of str, optional
             For arrays with a structured dtype, one or more fields can be specified to
             extract data for.
-        prototype : BufferPrototype, optional
-            The prototype of the buffer to use for the output data. If not provided, the default buffer prototype is used.
 
         Returns
         -------
@@ -2292,6 +2292,17 @@ class Array:
         This method does not modify the original Array object. Instead, it returns a new Array
         with the specified shape.
 
+        Notes
+        -----
+        When resizing an array, the data are not rearranged in any way.
+
+        If one or more dimensions are shrunk, any chunks falling outside the
+        new array shape will be deleted from the underlying store.
+        However, it is noteworthy that the chunks partially falling inside the new array
+        (i.e. boundary chunks) will remain intact, and therefore,
+        the data falling outside the new array but inside the boundary chunks
+        would be restored by a subsequent resize operation that grows the array size.
+
         Examples
         --------
         >>> import zarr
@@ -2309,17 +2320,6 @@ class Array:
         (20000, 1000)
         >>> z2.shape
         (50, 50)
-
-        Notes
-        -----
-        When resizing an array, the data are not rearranged in any way.
-
-        If one or more dimensions are shrunk, any chunks falling outside the
-        new array shape will be deleted from the underlying store.
-        However, it is noteworthy that the chunks partially falling inside the new array
-        (i.e. boundary chunks) will remain intact, and therefore,
-        the data falling outside the new array but inside the boundary chunks
-        would be restored by a subsequent resize operation that grows the array size.
         """
         return type(self)(
             sync(
