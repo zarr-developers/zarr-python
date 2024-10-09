@@ -28,6 +28,8 @@ class ContainsArrayAndGroupError(_BaseZarrError):
 class MetadataValidationError(_BaseZarrError):
     """An exception raised when the Zarr metadata is invalid in some way"""
 
+    _msg = "Invalid value. Expected '{}'. Got '{}'."
+
 
 class NodeTypeValidationError(MetadataValidationError):
     """
@@ -36,6 +38,8 @@ class NodeTypeValidationError(MetadataValidationError):
     This can be raised when the value is invalid or unexpected given the context,
     for example an 'array' node when we expected a 'group'.
     """
+
+    _msg = "Invalid value. Expected '{}'. Got '{}'."
 
 
 __all__ = [

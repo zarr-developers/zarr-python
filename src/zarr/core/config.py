@@ -58,6 +58,8 @@ config = Config(
                 "crc32c": "zarr.codecs.crc32c_.Crc32cCodec",
                 "sharding_indexed": "zarr.codecs.sharding.ShardingCodec",
                 "transpose": "zarr.codecs.transpose.TransposeCodec",
+                "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
+                "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
             },
             "buffer": "zarr.core.buffer.cpu.Buffer",
             "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
