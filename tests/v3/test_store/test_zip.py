@@ -100,3 +100,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_with_mode(self, store: ZipStore) -> None:
         with pytest.raises(NotImplementedError, match="new mode"):
             await super().test_with_mode(store)
+
+    @pytest.mark.parametrize("mode", ["a", "w"])
+    async def test_store_open_mode(self, store_kwargs: dict[str, Any], mode: str) -> None:
+        super().test_store_open_mode(store_kwargs, mode)
