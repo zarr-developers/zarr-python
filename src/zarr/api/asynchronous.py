@@ -96,11 +96,11 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
         if isinstance(a.metadata, ArrayV2Metadata):
             new["compressor"] = a.metadata.compressor
             new["filters"] = a.metadata.filters
-
-        if isinstance(a.metadata, ArrayV3Metadata):
-            new["codecs"] = a.metadata.codecs
         else:
-            raise TypeError(f"Unsupported zarr format: {a.metadata.zarr_format}")
+            # TODO: Remove type: ignore statement when type inference improves.
+            # mypy cannot correctly infer the type of a.metadata here for some reason.
+            new["codecs"] = a.metadata.codecs  # type: ignore[unreachable]
+
     else:
         # TODO: set default values compressor/codecs
         # to do this, we may need to evaluate if this is a v2 or v3 array

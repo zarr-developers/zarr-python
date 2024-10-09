@@ -29,7 +29,8 @@ from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.common import ZARR_JSON, parse_named_configuration, parse_shapelike
 from zarr.core.config import config
-from zarr.core.metadata.common import ArrayMetadata, parse_attributes
+from zarr.core.metadata.common import parse_attributes
+from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
 from zarr.registry import get_codec_class
 
 DEFAULT_DTYPE = "float64"

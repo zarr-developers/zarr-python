@@ -298,7 +298,7 @@ class AsyncGroup:
 
     async def get(
         self, key: str, default: DefaultT | None = None
-    ) -> AsyncArray | AsyncGroup | DefaultT | None:
+    ) -> AsyncArray[Any] | AsyncGroup | DefaultT | None:
         """Obtain a group member, returning default if not found.
 
         Parameters

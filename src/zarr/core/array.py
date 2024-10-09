@@ -2476,10 +2476,16 @@ class Array:
         would be restored by a subsequent resize operation that grows the array size.
         """
         resized = sync(self._async_array.resize(new_shape))
-        return type(self)(resized)
+        # TODO: remove this cast when type inference improves
+        _resized = cast(AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata], resized)
+        return type(self)(_resized)
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
-        return type(self)(sync(self._async_array.update_attributes(new_attributes)))
+        # TODO: remove this cast when type inference improves
+        new_array = sync(self._async_array.update_attributes(new_attributes))
+        # TODO: remove this cast when type inference improves
+        _new_array = cast(AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata], new_array)
+        return type(self)(_new_array)
 
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"

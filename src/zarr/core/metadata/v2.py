@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from collections.abc import Iterable
 from enum import Enum
+from functools import cached_property
 from typing import TYPE_CHECKING, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
@@ -41,7 +42,7 @@ class ArrayV2MetadataDict(TypedDict):
 @dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
-    chunks: RegularChunkGrid
+    chunks: tuple[int, ...]
     dtype: np.dtype[Any]
     fill_value: None | int | float | str | bytes = 0
     order: Literal["C", "F"] = "C"
@@ -79,7 +80,7 @@ class ArrayV2Metadata(Metadata):
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "dtype", dtype_parsed)
-        object.__setattr__(self, "chunks", RegularChunkGrid(chunk_shape=chunks_parsed))
+        object.__setattr__(self, "chunks", chunks_parsed)
         object.__setattr__(self, "compressor", compressor_parsed)
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "dimension_separator", dimension_separator_parsed)
@@ -94,9 +95,9 @@ class ArrayV2Metadata(Metadata):
     def ndim(self) -> int:
         return len(self.shape)
 
-    @property
+    @cached_property
     def chunk_grid(self) -> RegularChunkGrid:
-        return self.chunks
+        return RegularChunkGrid(chunk_shape=self.chunks)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         def _json_convert(
@@ -178,9 +179,6 @@ class ArrayV2Metadata(Metadata):
             fill_value = base64.standard_b64encode(cast(bytes, self.fill_value)).decode("ascii")
             zarray_dict["fill_value"] = fill_value
 
-        _ = zarray_dict.pop("chunks")
-        zarray_dict["chunks"] = self.chunks.chunk_shape
-
         _ = zarray_dict.pop("dtype")
         zarray_dict["dtype"] = self.dtype.str
 
@@ -190,7 +188,7 @@ class ArrayV2Metadata(Metadata):
         self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
     ) -> ArraySpec:
         return ArraySpec(
-            shape=self.chunks.chunk_shape,
+            shape=self.chunks,
             dtype=self.dtype,
             fill_value=self.fill_value,
             order=order,
@@ -254,7 +252,7 @@ def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
 
 
 def parse_metadata(data: ArrayV2Metadata) -> ArrayV2Metadata:
-    if (l_chunks := len(data.chunks.chunk_shape)) != (l_shape := len(data.shape)):
+    if (l_chunks := len(data.chunks)) != (l_shape := len(data.shape)):
         msg = (
             f"The `shape` and `chunks` attributes must have the same length. "
             f"`chunks` has length {l_chunks}, but `shape` has length {l_shape}."
