@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 import pytest
@@ -84,3 +85,10 @@ async def test_v2_encode_decode(dtype):
     data = zarr.open_array(store=store, path="foo")[:]
     expected = np.full((3,), b"X", dtype=dtype)
     np.testing.assert_equal(data, expected)
+
+
+@pytest.mark.parametrize("dtype", [str, "str"])
+async def test_create_dtype_str(dtype: Any) -> None:
+    arr = zarr.create(shape=10, dtype=dtype, zarr_format=2)
+    assert arr.dtype.kind == "O"
+    assert arr.metadata.to_dict()["dtype"] == "|O"
