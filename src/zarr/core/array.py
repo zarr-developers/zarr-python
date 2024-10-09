@@ -227,7 +227,7 @@ class AsyncArray:
         if chunks is not None and chunk_shape is not None:
             raise ValueError("Only one of chunk_shape or chunks can be provided.")
 
-        dtype = parse_dtype(dtype)
+        dtype = parse_dtype(dtype, zarr_format)
         # dtype = np.dtype(dtype)
         if chunks:
             _chunks = normalize_chunks(chunks, shape, dtype.itemsize)

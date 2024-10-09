@@ -18,6 +18,8 @@ from typing import (
 
 import numpy as np
 
+from zarr.core.strings import _STRING_DTYPE
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
 
@@ -166,8 +168,11 @@ def parse_order(data: Any) -> Literal["C", "F"]:
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
 
 
-def parse_dtype(dtype: Any) -> np.dtype[Any]:
+def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
     if dtype is str or dtype == "str":
-        # special case as object
-        return np.dtype("object")
+        if zarr_format == 2:
+            # special case as object
+            return np.dtype("object")
+        else:
+            return _STRING_DTYPE
     return np.dtype(dtype)

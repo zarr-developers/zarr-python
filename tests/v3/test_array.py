@@ -1,6 +1,6 @@
 import pickle
 from itertools import accumulate
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 import pytest
@@ -406,10 +406,3 @@ def test_vlen_errors() -> None:
             dtype="<U4",
             codecs=[BytesCodec(), VLenBytesCodec()],
         )
-
-
-@pytest.mark.parametrize("zarr_format", [2, 3, None])
-@pytest.mark.parametrize("dtype", [str, "str"])
-def test_create_dtype_str(dtype: Any, zarr_format: ZarrFormat | None) -> None:
-    arr = zarr.create(shape=10, dtype=dtype, zarr_format=zarr_format)
-    assert arr.dtype.kind == "O"

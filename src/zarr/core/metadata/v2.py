@@ -57,7 +57,7 @@ class ArrayV2Metadata(ArrayMetadata):
         Metadata for a Zarr version 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        data_type_parsed = parse_dtype(dtype)
+        data_type_parsed = parse_dtype(dtype, zarr_format=2)
         chunks_parsed = parse_shapelike(chunks)
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
@@ -141,7 +141,7 @@ class ArrayV2Metadata(ArrayMetadata):
         _data = data.copy()
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))
-        dtype = parse_dtype(_data["dtype"])
+        dtype = parse_dtype(_data["dtype"], zarr_format=2)
 
         if dtype.kind in "SV":
             fill_value_encoded = _data.get("fill_value")
