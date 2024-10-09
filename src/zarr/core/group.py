@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from dataclasses import asdict, dataclass, field, fields, replace
-from typing import TYPE_CHECKING, Literal, cast, overload
+from typing import TYPE_CHECKING, Literal, TypeVar, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -41,6 +41,8 @@ if TYPE_CHECKING:
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
 logger = logging.getLogger("zarr.group")
+
+DefaultT = TypeVar("DefaultT")
 
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
@@ -290,6 +292,28 @@ class AsyncGroup:
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
+    async def get(
+        self, key: str, default: DefaultT | None = None
+    ) -> AsyncArray | AsyncGroup | DefaultT | None:
+        """Obtain a group member, returning default if not found.
+
+        Parameters
+        ----------
+        key : str
+            Group member name.
+        default : object
+            Default value to return if key is not found (default: None).
+
+        Returns
+        -------
+        object
+            Group member (AsyncArray or AsyncGroup) or default if not found.
+        """
+        try:
+            return await self.getitem(key)
+        except KeyError:
+            return default
+
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
         to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
@@ -372,7 +396,7 @@ class AsyncGroup:
 
         Parameters
         ----------
-        name : string
+        name : str
             Group name.
         overwrite : bool, optional
             Overwrite any existing group with given `name` if present.
@@ -501,7 +525,7 @@ class AsyncGroup:
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         kwargs : dict
             Additional arguments passed to :func:`zarr.AsyncGroup.create_array`.
@@ -534,11 +558,11 @@ class AsyncGroup:
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         shape : int or tuple of ints
             Array shape.
-        dtype : string or dtype, optional
+        dtype : str or dtype, optional
             NumPy dtype.
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
@@ -568,11 +592,11 @@ class AsyncGroup:
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         shape : int or tuple of ints
             Array shape.
-        dtype : string or dtype, optional
+        dtype : str or dtype, optional
             NumPy dtype.
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
@@ -828,6 +852,26 @@ class Group(SyncMixin):
         else:
             return Group(obj)
 
+    def get(self, path: str, default: DefaultT | None = None) -> Array | Group | DefaultT | None:
+        """Obtain a group member, returning default if not found.
+
+        Parameters
+        ----------
+        key : str
+            Group member name.
+        default : object
+            Default value to return if key is not found (default: None).
+
+        Returns
+        -------
+        object
+            Group member (Array or Group) or default if not found.
+        """
+        try:
+            return self[path]
+        except KeyError:
+            return default
+
     def __delitem__(self, key: str) -> None:
         self._sync(self._async_group.delitem(key))
 
@@ -959,7 +1003,7 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        name : string
+        name : str
             Group name.
         overwrite : bool, optional
             Overwrite any existing group with given `name` if present.
@@ -1081,7 +1125,7 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         kwargs : dict
             Additional arguments passed to :func:`zarr.Group.create_array`
@@ -1106,11 +1150,11 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         shape : int or tuple of ints
             Array shape.
-        dtype : string or dtype, optional
+        dtype : str or dtype, optional
             NumPy dtype.
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
@@ -1133,11 +1177,11 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         shape : int or tuple of ints
             Array shape.
-        dtype : string or dtype, optional
+        dtype : str or dtype, optional
             NumPy dtype.
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
