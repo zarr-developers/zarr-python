@@ -313,8 +313,6 @@ class NDBuffer:
     """
 
     def __init__(self, array: NDArrayLike) -> None:
-        # assert array.ndim > 0
-        assert array.dtype != object
         self._data = array
 
     @classmethod
@@ -467,9 +465,11 @@ class NDBuffer:
             # Handle None fill_value for Zarr V2
             return False
         # use array_equal to obtain equal_nan=True functionality
+        # Since fill-value is a scalar, isn't there a faster path than allocating a new array for fill value
+        # every single time we have to write data?
         _data, other = np.broadcast_arrays(self._data, other)
         return np.array_equal(
-            self._data, other, equal_nan=equal_nan if self._data.dtype.kind not in "US" else False
+            self._data, other, equal_nan=equal_nan if self._data.dtype.kind not in "USTO" else False
         )
 
     def fill(self, value: Any) -> None:

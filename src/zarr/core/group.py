@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from dataclasses import asdict, dataclass, field, fields, replace
-from typing import TYPE_CHECKING, Literal, cast, overload
+from typing import TYPE_CHECKING, Literal, TypeVar, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -43,6 +43,8 @@ if TYPE_CHECKING:
     from zarr.core.metadata.v3 import ArrayV3Metadata
 
 logger = logging.getLogger("zarr.group")
+
+DefaultT = TypeVar("DefaultT")
 
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
@@ -293,6 +295,28 @@ class AsyncGroup:
             )
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
+
+    async def get(
+        self, key: str, default: DefaultT | None = None
+    ) -> AsyncArray | AsyncGroup | DefaultT | None:
+        """Obtain a group member, returning default if not found.
+
+        Parameters
+        ----------
+        key : string
+            Group member name.
+        default : object
+            Default value to return if key is not found (default: None).
+
+        Returns
+        -------
+        object
+            Group member (AsyncArray or AsyncGroup) or default if not found.
+        """
+        try:
+            return await self.getitem(key)
+        except KeyError:
+            return default
 
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
         to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
@@ -855,6 +879,26 @@ class Group(SyncMixin):
             return Array(obj)
         else:
             return Group(obj)
+
+    def get(self, path: str, default: DefaultT | None = None) -> Array | Group | DefaultT | None:
+        """Obtain a group member, returning default if not found.
+
+        Parameters
+        ----------
+        key : string
+            Group member name.
+        default : object
+            Default value to return if key is not found (default: None).
+
+        Returns
+        -------
+        object
+            Group member (Array or Group) or default if not found.
+        """
+        try:
+            return self[path]
+        except KeyError:
+            return default
 
     def __delitem__(self, key: str) -> None:
         self._sync(self._async_group.delitem(key))
