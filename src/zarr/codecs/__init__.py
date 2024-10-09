@@ -28,8 +28,8 @@ __all__ = [
     "ShardingCodec",
     "ShardingCodecIndexLocation",
     "TransposeCodec",
-    "VLenUTF8Codec",
     "VLenBytesCodec",
+    "VLenUTF8Codec",
     "ZstdCodec",
 ]
 
