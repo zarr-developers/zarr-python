@@ -504,6 +504,7 @@ class DataType(Enum):
     complex128 = "complex128"
     string = "string"
     bytes = "bytes"
+    object = "object"
 
     @property
     def byte_count(self) -> None | int:
@@ -549,6 +550,7 @@ class DataType(Enum):
             DataType.float64: "f8",
             DataType.complex64: "c8",
             DataType.complex128: "c16",
+            DataType.object: "object",
         }
         return data_type_to_numpy[self]
 
@@ -572,6 +574,8 @@ class DataType(Enum):
             return DataType.string
         elif dtype.kind == "S":
             return DataType.bytes
+        elif dtype.kind == "O":
+            return DataType.object
         dtype_to_data_type = {
             "|b1": "bool",
             "bool": "bool",

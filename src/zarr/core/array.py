@@ -35,6 +35,7 @@ from zarr.core.common import (
     ShapeLike,
     ZarrFormat,
     concurrent_map,
+    parse_dtype,
     parse_shapelike,
     product,
 )
@@ -226,7 +227,8 @@ class AsyncArray:
         if chunks is not None and chunk_shape is not None:
             raise ValueError("Only one of chunk_shape or chunks can be provided.")
 
-        dtype = np.dtype(dtype)
+        dtype = parse_dtype(dtype)
+        # dtype = np.dtype(dtype)
         if chunks:
             _chunks = normalize_chunks(chunks, shape, dtype.itemsize)
         else:

@@ -16,6 +16,8 @@ from typing import (
     overload,
 )
 
+import numpy as np
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
 
@@ -162,3 +164,10 @@ def parse_order(data: Any) -> Literal["C", "F"]:
     if data in ("C", "F"):
         return cast(Literal["C", "F"], data)
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
+
+
+def parse_dtype(dtype: Any) -> np.dtype[Any]:
+    if dtype is str or dtype == "str":
+        # special case as object
+        return np.dtype("object")
+    return np.dtype(dtype)
