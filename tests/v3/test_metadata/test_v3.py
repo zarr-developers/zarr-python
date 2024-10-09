@@ -24,6 +24,7 @@ from zarr.core.metadata.v3 import (
     default_fill_value,
     parse_dimension_names,
     parse_fill_value,
+    parse_node_type_array,
     parse_zarr_format,
 )
 
@@ -60,6 +61,16 @@ def test_parse_zarr_format_invalid(data: Any) -> None:
 
 def test_parse_zarr_format_valid() -> None:
     assert parse_zarr_format(3) == 3
+
+
+@pytest.mark.parametrize("data", [None, "group"])
+def test_parse_node_type_arrayinvalid(data: Any) -> None:
+    with pytest.raises(ValueError, match=f"Invalid value. Expected 'array'. Got '{data}'."):
+        parse_node_type_array(data)
+
+
+def test_parse_node_typevalid() -> None:
+    assert parse_node_type_array("array") == "array"
 
 
 @pytest.mark.parametrize("data", [(), [1, 2, "a"], {"foo": 10}])
