@@ -14,6 +14,7 @@ from zarr.core.config import config
 from zarr.core.group import AsyncGroup
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
+from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
     StoreLike,
     StorePath,
@@ -247,7 +248,10 @@ async def open(
 
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
-    except KeyError:
+    except (KeyError, NodeTypeValidationError):
+        # KeyError for a missing key
+        # NodeTypeValidationError for failing to parse node metadata as an array when it's
+        # actually a group
         return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
 
 
@@ -580,6 +584,8 @@ async def open_group(
     meta_array : array-like, optional
         An array instance to use for determining arrays to create and return
         to users. Use `numpy.empty(())` by default.
+    attributes : dict
+        A dictionary of JSON-serializable values with user-defined attributes.
 
     Returns
     -------
