@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
+from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
-from typing import TYPE_CHECKING, Literal, cast, overload
+from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -22,13 +24,18 @@ from zarr.core.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
     ZGROUP_JSON,
+    ZMETADATA_V2_JSON,
     ChunkCoords,
+    NodeType,
     ShapeLike,
     ZarrFormat,
     parse_shapelike,
 )
 from zarr.core.config import config
+from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.v3 import V3JsonEncoder
 from zarr.core.sync import SyncMixin, sync
+from zarr.errors import MetadataValidationError
 from zarr.storage import StoreLike, make_store_path
 from zarr.storage.common import StorePath, ensure_no_existing_node
 
@@ -42,12 +49,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("zarr.group")
 
+DefaultT = TypeVar("DefaultT")
+
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
     if data in (2, 3):
         return cast(Literal[2, 3], data)
-    msg = msg = f"Invalid zarr_format. Expected one 2 or 3. Got {data}."
+    msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
     raise ValueError(msg)
+
+
+def parse_node_type(data: Any) -> NodeType:
+    if data in ("array", "group"):
+        return cast(Literal["array", "group"], data)
+    raise MetadataValidationError("node_type", "array or group", data)
 
 
 # todo: convert None to empty dict
@@ -61,14 +76,16 @@ def parse_attributes(data: Any) -> dict[str, Any]:
 
 
 @overload
-def _parse_async_node(node: AsyncArray) -> Array: ...
+def _parse_async_node(node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]) -> Array: ...
 
 
 @overload
 def _parse_async_node(node: AsyncGroup) -> Group: ...
 
 
-def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
+def _parse_async_node(
+    node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
+) -> Array | Group:
     """
     Wrap an AsyncArray in an Array, or an AsyncGroup in a Group.
     """
@@ -81,9 +98,206 @@ def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
 
 
 @dataclass(frozen=True)
+class ConsolidatedMetadata:
+    """
+    Consolidated Metadata for this Group.
+
+    This stores the metadata of child nodes below this group. Any child groups
+    will have their consolidated metadata set appropriately.
+    """
+
+    metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]
+    kind: Literal["inline"] = "inline"
+    must_understand: Literal[False] = False
+
+    def to_dict(self) -> dict[str, JSON]:
+        return {
+            "kind": self.kind,
+            "must_understand": self.must_understand,
+            "metadata": {k: v.to_dict() for k, v in self.flattened_metadata.items()},
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, JSON]) -> ConsolidatedMetadata:
+        data = dict(data)
+
+        kind = data.get("kind")
+        if kind != "inline":
+            raise ValueError(f"Consolidated metadata kind='{kind}' is not supported.")
+
+        raw_metadata = data.get("metadata")
+        if not isinstance(raw_metadata, dict):
+            raise TypeError(f"Unexpected type for 'metadata': {type(raw_metadata)}")
+
+        metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
+        if raw_metadata:
+            for k, v in raw_metadata.items():
+                if not isinstance(v, dict):
+                    raise TypeError(
+                        f"Invalid value for metadata items. key='{k}', type='{type(v).__name__}'"
+                    )
+
+                # zarr_format is present in v2 and v3.
+                zarr_format = parse_zarr_format(v["zarr_format"])
+
+                if zarr_format == 3:
+                    node_type = parse_node_type(v.get("node_type", None))
+                    if node_type == "group":
+                        metadata[k] = GroupMetadata.from_dict(v)
+                    elif node_type == "array":
+                        metadata[k] = ArrayV3Metadata.from_dict(v)
+                    else:
+                        assert_never(node_type)
+                elif zarr_format == 2:
+                    if "shape" in v:
+                        metadata[k] = ArrayV2Metadata.from_dict(v)
+                    else:
+                        metadata[k] = GroupMetadata.from_dict(v)
+                else:
+                    assert_never(zarr_format)
+
+            cls._flat_to_nested(metadata)
+
+        return cls(metadata=metadata)
+
+    @staticmethod
+    def _flat_to_nested(
+        metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
+    ) -> None:
+        """
+        Convert a flat metadata representation to a nested one.
+
+        Notes
+        -----
+        Flat metadata is used when persisting the consolidated metadata. The keys
+        include the full path, not just the node name. The key prefixes can be
+        used to determine which nodes are children of which other nodes.
+
+        Nested metadata is used in-memory. The outermost level will only have the
+        *immediate* children of the Group. All nested child groups will be stored
+        under the consolidated metadata of their immediate parent.
+        """
+        # We have a flat mapping from {k: v} where the keys include the *full*
+        # path segment:
+        #  {
+        #    "/a/b": { group_metadata },
+        #    "/a/b/array-0": { array_metadata },
+        #    "/a/b/array-1": { array_metadata },
+        #  }
+        #
+        # We want to reorganize the metadata such that each Group contains the
+        # array metadata of its immediate children.
+        # In the example, the group at `/a/b` will have consolidated metadata
+        # for its children `array-0` and `array-1`.
+        #
+        # metadata = dict(metadata)
+
+        keys = sorted(metadata, key=lambda k: k.count("/"))
+        grouped = {
+            k: list(v) for k, v in itertools.groupby(keys, key=lambda k: k.rsplit("/", 1)[0])
+        }
+
+        # we go top down and directly manipulate metadata.
+        for key, children_keys in grouped.items():
+            # key is a key like "a", "a/b", "a/b/c"
+            # The basic idea is to find the immediate parent (so "", "a", or "a/b")
+            # and update that node's consolidated metadata to include the metadata
+            # in children_keys
+            *prefixes, name = key.split("/")
+            parent = metadata
+
+            while prefixes:
+                # e.g. a/b/c has a parent "a/b". Walk through to get
+                # metadata["a"]["b"]
+                part = prefixes.pop(0)
+                # we can assume that parent[part] here is a group
+                # otherwise we wouldn't have a node with this `part` prefix.
+                # We can also assume that the parent node will have consolidated metadata,
+                # because we're walking top to bottom.
+                parent = parent[part].consolidated_metadata.metadata  # type: ignore[union-attr]
+
+            node = parent[name]
+            children_keys = list(children_keys)
+
+            if isinstance(node, ArrayV2Metadata | ArrayV3Metadata):
+                # These are already present, either thanks to being an array in the
+                # root, or by being collected as a child in the else clause
+                continue
+            children_keys = list(children_keys)
+            # We pop from metadata, since we're *moving* this under group
+            children = {
+                child_key.split("/")[-1]: metadata.pop(child_key)
+                for child_key in children_keys
+                if child_key != key
+            }
+            parent[name] = replace(
+                node, consolidated_metadata=ConsolidatedMetadata(metadata=children)
+            )
+
+    @property
+    def flattened_metadata(self) -> dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]:
+        """
+        Return the flattened representation of Consolidated Metadata.
+
+        The returned dictionary will have a key for each child node in the hierarchy
+        under this group. Under the default (nested) representation available through
+        ``self.metadata``, the dictionary only contains keys for immediate children.
+
+        The keys of the dictionary will include the full path to a child node from
+        the current group, where segments are joined by ``/``.
+
+        Examples
+        --------
+        >>> cm = ConsolidatedMetadata(
+        ...     metadata={
+        ...         "group-0": GroupMetadata(
+        ...             consolidated_metadata=ConsolidatedMetadata(
+        ...                 {
+        ...                     "group-0-0": GroupMetadata(),
+        ...                 }
+        ...             )
+        ...         ),
+        ...         "group-1": GroupMetadata(),
+        ...     }
+        ... )
+        {'group-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
+         'group-0/group-0-0': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group'),
+         'group-1': GroupMetadata(attributes={}, zarr_format=3, consolidated_metadata=None, node_type='group')}
+        """
+        metadata = {}
+
+        def flatten(
+            key: str, group: GroupMetadata | ArrayV2Metadata | ArrayV3Metadata
+        ) -> dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]:
+            children: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
+            if isinstance(group, ArrayV2Metadata | ArrayV3Metadata):
+                children[key] = group
+            else:
+                if group.consolidated_metadata and group.consolidated_metadata.metadata is not None:
+                    children[key] = replace(
+                        group, consolidated_metadata=ConsolidatedMetadata(metadata={})
+                    )
+                    for name, val in group.consolidated_metadata.metadata.items():
+                        full_key = f"{key}/{name}"
+                        if isinstance(val, GroupMetadata):
+                            children.update(flatten(full_key, val))
+                        else:
+                            children[full_key] = val
+                else:
+                    children[key] = replace(group, consolidated_metadata=None)
+            return children
+
+        for k, v in self.metadata.items():
+            metadata.update(flatten(k, v))
+
+        return metadata
+
+
+@dataclass(frozen=True)
 class GroupMetadata(Metadata):
     attributes: dict[str, Any] = field(default_factory=dict)
     zarr_format: ZarrFormat = 3
+    consolidated_metadata: ConsolidatedMetadata | None = None
     node_type: Literal["group"] = field(default="group", init=False)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
@@ -91,11 +305,11 @@ class GroupMetadata(Metadata):
         if self.zarr_format == 3:
             return {
                 ZARR_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.to_dict(), indent=json_indent).encode()
+                    json.dumps(self.to_dict(), cls=V3JsonEncoder).encode()
                 )
             }
         else:
-            return {
+            items = {
                 ZGROUP_JSON: prototype.buffer.from_bytes(
                     json.dumps({"zarr_format": self.zarr_format}, indent=json_indent).encode()
                 ),
@@ -103,19 +317,58 @@ class GroupMetadata(Metadata):
                     json.dumps(self.attributes, indent=json_indent).encode()
                 ),
             }
+            if self.consolidated_metadata:
+                d = {
+                    ZGROUP_JSON: {"zarr_format": self.zarr_format},
+                    ZATTRS_JSON: self.attributes,
+                }
+                consolidated_metadata = self.consolidated_metadata.to_dict()["metadata"]
+                assert isinstance(consolidated_metadata, dict)
+                for k, v in consolidated_metadata.items():
+                    attrs = v.pop("attributes", None)
+                    d[f"{k}/{ZATTRS_JSON}"] = attrs
+                    if "shape" in v:
+                        # it's an array
+                        d[f"{k}/{ZARRAY_JSON}"] = v
+                    else:
+                        d[f"{k}/{ZGROUP_JSON}"] = {
+                            "zarr_format": self.zarr_format,
+                            "consolidated_metadata": {
+                                "metadata": {},
+                                "must_understand": False,
+                                "kind": "inline",
+                            },
+                        }
+
+                items[ZMETADATA_V2_JSON] = prototype.buffer.from_bytes(
+                    json.dumps(
+                        {"metadata": d, "zarr_consolidated_format": 1},
+                        cls=V3JsonEncoder,
+                    ).encode()
+                )
+
+            return items
 
     def __init__(
-        self, attributes: dict[str, Any] | None = None, zarr_format: ZarrFormat = 3
+        self,
+        attributes: dict[str, Any] | None = None,
+        zarr_format: ZarrFormat = 3,
+        consolidated_metadata: ConsolidatedMetadata | None = None,
     ) -> None:
         attributes_parsed = parse_attributes(attributes)
         zarr_format_parsed = parse_zarr_format(zarr_format)
 
         object.__setattr__(self, "attributes", attributes_parsed)
         object.__setattr__(self, "zarr_format", zarr_format_parsed)
+        object.__setattr__(self, "consolidated_metadata", consolidated_metadata)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GroupMetadata:
+        data = dict(data)
         assert data.pop("node_type", None) in ("group", None)
+        consolidated_metadata = data.pop("consolidated_metadata", None)
+        if consolidated_metadata:
+            data["consolidated_metadata"] = ConsolidatedMetadata.from_dict(consolidated_metadata)
 
         zarr_format = data.get("zarr_format")
         if zarr_format == 2 or zarr_format is None:
@@ -128,7 +381,10 @@ class GroupMetadata(Metadata):
         return cls(**data)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        result = asdict(replace(self, consolidated_metadata=None))
+        if self.consolidated_metadata:
+            result["consolidated_metadata"] = self.consolidated_metadata.to_dict()
+        return result
 
 
 @dataclass(frozen=True)
@@ -161,24 +417,71 @@ class AsyncGroup:
         cls,
         store: StoreLike,
         zarr_format: Literal[2, 3, None] = 3,
+        use_consolidated: bool | str | None = None,
     ) -> AsyncGroup:
+        """
+        Open a new AsyncGroup
+
+        Parameters
+        ----------
+        store: StoreLike
+        zarr_format: {2, 3}, optional
+        use_consolidated: bool or str, default None
+            Whether to use consolidated metadata.
+
+            By default, consolidated metadata is used if it's present in the
+            store (in the ``zarr.json`` for Zarr v3 and in the ``.zmetadata`` file
+            for Zarr v2).
+
+            To explicitly require consolidated metadata, set ``use_consolidated=True``,
+            which will raise an exception if consolidated metadata is not found.
+
+            To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
+            which will fall back to using the regular, non consolidated metadata.
+
+            Zarr v2 allowed configuring the key storing the consolidated metadata
+            (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
+            to load consolidated metadata from a non-default key.
+        """
         store_path = await make_store_path(store)
 
+        consolidated_key = ZMETADATA_V2_JSON
+
+        if (zarr_format == 2 or zarr_format is None) and isinstance(use_consolidated, str):
+            consolidated_key = use_consolidated
+
         if zarr_format == 2:
-            zgroup_bytes, zattrs_bytes = await asyncio.gather(
-                (store_path / ZGROUP_JSON).get(), (store_path / ZATTRS_JSON).get()
+            paths = [store_path / ZGROUP_JSON, store_path / ZATTRS_JSON]
+            if use_consolidated or use_consolidated is None:
+                paths.append(store_path / consolidated_key)
+
+            zgroup_bytes, zattrs_bytes, *rest = await asyncio.gather(
+                *[path.get() for path in paths]
             )
             if zgroup_bytes is None:
                 raise FileNotFoundError(store_path)
+
+            if use_consolidated or use_consolidated is None:
+                maybe_consolidated_metadata_bytes = rest[0]
+
+            else:
+                maybe_consolidated_metadata_bytes = None
+
         elif zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
                 raise FileNotFoundError(store_path)
         elif zarr_format is None:
-            zarr_json_bytes, zgroup_bytes, zattrs_bytes = await asyncio.gather(
+            (
+                zarr_json_bytes,
+                zgroup_bytes,
+                zattrs_bytes,
+                maybe_consolidated_metadata_bytes,
+            ) = await asyncio.gather(
                 (store_path / ZARR_JSON).get(),
                 (store_path / ZGROUP_JSON).get(),
                 (store_path / ZATTRS_JSON).get(),
+                (store_path / str(consolidated_key)).get(),
             )
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # TODO: revisit this exception type
@@ -194,18 +497,90 @@ class AsyncGroup:
             else:
                 zarr_format = 2
         else:
-            raise ValueError(f"unexpected zarr_format: {zarr_format}")
+            raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
 
         if zarr_format == 2:
-            # V2 groups are comprised of a .zgroup and .zattrs objects
+            # this is checked above, asserting here for mypy
             assert zgroup_bytes is not None
-            zgroup = json.loads(zgroup_bytes.to_bytes())
-            zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
-            group_metadata = {**zgroup, "attributes": zattrs}
+
+            if use_consolidated and maybe_consolidated_metadata_bytes is None:
+                # the user requested consolidated metadata, but it was missing
+                raise ValueError(consolidated_key)
+
+            elif use_consolidated is False:
+                # the user explicitly opted out of consolidated_metadata.
+                # Discard anything we might have read.
+                maybe_consolidated_metadata_bytes = None
+
+            return cls._from_bytes_v2(
+                store_path, zgroup_bytes, zattrs_bytes, maybe_consolidated_metadata_bytes
+            )
         else:
             # V3 groups are comprised of a zarr.json object
             assert zarr_json_bytes is not None
-            group_metadata = json.loads(zarr_json_bytes.to_bytes())
+            if not isinstance(use_consolidated, bool | None):
+                raise TypeError("use_consolidated must be a bool or None for Zarr V3.")
+
+            return cls._from_bytes_v3(
+                store_path,
+                zarr_json_bytes,
+                use_consolidated=use_consolidated,
+            )
+
+    @classmethod
+    def _from_bytes_v2(
+        cls,
+        store_path: StorePath,
+        zgroup_bytes: Buffer,
+        zattrs_bytes: Buffer | None,
+        consolidated_metadata_bytes: Buffer | None,
+    ) -> AsyncGroup:
+        # V2 groups are comprised of a .zgroup and .zattrs objects
+        zgroup = json.loads(zgroup_bytes.to_bytes())
+        zattrs = json.loads(zattrs_bytes.to_bytes()) if zattrs_bytes is not None else {}
+        group_metadata = {**zgroup, "attributes": zattrs}
+
+        if consolidated_metadata_bytes is not None:
+            v2_consolidated_metadata = json.loads(consolidated_metadata_bytes.to_bytes())
+            v2_consolidated_metadata = v2_consolidated_metadata["metadata"]
+            # We already read zattrs and zgroup. Should we ignore these?
+            v2_consolidated_metadata.pop(".zattrs")
+            v2_consolidated_metadata.pop(".zgroup")
+
+            consolidated_metadata: defaultdict[str, dict[str, Any]] = defaultdict(dict)
+
+            # keys like air/.zarray, air/.zattrs
+            for k, v in v2_consolidated_metadata.items():
+                path, kind = k.rsplit("/.", 1)
+
+                if kind == "zarray":
+                    consolidated_metadata[path].update(v)
+                elif kind == "zattrs":
+                    consolidated_metadata[path]["attributes"] = v
+                elif kind == "zgroup":
+                    consolidated_metadata[path].update(v)
+                else:
+                    raise ValueError(f"Invalid file type '{kind}' at path '{path}")
+            group_metadata["consolidated_metadata"] = {
+                "metadata": dict(consolidated_metadata),
+                "kind": "inline",
+                "must_understand": False,
+            }
+
+        return cls.from_dict(store_path, group_metadata)
+
+    @classmethod
+    def _from_bytes_v3(
+        cls, store_path: StorePath, zarr_json_bytes: Buffer, use_consolidated: bool | None
+    ) -> AsyncGroup:
+        group_metadata = json.loads(zarr_json_bytes.to_bytes())
+        if use_consolidated and group_metadata.get("consolidated_metadata") is None:
+            msg = f"Consolidated metadata requested with 'use_consolidated=True' but not found in '{store_path.path}'."
+            raise ValueError(msg)
+
+        elif use_consolidated is False:
+            # Drop consolidated metadata if it's there.
+            group_metadata.pop("consolidated_metadata", None)
 
         return cls.from_dict(store_path, group_metadata)
 
@@ -223,17 +598,20 @@ class AsyncGroup:
     async def getitem(
         self,
         key: str,
-    ) -> AsyncArray | AsyncGroup:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
         store_path = self.store_path / key
         logger.debug("key=%s, store_path=%s", key, store_path)
+
+        # Consolidated metadata lets us avoid some I/O operations so try that first.
+        if self.metadata.consolidated_metadata is not None:
+            return self._getitem_consolidated(store_path, key, prefix=self.name)
 
         # Note:
         # in zarr-python v2, we first check if `key` references an Array, else if `key` references
         # a group,using standalone `contains_array` and `contains_group` functions. These functions
         # are reusable, but for v3 they would perform redundant I/O operations.
         # Not clear how much of that strategy we want to keep here.
-
-        if self.metadata.zarr_format == 3:
+        elif self.metadata.zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
                 raise KeyError(key)
@@ -277,18 +655,75 @@ class AsyncGroup:
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
+    def _getitem_consolidated(
+        self, store_path: StorePath, key: str, prefix: str
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
+        # getitem, in the special case where we have consolidated metadata.
+        # Note that this is a regular def (non async) function.
+        # This shouldn't do any additional I/O.
+
+        # the caller needs to verify this!
+        assert self.metadata.consolidated_metadata is not None
+
+        try:
+            metadata = self.metadata.consolidated_metadata.metadata[key]
+        except KeyError as e:
+            # The Group Metadata has consolidated metadata, but the key
+            # isn't present. We trust this to mean that the key isn't in
+            # the hierarchy, and *don't* fall back to checking the store.
+            msg = f"'{key}' not found in consolidated metadata."
+            raise KeyError(msg) from e
+
+        # update store_path to ensure that AsyncArray/Group.name is correct
+        if prefix != "/":
+            key = "/".join([prefix.lstrip("/"), key])
+        store_path = StorePath(store=store_path.store, path=key)
+
+        if isinstance(metadata, GroupMetadata):
+            return AsyncGroup(metadata=metadata, store_path=store_path)
+        else:
+            return AsyncArray(metadata=metadata, store_path=store_path)
+
     async def delitem(self, key: str) -> None:
         store_path = self.store_path / key
         if self.metadata.zarr_format == 3:
             await (store_path / ZARR_JSON).delete()
+
         elif self.metadata.zarr_format == 2:
             await asyncio.gather(
                 (store_path / ZGROUP_JSON).delete(),  # TODO: missing_ok=False
                 (store_path / ZARRAY_JSON).delete(),  # TODO: missing_ok=False
                 (store_path / ZATTRS_JSON).delete(),  # TODO: missing_ok=True
             )
+
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
+
+        if self.metadata.consolidated_metadata:
+            self.metadata.consolidated_metadata.metadata.pop(key, None)
+            await self._save_metadata()
+
+    async def get(
+        self, key: str, default: DefaultT | None = None
+    ) -> AsyncArray[Any] | AsyncGroup | DefaultT | None:
+        """Obtain a group member, returning default if not found.
+
+        Parameters
+        ----------
+        key : str
+            Group member name.
+        default : object
+            Default value to return if key is not found (default: None).
+
+        Returns
+        -------
+        object
+            Group member (AsyncArray or AsyncGroup) or default if not found.
+        """
+        try:
+            return await self.getitem(key)
+        except KeyError:
+            return default
 
     async def _save_metadata(self, ensure_parents: bool = False) -> None:
         to_save = self.metadata.to_buffer_dict(default_buffer_prototype())
@@ -372,7 +807,7 @@ class AsyncGroup:
 
         Parameters
         ----------
-        name : string
+        name : str
             Group name.
         overwrite : bool, optional
             Overwrite any existing group with given `name` if present.
@@ -386,7 +821,9 @@ class AsyncGroup:
             grp = await self.create_group(name, exists_ok=True)
         else:
             try:
-                item: AsyncGroup | AsyncArray = await self.getitem(name)
+                item: (
+                    AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]
+                ) = await self.getitem(name)
                 if not isinstance(item, AsyncGroup):
                     raise TypeError(
                         f"Incompatible object ({item.__class__.__name__}) already exists"
@@ -430,7 +867,7 @@ class AsyncGroup:
         # runtime
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
         Create a Zarr array within this AsyncGroup.
         This method lightly wraps AsyncArray.create.
@@ -493,7 +930,9 @@ class AsyncGroup:
         )
 
     @deprecated("Use AsyncGroup.create_array instead.")
-    async def create_dataset(self, name: str, **kwargs: Any) -> AsyncArray:
+    async def create_dataset(
+        self, name: str, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -501,7 +940,7 @@ class AsyncGroup:
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         kwargs : dict
             Additional arguments passed to :func:`zarr.AsyncGroup.create_array`.
@@ -524,7 +963,7 @@ class AsyncGroup:
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -534,11 +973,11 @@ class AsyncGroup:
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         shape : int or tuple of ints
             Array shape.
-        dtype : string or dtype, optional
+        dtype : str or dtype, optional
             NumPy dtype.
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
@@ -561,18 +1000,18 @@ class AsyncGroup:
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Obtain an array, creating if it doesn't exist.
 
         Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         shape : int or tuple of ints
             Array shape.
-        dtype : string or dtype, optional
+        dtype : str or dtype, optional
             NumPy dtype.
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
@@ -635,6 +1074,8 @@ class AsyncGroup:
         -------
         count : int
         """
+        if self.metadata.consolidated_metadata is not None:
+            return len(self.metadata.consolidated_metadata.flattened_metadata)
         # TODO: consider using aioitertools.builtins.sum for this
         # return await aioitertools.builtins.sum((1 async for _ in self.members()), start=0)
         n = 0
@@ -645,7 +1086,9 @@ class AsyncGroup:
     async def members(
         self,
         max_depth: int | None = 0,
-    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
+    ) -> AsyncGenerator[
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+    ]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
         This method requires that `store_path.store` supports directory listing.
@@ -660,6 +1103,12 @@ class AsyncGroup:
             ``max_depth=None`` to include all nodes, and some positive integer
             to consider children within that many levels of the root Group.
 
+        Returns
+        -------
+        path:
+            A string giving the path to the target, relative to the Group ``self``.
+        value: AsyncArray or AsyncGroup
+            The AsyncArray or AsyncGroup that is a child of ``self``.
         """
         if max_depth is not None and max_depth < 0:
             raise ValueError(f"max_depth must be None or >= 0. Got '{max_depth}' instead")
@@ -668,7 +1117,17 @@ class AsyncGroup:
 
     async def _members(
         self, max_depth: int | None, current_depth: int
-    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
+    ) -> AsyncGenerator[
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+    ]:
+        if self.metadata.consolidated_metadata is not None:
+            # we should be able to do members without any additional I/O
+            members = self._members_consolidated(max_depth, current_depth)
+
+            for member in members:
+                yield member
+            return
+
         if not self.store_path.store.supports_listing:
             msg = (
                 f"The store associated with this group ({type(self.store_path.store)}) "
@@ -681,6 +1140,11 @@ class AsyncGroup:
         # would be nice to make these special keys accessible programmatically,
         # and scoped to specific zarr versions
         _skip_keys = ("zarr.json", ".zgroup", ".zattrs")
+
+        # hmm lots of I/O and logic interleaved here.
+        # We *could* have an async gen over self.metadata.consolidated_metadata.metadata.keys()
+        # and plug in here. `getitem` will skip I/O.
+        # Kinda a shame to have all the asyncio task overhead though, when it isn't needed.
 
         async for key in self.store_path.store.list_dir(self.store_path.path):
             if key in _skip_keys:
@@ -706,8 +1170,30 @@ class AsyncGroup:
                 # as opposed to a prefix, in the store under the prefix associated with this group
                 # in which case `key` cannot be the name of a sub-array or sub-group.
                 logger.warning(
-                    "Object at %s is not recognized as a component of a Zarr hierarchy.", key
+                    "Object at %s is not recognized as a component of a Zarr hierarchy.",
+                    key,
                 )
+
+    def _members_consolidated(
+        self, max_depth: int | None, current_depth: int, prefix: str = ""
+    ) -> Generator[
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+    ]:
+        consolidated_metadata = self.metadata.consolidated_metadata
+
+        # we kind of just want the top-level keys.
+        if consolidated_metadata is not None:
+            for key in consolidated_metadata.metadata.keys():
+                obj = self._getitem_consolidated(
+                    self.store_path, key, prefix=self.name
+                )  # Metadata -> Group/Array
+                key = f"{prefix}/{key}".lstrip("/")
+                yield key, obj
+
+                if ((max_depth is None) or (current_depth < max_depth)) and isinstance(
+                    obj, AsyncGroup
+                ):
+                    yield from obj._members_consolidated(max_depth, current_depth + 1, prefix=key)
 
     async def keys(self) -> AsyncGenerator[str, None]:
         async for key, _ in self.members():
@@ -735,7 +1221,11 @@ class AsyncGroup:
         async for _, group in self.groups():
             yield group
 
-    async def arrays(self) -> AsyncGenerator[tuple[str, AsyncArray], None]:
+    async def arrays(
+        self,
+    ) -> AsyncGenerator[
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]], None
+    ]:
         async for key, value in self.members():
             if isinstance(value, AsyncArray):
                 yield key, value
@@ -744,43 +1234,55 @@ class AsyncGroup:
         async for key, _ in self.arrays():
             yield key
 
-    async def array_values(self) -> AsyncGenerator[AsyncArray, None]:
+    async def array_values(
+        self,
+    ) -> AsyncGenerator[AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata], None]:
         async for _, array in self.arrays():
             yield array
 
     async def tree(self, expand: bool = False, level: int | None = None) -> Any:
         raise NotImplementedError
 
-    async def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+    async def empty(
+        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
 
-    async def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+    async def zeros(
+        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.zeros(shape=shape, store=self.store_path, path=name, **kwargs)
 
-    async def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+    async def ones(
+        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.ones(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.full(
             shape=shape, fill_value=fill_value, store=self.store_path, path=name, **kwargs
         )
 
     async def empty_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.empty_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def zeros_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.zeros_like(a=data, store=self.store_path, path=name, **kwargs)
 
-    async def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
+    async def ones_like(
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.ones_like(a=data, store=self.store_path, path=name, **kwargs)
 
-    async def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
+    async def full_like(
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
@@ -827,6 +1329,26 @@ class Group(SyncMixin):
             return Array(obj)
         else:
             return Group(obj)
+
+    def get(self, path: str, default: DefaultT | None = None) -> Array | Group | DefaultT | None:
+        """Obtain a group member, returning default if not found.
+
+        Parameters
+        ----------
+        key : str
+            Group member name.
+        default : object
+            Default value to return if key is not found (default: None).
+
+        Returns
+        -------
+        object
+            Group member (Array or Group) or default if not found.
+        """
+        try:
+            return self[path]
+        except KeyError:
+            return default
 
     def __delitem__(self, key: str) -> None:
         self._sync(self._async_group.delitem(key))
@@ -959,7 +1481,7 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        name : string
+        name : str
             Group name.
         overwrite : bool, optional
             Overwrite any existing group with given `name` if present.
@@ -1081,7 +1603,7 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         kwargs : dict
             Additional arguments passed to :func:`zarr.Group.create_array`
@@ -1106,11 +1628,11 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         shape : int or tuple of ints
             Array shape.
-        dtype : string or dtype, optional
+        dtype : str or dtype, optional
             NumPy dtype.
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require
@@ -1133,11 +1655,11 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        name : string
+        name : str
             Array name.
         shape : int or tuple of ints
             Array shape.
-        dtype : string or dtype, optional
+        dtype : str or dtype, optional
             NumPy dtype.
         exact : bool, optional
             If True, require `dtype` to match exactly. If false, require

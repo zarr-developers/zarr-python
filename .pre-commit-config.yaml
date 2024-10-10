@@ -49,3 +49,7 @@ repos:
     hooks:
       - id: rst-directive-colons
       - id: rst-inline-touching-normal
+  - repo: https://github.com/numpy/numpydoc
+    rev: v1.8.0
+    hooks:
+      - id: numpydoc-validation

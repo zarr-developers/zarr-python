@@ -4,10 +4,22 @@ import json
 import re
 from typing import TYPE_CHECKING, Literal
 
+import numpy as np
+import pytest
+
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
+from zarr.core.group import parse_node_type
+from zarr.core.metadata.v3 import (
+    ArrayV3Metadata,
+    DataType,
+    default_fill_value,
+    parse_dimension_names,
+    parse_fill_value,
+    parse_zarr_format,
+)
+from zarr.errors import MetadataValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -17,14 +29,8 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON
 
 
-import numpy as np
-import pytest
-
 from zarr.core.metadata.v3 import (
-    default_fill_value,
-    parse_dimension_names,
-    parse_fill_value,
-    parse_zarr_format,
+    parse_node_type_array,
 )
 
 bool_dtypes = ("bool",)
@@ -54,12 +60,40 @@ dtypes = (*bool_dtypes, *int_dtypes, *float_dtypes, *complex_dtypes, *vlen_dtype
 
 @pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
 def test_parse_zarr_format_invalid(data: Any) -> None:
-    with pytest.raises(ValueError, match=f"Invalid value. Expected 3. Got {data}"):
+    with pytest.raises(
+        ValueError, match=f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
+    ):
         parse_zarr_format(data)
 
 
 def test_parse_zarr_format_valid() -> None:
     assert parse_zarr_format(3) == 3
+
+
+def test_parse_node_type_valid() -> None:
+    assert parse_node_type("array") == "array"
+    assert parse_node_type("group") == "group"
+
+
+@pytest.mark.parametrize("node_type", [None, 2, "other"])
+def test_parse_node_type_invalid(node_type: Any) -> None:
+    with pytest.raises(
+        MetadataValidationError,
+        match=f"Invalid value for 'node_type'. Expected 'array or group'. Got '{node_type}'.",
+    ):
+        parse_node_type(node_type)
+
+
+@pytest.mark.parametrize("data", [None, "group"])
+def test_parse_node_type_array_invalid(data: Any) -> None:
+    with pytest.raises(
+        ValueError, match=f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
+    ):
+        parse_node_type_array(data)
+
+
+def test_parse_node_typev_array_alid() -> None:
+    assert parse_node_type_array("array") == "array"
 
 
 @pytest.mark.parametrize("data", [(), [1, 2, "a"], {"foo": 10}])

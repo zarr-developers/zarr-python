@@ -60,7 +60,7 @@ node_names = st.text(zarr_key_chars, min_size=1).filter(
 )
 array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
-keys = st.lists(node_names, min_size=1).map(lambda x: "/".join(x))
+keys = st.lists(node_names, min_size=1).map("/".join)
 paths = st.just("/") | keys
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
 compressors = st.sampled_from([None, "default"])
@@ -140,7 +140,8 @@ def arrays(
     )
 
     assert isinstance(a, Array)
-    assert a.fill_value is not None
+    if a.metadata.zarr_format == 3:
+        assert a.fill_value is not None
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunks == a.chunks

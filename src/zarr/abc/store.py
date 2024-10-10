@@ -43,7 +43,7 @@ class Store(ABC):
     _mode: AccessMode
     _is_open: bool
 
-    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, mode: AccessModeLiteral = "r", **kwargs: Any) -> None:
         self._is_open = False
         self._mode = AccessMode.from_literal(mode)
 
@@ -69,13 +69,10 @@ class Store(ABC):
     async def _open(self) -> None:
         if self._is_open:
             raise ValueError("store is already open")
-        if not await self.empty():
-            if self.mode.update or self.mode.readonly:
-                pass
-            elif self.mode.overwrite:
-                await self.clear()
-            else:
-                raise FileExistsError("Store already exists")
+        if self.mode.str == "w":
+            await self.clear()
+        elif self.mode.str == "w-" and not await self.empty():
+            raise FileExistsError("Store already exists")
         self._is_open = True
 
     async def _ensure_open(self) -> None:
