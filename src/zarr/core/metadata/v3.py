@@ -38,7 +38,7 @@ DEFAULT_DTYPE = "float64"
 def parse_zarr_format(data: object) -> Literal[3]:
     if data == 3:
         return 3
-    raise MetadataValidationError(3, data)
+    raise MetadataValidationError("zarr_format", 3, data)
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:

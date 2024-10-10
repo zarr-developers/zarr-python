@@ -28,7 +28,7 @@ class ContainsArrayAndGroupError(_BaseZarrError):
 class MetadataValidationError(_BaseZarrError):
     """An exception raised when the Zarr metadata is invalid in some way"""
 
-    _msg = "Invalid value. Expected '{}'. Got '{}'."
+    _msg = "Invalid value for '{}'. Expected '{}'. Got '{}'."
 
 
 class NodeTypeValidationError(MetadataValidationError):

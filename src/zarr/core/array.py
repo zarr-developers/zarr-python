@@ -67,6 +67,7 @@ from zarr.core.indexing import (
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import collect_aiterator, sync
+from zarr.errors import MetadataValidationError
 from zarr.registry import get_pipeline_class
 from zarr.storage import StoreLike, make_store_path
 from zarr.storage.common import StorePath, ensure_no_existing_node
@@ -144,7 +145,7 @@ async def get_array_metadata(
         else:
             zarr_format = 2
     else:
-        raise ValueError(f"unexpected zarr_format: {zarr_format}")
+        raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
 
     metadata_dict: dict[str, Any]
     if zarr_format == 2:
