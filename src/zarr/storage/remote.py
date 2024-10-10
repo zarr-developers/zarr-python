@@ -94,7 +94,9 @@ class RemoteStore(Store):
             pass
 
     async def empty(self) -> bool:
-        return not await self.fs._find(self.path, withdirs=True)
+        # TODO: it would be nice if we didn't have to list all keys here
+        # it should be possible to stop after the first key is discovered
+        return not await self.fs._ls(self.path)
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
         return type(self)(
