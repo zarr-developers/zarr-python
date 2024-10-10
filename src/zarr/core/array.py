@@ -73,6 +73,7 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
 )
 from zarr.core.sync import collect_aiterator, sync
+from zarr.errors import MetadataValidationError
 from zarr.registry import get_pipeline_class
 from zarr.storage import StoreLike, make_store_path
 from zarr.storage.common import StorePath, ensure_no_existing_node
@@ -150,7 +151,7 @@ async def get_array_metadata(
         else:
             zarr_format = 2
     else:
-        raise ValueError(f"unexpected zarr_format: {zarr_format}")
+        raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
 
     metadata_dict: dict[str, JSON]
     if zarr_format == 2:
@@ -521,7 +522,7 @@ class AsyncArray(Generic[TArrayMeta]):
             chunks=chunks,
             order=order,
             dimension_separator=dimension_separator,
-            fill_value=0 if fill_value is None else fill_value,
+            fill_value=fill_value,
             compressor=compressor,
             filters=filters,
             attributes=attributes,
