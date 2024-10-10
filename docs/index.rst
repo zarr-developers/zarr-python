@@ -10,6 +10,7 @@ Zarr-Python
 
     getting_started
     tutorial
+    consolidated_metadata
     api/index
     spec
     release

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, TypedDict, overload
+
+from zarr.abc.metadata import Metadata
+from zarr.core.buffer.core import default_buffer_prototype
 
 if TYPE_CHECKING:
     from typing import Self
@@ -22,12 +25,17 @@ import numpy.typing as npt
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
-from zarr.core.common import ZARR_JSON, parse_named_configuration, parse_shapelike
+from zarr.core.common import (
+    JSON,
+    ZARR_JSON,
+    ChunkCoords,
+    parse_named_configuration,
+    parse_shapelike,
+)
 from zarr.core.config import config
-from zarr.core.metadata.common import ArrayMetadata, parse_attributes
+from zarr.core.metadata.common import parse_attributes
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
@@ -180,8 +188,17 @@ def _replace_special_floats(obj: object) -> Any:
     return obj
 
 
+class ArrayV3MetadataDict(TypedDict):
+    """
+    A typed dictionary model for zarr v3 metadata.
+    """
+
+    zarr_format: Literal[3]
+    attributes: dict[str, JSON]
+
+
 @dataclass(frozen=True, kw_only=True)
-class ArrayV3Metadata(ArrayMetadata):
+class ArrayV3Metadata(Metadata):
     shape: ChunkCoords
     data_type: DataType
     chunk_grid: ChunkGrid
