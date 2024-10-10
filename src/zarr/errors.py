@@ -39,8 +39,6 @@ class NodeTypeValidationError(MetadataValidationError):
     for example an 'array' node when we expected a 'group'.
     """
 
-    _msg = "Invalid value. Expected '{}'. Got '{}'."
-
 
 __all__ = [
     "ContainsArrayAndGroupError",

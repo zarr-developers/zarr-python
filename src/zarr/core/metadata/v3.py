@@ -44,7 +44,7 @@ def parse_zarr_format(data: object) -> Literal[3]:
 def parse_node_type_array(data: object) -> Literal["array"]:
     if data == "array":
         return "array"
-    raise NodeTypeValidationError("array", data)
+    raise NodeTypeValidationError("node_type", "array", data)
 
 
 def parse_codecs(data: object) -> tuple[Codec, ...]:
