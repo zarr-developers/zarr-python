@@ -319,3 +319,7 @@ ignore = [
 	"PC111",  # fix Python code in documentation - enable later
 	"PC180",  # for JavaScript - not interested
 ]
+
+[tool.numpydoc_validation]
+# See https://numpydoc.readthedocs.io/en/latest/validation.html#built-in-validation-checks for list of checks
+checks = ["GL06", "GL07", "GL10", "PR03", "PR05", "PR06"]

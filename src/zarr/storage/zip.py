@@ -22,19 +22,19 @@ class ZipStore(Store):
 
     Parameters
     ----------
-    path : string
+    path : str
         Location of file.
-    compression : integer, optional
+    mode : str, optional
+        One of 'r' to read an existing file, 'w' to truncate and write a new
+        file, 'a' to append to an existing file, or 'x' to exclusively create
+        and write a new file.
+    compression : int, optional
         Compression method to use when writing to the archive.
     allowZip64 : bool, optional
         If True (the default) will create ZIP files that use the ZIP64
         extensions when the zipfile is larger than 2 GiB. If False
         will raise an exception when the ZIP file would require ZIP64
         extensions.
-    mode : string, optional
-        One of 'r' to read an existing file, 'w' to truncate and write a new
-        file, 'a' to append to an existing file, or 'x' to exclusively create
-        and write a new file.
 
     Attributes
     ----------

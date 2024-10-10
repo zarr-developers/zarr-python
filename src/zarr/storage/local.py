@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import os
 import shutil
@@ -8,7 +9,7 @@ from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
-from zarr.core.common import concurrent_map, to_thread
+from zarr.core.common import concurrent_map
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
@@ -140,7 +141,7 @@ class LocalStore(Store):
         path = self.root / key
 
         try:
-            return await to_thread(_get, path, prototype, byte_range)
+            return await asyncio.to_thread(_get, path, prototype, byte_range)
         except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
             return None
 
@@ -154,7 +155,7 @@ class LocalStore(Store):
             assert isinstance(key, str)
             path = self.root / key
             args.append((_get, path, prototype, byte_range))
-        return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
+        return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: Buffer) -> None:
         return await self._set(key, value)
@@ -173,7 +174,7 @@ class LocalStore(Store):
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
         path = self.root / key
-        await to_thread(_put, path, value, start=None, exclusive=exclusive)
+        await asyncio.to_thread(_put, path, value, start=None, exclusive=exclusive)
 
     async def set_partial_values(
         self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
@@ -184,7 +185,7 @@ class LocalStore(Store):
             assert isinstance(key, str)
             path = self.root / key
             args.append((_put, path, value, start))
-        await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
+        await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
 
     async def delete(self, key: str) -> None:
         self._check_writable()
@@ -192,11 +193,11 @@ class LocalStore(Store):
         if path.is_dir():  # TODO: support deleting directories? shutil.rmtree?
             shutil.rmtree(path)
         else:
-            await to_thread(path.unlink, True)  # Q: we may want to raise if path is missing
+            await asyncio.to_thread(path.unlink, True)  # Q: we may want to raise if path is missing
 
     async def exists(self, key: str) -> bool:
         path = self.root / key
-        return await to_thread(path.is_file)
+        return await asyncio.to_thread(path.is_file)
 
     async def list(self) -> AsyncGenerator[str, None]:
         to_strip = str(self.root) + "/"

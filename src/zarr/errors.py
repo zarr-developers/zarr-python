@@ -25,6 +25,21 @@ class ContainsArrayAndGroupError(_BaseZarrError):
     )
 
 
+class MetadataValidationError(_BaseZarrError):
+    """An exception raised when the Zarr metadata is invalid in some way"""
+
+    _msg = "Invalid value for '{}'. Expected '{}'. Got '{}'."
+
+
+class NodeTypeValidationError(MetadataValidationError):
+    """
+    Specialized exception when the node_type of the metadata document is incorrect..
+
+    This can be raised when the value is invalid or unexpected given the context,
+    for example an 'array' node when we expected a 'group'.
+    """
+
+
 __all__ = [
     "ContainsArrayAndGroupError",
     "ContainsArrayError",

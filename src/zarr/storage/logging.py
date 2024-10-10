@@ -32,8 +32,6 @@ class LoggingStore(Store):
 
     Attributes
     ----------
-    _store: Store
-        Wrapped store
     counter: dict
         Counter of number of times each method has been called
     """
@@ -78,7 +76,7 @@ class LoggingStore(Store):
 
     @contextmanager
     def log(self) -> Generator[None, None, None]:
-        """context manager to log method calls
+        """Context manager to log method calls
 
         Each call to the wrapped store is logged to the configured logger and added to
         the counter dict.

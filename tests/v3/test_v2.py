@@ -1,4 +1,6 @@
+import json
 from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 import pytest
@@ -6,6 +8,9 @@ from numcodecs import Delta
 from numcodecs.blosc import Blosc
 
 import zarr
+import zarr.core.buffer.cpu
+import zarr.core.metadata
+import zarr.storage
 from zarr import Array
 from zarr.storage import MemoryStore, StorePath
 
@@ -31,6 +36,27 @@ def test_simple(store: StorePath) -> None:
     assert np.array_equal(data, a[:, :])
 
 
+@pytest.mark.parametrize(
+    ("dtype", "fill_value"),
+    [
+        ("bool", False),
+        ("int64", 0),
+        ("float64", 0.0),
+        ("|S1", b""),
+        ("|U1", ""),
+        ("object", 0),
+        (str, ""),
+    ],
+)
+def test_implicit_fill_value(store: StorePath, dtype: str, fill_value: Any) -> None:
+    arr = zarr.open_array(store=store, shape=(4,), fill_value=None, zarr_format=2, dtype=dtype)
+    assert arr.metadata.fill_value is None
+    assert arr.metadata.to_dict()["fill_value"] is None
+    result = arr[:]
+    expected = np.full(arr.shape, fill_value, dtype=dtype)
+    np.testing.assert_array_equal(result, expected)
+
+
 def test_codec_pipeline() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2243
     store = MemoryStore(mode="w")
@@ -46,3 +72,37 @@ def test_codec_pipeline() -> None:
     result = array[:]
     expected = np.ones(1)
     np.testing.assert_array_equal(result, expected)
+
+
+@pytest.mark.parametrize("dtype", ["|S", "|V"])
+async def test_v2_encode_decode(dtype):
+    store = zarr.storage.MemoryStore(mode="w")
+    g = zarr.group(store=store, zarr_format=2)
+    g.create_array(
+        name="foo",
+        shape=(3,),
+        chunks=(3,),
+        dtype=dtype,
+        fill_value=b"X",
+    )
+
+    result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
+    assert result is not None
+
+    serialized = json.loads(result.to_bytes())
+    expected = {
+        "chunks": [3],
+        "compressor": None,
+        "dtype": f"{dtype}0",
+        "fill_value": "WA==",
+        "filters": None,
+        "order": "C",
+        "shape": [3],
+        "zarr_format": 2,
+        "dimension_separator": ".",
+    }
+    assert serialized == expected
+
+    data = zarr.open_array(store=store, path="foo")[:]
+    expected = np.full((3,), b"X", dtype=dtype)
+    np.testing.assert_equal(data, expected)

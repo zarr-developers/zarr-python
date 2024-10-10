@@ -62,19 +62,12 @@ class AccessMode(NamedTuple):
 class Store(ABC):
     """
     Abstract base class for Zarr stores.
-
-    Attributes
-    ----------
-    _mode : AccessMode
-        Access mode flags.
-    _is_open : bool
-        Whether the store is open.
     """
 
     _mode: AccessMode
     _is_open: bool
 
-    def __init__(self, mode: AccessModeLiteral = "r", *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, mode: AccessModeLiteral = "r", **kwargs: Any) -> None:
         self._is_open = False
         self._mode = AccessMode.from_literal(mode)
 
@@ -92,7 +85,7 @@ class Store(ABC):
 
         Returns
         -------
-        store
+        Store
             The opened store instance.
         """
         store = cls(*args, **kwargs)
@@ -116,26 +109,23 @@ class Store(ABC):
         """
         Open the store.
 
-        Notes
-        -----
-        * When `mode='w'` and the store already exists, it will be cleared.
-
         Raises
         ------
         ValueError
             If the store is already open.
         FileExistsError
-            If `mode='w-'` and the store already exists.
+            If ``mode='w-'`` and the store already exists.
+
+        Notes
+        -----
+        * When ``mode='w'`` and the store already exists, it will be cleared.
         """
         if self._is_open:
             raise ValueError("store is already open")
-        if not await self.empty():
-            if self.mode.update or self.mode.readonly:
-                pass
-            elif self.mode.overwrite:
-                await self.clear()
-            else:
-                raise FileExistsError("Store already exists")
+        if self.mode.str == "w":
+            await self.clear()
+        elif self.mode.str == "w-" and not await self.empty():
+            raise FileExistsError("Store already exists")
         self._is_open = True
 
     async def _ensure_open(self) -> None:
@@ -161,7 +151,6 @@ class Store(ABC):
         Clear the store.
 
         Remove all keys and values from the store.
-
         """
         ...
 
@@ -430,7 +419,6 @@ async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:
     Notes
     -----
     If value is None, the key will be deleted.
-
     """
     if value is None:
         await byte_setter.delete()

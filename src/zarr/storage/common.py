@@ -117,7 +117,7 @@ class StorePath:
 
         Returns
         -------
-        exists : bool
+        bool
             True if the key exists in the store, False otherwise.
         """
         return await self.store.exists(self.path)
@@ -138,7 +138,7 @@ class StorePath:
 
         Returns
         -------
-        equals : bool
+        bool
             True if the two objects are equal, False otherwise.
 
         Notes

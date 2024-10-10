@@ -30,14 +30,14 @@ class RemoteStore(Store):
 
     Parameters
     ----------
-    fs: AsyncFileSystem
+    fs : AsyncFileSystem
         The Async FSSpec filesystem to use with this store.
-    mode: AccessModeLiteral
+    mode : AccessModeLiteral
         The access mode to use.
-    path: str
+    path : str
         The root path of the store.
-    allowed_exceptions: tuple[type[Exception], ...]
-        When fetching data, these cases will be deemed to correspond to missing
+    allowed_exceptions : tuple[type[Exception], ...]
+        When fetching data, these cases will be deemed to correspond to missing keys.
 
     Attributes
     ----------
@@ -107,7 +107,9 @@ class RemoteStore(Store):
             pass
 
     async def empty(self) -> bool:
-        return not await self.fs._find(self.path, withdirs=True)
+        # TODO: it would be nice if we didn't have to list all keys here
+        # it should be possible to stop after the first key is discovered
+        return not await self.fs._ls(self.path)
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
         return type(self)(

@@ -42,6 +42,7 @@ def test_config_defaults_set() -> None:
             "default_zarr_version": 3,
             "array": {"order": "C"},
             "async": {"concurrency": 10, "timeout": None},
+            "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.codecs.pipeline.BatchedCodecPipeline",
@@ -58,6 +59,8 @@ def test_config_defaults_set() -> None:
                 "crc32c": "zarr.codecs.crc32c_.Crc32cCodec",
                 "sharding_indexed": "zarr.codecs.sharding.ShardingCodec",
                 "transpose": "zarr.codecs.transpose.TransposeCodec",
+                "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
+                "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
             },
         }
     ]

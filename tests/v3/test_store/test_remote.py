@@ -117,14 +117,14 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
         return self.store_cls(**store_kwargs)
 
-    def get(self, store: RemoteStore, key: str) -> Buffer:
+    async def get(self, store: RemoteStore, key: str) -> Buffer:
         #  make a new, synchronous instance of the filesystem because this test is run in sync code
         new_fs = fsspec.filesystem(
             "s3", endpoint_url=store.fs.endpoint_url, anon=store.fs.anon, asynchronous=False
         )
         return self.buffer_cls.from_bytes(new_fs.cat(f"{store.path}/{key}"))
 
-    def set(self, store: RemoteStore, key: str, value: Buffer) -> None:
+    async def set(self, store: RemoteStore, key: str, value: Buffer) -> None:
         #  make a new, synchronous instance of the filesystem because this test is run in sync code
         new_fs = fsspec.filesystem(
             "s3", endpoint_url=store.fs.endpoint_url, anon=store.fs.anon, asynchronous=False
@@ -135,14 +135,13 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         assert str(store) == "<RemoteStore(S3FileSystem, test)>"
 
     def test_store_supports_writes(self, store: RemoteStore) -> None:
-        assert True
+        assert store.supports_writes
 
-    @pytest.mark.xfail
     def test_store_supports_partial_writes(self, store: RemoteStore) -> None:
-        raise AssertionError
+        assert not store.supports_partial_writes
 
     def test_store_supports_listing(self, store: RemoteStore) -> None:
-        assert True
+        assert store.supports_listing
 
     async def test_remote_store_from_uri(
         self, store: RemoteStore, store_kwargs: dict[str, str | bool]
