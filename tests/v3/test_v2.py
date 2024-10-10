@@ -44,7 +44,7 @@ def test_simple(store: StorePath) -> None:
         ("float64", 0.0),
         ("|S1", b""),
         ("|U1", ""),
-        ("object", 0),
+        ("object", ""),
         (str, ""),
     ],
 )
@@ -53,7 +53,12 @@ def test_implicit_fill_value(store: StorePath, dtype: str, fill_value: Any) -> N
     assert arr.metadata.fill_value is None
     assert arr.metadata.to_dict()["fill_value"] is None
     result = arr[:]
-    expected = np.full(arr.shape, fill_value, dtype=dtype)
+    if dtype is str:
+        # special case
+        numpy_dtype = np.dtype(object)
+    else:
+        numpy_dtype = np.dtype(dtype)
+    expected = np.full(arr.shape, fill_value, dtype=numpy_dtype)
     np.testing.assert_array_equal(result, expected)
 
 
