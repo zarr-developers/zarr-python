@@ -12,7 +12,7 @@ from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup
-from zarr.core.metadata import ArrayMetadataDictT, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
     StoreLike,
@@ -237,7 +237,7 @@ async def open(
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
-            _metadata_dict = cast(ArrayMetadataDictT, metadata_dict)
+            _metadata_dict = cast(ArrayMetadataDict, metadata_dict)
             # for v2, the above would already have raised an exception if not an array
             zarr_format = _metadata_dict["zarr_format"]
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"

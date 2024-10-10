@@ -4,7 +4,7 @@ import json
 from asyncio import gather
 from dataclasses import dataclass, field, replace
 from logging import getLogger
-from typing import TYPE_CHECKING, Any, Generic, Literal, TypeVar, cast, overload
+from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -65,12 +65,13 @@ from zarr.core.indexing import (
     pop_fields,
 )
 from zarr.core.metadata import (
-    ArrayMetadataDictT,
-    ArrayMetadataT,
+    ArrayMetadata,
+    ArrayMetadataDict,
     ArrayV2Metadata,
     ArrayV2MetadataDict,
     ArrayV3Metadata,
     ArrayV3MetadataDict,
+    T_ArrayMetadata,
 )
 from zarr.core.sync import collect_aiterator, sync
 from zarr.errors import MetadataValidationError
@@ -91,8 +92,8 @@ __all__ = ["create_codec_pipeline", "parse_array_metadata"]
 logger = getLogger(__name__)
 
 
-def parse_array_metadata(data: Any) -> ArrayMetadataT:
-    if isinstance(data, ArrayMetadataT):
+def parse_array_metadata(data: Any) -> ArrayMetadata:
+    if isinstance(data, ArrayMetadata):
         return data
     elif isinstance(data, dict):
         if data["zarr_format"] == 3:
@@ -109,7 +110,7 @@ def parse_array_metadata(data: Any) -> ArrayMetadataT:
     raise TypeError
 
 
-def create_codec_pipeline(metadata: ArrayMetadataT) -> CodecPipeline:
+def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
         return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
@@ -167,12 +168,9 @@ async def get_array_metadata(
     return metadata_dict
 
 
-TArrayMeta = TypeVar("TArrayMeta", ArrayV2Metadata, ArrayV3Metadata)
-
-
 @dataclass(frozen=True)
-class AsyncArray(Generic[TArrayMeta]):
-    metadata: TArrayMeta
+class AsyncArray(Generic[T_ArrayMetadata]):
+    metadata: T_ArrayMetadata
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
     order: Literal["C", "F"]
@@ -195,7 +193,7 @@ class AsyncArray(Generic[TArrayMeta]):
 
     def __init__(
         self,
-        metadata: ArrayMetadataT | ArrayMetadataDictT,
+        metadata: ArrayMetadata | ArrayMetadataDict,
         store_path: StorePath,
         order: Literal["C", "F"] | None = None,
     ) -> None:
@@ -779,7 +777,7 @@ class AsyncArray(Generic[TArrayMeta]):
         )
         return await self._get_selection(indexer, prototype=prototype)
 
-    async def _save_metadata(self, metadata: ArrayMetadataT, ensure_parents: bool = False) -> None:
+    async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
 
@@ -1025,7 +1023,7 @@ class Array:
         return self._async_array.basename
 
     @property
-    def metadata(self) -> ArrayMetadataT:
+    def metadata(self) -> ArrayMetadata:
         return self._async_array.metadata
 
     @property
