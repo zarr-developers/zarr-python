@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, gpu
-from zarr.core.common import concurrent_map
+from zarr.core.common import _inherit_docstrings, concurrent_map
 from zarr.storage._utils import _normalize_interval_index
 
 if TYPE_CHECKING:
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from zarr.core.common import AccessModeLiteral
 
 
+@_inherit_docstrings
 class MemoryStore(Store):
     """
     In-memory store for testing purposes.

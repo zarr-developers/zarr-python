@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
-from zarr.core.common import concurrent_map
+from zarr.core.common import _inherit_docstrings, concurrent_map
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
@@ -66,6 +66,7 @@ def _put(
             return f.write(view)
 
 
+@_inherit_docstrings
 class LocalStore(Store):
     """
     Local file system store.

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import AccessMode, ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
+from zarr.core.common import _inherit_docstrings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
     from zarr.core.common import AccessModeLiteral
 
 
+@_inherit_docstrings
 class LoggingStore(Store):
     """
     Store wrapper that logs all calls to the wrapped store.

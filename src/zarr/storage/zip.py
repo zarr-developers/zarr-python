@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
+from zarr.core.common import _inherit_docstrings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
 ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
 
+@_inherit_docstrings
 class ZipStore(Store):
     """
     Storage class using a ZIP file.

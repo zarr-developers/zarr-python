@@ -6,6 +6,7 @@ import fsspec
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
+from zarr.core.common import _inherit_docstrings
 from zarr.storage.common import _dereference_path
 
 if TYPE_CHECKING:
@@ -24,6 +25,7 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 )
 
 
+@_inherit_docstrings
 class RemoteStore(Store):
     """
     A remote Store based on FSSpec
