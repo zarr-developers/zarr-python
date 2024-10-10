@@ -36,6 +36,27 @@ def test_simple(store: StorePath) -> None:
     assert np.array_equal(data, a[:, :])
 
 
+@pytest.mark.parametrize(
+    ("dtype", "fill_value"),
+    [
+        ("bool", False),
+        ("int64", 0),
+        ("float64", 0.0),
+        ("|S1", b""),
+        ("|U1", ""),
+        ("object", 0),
+        (str, ""),
+    ],
+)
+def test_implicit_fill_value(store: StorePath, dtype: str, fill_value: Any) -> None:
+    arr = zarr.open_array(store=store, shape=(4,), fill_value=None, zarr_format=2, dtype=dtype)
+    assert arr.metadata.fill_value is None
+    assert arr.metadata.to_dict()["fill_value"] is None
+    result = arr[:]
+    expected = np.full(arr.shape, fill_value, dtype=dtype)
+    np.testing.assert_array_equal(result, expected)
+
+
 def test_codec_pipeline() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2243
     store = MemoryStore(mode="w")

@@ -36,6 +36,7 @@ from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.common import ArrayMetadata
 from zarr.core.sync import SyncMixin, sync
+from zarr.errors import MetadataValidationError
 from zarr.storage import StoreLike, make_store_path
 from zarr.storage.common import StorePath, ensure_no_existing_node
 
@@ -521,7 +522,7 @@ class AsyncGroup:
             else:
                 zarr_format = 2
         else:
-            raise ValueError(f"unexpected zarr_format: {zarr_format}")
+            raise MetadataValidationError("zarr_format", "2, 3, or None", zarr_format)
 
         if zarr_format == 2:
             # this is checked above, asserting here for mypy

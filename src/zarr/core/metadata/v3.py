@@ -36,6 +36,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.metadata.common import ArrayMetadata, parse_attributes
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
+from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
 DEFAULT_DTYPE = "float64"
@@ -44,13 +45,13 @@ DEFAULT_DTYPE = "float64"
 def parse_zarr_format(data: object) -> Literal[3]:
     if data == 3:
         return 3
-    raise ValueError(f"Invalid value. Expected 3. Got {data}.")
+    raise MetadataValidationError("zarr_format", 3, data)
 
 
 def parse_node_type_array(data: object) -> Literal["array"]:
     if data == "array":
         return "array"
-    raise ValueError(f"Invalid value. Expected 'array'. Got {data}.")
+    raise NodeTypeValidationError("node_type", "array", data)
 
 
 def parse_codecs(data: object) -> tuple[Codec, ...]:

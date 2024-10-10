@@ -295,3 +295,24 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
             raise ValueError(msg) from e
 
     return fill_value
+
+
+def _default_fill_value(dtype: np.dtype[Any]) -> Any:
+    """
+    Get the default fill value for a type.
+
+    Notes
+    -----
+    This differs from :func:`parse_fill_value`, which parses a fill value
+    stored in the Array metadata into an in-memory value. This only gives
+    the default fill value for some type.
+
+    This is useful for reading Zarr V2 arrays, which allow the fill
+    value to be unspecified.
+    """
+    if dtype.kind == "S":
+        return b""
+    elif dtype.kind == "U":
+        return ""
+    else:
+        return dtype.type(0)

@@ -22,6 +22,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
     StoreLike,
     StorePath,
@@ -308,7 +309,10 @@ async def open(
 
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
-    except KeyError:
+    except (KeyError, NodeTypeValidationError):
+        # KeyError for a missing key
+        # NodeTypeValidationError for failing to parse node metadata as an array when it's
+        # actually a group
         return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
 
 
@@ -316,6 +320,10 @@ async def open_consolidated(*args: Any, use_consolidated: bool = True, **kwargs:
     """
     Alias for :func:`open_group` with ``use_consolidated=True``.
     """
+    if use_consolidated is not True:
+        raise TypeError(
+            "'use_consolidated' must be 'True' in 'open_consolidated'. Use 'open' with 'use_consolidated=False' to bypass consolidated metadata."
+        )
     return await open_group(*args, use_consolidated=use_consolidated, **kwargs)
 
 
@@ -645,7 +653,9 @@ async def open_group(
     meta_array : array-like, optional
         An array instance to use for determining arrays to create and return
         to users. Use `numpy.empty(())` by default.
-    use_consolidated: bool or str, default None
+    attributes : dict
+        A dictionary of JSON-serializable values with user-defined attributes.
+        use_consolidated : bool or str, default None
         Whether to use consolidated metadata.
 
         By default, consolidated metadata is used if it's present in the

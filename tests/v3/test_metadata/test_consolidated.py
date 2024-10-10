@@ -45,6 +45,16 @@ async def memory_store_with_hierarchy(memory_store: Store) -> None:
 
 
 class TestConsolidated:
+    async def test_open_consolidated_false_raises(self):
+        store = zarr.storage.MemoryStore()
+        with pytest.raises(TypeError, match="use_consolidated"):
+            await zarr.api.asynchronous.open_consolidated(store, use_consolidated=False)
+
+    def test_open_consolidated_false_raises_sync(self):
+        store = zarr.storage.MemoryStore()
+        with pytest.raises(TypeError, match="use_consolidated"):
+            zarr.open_consolidated(store, use_consolidated=False)
+
     async def test_consolidated(self, memory_store_with_hierarchy: Store) -> None:
         # TODO: Figure out desired keys in
         # TODO: variety in the hierarchies

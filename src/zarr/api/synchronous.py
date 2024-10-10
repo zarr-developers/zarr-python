@@ -209,6 +209,7 @@ def open_group(
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used in async api
+    attributes: dict[str, JSON] | None = None,
     use_consolidated: bool | str | None = None,
 ) -> Group:
     return Group(
@@ -224,6 +225,7 @@ def open_group(
                 zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
+                attributes=attributes,
                 use_consolidated=use_consolidated,
             )
         )

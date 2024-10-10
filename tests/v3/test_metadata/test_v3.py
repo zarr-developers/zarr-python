@@ -27,6 +27,10 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON
 
 
+from zarr.core.metadata.v3 import (
+    parse_node_type_array,
+)
+
 bool_dtypes = ("bool",)
 
 int_dtypes = (
@@ -54,12 +58,26 @@ dtypes = (*bool_dtypes, *int_dtypes, *float_dtypes, *complex_dtypes, *vlen_dtype
 
 @pytest.mark.parametrize("data", [None, 1, 2, 4, 5, "3"])
 def test_parse_zarr_format_invalid(data: Any) -> None:
-    with pytest.raises(ValueError, match=f"Invalid value. Expected 3. Got {data}"):
+    with pytest.raises(
+        ValueError, match=f"Invalid value for 'zarr_format'. Expected '3'. Got '{data}'."
+    ):
         parse_zarr_format(data)
 
 
 def test_parse_zarr_format_valid() -> None:
     assert parse_zarr_format(3) == 3
+
+
+@pytest.mark.parametrize("data", [None, "group"])
+def test_parse_node_type_arrayinvalid(data: Any) -> None:
+    with pytest.raises(
+        ValueError, match=f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
+    ):
+        parse_node_type_array(data)
+
+
+def test_parse_node_typevalid() -> None:
+    assert parse_node_type_array("array") == "array"
 
 
 @pytest.mark.parametrize("data", [(), [1, 2, "a"], {"foo": 10}])
