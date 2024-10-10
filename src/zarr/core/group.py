@@ -1230,9 +1230,7 @@ class AsyncGroup:
             return True
 
     async def groups(self) -> AsyncGenerator[tuple[str, AsyncGroup], None]:
-        members = [x async for x in self.members()]
-        # async for name, value in self.members():
-        for name, value in members:
+        async for name, value in self.members():
             if isinstance(value, AsyncGroup):
                 yield name, value
 
