@@ -1,7 +1,7 @@
 Consolidated Metadata
 =====================
 
-zarr-python implements the `Consolidated Metadata_` extension to the Zarr Spec.
+Zarr-Python implements the `Consolidated Metadata_` extension to the Zarr Spec.
 Consolidated metadata can reduce the time needed to load the metadata for an
 entire hierarchy, especially when the metadata is being served over a network.
 Consolidated metadata essentially stores all the metadata for a hierarchy in the
@@ -17,7 +17,7 @@ network request for a :class:`zarr.store.RemoteStore`). After that, any subseque
 metadata reads get child Group or Array nodes will *not* require reads from the store.
 
 In Python, the consolidated metadata is available on the ``.consolidated_metadata``
-attribute of the Group.
+attribute of the ``GroupMetadata`` object.
 
 .. code-block:: python
 
