@@ -116,7 +116,10 @@ async def test_v2_encode_decode(dtype):
 
 @pytest.mark.parametrize("dtype", [str, "str"])
 async def test_create_dtype_str(dtype: Any) -> None:
-    arr = zarr.create(shape=10, dtype=dtype, zarr_format=2)
+    arr = zarr.create(shape=3, dtype=dtype, zarr_format=2)
     assert arr.dtype.kind == "O"
     assert arr.metadata.to_dict()["dtype"] == "|O"
     assert arr.metadata.filters == (numcodecs.vlen.VLenUTF8(),)
+    arr[:] = ["a", "bb", "ccc"]
+    result = arr[:]
+    np.testing.assert_array_equal(result, np.array(["a", "bb", "ccc"], dtype="object"))
