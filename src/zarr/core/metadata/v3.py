@@ -4,6 +4,7 @@ import warnings
 from typing import TYPE_CHECKING, TypedDict, overload
 
 from zarr.abc.metadata import Metadata
+from zarr.core.buffer.core import default_buffer_prototype
 
 if TYPE_CHECKING:
     from typing import Self
@@ -24,10 +25,15 @@ import numpy.typing as npt
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
-from zarr.core.common import ZARR_JSON, parse_named_configuration, parse_shapelike
+from zarr.core.common import (
+    JSON,
+    ZARR_JSON,
+    ChunkCoords,
+    parse_named_configuration,
+    parse_shapelike,
+)
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE

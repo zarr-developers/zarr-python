@@ -207,7 +207,6 @@ class ArrayV2Metadata(Metadata):
 
 
 def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
-    # todo: real validation
     return np.dtype(data)
 
 

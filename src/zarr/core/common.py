@@ -24,6 +24,7 @@ ZARR_JSON = "zarr.json"
 ZARRAY_JSON = ".zarray"
 ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
+ZMETADATA_V2_JSON = ".zmetadata"
 
 ByteRangeRequest = tuple[int | None, int | None]
 BytesLike = bytes | bytearray | memoryview
@@ -31,6 +32,7 @@ ShapeLike = tuple[int, ...] | int
 ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
+NodeType = Literal["array", "group"]
 JSON = None | str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...]
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]

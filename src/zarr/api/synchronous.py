@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import zarr.api.asynchronous as async_api
 from zarr._compat import _deprecate_positional_args
@@ -90,8 +90,10 @@ def open(
         return Group(obj)
 
 
-def open_consolidated(*args: Any, **kwargs: Any) -> Group:
-    return Group(sync(async_api.open_consolidated(*args, **kwargs)))
+def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwargs: Any) -> Group:
+    return Group(
+        sync(async_api.open_consolidated(*args, use_consolidated=use_consolidated, **kwargs))
+    )
 
 
 def save(
@@ -208,6 +210,7 @@ def open_group(
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used in async api
     attributes: dict[str, JSON] | None = None,
+    use_consolidated: bool | str | None = None,
 ) -> Group:
     return Group(
         sync(
@@ -223,6 +226,7 @@ def open_group(
                 zarr_format=zarr_format,
                 meta_array=meta_array,
                 attributes=attributes,
+                use_consolidated=use_consolidated,
             )
         )
     )

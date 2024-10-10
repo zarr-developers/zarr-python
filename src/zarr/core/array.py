@@ -73,6 +73,7 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
+from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import collect_aiterator, sync
 from zarr.errors import MetadataValidationError
 from zarr.registry import get_pipeline_class
@@ -165,6 +166,9 @@ async def get_array_metadata(
         # V3 arrays are comprised of a zarr.json object
         assert zarr_json_bytes is not None
         metadata_dict = json.loads(zarr_json_bytes.to_bytes())
+
+        parse_node_type_array(metadata_dict.get("node_type"))
+
     return metadata_dict
 
 

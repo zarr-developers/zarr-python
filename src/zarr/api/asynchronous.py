@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -9,9 +10,17 @@ import numpy.typing as npt
 
 from zarr.abc.store import Store
 from zarr.core.array import Array, AsyncArray, get_array_metadata
-from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
+from zarr.core.buffer import NDArrayLike
+from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+from zarr.core.common import (
+    JSON,
+    AccessModeLiteral,
+    ChunkCoords,
+    MemoryOrder,
+    ZarrFormat,
+)
 from zarr.core.config import config
-from zarr.core.group import AsyncGroup
+from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
@@ -132,8 +141,64 @@ def _default_zarr_version() -> ZarrFormat:
     return cast(ZarrFormat, int(config.get("default_zarr_version", 3)))
 
 
-async def consolidate_metadata(*args: Any, **kwargs: Any) -> AsyncGroup:
-    raise NotImplementedError
+async def consolidate_metadata(
+    store: StoreLike,
+    path: str | None = None,
+    zarr_format: ZarrFormat | None = None,
+) -> AsyncGroup:
+    """
+    Consolidate the metadata of all nodes in a hierarchy.
+
+    Upon completion, the metadata of the root node in the Zarr hierarchy will be
+    updated to include all the metadata of child nodes.
+
+    Parameters
+    ----------
+    store: StoreLike
+        The store-like object whose metadata you wish to consolidate.
+    path: str, optional
+        A path to a group in the store to consolidate at. Only children
+        below that group will be consolidated.
+
+        By default, the root node is used so all the metadata in the
+        store is consolidated.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the hierarchy. By default the zarr format
+        is inferred.
+
+    Returns
+    -------
+    group: AsyncGroup
+        The group, with the ``consolidated_metadata`` field set to include
+        the metadata of each child node.
+    """
+    store_path = await make_store_path(store)
+
+    if path is not None:
+        store_path = store_path / path
+
+    group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
+    group.store_path.store._check_writable()
+
+    members_metadata = {k: v.metadata async for k, v in group.members(max_depth=None)}
+
+    # While consolidating, we want to be explicit about when child groups
+    # are empty by inserting an empty dict for consolidated_metadata.metadata
+    for k, v in members_metadata.items():
+        if isinstance(v, GroupMetadata) and v.consolidated_metadata is None:
+            v = dataclasses.replace(v, consolidated_metadata=ConsolidatedMetadata(metadata={}))
+            members_metadata[k] = v
+
+    ConsolidatedMetadata._flat_to_nested(members_metadata)
+
+    consolidated_metadata = ConsolidatedMetadata(metadata=members_metadata)
+    metadata = dataclasses.replace(group.metadata, consolidated_metadata=consolidated_metadata)
+    group = dataclasses.replace(
+        group,
+        metadata=metadata,
+    )
+    await group._save_metadata()
+    return group
 
 
 async def copy(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
@@ -256,8 +321,18 @@ async def open(
         return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
 
 
-async def open_consolidated(*args: Any, **kwargs: Any) -> AsyncGroup:
-    raise NotImplementedError
+async def open_consolidated(
+    *args: Any, use_consolidated: Literal[True] = True, **kwargs: Any
+) -> AsyncGroup:
+    """
+    Alias for :func:`open_group` with ``use_consolidated=True``.
+    """
+    if use_consolidated is not True:
+        raise TypeError(
+            "'use_consolidated' must be 'True' in 'open_consolidated'. Use 'open' with "
+            "'use_consolidated=False' to bypass consolidated metadata."
+        )
+    return await open_group(*args, use_consolidated=use_consolidated, **kwargs)
 
 
 async def save(
@@ -549,6 +624,7 @@ async def open_group(
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used
     attributes: dict[str, JSON] | None = None,
+    use_consolidated: bool | str | None = None,
 ) -> AsyncGroup:
     """Open a group using file-mode-like semantics.
 
@@ -589,6 +665,22 @@ async def open_group(
         to users. Use `numpy.empty(())` by default.
     attributes : dict
         A dictionary of JSON-serializable values with user-defined attributes.
+    use_consolidated : bool or str, default None
+        Whether to use consolidated metadata.
+
+        By default, consolidated metadata is used if it's present in the
+        store (in the ``zarr.json`` for Zarr v3 and in the ``.zmetadata`` file
+        for Zarr v2).
+
+        To explicitly require consolidated metadata, set ``use_consolidated=True``,
+        which will raise an exception if consolidated metadata is not found.
+
+        To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
+        which will fall back to using the regular, non consolidated metadata.
+
+        Zarr v2 allowed configuring the key storing the consolidated metadata
+        (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
+        to load consolidated metadata from a non-default key.
 
     Returns
     -------
@@ -615,7 +707,9 @@ async def open_group(
         attributes = {}
 
     try:
-        return await AsyncGroup.open(store_path, zarr_format=zarr_format)
+        return await AsyncGroup.open(
+            store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
+        )
     except (KeyError, FileNotFoundError):
         return await AsyncGroup.from_store(
             store_path,
@@ -777,7 +871,9 @@ async def create(
             )
         else:
             warnings.warn(
-                "dimension_separator is not yet implemented", RuntimeWarning, stacklevel=2
+                "dimension_separator is not yet implemented",
+                RuntimeWarning,
+                stacklevel=2,
             )
     if write_empty_chunks:
         warnings.warn("write_empty_chunks is not yet implemented", RuntimeWarning, stacklevel=2)
