@@ -217,6 +217,7 @@ class AsyncArray(Generic[TArrayMeta]):
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "codec_pipeline", create_codec_pipeline(metadata=metadata_parsed))
 
+    # this overload defines the function signature when zarr_format is 2
     @overload
     @classmethod
     async def create(
@@ -229,17 +230,6 @@ class AsyncArray(Generic[TArrayMeta]):
         zarr_format: Literal[2],
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
-        # v3 only
-        chunk_shape: ChunkCoords | None = None,
-        chunk_key_encoding: (
-            ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None
-        ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
-        # v2 only
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: Literal["C", "F"] | None = None,
@@ -250,6 +240,7 @@ class AsyncArray(Generic[TArrayMeta]):
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata]: ...
 
+    # this overload defines the function signature when zarr_format is 3
     @overload
     @classmethod
     async def create(
@@ -272,12 +263,6 @@ class AsyncArray(Generic[TArrayMeta]):
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
-        # v2 only
-        chunks: ShapeLike | None = None,
-        dimension_separator: Literal[".", "/"] | None = None,
-        order: Literal["C", "F"] | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
         # runtime
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
@@ -306,12 +291,6 @@ class AsyncArray(Generic[TArrayMeta]):
         ) = None,
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
-        # v2 only
-        chunks: ShapeLike | None = None,
-        dimension_separator: Literal[".", "/"] | None = None,
-        order: Literal["C", "F"] | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
         # runtime
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
