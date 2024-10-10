@@ -42,6 +42,7 @@ def test_config_defaults_set() -> None:
             "default_zarr_version": 3,
             "array": {"order": "C"},
             "async": {"concurrency": 10, "timeout": None},
+            "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
                 "path": "zarr.codecs.pipeline.BatchedCodecPipeline",

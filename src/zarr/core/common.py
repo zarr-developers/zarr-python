@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import functools
 import operator
 from collections.abc import Iterable, Mapping
@@ -10,7 +9,6 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
-    ParamSpec,
     TypeVar,
     cast,
     overload,
@@ -60,17 +58,6 @@ async def concurrent_map(
                 return await func(*item)
 
         return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
-
-
-P = ParamSpec("P")
-U = TypeVar("U")
-
-
-async def to_thread(func: Callable[P, U], /, *args: P.args, **kwargs: P.kwargs) -> U:
-    loop = asyncio.get_running_loop()
-    ctx = contextvars.copy_context()
-    func_call = functools.partial(ctx.run, func, *args, **kwargs)
-    return await loop.run_in_executor(None, func_call)
 
 
 E = TypeVar("E", bound=Enum)
