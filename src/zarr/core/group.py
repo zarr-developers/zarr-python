@@ -7,7 +7,7 @@ import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Literal, TypeVar, cast, overload
+from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
 
 import numcodecs.abc
 import numpy as np
@@ -28,6 +28,7 @@ from zarr.core.common import (
     ZGROUP_JSON,
     ZMETADATA_V2_JSON,
     ChunkCoords,
+    NodeType,
     ShapeLike,
     ZarrFormat,
     parse_shapelike,
@@ -57,8 +58,14 @@ DefaultT = TypeVar("DefaultT")
 def parse_zarr_format(data: Any) -> ZarrFormat:
     if data in (2, 3):
         return cast(Literal[2, 3], data)
-    msg = msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
+    msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
     raise ValueError(msg)
+
+
+def parse_node_type(data: Any) -> NodeType:
+    if data in ("array", "group"):
+        return cast(Literal["array", "group"], data)
+    raise MetadataValidationError("node_type", "array or group", data)
 
 
 # todo: convert None to empty dict
@@ -161,21 +168,24 @@ class ConsolidatedMetadata:
                         f"Invalid value for metadata items. key='{k}', type='{type(v).__name__}'"
                     )
 
-                node_type = v.get("node_type", None)
-                if node_type == "group":
-                    metadata[k] = GroupMetadata.from_dict(v)
-                elif node_type == "array" and v.get("zarr_format") == 3:
-                    metadata[k] = ArrayV3Metadata.from_dict(v)
-                elif node_type == "array":
-                    metadata[k] = ArrayV2Metadata.from_dict(v)
-                else:
-                    # We either have V2 metadata, or invalid metadata
+                # zarr_format is present in v2 and v3.
+                zarr_format = parse_zarr_format(v["zarr_format"])
+
+                if zarr_format == 3:
+                    node_type = parse_node_type(v.get("node_type", None))
+                    if node_type == "group":
+                        metadata[k] = GroupMetadata.from_dict(v)
+                    elif node_type == "array":
+                        metadata[k] = ArrayV3Metadata.from_dict(v)
+                    else:
+                        assert_never(node_type)
+                elif zarr_format == 2:
                     if "shape" in v:
-                        # probably ArrayV2Metadata
                         metadata[k] = ArrayV2Metadata.from_dict(v)
                     else:
-                        # probably v2 Group metadata
                         metadata[k] = GroupMetadata.from_dict(v)
+                else:
+                    assert_never(zarr_format)
 
             cls._flat_to_nested(metadata)
 

@@ -10,6 +10,7 @@ import pytest
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.core.group import parse_node_type
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
     DataType,
@@ -18,6 +19,7 @@ from zarr.core.metadata.v3 import (
     parse_fill_value,
     parse_zarr_format,
 )
+from zarr.errors import MetadataValidationError
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -68,15 +70,29 @@ def test_parse_zarr_format_valid() -> None:
     assert parse_zarr_format(3) == 3
 
 
+def test_parse_node_type_valid() -> None:
+    assert parse_node_type("array") == "array"
+    assert parse_node_type("group") == "group"
+
+
+@pytest.mark.parametrize("node_type", [None, 2, "other"])
+def test_parse_node_type_invalid(node_type: Any) -> None:
+    with pytest.raises(
+        MetadataValidationError,
+        match=f"Invalid value for 'node_type'. Expected 'array or group'. Got '{node_type}'.",
+    ):
+        parse_node_type(node_type)
+
+
 @pytest.mark.parametrize("data", [None, "group"])
-def test_parse_node_type_arrayinvalid(data: Any) -> None:
+def test_parse_node_type_array_invalid(data: Any) -> None:
     with pytest.raises(
         ValueError, match=f"Invalid value for 'node_type'. Expected 'array'. Got '{data}'."
     ):
         parse_node_type_array(data)
 
 
-def test_parse_node_typevalid() -> None:
+def test_parse_node_typev_array_alid() -> None:
     assert parse_node_type_array("array") == "array"
 
 
