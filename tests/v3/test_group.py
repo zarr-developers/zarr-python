@@ -1257,3 +1257,12 @@ class TestGroupMetadata:
         result = GroupMetadata.from_dict(data)
         expected = GroupMetadata(attributes={"key": "value"}, zarr_format=2)
         assert result == expected
+
+
+def test_update_attrs() -> None:
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
+    root = Group.from_store(
+        MemoryStore({}, mode="w"),
+    )
+    root.attrs["foo"] = "bar"
+    assert root.attrs["foo"] == "bar"

@@ -406,3 +406,15 @@ def test_vlen_errors() -> None:
             dtype="<U4",
             codecs=[BytesCodec(), VLenBytesCodec()],
         )
+
+
+def test_update_attrs() -> None:
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
+    arr = Array.create(
+        MemoryStore({}, mode="w"),
+        shape=5,
+        chunk_shape=5,
+        dtype="f8",
+    )
+    arr.attrs["foo"] = "bar"
+    assert arr.attrs["foo"] == "bar"
