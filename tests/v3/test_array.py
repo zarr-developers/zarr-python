@@ -1,6 +1,6 @@
 import pickle
 from itertools import accumulate
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import pytest
@@ -303,9 +303,9 @@ def test_storage_transformers(store: MemoryStore) -> None:
         Array.from_dict(StorePath(store), data=metadata_dict)
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
 @pytest.mark.parametrize("nchunks", [2, 5, 10])
-def test_nchunks(test_cls: type[Array] | type[AsyncArray], nchunks: int) -> None:
+def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) -> None:
     """
     Test that nchunks returns the number of chunks defined for the array.
     """
@@ -320,8 +320,8 @@ def test_nchunks(test_cls: type[Array] | type[AsyncArray], nchunks: int) -> None
     assert observed == expected
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
-def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray]) -> None:
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
+def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
     """
     Test that nchunks_initialized accurately returns the number of stored chunks.
     """
@@ -349,8 +349,8 @@ def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray]) -> None:
         assert observed == expected
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
-def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray]) -> None:
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
+def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
     """
     Test that chunks_initialized accurately returns the keys of stored chunks.
     """

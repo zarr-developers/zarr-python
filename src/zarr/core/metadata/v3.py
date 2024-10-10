@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, TypedDict, overload
 
+from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
 
 if TYPE_CHECKING:
@@ -34,7 +35,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
-from zarr.core.metadata.common import ArrayMetadata, parse_attributes
+from zarr.core.metadata.common import parse_attributes
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
@@ -187,8 +188,17 @@ def _replace_special_floats(obj: object) -> Any:
     return obj
 
 
+class ArrayV3MetadataDict(TypedDict):
+    """
+    A typed dictionary model for zarr v3 metadata.
+    """
+
+    zarr_format: Literal[3]
+    attributes: dict[str, JSON]
+
+
 @dataclass(frozen=True, kw_only=True)
-class ArrayV3Metadata(ArrayMetadata):
+class ArrayV3Metadata(Metadata):
     shape: ChunkCoords
     data_type: DataType
     chunk_grid: ChunkGrid

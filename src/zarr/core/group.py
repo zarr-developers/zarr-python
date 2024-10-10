@@ -35,7 +35,6 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.common import ArrayMetadata
 from zarr.core.metadata.v3 import V3JsonEncoder
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import MetadataValidationError
@@ -79,14 +78,16 @@ def parse_attributes(data: Any) -> dict[str, Any]:
 
 
 @overload
-def _parse_async_node(node: AsyncArray) -> Array: ...
+def _parse_async_node(node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]) -> Array: ...
 
 
 @overload
 def _parse_async_node(node: AsyncGroup) -> Group: ...
 
 
-def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
+def _parse_async_node(
+    node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
+) -> Array | Group:
     """
     Wrap an AsyncArray in an Array, or an AsyncGroup in a Group.
     """
@@ -137,7 +138,7 @@ class ConsolidatedMetadata:
     will have their consolidated metadata set appropriately.
     """
 
-    metadata: dict[str, ArrayMetadata | GroupMetadata]
+    metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]
     kind: Literal["inline"] = "inline"
     must_understand: Literal[False] = False
 
@@ -160,7 +161,7 @@ class ConsolidatedMetadata:
         if not isinstance(raw_metadata, dict):
             raise TypeError(f"Unexpected type for 'metadata': {type(raw_metadata)}")
 
-        metadata: dict[str, ArrayMetadata | GroupMetadata] = {}
+        metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
         if raw_metadata:
             for k, v in raw_metadata.items():
                 if not isinstance(v, dict):
@@ -193,7 +194,7 @@ class ConsolidatedMetadata:
 
     @staticmethod
     def _flat_to_nested(
-        metadata: dict[str, ArrayMetadata | GroupMetadata],
+        metadata: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
     ) -> None:
         """
         Convert a flat metadata representation to a nested one.
@@ -250,7 +251,7 @@ class ConsolidatedMetadata:
             node = parent[name]
             children_keys = list(children_keys)
 
-            if isinstance(node, ArrayMetadata):
+            if isinstance(node, ArrayV2Metadata | ArrayV3Metadata):
                 # These are already present, either thanks to being an array in the
                 # root, or by being collected as a child in the else clause
                 continue
@@ -266,7 +267,7 @@ class ConsolidatedMetadata:
             )
 
     @property
-    def flattened_metadata(self) -> dict[str, ArrayMetadata | GroupMetadata]:
+    def flattened_metadata(self) -> dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]:
         """
         Return the flattened representation of Consolidated Metadata.
 
@@ -298,10 +299,10 @@ class ConsolidatedMetadata:
         metadata = {}
 
         def flatten(
-            key: str, group: GroupMetadata | ArrayMetadata
-        ) -> dict[str, ArrayMetadata | GroupMetadata]:
-            children: dict[str, ArrayMetadata | GroupMetadata] = {}
-            if isinstance(group, ArrayMetadata):
+            key: str, group: GroupMetadata | ArrayV2Metadata | ArrayV3Metadata
+        ) -> dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]:
+            children: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] = {}
+            if isinstance(group, ArrayV2Metadata | ArrayV3Metadata):
                 children[key] = group
             else:
                 if group.consolidated_metadata and group.consolidated_metadata.metadata is not None:
@@ -629,7 +630,7 @@ class AsyncGroup:
     async def getitem(
         self,
         key: str,
-    ) -> AsyncArray | AsyncGroup:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
         store_path = self.store_path / key
         logger.debug("key=%s, store_path=%s", key, store_path)
 
@@ -688,7 +689,7 @@ class AsyncGroup:
 
     def _getitem_consolidated(
         self, store_path: StorePath, key: str, prefix: str
-    ) -> AsyncArray | AsyncGroup:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
         # getitem, in the special case where we have consolidated metadata.
         # Note that this is a regular def (non async) function.
         # This shouldn't do any additional I/O.
@@ -736,7 +737,7 @@ class AsyncGroup:
 
     async def get(
         self, key: str, default: DefaultT | None = None
-    ) -> AsyncArray | AsyncGroup | DefaultT | None:
+    ) -> AsyncArray[Any] | AsyncGroup | DefaultT | None:
         """Obtain a group member, returning default if not found.
 
         Parameters
@@ -852,7 +853,9 @@ class AsyncGroup:
             grp = await self.create_group(name, exists_ok=True)
         else:
             try:
-                item: AsyncGroup | AsyncArray = await self.getitem(name)
+                item: (
+                    AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]
+                ) = await self.getitem(name)
                 if not isinstance(item, AsyncGroup):
                     raise TypeError(
                         f"Incompatible object ({item.__class__.__name__}) already exists"
@@ -896,7 +899,7 @@ class AsyncGroup:
         # runtime
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
         Create a Zarr array within this AsyncGroup.
         This method lightly wraps AsyncArray.create.
@@ -959,7 +962,9 @@ class AsyncGroup:
         )
 
     @deprecated("Use AsyncGroup.create_array instead.")
-    async def create_dataset(self, name: str, **kwargs: Any) -> AsyncArray:
+    async def create_dataset(
+        self, name: str, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -990,7 +995,7 @@ class AsyncGroup:
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -1027,7 +1032,7 @@ class AsyncGroup:
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Obtain an array, creating if it doesn't exist.
 
         Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
@@ -1113,7 +1118,9 @@ class AsyncGroup:
     async def members(
         self,
         max_depth: int | None = 0,
-    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
+    ) -> AsyncGenerator[
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+    ]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
         This method requires that `store_path.store` supports directory listing.
@@ -1142,7 +1149,9 @@ class AsyncGroup:
 
     async def _members(
         self, max_depth: int | None, current_depth: int
-    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
+    ) -> AsyncGenerator[
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+    ]:
         if self.metadata.consolidated_metadata is not None:
             # we should be able to do members without any additional I/O
             members = self._members_consolidated(max_depth, current_depth)
@@ -1199,7 +1208,9 @@ class AsyncGroup:
 
     def _members_consolidated(
         self, max_depth: int | None, current_depth: int, prefix: str = ""
-    ) -> Generator[tuple[str, AsyncArray | AsyncGroup], None]:
+    ) -> Generator[
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+    ]:
         consolidated_metadata = self.metadata.consolidated_metadata
 
         # we kind of just want the top-level keys.
@@ -1242,7 +1253,11 @@ class AsyncGroup:
         async for _, group in self.groups():
             yield group
 
-    async def arrays(self) -> AsyncGenerator[tuple[str, AsyncArray], None]:
+    async def arrays(
+        self,
+    ) -> AsyncGenerator[
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]], None
+    ]:
         async for key, value in self.members():
             if isinstance(value, AsyncArray):
                 yield key, value
@@ -1251,43 +1266,55 @@ class AsyncGroup:
         async for key, _ in self.arrays():
             yield key
 
-    async def array_values(self) -> AsyncGenerator[AsyncArray, None]:
+    async def array_values(
+        self,
+    ) -> AsyncGenerator[AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata], None]:
         async for _, array in self.arrays():
             yield array
 
     async def tree(self, expand: bool = False, level: int | None = None) -> Any:
         raise NotImplementedError
 
-    async def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+    async def empty(
+        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
 
-    async def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+    async def zeros(
+        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.zeros(shape=shape, store=self.store_path, path=name, **kwargs)
 
-    async def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+    async def ones(
+        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.ones(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.full(
             shape=shape, fill_value=fill_value, store=self.store_path, path=name, **kwargs
         )
 
     async def empty_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.empty_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def zeros_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.zeros_like(a=data, store=self.store_path, path=name, **kwargs)
 
-    async def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
+    async def ones_like(
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.ones_like(a=data, store=self.store_path, path=name, **kwargs)
 
-    async def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
+    async def full_like(
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
