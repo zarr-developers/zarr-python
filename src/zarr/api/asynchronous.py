@@ -160,7 +160,7 @@ async def load(
 
     Parameters
     ----------
-    store : Store or string
+    store : Store or str
         Store or path to directory in file system or name of zip file.
     path : str or None, optional
         The path within the store from which to load.
@@ -204,7 +204,7 @@ async def open(
 
     Parameters
     ----------
-    store : Store or string, optional
+    store : Store or str, optional
         Store or path to directory in file system or name of zip file.
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
@@ -271,7 +271,7 @@ async def save(
 
     Parameters
     ----------
-    store : Store or string
+    store : Store or str
         Store or path to directory in file system or name of zip file.
     args : ndarray
         NumPy arrays with data to save.
@@ -307,7 +307,7 @@ async def save_array(
 
     Parameters
     ----------
-    store : Store or string
+    store : Store or str
         Store or path to directory in file system or name of zip file.
     arr : ndarray
         NumPy array with data to save.
@@ -355,7 +355,7 @@ async def save_group(
 
     Parameters
     ----------
-    store : Store or string
+    store : Store or str
         Store or path to directory in file system or name of zip file.
     args : ndarray
         NumPy arrays with data to save.
@@ -471,7 +471,7 @@ async def group(
 
     Parameters
     ----------
-    store : Store or string, optional
+    store : Store or str, optional
         Store or path to directory in file system.
     overwrite : bool, optional
         If True, delete any pre-existing data in `store` at `path` before
@@ -485,7 +485,7 @@ async def group(
         to all attribute read operations.
     synchronizer : object, optional
         Array synchronizer.
-    path : string, optional
+    path : str, optional
         Group path within store.
     meta_array : array-like, optional
         An array instance to use for determining arrays to create and return
@@ -551,7 +551,7 @@ async def open_group(
 
     Parameters
     ----------
-    store : Store, string, or mapping, optional
+    store : Store, str, or mapping, optional
         Store or path to directory in file system or name of zip file.
 
         Strings are interpreted as paths on the local file system
@@ -574,9 +574,9 @@ async def open_group(
         to all attribute read operations.
     synchronizer : object, optional
         Array synchronizer.
-    path : string, optional
+    path : str, optional
         Group path within store.
-    chunk_store : Store or string, optional
+    chunk_store : Store or str, optional
         Store or path to directory in file system or name of zip file.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
@@ -670,7 +670,7 @@ async def create(
         False, will be set to `shape`, i.e., single chunk for the whole array.
         If an int, the chunk size in each dimension will be given by the value
         of `chunks`. Default is True.
-    dtype : string or dtype, optional
+    dtype : str or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
         Primary compressor.
@@ -678,14 +678,14 @@ async def create(
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
-    store : Store or string
+    store : Store or str
         Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
         Array synchronizer.
     overwrite : bool, optional
         If True, delete all pre-existing data in `store` at `path` before
         creating the array.
-    path : string, optional
+    path : str, optional
         Path under which array is stored.
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
@@ -943,11 +943,11 @@ async def open_array(
 
     Parameters
     ----------
-    store : Store or string
+    store : Store or str
         Store or path to directory in file system or name of zip file.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
-    path : string, optional
+    path : str, optional
         Path in store to array.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
