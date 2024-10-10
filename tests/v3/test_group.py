@@ -414,6 +414,11 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
         group.create_array(name=name, shape=(1,)) for name in expected_array_keys
     ]
     expected_arrays = list(zip(expected_array_keys, expected_array_values, strict=False))
+    fill_value: float | None
+    if zarr_format == 2:
+        fill_value = None
+    else:
+        fill_value = np.float64(0.0)
 
     if consolidate:
         group = zarr.consolidate_metadata(store)
@@ -422,7 +427,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                 "subarray": {
                     "attributes": {},
                     "dtype": "float64",
-                    "fill_value": np.float64(0.0),
+                    "fill_value": fill_value,
                     "shape": (1,),
                     "chunks": (1,),
                     "order": "C",
@@ -453,7 +458,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                     },
                     "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
                     "data_type": "float64",
-                    "fill_value": np.float64(0.0),
+                    "fill_value": fill_value,
                     "node_type": "array",
                     "shape": (1,),
                     "zarr_format": zarr_format,
