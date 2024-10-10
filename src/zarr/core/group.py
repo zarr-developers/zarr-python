@@ -6,10 +6,8 @@ import json
 import logging
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
-from enum import Enum
 from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
 
-import numcodecs.abc
 import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
@@ -97,36 +95,6 @@ def _parse_async_node(
         return Group(node)
     else:
         raise TypeError(f"Unknown node type, got {type(node)}")
-
-
-def _json_convert(o: object) -> Any:
-    if isinstance(o, np.dtype):
-        return str(o)
-    if np.isscalar(o):
-        out: Any
-        if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
-            # https://github.com/zarr-developers/zarr-python/issues/2119
-            # `.item()` on a datetime type might or might not return an
-            # integer, depending on the value.
-            # Explicitly cast to an int first, and then grab .item()
-            out = o.view("i8").item()
-        else:
-            # convert numpy scalar to python type, and pass
-            # python types through
-            out = getattr(o, "item", lambda: o)()
-            if isinstance(out, complex):
-                # python complex types are not JSON serializable, so we use the
-                # serialization defined in the zarr v3 spec
-                return [out.real, out.imag]
-        return out
-    if isinstance(o, Enum):
-        return o.name
-    # this serializes numcodecs compressors
-    # todo: implement to_dict for codecs
-    elif isinstance(o, numcodecs.abc.Codec):
-        config: dict[str, Any] = o.get_config()
-        return config
-    raise TypeError
 
 
 @dataclass(frozen=True)

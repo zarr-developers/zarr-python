@@ -73,8 +73,9 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
+from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import collect_aiterator, sync
-from zarr.errors import MetadataValidationError, NodeTypeValidationError
+from zarr.errors import MetadataValidationError
 from zarr.registry import get_pipeline_class
 from zarr.storage import StoreLike, make_store_path
 from zarr.storage.common import StorePath, ensure_no_existing_node
@@ -166,12 +167,8 @@ async def get_array_metadata(
         assert zarr_json_bytes is not None
         metadata_dict = json.loads(zarr_json_bytes.to_bytes())
 
-        node_type = metadata_dict.get("node_type")
-        if node_type != "array":
-            # This KeyError is load bearing for `open`. That currently tries
-            # to open the node as an `array` and then falls back to opening
-            # as a group.
-            raise NodeTypeValidationError("node_type", "array", node_type)
+        parse_node_type_array(metadata_dict.get("node_type"))
+
     return metadata_dict
 
 

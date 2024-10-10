@@ -162,6 +162,9 @@ async def consolidate_metadata(
 
         By default, the root node is used so all the metadata in the
         store is consolidated.
+    zarr_format : {2, 3, None}, optional
+        The zarr format of the hierarchy. By default the zarr format
+        is inferred.
 
     Returns
     -------
@@ -662,7 +665,7 @@ async def open_group(
         to users. Use `numpy.empty(())` by default.
     attributes : dict
         A dictionary of JSON-serializable values with user-defined attributes.
-        use_consolidated : bool or str, default None
+    use_consolidated : bool or str, default None
         Whether to use consolidated metadata.
 
         By default, consolidated metadata is used if it's present in the
