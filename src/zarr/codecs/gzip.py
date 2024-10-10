@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -7,7 +8,7 @@ from numcodecs.gzip import GZip
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_named_configuration, to_thread
+from zarr.core.common import JSON, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -51,7 +52,7 @@ class GzipCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await to_thread(
+        return await asyncio.to_thread(
             as_numpy_array_wrapper, GZip(self.level).decode, chunk_bytes, chunk_spec.prototype
         )
 
@@ -60,7 +61,7 @@ class GzipCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        return await to_thread(
+        return await asyncio.to_thread(
             as_numpy_array_wrapper, GZip(self.level).encode, chunk_bytes, chunk_spec.prototype
         )
 

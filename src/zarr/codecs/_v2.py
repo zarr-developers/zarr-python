@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -8,7 +9,6 @@ from numcodecs.compat import ensure_bytes, ensure_ndarray
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec
 from zarr.core.buffer import Buffer, NDBuffer, default_buffer_prototype
-from zarr.core.common import to_thread
 from zarr.registry import get_ndbuffer_class
 
 if TYPE_CHECKING:
@@ -30,7 +30,7 @@ class V2Compressor(ArrayBytesCodec):
     ) -> NDBuffer:
         if self.compressor is not None:
             chunk_numpy_array = ensure_ndarray(
-                await to_thread(self.compressor.decode, chunk_bytes.as_array_like())
+                await asyncio.to_thread(self.compressor.decode, chunk_bytes.as_array_like())
             )
         else:
             chunk_numpy_array = ensure_ndarray(chunk_bytes.as_array_like())
@@ -54,7 +54,7 @@ class V2Compressor(ArrayBytesCodec):
             ):
                 chunk_numpy_array = chunk_numpy_array.copy(order="A")
             encoded_chunk_bytes = ensure_bytes(
-                await to_thread(self.compressor.encode, chunk_numpy_array)
+                await asyncio.to_thread(self.compressor.encode, chunk_numpy_array)
             )
         else:
             encoded_chunk_bytes = ensure_bytes(chunk_numpy_array)
@@ -80,7 +80,7 @@ class V2Filters(ArrayArrayCodec):
         # apply filters in reverse order
         if self.filters is not None:
             for filter in self.filters[::-1]:
-                chunk_ndarray = await to_thread(filter.decode, chunk_ndarray)
+                chunk_ndarray = await asyncio.to_thread(filter.decode, chunk_ndarray)
 
         # ensure correct chunk shape
         if chunk_ndarray.shape != chunk_spec.shape:
@@ -100,7 +100,7 @@ class V2Filters(ArrayArrayCodec):
 
         if self.filters is not None:
             for filter in self.filters:
-                chunk_ndarray = await to_thread(filter.encode, chunk_ndarray)
+                chunk_ndarray = await asyncio.to_thread(filter.encode, chunk_ndarray)
 
         return get_ndbuffer_class().from_ndarray_like(chunk_ndarray)
 
