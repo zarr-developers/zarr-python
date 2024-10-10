@@ -2,6 +2,7 @@ import json
 from collections.abc import Iterator
 from typing import Any
 
+import numcodecs.vlen
 import numpy as np
 import pytest
 from numcodecs import Delta
@@ -118,3 +119,4 @@ async def test_create_dtype_str(dtype: Any) -> None:
     arr = zarr.create(shape=10, dtype=dtype, zarr_format=2)
     assert arr.dtype.kind == "O"
     assert arr.metadata.to_dict()["dtype"] == "|O"
+    assert arr.metadata.filters == (numcodecs.vlen.VLenUTF8(),)
