@@ -135,14 +135,13 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         assert str(store) == "<RemoteStore(S3FileSystem, test)>"
 
     def test_store_supports_writes(self, store: RemoteStore) -> None:
-        assert True
+        assert store.supports_writes
 
-    @pytest.mark.xfail
     def test_store_supports_partial_writes(self, store: RemoteStore) -> None:
-        raise AssertionError
+        assert not store.supports_partial_writes
 
     def test_store_supports_listing(self, store: RemoteStore) -> None:
-        assert True
+        assert store.supports_listing
 
     async def test_remote_store_from_uri(
         self, store: RemoteStore, store_kwargs: dict[str, str | bool]

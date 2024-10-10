@@ -94,11 +94,9 @@ class RemoteStore(Store):
             pass
 
     async def empty(self) -> bool:
-        async for _path, _dirs, files in self.fs._walk(self.path):
-            # stop once a file is found
-            if files:
-                return False
-        return True
+        # TODO: it would be nice if we didn't have to list all keys here
+        # it should be possible to stop after the first key is discovered
+        return not await self.fs._ls(self.path)
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
         return type(self)(
