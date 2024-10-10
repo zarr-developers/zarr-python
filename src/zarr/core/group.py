@@ -40,6 +40,8 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+    from zarr.core.metadata.v2 import ArrayV2Metadata
+    from zarr.core.metadata.v3 import ArrayV3Metadata
 
 logger = logging.getLogger("zarr.group")
 
@@ -64,14 +66,16 @@ def parse_attributes(data: Any) -> dict[str, Any]:
 
 
 @overload
-def _parse_async_node(node: AsyncArray) -> Array: ...
+def _parse_async_node(node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]) -> Array: ...
 
 
 @overload
 def _parse_async_node(node: AsyncGroup) -> Group: ...
 
 
-def _parse_async_node(node: AsyncArray | AsyncGroup) -> Array | Group:
+def _parse_async_node(
+    node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
+) -> Array | Group:
     """
     Wrap an AsyncArray in an Array, or an AsyncGroup in a Group.
     """
@@ -226,7 +230,7 @@ class AsyncGroup:
     async def getitem(
         self,
         key: str,
-    ) -> AsyncArray | AsyncGroup:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
         store_path = self.store_path / key
         logger.debug("key=%s, store_path=%s", key, store_path)
 
@@ -295,7 +299,7 @@ class AsyncGroup:
 
     async def get(
         self, key: str, default: DefaultT | None = None
-    ) -> AsyncArray | AsyncGroup | DefaultT | None:
+    ) -> AsyncArray[Any] | AsyncGroup | DefaultT | None:
         """Obtain a group member, returning default if not found.
 
         Parameters
@@ -411,7 +415,9 @@ class AsyncGroup:
             grp = await self.create_group(name, exists_ok=True)
         else:
             try:
-                item: AsyncGroup | AsyncArray = await self.getitem(name)
+                item: (
+                    AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]
+                ) = await self.getitem(name)
                 if not isinstance(item, AsyncGroup):
                     raise TypeError(
                         f"Incompatible object ({item.__class__.__name__}) already exists"
@@ -455,7 +461,7 @@ class AsyncGroup:
         # runtime
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
         Create a Zarr array within this AsyncGroup.
         This method lightly wraps AsyncArray.create.
@@ -518,7 +524,9 @@ class AsyncGroup:
         )
 
     @deprecated("Use AsyncGroup.create_array instead.")
-    async def create_dataset(self, name: str, **kwargs: Any) -> AsyncArray:
+    async def create_dataset(
+        self, name: str, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -549,7 +557,7 @@ class AsyncGroup:
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -586,7 +594,7 @@ class AsyncGroup:
         dtype: npt.DTypeLike = None,
         exact: bool = False,
         **kwargs: Any,
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Obtain an array, creating if it doesn't exist.
 
         Other `kwargs` are as per :func:`zarr.AsyncGroup.create_dataset`.
@@ -670,7 +678,9 @@ class AsyncGroup:
     async def members(
         self,
         max_depth: int | None = 0,
-    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
+    ) -> AsyncGenerator[
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+    ]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
         This method requires that `store_path.store` supports directory listing.
@@ -693,7 +703,9 @@ class AsyncGroup:
 
     async def _members(
         self, max_depth: int | None, current_depth: int
-    ) -> AsyncGenerator[tuple[str, AsyncArray | AsyncGroup], None]:
+    ) -> AsyncGenerator[
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+    ]:
         if not self.store_path.store.supports_listing:
             msg = (
                 f"The store associated with this group ({type(self.store_path.store)}) "
@@ -760,7 +772,11 @@ class AsyncGroup:
         async for _, group in self.groups():
             yield group
 
-    async def arrays(self) -> AsyncGenerator[tuple[str, AsyncArray], None]:
+    async def arrays(
+        self,
+    ) -> AsyncGenerator[
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]], None
+    ]:
         async for key, value in self.members():
             if isinstance(value, AsyncArray):
                 yield key, value
@@ -769,43 +785,55 @@ class AsyncGroup:
         async for key, _ in self.arrays():
             yield key
 
-    async def array_values(self) -> AsyncGenerator[AsyncArray, None]:
+    async def array_values(
+        self,
+    ) -> AsyncGenerator[AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata], None]:
         async for _, array in self.arrays():
             yield array
 
     async def tree(self, expand: bool = False, level: int | None = None) -> Any:
         raise NotImplementedError
 
-    async def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+    async def empty(
+        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
 
-    async def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+    async def zeros(
+        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.zeros(shape=shape, store=self.store_path, path=name, **kwargs)
 
-    async def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> AsyncArray:
+    async def ones(
+        self, *, name: str, shape: ChunkCoords, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.ones(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.full(
             shape=shape, fill_value=fill_value, store=self.store_path, path=name, **kwargs
         )
 
     async def empty_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.empty_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def zeros_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
-    ) -> AsyncArray:
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.zeros_like(a=data, store=self.store_path, path=name, **kwargs)
 
-    async def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
+    async def ones_like(
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.ones_like(a=data, store=self.store_path, path=name, **kwargs)
 
-    async def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> AsyncArray:
+    async def full_like(
+        self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
