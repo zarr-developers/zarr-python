@@ -550,7 +550,7 @@ class AsyncGroup:
             # V3 groups are comprised of a zarr.json object
             assert zarr_json_bytes is not None
             if not isinstance(use_consolidated, bool | None):
-                raise TypeError("use_consolidated must be a bool for Zarr V3.")
+                raise TypeError("use_consolidated must be a bool or None for Zarr V3.")
 
             return cls._from_bytes_v3(
                 store_path,
@@ -1166,8 +1166,8 @@ class AsyncGroup:
 
         # hmm lots of I/O and logic interleaved here.
         # We *could* have an async gen over self.metadata.consolidated_metadata.metadata.keys()
-        # and plug in here.l `getitem` will skip I/O.
-        # Kinda a shape to have all the asyncio task overhead though, when it isn't needed.
+        # and plug in here. `getitem` will skip I/O.
+        # Kinda a shame to have all the asyncio task overhead though, when it isn't needed.
 
         async for key in self.store_path.store.list_dir(self.store_path.path):
             if key in _skip_keys:
