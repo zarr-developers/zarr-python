@@ -35,6 +35,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.common import ArrayMetadata
+from zarr.core.metadata.v3 import V3JsonEncoder
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import MetadataValidationError
 from zarr.storage import StoreLike, make_store_path
@@ -147,10 +148,6 @@ class ConsolidatedMetadata:
         kind = data.get("kind")
         if kind != "inline":
             raise ValueError(f"Consolidated metadata kind='{kind}' is not supported.")
-
-        # Do we care about the value of 'must_understand'?
-        # if data["must_understand"] is not False:
-        #     raise ValueError
 
         raw_metadata = data.get("metadata")
         if not isinstance(raw_metadata, dict):
@@ -329,7 +326,7 @@ class GroupMetadata(Metadata):
         if self.zarr_format == 3:
             return {
                 ZARR_JSON: prototype.buffer.from_bytes(
-                    json.dumps(self.to_dict(), default=_json_convert, indent=json_indent).encode()
+                    json.dumps(self.to_dict(), cls=V3JsonEncoder).encode()
                 )
             }
         else:
@@ -367,8 +364,7 @@ class GroupMetadata(Metadata):
                 items[ZMETADATA_V2_JSON] = prototype.buffer.from_bytes(
                     json.dumps(
                         {"metadata": d, "zarr_consolidated_format": 1},
-                        indent=json_indent,
-                        default=_json_convert,
+                        cls=V3JsonEncoder,
                     ).encode()
                 )
 
