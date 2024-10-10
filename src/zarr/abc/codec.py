@@ -20,11 +20,11 @@ if TYPE_CHECKING:
     from zarr.core.indexing import SelectorTuple
 
 __all__ = [
-    "BaseCodec",
     "ArrayArrayCodec",
     "ArrayBytesCodec",
     "ArrayBytesCodecPartialDecodeMixin",
     "ArrayBytesCodecPartialEncodeMixin",
+    "BaseCodec",
     "BytesBytesCodec",
     "CodecInput",
     "CodecOutput",

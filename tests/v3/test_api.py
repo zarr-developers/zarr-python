@@ -6,10 +6,13 @@ import pytest
 from numpy.testing import assert_array_equal
 
 import zarr
+import zarr.api.asynchronous
+import zarr.core.group
 from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.api.synchronous import create, group, load, open, open_group, save, save_array, save_group
 from zarr.core.common import ZarrFormat
+from zarr.errors import MetadataValidationError
 from zarr.storage.memory import MemoryStore
 
 
@@ -921,3 +924,37 @@ def test_open_group_positional_args_deprecated() -> None:
     store = MemoryStore({}, mode="w")
     with pytest.warns(FutureWarning, match="pass"):
         open_group(store, "w")
+
+
+def test_open_falls_back_to_open_group() -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2309
+    store = MemoryStore(mode="w")
+    zarr.open_group(store, attributes={"key": "value"})
+
+    group = zarr.open(store)
+    assert isinstance(group, Group)
+    assert group.attrs == {"key": "value"}
+
+
+async def test_open_falls_back_to_open_group_async() -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2309
+    store = MemoryStore(mode="w")
+    await zarr.api.asynchronous.open_group(store, attributes={"key": "value"})
+
+    group = await zarr.api.asynchronous.open(store=store)
+    assert isinstance(group, zarr.core.group.AsyncGroup)
+    assert group.attrs == {"key": "value"}
+
+
+async def test_metadata_validation_error() -> None:
+    with pytest.raises(
+        MetadataValidationError,
+        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+    ):
+        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore[arg-type]
+
+    with pytest.raises(
+        MetadataValidationError,
+        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+    ):
+        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
