@@ -316,13 +316,16 @@ async def open(
         return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
 
 
-async def open_consolidated(*args: Any, use_consolidated: bool = True, **kwargs: Any) -> AsyncGroup:
+async def open_consolidated(
+    *args: Any, use_consolidated: Literal[True] = True, **kwargs: Any
+) -> AsyncGroup:
     """
     Alias for :func:`open_group` with ``use_consolidated=True``.
     """
     if use_consolidated is not True:
         raise TypeError(
-            "'use_consolidated' must be 'True' in 'open_consolidated'. Use 'open' with 'use_consolidated=False' to bypass consolidated metadata."
+            "'use_consolidated' must be 'True' in 'open_consolidated'. Use 'open' with "
+            "'use_consolidated=False' to bypass consolidated metadata."
         )
     return await open_group(*args, use_consolidated=use_consolidated, **kwargs)
 

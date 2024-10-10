@@ -511,7 +511,7 @@ class TestConsolidated:
                         dtype="float64",
                         attributes={"key": "a"},
                         chunks=(1,),
-                        fill_value=0.0,
+                        fill_value=None,
                         order="C",
                     ),
                     "g1": GroupMetadata(

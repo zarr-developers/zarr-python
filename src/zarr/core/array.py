@@ -35,7 +35,6 @@ from zarr.core.common import (
     ShapeLike,
     ZarrFormat,
     concurrent_map,
-    parse_dtype,
     parse_shapelike,
     product,
 )
@@ -68,7 +67,7 @@ from zarr.core.indexing import (
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import collect_aiterator, sync
-from zarr.errors import MetadataValidationError
+from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_pipeline_class
 from zarr.storage import StoreLike, make_store_path
 from zarr.storage.common import StorePath, ensure_no_existing_node
@@ -160,11 +159,12 @@ async def get_array_metadata(
         assert zarr_json_bytes is not None
         metadata_dict = json.loads(zarr_json_bytes.to_bytes())
 
-        if metadata_dict.get("node_type") != "array":
+        node_type = metadata_dict.get("node_type")
+        if node_type != "array":
             # This KeyError is load bearing for `open`. That currently tries
             # to open the node as an `array` and then falls back to opening
             # as a group.
-            raise KeyError
+            raise NodeTypeValidationError("node_type", "array", node_type)
     return metadata_dict
 
 
@@ -234,8 +234,7 @@ class AsyncArray:
         if chunks is not None and chunk_shape is not None:
             raise ValueError("Only one of chunk_shape or chunks can be provided.")
 
-        dtype = parse_dtype(dtype, zarr_format)
-        # dtype = np.dtype(dtype)
+        dtype = np.dtype(dtype)
         if chunks:
             _chunks = normalize_chunks(chunks, shape, dtype.itemsize)
         else:

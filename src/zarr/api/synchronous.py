@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import zarr.api.asynchronous as async_api
 from zarr._compat import _deprecate_positional_args
@@ -90,7 +90,7 @@ def open(
         return Group(obj)
 
 
-def open_consolidated(*args: Any, use_consolidated: bool = True, **kwargs: Any) -> Group:
+def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwargs: Any) -> Group:
     return Group(
         sync(async_api.open_consolidated(*args, use_consolidated=use_consolidated, **kwargs))
     )
