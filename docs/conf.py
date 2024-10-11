@@ -170,7 +170,7 @@ html_theme_options = {
 
 # The name of an image file (relative to this directory) to place at the top
 # of the sidebar.
-html_logo = "_static/logo1.png"
+html_logo = "_static/logo_horizontal.svg"
 
 
 def setup(app: sphinx.application.Sphinx) -> None:
