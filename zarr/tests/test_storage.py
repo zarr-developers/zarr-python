@@ -366,19 +366,10 @@ class StoreTests:
 
         # test getsize (optional)
         if hasattr(store, "getsize"):
-            # TODO: proper behavior of getsize?
-            #       v3 returns size of all nested arrays, not just the
-            #       size of the arrays in the current folder.
-            if self.version == 2:
-                assert 6 == store.getsize()
-            else:
-                assert 15 == store.getsize()
+            assert 15 == store.getsize()
             assert 3 == store.getsize("a")
             assert 3 == store.getsize("b")
-            if self.version == 2:
-                assert 3 == store.getsize("c")
-            else:
-                assert 9 == store.getsize("c")
+            assert 3 == store.getsize("c")
             assert 3 == store.getsize("c/d")
             assert 6 == store.getsize("c/e")
             assert 3 == store.getsize("c/e/f")
@@ -2256,7 +2247,7 @@ def test_getsize():
     store["foo"] = b"aaa"
     store["bar"] = b"bbbb"
     store["baz/quux"] = b"ccccc"
-    assert 7 == getsize(store)
+    assert 12 == getsize(store)
     assert 5 == getsize(store, "baz")
 
     store = KVStore(dict())

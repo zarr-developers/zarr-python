@@ -30,7 +30,6 @@ import zipfile
 from collections import OrderedDict
 from collections.abc import MutableMapping
 from functools import lru_cache
-from os import scandir
 from pickle import PicklingError
 from threading import Lock, RLock
 from typing import Sequence, Mapping, Optional, Union, List, Tuple, Dict, Any
@@ -270,9 +269,15 @@ def _getsize(store: BaseStore, path: Path = None) -> int:
             # also include zarr.json?
             # members += ['zarr.json']
         else:
-            members = listdir(store, path)
-            prefix = _path_to_prefix(path)
-            members = [prefix + k for k in members]
+            to_visit = [path]
+            members = []
+            while to_visit:
+                print(to_visit)
+                current_path = to_visit.pop()
+                current_members = listdir(store, current_path)
+                prefix = _path_to_prefix(current_path)
+                members.extend([prefix + k for k in current_members])
+                to_visit.extend([prefix + k for k in current_members])
         for k in members:
             try:
                 v = store[k]
@@ -976,8 +981,12 @@ class MemoryStore(Store):
         elif isinstance(value, self.cls):
             # total size for directory
             size = 0
-            for v in value.values():
-                if not isinstance(v, self.cls):
+            to_visit = list(value.values())
+            while to_visit:
+                v = to_visit.pop()
+                if isinstance(v, self.cls):
+                    to_visit.extend(v.values())
+                else:
                     size += buffer_size(v)
             return size
 
@@ -1274,9 +1283,13 @@ class DirectoryStore(Store):
             return os.path.getsize(fs_path)
         elif os.path.isdir(fs_path):
             size = 0
-            for child in scandir(fs_path):
-                if child.is_file():
-                    size += child.stat().st_size
+            for root, _, files in os.walk(fs_path):
+                # Include the size of the directory itself, as this can be substantial
+                # for directories with many files.
+                size += os.path.getsize(root)
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    size += os.path.getsize(file_path)
             return size
         else:
             return 0
@@ -1921,29 +1934,19 @@ class ZipStore(Store):
     def getsize(self, path=None):
         path = normalize_storage_path(path)
         with self.mutex:
-            children = self.listdir(path)
-            if children:
-                size = 0
-                for child in children:
-                    if path:
-                        name = path + "/" + child
-                    else:
-                        name = child
-                    try:
-                        info = self.zf.getinfo(name)
-                    except KeyError:
-                        pass
-                    else:
-                        size += info.compress_size
-                return size
-            elif path:
+            to_visit = [path] if path else self.listdir(path)
+            total_size = 0
+            while to_visit:
+                current_path = to_visit.pop()
                 try:
-                    info = self.zf.getinfo(path)
-                    return info.compress_size
+                    info = self.zf.getinfo(current_path)
+                    total_size += info.compress_size
                 except KeyError:
-                    return 0
-            else:
-                return 0
+                    children = self.listdir(current_path)
+                    for child in children:
+                        full_path = current_path + "/" + child if current_path else child
+                        to_visit.append(full_path)
+            return total_size
 
     def clear(self):
         if self.mode == "r":
@@ -2527,6 +2530,8 @@ class LRUStoreCache(Store):
                 return listing
 
     def getsize(self, path=None) -> int:
+        print("WYF")
+        print(self._store, path)
         return getsize(self._store, path=path)
 
     def _pop_value(self):
@@ -2795,10 +2800,9 @@ class SQLiteStore(Store):
         size = self.cursor.execute(
             """
             SELECT COALESCE(SUM(LENGTH(v)), 0) FROM zarr
-            WHERE k LIKE (? || "%") AND
-                  0 == INSTR(LTRIM(SUBSTR(k, LENGTH(?) + 1), "/"), "/")
+            WHERE k LIKE (? || "%")
             """,
-            (path, path),
+            (path,),
         )
         for (s,) in size:
             return s

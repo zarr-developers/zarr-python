@@ -3,6 +3,7 @@ import os
 import sys
 import pickle
 import shutil
+import tempfile
 from typing import Any, Literal, Optional, Tuple, Union, Sequence
 import unittest
 from itertools import zip_longest
@@ -100,6 +101,7 @@ class TestArray:
     write_empty_chunks = True
     read_only = False
     storage_transformers: Tuple[Any, ...] = ()
+    group_size = 0
 
     def create_store(self) -> BaseStore:
         return KVStore(dict())
@@ -229,7 +231,7 @@ class TestArray:
                 buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
             )
         else:
-            expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
+            expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values()) + self.group_size
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
         if self.version == 3:
@@ -237,7 +239,7 @@ class TestArray:
                 buffer_size(v) for k, v in z.store.items() if k != "zarr.json"
             )
         else:
-            expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
+            expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values()) + self.group_size
         assert expect_nbytes_stored == z.nbytes_stored
 
         # mess with store
@@ -1677,6 +1679,8 @@ class TestArrayWithChunkStore(TestArray):
 
 
 class TestArrayWithDirectoryStore(TestArray):
+    group_size = 4096
+
     def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
@@ -1686,10 +1690,10 @@ class TestArrayWithDirectoryStore(TestArray):
     def test_nbytes_stored(self):
         # dict as store
         z = self.create_array(shape=1000, chunks=100)
-        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
+        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values()) + self.group_size
         assert expect_nbytes_stored == z.nbytes_stored
         z[:] = 42
-        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values())
+        expect_nbytes_stored = sum(buffer_size(v) for v in z.store.values()) + self.group_size
         assert expect_nbytes_stored == z.nbytes_stored
 
 
@@ -2028,6 +2032,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithN5FSStore(TestArrayWithN5Store):
+    group_size = 0
     def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
