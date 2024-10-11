@@ -896,11 +896,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return replace(self, metadata=new_metadata)
 
     async def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
-        new_metadata = self.metadata.update_attributes(new_attributes)
+        # metadata.attributes is "frozen" so we simply clear and update the dict
+        self.metadata.attributes.clear()
+        self.metadata.attributes.update(new_attributes)
 
         # Write new metadata
-        await self._save_metadata(new_metadata)
-        return replace(self, metadata=new_metadata)
+        await self._save_metadata(self.metadata)
+
+        return self
 
     def __repr__(self) -> str:
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
