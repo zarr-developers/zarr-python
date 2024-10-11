@@ -100,6 +100,11 @@ class LocalStore(Store):
         assert isinstance(root, Path)
         self.root = root
 
+    async def _open(self) -> None:
+        if not self.mode.readonly:
+            self.root.mkdir(parents=True, exist_ok=True)
+        return await super()._open()
+
     async def clear(self) -> None:
         # docstring inherited
         self._check_writable()
