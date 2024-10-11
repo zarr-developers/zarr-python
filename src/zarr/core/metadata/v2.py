@@ -321,7 +321,7 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
     """
     if dtype.kind == "S":
         return b""
-    elif dtype.kind == "U":
+    elif dtype.kind in "UO":
         return ""
     else:
         return dtype.type(0)

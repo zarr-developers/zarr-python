@@ -36,7 +36,7 @@ class V2Compressor(ArrayBytesCodec):
             chunk_numpy_array = ensure_ndarray(chunk_bytes.as_array_like())
 
         # ensure correct dtype
-        if str(chunk_numpy_array.dtype) != chunk_spec.dtype:
+        if str(chunk_numpy_array.dtype) != chunk_spec.dtype and not chunk_spec.dtype.hasobject:
             chunk_numpy_array = chunk_numpy_array.view(chunk_spec.dtype)
 
         return get_ndbuffer_class().from_numpy_array(chunk_numpy_array)

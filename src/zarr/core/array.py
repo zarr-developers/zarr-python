@@ -35,6 +35,7 @@ from zarr.core.common import (
     ShapeLike,
     ZarrFormat,
     concurrent_map,
+    parse_dtype,
     parse_shapelike,
     product,
 )
@@ -365,16 +366,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         store_path = await make_store_path(store)
 
+        dtype_parsed = parse_dtype(dtype, zarr_format)
         shape = parse_shapelike(shape)
 
         if chunks is not None and chunk_shape is not None:
             raise ValueError("Only one of chunk_shape or chunks can be provided.")
 
-        dtype = np.dtype(dtype)
         if chunks:
-            _chunks = normalize_chunks(chunks, shape, dtype.itemsize)
+            _chunks = normalize_chunks(chunks, shape, dtype_parsed.itemsize)
         else:
-            _chunks = normalize_chunks(chunk_shape, shape, dtype.itemsize)
+            _chunks = normalize_chunks(chunk_shape, shape, dtype_parsed.itemsize)
+
         result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
         if zarr_format == 3:
             if dimension_separator is not None:
@@ -396,7 +398,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             result = await cls._create_v3(
                 store_path,
                 shape=shape,
-                dtype=dtype,
+                dtype=dtype_parsed,
                 chunk_shape=_chunks,
                 fill_value=fill_value,
                 chunk_key_encoding=chunk_key_encoding,
@@ -406,6 +408,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 exists_ok=exists_ok,
             )
         elif zarr_format == 2:
+            if dtype is str or dtype == "str":
+                # another special case: zarr v2 added the vlen-utf8 codec
+                vlen_codec: dict[str, JSON] = {"id": "vlen-utf8"}
+                if filters and not any(x["id"] == "vlen-utf8" for x in filters):
+                    filters = list(filters) + [vlen_codec]
+                else:
+                    filters = [vlen_codec]
+
             if codecs is not None:
                 raise ValueError(
                     "codecs cannot be used for arrays with version 2. Use filters and compressor instead."
@@ -419,7 +429,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             result = await cls._create_v2(
                 store_path,
                 shape=shape,
-                dtype=dtype,
+                dtype=dtype_parsed,
                 chunks=_chunks,
                 dimension_separator=dimension_separator,
                 fill_value=fill_value,
