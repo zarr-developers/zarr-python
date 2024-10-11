@@ -269,7 +269,7 @@ class Store(ABC):
         Store a key to ``value`` if the key is not already present.
 
         Parameters
-        -----------
+        ----------
         key : str
         value : Buffer
         """
