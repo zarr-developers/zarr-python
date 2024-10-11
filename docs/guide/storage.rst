@@ -31,13 +31,13 @@ Explicit Store Creation
 -----------------------
 
 In some cases, it may be helpful to create a store instance directly. Zarr-Python offers four
-built-in store: :class:`zarr.store.LocalStore`, :class:`zarr.store.RemoteStore`,
-:class:`zarr.store.ZipStore`, and :class:`zarr.store.MemoryStore`.
+built-in store: :class:`zarr.storage.LocalStore`, :class:`zarr.storage.RemoteStore`,
+:class:`zarr.storage.ZipStore`, and :class:`zarr.storage.MemoryStore`.
 
 Local Store
 ~~~~~~~~~~~
 
-The :class:`zarr.store.LocalStore` stores data in a nested set of directories on a local
+The :class:`zarr.storage.LocalStore` stores data in a nested set of directories on a local
 filesystem.
 
 .. code-block:: python
@@ -50,7 +50,7 @@ filesystem.
 Zip Store
 ~~~~~~~~~
 
-The :class:`zarr.store.ZipStore` stores the contents of a Zarr hierarchy in a single 
+The :class:`zarr.storage.ZipStore` stores the contents of a Zarr hierarchy in a single 
 Zip file. The `Zip Store specification_` is currently in draft form. 
 
 .. code-block:: python
@@ -63,10 +63,10 @@ Zip file. The `Zip Store specification_` is currently in draft form.
 Remote Store
 ~~~~~~~~~~~~
 
-The :class:`zarr.store.RemoteStore` stores the contents of a Zarr hierarchy in following the same
+The :class:`zarr.storage.RemoteStore` stores the contents of a Zarr hierarchy in following the same
 logical layout as the ``LocalStore``, except the store is assumed to be on a remote storage system
 such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Store). The 
-:class:`zarr.store.RemoteStore` is backed by `Fsspec_` and can support any Fsspec backend
+:class:`zarr.storage.RemoteStore` is backed by `Fsspec_` and can support any Fsspec backend
 that implements the `AbstractFileSystem` API,
 
 .. code-block:: python
@@ -79,7 +79,7 @@ that implements the `AbstractFileSystem` API,
 Memory Store
 ~~~~~~~~~~~~
 
-The :class:`zarr.store.RemoteStore` a in-memory store that allows for serialization of
+The :class:`zarr.storage.RemoteStore` a in-memory store that allows for serialization of
 Zarr data (metadata and chunks) to a dictionary. 
 
 .. code-block:: python
