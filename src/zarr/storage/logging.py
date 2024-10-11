@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import AccessMode, ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
-from zarr.core.common import _inherit_docstrings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
@@ -18,7 +17,6 @@ if TYPE_CHECKING:
     from zarr.core.common import AccessModeLiteral
 
 
-@_inherit_docstrings
 class LoggingStore(Store):
     """
     Store wrapper that logs all calls to the wrapped store.
@@ -133,10 +131,12 @@ class LoggingStore(Store):
             return await self._store._ensure_open()
 
     async def empty(self) -> bool:
+        # docstring inherited
         with self.log():
             return await self._store.empty()
 
     async def clear(self) -> None:
+        # docstring inherited
         with self.log():
             return await self._store.clear()
 
@@ -156,6 +156,7 @@ class LoggingStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
+        # docstring inherited
         with self.log():
             return await self._store.get(key=key, prototype=prototype, byte_range=byte_range)
 
@@ -164,47 +165,57 @@ class LoggingStore(Store):
         prototype: BufferPrototype,
         key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
+        # docstring inherited
         with self.log():
             return await self._store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
 
     async def exists(self, key: str) -> bool:
+        # docstring inherited
         with self.log():
             return await self._store.exists(key)
 
     async def set(self, key: str, value: Buffer) -> None:
+        # docstring inherited
         with self.log():
             return await self._store.set(key=key, value=value)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        # docstring inherited
         with self.log():
             return await self._store.set_if_not_exists(key=key, value=value)
 
     async def delete(self, key: str) -> None:
+        # docstring inherited
         with self.log():
             return await self._store.delete(key=key)
 
     async def set_partial_values(
         self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
     ) -> None:
+        # docstring inherited
         with self.log():
             return await self._store.set_partial_values(key_start_values=key_start_values)
 
     async def list(self) -> AsyncGenerator[str, None]:
+        # docstring inherited
         with self.log():
             async for key in self._store.list():
                 yield key
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+        # docstring inherited
         with self.log():
             async for key in self._store.list_prefix(prefix=prefix):
                 yield key
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+        # docstring inherited
         with self.log():
             async for key in self._store.list_dir(prefix=prefix):
                 yield key
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
+        # docstring inherited
         with self.log():
             return type(self)(
                 self._store.with_mode(mode),

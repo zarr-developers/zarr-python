@@ -151,33 +151,3 @@ def parse_order(data: Any) -> Literal["C", "F"]:
     if data in ("C", "F"):
         return cast(Literal["C", "F"], data)
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
-
-
-def _inherit_docstrings(cls: type[Any]) -> type[Any]:
-    """
-    Inherit docstrings from base class
-
-    Iterate over the methods of the class and if a method is missing a docstring,
-    try to inherit one from a base class (ABC).
-
-    Parameters
-    ----------
-    cls : object
-        the class to inherit docstrings from
-
-    Returns
-    -------
-    cls
-        the class with updated docstrings
-    """
-    # Iterate over the methods of the class
-    for name, method in cls.__dict__.items():
-        # Skip if it's not a callable (method or function)
-        if callable(method):
-            # Get the corresponding method from the base class (ABC)
-            for base in cls.__bases__:
-                base_method = getattr(base, name, None)
-                if base_method and not method.__doc__:
-                    method.__doc__ = base_method.__doc__
-                    break
-    return cls

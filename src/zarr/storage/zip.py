@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
-from zarr.core.common import _inherit_docstrings
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
@@ -17,7 +16,6 @@ if TYPE_CHECKING:
 ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
 
-@_inherit_docstrings
 class ZipStore(Store):
     """
     Storage class using a ZIP file.
@@ -108,11 +106,13 @@ class ZipStore(Store):
         self._sync_open()
 
     def close(self) -> None:
+        # docstring inherited
         super().close()
         with self._lock:
             self._zf.close()
 
     async def clear(self) -> None:
+        # docstring inherited
         with self._lock:
             self._check_writable()
             self._zf.close()
@@ -122,10 +122,12 @@ class ZipStore(Store):
             )
 
     async def empty(self) -> bool:
+        # docstring inherited
         with self._lock:
             return not self._zf.namelist()
 
     def with_mode(self, mode: ZipStoreAccessModeLiteral) -> Self:  # type: ignore[override]
+        # docstring inherited
         raise NotImplementedError("ZipStore cannot be reopened with a new mode.")
 
     def __str__(self) -> str:
@@ -143,6 +145,7 @@ class ZipStore(Store):
         prototype: BufferPrototype,
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
+        # docstring inherited
         try:
             with self._zf.open(key) as f:  # will raise KeyError
                 if byte_range is None:
@@ -166,6 +169,7 @@ class ZipStore(Store):
         prototype: BufferPrototype,
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
+        # docstring inherited
         assert isinstance(key, str)
 
         with self._lock:
@@ -176,6 +180,7 @@ class ZipStore(Store):
         prototype: BufferPrototype,
         key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
+        # docstring inherited
         out = []
         with self._lock:
             for key, byte_range in key_ranges:
@@ -194,6 +199,7 @@ class ZipStore(Store):
         self._zf.writestr(keyinfo, value.to_bytes())
 
     async def set(self, key: str, value: Buffer) -> None:
+        # docstring inherited
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
@@ -212,9 +218,11 @@ class ZipStore(Store):
                 self._set(key, value)
 
     async def delete(self, key: str) -> None:
+        # docstring inherited
         raise NotImplementedError
 
     async def exists(self, key: str) -> bool:
+        # docstring inherited
         with self._lock:
             try:
                 self._zf.getinfo(key)
@@ -224,16 +232,19 @@ class ZipStore(Store):
                 return True
 
     async def list(self) -> AsyncGenerator[str, None]:
+        # docstring inherited
         with self._lock:
             for key in self._zf.namelist():
                 yield key
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+        # docstring inherited
         async for key in self.list():
             if key.startswith(prefix):
                 yield key.removeprefix(prefix)
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+        # docstring inherited
         if prefix.endswith("/"):
             prefix = prefix[:-1]
 

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
-from zarr.core.common import _inherit_docstrings, concurrent_map
+from zarr.core.common import concurrent_map
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
@@ -66,7 +66,6 @@ def _put(
             return f.write(view)
 
 
-@_inherit_docstrings
 class LocalStore(Store):
     """
     Local file system store.
@@ -102,11 +101,13 @@ class LocalStore(Store):
         self.root = root
 
     async def clear(self) -> None:
+        # docstring inherited
         self._check_writable()
         shutil.rmtree(self.root)
         self.root.mkdir()
 
     async def empty(self) -> bool:
+        # docstring inherited
         try:
             with os.scandir(self.root) as it:
                 for entry in it:
@@ -119,6 +120,7 @@ class LocalStore(Store):
             return True
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
+        # docstring inherited
         return type(self)(root=self.root, mode=mode)
 
     def __str__(self) -> str:
@@ -136,6 +138,7 @@ class LocalStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
+        # docstring inherited
         if not self._is_open:
             await self._open()
         assert isinstance(key, str)
@@ -151,6 +154,7 @@ class LocalStore(Store):
         prototype: BufferPrototype,
         key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
+        # docstring inherited
         args = []
         for key, byte_range in key_ranges:
             assert isinstance(key, str)
@@ -159,9 +163,11 @@ class LocalStore(Store):
         return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: Buffer) -> None:
+        # docstring inherited
         return await self._set(key, value)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        # docstring inherited
         try:
             return await self._set(key, value, exclusive=True)
         except FileExistsError:
@@ -180,6 +186,7 @@ class LocalStore(Store):
     async def set_partial_values(
         self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
     ) -> None:
+        # docstring inherited
         self._check_writable()
         args = []
         for key, start, value in key_start_values:
@@ -189,6 +196,7 @@ class LocalStore(Store):
         await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
 
     async def delete(self, key: str) -> None:
+        # docstring inherited
         self._check_writable()
         path = self.root / key
         if path.is_dir():  # TODO: support deleting directories? shutil.rmtree?
@@ -197,22 +205,26 @@ class LocalStore(Store):
             await asyncio.to_thread(path.unlink, True)  # Q: we may want to raise if path is missing
 
     async def exists(self, key: str) -> bool:
+        # docstring inherited
         path = self.root / key
         return await asyncio.to_thread(path.is_file)
 
     async def list(self) -> AsyncGenerator[str, None]:
+        # docstring inherited
         to_strip = str(self.root) + "/"
         for p in list(self.root.rglob("*")):
             if p.is_file():
                 yield str(p).replace(to_strip, "")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+        # docstring inherited
         to_strip = os.path.join(str(self.root / prefix))
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
                 yield str(p.relative_to(to_strip))
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+        # docstring inherited
         base = self.root / prefix
         to_strip = str(base) + "/"
 

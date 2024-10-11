@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, gpu
-from zarr.core.common import _inherit_docstrings, concurrent_map
+from zarr.core.common import concurrent_map
 from zarr.storage._utils import _normalize_interval_index
 
 if TYPE_CHECKING:
@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from zarr.core.common import AccessModeLiteral
 
 
-@_inherit_docstrings
 class MemoryStore(Store):
     """
     In-memory store for testing purposes.
@@ -53,12 +52,15 @@ class MemoryStore(Store):
         self._store_dict = store_dict
 
     async def empty(self) -> bool:
+        # docstring inherited
         return not self._store_dict
 
     async def clear(self) -> None:
+        # docstring inherited
         self._store_dict.clear()
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
+        # docstring inherited
         return type(self)(store_dict=self._store_dict, mode=mode)
 
     def __str__(self) -> str:
@@ -80,6 +82,7 @@ class MemoryStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
+        # docstring inherited
         if not self._is_open:
             await self._open()
         assert isinstance(key, str)
@@ -95,6 +98,8 @@ class MemoryStore(Store):
         prototype: BufferPrototype,
         key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
+        # docstring inherited
+
         # All the key-ranges arguments goes with the same prototype
         async def _get(key: str, byte_range: ByteRangeRequest) -> Buffer | None:
             return await self.get(key, prototype=prototype, byte_range=byte_range)
@@ -102,9 +107,11 @@ class MemoryStore(Store):
         return await concurrent_map(key_ranges, _get, limit=None)
 
     async def exists(self, key: str) -> bool:
+        # docstring inherited
         return key in self._store_dict
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        # docstring inherited
         self._check_writable()
         await self._ensure_open()
         assert isinstance(key, str)
@@ -119,30 +126,36 @@ class MemoryStore(Store):
             self._store_dict[key] = value
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        # docstring inherited
         self._check_writable()
         await self._ensure_open()
         self._store_dict.setdefault(key, value)
 
     async def delete(self, key: str) -> None:
+        # docstring inherited
         self._check_writable()
         try:
             del self._store_dict[key]
         except KeyError:
-            pass  # Q(JH): why not raise?
+            pass
 
     async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
+        # docstring inherited
         raise NotImplementedError
 
     async def list(self) -> AsyncGenerator[str, None]:
+        # docstring inherited
         for key in self._store_dict:
             yield key
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+        # docstring inherited
         for key in self._store_dict:
             if key.startswith(prefix):
                 yield key.removeprefix(prefix)
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+        # docstring inherited
         if prefix.endswith("/"):
             prefix = prefix[:-1]
 
@@ -217,6 +230,7 @@ class GpuMemoryStore(MemoryStore):
         return cls(gpu_store_dict)
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
+        # docstring inherited
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
