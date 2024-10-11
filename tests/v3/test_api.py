@@ -1,12 +1,19 @@
+import pathlib
+import warnings
+
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
-from pytest_asyncio import fixture
 
 import zarr
+import zarr.api.asynchronous
+import zarr.core.group
 from zarr import Array, Group
 from zarr.abc.store import Store
-from zarr.api.synchronous import create, load, open, open_group, save, save_array, save_group
+from zarr.api.synchronous import create, group, load, open, open_group, save, save_array, save_group
+from zarr.core.common import ZarrFormat
+from zarr.errors import MetadataValidationError
+from zarr.storage.memory import MemoryStore
 
 
 def test_create_array(memory_store: Store) -> None:
@@ -30,7 +37,7 @@ def test_create_array(memory_store: Store) -> None:
     assert z.chunks == (40,)
 
 
-async def test_open_array(memory_store: Store) -> None:
+async def test_open_array(memory_store: MemoryStore) -> None:
     store = memory_store
 
     # open array, create if doesn't exist
@@ -39,8 +46,9 @@ async def test_open_array(memory_store: Store) -> None:
     assert z.shape == (100,)
 
     # open array, overwrite
-    store._store_dict = {}
-    z = open(store=store, shape=200, mode="w")  # mode="w"
+    # store._store_dict = {}
+    store = MemoryStore(mode="w")
+    z = open(store=store, shape=200)
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
@@ -57,7 +65,7 @@ async def test_open_array(memory_store: Store) -> None:
         open(store="doesnotexist", mode="r")
 
 
-async def test_open_group(memory_store: Store) -> None:
+async def test_open_group(memory_store: MemoryStore) -> None:
     store = memory_store
 
     # open group, create if doesn't exist
@@ -79,6 +87,26 @@ async def test_open_group(memory_store: Store) -> None:
     # assert g.read_only
 
 
+@pytest.mark.parametrize("zarr_format", [None, 2, 3])
+async def test_open_group_unspecified_version(
+    tmpdir: pathlib.Path, zarr_format: ZarrFormat
+) -> None:
+    """regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
+
+    # create a group with specified zarr format (could be 2, 3, or None)
+    _ = await zarr.api.asynchronous.open_group(
+        store=str(tmpdir), mode="w", zarr_format=zarr_format, attributes={"foo": "bar"}
+    )
+
+    # now open that group without specifying the format
+    g2 = await zarr.api.asynchronous.open_group(store=str(tmpdir), mode="r")
+
+    assert g2.attrs == {"foo": "bar"}
+
+    if zarr_format is not None:
+        assert g2.metadata.zarr_format == zarr_format
+
+
 def test_save_errors() -> None:
     with pytest.raises(ValueError):
         # no arrays provided
@@ -91,53 +119,66 @@ def test_save_errors() -> None:
         save("data/group.zarr")
 
 
-@fixture
-def tmppath(tmpdir):
-    return str(tmpdir / "example.zarr")
-
-
-def test_open_with_mode_r(tmppath) -> None:
+def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
     # 'r' means read only (must exist)
     with pytest.raises(FileNotFoundError):
-        zarr.open(store=tmppath, mode="r")
-    zarr.ones(store=tmppath, shape=(3, 3))
-    z2 = zarr.open(store=tmppath, mode="r")
+        zarr.open(store=tmp_path, mode="r")
+    z1 = zarr.ones(store=tmp_path, shape=(3, 3))
+    assert z1.fill_value == 1
+    z2 = zarr.open(store=tmp_path, mode="r")
+    assert isinstance(z2, Array)
+    assert z2.fill_value == 1
     assert (z2[:] == 1).all()
     with pytest.raises(ValueError):
         z2[:] = 3
 
 
-def test_open_with_mode_r_plus(tmppath) -> None:
+def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
     # 'r+' means read/write (must exist)
     with pytest.raises(FileNotFoundError):
-        zarr.open(store=tmppath, mode="r+")
-    zarr.ones(store=tmppath, shape=(3, 3))
-    z2 = zarr.open(store=tmppath, mode="r+")
+        zarr.open(store=tmp_path, mode="r+")
+    zarr.ones(store=tmp_path, shape=(3, 3))
+    z2 = zarr.open(store=tmp_path, mode="r+")
+    assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
 
 
-def test_open_with_mode_a(tmppath) -> None:
+async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
+    # Open without shape argument should default to group
+    g = zarr.open(store=tmp_path, mode="a")
+    assert isinstance(g, Group)
+    await g.store_path.delete()
+
     # 'a' means read/write (create if doesn't exist)
-    zarr.open(store=tmppath, mode="a", shape=(3, 3))[...] = 1
-    z2 = zarr.open(store=tmppath, mode="a")
+    arr = zarr.open(store=tmp_path, mode="a", shape=(3, 3))
+    assert isinstance(arr, Array)
+    arr[...] = 1
+    z2 = zarr.open(store=tmp_path, mode="a")
+    assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
 
 
-def test_open_with_mode_w(tmppath) -> None:
+def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
     # 'w' means create (overwrite if exists);
-    zarr.open(store=tmppath, mode="w", shape=(3, 3))[...] = 3
-    z2 = zarr.open(store=tmppath, mode="w", shape=(3, 3))
+    arr = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
+    assert isinstance(arr, Array)
+
+    arr[...] = 3
+    z2 = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
+    assert isinstance(z2, Array)
     assert not (z2[:] == 3).all()
     z2[:] = 3
 
 
-def test_open_with_mode_w_minus(tmppath) -> None:
+def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
     # 'w-' means create  (fail if exists)
-    zarr.open(store=tmppath, mode="w-", shape=(3, 3))[...] = 1
+    arr = zarr.open(store=tmp_path, mode="w-", shape=(3, 3))
+    assert isinstance(arr, Array)
+    arr[...] = 1
     with pytest.raises(FileExistsError):
-        zarr.open(store=tmppath, mode="w-")
+        zarr.open(store=tmp_path, mode="w-")
 
 
 # def test_lazy_loader():
@@ -849,3 +890,71 @@ def test_tree() -> None:
 #         # bad option
 #         with pytest.raises(TypeError):
 #             copy(source["foo"], dest, dry_run=True, log=True)
+
+
+def test_open_positional_args_deprecated() -> None:
+    store = MemoryStore({}, mode="w")
+    with pytest.warns(FutureWarning, match="pass"):
+        open(store, "w", shape=(1,))
+
+
+def test_save_array_positional_args_deprecated() -> None:
+    store = MemoryStore({}, mode="w")
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message="zarr_version is deprecated", category=DeprecationWarning
+        )
+        with pytest.warns(FutureWarning, match="pass"):
+            save_array(
+                store,
+                np.ones(
+                    1,
+                ),
+                3,
+            )
+
+
+def test_group_positional_args_deprecated() -> None:
+    store = MemoryStore({}, mode="w")
+    with pytest.warns(FutureWarning, match="pass"):
+        group(store, True)
+
+
+def test_open_group_positional_args_deprecated() -> None:
+    store = MemoryStore({}, mode="w")
+    with pytest.warns(FutureWarning, match="pass"):
+        open_group(store, "w")
+
+
+def test_open_falls_back_to_open_group() -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2309
+    store = MemoryStore(mode="w")
+    zarr.open_group(store, attributes={"key": "value"})
+
+    group = zarr.open(store)
+    assert isinstance(group, Group)
+    assert group.attrs == {"key": "value"}
+
+
+async def test_open_falls_back_to_open_group_async() -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2309
+    store = MemoryStore(mode="w")
+    await zarr.api.asynchronous.open_group(store, attributes={"key": "value"})
+
+    group = await zarr.api.asynchronous.open(store=store)
+    assert isinstance(group, zarr.core.group.AsyncGroup)
+    assert group.attrs == {"key": "value"}
+
+
+async def test_metadata_validation_error() -> None:
+    with pytest.raises(
+        MetadataValidationError,
+        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+    ):
+        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore[arg-type]
+
+    with pytest.raises(
+        MetadataValidationError,
+        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+    ):
+        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]

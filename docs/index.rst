@@ -10,11 +10,11 @@ Zarr-Python
 
     getting_started
     tutorial
+    guide/index
     api/index
     spec
     release
     license
-    acknowledgments
     contributing
 
 **Version**: |version|

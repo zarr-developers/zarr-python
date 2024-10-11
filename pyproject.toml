@@ -20,19 +20,17 @@ maintainers = [
     { name = "Norman Rzepka" },
     { name = "Ryan Abernathey" }
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'asciitree',
-    'numpy>=1.24',
+    'numpy>=1.25',
     'fasteners',
-    'numcodecs>=0.10.0',
+    'numcodecs>=0.10.2',
     'fsspec>2024',
     'crc32c',
-    'zstandard',
     'typing_extensions',
     'donfig',
-    'pytest'
 ]
 dynamic = [
   "version",
@@ -47,7 +45,6 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Operating System :: Unix',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
 ]
@@ -55,29 +52,50 @@ license = {text = "MIT License"}
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
+test = [
+    "coverage",
+    "pytest",
+    "pytest-cov",
+    "msgpack",
+    "lmdb",
+    "s3fs",
+    "pytest-asyncio",
+    "moto[s3]",
+    "flask-cors",
+    "flask",
+    "requests",
+    "mypy",
+    "hypothesis",
+    "universal-pathlib",
+]
+
 jupyter = [
     'notebook',
     'ipytree>=0.2.2',
     'ipywidgets>=8.0.0',
 ]
+gpu = [
+    "cupy-cuda12x",
+]
 docs = [
-    'sphinx',
+    'sphinx==8.0.2',
     'sphinx-autobuild>=2021.3.14',
-    'sphinx-autoapi',
+    'sphinx-autoapi==3.3.2',
     'sphinx_design',
     'sphinx-issues',
     'sphinx-copybutton',
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
-    "msgpack",
-    "lmdb",
+    'msgpack',
+    'lmdb',
 ]
 extra = [
     'msgpack',
 ]
 optional = [
     'lmdb',
+    'universal-pathlib',
 ]
 
 [project.urls]
@@ -106,39 +124,52 @@ build.hooks.vcs.version-file = "src/zarr/_version.py"
 [tool.hatch.envs.test]
 dependencies = [
     "numpy~={matrix:numpy}",
-    "universal_pathlib"
+    "universal_pathlib",
 ]
-extra-dependencies = [
-    "coverage",
-    "pytest",
-    "pytest-cov",
-    "msgpack",
-    "lmdb",
-    "s3fs",
-    "pytest-asyncio",
-    "moto[s3]",
-    "flask-cors",
-    "flask",
-    "requests",
-    "mypy"
-]
-features = ["extra"]
+features = ["test", "extra"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11", "3.12"]
-numpy = ["1.24", "1.26", "2.0"]
+python = ["3.11", "3.12"]
+numpy = ["1.25", "1.26", "2.0"]
 version = ["minimal"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.11", "3.12"]
-numpy = ["1.24", "1.26", "2.0"]
+python = ["3.11", "3.12"]
+numpy = ["1.25", "1.26", "2.0"]
 features = ["optional"]
+
+[[tool.hatch.envs.test.matrix]]
+python = ["3.11", "3.12"]
+numpy = ["1.25", "1.26", "2.0"]
+features = ["gpu"]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
+run-hypothesis = "pytest --hypothesis-profile ci tests/v3/test_properties.py tests/v3/test_store/test_stateful*"
+list-env = "pip list"
+
+[tool.hatch.envs.gputest]
+dependencies = [
+    "numpy~={matrix:numpy}",
+    "universal_pathlib",
+]
+features = ["test", "extra", "gpu"]
+
+[[tool.hatch.envs.gputest.matrix]]
+python = ["3.11", "3.12"]
+numpy = ["1.25", "1.26", "2.0"]
+version = ["minimal"]
+
+[tool.hatch.envs.gputest.scripts]
+run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=tests"
+run = "run-coverage --no-cov"
+run-verbose = "run-coverage --verbose"
+run-mypy = "mypy src"
+run-hypothesis = "pytest --hypothesis-profile ci tests/v3/test_properties.py tests/v3/test_store/test_stateful*"
 list-env = "pip list"
 
 [tool.hatch.envs.docs]
@@ -150,7 +181,6 @@ serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
 [tool.ruff]
 line-length = 100
-src = ["src"]
 force-exclude = true
 extend-exclude = [
     ".bzr",
@@ -167,6 +197,7 @@ extend-exclude = [
     "buck-out",
     "build",
     "dist",
+    "notebooks", # temporary, until we achieve compatibility with ruff ≥ 0.6
     "venv",
     "docs",
     "src/zarr/v2/",
@@ -175,21 +206,60 @@ extend-exclude = [
 
 [tool.ruff.lint]
 extend-select = [
-    "B",  # flake8-bugbear
-    "I",  # isort
-    "ISC",
-    "UP",  # pyupgrade
-    "RSE",
+    "ANN", # flake8-annotations
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "FLY", # flynt
+    "I",   # isort
+    "ISC", # flake8-implicit-str-concat
+    "PGH", # pygrep-hooks
+    "PT",  # flake8-pytest-style
+    "PYI", # flake8-pyi
+    "RSE", # flake8-raise
+    "RET", # flake8-return
     "RUF",
+    "TCH", # flake8-type-checking
+    "TRY", # tryceratops
+    "UP",  # pyupgrade
 ]
 ignore = [
+    "ANN003",
+    "ANN101",
+    "ANN102",
+    "ANN401",
+    "PT004",  # deprecated
+    "PT011",  # TODO: apply this rule
+    "PT012",  # TODO: apply this rule
+    "PYI013",
+    "RET505",
+    "RET506",
     "RUF005",
+    "TRY003",
+    # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
+    "W191",
+    "E111",
+    "E114",
+    "E117",
+    "D206",
+    "D300",
+    "Q000",
+    "Q001",
+    "Q002",
+    "Q003",
+    "COM812",
+    "COM819",
+    "ISC001",
+    "ISC002",
 ]
 
+[tool.ruff.lint.extend-per-file-ignores]
+"tests/**" = ["ANN001", "ANN201"]
+
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 ignore_missing_imports = true
 namespace_packages = false
+
 
 strict = true
 warn_unreachable = true
@@ -199,6 +269,23 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 [[tool.mypy.overrides]]
 module = [
     "zarr.v2.*",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "tests.v2.*",
+    "tests.v3.package_with_entrypoint.*",
+    "tests.v3.test_codecs.test_codecs",
+    "tests.v3.test_codecs.test_transpose",
+    "tests.v3.test_metadata.*",
+    "tests.v3.test_store.*",
+    "tests.v3.test_config",
+    "tests.v3.test_group",
+    "tests.v3.test_indexing",
+    "tests.v3.test_properties",
+    "tests.v3.test_sync",
+    "tests.v3.test_v2",
 ]
 ignore_errors = true
 
@@ -220,4 +307,19 @@ filterwarnings = [
     "error:::zarr.*",
     "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
+    "ignore:Creating a zarr.buffer.gpu.*:UserWarning",
+    "ignore:Duplicate name:UserWarning",  # from ZipFile
 ]
+markers = [
+    "gpu: mark a test as requiring CuPy and GPU"
+]
+
+[tool.repo-review]
+ignore = [
+	"PC111",  # fix Python code in documentation - enable later
+	"PC180",  # for JavaScript - not interested
+]
+
+[tool.numpydoc_validation]
+# See https://numpydoc.readthedocs.io/en/latest/validation.html#built-in-validation-checks for list of checks
+checks = ["GL06", "GL07", "GL10", "PR03", "PR05", "PR06"]

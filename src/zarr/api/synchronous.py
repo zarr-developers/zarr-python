@@ -1,14 +1,45 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import zarr.api.asynchronous as async_api
-from zarr.array import Array, AsyncArray
-from zarr.buffer import NDArrayLike
-from zarr.common import JSON, AccessModeLiteral, ChunkCoords, ZarrFormat
-from zarr.group import Group
-from zarr.store import StoreLike
-from zarr.sync import sync
+from zarr._compat import _deprecate_positional_args
+from zarr.core.array import Array, AsyncArray
+from zarr.core.group import Group
+from zarr.core.sync import sync
+
+if TYPE_CHECKING:
+    from zarr.core.buffer import NDArrayLike
+    from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, ZarrFormat
+    from zarr.storage import StoreLike
+
+__all__ = [
+    "array",
+    "consolidate_metadata",
+    "copy",
+    "copy_all",
+    "copy_store",
+    "create",
+    "empty",
+    "empty_like",
+    "full",
+    "full_like",
+    "group",
+    "load",
+    "ones",
+    "ones_like",
+    "open",
+    "open_array",
+    "open_consolidated",
+    "open_group",
+    "open_like",
+    "save",
+    "save_array",
+    "save_group",
+    "tree",
+    "zeros",
+    "zeros_like",
+]
 
 
 def consolidate_metadata(*args: Any, **kwargs: Any) -> Group:
@@ -33,9 +64,10 @@ def load(
     return sync(async_api.load(store=store, zarr_version=zarr_version, path=path))
 
 
+@_deprecate_positional_args
 def open(
-    *,
     store: StoreLike | None = None,
+    *,
     mode: AccessModeLiteral | None = None,  # type and value changed
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
@@ -58,8 +90,10 @@ def open(
         return Group(obj)
 
 
-def open_consolidated(*args: Any, **kwargs: Any) -> Group:
-    return Group(sync(async_api.open_consolidated(*args, **kwargs)))
+def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwargs: Any) -> Group:
+    return Group(
+        sync(async_api.open_consolidated(*args, use_consolidated=use_consolidated, **kwargs))
+    )
 
 
 def save(
@@ -77,6 +111,7 @@ def save(
     )
 
 
+@_deprecate_positional_args
 def save_array(
     store: StoreLike,
     arr: NDArrayLike,
@@ -104,6 +139,7 @@ def save_group(
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
+    storage_options: dict[str, Any] | None = None,
     **kwargs: NDArrayLike,
 ) -> None:
     return sync(
@@ -113,6 +149,7 @@ def save_group(
             zarr_version=zarr_version,
             zarr_format=zarr_format,
             path=path,
+            storage_options=storage_options,
             **kwargs,
         )
     )
@@ -127,9 +164,10 @@ def array(data: NDArrayLike, **kwargs: Any) -> Array:
     return Array(sync(async_api.array(data=data, **kwargs)))
 
 
+@_deprecate_positional_args
 def group(
-    *,  # Note: this is a change from v2
     store: StoreLike | None = None,
+    *,  # Note: this is a change from v2
     overwrite: bool = False,
     chunk_store: StoreLike | None = None,  # not used in async_api
     cache_attrs: bool | None = None,  # default changed, not used in async_api
@@ -158,9 +196,10 @@ def group(
     )
 
 
+@_deprecate_positional_args
 def open_group(
-    *,  # Note: this is a change from v2
     store: StoreLike | None = None,
+    *,  # Note: this is a change from v2
     mode: AccessModeLiteral | None = None,  # not used in async api
     cache_attrs: bool | None = None,  # default changed, not used in async api
     synchronizer: Any = None,  # not used in async api
@@ -170,6 +209,8 @@ def open_group(
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # not used in async api
+    attributes: dict[str, JSON] | None = None,
+    use_consolidated: bool | str | None = None,
 ) -> Group:
     return Group(
         sync(
@@ -184,6 +225,8 @@ def open_group(
                 zarr_version=zarr_version,
                 zarr_format=zarr_format,
                 meta_array=meta_array,
+                attributes=attributes,
+                use_consolidated=use_consolidated,
             )
         )
     )

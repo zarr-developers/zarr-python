@@ -26,22 +26,21 @@ from zarr.api.synchronous import (
     zeros,
     zeros_like,
 )
-from zarr.array import Array, AsyncArray
-from zarr.config import config
-from zarr.group import AsyncGroup, Group
+from zarr.core.array import Array, AsyncArray
+from zarr.core.config import config
+from zarr.core.group import AsyncGroup, Group
 
 # in case setuptools scm screw up and find version to be 0.0.0
 assert not __version__.startswith("0.0.0")
 
 __all__ = [
-    "__version__",
-    "config",
     "Array",
     "AsyncArray",
-    "Group",
     "AsyncGroup",
-    "tree",
+    "Group",
+    "__version__",
     "array",
+    "config",
     "consolidate_metadata",
     "copy",
     "copy_all",
@@ -63,6 +62,7 @@ __all__ = [
     "save",
     "save_array",
     "save_group",
+    "tree",
     "zeros",
     "zeros_like",
 ]
