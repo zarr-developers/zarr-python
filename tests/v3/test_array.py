@@ -408,13 +408,13 @@ def test_vlen_errors() -> None:
         )
 
 
-def test_update_attrs() -> None:
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_update_attrs(zarr_format: int) -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
-    arr = Array.create(
-        MemoryStore({}, mode="w"),
-        shape=5,
-        chunk_shape=5,
-        dtype="f8",
-    )
+    store = MemoryStore({}, mode="w")
+    arr = Array.create(store=store, shape=5, chunk_shape=5, dtype="f8", zarr_format=zarr_format)
     arr.attrs["foo"] = "bar"
     assert arr.attrs["foo"] == "bar"
+
+    arr2 = zarr.open_array(store=store, zarr_format=zarr_format)
+    assert arr2.attrs["foo"] == "bar"
