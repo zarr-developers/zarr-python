@@ -25,9 +25,13 @@ Release notes
 
 Enhancements
 ~~~~~~~~~~~~
+* Added testing on Python 3.13.
 
 Maintenance
 ~~~~~~~~~~~
+* Dropped support for Python 3.10.
+* Removed testing for compatibility with the ``bsddb3`` package.
+  ``bsddb3`` was last released four years ago.
 
 Deprecations
 ~~~~~~~~~~~~
@@ -41,7 +45,7 @@ Enhancements
 ~~~~~~~~~~~~
 * Added support for creating a copy of data when converting a `zarr.Array`
   to a numpy array.
-  By :user:`David Stansby <dstansby>` (:issue:`2106`) and 
+  By :user:`David Stansby <dstansby>` (:issue:`2106`) and
   :user:`Joe Hamman <jhamman>` (:issue:`2123`).
 
 Maintenance
