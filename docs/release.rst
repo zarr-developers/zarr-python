@@ -30,8 +30,12 @@ Enhancements
 Maintenance
 ~~~~~~~~~~~
 * Dropped support for Python 3.10.
+  By :user:`David Stansby <dstansby>` (:issue:`2344`).
 * Removed testing for compatibility with the ``bsddb3`` package.
-  ``bsddb3`` was last released four years ago.
+  ``bsddb3`` was last released four years ago, and should still work with
+  ``zarr-python`` if you can install it, but to reduce our maintenance
+  burden we will no longer run our compatibility tests for it.
+  By :user:`David Stansby <dstansby>` (:issue:`2344`).
 
 Deprecations
 ~~~~~~~~~~~~
