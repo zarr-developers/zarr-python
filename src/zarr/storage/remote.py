@@ -157,7 +157,7 @@ class RemoteStore(Store):
         Returns
         -------
         RemoteStore
-        """        
+        """
         opts = storage_options or {}
         opts = {"asynchronous": True, **opts}
 
@@ -167,7 +167,7 @@ class RemoteStore(Store):
         # https://github.com/fsspec/filesystem_spec/issues/1722
         if "://" in path:
             _, path = path.split("://", maxsplit=1)
-    
+
         return cls(fs=fs, path=path, mode=mode, allowed_exceptions=allowed_exceptions)
 
     async def clear(self) -> None:
