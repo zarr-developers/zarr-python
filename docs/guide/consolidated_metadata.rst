@@ -12,8 +12,8 @@ Usage
 
 If consolidated metadata is present in a Zarr Group's metadata then it is used
 by default.  The initial read to open the group will need to communicate with
-the store (reading from a file for a :class:`zarr.store.LocalStore`, making a
-network request for a :class:`zarr.store.RemoteStore`). After that, any subsequent
+the store (reading from a file for a :class:`zarr.storage.LocalStore`, making a
+network request for a :class:`zarr.storage.RemoteStore`). After that, any subsequent
 metadata reads get child Group or Array nodes will *not* require reads from the store.
 
 In Python, the consolidated metadata is available on the ``.consolidated_metadata``
@@ -22,7 +22,7 @@ attribute of the ``GroupMetadata`` object.
 .. code-block:: python
 
    >>> import zarr
-   >>> store = zarr.store.MemoryStore({}, mode="w")
+   >>> store = zarr.storage.MemoryStore({}, mode="w")
    >>> group = zarr.open_group(store=store)
    >>> group.create_array(shape=(1,), name="a")
    >>> group.create_array(shape=(2, 2), name="b")
