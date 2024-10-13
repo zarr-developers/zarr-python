@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pickle
+import warnings
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
@@ -1091,8 +1092,8 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
 
 
 @pytest.mark.parametrize("consolidate", [True, False])
-def test_members_name(store: Store, consolidate: bool):
-    group = Group.from_store(store=store)
+async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFormat):
+    group = Group.from_store(store=store, zarr_format=zarr_format)
     a = group.create_group(name="a")
     a.create_array("array", shape=(1,))
     b = a.create_group(name="b")
@@ -1107,6 +1108,12 @@ def test_members_name(store: Store, consolidate: bool):
     paths = sorted(x.name for _, x in group.members(max_depth=None))
     expected = ["/a", "/a/array", "/a/b", "/a/b/array"]
     assert paths == expected
+
+    # regression test for https://github.com/zarr-developers/zarr-python/pull/2356
+    g = zarr.open_group(store, use_consolidated=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert list(g)
 
 
 async def test_open_mutable_mapping():
