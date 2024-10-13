@@ -186,3 +186,10 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         path = UPath(f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False)
         result = RemoteStore.from_upath(path)
         assert result.fs.endpoint_url == endpoint_url
+
+    async def test_empty_nonexistent_path(self, store_kwargs) -> None:
+        # regression test for https://github.com/zarr-developers/zarr-python/pull/2343
+        store_kwargs["mode"] = "w-"
+        store_kwargs["path"] += "/abc"
+        store = await self.store_cls.open(**store_kwargs)
+        assert await store.empty()
