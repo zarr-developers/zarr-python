@@ -123,7 +123,6 @@ class RemoteStore(Store):
     ) -> RemoteStore:
         opts = storage_options or {}
         opts = {"asynchronous": True, **opts}
-        print("opts")
 
         fs, path = fsspec.url_to_fs(url, **opts)
         return cls(fs=fs, path=path, mode=mode, allowed_exceptions=allowed_exceptions)
