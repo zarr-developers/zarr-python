@@ -5,9 +5,9 @@ name: Linux Testing
 
 on:
   push:
-    branches: [ main ]
+    branches: [ support/v2]
   pull_request:
-    branches: [ main ]
+    branches: [ support/v2]
 
 jobs:
   build:
