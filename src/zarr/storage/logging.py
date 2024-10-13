@@ -18,6 +18,24 @@ if TYPE_CHECKING:
 
 
 class LoggingStore(Store):
+    """
+    Store wrapper that logs all calls to the wrapped store.
+
+    Parameters
+    ----------
+    store: Store
+        Store to wrap
+    log_level: str
+        Log level
+    log_handler: logging.Handler
+        Log handler
+
+    Attributes
+    ----------
+    counter: dict
+        Counter of number of times each method has been called
+    """
+
     _store: Store
     counter: defaultdict[str, int]
 
@@ -120,10 +138,12 @@ class LoggingStore(Store):
             return await self._store._ensure_open()
 
     async def empty(self) -> bool:
+        # docstring inherited
         with self.log():
             return await self._store.empty()
 
     async def clear(self) -> None:
+        # docstring inherited
         with self.log():
             return await self._store.clear()
 
