@@ -1139,7 +1139,8 @@ class AsyncGroup:
             raise ValueError(msg)
         # would be nice to make these special keys accessible programmatically,
         # and scoped to specific zarr versions
-        _skip_keys = ("zarr.json", ".zgroup", ".zattrs")
+        # especially true for `.zmetadata` which is configurable
+        _skip_keys = ("zarr.json", ".zgroup", ".zattrs", ".zmetadata")
 
         # hmm lots of I/O and logic interleaved here.
         # We *could* have an async gen over self.metadata.consolidated_metadata.metadata.keys()
