@@ -125,6 +125,12 @@ class RemoteStore(Store):
         opts = {"asynchronous": True, **opts}
 
         fs, path = fsspec.url_to_fs(url, **opts)
+
+        # fsspec is not consistent about removing the scheme from the path, so check and strip it here
+        # https://github.com/fsspec/filesystem_spec/issues/1722
+        if "://" in path:
+            _, path = path.split("://", maxsplit=1)
+
         return cls(fs=fs, path=path, mode=mode, allowed_exceptions=allowed_exceptions)
 
     async def clear(self) -> None:
