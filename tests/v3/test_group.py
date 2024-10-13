@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import pickle
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, cast
@@ -178,22 +179,33 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
         )
     )
 
+    # this warning shows up when extra objects show up in the hierarchy
+    warn_context = pytest.warns(
+        UserWarning, match=r"Object at .* is not recognized as a component of a Zarr hierarchy."
+    )
     if consolidated_metadata:
-        zarr.consolidate_metadata(store=store, zarr_format=zarr_format)
+        with warn_context:
+            zarr.consolidate_metadata(store=store, zarr_format=zarr_format)
+        # now that we've consolidated the store, we shouldn't get the warnings from the unrecognized objects anymore
+        # we use a nullcontext to handle these cases
+        warn_context = contextlib.nullcontext()
         group = zarr.open_consolidated(store=store, zarr_format=zarr_format)
 
-    members_observed = group.members()
+    with warn_context:
+        members_observed = group.members()
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
     # partial
-    members_observed = group.members(max_depth=1)
+    with warn_context:
+        members_observed = group.members(max_depth=1)
     members_expected["subgroup/subsubgroup"] = subsubgroup
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
     # total
-    members_observed = group.members(max_depth=None)
+    with warn_context:
+        members_observed = group.members(max_depth=None)
     members_expected["subgroup/subsubgroup/subsubsubgroup"] = subsubsubgroup
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
