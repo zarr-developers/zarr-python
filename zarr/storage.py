@@ -1686,7 +1686,6 @@ class NestedDirectoryStore(DirectoryStore):
     def __init__(
         self, path, normalize_keys=False, dimension_separator: Optional[DIMENSION_SEPARATOR] = "/"
     ):
-
         warnings.warn(
             V3_DEPRECATION_MESSAGE.format(store=self.__class__.__name__),
             FutureWarning,
@@ -2069,6 +2068,8 @@ class DBMStore(Store):
     the `open` parameter. For example, if the `bsddb3
     <https://www.jcea.es/programacion/pybsddb.htm>`_ package is installed, a
     Berkeley DB database can be used::
+
+    .. doctest-requires:: bsddb3
 
         >>> import bsddb3
         >>> store = zarr.DBMStore('data/array.bdb', open=bsddb3.btopen)
