@@ -184,7 +184,10 @@ class RemoteStore(Store):
 
         # TODO: it would be nice if we didn't have to list all keys here
         # it should be possible to stop after the first key is discovered
-        return not await self.fs._ls(self.path)
+        try:
+            return not await self.fs._ls(self.path)
+        except FileNotFoundError:
+            return True
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
         # docstring inherited

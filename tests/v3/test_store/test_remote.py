@@ -209,3 +209,10 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         store_kwargs = {"fs": fs, "path": path, "mode": "r+"}
         with pytest.warns(UserWarning, match=r".* was not created with `asynchronous=True`.*"):
             self.store_cls(**store_kwargs)
+
+    async def test_empty_nonexistent_path(self, store_kwargs) -> None:
+        # regression test for https://github.com/zarr-developers/zarr-python/pull/2343
+        store_kwargs["mode"] = "w-"
+        store_kwargs["path"] += "/abc"
+        store = await self.store_cls.open(**store_kwargs)
+        assert await store.empty()
