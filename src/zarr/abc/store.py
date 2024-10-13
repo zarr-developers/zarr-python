@@ -95,12 +95,12 @@ class Store(ABC):
 
         Parameters
         ----------
-        mode: AccessModeLiteral
+        mode : AccessModeLiteral
             The new mode to use.
 
         Returns
         -------
-        store:
+        store
             A new store of the same type with the new mode.
 
         Examples

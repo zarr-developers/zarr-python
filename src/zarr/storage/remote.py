@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any, Self
 
 import fsspec
@@ -42,15 +43,45 @@ class RemoteStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> None:
         """
+        A remote Store based on FSSpec
+
         Parameters
         ----------
-        url: root of the datastore. In fsspec notation, this is usually like "protocol://path/to".
-            Can also be a upath.UPath instance/
-        allowed_exceptions: when fetching data, these cases will be deemed to correspond to missing
-            keys, rather than some other IO failure
-        storage_options: passed on to fsspec to make the filesystem instance. If url is a UPath,
-            this must not be used.
+        fs : AsyncFileSystem
+            The Async FSSpec filesystem to use with this store.
+        mode : AccessModeLiteral
+            The access mode to use.
+        path : str
+            The root path of the store. This should be a relative path and must not include the
+            filesystem scheme.
+        allowed_exceptions : tuple[type[Exception], ...]
+            When fetching data, these cases will be deemed to correspond to missing keys.
 
+        Attributes
+        ----------
+        fs
+        allowed_exceptions
+        supports_writes
+        supports_deletes
+        supports_partial_writes
+        supports_listing
+
+        Raises
+        ------
+        TypeError
+            If the Filesystem does not support async operations.
+        ValueError
+            If the path argument includes a scheme.
+
+        Warns
+        -----
+        UserWarning
+            If the file system (fs) was not created with `asynchronous=True`.
+
+        See Also
+        --------
+        RemoteStore.from_upath
+        RemoteStore.from_url
         """
         super().__init__(mode=mode)
         self.fs = fs
@@ -59,6 +90,14 @@ class RemoteStore(Store):
 
         if not self.fs.async_impl:
             raise TypeError("Filesystem needs to support async operations.")
+        if not self.fs.asynchronous:
+            warnings.warn(
+                f"fs ({fs}) was not created with `asynchronous=True`, this may lead to surprising behavior",
+                stacklevel=2,
+            )
+        if "://" in path:
+            scheme, _ = path.split("://", maxsplit=1)
+            raise ValueError(f"path argument to RemoteStore must not include scheme ({scheme}://)")
 
     @classmethod
     def from_upath(
@@ -82,7 +121,11 @@ class RemoteStore(Store):
         mode: AccessModeLiteral = "r",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> RemoteStore:
-        fs, path = fsspec.url_to_fs(url, **storage_options)
+        opts = storage_options or {}
+        opts = {"asynchronous": True, **opts}
+        print("opts")
+
+        fs, path = fsspec.url_to_fs(url, **opts)
         return cls(fs=fs, path=path, mode=mode, allowed_exceptions=allowed_exceptions)
 
     async def clear(self) -> None:
