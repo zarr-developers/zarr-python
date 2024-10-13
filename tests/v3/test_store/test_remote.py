@@ -145,9 +145,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: RemoteStore) -> None:
         assert store.supports_listing
 
-    async def test_remote_store_from_uri(
-        self, store: RemoteStore, store_kwargs: dict[str, str | bool]
-    ):
+    async def test_remote_store_from_uri(self, store: RemoteStore):
         storage_options = {
             "endpoint_url": endpoint_url,
             "anon": False,
@@ -197,6 +195,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         assert result.path == f"{test_bucket_name}/foo/bar"
 
     def test_init_raises_if_path_has_scheme(self, store_kwargs) -> None:
+        # regression test for https://github.com/zarr-developers/zarr-python/issues/2342
         store_kwargs["path"] = "s3://" + store_kwargs["path"]
         with pytest.raises(
             ValueError, match="path argument to RemoteStore must not include scheme .*"
