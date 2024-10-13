@@ -82,7 +82,35 @@ class RemoteStore(Store):
         mode: AccessModeLiteral = "r",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> RemoteStore:
-        fs, path = fsspec.url_to_fs(url, **storage_options)
+        """
+        Create a RemoteStore from a URL.
+
+        Parameters
+        ----------
+        url : str
+            The URL to the root of the store.
+        storage_options : dict, optional
+            The options to pass to fsspec when creating the filesystem.
+        mode : str, optional
+            The mode of the store. Defaults to "r".
+        allowed_exceptions : tuple, optional
+            The exceptions that are allowed to be raised when accessing the
+            store. Defaults to ALLOWED_EXCEPTIONS.
+
+        Returns
+        -------
+        RemoteStore
+        """
+        opts = storage_options or {}
+        opts = {"asynchronous": True, **opts}
+
+        fs, path = fsspec.url_to_fs(url, **opts)
+
+        # fsspec is not consistent about removing the scheme from the path, so check and strip it here
+        # https://github.com/fsspec/filesystem_spec/issues/1722
+        if "://" in path:
+            _, path = path.split("://", maxsplit=1)
+
         return cls(fs=fs, path=path, mode=mode, allowed_exceptions=allowed_exceptions)
 
     async def clear(self) -> None:
