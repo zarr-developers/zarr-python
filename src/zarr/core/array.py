@@ -186,23 +186,6 @@ class AsyncArray:
         The codec pipeline used for encoding and decoding chunks.
     order : {'C', 'F'}
         The order of the array data in memory.
-
-    Properties
-    ----------
-    ndim
-    shape
-    chunks
-    size
-    dtype
-    attrs
-    read_only
-    path
-    name
-    basename
-    cdata_shape
-    nchunks
-    nchunks_initialized
-    nbytes
     """
 
     metadata: ArrayMetadata
