@@ -13,7 +13,7 @@ from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import JSON, ZarrFormat
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata
+from zarr.core.group import ConsolidatedMetadata, GroupMetadata, _MixedConsolidatedMetadataException
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
@@ -316,14 +316,36 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
 
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
-    assert subgroup["subarray"] == subsubarray
-    # assert group["subgroup/subarray"] == subsubarray
+    assert group["subgroup"]["subarray"] == subsubarray
+    assert group["subgroup/subarray"] == subsubarray
 
     with pytest.raises(KeyError):
         group["nope"]
 
     with pytest.raises(KeyError, match="subarray/subsubarray"):
         group["subarray/subsubarray"]
+
+    # Now test the mixed case
+    if consolidated:
+        group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
+        # we're going to assume that `group.metadata` is correct, and reuse that to focus
+        # on indexing in this test. Other tests verify the correctness of group.metadata
+        object.__setattr__(
+            group.metadata.consolidated_metadata.metadata["subgroup"],
+            "consolidated_metadata",
+            None,
+        )
+
+        # test the implementation directly
+        with pytest.raises(_MixedConsolidatedMetadataException):
+            group._async_group._getitem_consolidated(
+                group.store_path, "subgroup/subarray", prefix="/"
+            )
+
+        assert group["subgroup/subarray"] == subsubarray
+
+        with pytest.raises(KeyError, match="subarray/subsubarray"):
+            group["subarray/subsubarray"]
 
 
 def test_group_get_with_default(store: Store, zarr_format: ZarrFormat) -> None:
