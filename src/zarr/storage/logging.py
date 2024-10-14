@@ -8,7 +8,6 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Self
 
 from zarr.abc.store import AccessMode, ByteRangeRequest, Store
-from zarr.core.buffer import Buffer
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable

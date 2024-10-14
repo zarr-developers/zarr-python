@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from asyncio import gather
-from collections.abc import AsyncGenerator, Iterable
 from types import TracebackType
-from typing import TYPE_CHECKING, Any, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
