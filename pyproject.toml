@@ -78,7 +78,7 @@ gpu = [
     "cupy-cuda12x",
 ]
 docs = [
-    'sphinx==8.0.2',
+    'sphinx==8.1.3',
     'sphinx-autobuild>=2021.3.14',
     'sphinx-autoapi==3.3.2',
     'sphinx_design',
@@ -109,6 +109,7 @@ Homepage = "https://github.com/zarr-developers/zarr-python"
 exclude_lines = [
     "pragma: no cover",
     "pragma: ${PY_MAJOR_VERSION} no cover",
+    '.*\.\.\.' # Ignore "..." lines
 ]
 
 [tool.coverage.run]
@@ -319,3 +320,7 @@ ignore = [
 	"PC111",  # fix Python code in documentation - enable later
 	"PC180",  # for JavaScript - not interested
 ]
+
+[tool.numpydoc_validation]
+# See https://numpydoc.readthedocs.io/en/latest/validation.html#built-in-validation-checks for list of checks
+checks = ["GL06", "GL07", "GL10", "PR03", "PR05", "PR06"]

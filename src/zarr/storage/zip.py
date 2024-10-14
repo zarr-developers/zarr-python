@@ -22,19 +22,30 @@ class ZipStore(Store):
 
     Parameters
     ----------
-    path : string
+    path : str
         Location of file.
-    compression : integer, optional
+    mode : str, optional
+        One of 'r' to read an existing file, 'w' to truncate and write a new
+        file, 'a' to append to an existing file, or 'x' to exclusively create
+        and write a new file.
+    compression : int, optional
         Compression method to use when writing to the archive.
     allowZip64 : bool, optional
         If True (the default) will create ZIP files that use the ZIP64
         extensions when the zipfile is larger than 2 GiB. If False
         will raise an exception when the ZIP file would require ZIP64
         extensions.
-    mode : string, optional
-        One of 'r' to read an existing file, 'w' to truncate and write a new
-        file, 'a' to append to an existing file, or 'x' to exclusively create
-        and write a new file.
+
+    Attributes
+    ----------
+    allowed_exceptions
+    supports_writes
+    supports_deletes
+    supports_partial_writes
+    supports_listing
+    path
+    compression
+    allowZip64
     """
 
     supports_writes: bool = True
@@ -95,11 +106,13 @@ class ZipStore(Store):
         self._sync_open()
 
     def close(self) -> None:
+        # docstring inherited
         super().close()
         with self._lock:
             self._zf.close()
 
     async def clear(self) -> None:
+        # docstring inherited
         with self._lock:
             self._check_writable()
             self._zf.close()
@@ -109,10 +122,12 @@ class ZipStore(Store):
             )
 
     async def empty(self) -> bool:
+        # docstring inherited
         with self._lock:
             return not self._zf.namelist()
 
     def with_mode(self, mode: ZipStoreAccessModeLiteral) -> Self:  # type: ignore[override]
+        # docstring inherited
         raise NotImplementedError("ZipStore cannot be reopened with a new mode.")
 
     def __str__(self) -> str:
@@ -130,6 +145,7 @@ class ZipStore(Store):
         prototype: BufferPrototype,
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
+        # docstring inherited
         try:
             with self._zf.open(key) as f:  # will raise KeyError
                 if byte_range is None:
@@ -153,6 +169,7 @@ class ZipStore(Store):
         prototype: BufferPrototype,
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
+        # docstring inherited
         assert isinstance(key, str)
 
         with self._lock:
@@ -163,6 +180,7 @@ class ZipStore(Store):
         prototype: BufferPrototype,
         key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
+        # docstring inherited
         out = []
         with self._lock:
             for key, byte_range in key_ranges:
@@ -181,6 +199,7 @@ class ZipStore(Store):
         self._zf.writestr(keyinfo, value.to_bytes())
 
     async def set(self, key: str, value: Buffer) -> None:
+        # docstring inherited
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
@@ -199,9 +218,11 @@ class ZipStore(Store):
                 self._set(key, value)
 
     async def delete(self, key: str) -> None:
+        # docstring inherited
         raise NotImplementedError
 
     async def exists(self, key: str) -> bool:
+        # docstring inherited
         with self._lock:
             try:
                 self._zf.getinfo(key)
@@ -211,28 +232,19 @@ class ZipStore(Store):
                 return True
 
     async def list(self) -> AsyncGenerator[str, None]:
+        # docstring inherited
         with self._lock:
             for key in self._zf.namelist():
                 yield key
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """
-        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
-        common leading prefix removed.
-
-        Parameters
-        ----------
-        prefix : str
-
-        Returns
-        -------
-        AsyncGenerator[str, None]
-        """
+        # docstring inherited
         async for key in self.list():
             if key.startswith(prefix):
                 yield key.removeprefix(prefix)
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+        # docstring inherited
         if prefix.endswith("/"):
             prefix = prefix[:-1]
 
