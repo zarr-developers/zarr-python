@@ -4,6 +4,7 @@ import asyncio
 import itertools
 import json
 import logging
+import warnings
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
@@ -1139,7 +1140,8 @@ class AsyncGroup:
             raise ValueError(msg)
         # would be nice to make these special keys accessible programmatically,
         # and scoped to specific zarr versions
-        _skip_keys = ("zarr.json", ".zgroup", ".zattrs")
+        # especially true for `.zmetadata` which is configurable
+        _skip_keys = ("zarr.json", ".zgroup", ".zattrs", ".zmetadata")
 
         # hmm lots of I/O and logic interleaved here.
         # We *could* have an async gen over self.metadata.consolidated_metadata.metadata.keys()
@@ -1169,9 +1171,10 @@ class AsyncGroup:
                 # keyerror is raised when `key` names an object (in the object storage sense),
                 # as opposed to a prefix, in the store under the prefix associated with this group
                 # in which case `key` cannot be the name of a sub-array or sub-group.
-                logger.warning(
-                    "Object at %s is not recognized as a component of a Zarr hierarchy.",
-                    key,
+                warnings.warn(
+                    f"Object at {key} is not recognized as a component of a Zarr hierarchy.",
+                    UserWarning,
+                    stacklevel=1,
                 )
 
     def _members_consolidated(
