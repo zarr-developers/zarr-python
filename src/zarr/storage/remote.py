@@ -160,7 +160,7 @@ class RemoteStore(Store):
         RemoteStore
         """
         opts = storage_options or {}
-        opts = {"asynchronous": True, "use_listings_cache": False, **opts}
+        opts = {"asynchronous": True, **opts}
 
         fs, path = fsspec.url_to_fs(url, **opts)
 
