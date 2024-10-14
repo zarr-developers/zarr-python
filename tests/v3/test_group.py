@@ -300,17 +300,30 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     group = Group.from_store(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
     subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+    subsubarray = subgroup.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
 
     if consolidated:
         group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
+        # we're going to assume that `group.metadata` is correct, and reuse that to focus
+        # on indexing in this test. Other tests verify the correctness of group.metadata
         object.__setattr__(
-            subgroup.metadata, "consolidated_metadata", ConsolidatedMetadata(metadata={})
+            subgroup.metadata,
+            "consolidated_metadata",
+            ConsolidatedMetadata(
+                metadata={"subarray": group.metadata.consolidated_metadata.metadata["subarray"]}
+            ),
         )
 
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
+    assert subgroup["subarray"] == subsubarray
+    # assert group["subgroup/subarray"] == subsubarray
+
     with pytest.raises(KeyError):
         group["nope"]
+
+    with pytest.raises(KeyError, match="subarray/subsubarray"):
+        group["subarray/subsubarray"]
 
 
 def test_group_get_with_default(store: Store, zarr_format: ZarrFormat) -> None:

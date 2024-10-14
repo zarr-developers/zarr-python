@@ -97,6 +97,24 @@ def _parse_async_node(
         raise TypeError(f"Unknown node type, got {type(node)}")
 
 
+class _MixedConsolidatedMetadataException(Exception):
+    """
+    A custom, *internal* exception for when we encounter mixed consolidated metadata.
+
+    Typically, Consolidated Metadata will explicitly indicate that there are no
+    additional children under a group with ``ConsolidatedMetadata(metadata={})``,
+    as opposed to ``metadata=None``. This is the behavior of ``consolidated_metadata``.
+    We rely on that "fact" to do I/O-free getitem: when a group's consolidated metadata
+    doesn't contain a child we can raise a ``KeyError`` without consulting the backing
+    store.
+
+    Users can potentially get themselves in situations where there's "mixed" consolidated
+    metadata. For now, we'll raise this error, catch it internally, and silently fall back
+    to the store (which will either succeed or raise its own KeyError, slowly). We might
+    want to expose this in the future, in which case rename it add it to zarr.errors.
+    """
+
+
 @dataclass(frozen=True)
 class ConsolidatedMetadata:
     """
@@ -571,7 +589,10 @@ class AsyncGroup:
 
     @classmethod
     def _from_bytes_v3(
-        cls, store_path: StorePath, zarr_json_bytes: Buffer, use_consolidated: bool | None
+        cls,
+        store_path: StorePath,
+        zarr_json_bytes: Buffer,
+        use_consolidated: bool | None,
     ) -> AsyncGroup:
         group_metadata = json.loads(zarr_json_bytes.to_bytes())
         if use_consolidated and group_metadata.get("consolidated_metadata") is None:
@@ -604,14 +625,22 @@ class AsyncGroup:
 
         # Consolidated metadata lets us avoid some I/O operations so try that first.
         if self.metadata.consolidated_metadata is not None:
-            return self._getitem_consolidated(store_path, key, prefix=self.name)
+            try:
+                return self._getitem_consolidated(store_path, key, prefix=self.name)
+            except _MixedConsolidatedMetadataException:
+                logger.info(
+                    "Mixed consolidated and unconsolidated metadata. key=%s, store_path=%s",
+                    key,
+                    store_path,
+                )
+                # now fall back to the non-consolidated variant
 
         # Note:
         # in zarr-python v2, we first check if `key` references an Array, else if `key` references
         # a group,using standalone `contains_array` and `contains_group` functions. These functions
         # are reusable, but for v3 they would perform redundant I/O operations.
         # Not clear how much of that strategy we want to keep here.
-        elif self.metadata.zarr_format == 3:
+        if self.metadata.zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
                 raise KeyError(key)
@@ -661,18 +690,39 @@ class AsyncGroup:
         # getitem, in the special case where we have consolidated metadata.
         # Note that this is a regular def (non async) function.
         # This shouldn't do any additional I/O.
+        # All callers *must* catch _MixedConsolidatedMetadataException to ensure
+        # that we correctly handle the case where we need to fall back to doing
+        # additional I/O.
 
         # the caller needs to verify this!
         assert self.metadata.consolidated_metadata is not None
 
-        try:
-            metadata = self.metadata.consolidated_metadata.metadata[key]
-        except KeyError as e:
-            # The Group Metadata has consolidated metadata, but the key
-            # isn't present. We trust this to mean that the key isn't in
-            # the hierarchy, and *don't* fall back to checking the store.
-            msg = f"'{key}' not found in consolidated metadata."
-            raise KeyError(msg) from e
+        # we support nested getitems like group/subgroup/array
+        indexers = key.split("/")
+        indexers.reverse()
+        metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata = self.metadata
+
+        while indexers:
+            indexer = indexers.pop()
+            if isinstance(metadata, ArrayV2Metadata | ArrayV3Metadata):
+                # we've indexed into an array with group["array/subarray"]. Invalid.
+                raise KeyError(key)
+            try:
+                if metadata.consolidated_metadata is None:
+                    # we've indexed into a group without consolidated metadata.
+                    # Note that the `None` case is different from `metadata={}`
+                    # where we explicitly know we have no children. In the None
+                    # case we have to fall back to non-consolidated metadata.
+                    raise _MixedConsolidatedMetadataException(key)
+                assert metadata.consolidated_metadata is not None
+
+                metadata = metadata.consolidated_metadata.metadata[indexer]
+            except KeyError as e:
+                # The Group Metadata has consolidated metadata, but the key
+                # isn't present. We trust this to mean that the key isn't in
+                # the hierarchy, and *don't* fall back to checking the store.
+                msg = f"'{key}' not found in consolidated metadata."
+                raise KeyError(msg) from e
 
         # update store_path to ensure that AsyncArray/Group.name is correct
         if prefix != "/":
@@ -1087,7 +1137,8 @@ class AsyncGroup:
         self,
         max_depth: int | None = 0,
     ) -> AsyncGenerator[
-        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
+        None,
     ]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
@@ -1118,15 +1169,20 @@ class AsyncGroup:
     async def _members(
         self, max_depth: int | None, current_depth: int
     ) -> AsyncGenerator[
-        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
+        None,
     ]:
         if self.metadata.consolidated_metadata is not None:
             # we should be able to do members without any additional I/O
-            members = self._members_consolidated(max_depth, current_depth)
-
-            for member in members:
-                yield member
-            return
+            try:
+                members = self._members_consolidated(max_depth, current_depth)
+            except _MixedConsolidatedMetadataException:
+                # we've already logged this. We'll fall back to the non-consolidated version.
+                pass
+            else:
+                for member in members:
+                    yield member
+                return
 
         if not self.store_path.store.supports_listing:
             msg = (
@@ -1177,17 +1233,28 @@ class AsyncGroup:
     def _members_consolidated(
         self, max_depth: int | None, current_depth: int, prefix: str = ""
     ) -> Generator[
-        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
+        None,
     ]:
         consolidated_metadata = self.metadata.consolidated_metadata
 
         # we kind of just want the top-level keys.
         if consolidated_metadata is not None:
             for key in consolidated_metadata.metadata.keys():
-                obj = self._getitem_consolidated(
-                    self.store_path, key, prefix=self.name
-                )  # Metadata -> Group/Array
-                key = f"{prefix}/{key}".lstrip("/")
+                try:
+                    obj = self._getitem_consolidated(
+                        self.store_path, key, prefix=self.name
+                    )  # Metadata -> Group/Array
+                    key = f"{prefix}/{key}".lstrip("/")
+                except _MixedConsolidatedMetadataException:
+                    logger.info(
+                        "Mixed consolidated and unconsolidated metadata. key=%s, depth=%d, prefix=%s",
+                        key,
+                        current_depth,
+                        prefix,
+                    )
+                    # This isn't an async def function so we need to re-raise up one more level.
+                    raise
                 yield key, obj
 
                 if ((max_depth is None) or (current_depth < max_depth)) and isinstance(
@@ -1262,7 +1329,11 @@ class AsyncGroup:
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.full(
-            shape=shape, fill_value=fill_value, store=self.store_path, path=name, **kwargs
+            shape=shape,
+            fill_value=fill_value,
+            store=self.store_path,
+            path=name,
+            **kwargs,
         )
 
     async def empty_like(
