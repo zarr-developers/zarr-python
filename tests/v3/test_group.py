@@ -327,9 +327,6 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
 
     # Now test the mixed case
     if consolidated:
-        group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
-        # we're going to assume that `group.metadata` is correct, and reuse that to focus
-        # on indexing in this test. Other tests verify the correctness of group.metadata
         object.__setattr__(
             group.metadata.consolidated_metadata.metadata["subgroup"],
             "consolidated_metadata",
@@ -1035,6 +1032,20 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
 
     with pytest.raises(ValueError, match="max_depth"):
         [x async for x in group.members(max_depth=-1)]
+
+    if consolidated_metadata:
+        # test for mixed
+        object.__setattr__(
+            group.metadata.consolidated_metadata.metadata["g0"].consolidated_metadata.metadata[
+                "g1"
+            ],
+            "consolidated_metadata",
+            None,
+        )
+        all_children = sorted([x async for x in group.members(max_depth=None)], key=lambda x: x[0])
+        assert len(all_children) == len(expected)
+        nmembers = await group.nmembers(max_depth=None)
+        assert nmembers == 6
 
 
 async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:

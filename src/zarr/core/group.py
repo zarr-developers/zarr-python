@@ -1124,7 +1124,16 @@ class AsyncGroup:
         -------
         count : int
         """
-        if self.metadata.consolidated_metadata is not None:
+        # check if we can use consolidated metadata, which requires that we have non-None
+        # consolidated metadata at all points in the hierarchy.
+        use_consolidated_metadata = self.metadata.consolidated_metadata is not None and all(
+            x.consolidated_metadata is not None
+            for x in self.metadata.consolidated_metadata.flattened_metadata.values()
+            if isinstance(x, GroupMetadata)
+        )
+
+        if use_consolidated_metadata:
+            assert self.metadata.consolidated_metadata is not None  # helping mypy
             return len(self.metadata.consolidated_metadata.flattened_metadata)
         # TODO: consider using aioitertools.builtins.sum for this
         # return await aioitertools.builtins.sum((1 async for _ in self.members()), start=0)
@@ -1174,13 +1183,16 @@ class AsyncGroup:
     ]:
         if self.metadata.consolidated_metadata is not None:
             # we should be able to do members without any additional I/O
+            members = self._members_consolidated(max_depth, current_depth)
+
             try:
-                members = self._members_consolidated(max_depth, current_depth)
+                # we already have this in memory, so fine to build this list
+                # and catch the exception if needed.
+                members_ = list(members)
             except _MixedConsolidatedMetadataException:
-                # we've already logged this. We'll fall back to the non-consolidated version.
                 pass
             else:
-                for member in members:
+                for member in members_:
                     yield member
                 return
 
@@ -1238,6 +1250,8 @@ class AsyncGroup:
     ]:
         consolidated_metadata = self.metadata.consolidated_metadata
 
+        if consolidated_metadata is None:
+            raise _MixedConsolidatedMetadataException(prefix)
         # we kind of just want the top-level keys.
         if consolidated_metadata is not None:
             for key in consolidated_metadata.metadata.keys():
