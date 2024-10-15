@@ -173,7 +173,7 @@ async def consolidate_metadata(
     store_path = await make_store_path(store)
 
     if path is not None:
-        store_path = store_path / path
+        store_path /= path
 
     group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
     group.store_path.store._check_writable()
@@ -294,7 +294,7 @@ async def open(
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
 
     if path is not None:
-        store_path = store_path / path
+        store_path /= path
 
     if "shape" not in kwargs and mode in {"a", "w", "w-"}:
         try:
@@ -403,7 +403,7 @@ async def save_array(
     mode = kwargs.pop("mode", None)
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
-        store_path = store_path / path
+        store_path /= path
     new = await AsyncArray.create(
         store_path,
         zarr_format=zarr_format,
@@ -584,7 +584,7 @@ async def group(
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
-        store_path = store_path / path
+        store_path /= path
 
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -699,7 +699,7 @@ async def open_group(
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
-        store_path = store_path / path
+        store_path /= path
 
     if attributes is None:
         attributes = {}
@@ -885,7 +885,7 @@ async def create(
 
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
     if path is not None:
-        store_path = store_path / path
+        store_path /= path
 
     return await AsyncArray.create(
         store_path,
@@ -1073,7 +1073,7 @@ async def open_array(
     mode = kwargs.pop("mode", None)
     store_path = await make_store_path(store, mode=mode)
     if path is not None:
-        store_path = store_path / path
+        store_path /= path
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
