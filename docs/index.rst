@@ -16,6 +16,7 @@ Zarr-Python
     release
     license
     contributing
+    roadmap
 
 **Version**: |version|
 
