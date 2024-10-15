@@ -329,17 +329,16 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    def list(self) -> AsyncGenerator[str, None]:
+    def list(self) -> AsyncGenerator[str]:
         """Retrieve all keys in the store.
 
         Returns
         -------
         AsyncGenerator[str, None]
         """
-        ...
 
     @abstractmethod
-    def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
         """
         Retrieve all keys in the store that begin with a given prefix. Keys are returned relative
         to the root of the store.
@@ -352,10 +351,9 @@ class Store(ABC):
         -------
         AsyncGenerator[str, None]
         """
-        ...
 
     @abstractmethod
-    def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    def list_dir(self, prefix: str) -> AsyncGenerator[str]:
         """
         Retrieve all keys and prefixes with a given prefix and which do not contain the character
         “/” after the given prefix.
@@ -368,7 +366,6 @@ class Store(ABC):
         -------
         AsyncGenerator[str, None]
         """
-        ...
 
     async def delete_dir(self, prefix: str) -> None:
         """
