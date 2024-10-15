@@ -229,6 +229,7 @@ ignore = [
     "ANN102",
     "ANN401",
     "PT004",  # deprecated
+    "PT005",  # deprecated
     "PT011",  # TODO: apply this rule
     "PT012",  # TODO: apply this rule
     "PYI013",
@@ -236,6 +237,8 @@ ignore = [
     "RET506",
     "RUF005",
     "TRY003",
+    "UP027",  # deprecated
+    "UP038",  # https://github.com/astral-sh/ruff/issues/7871
     # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
     "W191",
     "E111",
