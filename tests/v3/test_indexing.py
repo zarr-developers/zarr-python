@@ -1769,7 +1769,6 @@ async def test_accessed_chunks(
     # chunks: chunk size
     # ops: list of tuples with (optype, tuple of slices)
     # optype = "__getitem__" or "__setitem__", tuple length must match number of dims
-    import itertools
 
     # Use a counting dict as the backing store so we can track the items access
     store = await CountingDict.open()
