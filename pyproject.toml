@@ -131,17 +131,17 @@ dependencies = [
 features = ["test", "extra"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12"]
+python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "1.26", "2.0"]
 version = ["minimal"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12"]
+python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "1.26", "2.0"]
 features = ["optional"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12"]
+python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "1.26", "2.0"]
 features = ["gpu"]
 
@@ -162,7 +162,7 @@ dependencies = [
 features = ["test", "extra", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
-python = ["3.11", "3.12"]
+python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "1.26", "2.0"]
 version = ["minimal"]
 
