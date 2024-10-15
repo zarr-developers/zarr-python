@@ -675,7 +675,7 @@ class Order(Enum):
 def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> None:
     loc_neg = x < 0
     if np.any(loc_neg):
-        x[loc_neg] = x[loc_neg] + dim_len
+        x[loc_neg] += dim_len
 
 
 def boundscheck_indices(x: npt.NDArray[Any], dim_len: int) -> None:
@@ -1000,8 +1000,8 @@ class BlockIndexer(Indexer):
                 if stop < 0:
                     stop = dim_numchunks + stop
 
-                start = start * dim_chunk_size
-                stop = stop * dim_chunk_size
+                start *= dim_chunk_size
+                stop *= dim_chunk_size
                 slice_ = slice(start, stop)
 
             else:
