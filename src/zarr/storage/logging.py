@@ -83,7 +83,7 @@ class LoggingStore(Store):
         method = inspect.stack()[2].function
         op = f"{type(self._store).__name__}.{method}"
         if hint:
-            op += f"({hint})"
+            op = f"{op}({hint})"
         self.logger.info("Calling %s", op)
         start_time = time.time()
         try:
