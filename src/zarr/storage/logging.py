@@ -91,7 +91,7 @@ class LoggingStore(Store):
             yield
         finally:
             end_time = time.time()
-            self.logger.info("Finished %s [%.2fs]", op, end_time - start_time)
+            self.logger.info("Finished %s [%.2f s]", op, end_time - start_time)
 
     @property
     def supports_writes(self) -> bool:
