@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from asyncio import gather
-from types import TracebackType
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
