@@ -7,19 +7,15 @@ build-backend = "setuptools.build_meta"
 name = "zarr"
 description = "An implementation of chunked, compressed, N-dimensional arrays for Python"
 readme = { file = "README.md", content-type = "text/markdown" }
-maintainers = [
-    { name = "Alistair Miles", email = "alimanfoo@googlemail.com" }
-]
-requires-python = ">=3.10"
+maintainers = [{ name = "Alistair Miles", email = "alimanfoo@googlemail.com" }]
+requires-python = ">=3.11"
 dependencies = [
     'asciitree',
     'numpy>=1.24',
     'fasteners; sys_platform != "emscripten"',
     'numcodecs>=0.10.0',
 ]
-dynamic = [
-  "version",
-]
+dynamic = ["version"]
 classifiers = [
     'Development Status :: 6 - Mature',
     'Intended Audience :: Developers',
@@ -30,18 +26,14 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
     'Operating System :: Unix',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
 ]
 license = { text = "MIT" }
 
 [project.optional-dependencies]
-jupyter = [
-    'notebook',
-    'ipytree>=0.2.2',
-    'ipywidgets>=8.0.0',
-]
+jupyter = ['notebook', 'ipytree>=0.2.2', 'ipywidgets>=8.0.0']
 docs = [
     'sphinx',
     'sphinx-automodapi',
@@ -64,14 +56,11 @@ Homepage = "https://github.com/zarr-developers/zarr-python"
 exclude_lines = [
     "pragma: no cover",
     "pragma: ${PY_MAJOR_VERSION} no cover",
-    '.*\.\.\.' # Ignore "..." lines
+    '.*\.\.\.',                             # Ignore "..." lines
 ]
 
 [tool.coverage.run]
-omit = [
-    "zarr/meta_v1.py",
-    "bench/compress_normal.py",
-]
+omit = ["zarr/meta_v1.py", "bench/compress_normal.py"]
 
 [tool.setuptools]
 packages = ["zarr", "zarr._storage", "zarr.tests"]
@@ -100,14 +89,12 @@ exclude = [
     "build",
     "dist",
     "venv",
-    "docs"
+    "docs",
 ]
 
 [tool.ruff.lint]
-extend-select = [
-    "B"
-]
-ignore = ["B905"] # zip-without-explicit-strict
+extend-select = ["B"]
+ignore = ["B905"]     # zip-without-explicit-strict
 
 [tool.black]
 line-length = 100
@@ -136,9 +123,7 @@ doctest_optionflags = [
     "ELLIPSIS",
     "IGNORE_EXCEPTION_DETAIL",
 ]
-addopts = [
-    "--durations=10",
-]
+addopts = ["--durations=10"]
 filterwarnings = [
     "error:::zarr.*",
     "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
@@ -146,9 +131,9 @@ filterwarnings = [
     "ignore:The .* is deprecated and will be removed in a Zarr-Python version 3*:FutureWarning",
     "ignore:The experimental Zarr V3 implementation in this version .*:FutureWarning",
 ]
-doctest_subpackage_requires =[
+doctest_subpackage_requires = [
     "zarr/core.py = numpy>=2",
-    "zarr/creation.py = numpy>=2"
+    "zarr/creation.py = numpy>=2",
 ]
 
 
