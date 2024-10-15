@@ -1129,7 +1129,7 @@ class CoordinateIndexer(Indexer):
         chunks_multi_index_broadcast = np.broadcast_arrays(*chunks_multi_index)
 
         # remember shape of selection, because we will flatten indices for processing
-        sel_shape = selection_broadcast[0].shape if selection_broadcast[0].shape else (1,)
+        sel_shape = selection_broadcast[0].shape or (1,)
 
         # flatten selection
         selection_broadcast = tuple(dim_sel.reshape(-1) for dim_sel in selection_broadcast)
@@ -1150,7 +1150,7 @@ class CoordinateIndexer(Indexer):
         else:
             sel_sort = None
 
-        shape = selection_broadcast[0].shape if selection_broadcast[0].shape else (1,)
+        shape = selection_broadcast[0].shape or (1,)
 
         # precompute number of selected items for each chunk
         chunk_nitems = np.bincount(chunks_raveled_indices, minlength=nchunks)
