@@ -683,7 +683,7 @@ def test_get_orthogonal_selection_2d(store: StorePath) -> None:
         with pytest.raises(IndexError):
             z.get_orthogonal_selection(selection_2d_bad)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
-            z.oindex[selection_2d_bad]  #  type: ignore[index]
+            z.oindex[selection_2d_bad]  # type: ignore[index]
 
 
 def _test_get_orthogonal_selection_3d(
@@ -1769,7 +1769,6 @@ async def test_accessed_chunks(
     # chunks: chunk size
     # ops: list of tuples with (optype, tuple of slices)
     # optype = "__getitem__" or "__setitem__", tuple length must match number of dims
-    import itertools
 
     # Use a counting dict as the backing store so we can track the items access
     store = await CountingDict.open()
