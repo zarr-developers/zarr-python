@@ -25,7 +25,6 @@ requires-python = ">=3.11"
 dependencies = [
     'asciitree',
     'numpy>=1.25',
-    'fasteners',
     'numcodecs>=0.10.2',
     'fsspec>2024',
     'crc32c',
