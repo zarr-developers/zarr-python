@@ -84,14 +84,14 @@ class LoggingStore(Store):
         op = f"{type(self._store).__name__}.{method}"
         if hint:
             op += f"({hint})"
-        self.logger.info(f"Calling {op}")
+        self.logger.info("Calling %s", op)
         start_time = time.time()
         try:
             self.counter[method] += 1
             yield
         finally:
             end_time = time.time()
-            self.logger.info(f"Finished {op} [{end_time - start_time:.2f}s]")
+            self.logger.info("Finished %s [%.2fs]", op, end_time - start_time)
 
     @property
     def supports_writes(self) -> bool:
