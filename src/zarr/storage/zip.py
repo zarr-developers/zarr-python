@@ -245,8 +245,7 @@ class ZipStore(Store):
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        if prefix.endswith("/"):
-            prefix = prefix[:-1]
+        prefix = prefix.removesuffix("/")
 
         keys = self._zf.namelist()
         seen = set()
