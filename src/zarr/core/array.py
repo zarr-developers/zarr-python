@@ -2873,13 +2873,7 @@ def chunks_initialized(
     store_contents = list(
         collect_aiterator(array.store_path.store.list_prefix(prefix=array.store_path.path))
     )
-    out: list[str] = []
-
-    for chunk_key in array._iter_chunk_keys():
-        if chunk_key in store_contents:
-            out.append(chunk_key)
-
-    return tuple(out)
+    return tuple(chunk_key for chunk_key in array._iter_chunk_keys() if chunk_key in store_contents)
 
 
 def _build_parents(
