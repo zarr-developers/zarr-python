@@ -683,7 +683,7 @@ def test_get_orthogonal_selection_2d(store: StorePath) -> None:
         with pytest.raises(IndexError):
             z.get_orthogonal_selection(selection_2d_bad)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
-            z.oindex[selection_2d_bad]  #  type: ignore[index]
+            z.oindex[selection_2d_bad]  # type: ignore[index]
 
 
 def _test_get_orthogonal_selection_3d(
