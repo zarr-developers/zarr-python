@@ -21,7 +21,6 @@ import sphinx.application
 
 from importlib.metadata import version as get_version
 
-import zarr
 import sphinx
 
 # If extensions (or modules to document with autodoc) are in another directory,
