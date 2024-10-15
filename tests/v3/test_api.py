@@ -1,5 +1,6 @@
 import pathlib
 import warnings
+from typing import Literal
 
 import numpy as np
 import pytest
@@ -10,9 +11,19 @@ import zarr.api.asynchronous
 import zarr.core.group
 from zarr import Array, Group
 from zarr.abc.store import Store
-from zarr.api.synchronous import create, group, load, open, open_group, save, save_array, save_group
+from zarr.api.synchronous import (
+    create,
+    group,
+    load,
+    open,
+    open_group,
+    save,
+    save_array,
+    save_group,
+)
 from zarr.core.common import ZarrFormat
 from zarr.errors import MetadataValidationError
+from zarr.storage._utils import normalize_path
 from zarr.storage.memory import MemoryStore
 
 
@@ -35,6 +46,20 @@ def test_create_array(memory_store: Store) -> None:
     assert isinstance(z, Array)
     assert z.shape == (400,)
     assert z.chunks == (40,)
+
+
+@pytest.mark.parametrize("path", ["/", "///foo/bar"])
+@pytest.mark.parametrize("node_type", ["array", "group"])
+def test_open_normalized_path(
+    memory_store: MemoryStore, path: str, node_type: Literal["array", "group"]
+) -> None:
+    node: Group | Array
+    if node_type == "group":
+        node = group(store=memory_store, path=path)
+    elif node_type == "array":
+        node = create(store=memory_store, path=path, shape=(2,))
+
+    assert node.path == normalize_path(path)
 
 
 async def test_open_array(memory_store: MemoryStore) -> None:
