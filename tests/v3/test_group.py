@@ -587,6 +587,7 @@ def test_group_array_creation(
     assert empty_array.fill_value == 0
     assert empty_array.shape == shape
     assert empty_array.store_path.store == store
+    assert empty_array.store_path.path == "empty"
 
     empty_like_array = group.empty_like(name="empty_like", data=empty_array)
     assert isinstance(empty_like_array, Array)

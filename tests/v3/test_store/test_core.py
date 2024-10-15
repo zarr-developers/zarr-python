@@ -2,7 +2,9 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from upath import UPath
 
+from zarr.storage._utils import normalize_path
 from zarr.storage.common import StoreLike, StorePath, make_store_path
 from zarr.storage.local import LocalStore
 from zarr.storage.memory import MemoryStore
@@ -65,3 +67,29 @@ async def test_make_store_path_storage_options_raises(store_like: StoreLike) -> 
 async def test_unsupported() -> None:
     with pytest.raises(TypeError, match="Unsupported type for store_like: 'int'"):
         await make_store_path(1)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/foo/bar",
+        "//foo/bar",
+        "foo///bar",
+        "foo/bar///",
+        Path("foo/bar"),
+        b"foo/bar",
+        UPath("foo/bar"),
+    ],
+)
+def test_normalize_path_valid(path: str | bytes | Path | UPath) -> None:
+    assert normalize_path(path) == "foo/bar"
+
+
+def test_normalize_path_none():
+    assert normalize_path(None) == ""
+
+
+@pytest.mark.parametrize("path", [".", ".."])
+def test_normalize_path_invalid(path: str):
+    with pytest.raises(ValueError):
+        normalize_path(path)

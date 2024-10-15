@@ -1,22 +1,29 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
+
+from upath import UPath
 
 if TYPE_CHECKING:
     from zarr.core.buffer import Buffer
 
 
-def normalize_path(path: str | bytes | object) -> str:
+def normalize_path(path: str | bytes | Path | UPath | None) -> str:
     # handle bytes
-    if isinstance(path, bytes):
+    if path is None:
+        result = ""
+    elif isinstance(path, bytes):
         result = str(path, "ascii")
-
     # ensure str
-    elif not isinstance(path, str):
+    elif isinstance(path, Path | UPath):
         result = str(path)
 
-    else:
+    elif isinstance(path, str):
         result = path
+
+    else:
+        raise TypeError(f'Object {path} has an invalid type for "path": {type(path).__name__}')
 
     # convert backslash to forward slash
     result = result.replace("\\", "/")
@@ -44,7 +51,7 @@ def normalize_path(path: str | bytes | object) -> str:
     segments = result.split("/")
     if any(s in {".", ".."} for s in segments):
         raise ValueError(
-            f"The path {path} is invalid because its string representation contains '.' or '..' segments."
+            f"The path {path!r} is invalid because its string representation contains '.' or '..' segments."
         )
 
     return result
