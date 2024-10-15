@@ -40,7 +40,7 @@ def normalize_path(path: str | bytes | object) -> str:
         previous_char = char
     result = collapsed
 
-    # don't allow path segments with just '.' or '..'
+    # disallow path segments with just '.' or '..'
     segments = result.split("/")
     if any(s in {".", ".."} for s in segments):
         raise ValueError(
