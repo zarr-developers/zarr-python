@@ -615,7 +615,7 @@ class AsyncGroup:
         # a group,using standalone `contains_array` and `contains_group` functions. These functions
         # are reusable, but for v3 they would perform redundant I/O operations.
         # Not clear how much of that strategy we want to keep here.
-        if self.metadata.zarr_format == 3:
+        elif self.metadata.zarr_format == 3:
             zarr_json_bytes = await (store_path / ZARR_JSON).get()
             if zarr_json_bytes is None:
                 raise KeyError(key)
@@ -1099,14 +1099,7 @@ class AsyncGroup:
         """
         # check if we can use consolidated metadata, which requires that we have non-None
         # consolidated metadata at all points in the hierarchy.
-        use_consolidated_metadata = self.metadata.consolidated_metadata is not None and all(
-            x.consolidated_metadata is not None
-            for x in self.metadata.consolidated_metadata.flattened_metadata.values()
-            if isinstance(x, GroupMetadata)
-        )
-
-        if use_consolidated_metadata:
-            assert self.metadata.consolidated_metadata is not None  # helping mypy
+        if self.metadata.consolidated_metadata is not None:
             return len(self.metadata.consolidated_metadata.flattened_metadata)
         # TODO: consider using aioitertools.builtins.sum for this
         # return await aioitertools.builtins.sum((1 async for _ in self.members()), start=0)
@@ -1157,9 +1150,9 @@ class AsyncGroup:
         if self.metadata.consolidated_metadata is not None:
             # we should be able to do members without any additional I/O
             members = self._members_consolidated(max_depth, current_depth)
-            members_ = list(members)
-            for member in members_:
+            for member in members:
                 yield member
+            return
 
         if not self.store_path.store.supports_listing:
             msg = (
