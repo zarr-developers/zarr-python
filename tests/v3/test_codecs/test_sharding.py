@@ -13,7 +13,6 @@ from zarr.codecs import (
     ShardingCodec,
     ShardingCodecIndexLocation,
     TransposeCodec,
-    Crc32cCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
 from zarr.storage.common import StorePath
@@ -333,11 +332,11 @@ def test_pickle() -> None:
     assert pickle.loads(pickle.dumps(codec)) == codec
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize(
     "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
 )
-async def test_sharding_2(store: Store, index_location: ShardingCodecIndexLocation) -> None:
+async def test_sharding2(store: Store, index_location: ShardingCodecIndexLocation) -> None:
     shape = (10, 2)
     data = np.ones(np.prod(shape), dtype="int32").reshape(shape)
     fill_value = 42
