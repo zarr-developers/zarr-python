@@ -48,9 +48,9 @@ __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
 
 """
-The registry module is responsible for managing implementations of codecs, pipelines, buffers and ndbuffers and 
-collecting them from entrypoints.
-The implementation used is determined by the config
+The registry module is responsible for managing implementations of codecs,
+pipelines, buffers and ndbuffers and collecting them from entrypoints.
+The implementation used is determined by the config.
 """
 
 
