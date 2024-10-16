@@ -23,12 +23,8 @@ maintainers = [
 requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
-    'asciitree',
     'numpy>=1.25',
-    'fasteners',
-    'numcodecs>=0.10.2',
-    'fsspec>2024',
-    'crc32c',
+    'numcodecs>=0.12',
     'typing_extensions',
     'donfig',
 ]
@@ -52,17 +48,19 @@ license = {text = "MIT License"}
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
+remote = [
+    "fsspec",
+]
+sharding = [
+    "crc32c",
+]
 test = [
     "coverage",
     "pytest",
     "pytest-cov",
-    "msgpack",
-    "lmdb",
     "s3fs",
     "pytest-asyncio",
     "moto[s3]",
-    "flask-cors",
-    "flask",
     "requests",
     "mypy",
     "hypothesis",

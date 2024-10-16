@@ -28,18 +28,14 @@ repos:
         files: src|tests
         additional_dependencies:
           # Package dependencies
-          - asciitree
           - crc32c
           - donfig
-          - fasteners
           - numcodecs
           - numpy
           - typing_extensions
           - universal-pathlib
           # Tests
           - pytest
-          # Zarr v2
-          - types-redis
   - repo: https://github.com/scientific-python/cookie
     rev: 2024.08.19
     hooks:

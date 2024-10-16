@@ -215,6 +215,9 @@ def test_config_buffer_implementation() -> None:
     arr[:] = np.arange(100)
     assert np.array_equal(arr[:], data)
 
+
+def test_config_sharding_implementation() -> None:
+    pytest.importorskip("crc32c")
     data2d = np.arange(1000).reshape(100, 10)
     arr_sharding = zeros(
         shape=(100, 10),

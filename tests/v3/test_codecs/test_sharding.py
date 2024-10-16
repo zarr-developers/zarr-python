@@ -20,6 +20,8 @@ from zarr.storage.common import StorePath
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
 
+pytest.importorskip("crc32c")
+
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 @pytest.mark.parametrize("index_location", ["start", "end"])

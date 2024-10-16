@@ -39,7 +39,7 @@ async def test_make_store_path(tmpdir: str) -> None:
 
 
 async def test_make_store_path_fsspec(monkeypatch) -> None:
-    import fsspec.implementations.memory
+    fsspec = pytest.importorskip("fsspec")
 
     monkeypatch.setattr(fsspec.implementations.memory.MemoryFileSystem, "async_impl", True)
     store_path = await make_store_path("memory://")
