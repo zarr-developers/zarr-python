@@ -97,7 +97,10 @@ class LocalStore(Store):
         super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
-        assert isinstance(root, Path)
+        if not isinstance(root, Path):
+            raise TypeError(
+                f'"root" must be a string or Path instance. Got an object with type {type(root)} instead.'
+            )
         self.root = root
 
     async def _open(self) -> None:
