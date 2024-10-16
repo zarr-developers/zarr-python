@@ -43,14 +43,6 @@ def exists_ok(request: pytest.FixtureRequest) -> bool:
     return result
 
 
-@pytest.fixture(params=[2, 3], ids=["zarr2", "zarr3"])
-def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
-    result = request.param
-    if result not in (2, 3):
-        raise ValueError("Wrong value returned from test fixture.")
-    return cast(ZarrFormat, result)
-
-
 def test_group_init(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test that initializing a group from an asyncgroup works.
