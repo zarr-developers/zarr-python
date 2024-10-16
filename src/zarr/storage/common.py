@@ -27,6 +27,17 @@ def _dereference_path(root: str, path: str) -> str:
 
 
 class StorePath:
+    """
+    Path-like interface for a Store.
+
+    Parameters
+    ----------
+    store : Store
+        The store to use.
+    path : str
+        The path within the store.
+    """
+
     store: Store
     path: str
 
@@ -39,25 +50,80 @@ class StorePath:
         prototype: BufferPrototype | None = None,
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
+        """
+        Read bytes from the store.
+
+        Parameters
+        ----------
+        prototype : BufferPrototype, optional
+            The buffer prototype to use when reading the bytes.
+        byte_range : ByteRangeRequest, optional
+            The range of bytes to read.
+
+        Returns
+        -------
+        buffer : Buffer or None
+            The read bytes, or None if the key does not exist.
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
     async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None:
+        """
+        Write bytes to the store.
+
+        Parameters
+        ----------
+        value : Buffer
+            The buffer to write.
+        byte_range : ByteRangeRequest, optional
+            The range of bytes to write. If None, the entire buffer is written.
+
+        Raises
+        ------
+        NotImplementedError
+            If `byte_range` is not None, because Store.set does not support partial writes yet.
+        """
         if byte_range is not None:
             raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)
 
     async def delete(self) -> None:
+        """
+        Delete the key from the store.
+
+        Raises
+        ------
+        NotImplementedError
+            If the store does not support deletion.
+        """
         await self.store.delete(self.path)
 
     async def set_if_not_exists(self, default: Buffer) -> None:
+        """
+        Store a key to ``value`` if the key is not already present.
+
+        Parameters
+        ----------
+        default : Buffer
+            The buffer to store if the key is not already present.
+        """
         await self.store.set_if_not_exists(self.path, default)
 
     async def exists(self) -> bool:
+        """
+        Check if the key exists in the store.
+
+        Returns
+        -------
+        bool
+            True if the key exists in the store, False otherwise.
+        """
         return await self.store.exists(self.path)
 
     def __truediv__(self, other: str) -> StorePath:
+        """combine this store path with another path"""
         return self.__class__(self.store, _dereference_path(self.path, other))
 
     def __str__(self) -> str:
@@ -67,6 +133,19 @@ class StorePath:
         return f"StorePath({self.store.__class__.__name__}, {str(self)!r})"
 
     def __eq__(self, other: object) -> bool:
+        """
+        Check if two StorePath objects are equal.
+
+        Returns
+        -------
+        bool
+            True if the two objects are equal, False otherwise.
+
+        Notes
+        -----
+        Two StorePath objects are considered equal if their stores are equal
+        and their paths are equal.
+        """
         try:
             return self.store == other.store and self.path == other.path  # type: ignore[attr-defined, no-any-return]
         except Exception:
@@ -83,6 +162,50 @@ async def make_store_path(
     mode: AccessModeLiteral | None = None,
     storage_options: dict[str, Any] | None = None,
 ) -> StorePath:
+    """
+    Convert a `StoreLike` object into a StorePath object.
+
+    This function takes a `StoreLike` object and returns a `StorePath` object.  The
+    `StoreLike` object can be a `Store`, `StorePath`, `Path`, `str`, or `dict[str, Buffer]`.
+    If the `StoreLike` object is a Store or `StorePath`, it is converted to a
+    `StorePath` object.  If the `StoreLike` object is a Path or str, it is converted
+    to a LocalStore object and then to a `StorePath` object.  If the `StoreLike`
+    object is a dict[str, Buffer], it is converted to a `MemoryStore` object and
+    then to a `StorePath` object.
+
+    If the `StoreLike` object is None, a `MemoryStore` object is created and
+    converted to a `StorePath` object.
+
+    If the `StoreLike` object is a str and starts with a protocol, it is
+    converted to a RemoteStore object and then to a `StorePath` object.
+
+    If the `StoreLike` object is a dict[str, Buffer] and the mode is not None,
+    the `MemoryStore` object is created with the given mode.
+
+    If the `StoreLike` object is a str and starts with a protocol, the
+    RemoteStore object is created with the given mode and storage options.
+
+    Parameters
+    ----------
+    store_like : StoreLike | None
+        The object to convert to a `StorePath` object.
+    mode : AccessModeLiteral | None, optional
+        The mode to use when creating the `StorePath` object.  If None, the
+        default mode is 'r'.
+    storage_options : dict[str, Any] | None, optional
+        The storage options to use when creating the `RemoteStore` object.  If
+        None, the default storage options are used.
+
+    Returns
+    -------
+    StorePath
+        The converted StorePath object.
+
+    Raises
+    ------
+    TypeError
+        If the StoreLike object is not one of the supported types.
+    """
     from zarr.storage.remote import RemoteStore  # circular import
 
     used_storage_options = False

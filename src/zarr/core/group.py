@@ -4,6 +4,7 @@ import asyncio
 import itertools
 import json
 import logging
+import warnings
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
@@ -931,7 +932,11 @@ class AsyncGroup:
 
     @deprecated("Use AsyncGroup.create_array instead.")
     async def create_dataset(
-        self, name: str, **kwargs: Any
+        self,
+        name: str,
+        *,
+        shape: ShapeLike,
+        **kwargs: Any,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array.
 
@@ -942,6 +947,8 @@ class AsyncGroup:
         ----------
         name : str
             Array name.
+        shape : int or tuple of ints
+            Array shape.
         kwargs : dict
             Additional arguments passed to :func:`zarr.AsyncGroup.create_array`.
 
@@ -952,7 +959,7 @@ class AsyncGroup:
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.create_array` instead.
         """
-        return await self.create_array(name, **kwargs)
+        return await self.create_array(name, shape=shape, **kwargs)
 
     @deprecated("Use AsyncGroup.require_array instead.")
     async def require_dataset(
@@ -1139,7 +1146,8 @@ class AsyncGroup:
             raise ValueError(msg)
         # would be nice to make these special keys accessible programmatically,
         # and scoped to specific zarr versions
-        _skip_keys = ("zarr.json", ".zgroup", ".zattrs")
+        # especially true for `.zmetadata` which is configurable
+        _skip_keys = ("zarr.json", ".zgroup", ".zattrs", ".zmetadata")
 
         # hmm lots of I/O and logic interleaved here.
         # We *could* have an async gen over self.metadata.consolidated_metadata.metadata.keys()
@@ -1169,9 +1177,10 @@ class AsyncGroup:
                 # keyerror is raised when `key` names an object (in the object storage sense),
                 # as opposed to a prefix, in the store under the prefix associated with this group
                 # in which case `key` cannot be the name of a sub-array or sub-group.
-                logger.warning(
-                    "Object at %s is not recognized as a component of a Zarr hierarchy.",
-                    key,
+                warnings.warn(
+                    f"Object at {key} is not recognized as a component of a Zarr hierarchy.",
+                    UserWarning,
+                    stacklevel=1,
                 )
 
     def _members_consolidated(
@@ -1618,7 +1627,13 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
     @deprecated("Use Group.require_array instead.")
-    def require_dataset(self, name: str, **kwargs: Any) -> Array:
+    def require_dataset(
+        self,
+        name: str,
+        *,
+        shape: ShapeLike,
+        **kwargs: Any,
+    ) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -1645,9 +1660,15 @@ class Group(SyncMixin):
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
         """
-        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
+        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    def require_array(self, name: str, **kwargs: Any) -> Array:
+    def require_array(
+        self,
+        name: str,
+        *,
+        shape: ShapeLike,
+        **kwargs: Any,
+    ) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
 
@@ -1669,7 +1690,7 @@ class Group(SyncMixin):
         -------
         a : Array
         """
-        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
+        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))

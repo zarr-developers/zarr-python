@@ -78,7 +78,7 @@ gpu = [
     "cupy-cuda12x",
 ]
 docs = [
-    'sphinx==8.0.2',
+    'sphinx==8.1.3',
     'sphinx-autobuild>=2021.3.14',
     'sphinx-autoapi==3.3.2',
     'sphinx_design',
@@ -109,6 +109,7 @@ Homepage = "https://github.com/zarr-developers/zarr-python"
 exclude_lines = [
     "pragma: no cover",
     "pragma: ${PY_MAJOR_VERSION} no cover",
+    '.*\.\.\.' # Ignore "..." lines
 ]
 
 [tool.coverage.run]
@@ -210,6 +211,7 @@ extend-select = [
     "B",   # flake8-bugbear
     "C4",  # flake8-comprehensions
     "FLY", # flynt
+    "G",   # flake8-logging-format
     "I",   # isort
     "ISC", # flake8-implicit-str-concat
     "PGH", # pygrep-hooks
@@ -221,6 +223,7 @@ extend-select = [
     "TCH", # flake8-type-checking
     "TRY", # tryceratops
     "UP",  # pyupgrade
+    "W",   # pycodestyle warnings
 ]
 ignore = [
     "ANN003",
@@ -228,6 +231,7 @@ ignore = [
     "ANN102",
     "ANN401",
     "PT004",  # deprecated
+    "PT005",  # deprecated
     "PT011",  # TODO: apply this rule
     "PT012",  # TODO: apply this rule
     "PYI013",
@@ -235,6 +239,8 @@ ignore = [
     "RET506",
     "RUF005",
     "TRY003",
+    "UP027",  # deprecated
+    "UP038",  # https://github.com/astral-sh/ruff/issues/7871
     # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
     "W191",
     "E111",

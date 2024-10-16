@@ -10,22 +10,23 @@ Zarr-Python
 
     getting_started
     tutorial
-    consolidated_metadata
+    guide/index
     api/index
     spec
     release
     license
     contributing
+    roadmap
 
 **Version**: |version|
 
-**Download documentation**: `PDF/Zipped HTML/EPUB <https://readthedocs.org/projects/zarr/downloads/>`_
+**Download documentation**: `PDF/Zipped HTML <https://readthedocs.org/projects/zarr/downloads/>`_
 
 **Useful links**:
 `Installation <installation.html>`_ |
 `Source Repository <https://github.com/zarr-developers/zarr-python>`_ |
 `Issue Tracker <https://github.com/zarr-developers/zarr-python/issues>`_ |
-`Gitter <https://gitter.im/zarr-developers/community>`_
+`Zulip Chat <https://ossci.zulipchat.com/>`_
 
 Zarr is a file storage format for chunked, compressed, N-dimensional arrays based on an open-source specification.
 

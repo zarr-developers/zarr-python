@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
+import zarr
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage.local import LocalStore
 from zarr.testing.store import StoreTests
+
+if TYPE_CHECKING:
+    import pathlib
 
 
 class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
@@ -40,3 +46,10 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         assert await store.empty()
         (store.root / "foo/bar").mkdir(parents=True)
         assert await store.empty()
+
+    def test_creates_new_directory(self, tmp_path: pathlib.Path):
+        target = tmp_path.joinpath("a", "b", "c")
+        assert not target.exists()
+
+        store = self.store_cls(root=target, mode="w")
+        zarr.group(store=store)
