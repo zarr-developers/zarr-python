@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -8,13 +9,12 @@ if TYPE_CHECKING:
 
 
 def normalize_path(path: str | bytes | Path | None) -> str:
-    # handle bytes
     if path is None:
         result = ""
     elif isinstance(path, bytes):
         result = str(path, "ascii")
-    # ensure str
-    # handle pathlib.Path and upath.Path
+
+    # handle pathlib.Path
     elif isinstance(path, Path):
         result = str(path)
 
@@ -27,24 +27,12 @@ def normalize_path(path: str | bytes | Path | None) -> str:
     # convert backslash to forward slash
     result = result.replace("\\", "/")
 
-    # ensure no leading slash
-    while len(result) > 0 and result[0] == "/":
-        result = result[1:]
-
-    # ensure no trailing slash
-    while len(result) > 0 and result[-1] == "/":
-        result = result[:-1]
+    # remove leading and trailing slashes
+    result = result.strip("/")
 
     # collapse any repeated slashes
-    previous_char = None
-    collapsed = ""
-    for char in result:
-        if char == "/" and previous_char == "/":
-            pass
-        else:
-            collapsed += char
-        previous_char = char
-    result = collapsed
+    pat = re.compile(r"//+")
+    result = pat.sub("/", result)
 
     # disallow path segments with just '.' or '..'
     segments = result.split("/")
