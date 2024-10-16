@@ -715,7 +715,6 @@ class AsyncGroup:
                     # where we explicitly know we have no children. In the None
                     # case we have to fall back to non-consolidated metadata.
                     raise _MixedConsolidatedMetadataException(key)
-                assert metadata.consolidated_metadata is not None
 
                 metadata = metadata.consolidated_metadata.metadata[indexer]
             except KeyError as e:
