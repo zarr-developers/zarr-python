@@ -3,20 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from upath import UPath
-
 if TYPE_CHECKING:
     from zarr.core.buffer import Buffer
 
 
-def normalize_path(path: str | bytes | Path | UPath | None) -> str:
+def normalize_path(path: str | bytes | Path | None) -> str:
     # handle bytes
     if path is None:
         result = ""
     elif isinstance(path, bytes):
         result = str(path, "ascii")
     # ensure str
-    elif isinstance(path, Path | UPath):
+    # handle pathlib.Path and upath.Path
+    elif isinstance(path, Path):
         result = str(path)
 
     elif isinstance(path, str):
