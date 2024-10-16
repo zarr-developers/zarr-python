@@ -226,9 +226,8 @@ extend-select = [
     "W",   # pycodestyle warnings
 ]
 ignore = [
-    "ANN003",
-    "ANN101",
-    "ANN102",
+    "ANN101", # deprecated
+    "ANN102", # deprecated
     "ANN401",
     "PT004",  # deprecated
     "PT005",  # deprecated
