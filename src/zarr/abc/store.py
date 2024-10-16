@@ -330,7 +330,7 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def list(self) -> AsyncGenerator[str, None]:
+    async def list(self) -> AsyncGenerator[str]:
         """Retrieve all keys in the store.
 
         Returns
@@ -340,7 +340,7 @@ class Store(ABC):
         yield ""
 
     @abstractmethod
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
         """
         Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
         common leading prefix removed.
@@ -356,7 +356,7 @@ class Store(ABC):
         yield ""
 
     @abstractmethod
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
         """
         Retrieve all keys and prefixes with a given prefix and which do not contain the character
         “/” after the given prefix.

@@ -143,18 +143,18 @@ class MemoryStore(Store):
         # docstring inherited
         raise NotImplementedError
 
-    async def list(self) -> AsyncGenerator[str, None]:
+    async def list(self) -> AsyncGenerator[str]:
         # docstring inherited
         for key in self._store_dict:
             yield key
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         for key in self._store_dict:
             if key.startswith(prefix):
                 yield key.removeprefix(prefix)
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         prefix = prefix.rstrip("/")
 

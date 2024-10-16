@@ -217,21 +217,21 @@ class LocalStore(Store):
         path = self.root / key
         return await asyncio.to_thread(path.is_file)
 
-    async def list(self) -> AsyncGenerator[str, None]:
+    async def list(self) -> AsyncGenerator[str]:
         # docstring inherited
         to_strip = str(self.root) + "/"
         for p in list(self.root.rglob("*")):
             if p.is_file():
                 yield str(p).replace(to_strip, "")
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         to_strip = os.path.join(str(self.root / prefix))
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
                 yield str(p.relative_to(to_strip))
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         base = self.root / prefix
         to_strip = str(base) + "/"
