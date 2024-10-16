@@ -1050,7 +1050,8 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
         [x async for x in group.members(max_depth=-1)]
 
     if consolidated_metadata:
-        # test for mixed
+        # test for mixed known and unknown metadata.
+        # For now, we trust the consolidated metadata.
         object.__setattr__(
             group.metadata.consolidated_metadata.metadata["g0"].consolidated_metadata.metadata[
                 "g1"
@@ -1059,9 +1060,9 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
             None,
         )
         all_children = sorted([x async for x in group.members(max_depth=None)], key=lambda x: x[0])
-        assert len(all_children) == len(expected)
+        assert len(all_children) == 4
         nmembers = await group.nmembers(max_depth=None)
-        assert nmembers == 6
+        assert nmembers == 4
 
 
 async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
