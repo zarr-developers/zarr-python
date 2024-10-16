@@ -19,7 +19,7 @@ maintainers = [
     { name = "Martin Durant", email = "mdurant@anaconda.com" },
     { name = "Norman Rzepka" },
     { name = "Ryan Abernathey" },
-    { name = "David Stansby", email = "d.stansby@ucl.ac.uk" },
+    { name = "David Stansby" },
     { name = "Tom Augspurger", email = "tom.w.augspurger@gmail.com" },
     { name = "Deepak Cherian" }
 ]
