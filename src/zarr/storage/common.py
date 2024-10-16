@@ -219,7 +219,7 @@ async def make_store_path(
         if mode is not None and mode != store_like.store.mode.str:
             _store = store_like.store.with_mode(mode)
             await _store._ensure_open()
-            store_like = StorePath(_store, path=store_like.path) / path_normalized
+            store_like = StorePath(_store, path=store_like.path)
         result = store_like / path_normalized
     elif isinstance(store_like, Store):
         if mode is not None and mode != store_like.mode.str:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import pickle
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pytest
@@ -14,7 +14,6 @@ import zarr.api.synchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.common import JSON, ZarrFormat
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
@@ -25,6 +24,8 @@ from .conftest import parse_store
 
 if TYPE_CHECKING:
     from _pytest.compat import LEGACY_PATH
+
+    from zarr.core.common import JSON, ZarrFormat
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
