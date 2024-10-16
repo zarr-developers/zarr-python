@@ -48,7 +48,7 @@ def test_create_array(memory_store: Store) -> None:
     assert z.chunks == (40,)
 
 
-@pytest.mark.parametrize("path", ["/", "///foo/bar"])
+@pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
 @pytest.mark.parametrize("node_type", ["array", "group"])
 def test_open_normalized_path(
     memory_store: MemoryStore, path: str, node_type: Literal["array", "group"]
