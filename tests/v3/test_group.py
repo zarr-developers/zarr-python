@@ -15,7 +15,7 @@ from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import JSON, ZarrFormat
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata, _MixedConsolidatedMetadataException
+from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
@@ -347,12 +347,15 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
         )
 
         # test the implementation directly
-        with pytest.raises(_MixedConsolidatedMetadataException):
+        with pytest.raises(KeyError):
             group._async_group._getitem_consolidated(
                 group.store_path, "subgroup/subarray", prefix="/"
             )
 
-        assert group["subgroup/subarray"] == subsubarray
+        with pytest.raises(KeyError):
+            # We've chosen to trust the consolidted metadata, which doesn't
+            # contain this array
+            group["subgroup/subarray"]
 
         with pytest.raises(KeyError, match="subarray/subsubarray"):
             group["subarray/subsubarray"]

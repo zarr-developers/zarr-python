@@ -98,24 +98,6 @@ def _parse_async_node(
         raise TypeError(f"Unknown node type, got {type(node)}")
 
 
-class _MixedConsolidatedMetadataException(Exception):
-    """
-    A custom, *internal* exception for when we encounter mixed consolidated metadata.
-
-    Typically, Consolidated Metadata will explicitly indicate that there are no
-    additional children under a group with ``ConsolidatedMetadata(metadata={})``,
-    as opposed to ``metadata=None``. This is the behavior of ``consolidated_metadata``.
-    We rely on that "fact" to do I/O-free getitem: when a group's consolidated metadata
-    doesn't contain a child we can raise a ``KeyError`` without consulting the backing
-    store.
-
-    Users can potentially get themselves in situations where there's "mixed" consolidated
-    metadata. For now, we'll raise this error, catch it internally, and silently fall back
-    to the store (which will either succeed or raise its own KeyError, slowly). We might
-    want to expose this in the future, in which case rename it add it to zarr.errors.
-    """
-
-
 @dataclass(frozen=True)
 class ConsolidatedMetadata:
     """
@@ -626,15 +608,7 @@ class AsyncGroup:
 
         # Consolidated metadata lets us avoid some I/O operations so try that first.
         if self.metadata.consolidated_metadata is not None:
-            try:
-                return self._getitem_consolidated(store_path, key, prefix=self.name)
-            except _MixedConsolidatedMetadataException:
-                logger.info(
-                    "Mixed consolidated and unconsolidated metadata. key=%s, store_path=%s",
-                    key,
-                    store_path,
-                )
-                # now fall back to the non-consolidated variant
+            return self._getitem_consolidated(store_path, key, prefix=self.name)
 
         # Note:
         # in zarr-python v2, we first check if `key` references an Array, else if `key` references
@@ -691,9 +665,6 @@ class AsyncGroup:
         # getitem, in the special case where we have consolidated metadata.
         # Note that this is a regular def (non async) function.
         # This shouldn't do any additional I/O.
-        # All callers *must* catch _MixedConsolidatedMetadataException to ensure
-        # that we correctly handle the case where we need to fall back to doing
-        # additional I/O.
 
         # the caller needs to verify this!
         assert self.metadata.consolidated_metadata is not None
@@ -708,14 +679,16 @@ class AsyncGroup:
             if isinstance(metadata, ArrayV2Metadata | ArrayV3Metadata):
                 # we've indexed into an array with group["array/subarray"]. Invalid.
                 raise KeyError(key)
+            if metadata.consolidated_metadata is None:
+                # we've indexed into a group without consolidated metadata.
+                # This isn't normal; typically, consolidated metadata
+                # will include explicit markers for when there are no child
+                # nodes as metadata={}.
+                # We have some freedom in exactly how we interpret this case.
+                # For now, we treat None as the same as {}, i.e. we don't
+                # have any children.
+                raise KeyError(key)
             try:
-                if metadata.consolidated_metadata is None:
-                    # we've indexed into a group without consolidated metadata.
-                    # Note that the `None` case is different from `metadata={}`
-                    # where we explicitly know we have no children. In the None
-                    # case we have to fall back to non-consolidated metadata.
-                    raise _MixedConsolidatedMetadataException(key)
-
                 metadata = metadata.consolidated_metadata.metadata[indexer]
             except KeyError as e:
                 # The Group Metadata has consolidated metadata, but the key
@@ -981,11 +954,7 @@ class AsyncGroup:
 
     @deprecated("Use AsyncGroup.create_array instead.")
     async def create_dataset(
-        self,
-        name: str,
-        *,
-        shape: ShapeLike,
-        **kwargs: Any,
+        self, name: str, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array.
 
@@ -996,8 +965,6 @@ class AsyncGroup:
         ----------
         name : str
             Array name.
-        shape : int or tuple of ints
-            Array shape.
         kwargs : dict
             Additional arguments passed to :func:`zarr.AsyncGroup.create_array`.
 
@@ -1008,7 +975,7 @@ class AsyncGroup:
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.create_array` instead.
         """
-        return await self.create_array(name, shape=shape, **kwargs)
+        return await self.create_array(name, **kwargs)
 
     @deprecated("Use AsyncGroup.require_array instead.")
     async def require_dataset(
@@ -1190,17 +1157,9 @@ class AsyncGroup:
         if self.metadata.consolidated_metadata is not None:
             # we should be able to do members without any additional I/O
             members = self._members_consolidated(max_depth, current_depth)
-
-            try:
-                # we already have this in memory, so fine to build this list
-                # and catch the exception if needed.
-                members_ = list(members)
-            except _MixedConsolidatedMetadataException:
-                pass
-            else:
-                for member in members_:
-                    yield member
-                return
+            members_ = list(members)
+            for member in members_:
+                yield member
 
         if not self.store_path.store.supports_listing:
             msg = (
@@ -1258,25 +1217,13 @@ class AsyncGroup:
     ]:
         consolidated_metadata = self.metadata.consolidated_metadata
 
-        if consolidated_metadata is None:
-            raise _MixedConsolidatedMetadataException(prefix)
         # we kind of just want the top-level keys.
         if consolidated_metadata is not None:
             for key in consolidated_metadata.metadata.keys():
-                try:
-                    obj = self._getitem_consolidated(
-                        self.store_path, key, prefix=self.name
-                    )  # Metadata -> Group/Array
-                    key = f"{prefix}/{key}".lstrip("/")
-                except _MixedConsolidatedMetadataException:
-                    logger.info(
-                        "Mixed consolidated and unconsolidated metadata. key=%s, depth=%d, prefix=%s",
-                        key,
-                        current_depth,
-                        prefix,
-                    )
-                    # This isn't an async def function so we need to re-raise up one more level.
-                    raise
+                obj = self._getitem_consolidated(
+                    self.store_path, key, prefix=self.name
+                )  # Metadata -> Group/Array
+                key = f"{prefix}/{key}".lstrip("/")
                 yield key, obj
 
                 if ((max_depth is None) or (current_depth < max_depth)) and isinstance(
@@ -1711,13 +1658,7 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
     @deprecated("Use Group.require_array instead.")
-    def require_dataset(
-        self,
-        name: str,
-        *,
-        shape: ShapeLike,
-        **kwargs: Any,
-    ) -> Array:
+    def require_dataset(self, name: str, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -1744,15 +1685,9 @@ class Group(SyncMixin):
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
         """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
+        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
 
-    def require_array(
-        self,
-        name: str,
-        *,
-        shape: ShapeLike,
-        **kwargs: Any,
-    ) -> Array:
+    def require_array(self, name: str, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
 
@@ -1774,7 +1709,7 @@ class Group(SyncMixin):
         -------
         a : Array
         """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
+        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
 
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
