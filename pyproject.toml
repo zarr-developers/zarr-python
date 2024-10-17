@@ -18,15 +18,18 @@ maintainers = [
     { name = "Juan Nunez-Iglesias", email = "juan.nunez-iglesias@monash.edu" },
     { name = "Martin Durant", email = "mdurant@anaconda.com" },
     { name = "Norman Rzepka" },
-    { name = "Ryan Abernathey" }
+    { name = "Ryan Abernathey" },
+    { name = "David Stansby" },
+    { name = "Tom Augspurger", email = "tom.w.augspurger@gmail.com" },
+    { name = "Deepak Cherian" }
 ]
 requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'numpy>=1.25',
     'numcodecs>=0.12',
-    'typing_extensions',
-    'donfig',
+    'typing_extensions>=4.9',
+    'donfig>=0.8.1',
 ]
 dynamic = [
   "version",
@@ -49,10 +52,10 @@ keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
 remote = [
-    "fsspec",
+    "fsspec>=2023.10.0",
 ]
 sharding = [
-    "crc32c",
+    "crc32c>=2.4",
 ]
 test = [
     "coverage",
@@ -205,34 +208,33 @@ extend-exclude = [
 
 [tool.ruff.lint]
 extend-select = [
-    "ANN", # flake8-annotations
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "FLY", # flynt
-    "G",   # flake8-logging-format
-    "I",   # isort
-    "ISC", # flake8-implicit-str-concat
-    "PGH", # pygrep-hooks
-    "PT",  # flake8-pytest-style
-    "PYI", # flake8-pyi
-    "RSE", # flake8-raise
-    "RET", # flake8-return
+    "ANN",  # flake8-annotations
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "FLY",  # flynt
+    "G",    # flake8-logging-format
+    "I",    # isort
+    "ISC",  # flake8-implicit-str-concat
+    "PERF", # Perflint
+    "PGH",  # pygrep-hooks
+    "PT",   # flake8-pytest-style
+    "PYI",  # flake8-pyi
+    "RSE",  # flake8-raise
+    "RET",  # flake8-return
     "RUF",
-    "TCH", # flake8-type-checking
-    "TRY", # tryceratops
-    "UP",  # pyupgrade
-    "W",   # pycodestyle warnings
+    "TCH",  # flake8-type-checking
+    "TRY",  # tryceratops
+    "UP",   # pyupgrade
+    "W",    # pycodestyle warnings
 ]
 ignore = [
-    "ANN003",
-    "ANN101",
-    "ANN102",
+    "ANN101", # deprecated
+    "ANN102", # deprecated
     "ANN401",
     "PT004",  # deprecated
     "PT005",  # deprecated
     "PT011",  # TODO: apply this rule
     "PT012",  # TODO: apply this rule
-    "PYI013",
     "RET505",
     "RET506",
     "RUF005",
