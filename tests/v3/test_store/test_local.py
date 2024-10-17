@@ -53,5 +53,5 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         target = tmp_path.joinpath("a", "b", "c")
         assert not target.exists()
 
-        store = self.store_cls(root=target, mode="w")
+        store = self.store_cls(path=target, mode="w")
         zarr.group(store=store)
