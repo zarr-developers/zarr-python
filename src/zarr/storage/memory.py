@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, gpu
@@ -9,6 +9,7 @@ from zarr.storage._utils import _normalize_interval_index
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable, MutableMapping
+    from typing import Self
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
@@ -44,12 +45,15 @@ class MemoryStore(Store):
         self,
         store_dict: MutableMapping[str, Buffer] | None = None,
         *,
+        path: str = "",
         mode: AccessModeLiteral = "r",
     ) -> None:
-        super().__init__(mode=mode)
+        super().__init__(mode=mode, path=path)
+
         if store_dict is None:
             store_dict = {}
-        self._store_dict = store_dict
+
+        object.__setattr__(self, "_store_dict", store_dict)
 
     async def empty(self) -> bool:
         # docstring inherited
@@ -85,9 +89,9 @@ class MemoryStore(Store):
         # docstring inherited
         if not self._is_open:
             await self._open()
-        assert isinstance(key, str)
+
         try:
-            value = self._store_dict[key]
+            value = self._store_dict[self.resolve_key(key)]
             start, length = _normalize_interval_index(value, byte_range)
             return prototype.buffer.from_buffer(value[start : start + length])
         except KeyError:
@@ -108,7 +112,7 @@ class MemoryStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        return key in self._store_dict
+        return self.resolve_key(key) in self._store_dict
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         # docstring inherited
@@ -117,25 +121,25 @@ class MemoryStore(Store):
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(f"Expected Buffer. Got {type(value)}.")
-
+        key_abs = self.resolve_key(key)
         if byte_range is not None:
-            buf = self._store_dict[key]
+            buf = self._store_dict[key_abs]
             buf[byte_range[0] : byte_range[1]] = value
-            self._store_dict[key] = buf
+            self._store_dict[key_abs] = buf
         else:
-            self._store_dict[key] = value
+            self._store_dict[key_abs] = value
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
         self._check_writable()
         await self._ensure_open()
-        self._store_dict.setdefault(key, value)
+        self._store_dict.setdefault(self.resolve_key(key), value)
 
     async def delete(self, key: str) -> None:
         # docstring inherited
         self._check_writable()
         try:
-            del self._store_dict[key]
+            del self._store_dict[self.resolve_key(key)]
         except KeyError:
             pass
 
@@ -144,20 +148,19 @@ class MemoryStore(Store):
         raise NotImplementedError
 
     async def list(self) -> AsyncGenerator[str, None]:
-        # docstring inherited
-        for key in self._store_dict:
-            yield key
+        async for result in self.list_prefix(""):
+            yield result
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
+        prefix_abs = self.resolve_key(prefix)
         for key in self._store_dict:
-            if key.startswith(prefix):
-                yield key.removeprefix(prefix)
+            if key.startswith(prefix_abs):
+                yield key.removeprefix(prefix_abs).lstrip("/")
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        if prefix.endswith("/"):
-            prefix = prefix[:-1]
+        prefix = self.resolve_key(prefix)
 
         if prefix == "":
             keys_unique = {k.split("/")[0] for k in self._store_dict}
