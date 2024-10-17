@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 
 def _get(
-    path: str, prototype: BufferPrototype, byte_range: tuple[int | None, int | None] | None
+    path: Path, prototype: BufferPrototype, byte_range: tuple[int | None, int | None] | None
 ) -> Buffer:
     """
     Fetch a contiguous region of bytes from a file.
@@ -35,7 +35,6 @@ def _get(
         and the second value specifies the total number of bytes to read. If the total value is
         `None`, then the entire file after the first byte will be read.
     """
-    target = Path(path)
     if byte_range is not None:
         if byte_range[0] is None:
             start = 0
@@ -44,8 +43,8 @@ def _get(
 
         end = (start + byte_range[1]) if byte_range[1] is not None else None
     else:
-        return prototype.buffer.from_bytes(target.read_bytes())
-    with target.open("rb") as f:
+        return prototype.buffer.from_bytes(path.read_bytes())
+    with path.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
         if start is not None:
             if start >= 0:
@@ -105,13 +104,15 @@ class LocalStore(Store):
     supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
+    _path: Path
 
     def __init__(self, path: Path | str, *, mode: AccessModeLiteral = "r") -> None:
         super().__init__(mode=mode, path=str(path))
+        self._path = Path(self.path)
 
     async def _open(self) -> None:
         if not self.mode.readonly:
-            Path(self.path).mkdir(parents=True, exist_ok=True)
+            self._path.mkdir(parents=True, exist_ok=True)
         return await super()._open()
 
     async def clear(self) -> None:
@@ -156,7 +157,7 @@ class LocalStore(Store):
         if not self._is_open:
             await self._open()
 
-        path = os.path.join(self.path, key)
+        path = self._path / key
 
         try:
             return await asyncio.to_thread(_get, path, prototype, byte_range)
@@ -172,7 +173,7 @@ class LocalStore(Store):
         args = []
         for key, byte_range in key_ranges:
             assert isinstance(key, str)
-            path = os.path.join(self.path, key)
+            path = self._path / key
             args.append((_get, path, prototype, byte_range))
         return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
 
@@ -194,7 +195,7 @@ class LocalStore(Store):
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
-        path = Path(self.path) / key
+        path = self._path / key
         await asyncio.to_thread(_put, path, value, start=None, exclusive=exclusive)
 
     async def set_partial_values(
@@ -212,7 +213,7 @@ class LocalStore(Store):
     async def delete(self, key: str) -> None:
         # docstring inherited
         self._check_writable()
-        path = Path(self.path) / key
+        path = self._path / key
         if path.is_dir():  # TODO: support deleting directories? shutil.rmtree?
             shutil.rmtree(path)
         else:
@@ -220,7 +221,7 @@ class LocalStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        path = Path(self.path) / key
+        path = self._path / key
         return await asyncio.to_thread(path.is_file)
 
     async def list(self) -> AsyncGenerator[str, None]:
@@ -232,21 +233,21 @@ class LocalStore(Store):
         """
         # TODO: just invoke list_prefix with the prefix "/"
         to_strip = self.path + "/"
-        for p in Path(self.path).rglob("*"):
+        for p in self._path.rglob("*"):
             if p.is_file():
                 yield str(p.relative_to(to_strip))
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
         to_strip = os.path.join(self.path, prefix)
-        for p in (Path(self.path) / prefix).rglob("*"):
+        for p in (self._path / prefix).rglob("*"):
             if p.is_file():
                 yield str(p.relative_to(to_strip))
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
         base = os.path.join(self.path, prefix)
-        to_strip = str(base) + "/"
+        to_strip = base + "/"
 
         try:
             key_iter = Path(base).iterdir()
