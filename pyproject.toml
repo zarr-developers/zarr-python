@@ -18,7 +18,10 @@ maintainers = [
     { name = "Juan Nunez-Iglesias", email = "juan.nunez-iglesias@monash.edu" },
     { name = "Martin Durant", email = "mdurant@anaconda.com" },
     { name = "Norman Rzepka" },
-    { name = "Ryan Abernathey" }
+    { name = "Ryan Abernathey" },
+    { name = "David Stansby" },
+    { name = "Tom Augspurger", email = "tom.w.augspurger@gmail.com" },
+    { name = "Deepak Cherian" }
 ]
 requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
