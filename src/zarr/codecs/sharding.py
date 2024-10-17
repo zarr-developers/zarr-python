@@ -265,7 +265,8 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
     ) -> Buffer:
         index_bytes = await index_encoder(self.index)
         if index_location == ShardingCodecIndexLocation.start:
-            self.index.offsets_and_lengths[..., 0] += len(index_bytes)
+            empty_chunks_mask = self.index.offsets_and_lengths[..., 0] == MAX_UINT_64
+            self.index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
             index_bytes = await index_encoder(self.index)  # encode again with corrected offsets
             out_buf = index_bytes + self.buf
         else:
