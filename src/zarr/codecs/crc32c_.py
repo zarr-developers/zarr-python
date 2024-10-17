@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import typing_extensions
-from crc32c import crc32c
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.common import JSON, parse_named_configuration
@@ -35,6 +34,8 @@ class Crc32cCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer:
+        from crc32c import crc32c
+
         data = chunk_bytes.as_numpy_array()
         crc32_bytes = data[-4:]
         inner_bytes = data[:-4]
@@ -53,6 +54,8 @@ class Crc32cCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
+        from crc32c import crc32c
+
         data = chunk_bytes.as_numpy_array()
         # Calculate the checksum and "cast" it to a numpy array
         checksum = np.array([crc32c(cast(typing_extensions.Buffer, data))], dtype=np.uint32)

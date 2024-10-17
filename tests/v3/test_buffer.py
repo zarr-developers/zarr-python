@@ -97,6 +97,7 @@ async def test_async_array_gpu_prototype() -> None:
 
 @pytest.mark.asyncio
 async def test_codecs_use_of_prototype() -> None:
+    pytest.importorskip("crc32c")
     expect = np.zeros((10, 10), dtype="uint16", order="F")
     a = await AsyncArray.create(
         StorePath(StoreExpectingTestBuffer(mode="w")) / "test_codecs_use_of_prototype",
@@ -132,6 +133,7 @@ async def test_codecs_use_of_prototype() -> None:
 @gpu_test
 @pytest.mark.asyncio
 async def test_codecs_use_of_gpu_prototype() -> None:
+    pytest.importorskip("crc32c")
     expect = cp.zeros((10, 10), dtype="uint16", order="F")
     a = await AsyncArray.create(
         StorePath(MemoryStore(mode="w")) / "test_codecs_use_of_gpu_prototype",

@@ -27,6 +27,8 @@ async def test_transpose(
     runtime_read_order: MemoryOrder,
     with_sharding: bool,
 ) -> None:
+    if with_sharding:
+        pytest.importorskip("crc32c")
     data = np.arange(0, 256, dtype="uint16").reshape((1, 32, 8), order=input_order)
     spath = StorePath(store, path="transpose")
     codecs_: list[Codec] = (
