@@ -330,3 +330,27 @@ async def test_delete_empty_shards(store: Store) -> None:
 def test_pickle() -> None:
     codec = ShardingCodec(chunk_shape=(8, 8))
     assert pickle.loads(pickle.dumps(codec)) == codec
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize(
+    "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
+)
+async def test_sharding2(store: Store, index_location: ShardingCodecIndexLocation) -> None:
+    shape = (10, 2)
+    data = np.ones(np.prod(shape), dtype="int32").reshape(shape)
+    fill_value = 42
+
+    path = f"test_sharding_2{index_location}"
+    spath = StorePath(store, path)
+    a = Array.create(
+        spath,
+        shape=shape,
+        chunk_shape=shape,
+        dtype="int32",
+        fill_value=fill_value,
+        codecs=[ShardingCodec(chunk_shape=(2, 1), index_location=index_location)],
+    )
+    a[...] = data
+    data_read = a[...]
+    assert np.array_equal(data_read, data)
