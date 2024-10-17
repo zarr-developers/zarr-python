@@ -71,10 +71,7 @@ async def test_make_store_path_invalid() -> None:
 
 
 async def test_make_store_path_fsspec(monkeypatch) -> None:
-    import fsspec.implementations.memory
-
-    monkeypatch.setattr(fsspec.implementations.memory.MemoryFileSystem, "async_impl", True)
-    store_path = await make_store_path("memory://")
+    store_path = await make_store_path("http://foo.com/bar")
     assert isinstance(store_path.store, RemoteStore)
 
 

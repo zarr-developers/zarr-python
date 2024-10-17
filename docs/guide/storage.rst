@@ -72,7 +72,7 @@ that implements the `AbstractFileSystem` API,
 .. code-block:: python
 
    >>> import zarr
-   >>> store = zarr.storage.RemoteStore("gs://foo/bar", mode="r")
+   >>> store = zarr.storage.RemoteStore.from_url("gs://foo/bar", mode="r")
    >>> zarr.open(store=store)
    <Array <RemoteStore(GCSFileSystem, foo/bar)> shape=(10, 20) dtype=float32>
 
