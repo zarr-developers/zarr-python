@@ -32,7 +32,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def get(self, store: ZipStore, key: str) -> Buffer:
         return store._get(key, prototype=default_buffer_prototype())
 
-    def set(self, store: ZipStore, key: str, value: Buffer) -> None:
+    async def set(self, store: ZipStore, key: str, value: Buffer) -> None:
         return store._set(store.resolve_key(key), value)
 
     def test_store_mode(self, store: ZipStore, store_kwargs: dict[str, Any]) -> None:

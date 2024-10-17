@@ -18,10 +18,10 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
     store_cls = LocalStore
     buffer_cls = cpu.Buffer
 
-    def get(self, store: LocalStore, key: str) -> Buffer:
+    async def get(self, store: LocalStore, key: str) -> Buffer:
         return self.buffer_cls.from_bytes((Path(store.path) / key).read_bytes())
 
-    def set(self, store: LocalStore, key: str, value: Buffer) -> None:
+    async def set(self, store: LocalStore, key: str, value: Buffer) -> None:
         target = Path(store.path) / key
         parent = target.parent
         if not parent.exists():
