@@ -572,7 +572,10 @@ class AsyncGroup:
 
     @classmethod
     def _from_bytes_v3(
-        cls, store_path: StorePath, zarr_json_bytes: Buffer, use_consolidated: bool | None
+        cls,
+        store_path: StorePath,
+        zarr_json_bytes: Buffer,
+        use_consolidated: bool | None,
     ) -> AsyncGroup:
         group_metadata = json.loads(zarr_json_bytes.to_bytes())
         if use_consolidated and group_metadata.get("consolidated_metadata") is None:
@@ -666,14 +669,33 @@ class AsyncGroup:
         # the caller needs to verify this!
         assert self.metadata.consolidated_metadata is not None
 
-        try:
-            metadata = self.metadata.consolidated_metadata.metadata[key]
-        except KeyError as e:
-            # The Group Metadata has consolidated metadata, but the key
-            # isn't present. We trust this to mean that the key isn't in
-            # the hierarchy, and *don't* fall back to checking the store.
-            msg = f"'{key}' not found in consolidated metadata."
-            raise KeyError(msg) from e
+        # we support nested getitems like group/subgroup/array
+        indexers = key.split("/")
+        indexers.reverse()
+        metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata = self.metadata
+
+        while indexers:
+            indexer = indexers.pop()
+            if isinstance(metadata, ArrayV2Metadata | ArrayV3Metadata):
+                # we've indexed into an array with group["array/subarray"]. Invalid.
+                raise KeyError(key)
+            if metadata.consolidated_metadata is None:
+                # we've indexed into a group without consolidated metadata.
+                # This isn't normal; typically, consolidated metadata
+                # will include explicit markers for when there are no child
+                # nodes as metadata={}.
+                # We have some freedom in exactly how we interpret this case.
+                # For now, we treat None as the same as {}, i.e. we don't
+                # have any children.
+                raise KeyError(key)
+            try:
+                metadata = metadata.consolidated_metadata.metadata[indexer]
+            except KeyError as e:
+                # The Group Metadata has consolidated metadata, but the key
+                # isn't present. We trust this to mean that the key isn't in
+                # the hierarchy, and *don't* fall back to checking the store.
+                msg = f"'{key}' not found in consolidated metadata."
+                raise KeyError(msg) from e
 
         # update store_path to ensure that AsyncArray/Group.name is correct
         if prefix != "/":
@@ -932,11 +954,7 @@ class AsyncGroup:
 
     @deprecated("Use AsyncGroup.create_array instead.")
     async def create_dataset(
-        self,
-        name: str,
-        *,
-        shape: ShapeLike,
-        **kwargs: Any,
+        self, name: str, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array.
 
@@ -947,8 +965,6 @@ class AsyncGroup:
         ----------
         name : str
             Array name.
-        shape : int or tuple of ints
-            Array shape.
         kwargs : dict
             Additional arguments passed to :func:`zarr.AsyncGroup.create_array`.
 
@@ -959,7 +975,7 @@ class AsyncGroup:
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.create_array` instead.
         """
-        return await self.create_array(name, shape=shape, **kwargs)
+        return await self.create_array(name, **kwargs)
 
     @deprecated("Use AsyncGroup.require_array instead.")
     async def require_dataset(
@@ -1081,6 +1097,8 @@ class AsyncGroup:
         -------
         count : int
         """
+        # check if we can use consolidated metadata, which requires that we have non-None
+        # consolidated metadata at all points in the hierarchy.
         if self.metadata.consolidated_metadata is not None:
             return len(self.metadata.consolidated_metadata.flattened_metadata)
         # TODO: consider using aioitertools.builtins.sum for this
@@ -1094,7 +1112,8 @@ class AsyncGroup:
         self,
         max_depth: int | None = 0,
     ) -> AsyncGenerator[
-        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
+        None,
     ]:
         """
         Returns an AsyncGenerator over the arrays and groups contained in this group.
@@ -1125,12 +1144,12 @@ class AsyncGroup:
     async def _members(
         self, max_depth: int | None, current_depth: int
     ) -> AsyncGenerator[
-        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
+        None,
     ]:
         if self.metadata.consolidated_metadata is not None:
             # we should be able to do members without any additional I/O
             members = self._members_consolidated(max_depth, current_depth)
-
             for member in members:
                 yield member
             return
@@ -1186,7 +1205,8 @@ class AsyncGroup:
     def _members_consolidated(
         self, max_depth: int | None, current_depth: int, prefix: str = ""
     ) -> Generator[
-        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup], None
+        tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
+        None,
     ]:
         consolidated_metadata = self.metadata.consolidated_metadata
 
@@ -1271,7 +1291,11 @@ class AsyncGroup:
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         return await async_api.full(
-            shape=shape, fill_value=fill_value, store=self.store_path, path=name, **kwargs
+            shape=shape,
+            fill_value=fill_value,
+            store=self.store_path,
+            path=name,
+            **kwargs,
         )
 
     async def empty_like(
@@ -1627,13 +1651,7 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
     @deprecated("Use Group.require_array instead.")
-    def require_dataset(
-        self,
-        name: str,
-        *,
-        shape: ShapeLike,
-        **kwargs: Any,
-    ) -> Array:
+    def require_dataset(self, name: str, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -1660,15 +1678,9 @@ class Group(SyncMixin):
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
         """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
+        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
 
-    def require_array(
-        self,
-        name: str,
-        *,
-        shape: ShapeLike,
-        **kwargs: Any,
-    ) -> Array:
+    def require_array(self, name: str, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
 
@@ -1690,7 +1702,7 @@ class Group(SyncMixin):
         -------
         a : Array
         """
-        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
+        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
 
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
