@@ -138,7 +138,7 @@ def array_fixture(request: pytest.FixtureRequest) -> npt.NDArray[Any]:
     )
 
 
-@pytest.fixture(params=(2, 3))
+@pytest.fixture(params=(2, 3), ids=["zarr2", "zarr3"])
 def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
     if request.param == 2:
         return 2

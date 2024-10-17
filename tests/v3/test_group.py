@@ -3,7 +3,7 @@ from __future__ import annotations
 import contextlib
 import pickle
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pytest
@@ -14,7 +14,6 @@ import zarr.api.synchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.common import JSON, ZarrFormat
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
@@ -25,6 +24,8 @@ from .conftest import parse_store
 
 if TYPE_CHECKING:
     from _pytest.compat import LEGACY_PATH
+
+    from zarr.core.common import JSON, ZarrFormat
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
@@ -41,14 +42,6 @@ def exists_ok(request: pytest.FixtureRequest) -> bool:
     if not isinstance(result, bool):
         raise TypeError("Wrong type returned by test fixture.")
     return result
-
-
-@pytest.fixture(params=[2, 3], ids=["zarr2", "zarr3"])
-def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
-    result = request.param
-    if result not in (2, 3):
-        raise ValueError("Wrong value returned from test fixture.")
-    return cast(ZarrFormat, result)
 
 
 def test_group_init(store: Store, zarr_format: ZarrFormat) -> None:
@@ -587,6 +580,7 @@ def test_group_array_creation(
     assert empty_array.fill_value == 0
     assert empty_array.shape == shape
     assert empty_array.store_path.store == store
+    assert empty_array.store_path.path == "empty"
 
     empty_like_array = group.empty_like(name="empty_like", data=empty_array)
     assert isinstance(empty_like_array, Array)

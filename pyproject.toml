@@ -233,7 +233,6 @@ ignore = [
     "PT005",  # deprecated
     "PT011",  # TODO: apply this rule
     "PT012",  # TODO: apply this rule
-    "PYI013",
     "RET505",
     "RET506",
     "RUF005",
