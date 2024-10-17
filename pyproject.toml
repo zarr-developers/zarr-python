@@ -18,14 +18,16 @@ maintainers = [
     { name = "Juan Nunez-Iglesias", email = "juan.nunez-iglesias@monash.edu" },
     { name = "Martin Durant", email = "mdurant@anaconda.com" },
     { name = "Norman Rzepka" },
-    { name = "Ryan Abernathey" }
+    { name = "Ryan Abernathey" },
+    { name = "David Stansby" },
+    { name = "Tom Augspurger", email = "tom.w.augspurger@gmail.com" },
+    { name = "Deepak Cherian" }
 ]
 requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
     'asciitree',
     'numpy>=1.25',
-    'fasteners',
     'numcodecs>=0.10.2',
     'fsspec>2024',
     'crc32c',
@@ -47,6 +49,7 @@ classifiers = [
     'Programming Language :: Python :: 3',
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: 3.13',
 ]
 license = {text = "MIT License"}
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
@@ -130,17 +133,17 @@ dependencies = [
 features = ["test", "extra"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12"]
+python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "1.26", "2.0"]
 version = ["minimal"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12"]
+python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "1.26", "2.0"]
 features = ["optional"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.12"]
+python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "1.26", "2.0"]
 features = ["gpu"]
 
@@ -161,7 +164,7 @@ dependencies = [
 features = ["test", "extra", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
-python = ["3.11", "3.12"]
+python = ["3.11", "3.12", "3.13"]
 numpy = ["1.25", "1.26", "2.0"]
 version = ["minimal"]
 
@@ -207,34 +210,33 @@ extend-exclude = [
 
 [tool.ruff.lint]
 extend-select = [
-    "ANN", # flake8-annotations
-    "B",   # flake8-bugbear
-    "C4",  # flake8-comprehensions
-    "FLY", # flynt
-    "G",   # flake8-logging-format
-    "I",   # isort
-    "ISC", # flake8-implicit-str-concat
-    "PGH", # pygrep-hooks
-    "PT",  # flake8-pytest-style
-    "PYI", # flake8-pyi
-    "RSE", # flake8-raise
-    "RET", # flake8-return
+    "ANN",  # flake8-annotations
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "FLY",  # flynt
+    "G",    # flake8-logging-format
+    "I",    # isort
+    "ISC",  # flake8-implicit-str-concat
+    "PERF", # Perflint
+    "PGH",  # pygrep-hooks
+    "PT",   # flake8-pytest-style
+    "PYI",  # flake8-pyi
+    "RSE",  # flake8-raise
+    "RET",  # flake8-return
     "RUF",
-    "TCH", # flake8-type-checking
-    "TRY", # tryceratops
-    "UP",  # pyupgrade
-    "W",   # pycodestyle warnings
+    "TCH",  # flake8-type-checking
+    "TRY",  # tryceratops
+    "UP",   # pyupgrade
+    "W",    # pycodestyle warnings
 ]
 ignore = [
-    "ANN003",
-    "ANN101",
-    "ANN102",
+    "ANN101", # deprecated
+    "ANN102", # deprecated
     "ANN401",
     "PT004",  # deprecated
     "PT005",  # deprecated
     "PT011",  # TODO: apply this rule
     "PT012",  # TODO: apply this rule
-    "PYI013",
     "RET505",
     "RET506",
     "RUF005",
