@@ -5,10 +5,9 @@ import logging
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Self
 
 from zarr.abc.store import AccessMode, ByteRangeRequest, Store
-from zarr.core.buffer import Buffer
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
@@ -19,6 +18,24 @@ if TYPE_CHECKING:
 
 
 class LoggingStore(Store):
+    """
+    Store wrapper that logs all calls to the wrapped store.
+
+    Parameters
+    ----------
+    store: Store
+        Store to wrap
+    log_level: str
+        Log level
+    log_handler: logging.Handler
+        Log handler
+
+    Attributes
+    ----------
+    counter: dict
+        Counter of number of times each method has been called
+    """
+
     _store: Store
     counter: defaultdict[str, int]
 
@@ -58,17 +75,24 @@ class LoggingStore(Store):
         return handler
 
     @contextmanager
-    def log(self) -> Generator[None, None, None]:
+    def log(self, hint: Any = "") -> Generator[None, None, None]:
+        """Context manager to log method calls
+
+        Each call to the wrapped store is logged to the configured logger and added to
+        the counter dict.
+        """
         method = inspect.stack()[2].function
         op = f"{type(self._store).__name__}.{method}"
-        self.logger.info(f"Calling {op}")
+        if hint:
+            op = f"{op}({hint})"
+        self.logger.info("Calling %s", op)
         start_time = time.time()
         try:
             self.counter[method] += 1
             yield
         finally:
             end_time = time.time()
-            self.logger.info(f"Finished {op} in {end_time - start_time:.2f} seconds")
+            self.logger.info("Finished %s [%.2f s]", op, end_time - start_time)
 
     @property
     def supports_writes(self) -> bool:
@@ -96,9 +120,14 @@ class LoggingStore(Store):
             return self._store._mode
 
     @property
-    def _is_open(self) -> bool:  # type: ignore[override]
+    def _is_open(self) -> bool:
         with self.log():
             return self._store._is_open
+
+    @_is_open.setter
+    def _is_open(self, value: bool) -> None:
+        with self.log(value):
+            self._store._is_open = value
 
     async def _open(self) -> None:
         with self.log():
@@ -109,10 +138,12 @@ class LoggingStore(Store):
             return await self._store._ensure_open()
 
     async def empty(self) -> bool:
+        # docstring inherited
         with self.log():
             return await self._store.empty()
 
     async def clear(self) -> None:
+        # docstring inherited
         with self.log():
             return await self._store.clear()
 
@@ -123,7 +154,7 @@ class LoggingStore(Store):
         return f"LoggingStore({repr(self._store)!r})"
 
     def __eq__(self, other: object) -> bool:
-        with self.log():
+        with self.log(other):
             return self._store == other
 
     async def get(
@@ -132,7 +163,8 @@ class LoggingStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
-        with self.log():
+        # docstring inherited
+        with self.log(key):
             return await self._store.get(key=key, prototype=prototype, byte_range=byte_range)
 
     async def get_partial_values(
@@ -140,48 +172,60 @@ class LoggingStore(Store):
         prototype: BufferPrototype,
         key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
-        with self.log():
+        # docstring inherited
+        keys = ",".join([k[0] for k in key_ranges])
+        with self.log(keys):
             return await self._store.get_partial_values(prototype=prototype, key_ranges=key_ranges)
 
     async def exists(self, key: str) -> bool:
-        with self.log():
+        # docstring inherited
+        with self.log(key):
             return await self._store.exists(key)
 
     async def set(self, key: str, value: Buffer) -> None:
-        with self.log():
+        # docstring inherited
+        with self.log(key):
             return await self._store.set(key=key, value=value)
 
-    async def set_if_not_exists(self, key: str, default: Buffer) -> None:
-        with self.log():
-            return await self._store.set_if_not_exists(key=key, value=default)
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        # docstring inherited
+        with self.log(key):
+            return await self._store.set_if_not_exists(key=key, value=value)
 
     async def delete(self, key: str) -> None:
-        with self.log():
+        # docstring inherited
+        with self.log(key):
             return await self._store.delete(key=key)
 
     async def set_partial_values(
         self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
     ) -> None:
-        with self.log():
+        # docstring inherited
+        keys = ",".join([k[0] for k in key_start_values])
+        with self.log(keys):
             return await self._store.set_partial_values(key_start_values=key_start_values)
 
     async def list(self) -> AsyncGenerator[str, None]:
+        # docstring inherited
         with self.log():
             async for key in self._store.list():
                 yield key
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        with self.log():
+        # docstring inherited
+        with self.log(prefix):
             async for key in self._store.list_prefix(prefix=prefix):
                 yield key
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
-        with self.log():
+        # docstring inherited
+        with self.log(prefix):
             async for key in self._store.list_dir(prefix=prefix):
                 yield key
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
-        with self.log():
+        # docstring inherited
+        with self.log(mode):
             return type(self)(
                 self._store.with_mode(mode),
                 log_level=self.log_level,

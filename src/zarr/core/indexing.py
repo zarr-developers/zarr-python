@@ -732,7 +732,6 @@ class IntArrayDimIndexer:
         order = Order(order)
 
         if order == Order.INCREASING:
-            dim_sel = dim_sel
             dim_out_sel = None
         elif order == Order.DECREASING:
             dim_sel = dim_sel[::-1]
@@ -880,9 +879,7 @@ class OrthogonalIndexer(Indexer):
 
             dim_indexers.append(dim_indexer)
 
-        dim_indexers = dim_indexers
         shape = tuple(s.nitems for s in dim_indexers if not isinstance(s, IntDimIndexer))
-        chunk_shape = chunk_shape
         is_advanced = not is_basic_selection(selection)
         if is_advanced:
             drop_axes = tuple(
@@ -1017,7 +1014,6 @@ class BlockIndexer(Indexer):
             if start >= dim_len or start < 0:
                 raise BoundsCheckError(dim_len)
 
-        dim_indexers = dim_indexers
         shape = tuple(s.nitems for s in dim_indexers)
 
         object.__setattr__(self, "dim_indexers", dim_indexers)

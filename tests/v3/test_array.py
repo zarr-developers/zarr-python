@@ -1,13 +1,13 @@
 import pickle
 from itertools import accumulate
-from typing import Literal
+from typing import Any, Literal
 
 import numpy as np
 import pytest
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
-from zarr.codecs.bytes import BytesCodec
+from zarr.codecs import BytesCodec, VLenBytesCodec
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import JSON, ZarrFormat
@@ -15,8 +15,8 @@ from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.store import LocalStore, MemoryStore
-from zarr.store.common import StorePath
+from zarr.storage import LocalStore, MemoryStore
+from zarr.storage.common import StorePath
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -92,10 +92,9 @@ async def test_create_creates_parents(
     expected = [f"{part}/{file}" for file in files for part in parts]
 
     if zarr_format == 2:
-        expected.append("a/b/c/d/.zarray")
-        expected.append("a/b/c/d/.zattrs")
+        expected.extend([".zattrs", ".zgroup", "a/b/c/d/.zarray", "a/b/c/d/.zattrs"])
     else:
-        expected.append("a/b/c/d/zarr.json")
+        expected.extend(["zarr.json", "a/b/c/d/zarr.json"])
 
     expected = sorted(expected)
 
@@ -304,9 +303,9 @@ def test_storage_transformers(store: MemoryStore) -> None:
         Array.from_dict(StorePath(store), data=metadata_dict)
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
 @pytest.mark.parametrize("nchunks", [2, 5, 10])
-def test_nchunks(test_cls: type[Array] | type[AsyncArray], nchunks: int) -> None:
+def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) -> None:
     """
     Test that nchunks returns the number of chunks defined for the array.
     """
@@ -321,8 +320,8 @@ def test_nchunks(test_cls: type[Array] | type[AsyncArray], nchunks: int) -> None
     assert observed == expected
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
-def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray]) -> None:
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
+def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
     """
     Test that nchunks_initialized accurately returns the number of stored chunks.
     """
@@ -350,8 +349,8 @@ def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray]) -> None:
         assert observed == expected
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray])
-def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray]) -> None:
+@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
+def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
     """
     Test that chunks_initialized accurately returns the keys of stored chunks.
     """
@@ -371,3 +370,51 @@ def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray]) -> None:
 
         expected = sorted(keys)
         assert observed == expected
+
+
+def test_default_fill_values() -> None:
+    a = Array.create(MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="<U4")
+    assert a.fill_value == ""
+
+    b = Array.create(MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="<S4")
+    assert b.fill_value == b""
+
+    c = Array.create(MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="i")
+    assert c.fill_value == 0
+
+    d = Array.create(MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="f")
+    assert d.fill_value == 0.0
+
+
+def test_vlen_errors() -> None:
+    with pytest.raises(ValueError, match="At least one ArrayBytesCodec is required."):
+        Array.create(MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="<U4", codecs=[])
+
+    with pytest.raises(
+        ValueError,
+        match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
+    ):
+        Array.create(
+            MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="<U4", codecs=[BytesCodec()]
+        )
+
+    with pytest.raises(ValueError, match="Only one ArrayBytesCodec is allowed."):
+        Array.create(
+            MemoryStore({}, mode="w"),
+            shape=5,
+            chunk_shape=5,
+            dtype="<U4",
+            codecs=[BytesCodec(), VLenBytesCodec()],
+        )
+
+
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_update_attrs(zarr_format: int) -> None:
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
+    store = MemoryStore({}, mode="w")
+    arr = Array.create(store=store, shape=5, chunk_shape=5, dtype="f8", zarr_format=zarr_format)
+    arr.attrs["foo"] = "bar"
+    assert arr.attrs["foo"] == "bar"
+
+    arr2 = zarr.open_array(store=store, zarr_format=zarr_format)
+    assert arr2.attrs["foo"] == "bar"

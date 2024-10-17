@@ -12,8 +12,8 @@ from hypothesis import HealthCheck, Verbosity, settings
 from zarr import AsyncGroup, config
 from zarr.abc.store import Store
 from zarr.core.sync import sync
-from zarr.store import LocalStore, MemoryStore, StorePath, ZipStore
-from zarr.store.remote import RemoteStore
+from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
+from zarr.storage.remote import RemoteStore
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -138,7 +138,7 @@ def array_fixture(request: pytest.FixtureRequest) -> npt.NDArray[Any]:
     )
 
 
-@pytest.fixture(params=(2, 3))
+@pytest.fixture(params=(2, 3), ids=["zarr2", "zarr3"])
 def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
     if request.param == 2:
         return 2

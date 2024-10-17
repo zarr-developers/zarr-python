@@ -1,16 +1,30 @@
 import pathlib
 import warnings
+from typing import Literal
 
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
 import zarr
+import zarr.api.asynchronous
+import zarr.core.group
 from zarr import Array, Group
 from zarr.abc.store import Store
-from zarr.api.synchronous import create, group, load, open, open_group, save, save_array, save_group
+from zarr.api.synchronous import (
+    create,
+    group,
+    load,
+    open,
+    open_group,
+    save,
+    save_array,
+    save_group,
+)
 from zarr.core.common import ZarrFormat
-from zarr.store.memory import MemoryStore
+from zarr.errors import MetadataValidationError
+from zarr.storage._utils import normalize_path
+from zarr.storage.memory import MemoryStore
 
 
 def test_create_array(memory_store: Store) -> None:
@@ -34,6 +48,20 @@ def test_create_array(memory_store: Store) -> None:
     assert z.chunks == (40,)
 
 
+@pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
+@pytest.mark.parametrize("node_type", ["array", "group"])
+def test_open_normalized_path(
+    memory_store: MemoryStore, path: str, node_type: Literal["array", "group"]
+) -> None:
+    node: Group | Array
+    if node_type == "group":
+        node = group(store=memory_store, path=path)
+    elif node_type == "array":
+        node = create(store=memory_store, path=path, shape=(2,))
+
+    assert node.path == normalize_path(path)
+
+
 async def test_open_array(memory_store: MemoryStore) -> None:
     store = memory_store
 
@@ -43,8 +71,9 @@ async def test_open_array(memory_store: MemoryStore) -> None:
     assert z.shape == (100,)
 
     # open array, overwrite
-    store._store_dict = {}
-    z = open(store=store, shape=200, mode="w")  # mode="w"
+    # store._store_dict = {}
+    store = MemoryStore(mode="w")
+    z = open(store=store, shape=200)
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
@@ -920,3 +949,37 @@ def test_open_group_positional_args_deprecated() -> None:
     store = MemoryStore({}, mode="w")
     with pytest.warns(FutureWarning, match="pass"):
         open_group(store, "w")
+
+
+def test_open_falls_back_to_open_group() -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2309
+    store = MemoryStore(mode="w")
+    zarr.open_group(store, attributes={"key": "value"})
+
+    group = zarr.open(store)
+    assert isinstance(group, Group)
+    assert group.attrs == {"key": "value"}
+
+
+async def test_open_falls_back_to_open_group_async() -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2309
+    store = MemoryStore(mode="w")
+    await zarr.api.asynchronous.open_group(store, attributes={"key": "value"})
+
+    group = await zarr.api.asynchronous.open(store=store)
+    assert isinstance(group, zarr.core.group.AsyncGroup)
+    assert group.attrs == {"key": "value"}
+
+
+async def test_metadata_validation_error() -> None:
+    with pytest.raises(
+        MetadataValidationError,
+        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+    ):
+        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore[arg-type]
+
+    with pytest.raises(
+        MetadataValidationError,
+        match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
+    ):
+        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]

@@ -25,8 +25,8 @@ from zarr.core.indexing import (
     replace_ellipsis,
 )
 from zarr.registry import get_ndbuffer_class
-from zarr.store.common import StorePath
-from zarr.store.memory import MemoryStore
+from zarr.storage.common import StorePath
+from zarr.storage.memory import MemoryStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -683,7 +683,7 @@ def test_get_orthogonal_selection_2d(store: StorePath) -> None:
         with pytest.raises(IndexError):
             z.get_orthogonal_selection(selection_2d_bad)  # type: ignore[arg-type]
         with pytest.raises(IndexError):
-            z.oindex[selection_2d_bad]  #  type: ignore[index]
+            z.oindex[selection_2d_bad]  # type: ignore[index]
 
 
 def _test_get_orthogonal_selection_3d(
@@ -1769,7 +1769,6 @@ async def test_accessed_chunks(
     # chunks: chunk size
     # ops: list of tuples with (optype, tuple of slices)
     # optype = "__getitem__" or "__setitem__", tuple length must match number of dims
-    import itertools
 
     # Use a counting dict as the backing store so we can track the items access
     store = await CountingDict.open()
@@ -1838,8 +1837,8 @@ def test_indexing_equals_numpy(store: StorePath, selection: Selection) -> None:
     a = np.arange(10000, dtype=int).reshape(1000, 10)
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
     # note: in python 3.10 a[*selection] is not valid unpacking syntax
-    expected = a[(*selection,)]
-    actual = z[(*selection,)]
+    expected = a[*selection,]
+    actual = z[*selection,]
     assert_array_equal(expected, actual, err_msg=f"selection: {selection}")
 
 
@@ -1859,7 +1858,7 @@ def test_orthogonal_bool_indexing_like_numpy_ix(
     z = zarr_array_from_numpy_array(store, a, chunk_shape=(300, 3))
     expected = a[np.ix_(*selection)]
     # note: in python 3.10 z[*selection] is not valid unpacking syntax
-    actual = z[(*selection,)]
+    actual = z[*selection,]
     assert_array_equal(expected, actual, err_msg=f"{selection=}")
 
 

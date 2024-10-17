@@ -4,12 +4,13 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import AccessMode, ByteRangeRequest, Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
-from zarr.store.local import LocalStore
-from zarr.store.memory import MemoryStore
+from zarr.storage._utils import normalize_path
+from zarr.storage.local import LocalStore
+from zarr.storage.memory import MemoryStore
 
 # from zarr.store.remote import RemoteStore
 
@@ -27,37 +28,103 @@ def _dereference_path(root: str, path: str) -> str:
 
 
 class StorePath:
+    """
+    Path-like interface for a Store.
+
+    Parameters
+    ----------
+    store : Store
+        The store to use.
+    path : str
+        The path within the store.
+    """
+
     store: Store
     path: str
 
-    def __init__(self, store: Store, path: str | None = None) -> None:
+    def __init__(self, store: Store, path: str = "") -> None:
         self.store = store
-        self.path = path or ""
+        self.path = path
 
     async def get(
         self,
         prototype: BufferPrototype | None = None,
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
+        """
+        Read bytes from the store.
+
+        Parameters
+        ----------
+        prototype : BufferPrototype, optional
+            The buffer prototype to use when reading the bytes.
+        byte_range : ByteRangeRequest, optional
+            The range of bytes to read.
+
+        Returns
+        -------
+        buffer : Buffer or None
+            The read bytes, or None if the key does not exist.
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
     async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None:
+        """
+        Write bytes to the store.
+
+        Parameters
+        ----------
+        value : Buffer
+            The buffer to write.
+        byte_range : ByteRangeRequest, optional
+            The range of bytes to write. If None, the entire buffer is written.
+
+        Raises
+        ------
+        NotImplementedError
+            If `byte_range` is not None, because Store.set does not support partial writes yet.
+        """
         if byte_range is not None:
             raise NotImplementedError("Store.set does not have partial writes yet")
         await self.store.set(self.path, value)
 
     async def delete(self) -> None:
+        """
+        Delete the key from the store.
+
+        Raises
+        ------
+        NotImplementedError
+            If the store does not support deletion.
+        """
         await self.store.delete(self.path)
 
     async def set_if_not_exists(self, default: Buffer) -> None:
+        """
+        Store a key to ``value`` if the key is not already present.
+
+        Parameters
+        ----------
+        default : Buffer
+            The buffer to store if the key is not already present.
+        """
         await self.store.set_if_not_exists(self.path, default)
 
     async def exists(self) -> bool:
+        """
+        Check if the key exists in the store.
+
+        Returns
+        -------
+        bool
+            True if the key exists in the store, False otherwise.
+        """
         return await self.store.exists(self.path)
 
     def __truediv__(self, other: str) -> StorePath:
+        """combine this store path with another path"""
         return self.__class__(self.store, _dereference_path(self.path, other))
 
     def __str__(self) -> str:
@@ -67,6 +134,19 @@ class StorePath:
         return f"StorePath({self.store.__class__.__name__}, {str(self)!r})"
 
     def __eq__(self, other: object) -> bool:
+        """
+        Check if two StorePath objects are equal.
+
+        Returns
+        -------
+        bool
+            True if the two objects are equal, False otherwise.
+
+        Notes
+        -----
+        Two StorePath objects are considered equal if their stores are equal
+        and their paths are equal.
+        """
         try:
             return self.store == other.store and self.path == other.path  # type: ignore[attr-defined, no-any-return]
         except Exception:
@@ -80,42 +160,98 @@ StoreLike = Store | StorePath | Path | str | dict[str, Buffer]
 async def make_store_path(
     store_like: StoreLike | None,
     *,
+    path: str | None = "",
     mode: AccessModeLiteral | None = None,
     storage_options: dict[str, Any] | None = None,
 ) -> StorePath:
-    from zarr.store.remote import RemoteStore  # circular import
+    """
+    Convert a `StoreLike` object into a StorePath object.
+
+    This function takes a `StoreLike` object and returns a `StorePath` object.  The
+    `StoreLike` object can be a `Store`, `StorePath`, `Path`, `str`, or `dict[str, Buffer]`.
+    If the `StoreLike` object is a Store or `StorePath`, it is converted to a
+    `StorePath` object.  If the `StoreLike` object is a Path or str, it is converted
+    to a LocalStore object and then to a `StorePath` object.  If the `StoreLike`
+    object is a dict[str, Buffer], it is converted to a `MemoryStore` object and
+    then to a `StorePath` object.
+
+    If the `StoreLike` object is None, a `MemoryStore` object is created and
+    converted to a `StorePath` object.
+
+    If the `StoreLike` object is a str and starts with a protocol, it is
+    converted to a RemoteStore object and then to a `StorePath` object.
+
+    If the `StoreLike` object is a dict[str, Buffer] and the mode is not None,
+    the `MemoryStore` object is created with the given mode.
+
+    If the `StoreLike` object is a str and starts with a protocol, the
+    RemoteStore object is created with the given mode and storage options.
+
+    Parameters
+    ----------
+    store_like : StoreLike | None
+        The object to convert to a `StorePath` object.
+    path: str | None, optional
+        The path to use when creating the `StorePath` object.  If None, the
+        default path is the empty string.
+    mode : AccessModeLiteral | None, optional
+        The mode to use when creating the `StorePath` object.  If None, the
+        default mode is 'r'.
+    storage_options : dict[str, Any] | None, optional
+        The storage options to use when creating the `RemoteStore` object.  If
+        None, the default storage options are used.
+
+    Returns
+    -------
+    StorePath
+        The converted StorePath object.
+
+    Raises
+    ------
+    TypeError
+        If the StoreLike object is not one of the supported types.
+    """
+    from zarr.storage.remote import RemoteStore  # circular import
 
     used_storage_options = False
-
+    path_normalized = normalize_path(path)
     if isinstance(store_like, StorePath):
-        if mode is not None:
-            assert AccessMode.from_literal(mode) == store_like.store.mode
-        result = store_like
+        if mode is not None and mode != store_like.store.mode.str:
+            _store = store_like.store.with_mode(mode)
+            await _store._ensure_open()
+            store_like = StorePath(_store, path=store_like.path)
+        result = store_like / path_normalized
     elif isinstance(store_like, Store):
         if mode is not None and mode != store_like.mode.str:
             store_like = store_like.with_mode(mode)
         await store_like._ensure_open()
-        result = StorePath(store_like)
+        result = StorePath(store_like, path=path_normalized)
     elif store_like is None:
-        if mode is None:
-            mode = "w"  # exception to the default mode = 'r'
-        result = StorePath(await MemoryStore.open(mode=mode))
+        # mode = "w" is an exception to the default mode = 'r'
+        result = StorePath(await MemoryStore.open(mode=mode or "w"), path=path_normalized)
     elif isinstance(store_like, Path):
-        result = StorePath(await LocalStore.open(path=store_like, mode=mode or "r"))
+        result = StorePath(
+            await LocalStore.open(root=store_like, mode=mode or "r"), path=path_normalized
+        )
     elif isinstance(store_like, str):
         storage_options = storage_options or {}
 
         if _is_fsspec_uri(store_like):
             used_storage_options = True
             result = StorePath(
-                RemoteStore.from_url(store_like, storage_options=storage_options, mode=mode or "r")
+                RemoteStore.from_url(store_like, storage_options=storage_options, mode=mode or "r"),
+                path=path_normalized,
             )
         else:
-            result = StorePath(await LocalStore.open(path=store_like, mode=mode or "r"))
+            result = StorePath(
+                await LocalStore.open(root=Path(store_like), mode=mode or "r"), path=path_normalized
+            )
     elif isinstance(store_like, dict):
         # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
         # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
-        result = StorePath(await MemoryStore.open(store_dict=store_like, mode=mode))
+        result = StorePath(
+            await MemoryStore.open(store_dict=store_like, mode=mode or "r"), path=path_normalized
+        )
     else:
         msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
         raise TypeError(msg)

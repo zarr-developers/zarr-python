@@ -10,7 +10,7 @@ import pytest
 import zarr
 from zarr.abc.store import AccessMode
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
-from zarr.store.zip import ZipStore
+from zarr.storage.zip import ZipStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
@@ -29,7 +29,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
         return {"file_path": temp_path, "mode": "w", "path": ""}
 
-    def get(self, store: ZipStore, key: str) -> Buffer:
+    async def get(self, store: ZipStore, key: str) -> Buffer:
         return store._get(key, prototype=default_buffer_prototype())
 
     def set(self, store: ZipStore, key: str, value: Buffer) -> None:
@@ -100,3 +100,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def test_with_mode(self, store: ZipStore) -> None:
         with pytest.raises(NotImplementedError, match="new mode"):
             await super().test_with_mode(store)
+
+    @pytest.mark.parametrize("mode", ["a", "w"])
+    async def test_store_open_mode(self, store_kwargs: dict[str, Any], mode: str) -> None:
+        super().test_store_open_mode(store_kwargs, mode)

@@ -1,27 +1,31 @@
 from __future__ import annotations
 
+import contextlib
 import pickle
-from typing import TYPE_CHECKING, Any, Literal, cast
+import warnings
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pytest
 
 import zarr
 import zarr.api.asynchronous
+import zarr.api.synchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.common import JSON, ZarrFormat
-from zarr.core.group import GroupMetadata
+from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.store import LocalStore, MemoryStore, StorePath
-from zarr.store.common import make_store_path
+from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
+from zarr.storage.common import make_store_path
 
 from .conftest import parse_store
 
 if TYPE_CHECKING:
     from _pytest.compat import LEGACY_PATH
+
+    from zarr.core.common import JSON, ZarrFormat
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
@@ -40,14 +44,6 @@ def exists_ok(request: pytest.FixtureRequest) -> bool:
     return result
 
 
-@pytest.fixture(params=[2, 3], ids=["zarr2", "zarr3"])
-def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
-    result = request.param
-    if result not in (2, 3):
-        raise ValueError("Wrong value returned from test fixture.")
-    return cast(ZarrFormat, result)
-
-
 def test_group_init(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test that initializing a group from an asyncgroup works.
@@ -62,6 +58,19 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     await zarr.api.asynchronous.open_group(
         store=store, path="a", zarr_format=zarr_format, attributes={"key": "value"}
     )
+    objs = {x async for x in store.list()}
+    if zarr_format == 2:
+        assert objs == {".zgroup", ".zattrs", "a/.zgroup", "a/.zattrs"}
+    else:
+        assert objs == {"zarr.json", "a/zarr.json"}
+
+    # test that root group node was created
+    root = await zarr.api.asynchronous.open_group(
+        store=store,
+    )
+    agroup = await root.getitem("a")
+    assert agroup.attrs == {"key": "value"}
+
     # create a child node with a couple intermediates
     await zarr.api.asynchronous.open_group(store=store, path="a/b/c/d", zarr_format=zarr_format)
     parts = ["a", "a/b", "a/b/c"]
@@ -74,10 +83,9 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
     expected = [f"{part}/{file}" for file in files for part in parts]
 
     if zarr_format == 2:
-        expected.append("a/b/c/d/.zgroup")
-        expected.append("a/b/c/d/.zattrs")
+        expected.extend([".zgroup", ".zattrs", "a/b/c/d/.zgroup", "a/b/c/d/.zattrs"])
     else:
-        expected.append("a/b/c/d/zarr.json")
+        expected.extend(["zarr.json", "a/b/c/d/zarr.json"])
 
     expected = sorted(expected)
 
@@ -117,18 +125,23 @@ def test_group_name_properties(store: Store, zarr_format: ZarrFormat) -> None:
     assert bar.basename == "bar"
 
 
-def test_group_members(store: Store, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("consolidated_metadata", [True, False])
+def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metadata: bool) -> None:
     """
     Test that `Group.members` returns correct values, i.e. the arrays and groups
     (explicit and implicit) contained in that group.
     """
+    # group/
+    #   subgroup/
+    #     subsubgroup/
+    #       subsubsubgroup
+    #   subarray
 
     path = "group"
-    agroup = AsyncGroup(
-        metadata=GroupMetadata(zarr_format=zarr_format),
-        store_path=StorePath(store=store, path=path),
+    group = Group.from_store(
+        store=store,
+        zarr_format=zarr_format,
     )
-    group = Group(agroup)
     members_expected: dict[str, Array | Group] = {}
 
     members_expected["subgroup"] = group.create_group("subgroup")
@@ -144,7 +157,10 @@ def test_group_members(store: Store, zarr_format: ZarrFormat) -> None:
     # add an extra object to the domain of the group.
     # the list of children should ignore this object.
     sync(
-        store.set(f"{path}/extra_object-1", default_buffer_prototype().buffer.from_bytes(b"000000"))
+        store.set(
+            f"{path}/extra_object-1",
+            default_buffer_prototype().buffer.from_bytes(b"000000"),
+        )
     )
     # add an extra object under a directory-like prefix in the domain of the group.
     # this creates a directory with a random key in it
@@ -155,18 +171,34 @@ def test_group_members(store: Store, zarr_format: ZarrFormat) -> None:
             default_buffer_prototype().buffer.from_bytes(b"000000"),
         )
     )
-    members_observed = group.members()
+
+    # this warning shows up when extra objects show up in the hierarchy
+    warn_context = pytest.warns(
+        UserWarning, match=r"Object at .* is not recognized as a component of a Zarr hierarchy."
+    )
+    if consolidated_metadata:
+        with warn_context:
+            zarr.consolidate_metadata(store=store, zarr_format=zarr_format)
+        # now that we've consolidated the store, we shouldn't get the warnings from the unrecognized objects anymore
+        # we use a nullcontext to handle these cases
+        warn_context = contextlib.nullcontext()
+        group = zarr.open_consolidated(store=store, zarr_format=zarr_format)
+
+    with warn_context:
+        members_observed = group.members()
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
     # partial
-    members_observed = group.members(max_depth=1)
+    with warn_context:
+        members_observed = group.members(max_depth=1)
     members_expected["subgroup/subsubgroup"] = subsubgroup
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
 
     # total
-    members_observed = group.members(max_depth=None)
+    with warn_context:
+        members_observed = group.members(max_depth=None)
     members_expected["subgroup/subsubgroup/subsubsubgroup"] = subsubsubgroup
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
@@ -230,9 +262,7 @@ def test_group_create(store: Store, exists_ok: bool, zarr_format: ZarrFormat) ->
 
     if not exists_ok:
         with pytest.raises(ContainsGroupError):
-            group = Group.from_store(
-                store, attributes=attributes, exists_ok=exists_ok, zarr_format=zarr_format
-            )
+            _ = Group.from_store(store, exists_ok=exists_ok, zarr_format=zarr_format)
 
 
 def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> None:
@@ -267,7 +297,8 @@ def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> N
         assert group_created_again.store_path == spath
 
 
-def test_group_getitem(store: Store, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("consolidated", [True, False])
+def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool) -> None:
     """
     Test the `Group.__getitem__` method.
     """
@@ -276,13 +307,39 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat) -> None:
     subgroup = group.create_group(name="subgroup")
     subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
 
+    if consolidated:
+        group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
+        object.__setattr__(
+            subgroup.metadata, "consolidated_metadata", ConsolidatedMetadata(metadata={})
+        )
+
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
     with pytest.raises(KeyError):
         group["nope"]
 
 
-def test_group_delitem(store: Store, zarr_format: ZarrFormat) -> None:
+def test_group_get_with_default(store: Store, zarr_format: ZarrFormat) -> None:
+    group = Group.from_store(store, zarr_format=zarr_format)
+
+    # default behavior
+    result = group.get("subgroup")
+    assert result is None
+
+    # custom default
+    result = group.get("subgroup", 8)
+    assert result == 8
+
+    # now with a group
+    subgroup = group.require_group("subgroup")
+    subgroup.attrs["foo"] = "bar"
+
+    result = group.get("subgroup", 8)
+    assert result.attrs["foo"] == "bar"
+
+
+@pytest.mark.parametrize("consolidated", [True, False])
+def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool) -> None:
     """
     Test the `Group.__delitem__` method.
     """
@@ -292,6 +349,12 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat) -> None:
     group = Group.from_store(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
     subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+
+    if consolidated:
+        group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
+        object.__setattr__(
+            subgroup.metadata, "consolidated_metadata", ConsolidatedMetadata(metadata={})
+        )
 
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
@@ -311,8 +374,7 @@ def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
     """
 
     group = Group.from_store(store, zarr_format=zarr_format)
-    with pytest.raises(NotImplementedError):
-        list(group)
+    assert list(group) == []
 
 
 def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
@@ -321,8 +383,7 @@ def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
     """
 
     group = Group.from_store(store, zarr_format=zarr_format)
-    with pytest.raises(NotImplementedError):
-        len(group)
+    assert len(group) == 0
 
 
 def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
@@ -344,7 +405,8 @@ def test_group_contains(store: Store, zarr_format: ZarrFormat) -> None:
     assert "foo" in group
 
 
-def test_group_child_iterators(store: Store, zarr_format: ZarrFormat):
+@pytest.mark.parametrize("consolidate", [True, False])
+def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidate: bool):
     group = Group.from_store(store, zarr_format=zarr_format)
     expected_group_keys = ["g0", "g1"]
     expected_group_values = [group.create_group(name=name) for name in expected_group_keys]
@@ -358,6 +420,86 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat):
         group.create_array(name=name, shape=(1,)) for name in expected_array_keys
     ]
     expected_arrays = list(zip(expected_array_keys, expected_array_values, strict=False))
+    fill_value: float | None
+    if zarr_format == 2:
+        fill_value = None
+    else:
+        fill_value = np.float64(0.0)
+
+    if consolidate:
+        group = zarr.consolidate_metadata(store)
+        if zarr_format == 2:
+            metadata = {
+                "subarray": {
+                    "attributes": {},
+                    "dtype": "float64",
+                    "fill_value": fill_value,
+                    "shape": (1,),
+                    "chunks": (1,),
+                    "order": "C",
+                    "zarr_format": zarr_format,
+                },
+                "subgroup": {
+                    "attributes": {},
+                    "consolidated_metadata": {
+                        "metadata": {},
+                        "kind": "inline",
+                        "must_understand": False,
+                    },
+                    "node_type": "group",
+                    "zarr_format": zarr_format,
+                },
+            }
+        else:
+            metadata = {
+                "subarray": {
+                    "attributes": {},
+                    "chunk_grid": {
+                        "configuration": {"chunk_shape": (1,)},
+                        "name": "regular",
+                    },
+                    "chunk_key_encoding": {
+                        "configuration": {"separator": "/"},
+                        "name": "default",
+                    },
+                    "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
+                    "data_type": "float64",
+                    "fill_value": fill_value,
+                    "node_type": "array",
+                    "shape": (1,),
+                    "zarr_format": zarr_format,
+                },
+                "subgroup": {
+                    "attributes": {},
+                    "consolidated_metadata": {
+                        "metadata": {},
+                        "kind": "inline",
+                        "must_understand": False,
+                    },
+                    "node_type": "group",
+                    "zarr_format": zarr_format,
+                },
+            }
+
+        object.__setattr__(
+            expected_group_values[0].metadata,
+            "consolidated_metadata",
+            ConsolidatedMetadata.from_dict(
+                {
+                    "kind": "inline",
+                    "metadata": metadata,
+                    "must_understand": False,
+                }
+            ),
+        )
+        object.__setattr__(
+            expected_group_values[1].metadata,
+            "consolidated_metadata",
+            ConsolidatedMetadata(metadata={}),
+        )
+
+    result = sorted(group.groups(), key=lambda x: x[0])
+    assert result == expected_groups
 
     assert sorted(group.groups(), key=lambda x: x[0]) == expected_groups
     assert sorted(group.group_keys()) == expected_group_keys
@@ -438,8 +580,9 @@ def test_group_array_creation(
     assert empty_array.fill_value == 0
     assert empty_array.shape == shape
     assert empty_array.store_path.store == store
+    assert empty_array.store_path.path == "empty"
 
-    empty_like_array = group.empty_like(name="empty_like", prototype=empty_array)
+    empty_like_array = group.empty_like(name="empty_like", data=empty_array)
     assert isinstance(empty_like_array, Array)
     assert empty_like_array.fill_value == 0
     assert empty_like_array.shape == shape
@@ -451,7 +594,7 @@ def test_group_array_creation(
     assert empty_array_bool.shape == shape
     assert empty_array_bool.store_path.store == store
 
-    empty_like_array_bool = group.empty_like(name="empty_like_bool", prototype=empty_array_bool)
+    empty_like_array_bool = group.empty_like(name="empty_like_bool", data=empty_array_bool)
     assert isinstance(empty_like_array_bool, Array)
     assert not empty_like_array_bool.fill_value
     assert empty_like_array_bool.shape == shape
@@ -463,7 +606,7 @@ def test_group_array_creation(
     assert zeros_array.shape == shape
     assert zeros_array.store_path.store == store
 
-    zeros_like_array = group.zeros_like(name="zeros_like", prototype=zeros_array)
+    zeros_like_array = group.zeros_like(name="zeros_like", data=zeros_array)
     assert isinstance(zeros_like_array, Array)
     assert zeros_like_array.fill_value == 0
     assert zeros_like_array.shape == shape
@@ -475,7 +618,7 @@ def test_group_array_creation(
     assert ones_array.shape == shape
     assert ones_array.store_path.store == store
 
-    ones_like_array = group.ones_like(name="ones_like", prototype=ones_array)
+    ones_like_array = group.ones_like(name="ones_like", data=ones_array)
     assert isinstance(ones_like_array, Array)
     assert ones_like_array.fill_value == 1
     assert ones_like_array.shape == shape
@@ -487,7 +630,7 @@ def test_group_array_creation(
     assert full_array.shape == shape
     assert full_array.store_path.store == store
 
-    full_like_array = group.full_like(name="full_like", prototype=full_array, fill_value=43)
+    full_like_array = group.full_like(name="full_like", data=full_array, fill_value=43)
     assert isinstance(full_like_array, Array)
     assert full_like_array.fill_value == 43
     assert full_like_array.shape == shape
@@ -691,7 +834,11 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
     agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     array_name = "sub_array"
     _ = await agroup.create_array(
-        name=array_name, shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
+        name=array_name,
+        shape=(10,),
+        dtype="uint8",
+        chunk_shape=(2,),
+        attributes={"foo": 100},
     )
     await agroup.delitem(array_name)
 
@@ -802,14 +949,13 @@ def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> 
     expected = Group.from_store(store=store, attributes={"foo": 999}, zarr_format=zarr_format)
     p = pickle.dumps(expected)
     actual = pickle.loads(p)
-
     assert actual == expected
 
 
-async def test_group_members_async(store: LocalStore | MemoryStore) -> None:
-    group = AsyncGroup(
-        GroupMetadata(),
-        store_path=StorePath(store=store, path="root"),
+@pytest.mark.parametrize("consolidated_metadata", [True, False])
+async def test_group_members_async(store: Store, consolidated_metadata: bool) -> None:
+    group = await AsyncGroup.from_store(
+        store=store,
     )
     a0 = await group.create_array("a0", shape=(1,))
     g0 = await group.create_group("g0")
@@ -851,6 +997,10 @@ async def test_group_members_async(store: LocalStore | MemoryStore) -> None:
         ("g0/g1/g2", g2),
     ]
     assert all_children == expected
+
+    if consolidated_metadata:
+        await zarr.api.asynchronous.consolidate_metadata(store=store)
+        group = await zarr.api.asynchronous.open_group(store=store)
 
     nmembers = await group.nmembers(max_depth=None)
     assert nmembers == 6
@@ -908,7 +1058,7 @@ async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: Zarr
     assert no_group == ()
 
 
-async def test_create_dataset(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     with pytest.warns(DeprecationWarning):
         foo = await root.create_dataset("foo", shape=(10,), dtype="uint8")
@@ -922,7 +1072,7 @@ async def test_create_dataset(store: LocalStore | MemoryStore, zarr_format: Zarr
         await root.create_dataset("bar", shape=(100,), dtype="int8")
 
 
-async def test_require_array(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     foo1 = await root.require_array("foo", shape=(10,), dtype="i8", attributes={"foo": 101})
     assert foo1.attrs == {"foo": 101}
@@ -947,6 +1097,31 @@ async def test_require_array(store: LocalStore | MemoryStore, zarr_format: ZarrF
         await root.require_array("bar", shape=(10,), dtype="int8")
 
 
+@pytest.mark.parametrize("consolidate", [True, False])
+async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFormat):
+    group = Group.from_store(store=store, zarr_format=zarr_format)
+    a = group.create_group(name="a")
+    a.create_array("array", shape=(1,))
+    b = a.create_group(name="b")
+    b.create_array("array", shape=(1,))
+
+    if consolidate:
+        group = zarr.api.synchronous.consolidate_metadata(store)
+
+    result = group["a"]["b"]
+    assert result.name == "/a/b"
+
+    paths = sorted(x.name for _, x in group.members(max_depth=None))
+    expected = ["/a", "/a/array", "/a/b", "/a/b/array"]
+    assert paths == expected
+
+    # regression test for https://github.com/zarr-developers/zarr-python/pull/2356
+    g = zarr.open_group(store, use_consolidated=False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert list(g)
+
+
 async def test_open_mutable_mapping():
     group = await zarr.api.asynchronous.open_group(store={}, mode="w")
     assert isinstance(group.store_path.store, MemoryStore)
@@ -955,3 +1130,152 @@ async def test_open_mutable_mapping():
 def test_open_mutable_mapping_sync():
     group = zarr.open_group(store={}, mode="w")
     assert isinstance(group.store_path.store, MemoryStore)
+
+
+class TestConsolidated:
+    async def test_group_getitem_consolidated(self, store: Store) -> None:
+        root = await AsyncGroup.from_store(store=store)
+        # Set up the test structure with
+        # /
+        #  g0/      # group /g0
+        #    g1/    # group /g0/g1
+        #      g2/  # group /g0/g1/g2
+        #  x1/      # group /x0
+        #    x2/    # group /x0/x1
+        #      x3/  # group /x0/x1/x2
+
+        g0 = await root.create_group("g0")
+        g1 = await g0.create_group("g1")
+        await g1.create_group("g2")
+
+        x0 = await root.create_group("x0")
+        x1 = await x0.create_group("x1")
+        await x1.create_group("x2")
+
+        await zarr.api.asynchronous.consolidate_metadata(store)
+
+        # On disk, we've consolidated all the metadata in the root zarr.json
+        group = await zarr.api.asynchronous.open(store=store)
+        rg0 = await group.getitem("g0")
+
+        expected = ConsolidatedMetadata(
+            metadata={
+                "g1": GroupMetadata(
+                    attributes={},
+                    zarr_format=3,
+                    consolidated_metadata=ConsolidatedMetadata(
+                        metadata={
+                            "g2": GroupMetadata(
+                                attributes={},
+                                zarr_format=3,
+                                consolidated_metadata=ConsolidatedMetadata(metadata={}),
+                            )
+                        }
+                    ),
+                ),
+            }
+        )
+        assert rg0.metadata.consolidated_metadata == expected
+
+        rg1 = await rg0.getitem("g1")
+        assert rg1.metadata.consolidated_metadata == expected.metadata["g1"].consolidated_metadata
+
+        rg2 = await rg1.getitem("g2")
+        assert rg2.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
+
+    async def test_group_delitem_consolidated(self, store: Store) -> None:
+        if isinstance(store, ZipStore):
+            raise pytest.skip("Not implemented")
+
+        root = await AsyncGroup.from_store(store=store)
+        # Set up the test structure with
+        # /
+        #  g0/         # group /g0
+        #    g1/       # group /g0/g1
+        #      g2/     # group /g0/g1/g2
+        #        data  # array
+        #  x1/         # group /x0
+        #    x2/       # group /x0/x1
+        #      x3/     # group /x0/x1/x2
+        #        data  # array
+
+        g0 = await root.create_group("g0")
+        g1 = await g0.create_group("g1")
+        g2 = await g1.create_group("g2")
+        await g2.create_array("data", shape=(1,))
+
+        x0 = await root.create_group("x0")
+        x1 = await x0.create_group("x1")
+        x2 = await x1.create_group("x2")
+        await x2.create_array("data", shape=(1,))
+
+        await zarr.api.asynchronous.consolidate_metadata(store)
+
+        group = await zarr.api.asynchronous.open_consolidated(store=store)
+        assert len(group.metadata.consolidated_metadata.metadata) == 2
+        assert "g0" in group.metadata.consolidated_metadata.metadata
+
+        await group.delitem("g0")
+        assert len(group.metadata.consolidated_metadata.metadata) == 1
+        assert "g0" not in group.metadata.consolidated_metadata.metadata
+
+    def test_open_consolidated_raises(self, store: Store) -> None:
+        if isinstance(store, ZipStore):
+            raise pytest.skip("Not implemented")
+
+        root = Group.from_store(store=store)
+
+        # fine to be missing by default
+        zarr.open_group(store=store)
+
+        with pytest.raises(ValueError, match="Consolidated metadata requested."):
+            zarr.open_group(store=store, use_consolidated=True)
+
+        # Now create consolidated metadata...
+        root.create_group("g0")
+        zarr.consolidate_metadata(store)
+
+        # and explicitly ignore it.
+        group = zarr.open_group(store=store, use_consolidated=False)
+        assert group.metadata.consolidated_metadata is None
+
+    async def test_open_consolidated_raises_async(self, store: Store) -> None:
+        if isinstance(store, ZipStore):
+            raise pytest.skip("Not implemented")
+
+        root = await AsyncGroup.from_store(store=store)
+
+        # fine to be missing by default
+        await zarr.api.asynchronous.open_group(store=store)
+
+        with pytest.raises(ValueError, match="Consolidated metadata requested."):
+            await zarr.api.asynchronous.open_group(store=store, use_consolidated=True)
+
+        # Now create consolidated metadata...
+        await root.create_group("g0")
+        await zarr.api.asynchronous.consolidate_metadata(store)
+
+        # and explicitly ignore it.
+        group = await zarr.api.asynchronous.open_group(store=store, use_consolidated=False)
+        assert group.metadata.consolidated_metadata is None
+
+
+class TestGroupMetadata:
+    def test_from_dict_extra_fields(self):
+        data = {
+            "attributes": {"key": "value"},
+            "_nczarr_superblock": {"version": "2.0.0"},
+            "zarr_format": 2,
+        }
+        result = GroupMetadata.from_dict(data)
+        expected = GroupMetadata(attributes={"key": "value"}, zarr_format=2)
+        assert result == expected
+
+
+def test_update_attrs() -> None:
+    # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
+    root = Group.from_store(
+        MemoryStore({}, mode="w"),
+    )
+    root.attrs["foo"] = "bar"
+    assert root.attrs["foo"] == "bar"

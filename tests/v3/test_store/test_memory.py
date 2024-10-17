@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from zarr.core.buffer import Buffer, cpu, gpu
-from zarr.store.memory import GpuMemoryStore, MemoryStore
+from zarr.storage.memory import GpuMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
 
@@ -52,10 +52,10 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
     store_cls = GpuMemoryStore
     buffer_cls = gpu.Buffer
 
-    def set(self, store: GpuMemoryStore, key: str, value: Buffer) -> None:
+    async def set(self, store: GpuMemoryStore, key: str, value: Buffer) -> None:
         store._store_dict[key] = value
 
-    def get(self, store: MemoryStore, key: str) -> Buffer:
+    async def get(self, store: MemoryStore, key: str) -> Buffer:
         return store._store_dict[key]
 
     @pytest.fixture(params=[None, True])

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import io
 import os
 import shutil
@@ -8,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
-from zarr.core.common import concurrent_map, to_thread
+from zarr.core.common import concurrent_map
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
@@ -81,6 +82,25 @@ def _put(
 
 
 class LocalStore(Store):
+    """
+    Local file system store.
+
+    Parameters
+    ----------
+    root : str or Path
+        Directory to use as root of store.
+    mode : str
+        Mode in which to open the store. Either 'r', 'r+', 'a', 'w', 'w-'.
+
+    Attributes
+    ----------
+    supports_writes
+    supports_deletes
+    supports_partial_writes
+    supports_listing
+    root
+    """
+
     supports_writes: bool = True
     supports_deletes: bool = True
     supports_partial_writes: bool = True
@@ -89,12 +109,19 @@ class LocalStore(Store):
     def __init__(self, path: Path | str, *, mode: AccessModeLiteral = "r") -> None:
         super().__init__(mode=mode, path=str(path))
 
+    async def _open(self) -> None:
+        if not self.mode.readonly:
+            Path(self.path).mkdir(parents=True, exist_ok=True)
+        return await super()._open()
+
     async def clear(self) -> None:
+        # docstring inherited
         self._check_writable()
         shutil.rmtree(self.path)
         os.mkdir(self.path)
 
     async def empty(self) -> bool:
+        # docstring inherited
         try:
             with os.scandir(self.path) as it:
                 for entry in it:
@@ -107,6 +134,7 @@ class LocalStore(Store):
             return True
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
+        # docstring inherited
         return type(self)(path=self.path, mode=mode)
 
     def __str__(self) -> str:
@@ -124,13 +152,14 @@ class LocalStore(Store):
         prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
+        # docstring inherited
         if not self._is_open:
             await self._open()
 
         path = os.path.join(self.path, key)
 
         try:
-            return await to_thread(_get, path, prototype, byte_range)
+            return await asyncio.to_thread(_get, path, prototype, byte_range)
         except (FileNotFoundError, IsADirectoryError, NotADirectoryError):
             return None
 
@@ -139,28 +168,20 @@ class LocalStore(Store):
         prototype: BufferPrototype,
         key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
-        """
-        Read byte ranges from multiple keys.
-
-        Parameters
-        ----------
-        key_ranges: List[Tuple[str, Tuple[int, int]]]
-            A list of (key, (start, length)) tuples. The first element of the tuple is the name of
-            the key in storage to fetch bytes from. The second element the tuple defines the byte
-            range to retrieve. These values are arguments to `get`, as this method wraps
-            concurrent invocation of `get`.
-        """
+        # docstring inherited
         args = []
         for key, byte_range in key_ranges:
             assert isinstance(key, str)
             path = os.path.join(self.path, key)
             args.append((_get, path, prototype, byte_range))
-        return await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
+        return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
 
     async def set(self, key: str, value: Buffer) -> None:
+        # docstring inherited
         return await self._set(key, value)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        # docstring inherited
         try:
             return await self._set(key, value, exclusive=True)
         except FileExistsError:
@@ -174,30 +195,33 @@ class LocalStore(Store):
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
         path = Path(self.path) / key
-        await to_thread(_put, path, value, exclusive=exclusive)
+        await asyncio.to_thread(_put, path, value, start=None, exclusive=exclusive)
 
     async def set_partial_values(
         self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
     ) -> None:
+        # docstring inherited
         self._check_writable()
         args = []
         for key, start, value in key_start_values:
             assert isinstance(key, str)
             path = os.path.join(self.path, key)
             args.append((_put, path, value, start))
-        await concurrent_map(args, to_thread, limit=None)  # TODO: fix limit
+        await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
 
     async def delete(self, key: str) -> None:
+        # docstring inherited
         self._check_writable()
         path = Path(self.path) / key
         if path.is_dir():  # TODO: support deleting directories? shutil.rmtree?
             shutil.rmtree(path)
         else:
-            await to_thread(path.unlink, True)  # Q: we may want to raise if path is missing
+            await asyncio.to_thread(path.unlink, True)  # Q: we may want to raise if path is missing
 
     async def exists(self, key: str) -> bool:
+        # docstring inherited
         path = Path(self.path) / key
-        return await to_thread(path.is_file)
+        return await asyncio.to_thread(path.is_file)
 
     async def list(self) -> AsyncGenerator[str, None]:
         """Retrieve all keys in the store.
@@ -213,37 +237,14 @@ class LocalStore(Store):
                 yield str(p.relative_to(to_strip))
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        """
-        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
-        common leading prefix removed.
-
-        Parameters
-        ----------
-        prefix : str
-
-        Returns
-        -------
-        AsyncGenerator[str, None]
-        """
+        # docstring inherited
         to_strip = os.path.join(self.path, prefix)
         for p in (Path(self.path) / prefix).rglob("*"):
             if p.is_file():
                 yield str(p.relative_to(to_strip))
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
-        """
-        Retrieve all keys and prefixes with a given prefix and which do not contain the character
-        “/” after the given prefix.
-
-        Parameters
-        ----------
-        prefix : str
-
-        Returns
-        -------
-        AsyncGenerator[str, None]
-        """
-
+        # docstring inherited
         base = os.path.join(self.path, prefix)
         to_strip = str(base) + "/"
 

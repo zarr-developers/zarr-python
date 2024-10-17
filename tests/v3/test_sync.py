@@ -5,8 +5,16 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 import zarr
-from zarr.core.sync import SyncError, SyncMixin, _get_lock, _get_loop, sync
-from zarr.store.memory import MemoryStore
+from zarr.core.sync import (
+    SyncError,
+    SyncMixin,
+    _get_executor,
+    _get_lock,
+    _get_loop,
+    cleanup_resources,
+    sync,
+)
+from zarr.storage.memory import MemoryStore
 
 
 @pytest.fixture(params=[True, False])
@@ -15,6 +23,14 @@ def sync_loop(request: pytest.FixtureRequest) -> asyncio.AbstractEventLoop | Non
         return _get_loop()
     else:
         return None
+
+
+@pytest.fixture
+def clean_state():
+    # use this fixture to make sure no existing threads/loops exist in zarr.core.sync
+    cleanup_resources()
+    yield
+    cleanup_resources()
 
 
 def test_get_loop() -> None:
@@ -129,3 +145,17 @@ def test_open_positional_args_deprecate():
     store = MemoryStore({}, mode="w")
     with pytest.warns(FutureWarning, match="pass"):
         zarr.open(store, "w", shape=(1,))
+
+
+@pytest.mark.parametrize("workers", [None, 1, 2])  #
+def test_get_executor(clean_state, workers) -> None:
+    with zarr.config.set({"threading.max_workers": workers}):
+        e = _get_executor()
+        if workers is not None and workers != 0:
+            assert e._max_workers == workers
+
+
+def test_cleanup_resources_idempotent() -> None:
+    _get_executor()  # trigger resource creation (iothread, loop, thread-pool)
+    cleanup_resources()
+    cleanup_resources()
