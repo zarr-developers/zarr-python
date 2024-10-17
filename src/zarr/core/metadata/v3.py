@@ -77,10 +77,7 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
     """Check that the codecs are valid for the given dtype"""
 
     # ensure that we have at least one ArrayBytesCodec
-    abcs: list[ArrayBytesCodec] = []
-    for codec in codecs:
-        if isinstance(codec, ArrayBytesCodec):
-            abcs.append(codec)
+    abcs: list[ArrayBytesCodec] = [codec for codec in codecs if isinstance(codec, ArrayBytesCodec)]
     if len(abcs) == 0:
         raise ValueError("At least one ArrayBytesCodec is required.")
     elif len(abcs) > 1:
