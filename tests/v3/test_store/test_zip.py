@@ -30,7 +30,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         return {"file_path": temp_path, "mode": "w", "path": ""}
 
     async def get(self, store: ZipStore, key: str) -> Buffer:
-        return store._get(key, prototype=default_buffer_prototype())
+        return store._get(store.resolve_key(key), prototype=default_buffer_prototype())
 
     async def set(self, store: ZipStore, key: str, value: Buffer) -> None:
         return store._set(store.resolve_key(key), value)

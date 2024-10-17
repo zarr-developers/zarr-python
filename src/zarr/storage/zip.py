@@ -153,8 +153,9 @@ class ZipStore(Store):
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
+        # assume the key has already been made absolute
         try:
-            with self._zf.open(self.resolve_key(key)) as f:  # will raise KeyError
+            with self._zf.open(key) as f:  # will raise KeyError
                 if byte_range is None:
                     return prototype.buffer.from_bytes(f.read())
                 start, length = byte_range
