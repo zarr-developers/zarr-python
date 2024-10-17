@@ -71,9 +71,9 @@ async def test_make_store_path_invalid() -> None:
 
 
 async def test_make_store_path_fsspec(monkeypatch) -> None:
-    fsspec = pytest.importorskip("fsspec")
+    memory = pytest.importorskip("fsspec.implementations.memory")
 
-    monkeypatch.setattr(fsspec.implementations.memory.MemoryFileSystem, "async_impl", True)
+    monkeypatch.setattr(memory.MemoryFileSystem, "async_impl", True)
     store_path = await make_store_path("memory://")
     assert isinstance(store_path.store, RemoteStore)
 
