@@ -825,7 +825,8 @@ class AsyncGroup:
             read_only=self.store_path.store.mode.readonly,
             store_type=type(self.store_path.store).__name__,
             zarr_format=self.metadata.zarr_format,
-            **kwargs,
+            # maybe do a typeddict
+            **kwargs,  # type: ignore[arg-type]
         )
 
     @property

@@ -1148,26 +1148,38 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @property
     def info(self) -> ArrayInfo:
-        kwargs = {}
+        return self._info()
+
+    async def info_complete(self) -> ArrayInfo:
+        # do the I/O to get the extra
+        extra: dict[str, int] = {}
+        return self._info(extra=extra)
+
+    def _info(self, extra: dict[str, int] | None = None) -> ArrayInfo:
+        kwargs: dict[str, Any] = {}
         if self.metadata.zarr_format == 2:
-            kwargs["compressor"] = self.metadata.compressor
-            kwargs["filters"] = self.metadata.filters
+            assert isinstance(self.metadata, ArrayV2Metadata)
+            if self.metadata.compressor is not None:
+                kwargs["compressor"] = str(self.metadata.compressor)
+            if self.metadata.filters is not None:
+                kwargs["filters"] = str(self.metadata.filters)
+            kwargs["data_type"] = str(self.metadata.dtype)
+            kwargs["chunks"] = self.metadata.chunks
         else:
-            kwargs["codecs"] = self.metadata.codecs
+            kwargs["codecs"] = str(self.metadata.codecs)
+            kwargs["data_type"] = str(self.metadata.data_type)
+            # just regular?
+            if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
+                kwargs["chunks"] = self.metadata.chunk_grid.chunk_shape
 
         return ArrayInfo(
             zarr_format=self.metadata.zarr_format,
-            data_type=self.metadata.data_type,
             shape=self.shape,
-            chunk_shape=self.metadata.chunk_grid.chunk_shape,
             order=self.order,
             read_only=self.store_path.store.mode.readonly,
             store_type=type(self.store_path.store).__name__,
-            **kwargs
+            **kwargs,
         )
-
-    async def info_full(self) -> None:
-        return ArrayInfo()
 
 
 @dataclass(frozen=True)
@@ -2844,7 +2856,7 @@ class Array:
         return self._async_array.info
 
     def info_complete(self) -> ArrayInfo:
-        return sync(self._async_array.info_complete)
+        return sync(self._async_array.info_complete())
 
 
 def nchunks_initialized(

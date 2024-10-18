@@ -57,7 +57,7 @@ def human_readable_size(size: int) -> str:
 
 def byte_info(size: int) -> str:
     if size < 2**10:
-        return size
+        return str(size)
     else:
         return f"{size} ({human_readable_size(size)})"
 
@@ -67,8 +67,8 @@ class ArrayInfo:
     type: Literal["Array"] = "Array"
     zarr_format: Literal[2, 3]
     data_type: str
-    shape: tuple[int,]
-    chunk_shape: tuple[int,]
+    shape: tuple[int, ...]
+    chunk_shape: tuple[int, ...] | None = None
     order: Literal["C", "F"]
     read_only: bool
     store_type: str
@@ -91,6 +91,9 @@ class ArrayInfo:
         Store type         : {store_type}""")
 
         kwargs = dataclasses.asdict(self)
+        if self.chunk_shape is None:
+            # for non-regular chunk grids
+            kwargs["chunk_shape"] = "<variable>"
         if self.compressor is not None:
             template += "\nCompressor         : {compressor}"
 

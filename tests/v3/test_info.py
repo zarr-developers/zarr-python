@@ -1,11 +1,9 @@
 import textwrap
-from typing import Literal
 
 import pytest
 
-from zarr.core.common import ZarrFormat
 from zarr._info import ArrayInfo, GroupInfo
-
+from zarr.core.common import ZarrFormat
 
 ZARR_FORMATS = [2, 3]
 
@@ -48,7 +46,7 @@ def test_group_info_complete(zarr_format: ZarrFormat) -> None:
 
 
 @pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
-def test_array_info(zarr_format: ZarrFormat):
+def test_array_info(zarr_format: ZarrFormat) -> None:
     info = ArrayInfo(
         zarr_format=zarr_format,
         data_type="int32",
@@ -73,10 +71,10 @@ def test_array_info(zarr_format: ZarrFormat):
 
 
 @pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
-@pytest.mark.parametrize("bytes_things", [(1_000_000, "976.6K", 500_000, "5", "2.0", 5)])
+@pytest.mark.parametrize("bytes_things", [(1_000_000, "976.6K", 500_000, "500000", "2.0", 5)])
 def test_array_info_complete(
     zarr_format: ZarrFormat, bytes_things: tuple[int, str, int, str, str, int]
-):
+) -> None:
     (
         count_bytes,
         count_bytes_formatted,
@@ -109,7 +107,7 @@ def test_array_info_complete(
         Read-only          : True
         Store type         : MemoryStore
         Codecs             : ["BytesCodec(endian=<Endian.little: 'little'>"]
-        No. bytes          : 1000000 (976.6K)
-        No. bytes stored   : 500000
-        Storage ratio      : 2.0
+        No. bytes          : {count_bytes} ({count_bytes_formatted})
+        No. bytes stored   : {count_bytes_stored_formatted}
+        Storage ratio      : {storage_ratio_formatted}
         Chunks Initialized : 5""")
