@@ -626,13 +626,24 @@ class TestArray:
     def expected(self):
         # tests for array without path will not be run for v3 stores
         assert self.version == 2
-        return [
-            "063b02ff8d9d3bab6da932ad5828b506ef0a6578",
-            "f97b84dc9ffac807415f750100108764e837bb82",
-            "c7190ad2bea1e9d2e73eaa2d3ca9187be1ead261",
-            "14470724dca6c1837edddedc490571b6a7f270bc",
-            "2a1046dd99b914459b3e86be9dde05027a07d209",
-        ]
+        return (
+            # zlib
+            [
+                "063b02ff8d9d3bab6da932ad5828b506ef0a6578",
+                "f97b84dc9ffac807415f750100108764e837bb82",
+                "c7190ad2bea1e9d2e73eaa2d3ca9187be1ead261",
+                "14470724dca6c1837edddedc490571b6a7f270bc",
+                "2a1046dd99b914459b3e86be9dde05027a07d209",
+            ],
+            # zlib-ng
+            [
+                "063b02ff8d9d3bab6da932ad5828b506ef0a6578",
+                "f97b84dc9ffac807415f750100108764e837bb82",
+                "c7190ad2bea1e9d2e73eaa2d3ca9187be1ead261",
+                "f3f04f0e30844739d34ef8a9eee6c949a47840b8",
+                "2a1046dd99b914459b3e86be9dde05027a07d209",
+            ],
+        )
 
     def test_hexdigest(self):
         found = []
@@ -671,7 +682,7 @@ class TestArray:
         found.append(z.hexdigest())
         z.store.close()
 
-        assert self.expected() == found
+        assert found in self.expected()
 
     def test_resize_1d(self):
         z = self.create_array(shape=105, chunks=10, dtype="i4", fill_value=0)
@@ -1620,13 +1631,15 @@ class TestArrayWithPath(TestArray):
         pass
 
     def expected(self):
-        return [
-            "f710da18d45d38d4aaf2afd7fb822fdd73d02957",
-            "1437428e69754b1e1a38bd7fc9e43669577620db",
-            "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe",
-            "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e",
-            "05b0663ffe1785f38d3a459dec17e57a18f254af",
-        ]
+        return (
+            [
+                "f710da18d45d38d4aaf2afd7fb822fdd73d02957",
+                "1437428e69754b1e1a38bd7fc9e43669577620db",
+                "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe",
+                "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e",
+                "05b0663ffe1785f38d3a459dec17e57a18f254af",
+            ],
+        )
 
     def test_nbytes_stored(self):
         # MemoryStore as store
@@ -1653,13 +1666,15 @@ class TestArrayWithChunkStore(TestArray):
         return KVStore(dict())
 
     def expected(self):
-        return [
-            "f710da18d45d38d4aaf2afd7fb822fdd73d02957",
-            "1437428e69754b1e1a38bd7fc9e43669577620db",
-            "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe",
-            "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e",
-            "05b0663ffe1785f38d3a459dec17e57a18f254af",
-        ]
+        return (
+            [
+                "f710da18d45d38d4aaf2afd7fb822fdd73d02957",
+                "1437428e69754b1e1a38bd7fc9e43669577620db",
+                "6c530b6b9d73e108cc5ee7b6be3d552cc994bdbe",
+                "4c0a76fb1222498e09dcd92f7f9221d6cea8b40e",
+                "05b0663ffe1785f38d3a459dec17e57a18f254af",
+            ],
+        )
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
@@ -1729,13 +1744,24 @@ class TestArrayWithNestedDirectoryStore(TestArrayWithDirectoryStore):
         return store
 
     def expected(self):
-        return [
-            "d174aa384e660eb51c6061fc8d20850c1159141f",
-            "125f00eea40032f16016b292f6767aa3928c00a7",
-            "1b52ead0ed889a781ebd4db077a29e35d513c1f3",
-            "719a88b34e362ff65df30e8f8810c1146ab72bc1",
-            "6e0abf30daf45de51593c227fb907759ca725551",
-        ]
+        return (
+            # zlib
+            [
+                "d174aa384e660eb51c6061fc8d20850c1159141f",
+                "125f00eea40032f16016b292f6767aa3928c00a7",
+                "1b52ead0ed889a781ebd4db077a29e35d513c1f3",
+                "719a88b34e362ff65df30e8f8810c1146ab72bc1",
+                "6e0abf30daf45de51593c227fb907759ca725551",
+            ],
+            # zlib-ng
+            [
+                "d174aa384e660eb51c6061fc8d20850c1159141f",
+                "125f00eea40032f16016b292f6767aa3928c00a7",
+                "1b52ead0ed889a781ebd4db077a29e35d513c1f3",
+                "42d9c96e60ed22346c4671bc5bec32a2078ce25c",
+                "6e0abf30daf45de51593c227fb907759ca725551",
+            ],
+        )
 
 
 class TestArrayWithN5Store(TestArrayWithDirectoryStore):
@@ -2017,13 +2043,24 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
             assert np.all(a2[:] == 1)
 
     def expected(self):
-        return [
-            "8811a77d54caaa1901d5cc4452d946ae433c8d90",
-            "d880b007d9779db5f2cdbe13274eb1cbac4a425a",
-            "d80eb66d5521744f051e816ab368d8ccfc2e3edf",
-            "568f9f837e4b682a3819cb122988e2eebeb6572b",
-            "4fdf4475d786d6694110db5619acd30c80dfc372",
-        ]
+        return (
+            # zlib
+            [
+                "8811a77d54caaa1901d5cc4452d946ae433c8d90",
+                "d880b007d9779db5f2cdbe13274eb1cbac4a425a",
+                "d80eb66d5521744f051e816ab368d8ccfc2e3edf",
+                "568f9f837e4b682a3819cb122988e2eebeb6572b",
+                "4fdf4475d786d6694110db5619acd30c80dfc372",
+            ],
+            # zlib-ng
+            [
+                "8811a77d54caaa1901d5cc4452d946ae433c8d90",
+                "d880b007d9779db5f2cdbe13274eb1cbac4a425a",
+                "d80eb66d5521744f051e816ab368d8ccfc2e3edf",
+                "ea7d9e80211679291141840b111775b088e51480",
+                "4fdf4475d786d6694110db5619acd30c80dfc372",
+            ],
+        )
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -2103,39 +2140,45 @@ class TestArrayWithNoCompressor(TestArray):
     compressor = None
 
     def expected(self):
-        return [
-            "d3da3d485de4a5fcc6d91f9dfc6a7cba9720c561",
-            "443b8dee512e42946cb63ff01d28e9bee8105a5f",
-            "b75eb90f68aa8ee1e29f2c542e851d3945066c54",
-            "42b6ae0d50ec361628736ab7e68fe5fefca22136",
-            "a0535f31c130f5e5ac66ba0713d1c1ceaebd089b",
-        ]
+        return (
+            [
+                "d3da3d485de4a5fcc6d91f9dfc6a7cba9720c561",
+                "443b8dee512e42946cb63ff01d28e9bee8105a5f",
+                "b75eb90f68aa8ee1e29f2c542e851d3945066c54",
+                "42b6ae0d50ec361628736ab7e68fe5fefca22136",
+                "a0535f31c130f5e5ac66ba0713d1c1ceaebd089b",
+            ],
+        )
 
 
 class TestArrayWithBZ2Compressor(TestArray):
     compressor = BZ2(level=1)
 
     def expected(self):
-        return [
-            "33141032439fb1df5e24ad9891a7d845b6c668c8",
-            "44d719da065c88a412d609a5500ff41e07b331d6",
-            "37c7c46e5730bba37da5e518c9d75f0d774c5098",
-            "1e1bcaac63e4ef3c4a68f11672537131c627f168",
-            "86d7b9bf22dccbeaa22f340f38be506b55e76ff2",
-        ]
+        return (
+            [
+                "33141032439fb1df5e24ad9891a7d845b6c668c8",
+                "44d719da065c88a412d609a5500ff41e07b331d6",
+                "37c7c46e5730bba37da5e518c9d75f0d774c5098",
+                "1e1bcaac63e4ef3c4a68f11672537131c627f168",
+                "86d7b9bf22dccbeaa22f340f38be506b55e76ff2",
+            ],
+        )
 
 
 class TestArrayWithBloscCompressor(TestArray):
     compressor = Blosc(cname="zstd", clevel=1, shuffle=1)
 
     def expected(self):
-        return [
-            "7ff2ae8511eac915fad311647c168ccfe943e788",
-            "962705c861863495e9ccb7be7735907aa15e85b5",
-            "74ed339cfe84d544ac023d085ea0cd6a63f56c4b",
-            "90e30bdab745a9641cd0eb605356f531bc8ec1c3",
-            "95d40c391f167db8b1290e3c39d9bf741edacdf6",
-        ]
+        return (
+            [
+                "7ff2ae8511eac915fad311647c168ccfe943e788",
+                "962705c861863495e9ccb7be7735907aa15e85b5",
+                "74ed339cfe84d544ac023d085ea0cd6a63f56c4b",
+                "90e30bdab745a9641cd0eb605356f531bc8ec1c3",
+                "95d40c391f167db8b1290e3c39d9bf741edacdf6",
+            ],
+        )
 
 
 try:
@@ -2149,13 +2192,15 @@ class TestArrayWithLZMACompressor(TestArray):
     compressor = LZMA(preset=1)
 
     def expected(self):
-        return [
-            "93ecaa530a1162a9d48a3c1dcee4586ccfc59bae",
-            "04a9755a0cd638683531b7816c7fa4fbb6f577f2",
-            "9de97b5c49b38e68583ed701d7e8f4c94b6a8406",
-            "cde499f3dc945b4e97197ff8e3cf8188a1262c35",
-            "e2cf3afbf66ad0e28a2b6b68b1b07817c69aaee2",
-        ]
+        return (
+            [
+                "93ecaa530a1162a9d48a3c1dcee4586ccfc59bae",
+                "04a9755a0cd638683531b7816c7fa4fbb6f577f2",
+                "9de97b5c49b38e68583ed701d7e8f4c94b6a8406",
+                "cde499f3dc945b4e97197ff8e3cf8188a1262c35",
+                "e2cf3afbf66ad0e28a2b6b68b1b07817c69aaee2",
+            ],
+        )
 
 
 class TestArrayWithFilters(TestArray):
@@ -2168,13 +2213,24 @@ class TestArrayWithFilters(TestArray):
         )
 
     def expected(self):
-        return [
-            "b80367c5599d47110d42bd8886240c2f46620dba",
-            "95a7b2471225e73199c9716d21e8d3dd6e5f6f2a",
-            "7300f1eb130cff5891630038fd99c28ef23d3a01",
-            "c649ad229bc5720258b934ea958570c2f354c2eb",
-            "62fc9236d78af18a5ec26c12eea1d33bce52501e",
-        ]
+        return (
+            # zlib
+            [
+                "b80367c5599d47110d42bd8886240c2f46620dba",
+                "95a7b2471225e73199c9716d21e8d3dd6e5f6f2a",
+                "7300f1eb130cff5891630038fd99c28ef23d3a01",
+                "c649ad229bc5720258b934ea958570c2f354c2eb",
+                "62fc9236d78af18a5ec26c12eea1d33bce52501e",
+            ],
+            # zlib-ng
+            [
+                "b80367c5599d47110d42bd8886240c2f46620dba",
+                "95a7b2471225e73199c9716d21e8d3dd6e5f6f2a",
+                "7300f1eb130cff5891630038fd99c28ef23d3a01",
+                "1e053b6ad7dc58de7b1f5dad7fb45851f6b7b3ee",
+                "62fc9236d78af18a5ec26c12eea1d33bce52501e",
+            ],
+        )
 
     def test_astype_no_filters(self):
         shape = (100,)
@@ -2299,7 +2355,8 @@ class TestArrayWithCustomMapping(TestArray):
         z = self.create_array(shape=1000, chunks=100)
         assert 245 == z.nbytes_stored
         z[:] = 42
-        assert 515 == z.nbytes_stored
+        # 515 is zlib, 485 is zlib-ng
+        assert z.nbytes_stored in (515, 485)
 
 
 class TestArrayNoCache(TestArray):
@@ -2394,13 +2451,15 @@ class TestArrayWithFSStore(TestArray):
         return store
 
     def expected(self):
-        return [
-            "ab753fc81df0878589535ca9bad2816ba88d91bc",
-            "c16261446f9436b1e9f962e57ce3e8f6074abe8a",
-            "c2ef3b2fb2bc9dcace99cd6dad1a7b66cc1ea058",
-            "6e52f95ac15b164a8e96843a230fcee0e610729b",
-            "091fa99bc60706095c9ce30b56ce2503e0223f56",
-        ]
+        return (
+            [
+                "ab753fc81df0878589535ca9bad2816ba88d91bc",
+                "c16261446f9436b1e9f962e57ce3e8f6074abe8a",
+                "c2ef3b2fb2bc9dcace99cd6dad1a7b66cc1ea058",
+                "6e52f95ac15b164a8e96843a230fcee0e610729b",
+                "091fa99bc60706095c9ce30b56ce2503e0223f56",
+            ],
+        )
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -2426,13 +2485,15 @@ class TestArrayWithFSStoreFromFilesystem(TestArray):
         return store
 
     def expected(self):
-        return [
-            "ab753fc81df0878589535ca9bad2816ba88d91bc",
-            "c16261446f9436b1e9f962e57ce3e8f6074abe8a",
-            "c2ef3b2fb2bc9dcace99cd6dad1a7b66cc1ea058",
-            "6e52f95ac15b164a8e96843a230fcee0e610729b",
-            "091fa99bc60706095c9ce30b56ce2503e0223f56",
-        ]
+        return (
+            [
+                "ab753fc81df0878589535ca9bad2816ba88d91bc",
+                "c16261446f9436b1e9f962e57ce3e8f6074abe8a",
+                "c2ef3b2fb2bc9dcace99cd6dad1a7b66cc1ea058",
+                "6e52f95ac15b164a8e96843a230fcee0e610729b",
+                "091fa99bc60706095c9ce30b56ce2503e0223f56",
+            ],
+        )
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -2447,13 +2508,15 @@ class TestArrayWithFSStorePartialRead(TestArray):
         return store
 
     def expected(self):
-        return [
-            "dd7577d645c38767cf6f6d1ef8fd64002883a014",
-            "aa0de9892cf1ed3cda529efbf3233720b84489b7",
-            "e6191c44cf958576c29c41cef0f55b028a4dbdff",
-            "88adeeabb819feecccadf50152293dbb42f9107e",
-            "1426e084427f9920e29c9ec81b663d1005849455",
-        ]
+        return (
+            [
+                "dd7577d645c38767cf6f6d1ef8fd64002883a014",
+                "aa0de9892cf1ed3cda529efbf3233720b84489b7",
+                "e6191c44cf958576c29c41cef0f55b028a4dbdff",
+                "88adeeabb819feecccadf50152293dbb42f9107e",
+                "1426e084427f9920e29c9ec81b663d1005849455",
+            ],
+        )
 
     def test_non_cont(self):
         z = self.create_array(shape=(500, 500, 500), chunks=(50, 50, 50), dtype="<i4")
@@ -2488,13 +2551,15 @@ class TestArrayWithFSStoreNested(TestArrayWithFSStore):
     dimension_separator = "/"
 
     def expected(self):
-        return [
-            "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
-            "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
-            "22be95d83c097460adb339d80b2d7fe19c513c16",
-            "85131cec526fa46938fd2c4a6083a58ee11037ea",
-            "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
-        ]
+        return (
+            [
+                "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
+                "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
+                "22be95d83c097460adb339d80b2d7fe19c513c16",
+                "85131cec526fa46938fd2c4a6083a58ee11037ea",
+                "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
+            ],
+        )
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -2504,13 +2569,15 @@ class TestArrayWithFSStoreNestedPartialRead(TestArrayWithFSStore):
     partial_decompress = True
 
     def expected(self):
-        return [
-            "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
-            "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
-            "22be95d83c097460adb339d80b2d7fe19c513c16",
-            "85131cec526fa46938fd2c4a6083a58ee11037ea",
-            "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
-        ]
+        return (
+            [
+                "94884f29b41b9beb8fc99ad7bf9c0cbf0f2ab3c9",
+                "077aa3bd77b8d354f8f6c15dce5ae4f545788a72",
+                "22be95d83c097460adb339d80b2d7fe19c513c16",
+                "85131cec526fa46938fd2c4a6083a58ee11037ea",
+                "c3167010c162c6198cb2bf3c1da2c46b047c69a1",
+            ],
+        )
 
     def test_non_cont(self):
         z = self.create_array(shape=(500, 500, 500), chunks=(50, 50, 50), dtype="<i4")
@@ -2556,13 +2623,15 @@ class TestArrayV3(TestArray):
     def expected(self):
         # tests for array without path will not be run for v3 stores
         assert self.version == 3
-        return [
-            "73ab8ace56719a5c9308c3754f5e2d57bc73dc20",
-            "5fb3d02b8f01244721582929b3cad578aec5cea5",
-            "26b098bedb640846e18dc2fbc1c27684bb02b532",
-            "799a458c287d431d747bec0728987ca4fe764549",
-            "c780221df84eb91cb62f633f12d3f1eaa9cee6bd",
-        ]
+        return (
+            [
+                "73ab8ace56719a5c9308c3754f5e2d57bc73dc20",
+                "5fb3d02b8f01244721582929b3cad578aec5cea5",
+                "26b098bedb640846e18dc2fbc1c27684bb02b532",
+                "799a458c287d431d747bec0728987ca4fe764549",
+                "c780221df84eb91cb62f633f12d3f1eaa9cee6bd",
+            ],
+        )
 
     # TODO: fix test_nbytes_stored
 
@@ -2623,13 +2692,15 @@ class TestArrayWithPathV3(TestArrayV3):
         assert (meta_root + path + ".array.json") in store
 
     def expected(self):
-        return [
-            "73ab8ace56719a5c9308c3754f5e2d57bc73dc20",
-            "5fb3d02b8f01244721582929b3cad578aec5cea5",
-            "26b098bedb640846e18dc2fbc1c27684bb02b532",
-            "799a458c287d431d747bec0728987ca4fe764549",
-            "c780221df84eb91cb62f633f12d3f1eaa9cee6bd",
-        ]
+        return (
+            [
+                "73ab8ace56719a5c9308c3754f5e2d57bc73dc20",
+                "5fb3d02b8f01244721582929b3cad578aec5cea5",
+                "26b098bedb640846e18dc2fbc1c27684bb02b532",
+                "799a458c287d431d747bec0728987ca4fe764549",
+                "c780221df84eb91cb62f633f12d3f1eaa9cee6bd",
+            ],
+        )
 
     def test_nbytes_stored(self):
         # dict as store
@@ -2697,13 +2768,15 @@ class TestArrayWithChunkStoreV3(TestArrayV3):
         return store
 
     def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
+        return (
+            [
+                "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
+                "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
+                "b663857bb89a8ab648390454954a9cdd453aa24b",
+                "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
+                "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
+            ],
+        )
 
     def test_nbytes_stored(self):
         z = self.create_array(shape=1000, chunks=100)
@@ -2933,13 +3006,15 @@ class TestArrayWithFSStoreV3(TestArrayV3):
         return store
 
     def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
+        return (
+            [
+                "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
+                "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
+                "b663857bb89a8ab648390454954a9cdd453aa24b",
+                "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
+                "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
+            ],
+        )
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -2963,13 +3038,15 @@ class TestArrayWithFSStoreV3FromFilesystem(TestArrayWithFSStoreV3):
         return store
 
     def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
+        return (
+            [
+                "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
+                "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
+                "b663857bb89a8ab648390454954a9cdd453aa24b",
+                "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
+                "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
+            ],
+        )
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -2978,13 +3055,15 @@ class TestArrayWithFSStoreV3PartialRead(TestArrayWithFSStoreV3):
     partial_decompress = True
 
     def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
+        return (
+            [
+                "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
+                "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
+                "b663857bb89a8ab648390454954a9cdd453aa24b",
+                "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
+                "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
+            ],
+        )
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -3015,13 +3094,15 @@ class TestArrayWithFSStoreV3PartialReadUncompressedSharded(TestArrayWithFSStoreV
         assert not z.chunk_store.supports_efficient_set_partial_values()
 
     def expected(self):
-        return [
-            "90109fc2a4e17efbcb447003ea1c08828b91f71e",
-            "2b73519f7260dba3ddce0d2b70041888856fec6b",
-            "bca5798be2ed71d444f3045b05432d937682b7dd",
-            "9ff1084501e28520e577662a6e3073f1116c76a2",
-            "882a97cad42417f90f111d0cb916a21579650467",
-        ]
+        return (
+            [
+                "90109fc2a4e17efbcb447003ea1c08828b91f71e",
+                "2b73519f7260dba3ddce0d2b70041888856fec6b",
+                "bca5798be2ed71d444f3045b05432d937682b7dd",
+                "9ff1084501e28520e577662a6e3073f1116c76a2",
+                "882a97cad42417f90f111d0cb916a21579650467",
+            ],
+        )
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -3030,13 +3111,15 @@ class TestArrayWithFSStoreV3Nested(TestArrayWithFSStoreV3):
     dimension_separator = "/"
 
     def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
+        return (
+            [
+                "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
+                "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
+                "b663857bb89a8ab648390454954a9cdd453aa24b",
+                "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
+                "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
+            ],
+        )
 
 
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
@@ -3045,13 +3128,15 @@ class TestArrayWithFSStoreV3NestedPartialRead(TestArrayWithFSStoreV3):
     dimension_separator = "/"
 
     def expected(self):
-        return [
-            "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
-            "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
-            "b663857bb89a8ab648390454954a9cdd453aa24b",
-            "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
-            "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
-        ]
+        return (
+            [
+                "1509abec4285494b61cd3e8d21f44adc3cf8ddf6",
+                "7cfb82ec88f7ecb7ab20ae3cb169736bc76332b8",
+                "b663857bb89a8ab648390454954a9cdd453aa24b",
+                "21e90fa927d09cbaf0e3b773130e2dc05d18ff9b",
+                "e8c1fdd18b5c2ee050b59d0c8c95d07db642459c",
+            ],
+        )
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
@@ -3062,13 +3147,15 @@ class TestArrayWithStorageTransformersV3(TestArrayWithChunkStoreV3):
         )
 
     def expected(self):
-        return [
-            "3fb9a4f8233b09ad02067b6b7fc9fd5caa405c7d",
-            "89c8eb364beb84919fc9153d2c1ed2696274ec18",
-            "73307055c3aec095dd1232c38d793ef82a06bd97",
-            "6152c09255a5efa43b1a115546e35affa00c138c",
-            "2f8802fc391f67f713302e84fad4fd8f1366d6c2",
-        ]
+        return (
+            [
+                "3fb9a4f8233b09ad02067b6b7fc9fd5caa405c7d",
+                "89c8eb364beb84919fc9153d2c1ed2696274ec18",
+                "73307055c3aec095dd1232c38d793ef82a06bd97",
+                "6152c09255a5efa43b1a115546e35affa00c138c",
+                "2f8802fc391f67f713302e84fad4fd8f1366d6c2",
+            ],
+        )
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
@@ -3108,13 +3195,15 @@ class TestArrayWithShardingStorageTransformerV3(TestArrayV3):
         assert not z.chunk_store.supports_efficient_set_partial_values()
 
     def expected(self):
-        return [
-            "90109fc2a4e17efbcb447003ea1c08828b91f71e",
-            "2b73519f7260dba3ddce0d2b70041888856fec6b",
-            "bca5798be2ed71d444f3045b05432d937682b7dd",
-            "9ff1084501e28520e577662a6e3073f1116c76a2",
-            "882a97cad42417f90f111d0cb916a21579650467",
-        ]
+        return (
+            [
+                "90109fc2a4e17efbcb447003ea1c08828b91f71e",
+                "2b73519f7260dba3ddce0d2b70041888856fec6b",
+                "bca5798be2ed71d444f3045b05432d937682b7dd",
+                "9ff1084501e28520e577662a6e3073f1116c76a2",
+                "882a97cad42417f90f111d0cb916a21579650467",
+            ],
+        )
 
 
 @pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
