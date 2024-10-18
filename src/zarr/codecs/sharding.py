@@ -129,7 +129,7 @@ class _ShardIndex(NamedTuple):
         if (chunk_start, chunk_len) == (MAX_UINT_64, MAX_UINT_64):
             return None
         else:
-            return (int(chunk_start), int(chunk_start) + int(chunk_len))
+            return (int(chunk_start), int(chunk_len))
 
     def set_chunk_slice(self, chunk_coords: ChunkCoords, chunk_slice: slice | None) -> None:
         localized_chunk = self._localize_chunk(chunk_coords)
@@ -203,7 +203,7 @@ class _ShardReader(ShardMapping):
     def __getitem__(self, chunk_coords: ChunkCoords) -> Buffer:
         chunk_byte_slice = self.index.get_chunk_slice(chunk_coords)
         if chunk_byte_slice:
-            return self.buf[chunk_byte_slice[0] : chunk_byte_slice[1]]
+            return self.buf[chunk_byte_slice[0] : (chunk_byte_slice[0] + chunk_byte_slice[1])]
         raise KeyError
 
     def __len__(self) -> int:
@@ -265,7 +265,8 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
     ) -> Buffer:
         index_bytes = await index_encoder(self.index)
         if index_location == ShardingCodecIndexLocation.start:
-            self.index.offsets_and_lengths[..., 0] += len(index_bytes)
+            empty_chunks_mask = self.index.offsets_and_lengths[..., 0] == MAX_UINT_64
+            self.index.offsets_and_lengths[~empty_chunks_mask, 0] += len(index_bytes)
             index_bytes = await index_encoder(self.index)  # encode again with corrected offsets
             out_buf = index_bytes + self.buf
         else:
