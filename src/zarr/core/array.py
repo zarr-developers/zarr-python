@@ -1151,9 +1151,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self._info()
 
     async def info_complete(self) -> ArrayInfo:
-        # do the I/O to get the extra
-        extra: dict[str, int] = {}
-        return self._info(extra=extra)
+        # TODO: get the size of the object from the store.
+        raise NotImplementedError
 
     def _info(self, extra: dict[str, int] | None = None) -> ArrayInfo:
         kwargs: dict[str, Any] = {}
@@ -1164,13 +1163,13 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             if self.metadata.filters is not None:
                 kwargs["filters"] = str(self.metadata.filters)
             kwargs["data_type"] = str(self.metadata.dtype)
-            kwargs["chunks"] = self.metadata.chunks
+            kwargs["chunk_shape"] = self.metadata.chunks
         else:
             kwargs["codecs"] = str(self.metadata.codecs)
             kwargs["data_type"] = str(self.metadata.data_type)
             # just regular?
             if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
-                kwargs["chunks"] = self.metadata.chunk_grid.chunk_shape
+                kwargs["chunk_shape"] = self.metadata.chunk_grid.chunk_shape
 
         return ArrayInfo(
             zarr_format=self.metadata.zarr_format,

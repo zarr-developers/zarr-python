@@ -794,6 +794,20 @@ class AsyncGroup:
 
     @property
     def info(self) -> GroupInfo:
+        """
+        Return the statically known information for a group.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        AsyncGroup.info_complete
+            All information about a group, including dynamic information
+            like the children members.
+        """
+
         if self.metadata.consolidated_metadata:
             members = list(self.metadata.consolidated_metadata.flattened_metadata.values())
         else:
@@ -801,6 +815,20 @@ class AsyncGroup:
         return self._info(members=members)
 
     async def info_complete(self) -> GroupInfo:
+        """
+        Return information for a group.
+
+        If this group doesn't contain consolidated metadata then
+        this will need to read from the backing Store.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        AsyncGroup.info
+        """
         members = [x[1].metadata async for x in self.members(max_depth=None)]
         return self._info(members=members)
 
@@ -1473,9 +1501,36 @@ class Group(SyncMixin):
 
     @property
     def info(self) -> GroupInfo:
+        """
+        Return the statically known information for a group.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        Group.info_complete
+            All information about a group, including dynamic information
+            like the children members.
+        """
         return self._async_group.info
 
     def info_complete(self) -> GroupInfo:
+        """
+        Return information for a group.
+
+        If this group doesn't contain consolidated metadata then
+        this will need to read from the backing Store.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        Group.info
+        """
         return self._sync(self._async_group.info_complete())
 
     @property

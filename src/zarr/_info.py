@@ -93,7 +93,7 @@ class ArrayInfo:
     store_type: str
     compressor: str | None = None
     filters: list[str] | None = None
-    codecs: list[str] | None = None
+    codecs: str | None = None
     count_bytes: int | None = None
     count_bytes_stored: int | None = None
     count_chunks_initialized: int | None = None

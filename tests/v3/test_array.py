@@ -7,6 +7,7 @@ import pytest
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
+from zarr._info import ArrayInfo
 from zarr.codecs import BytesCodec, VLenBytesCodec
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer.cpu import NDBuffer
@@ -417,3 +418,34 @@ def test_update_attrs(zarr_format: int) -> None:
 
     arr2 = zarr.open_array(store=store, zarr_format=zarr_format)
     assert arr2.attrs["foo"] == "bar"
+
+
+class TestInfo:
+    def test_info_v2(self) -> None:
+        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=2)
+        result = arr.info
+        expected = ArrayInfo(
+            zarr_format=2,
+            data_type="float64",
+            shape=(4, 4),
+            chunk_shape=(2, 2),
+            order="C",
+            read_only=False,
+            store_type="MemoryStore",
+        )
+        assert result == expected
+
+    def test_info_v3(self) -> None:
+        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        result = arr.info
+        expected = ArrayInfo(
+            zarr_format=3,
+            data_type="DataType.float64",
+            shape=(4, 4),
+            chunk_shape=(2, 2),
+            order="C",
+            read_only=False,
+            store_type="MemoryStore",
+            codecs="[BytesCodec(endian=<Endian.little: 'little'>)]",
+        )
+        assert result == expected
