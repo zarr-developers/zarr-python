@@ -25,11 +25,19 @@ Release notes
 
 Enhancements
 ~~~~~~~~~~~~
+* Added testing on Python 3.13.
 
 Maintenance
 ~~~~~~~~~~~
-* ``getsize`` now returns the total size of all nested arrays. 
+* ``getsize`` now returns the total size of all nested arrays.
   By :user:`Ben Jeffery <benjeffery>` :issue:`253`.
+* Dropped support for Python 3.10.
+  By :user:`David Stansby <dstansby>` (:issue:`2344`).
+* Removed testing for compatibility with the ``bsddb3`` package.
+  ``bsddb3`` was last released four years ago, and should still work with
+  ``zarr-python`` if you can install it, but to reduce our maintenance
+  burden we will no longer run our compatibility tests for it.
+  By :user:`David Stansby <dstansby>` (:issue:`2344`).
 
 Deprecations
 ~~~~~~~~~~~~
@@ -43,7 +51,7 @@ Enhancements
 ~~~~~~~~~~~~
 * Added support for creating a copy of data when converting a `zarr.Array`
   to a numpy array.
-  By :user:`David Stansby <dstansby>` (:issue:`2106`) and 
+  By :user:`David Stansby <dstansby>` (:issue:`2106`) and
   :user:`Joe Hamman <jhamman>` (:issue:`2123`).
 
 Maintenance
