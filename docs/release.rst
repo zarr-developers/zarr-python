@@ -29,6 +29,8 @@ Enhancements
 
 Maintenance
 ~~~~~~~~~~~
+* ``getsize`` now returns the total size of all nested arrays.
+  By :user:`Ben Jeffery <benjeffery>` :issue:`253`.
 * Dropped support for Python 3.10.
   By :user:`David Stansby <dstansby>` (:issue:`2344`).
 * Removed testing for compatibility with the ``bsddb3`` package.
