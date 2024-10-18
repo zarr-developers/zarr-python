@@ -9,17 +9,17 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr._info import GroupInfo
 import zarr.api.asynchronous
 import zarr.api.synchronous
+import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
+from zarr._info import GroupInfo
 from zarr.abc.store import Store
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
-import zarr.storage
 from zarr.storage.common import make_store_path
 
 from .conftest import parse_store
@@ -1342,6 +1342,7 @@ class TestInfo:
             count_groups=1,
         )
         assert result == expected
+
 
 def test_update_attrs() -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328

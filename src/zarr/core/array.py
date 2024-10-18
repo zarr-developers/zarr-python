@@ -10,6 +10,7 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr._compat import _deprecate_positional_args
+from zarr._info import ArrayInfo
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs import _get_default_array_bytes_codec
 from zarr.codecs._v2 import V2Compressor, V2Filters
@@ -1146,11 +1147,27 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
     @property
-    def info(self) -> ...:
-        ...
+    def info(self) -> ArrayInfo:
+        kwargs = {}
+        if self.metadata.zarr_format == 2:
+            kwargs["compressor"] = self.metadata.compressor
+            kwargs["filters"] = self.metadata.filters
+        else:
+            kwargs["codecs"] = self.metadata.codecs
+
+        return ArrayInfo(
+            zarr_format=self.metadata.zarr_format,
+            data_type=self.metadata.data_type,
+            shape=self.shape,
+            chunk_shape=self.metadata.chunk_grid.chunk_shape,
+            order=self.order,
+            read_only=self.store_path.store.mode.readonly,
+            store_type=type(self.store_path.store).__name__,
+            **kwargs
+        )
 
     async def info_full(self) -> None:
-        raise NotImplementedError
+        return ArrayInfo()
 
 
 @dataclass(frozen=True)
@@ -2823,11 +2840,11 @@ class Array:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
     @property
-    def info(self) -> None:
+    def info(self) -> ArrayInfo:
         return self._async_array.info
 
-    def info_full(self) -> None:
-        ...
+    def info_complete(self) -> ArrayInfo:
+        return sync(self._async_array.info_complete)
 
 
 def nchunks_initialized(

@@ -13,8 +13,8 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr._info import GroupInfo
 import zarr.api.asynchronous as async_api
+from zarr._info import GroupInfo
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
 from zarr.core.array import Array, AsyncArray, _build_parents
@@ -804,7 +804,9 @@ class AsyncGroup:
         members = [x[1].metadata async for x in self.members(max_depth=None)]
         return self._info(members=members)
 
-    def _info(self, members: list[ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] | None = None) -> GroupInfo:
+    def _info(
+        self, members: list[ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] | None = None
+    ) -> GroupInfo:
         kwargs = {}
         if members is not None:
             kwargs["count_members"] = len(members)
@@ -822,7 +824,8 @@ class AsyncGroup:
             name=self.store_path.path,
             read_only=self.store_path.store.mode.readonly,
             store_type=type(self.store_path.store).__name__,
-            **kwargs
+            zarr_format=self.metadata.zarr_format,
+            **kwargs,
         )
 
     @property
