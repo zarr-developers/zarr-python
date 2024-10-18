@@ -3,7 +3,6 @@ import os
 import sys
 import pickle
 import shutil
-import tempfile
 from typing import Any, Literal, Optional, Tuple, Union, Sequence
 import unittest
 from itertools import zip_longest
@@ -2033,6 +2032,7 @@ class TestArrayWithN5Store(TestArrayWithDirectoryStore):
 @pytest.mark.skipif(have_fsspec is False, reason="needs fsspec")
 class TestArrayWithN5FSStore(TestArrayWithN5Store):
     group_size = 0
+
     def create_store(self):
         path = mkdtemp()
         atexit.register(shutil.rmtree, path)
