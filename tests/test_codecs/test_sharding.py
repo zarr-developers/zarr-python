@@ -372,7 +372,9 @@ def test_pickle() -> None:
 @pytest.mark.parametrize(
     "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
 )
-async def test_sharding_with_empty_inner_chunk(store: Store, index_location: ShardingCodecIndexLocation) -> None:
+async def test_sharding_with_empty_inner_chunk(
+    store: Store, index_location: ShardingCodecIndexLocation
+) -> None:
     data = np.arange(0, 16 * 16, dtype="uint32").reshape((16, 16))
     fill_value = 1
 
