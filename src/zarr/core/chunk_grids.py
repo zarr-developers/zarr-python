@@ -188,6 +188,6 @@ class RegularChunkGrid(ChunkGrid):
     def get_nchunks(self, array_shape: ChunkCoords) -> int:
         return reduce(
             operator.mul,
-            (ceildiv(s, c) for s, c in zip(array_shape, self.chunk_shape, strict=True)),
+            itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
             1,
         )
