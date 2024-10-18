@@ -103,4 +103,4 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
     @pytest.mark.parametrize("mode", ["a", "w"])
     async def test_store_open_mode(self, store_kwargs: dict[str, Any], mode: str) -> None:
-        super().test_store_open_mode(store_kwargs, mode)
+        await super().test_store_open_mode(store_kwargs, mode)

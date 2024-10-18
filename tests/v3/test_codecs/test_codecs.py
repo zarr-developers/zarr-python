@@ -73,6 +73,8 @@ async def test_order(
     runtime_read_order: MemoryOrder,
     with_sharding: bool,
 ) -> None:
+    if with_sharding:
+        pytest.importorskip("crc32c")
     data = np.arange(0, 256, dtype="uint16").reshape((32, 8), order=input_order)
     path = "order"
     spath = StorePath(store, path=path)
@@ -129,6 +131,8 @@ def test_order_implicit(
     runtime_read_order: MemoryOrder,
     with_sharding: bool,
 ) -> None:
+    if with_sharding:
+        pytest.importorskip("crc32c")
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16), order=input_order)
     path = "order_implicit"
     spath = StorePath(store, path)
