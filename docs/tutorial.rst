@@ -18,13 +18,13 @@ Zarr has several functions for creating arrays. For example::
     >>> import zarr
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z
-    <zarr.Array (10000, 10000) int32>
+    <Array memory://4344739840 shape=(10000, 10000) dtype=int32>
 
 The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
 columns (and so there will be 100 chunks in total).
 
-For a complete list of array creation routines see the :mod:`zarr.creation`
+For a complete list of array creation routines see the :mod:`zarr.api.synchronous`
 module documentation.
 
 .. _tutorial_array:
@@ -47,21 +47,21 @@ The contents of the array can be retrieved by slicing, which will load the
 requested region into memory as a NumPy array, e.g.::
 
     >>> z[0, 0]
-    0
+    array(0, dtype=int32)
     >>> z[-1, -1]
-    42
+    array(42, dtype=int32)
     >>> z[0, :]
     array([   0,    1,    2, ..., 9997, 9998, 9999], dtype=int32)
     >>> z[:, 0]
     array([   0,    1,    2, ..., 9997, 9998, 9999], dtype=int32)
     >>> z[:]
     array([[   0,    1,    2, ..., 9997, 9998, 9999],
-           [   1,   42,   42, ...,   42,   42,   42],
-           [   2,   42,   42, ...,   42,   42,   42],
-           ...,
-           [9997,   42,   42, ...,   42,   42,   42],
-           [9998,   42,   42, ...,   42,   42,   42],
-           [9999,   42,   42, ...,   42,   42,   42]], dtype=int32)
+        [   1,   42,   42, ...,   42,   42,   42],
+        [   2,   42,   42, ...,   42,   42,   42],
+        ...,
+        [9997,   42,   42, ...,   42,   42,   42],
+        [9998,   42,   42, ...,   42,   42,   42],
+        [9999,   42,   42, ...,   42,   42,   42]], dtype=int32)
 
 .. _tutorial_persist:
 
@@ -77,7 +77,7 @@ persistence of data between sessions. For example::
 
 The array above will store its configuration metadata and all compressed chunk
 data in a directory called 'data/example.zarr' relative to the current working
-directory. The :func:`zarr.convenience.open` function provides a convenient way
+directory. The :func:`zarr.api.synchronous.open` function provides a convenient way
 to create a new persistent array or continue working with an existing
 array. Note that although the function is called "open", there is no need to
 close an array: data are automatically flushed to disk, and files are
@@ -98,11 +98,11 @@ Check that the data have been written and can be read again::
 
 If you are just looking for a fast and convenient way to save NumPy arrays to
 disk then load back into memory later, the functions
-:func:`zarr.convenience.save` and :func:`zarr.convenience.load` may be
+:func:`zarr.api.synchronous.save` and :func:`zarr.api.synchronous.load` may be
 useful. E.g.::
 
     >>> a = np.arange(10)
-    >>> zarr.save('data/example.zarr', a)
+    >>> zarr.save('data/example.zarr', a, mode='w')
     >>> zarr.load('data/example.zarr')
     array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 
@@ -155,7 +155,7 @@ argument accepted by all array creation functions. For example::
     >>> from numcodecs import Blosc
     >>> compressor = Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
     >>> data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
-    >>> z = zarr.array(data, chunks=(1000, 1000), compressor=compressor)
+    >>> z = zarr.array(data, chunks=(1000, 1000), compressor=compressor, zarr_format=2)
     >>> z.compressor
     Blosc(cname='zstd', clevel=3, shuffle=BITSHUFFLE, blocksize=0)
 
@@ -193,7 +193,7 @@ libraries available within Blosc can be obtained via::
 
     >>> from numcodecs import blosc
     >>> blosc.list_compressors()
-    ['blosclz', 'lz4', 'lz4hc', 'snappy', 'zlib', 'zstd']
+    ['blosclz', 'lz4', 'lz4hc', 'zlib', 'zstd']
 
 In addition to Blosc, other compression libraries can also be used. For example,
 here is an array using Zstandard compression, level 1::
@@ -290,7 +290,7 @@ To create a group, use the :func:`zarr.group` function::
 
     >>> root = zarr.group()
     >>> root
-    <zarr.hierarchy.Group '/'>
+    <Group memory://4640618752>
 
 Groups have a similar API to the Group class from `h5py
 <https://www.h5py.org/>`_.  For example, groups can contain other groups::
@@ -300,32 +300,30 @@ Groups have a similar API to the Group class from `h5py
 
 Groups can also contain arrays, e.g.::
 
-    >>> z1 = bar.zeros('baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+    >>> z1 = bar.zeros(name='baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z1
-    <zarr.Array '/foo/bar/baz' (10000, 10000) int32>
+     <Array memory://4640612800/foo/bar/baz shape=(10000, 10000) dtype=int32>
 
-Arrays are known as "datasets" in HDF5 terminology. For compatibility with h5py,
-Zarr groups also implement the ``create_dataset()`` and ``require_dataset()``
-methods, e.g.::
+Arrays can also be created with the ``create_array()`` and ``require_array()`` methods, e.g.::
 
-    >>> z = bar.create_dataset('quux', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+    >>> z = bar.create_array(name='quux', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z
-    <zarr.Array '/foo/bar/quux' (10000, 10000) int32>
+    <Array memory://4640612800/foo/bar/quux shape=(10000, 10000) dtype=int32>
 
 Members of a group can be accessed via the suffix notation, e.g.::
 
     >>> root['foo']
-    <zarr.hierarchy.Group '/foo'>
+    <Group memory://4640612800/foo
 
 The '/' character can be used to access multiple levels of the hierarchy in one
 call, e.g.::
 
     >>> root['foo/bar']
-    <zarr.hierarchy.Group '/foo/bar'>
+    <Group memory://4640612800/foo/bar>
     >>> root['foo/bar/baz']
-    <zarr.Array '/foo/bar/baz' (10000, 10000) int32>
+    <Array memory://4640612800/foo/bar/baz shape=(10000, 10000) dtype=int32>
 
-The :func:`zarr.hierarchy.Group.tree` method can be used to print a tree
+The :func:`zarr.core.group.Group.tree` method can be used to print a tree
 representation of the hierarchy, e.g.::
 
     >>> root.tree()
@@ -335,16 +333,16 @@ representation of the hierarchy, e.g.::
              ├── baz (10000, 10000) int32
              └── quux (10000, 10000) int32
 
-The :func:`zarr.convenience.open` function provides a convenient way to create or
+The :func:`zarr.api.asynchronous.open` function provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with sub-groups stored in
 sub-directories, e.g.::
 
     >>> root = zarr.open('data/group.zarr', mode='w')
     >>> root
-    <zarr.hierarchy.Group '/'>
-    >>> z = root.zeros('foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+    <Group file://data/group.zarr>
+    >>> z = root.zeros(name='foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z
-    <zarr.Array '/foo/bar/baz' (10000, 10000) int32>
+    <Array file://data/group.zarr/foo/bar/baz shape=(10000, 10000) dtype=int32>
 
 Groups can be used as context managers (in a ``with`` statement).
 If the underlying store has a ``close`` method, it will be called on exit.
@@ -362,9 +360,9 @@ property. E.g.::
 
     >>> root = zarr.group()
     >>> foo = root.create_group('foo')
-    >>> bar = foo.zeros('bar', shape=1000000, chunks=100000, dtype='i8')
+    >>> bar = foo.zeros(name='bar', shape=1000000, chunks=100000, dtype='i8')
     >>> bar[:] = 42
-    >>> baz = foo.zeros('baz', shape=(1000, 1000), chunks=(100, 100), dtype='f4')
+    >>> baz = foo.zeros(name='baz', shape=(1000, 1000), chunks=(100, 100), dtype='f4')
     >>> baz[:] = 4.2
     >>> root.info
     Name        : /
@@ -416,7 +414,7 @@ property. E.g.::
     Storage ratio      : 167.1
     Chunks initialized : 100/100
 
-Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
+Groups also have the :func:`zarr.core.group.Group.tree` method, e.g.::
 
     >>> root.tree()
     /
@@ -440,7 +438,7 @@ storing application-specific metadata. For example::
 
     >>> root = zarr.group()
     >>> root.attrs['foo'] = 'bar'
-    >>> z = root.zeros('zzz', shape=(10000, 10000))
+    >>> z = root.zeros(name='zzz', shape=(10000, 10000))
     >>> z.attrs['baz'] = 42
     >>> z.attrs['qux'] = [1, 4, 7, 12]
     >>> sorted(root.attrs)
@@ -638,7 +636,7 @@ If the index contains at most one iterable, and otherwise contains only slices a
 orthogonal indexing is also available directly on the array:
 
     >>> z = zarr.array(np.arange(15).reshape(3, 5))
-    >>> all(z.oindex[[0, 2], :] == z[[0, 2], :])
+    >>> np.all(z.oindex[[0, 2], :] == z[[0, 2], :])
     True
 
 Block Indexing
@@ -649,8 +647,6 @@ selections of whole chunks based on their logical indices along each dimension
 of an array. For example, this allows selecting a subset of chunk aligned rows and/or
 columns from a 2-dimensional array. E.g.::
 
-    >>> import zarr
-    >>> import numpy as np
     >>> z = zarr.array(np.arange(100).reshape(10, 10), chunks=(3, 3))
 
 Retrieve items by specifying their block coordinates::
@@ -686,8 +682,6 @@ For example::
 
 Data can also be modified. Let's start by a simple 2D array::
 
-    >>> import zarr
-    >>> import numpy as np
     >>> z = zarr.zeros((6, 6), dtype=int, chunks=2)
 
 Set data for a selection of items::
@@ -874,7 +868,6 @@ can be used with Zarr.
 Here is an example using S3Map to read an array created previously::
 
     >>> import s3fs
-    >>> import zarr
     >>> s3 = s3fs.S3FileSystem(anon=True, client_kwargs=dict(region_name='eu-west-2'))
     >>> store = s3fs.S3Map(root='zarr-demo/store', s3=s3, check=False)
     >>> root = zarr.group(store=store)
@@ -1071,8 +1064,6 @@ into a Zarr group, or vice-versa, the :func:`zarr.convenience.copy` and
 copying a group named 'foo' from an HDF5 file to a Zarr group::
 
     >>> import h5py
-    >>> import zarr
-    >>> import numpy as np
     >>> source = h5py.File('data/example.h5', mode='w')
     >>> foo = source.create_group('foo')
     >>> baz = foo.create_dataset('bar/baz', data=np.arange(100), chunks=(50,))
@@ -1125,8 +1116,6 @@ the :func:`zarr.convenience.copy_store` function can be used. This function
 copies data directly between the underlying stores, without any decompression or
 re-compression, and so should be faster. E.g.::
 
-    >>> import zarr
-    >>> import numpy as np
     >>> store1 = zarr.DirectoryStore('data/example.zarr')
     >>> root = zarr.group(store1, overwrite=True)
     >>> baz = root.create_dataset('foo/bar/baz', data=np.arange(100), chunks=(50,))
@@ -1176,7 +1165,7 @@ your array, then you can use an array with a fixed-length bytes dtype. E.g.::
 
     >>> z = zarr.zeros(10, dtype='S6')
     >>> z
-    <zarr.Array (10,) |S6>
+    <Array memory://4645496064 shape=(10,) dtype=object>
     >>> z[0] = b'Hello'
     >>> z[1] = b'world!'
     >>> z[:]
@@ -1447,8 +1436,6 @@ In this case, creating an array with ``write_empty_chunks=True`` (the default) w
 The following example illustrates the effect of the ``write_empty_chunks`` flag on
 the time required to write an array with different values.::
 
-    >>> import zarr
-    >>> import numpy as np
     >>> import time
     >>> from tempfile import TemporaryDirectory
     >>> def timed_write(write_empty_chunks):
@@ -1655,9 +1642,9 @@ Datetimes and timedeltas
 NumPy's ``datetime64`` ('M8') and ``timedelta64`` ('m8') dtypes are supported for Zarr
 arrays, as long as the units are specified. E.g.::
 
-    >>> z = zarr.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='M8[D]')
+    >>> z = zarr.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='M8[D]', zarr_format=2)
     >>> z
-    <zarr.Array (3,) datetime64[D]>
+    <Array memory://4686989376 shape=(3,) dtype=datetime64[D]>
     >>> z[:]
     array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
     >>> z[0]
