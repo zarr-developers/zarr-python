@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from collections.abc import Callable, Coroutine
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import pytest
 
@@ -37,8 +38,16 @@ def has_cupy() -> bool:
         return False
 
 
+T_Callable = TypeVar("T_Callable", bound=Callable[[], Coroutine[Any, Any, None]])
+
+
 # Decorator for GPU tests
-def gpu_test(func: Any) -> Any:
-    return pytest.mark.gpu(
-        pytest.mark.skipif(not has_cupy(), reason="CuPy not installed or no GPU available")(func)
+def gpu_test(func: T_Callable) -> T_Callable:
+    return cast(
+        T_Callable,
+        pytest.mark.gpu(
+            pytest.mark.skipif(not has_cupy(), reason="CuPy not installed or no GPU available")(
+                func
+            )
+        ),
     )

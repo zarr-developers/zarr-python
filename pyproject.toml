@@ -153,7 +153,7 @@ run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pypro
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "pytest --hypothesis-profile ci tests/v3/test_properties.py tests/v3/test_store/test_stateful*"
+run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
@@ -173,7 +173,7 @@ run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=tests"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "pytest --hypothesis-profile ci tests/v3/test_properties.py tests/v3/test_store/test_stateful*"
+run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
 
 [tool.hatch.envs.docs]
@@ -282,18 +282,17 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
-    "tests.v2.*",
-    "tests.v3.package_with_entrypoint.*",
-    "tests.v3.test_codecs.test_codecs",
-    "tests.v3.test_codecs.test_transpose",
-    "tests.v3.test_metadata.*",
-    "tests.v3.test_store.*",
-    "tests.v3.test_config",
-    "tests.v3.test_group",
-    "tests.v3.test_indexing",
-    "tests.v3.test_properties",
-    "tests.v3.test_sync",
-    "tests.v3.test_v2",
+    "tests.package_with_entrypoint.*",
+    "tests.test_codecs.test_codecs",
+    "tests.test_codecs.test_transpose",
+    "tests.test_metadata.*",
+    "tests.test_store.*",
+    "tests.test_config",
+    "tests.test_group",
+    "tests.test_indexing",
+    "tests.test_properties",
+    "tests.test_sync",
+    "tests.test_v2",
 ]
 ignore_errors = true
 
