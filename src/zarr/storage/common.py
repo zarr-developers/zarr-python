@@ -191,7 +191,7 @@ async def make_store_path(
     ----------
     store_like : StoreLike | None
         The object to convert to a `StorePath` object.
-    path: str | None, optional
+    path : str | None, optional
         The path to use when creating the `StorePath` object.  If None, the
         default path is the empty string.
     mode : AccessModeLiteral | None, optional
@@ -286,9 +286,9 @@ async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat
 
     Parameters
     ----------
-    store_path: StorePath
+    store_path : StorePath
         The storage location to check.
-    zarr_format: ZarrFormat
+    zarr_format : ZarrFormat
         The Zarr format to check.
 
     Raises
@@ -318,7 +318,7 @@ async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", 
 
     Parameters
     ----------
-    store_path: StorePath
+    store_path : StorePath
         The location in storage to check.
 
     Returns
@@ -352,7 +352,7 @@ async def _contains_node_v2(store_path: StorePath) -> Literal["array", "group", 
 
     Parameters
     ----------
-    store_path: StorePath
+    store_path : StorePath
         The location in storage to check.
 
     Returns
@@ -379,9 +379,9 @@ async def contains_array(store_path: StorePath, zarr_format: ZarrFormat) -> bool
 
     Parameters
     ----------
-    store_path: StorePath
+    store_path : StorePath
         The StorePath to check for an existing group.
-    zarr_format:
+    zarr_format :
         The zarr format to check for.
 
     Returns
@@ -415,9 +415,9 @@ async def contains_group(store_path: StorePath, zarr_format: ZarrFormat) -> bool
     Parameters
     ----------
 
-    store_path: StorePath
+    store_path : StorePath
         The StorePath to check for an existing group.
-    zarr_format:
+    zarr_format :
         The zarr format to check for.
 
     Returns

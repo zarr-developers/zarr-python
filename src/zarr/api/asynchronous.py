@@ -152,9 +152,9 @@ async def consolidate_metadata(
 
     Parameters
     ----------
-    store: StoreLike
+    store : StoreLike
         The store-like object whose metadata you wish to consolidate.
-    path: str, optional
+    path : str, optional
         A path to a group in the store to consolidate at. Only children
         below that group will be consolidated.
 
@@ -341,13 +341,13 @@ async def save(
     ----------
     store : Store or str
         Store or path to directory in file system or name of zip file.
-    args : ndarray
+    *args : ndarray
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str or None, optional
         The path within the group where the arrays will be saved.
-    kwargs
+    **kwargs
         NumPy arrays with data to save.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
@@ -386,7 +386,7 @@ async def save_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    kwargs
+    **kwargs
         Passed through to :func:`create`, e.g., compressor.
     """
     zarr_format = (
@@ -423,7 +423,7 @@ async def save_group(
     ----------
     store : Store or str
         Store or path to directory in file system or name of zip file.
-    args : ndarray
+    *args : ndarray
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
@@ -432,7 +432,7 @@ async def save_group(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    kwargs
+    **kwargs
         NumPy arrays with data to save.
     """
     zarr_format = (
@@ -479,7 +479,7 @@ async def array(
     ----------
     data : array_like
         The data to fill the array with.
-    kwargs
+    **kwargs
         Passed through to :func:`create`.
 
     Returns
