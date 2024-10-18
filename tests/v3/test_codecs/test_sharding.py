@@ -332,7 +332,7 @@ def test_pickle() -> None:
     assert pickle.loads(pickle.dumps(codec)) == codec
 
 
-@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize(
     "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
 )
