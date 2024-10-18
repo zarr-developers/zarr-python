@@ -12,7 +12,7 @@ import numpy.typing as npt
 from zarr._compat import _deprecate_positional_args
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs import _get_default_array_bytes_codec
-from zarr.codecs._v2 import V2Compressor, V2Filters
+from zarr.codecs._v2 import V2Codec
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
@@ -116,9 +116,8 @@ def create_codec_pipeline(metadata: ArrayMetadata) -> CodecPipeline:
     if isinstance(metadata, ArrayV3Metadata):
         return get_pipeline_class().from_codecs(metadata.codecs)
     elif isinstance(metadata, ArrayV2Metadata):
-        return get_pipeline_class().from_codecs(
-            [V2Filters(metadata.filters), V2Compressor(metadata.compressor)]
-        )
+        v2_codec = V2Codec(filters=metadata.filters, compressor=metadata.compressor)
+        return get_pipeline_class().from_codecs([v2_codec])
     else:
         raise TypeError
 
