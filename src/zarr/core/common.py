@@ -5,6 +5,7 @@ import functools
 import operator
 from collections.abc import Iterable, Mapping
 from enum import Enum
+from itertools import starmap
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -52,7 +53,7 @@ async def concurrent_map(
     items: Iterable[T], func: Callable[..., Awaitable[V]], limit: int | None = None
 ) -> list[V]:
     if limit is None:
-        return await asyncio.gather(*[func(*item) for item in items])
+        return await asyncio.gather(*list(starmap(func, items)))
 
     else:
         sem = asyncio.Semaphore(limit)
