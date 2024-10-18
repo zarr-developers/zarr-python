@@ -51,7 +51,7 @@ license = {text = "MIT License"}
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
-remote = [
+fsspec = [
     "fsspec>=2023.10.0",
 ]
 sharding = [
