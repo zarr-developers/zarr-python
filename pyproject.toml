@@ -329,4 +329,14 @@ ignore = [
 
 [tool.numpydoc_validation]
 # See https://numpydoc.readthedocs.io/en/latest/validation.html#built-in-validation-checks for list of checks
-checks = ["GL06", "GL07", "GL09", "GL10", "SS02", "PR03", "PR05", "PR06"]
+checks = [
+    "GL06",
+    "GL07",
+    "GL09",
+    "GL10",
+    "SS02",
+    "SS04",
+    "PR03",
+    "PR05",
+    "PR06",
+]
