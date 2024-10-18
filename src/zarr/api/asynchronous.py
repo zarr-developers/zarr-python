@@ -10,8 +10,6 @@ import numpy.typing as npt
 
 from zarr.abc.store import Store
 from zarr.core.array import Array, AsyncArray, get_array_metadata
-from zarr.core.buffer import NDArrayLike
-from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
@@ -172,10 +170,7 @@ async def consolidate_metadata(
         The group, with the ``consolidated_metadata`` field set to include
         the metadata of each child node.
     """
-    store_path = await make_store_path(store)
-
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, path=path)
 
     group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
     group.store_path.store._check_writable()
@@ -293,10 +288,7 @@ async def open(
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
-
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     if "shape" not in kwargs and mode in {"a", "w", "w-"}:
         try:
@@ -403,9 +395,7 @@ async def save_array(
     )
 
     mode = kwargs.pop("mode", None)
-    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
     new = await AsyncArray.create(
         store_path,
         zarr_format=zarr_format,
@@ -584,9 +574,7 @@ async def group(
 
     mode = None if isinstance(store, Store) else cast(AccessModeLiteral, "a")
 
-    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -699,9 +687,7 @@ async def open_group(
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
 
     if attributes is None:
         attributes = {}
@@ -885,9 +871,7 @@ async def create(
         if not isinstance(store, Store | StorePath):
             mode = "a"
 
-    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     return await AsyncArray.create(
         store_path,
@@ -927,6 +911,7 @@ async def empty(
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
+
     return await create(shape=shape, fill_value=None, **kwargs)
 
 
@@ -1046,7 +1031,7 @@ async def open_array(
     store: StoreLike | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
-    path: PathLike | None = None,
+    path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
@@ -1073,9 +1058,7 @@ async def open_array(
     """
 
     mode = kwargs.pop("mode", None)
-    store_path = await make_store_path(store, mode=mode)
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, path=path, mode=mode)
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 

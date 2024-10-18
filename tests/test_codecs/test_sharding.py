@@ -118,6 +118,42 @@ def test_sharding_partial(
     assert np.array_equal(data, read_data)
 
 
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize(
+    "array_fixture",
+    [
+        ArrayRequest(shape=(128,) * 3, dtype="uint16", order="F"),
+    ],
+    indirect=["array_fixture"],
+)
+def test_sharding_partial_readwrite(
+    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+) -> None:
+    data = array_fixture
+    spath = StorePath(store)
+    a = Array.create(
+        spath,
+        shape=data.shape,
+        chunk_shape=data.shape,
+        dtype=data.dtype,
+        fill_value=0,
+        codecs=[
+            ShardingCodec(
+                chunk_shape=(1, data.shape[1], data.shape[2]),
+                codecs=[BytesCodec()],
+                index_location=index_location,
+            )
+        ],
+    )
+
+    a[:] = data
+
+    for x in range(data.shape[0]):
+        read_data = a[x, :, :]
+        assert np.array_equal(data[x], read_data)
+
+
 @pytest.mark.parametrize(
     "array_fixture",
     [

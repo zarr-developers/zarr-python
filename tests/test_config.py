@@ -87,7 +87,7 @@ def test_fully_qualified_name() -> None:
 
     assert (
         fully_qualified_name(MockClass)
-        == "tests.v3.test_config.test_fully_qualified_name.<locals>.MockClass"
+        == "tests.test_config.test_fully_qualified_name.<locals>.MockClass"
     )
 
 
