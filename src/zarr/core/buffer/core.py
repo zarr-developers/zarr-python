@@ -308,7 +308,7 @@ class NDBuffer:
 
     Parameters
     ----------
-    ndarray_like
+    array : ndarray_like
         ndarray-like object that is convertible to a regular Numpy array.
     """
 

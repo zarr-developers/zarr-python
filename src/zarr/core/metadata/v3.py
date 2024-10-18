@@ -423,9 +423,9 @@ def parse_fill_value(
 
     Parameters
     ----------
-    fill_value: Any
+    fill_value : Any
         A potential fill value.
-    dtype: str
+    dtype : str
         A valid Zarr V3 DataType.
 
     Returns

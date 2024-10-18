@@ -68,7 +68,7 @@ __all__ = [
 
 
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
-    """helper function to get the shape and chunks from an array-like object"""
+    """Helper function to get the shape and chunks from an array-like object"""
     shape = None
     chunks = None
 
@@ -86,7 +86,7 @@ def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoor
 
 
 def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
-    """set default values for shape and chunks if they are not present in the array-like object"""
+    """Set default values for shape and chunks if they are not present in the array-like object"""
 
     new = kwargs.copy()
 
@@ -121,7 +121,7 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
 def _handle_zarr_version_or_format(
     *, zarr_version: ZarrFormat | None, zarr_format: ZarrFormat | None
 ) -> ZarrFormat | None:
-    """handle the deprecated zarr_version kwarg and return zarr_format"""
+    """Handle the deprecated zarr_version kwarg and return zarr_format"""
     if zarr_format is not None and zarr_version is not None and zarr_format != zarr_version:
         raise ValueError(
             f"zarr_format {zarr_format} does not match zarr_version {zarr_version}, please only set one"
@@ -135,7 +135,7 @@ def _handle_zarr_version_or_format(
 
 
 def _default_zarr_version() -> ZarrFormat:
-    """return the default zarr_version"""
+    """Return the default zarr_version"""
     return cast(ZarrFormat, int(config.get("default_zarr_version", 3)))
 
 
@@ -152,9 +152,9 @@ async def consolidate_metadata(
 
     Parameters
     ----------
-    store: StoreLike
+    store : StoreLike
         The store-like object whose metadata you wish to consolidate.
-    path: str, optional
+    path : str, optional
         A path to a group in the store to consolidate at. Only children
         below that group will be consolidated.
 
@@ -341,13 +341,13 @@ async def save(
     ----------
     store : Store or str
         Store or path to directory in file system or name of zip file.
-    args : ndarray
+    *args : ndarray
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str or None, optional
         The path within the group where the arrays will be saved.
-    kwargs
+    **kwargs
         NumPy arrays with data to save.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
@@ -386,7 +386,7 @@ async def save_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    kwargs
+    **kwargs
         Passed through to :func:`create`, e.g., compressor.
     """
     zarr_format = (
@@ -423,7 +423,7 @@ async def save_group(
     ----------
     store : Store or str
         Store or path to directory in file system or name of zip file.
-    args : ndarray
+    *args : ndarray
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
@@ -432,7 +432,7 @@ async def save_group(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    kwargs
+    **kwargs
         NumPy arrays with data to save.
     """
     zarr_format = (
@@ -479,7 +479,7 @@ async def array(
     ----------
     data : array_like
         The data to fill the array with.
-    kwargs
+    **kwargs
         Passed through to :func:`create`.
 
     Returns

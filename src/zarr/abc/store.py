@@ -162,7 +162,7 @@ class Store(ABC):
 
         Parameters
         ----------
-        mode: AccessModeLiteral
+        mode : AccessModeLiteral
             The new mode to use.
 
         Returns
