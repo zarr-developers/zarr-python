@@ -2,18 +2,37 @@ import dataclasses
 import textwrap
 from typing import Literal
 
-# Group
-# Name        : /
-# Type        : zarr.hierarchy.Group
-# Read-only   : False
-# Store type  : zarr.storage.MemoryStore
-# No. members : 0
-# No. arrays  : 0
-# No. groups  : 0
-
 
 @dataclasses.dataclass(kw_only=True)
 class GroupInfo:
+    """
+    Information about a group.
+
+    Parameters
+    ----------
+    name : str
+        The path of the group within the Store
+    type : "Group"
+    zarr_format : {2, 3}
+        The zarr format of the Group.
+    read_only : bool
+        Whether the Group's access mode is read only.
+    store_type : str
+        The name of the Store class containing this group.
+    count_members : int, optional
+        The number of child members below this group. This
+        will be set when the Group has consolidated metadata
+        or when using :class:`Group.info_complete`.
+    count_arrays : int, optional
+        The number of child arrays below this group. This
+        will be set when the Group has consolidated metadata
+        or when using :class:`Group.info_complete`.
+    count_groups : int, optional
+        The number of child groups below this group. This
+        will be set when the Group has consolidated metadata
+        or when using :class:`Group.info_complete`.
+    """
+
     name: str
     type: Literal["Group"] = "Group"
     zarr_format: Literal[2, 3]

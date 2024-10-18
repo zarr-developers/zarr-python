@@ -2,7 +2,7 @@ import textwrap
 
 import pytest
 
-from zarr._info import ArrayInfo, GroupInfo
+from zarr._info import ArrayInfo, GroupInfo, human_readable_size
 from zarr.core.common import ZarrFormat
 
 ZARR_FORMATS = [2, 3]
@@ -111,3 +111,19 @@ def test_array_info_complete(
         No. bytes stored   : {count_bytes_stored_formatted}
         Storage ratio      : {storage_ratio_formatted}
         Chunks Initialized : 5""")
+
+
+@pytest.mark.parametrize(
+    ("size", "expected"),
+    [
+        (1, "1"),
+        (2**10, "1.0K"),
+        (2**20, "1.0M"),
+        (2**30, "1.0G"),
+        (2**40, "1.0T"),
+        (2**50, "1.0P"),
+    ],
+)
+def test_human_readable_size(size: int, expected: str) -> None:
+    result = human_readable_size(size)
+    assert result == expected
