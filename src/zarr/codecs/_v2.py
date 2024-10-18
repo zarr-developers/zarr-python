@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -32,14 +33,14 @@ class V2Codec(ArrayBytesCodec):
         cdata = chunk_bytes.as_array_like()
         # decompress
         if self.compressor:
-            chunk = self.compressor.decode(cdata)
+            chunk = await asyncio.to_thread(self.compressor.decode, cdata)
         else:
             chunk = cdata
 
         # apply filters
         if self.filters:
             for f in reversed(self.filters):
-                chunk = f.decode(chunk)
+                chunk = await asyncio.to_thread(f.decode, chunk)
 
         # view as numpy array with correct dtype
         chunk = ensure_ndarray_like(chunk)
@@ -71,7 +72,7 @@ class V2Codec(ArrayBytesCodec):
         # apply filters
         if self.filters:
             for f in self.filters:
-                chunk = f.encode(chunk)
+                chunk = await asyncio.to_thread(f.encode, chunk)
 
         # check object encoding
         if ensure_ndarray_like(chunk).dtype == object:
@@ -79,7 +80,7 @@ class V2Codec(ArrayBytesCodec):
 
         # compress
         if self.compressor:
-            cdata = self.compressor.encode(chunk)
+            cdata = await asyncio.to_thread(self.compressor.encode, chunk)
         else:
             cdata = chunk
 
