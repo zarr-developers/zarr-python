@@ -13,7 +13,7 @@ from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import JSON, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
-from zarr.core.sync import sync
+from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore
 from zarr.storage.common import StorePath
@@ -245,7 +245,8 @@ async def test_array_v3_nan_fill_value(store: MemoryStore) -> None:
     assert np.isnan(arr.fill_value)
     assert arr.fill_value.dtype == arr.dtype
     # all fill value chunk is an empty chunk, and should not be written
-    assert len([a async for a in store.list_prefix("/")]) == 0
+    contents = await _collect_aiterator(store.list_prefix("/"))
+    assert contents == ("zarr.json",)
 
 
 @pytest.mark.parametrize("store", ["local"], indirect=["store"])

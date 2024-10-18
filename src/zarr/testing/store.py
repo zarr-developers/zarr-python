@@ -40,7 +40,7 @@ class StoreTests(Generic[S, B]):
 
     @pytest.fixture
     def store_kwargs(self) -> dict[str, Any]:
-        return {"mode": "r+"}
+        return {"mode": "r+", "path": ""}
 
     @pytest.fixture
     async def store(self, store_kwargs: dict[str, Any]) -> Store:
@@ -62,6 +62,9 @@ class StoreTests(Generic[S, B]):
     def test_serializable_store(self, store: S) -> None:
         foo = pickle.dumps(store)
         assert pickle.loads(foo) == store
+
+    def test_store_path(self, store: S, store_kwargs: dict[str, Any]) -> None:
+        assert store.path == store_kwargs["path"]
 
     def test_store_mode(self, store: S, store_kwargs: dict[str, Any]) -> None:
         assert store.mode == AccessMode.from_literal("r+")
@@ -332,7 +335,7 @@ class StoreTests(Generic[S, B]):
         await store.set_if_not_exists("k", new)  # no error
 
         result = await store.get(key, default_buffer_prototype())
-        assert result == data_buf
+        assert result.to_bytes() == data_buf.to_bytes()  # type: ignore[union-attr]
 
         await store.set_if_not_exists("k2", new)  # no error
 
