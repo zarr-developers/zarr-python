@@ -369,7 +369,7 @@ class StoreTests:
             assert 15 == store.getsize()
             assert 3 == store.getsize("a")
             assert 3 == store.getsize("b")
-            assert 3 == store.getsize("c")
+            assert 9 == store.getsize("c")
             assert 3 == store.getsize("c/d")
             assert 6 == store.getsize("c/e")
             assert 3 == store.getsize("c/e/f")
