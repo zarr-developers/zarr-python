@@ -11,7 +11,9 @@ import pytest
 import zarr
 import zarr.api.asynchronous
 import zarr.api.synchronous
+import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
+from zarr._info import GroupInfo
 from zarr.abc.store import Store
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
@@ -768,15 +770,6 @@ async def test_asyncgroup_attrs(store: Store, zarr_format: ZarrFormat) -> None:
     assert agroup.attrs == agroup.metadata.attributes == attributes
 
 
-async def test_asyncgroup_info(store: Store, zarr_format: ZarrFormat) -> None:
-    agroup = await AsyncGroup.from_store(  # noqa: F841
-        store,
-        zarr_format=zarr_format,
-    )
-    pytest.xfail("Info is not implemented for metadata yet")
-    # assert agroup.info == agroup.metadata.info
-
-
 async def test_asyncgroup_open(
     store: Store,
     zarr_format: ZarrFormat,
@@ -1319,6 +1312,35 @@ class TestGroupMetadata:
         }
         result = GroupMetadata.from_dict(data)
         expected = GroupMetadata(attributes={"key": "value"}, zarr_format=2)
+        assert result == expected
+
+
+class TestInfo:
+    def test_info(self):
+        store = zarr.storage.MemoryStore(mode="w")
+        A = zarr.group(store=store, path="A")
+        B = A.create_group(name="B")
+
+        B.create_array(name="x", shape=(1,))
+        B.create_array(name="y", shape=(2,))
+
+        result = A.info
+        expected = GroupInfo(
+            name="A",
+            read_only=False,
+            store_type="MemoryStore",
+        )
+        assert result == expected
+
+        result = A.info_complete()
+        expected = GroupInfo(
+            name="A",
+            read_only=False,
+            store_type="MemoryStore",
+            count_members=3,
+            count_arrays=2,
+            count_groups=1,
+        )
         assert result == expected
 
 
