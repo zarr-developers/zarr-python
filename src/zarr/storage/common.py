@@ -124,7 +124,7 @@ class StorePath:
         return await self.store.exists(self.path)
 
     def __truediv__(self, other: str) -> StorePath:
-        """combine this store path with another path"""
+        """Combine this store path with another path"""
         return self.__class__(self.store, _dereference_path(self.path, other))
 
     def __str__(self) -> str:

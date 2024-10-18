@@ -116,7 +116,7 @@ async def test_open_group(memory_store: MemoryStore) -> None:
 async def test_open_group_unspecified_version(
     tmpdir: pathlib.Path, zarr_format: ZarrFormat
 ) -> None:
-    """regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
+    """Regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
 
     # create a group with specified zarr format (could be 2, 3, or None)
     _ = await zarr.api.asynchronous.open_group(

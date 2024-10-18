@@ -68,7 +68,7 @@ __all__ = [
 
 
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
-    """helper function to get the shape and chunks from an array-like object"""
+    """Helper function to get the shape and chunks from an array-like object"""
     shape = None
     chunks = None
 
@@ -86,7 +86,7 @@ def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoor
 
 
 def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
-    """set default values for shape and chunks if they are not present in the array-like object"""
+    """Set default values for shape and chunks if they are not present in the array-like object"""
 
     new = kwargs.copy()
 
@@ -121,7 +121,7 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
 def _handle_zarr_version_or_format(
     *, zarr_version: ZarrFormat | None, zarr_format: ZarrFormat | None
 ) -> ZarrFormat | None:
-    """handle the deprecated zarr_version kwarg and return zarr_format"""
+    """Handle the deprecated zarr_version kwarg and return zarr_format"""
     if zarr_format is not None and zarr_version is not None and zarr_format != zarr_version:
         raise ValueError(
             f"zarr_format {zarr_format} does not match zarr_version {zarr_version}, please only set one"
@@ -135,7 +135,7 @@ def _handle_zarr_version_or_format(
 
 
 def _default_zarr_version() -> ZarrFormat:
-    """return the default zarr_version"""
+    """Return the default zarr_version"""
     return cast(ZarrFormat, int(config.get("default_zarr_version", 3)))
 
 
