@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
+import logging
 import threading
-from concurrent.futures import wait
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING, TypeVar
 
 from typing_extensions import ParamSpec
@@ -12,6 +14,9 @@ from zarr.core.config import config
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Coroutine
     from typing import Any
+
+logger = logging.getLogger(__name__)
+
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -23,7 +28,7 @@ loop: list[asyncio.AbstractEventLoop | None] = [
     None
 ]  # global event loop for any non-async instance
 _lock: threading.Lock | None = None  # global lock placeholder
-get_running_loop = asyncio.get_running_loop
+_executor: ThreadPoolExecutor | None = None  # global executor placeholder
 
 
 class SyncError(Exception):
@@ -39,6 +44,51 @@ def _get_lock() -> threading.Lock:
     if not _lock:
         _lock = threading.Lock()
     return _lock
+
+
+def _get_executor() -> ThreadPoolExecutor:
+    """Return Zarr Thread Pool Executor
+
+    The executor is allocated on first use.
+    """
+    global _executor
+    if not _executor:
+        max_workers = config.get("threading.max_workers", None)
+        print(max_workers)
+        # if max_workers is not None and max_workers > 0:
+        #     raise ValueError(max_workers)
+        _executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="zarr_pool")
+        _get_loop().set_default_executor(_executor)
+    return _executor
+
+
+def cleanup_resources() -> None:
+    global _executor
+    if _executor:
+        _executor.shutdown(wait=True, cancel_futures=True)
+    _executor = None
+
+    if loop[0] is not None:
+        with _get_lock():
+            # Stop the event loop safely
+            loop[0].call_soon_threadsafe(loop[0].stop)  # Stop loop from another thread
+            if iothread[0] is not None:
+                iothread[0].join(timeout=0.2)  # Add a timeout to avoid hanging
+
+                if iothread[0].is_alive():
+                    logger.warning(
+                        "Thread did not finish cleanly; forcefully closing the event loop."
+                    )
+
+            # Forcefully close the event loop to release resources
+            loop[0].close()
+
+            # dereference the loop and iothread
+            loop[0] = None
+            iothread[0] = None
+
+
+atexit.register(cleanup_resources)
 
 
 async def _runner(coro: Coroutine[Any, Any, T]) -> T | BaseException:
@@ -83,7 +133,7 @@ def sync(
 
     finished, unfinished = wait([future], return_when=asyncio.ALL_COMPLETED, timeout=timeout)
     if len(unfinished) > 0:
-        raise asyncio.TimeoutError(f"Coroutine {coro} failed to finish in within {timeout}s")
+        raise TimeoutError(f"Coroutine {coro} failed to finish within {timeout} s")
     assert len(finished) == 1
     return_result = next(iter(finished)).result()
 
@@ -105,12 +155,27 @@ def _get_loop() -> asyncio.AbstractEventLoop:
             if loop[0] is None:
                 new_loop = asyncio.new_event_loop()
                 loop[0] = new_loop
-                th = threading.Thread(target=new_loop.run_forever, name="zarrIO")
-                th.daemon = True
-                th.start()
-                iothread[0] = th
+                iothread[0] = threading.Thread(target=new_loop.run_forever, name="zarr_io")
+                assert iothread[0] is not None
+                iothread[0].daemon = True
+                iothread[0].start()
     assert loop[0] is not None
     return loop[0]
+
+
+async def _collect_aiterator(data: AsyncIterator[T]) -> tuple[T, ...]:
+    """
+    Collect an entire async iterator into a tuple
+    """
+    result = [x async for x in data]
+    return tuple(result)
+
+
+def collect_aiterator(data: AsyncIterator[T]) -> tuple[T, ...]:
+    """
+    Synchronously collect an entire async iterator into a tuple.
+    """
+    return sync(_collect_aiterator(data))
 
 
 class SyncMixin:

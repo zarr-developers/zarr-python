@@ -8,15 +8,14 @@ import numpy as np
 
 from zarr.abc.codec import ArrayArrayCodec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.buffer import NDBuffer
-from zarr.core.chunk_grids import ChunkGrid
 from zarr.core.common import JSON, ChunkCoordsLike, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing import Any
+    from typing import Any, Self
 
-    from typing_extensions import Self
+    from zarr.core.buffer import NDBuffer
+    from zarr.core.chunk_grids import ChunkGrid
 
 
 def parse_transpose_order(data: JSON | Iterable[int]) -> tuple[int, ...]:
@@ -44,7 +43,7 @@ class TransposeCodec(ArrayArrayCodec):
         return cls(**configuration_parsed)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, JSON]:
-        return {"name": "transpose", "configuration": {"order": list(self.order)}}
+        return {"name": "transpose", "configuration": {"order": tuple(self.order)}}
 
     def validate(self, shape: tuple[int, ...], dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
         if len(self.order) != len(shape):
@@ -95,16 +94,14 @@ class TransposeCodec(ArrayArrayCodec):
         chunk_spec: ArraySpec,
     ) -> NDBuffer:
         inverse_order = np.argsort(self.order)
-        chunk_array = chunk_array.transpose(inverse_order)
-        return chunk_array
+        return chunk_array.transpose(inverse_order)
 
     async def _encode_single(
         self,
         chunk_array: NDBuffer,
         _chunk_spec: ArraySpec,
     ) -> NDBuffer | None:
-        chunk_array = chunk_array.transpose(self.order)
-        return chunk_array
+        return chunk_array.transpose(self.order)
 
     def compute_encoded_size(self, input_byte_length: int, _chunk_spec: ArraySpec) -> int:
         return input_byte_length

@@ -3,11 +3,9 @@ on:
   push:
     branches:
       - "main"
-      - "v3"
   pull_request:
     branches:
       - "main"
-      - "v3"
     types: [opened, reopened, synchronize, labeled]
   schedule:
     - cron: "0 0 * * *" # Daily “At 00:00” UTC

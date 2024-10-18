@@ -1,37 +1,41 @@
 from __future__ import annotations
 
 import asyncio
-import contextvars
 import functools
 import operator
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
     Literal,
-    ParamSpec,
     TypeVar,
     cast,
     overload,
 )
 
+import numpy as np
+
+from zarr.core.strings import _STRING_DTYPE
+
 if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable, Iterator
 
-import numpy as np
-import numpy.typing as npt
 
 ZARR_JSON = "zarr.json"
 ZARRAY_JSON = ".zarray"
 ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
+ZMETADATA_V2_JSON = ".zmetadata"
 
+ByteRangeRequest = tuple[int | None, int | None]
 BytesLike = bytes | bytearray | memoryview
+ShapeLike = tuple[int, ...] | int
 ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
-JSON = None | str | int | float | Enum | dict[str, "JSON"] | list["JSON"] | tuple["JSON", ...]
+NodeType = Literal["array", "group"]
+JSON = None | str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...]
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 
@@ -45,7 +49,7 @@ V = TypeVar("V")
 
 
 async def concurrent_map(
-    items: list[T], func: Callable[..., Awaitable[V]], limit: int | None = None
+    items: Iterable[T], func: Callable[..., Awaitable[V]], limit: int | None = None
 ) -> list[V]:
     if limit is None:
         return await asyncio.gather(*[func(*item) for item in items])
@@ -60,17 +64,6 @@ async def concurrent_map(
         return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
 
 
-P = ParamSpec("P")
-U = TypeVar("U")
-
-
-async def to_thread(func: Callable[P, U], /, *args: P.args, **kwargs: P.kwargs) -> U:
-    loop = asyncio.get_running_loop()
-    ctx = contextvars.copy_context()
-    func_call = functools.partial(ctx.run, func, *args, **kwargs)
-    return await loop.run_in_executor(None, func_call)
-
-
 E = TypeVar("E", bound=Enum)
 
 
@@ -79,7 +72,7 @@ def enum_names(enum: type[E]) -> Iterator[str]:
         yield item.name
 
 
-def parse_enum(data: JSON, cls: type[E]) -> E:
+def parse_enum(data: object, cls: type[E]) -> E:
     if isinstance(data, cls):
         return data
     if not isinstance(data, str):
@@ -153,11 +146,6 @@ def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
     return data_tuple
 
 
-def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
-    # todo: real validation
-    return np.dtype(data)
-
-
 def parse_fill_value(data: Any) -> Any:
     # todo: real validation
     return data
@@ -167,3 +155,13 @@ def parse_order(data: Any) -> Literal["C", "F"]:
     if data in ("C", "F"):
         return cast(Literal["C", "F"], data)
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
+
+
+def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
+    if dtype is str or dtype == "str":
+        if zarr_format == 2:
+            # special case as object
+            return np.dtype("object")
+        else:
+            return _STRING_DTYPE
+    return np.dtype(dtype)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from functools import cached_property
 from importlib.metadata import version
@@ -8,13 +9,15 @@ from typing import TYPE_CHECKING
 from numcodecs.zstd import Zstd
 
 from zarr.abc.codec import BytesBytesCodec
-from zarr.core.array_spec import ArraySpec
-from zarr.core.buffer import Buffer, as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_named_configuration, to_thread
+from zarr.core.buffer.cpu import as_numpy_array_wrapper
+from zarr.core.common import JSON, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
+
+    from zarr.core.array_spec import ArraySpec
+    from zarr.core.buffer import Buffer
 
 
 def parse_zstd_level(data: JSON) -> int:
@@ -71,7 +74,7 @@ class ZstdCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await to_thread(
+        return await asyncio.to_thread(
             as_numpy_array_wrapper, self._zstd_codec.decode, chunk_bytes, chunk_spec.prototype
         )
 
@@ -80,7 +83,7 @@ class ZstdCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer | None:
-        return await to_thread(
+        return await asyncio.to_thread(
             as_numpy_array_wrapper, self._zstd_codec.encode, chunk_bytes, chunk_spec.prototype
         )
 

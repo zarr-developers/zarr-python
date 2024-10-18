@@ -8,16 +8,21 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from typing import Self
+
+    from zarr.core.array_spec import ArraySpec
 
 
 class Endian(Enum):
+    """
+    Enum for endian type used by bytes codec.
+    """
+
     big = "big"
     little = "little"
 
@@ -48,7 +53,7 @@ class BytesCodec(ArrayBytesCodec):
         if self.endian is None:
             return {"name": "bytes"}
         else:
-            return {"name": "bytes", "configuration": {"endian": self.endian}}
+            return {"name": "bytes", "configuration": {"endian": self.endian.value}}
 
     def evolve_from_array_spec(self, array_spec: ArraySpec) -> Self:
         if array_spec.dtype.itemsize == 0:

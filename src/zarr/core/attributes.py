@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 
 class Attributes(MutableMapping[str, JSON]):
-    def __init__(self, obj: Array | Group):
+    def __init__(self, obj: Array | Group) -> None:
         # key=".zattrs", read_only=False, cache=True, synchronizer=None
         self._obj = obj
 
@@ -35,3 +35,22 @@ class Attributes(MutableMapping[str, JSON]):
 
     def __len__(self) -> int:
         return len(self._obj.metadata.attributes)
+
+    def put(self, d: dict[str, JSON]) -> None:
+        """
+        Overwrite all attributes with the values from `d`.
+
+        Equivalent to the following pseudo-code, but performed atomically.
+
+        .. code-block:: python
+
+           >>> attrs = {"a": 1, "b": 2}
+           >>> attrs.clear()
+           >>> attrs.update({"a": 3", "c": 4})
+           >>> attrs
+           {'a': 3, 'c': 4}
+        """
+        self._obj = self._obj.update_attributes(d)
+
+    def asdict(self) -> dict[str, JSON]:
+        return dict(self._obj.metadata.attributes)
