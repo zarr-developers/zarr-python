@@ -5,8 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numcodecs
-import numcodecs.compat
-from numcodecs.compat import ensure_bytes, ensure_ndarray_like
+from numcodecs.compat import ensure_ndarray_like
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.registry import get_ndbuffer_class
@@ -83,8 +82,6 @@ class V2Codec(ArrayBytesCodec):
             cdata = await asyncio.to_thread(self.compressor.encode, chunk)
         else:
             cdata = chunk
-
-        cdata = ensure_bytes(cdata)
 
         return chunk_spec.prototype.buffer.from_bytes(cdata)
 
