@@ -306,17 +306,52 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     group = Group.from_store(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
     subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+    subsubarray = subgroup.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
 
     if consolidated:
         group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
+        # we're going to assume that `group.metadata` is correct, and reuse that to focus
+        # on indexing in this test. Other tests verify the correctness of group.metadata
         object.__setattr__(
-            subgroup.metadata, "consolidated_metadata", ConsolidatedMetadata(metadata={})
+            subgroup.metadata,
+            "consolidated_metadata",
+            ConsolidatedMetadata(
+                metadata={"subarray": group.metadata.consolidated_metadata.metadata["subarray"]}
+            ),
         )
 
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
+    assert group["subgroup"]["subarray"] == subsubarray
+    assert group["subgroup/subarray"] == subsubarray
+
     with pytest.raises(KeyError):
         group["nope"]
+
+    with pytest.raises(KeyError, match="subarray/subsubarray"):
+        group["subarray/subsubarray"]
+
+    # Now test the mixed case
+    if consolidated:
+        object.__setattr__(
+            group.metadata.consolidated_metadata.metadata["subgroup"],
+            "consolidated_metadata",
+            None,
+        )
+
+        # test the implementation directly
+        with pytest.raises(KeyError):
+            group._async_group._getitem_consolidated(
+                group.store_path, "subgroup/subarray", prefix="/"
+            )
+
+        with pytest.raises(KeyError):
+            # We've chosen to trust the consolidted metadata, which doesn't
+            # contain this array
+            group["subgroup/subarray"]
+
+        with pytest.raises(KeyError, match="subarray/subsubarray"):
+            group["subarray/subsubarray"]
 
 
 def test_group_get_with_default(store: Store, zarr_format: ZarrFormat) -> None:
@@ -1007,6 +1042,21 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
 
     with pytest.raises(ValueError, match="max_depth"):
         [x async for x in group.members(max_depth=-1)]
+
+    if consolidated_metadata:
+        # test for mixed known and unknown metadata.
+        # For now, we trust the consolidated metadata.
+        object.__setattr__(
+            group.metadata.consolidated_metadata.metadata["g0"].consolidated_metadata.metadata[
+                "g1"
+            ],
+            "consolidated_metadata",
+            None,
+        )
+        all_children = sorted([x async for x in group.members(max_depth=None)], key=lambda x: x[0])
+        assert len(all_children) == 4
+        nmembers = await group.nmembers(max_depth=None)
+        assert nmembers == 4
 
 
 async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
