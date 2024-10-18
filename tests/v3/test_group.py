@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 import zarr
+from zarr._info import GroupInfo
 import zarr.api.asynchronous
 import zarr.api.synchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
@@ -18,6 +19,7 @@ from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
+import zarr.storage
 from zarr.storage.common import make_store_path
 
 from .conftest import parse_store
@@ -768,15 +770,6 @@ async def test_asyncgroup_attrs(store: Store, zarr_format: ZarrFormat) -> None:
     assert agroup.attrs == agroup.metadata.attributes == attributes
 
 
-async def test_asyncgroup_info(store: Store, zarr_format: ZarrFormat) -> None:
-    agroup = await AsyncGroup.from_store(  # noqa: F841
-        store,
-        zarr_format=zarr_format,
-    )
-    pytest.xfail("Info is not implemented for metadata yet")
-    # assert agroup.info == agroup.metadata.info
-
-
 async def test_asyncgroup_open(
     store: Store,
     zarr_format: ZarrFormat,
@@ -1321,6 +1314,34 @@ class TestGroupMetadata:
         expected = GroupMetadata(attributes={"key": "value"}, zarr_format=2)
         assert result == expected
 
+
+class TestInfo:
+    def test_info(self):
+        store = zarr.storage.MemoryStore(mode="w")
+        A = zarr.group(store=store, path="A")
+        B = A.create_group(name="B")
+
+        B.create_array(name="x", shape=(1,))
+        B.create_array(name="y", shape=(2,))
+
+        result = A.info
+        expected = GroupInfo(
+            name="A",
+            read_only=False,
+            store_type="MemoryStore",
+        )
+        assert result == expected
+
+        result = A.info_complete()
+        expected = GroupInfo(
+            name="A",
+            read_only=False,
+            store_type="MemoryStore",
+            count_members=3,
+            count_arrays=2,
+            count_groups=1,
+        )
+        assert result == expected
 
 def test_update_attrs() -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328

@@ -13,6 +13,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
+from zarr._info import GroupInfo
 import zarr.api.asynchronous as async_api
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
@@ -792,8 +793,37 @@ class AsyncGroup:
         return self.metadata.attributes
 
     @property
-    def info(self) -> None:
-        raise NotImplementedError
+    def info(self) -> GroupInfo:
+        if self.metadata.consolidated_metadata:
+            members = list(self.metadata.consolidated_metadata.flattened_metadata.values())
+        else:
+            members = None
+        return self._info(members=members)
+
+    async def info_complete(self) -> GroupInfo:
+        members = [x[1].metadata async for x in self.members(max_depth=None)]
+        return self._info(members=members)
+
+    def _info(self, members: list[ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] | None = None) -> GroupInfo:
+        kwargs = {}
+        if members is not None:
+            kwargs["count_members"] = len(members)
+            count_arrays = 0
+            count_groups = 0
+            for member in members:
+                if isinstance(member, GroupMetadata):
+                    count_groups += 1
+                else:
+                    count_arrays += 1
+            kwargs["count_arrays"] = count_arrays
+            kwargs["count_groups"] = count_groups
+
+        return GroupInfo(
+            name=self.store_path.path,
+            read_only=self.store_path.store.mode.readonly,
+            store_type=type(self.store_path.store).__name__,
+            **kwargs
+        )
 
     @property
     def store(self) -> Store:
@@ -1438,8 +1468,11 @@ class Group(SyncMixin):
         return Attributes(self)
 
     @property
-    def info(self) -> None:
-        raise NotImplementedError
+    def info(self) -> GroupInfo:
+        return self._async_group.info
+
+    def info_complete(self) -> GroupInfo:
+        return self._sync(self._async_group.info_complete())
 
     @property
     def store(self) -> Store:

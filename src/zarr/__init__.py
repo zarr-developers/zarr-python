@@ -1,3 +1,4 @@
+from zarr._info import GroupInfo
 from zarr._version import version as __version__
 from zarr.api.synchronous import (
     array,
@@ -38,6 +39,7 @@ __all__ = [
     "AsyncArray",
     "AsyncGroup",
     "Group",
+    "GroupInfo",
     "__version__",
     "array",
     "config",
