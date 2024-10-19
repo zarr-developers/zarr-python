@@ -113,13 +113,13 @@ def _iter_grid(
 
     Parameters
     ----------
-    grid_shape: Sequence[int]
+    grid_shape : Sequence[int]
         The size of the domain to iterate over.
-    origin: Sequence[int] | None, default=None
+    origin : Sequence[int] | None, default=None
         The first coordinate of the domain to return.
-    selection_shape: Sequence[int] | None, default=None
+    selection_shape : Sequence[int] | None, default=None
         The shape of the selection.
-    order: Literal["lexicographic"], default="lexicographic"
+    order : Literal["lexicographic"], default="lexicographic"
         The linear indexing order to use.
 
     Returns
@@ -310,7 +310,7 @@ def normalize_integer_selection(dim_sel: int, dim_len: int) -> int:
 class ChunkDimProjection(NamedTuple):
     """A mapping from chunk to output array for a single dimension.
 
-    Parameters
+    Attributes
     ----------
     dim_chunk_ix
         Index of chunk.
@@ -482,7 +482,7 @@ class ChunkProjection(NamedTuple):
     chunk array for loading into an output array. Can also be used to extract items from a
     value array for setting/updating in a chunk array.
 
-    Parameters
+    Attributes
     ----------
     chunk_coords
         Indices of chunk.

@@ -42,15 +42,15 @@ def _guess_chunks(
 
     Parameters
     ----------
-    shape: ChunkCoords
+    shape : ChunkCoords
         The chunk shape.
-    typesize: int
+    typesize : int
         The size, in bytes, of each element of the chunk.
-    increment_bytes: int = 256 * 1024
+    increment_bytes : int = 256 * 1024
         The number of bytes used to increment or decrement the target chunk size in bytes.
-    min_bytes: int = 128 * 1024
+    min_bytes : int = 128 * 1024
         The soft lower bound on the final chunk size in bytes.
-    max_bytes: int = 64 * 1024 * 1024
+    max_bytes : int = 64 * 1024 * 1024
         The hard upper bound on the final chunk size in bytes.
 
     Returns
