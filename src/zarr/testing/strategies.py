@@ -8,7 +8,7 @@ from hypothesis.strategies import SearchStrategy
 
 from zarr.core.array import Array
 from zarr.core.group import Group
-from zarr.store import MemoryStore, StoreLike
+from zarr.storage import MemoryStore, StoreLike
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)
@@ -60,7 +60,7 @@ node_names = st.text(zarr_key_chars, min_size=1).filter(
 )
 array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
-keys = st.lists(node_names, min_size=1).map(lambda x: "/".join(x))
+keys = st.lists(node_names, min_size=1).map("/".join)
 paths = st.just("/") | keys
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
 compressors = st.sampled_from([None, "default"])
@@ -140,7 +140,8 @@ def arrays(
     )
 
     assert isinstance(a, Array)
-    assert a.fill_value is not None
+    if a.metadata.zarr_format == 3:
+        assert a.fill_value is not None
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunks == a.chunks
@@ -158,7 +159,7 @@ def is_negative_slice(idx: Any) -> bool:
 
 
 @st.composite  # type: ignore[misc]
-def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs) -> Any:  # type: ignore[no-untyped-def]
+def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs: Any) -> Any:
     """Basic indices without unsupported negative slices."""
     return draw(
         npst.basic_indices(shape=shape, **kwargs).filter(

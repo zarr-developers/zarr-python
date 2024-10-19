@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import base64
 from collections.abc import Iterable
 from enum import Enum
-from typing import TYPE_CHECKING
+from functools import cached_property
+from typing import TYPE_CHECKING, TypedDict, cast
+
+from zarr.abc.metadata import Metadata
 
 if TYPE_CHECKING:
     from typing import Any, Literal, Self
@@ -13,7 +17,7 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON, ChunkCoords
 
 import json
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 
 import numcodecs
 import numpy as np
@@ -23,15 +27,24 @@ from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
-from zarr.core.metadata.common import ArrayMetadata, parse_attributes
+from zarr.core.metadata.common import parse_attributes
+
+
+class ArrayV2MetadataDict(TypedDict):
+    """
+    A typed dictionary model for zarr v2 metadata.
+    """
+
+    zarr_format: Literal[2]
+    attributes: dict[str, JSON]
 
 
 @dataclass(frozen=True, kw_only=True)
-class ArrayV2Metadata(ArrayMetadata):
+class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
-    chunk_grid: RegularChunkGrid
-    data_type: np.dtype[Any]
-    fill_value: None | int | float = 0
+    chunks: tuple[int, ...]
+    dtype: np.dtype[Any]
+    fill_value: None | int | float | str | bytes = 0
     order: Literal["C", "F"] = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
@@ -56,18 +69,18 @@ class ArrayV2Metadata(ArrayMetadata):
         Metadata for a Zarr version 2 array.
         """
         shape_parsed = parse_shapelike(shape)
-        data_type_parsed = parse_dtype(dtype)
+        dtype_parsed = parse_dtype(dtype)
         chunks_parsed = parse_shapelike(chunks)
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
         filters_parsed = parse_filters(filters)
-        fill_value_parsed = parse_fill_value(fill_value, dtype=data_type_parsed)
+        fill_value_parsed = parse_fill_value(fill_value, dtype=dtype_parsed)
         attributes_parsed = parse_attributes(attributes)
 
         object.__setattr__(self, "shape", shape_parsed)
-        object.__setattr__(self, "data_type", data_type_parsed)
-        object.__setattr__(self, "chunk_grid", RegularChunkGrid(chunk_shape=chunks_parsed))
+        object.__setattr__(self, "dtype", dtype_parsed)
+        object.__setattr__(self, "chunks", chunks_parsed)
         object.__setattr__(self, "compressor", compressor_parsed)
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "dimension_separator", dimension_separator_parsed)
@@ -82,13 +95,9 @@ class ArrayV2Metadata(ArrayMetadata):
     def ndim(self) -> int:
         return len(self.shape)
 
-    @property
-    def dtype(self) -> np.dtype[Any]:
-        return self.data_type
-
-    @property
-    def chunks(self) -> ChunkCoords:
-        return self.chunk_grid.chunk_shape
+    @cached_property
+    def chunk_grid(self) -> RegularChunkGrid:
+        return RegularChunkGrid(chunk_shape=self.chunks)
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         def _json_convert(
@@ -140,15 +149,38 @@ class ArrayV2Metadata(ArrayMetadata):
         _data = data.copy()
         # check that the zarr_format attribute is correct
         _ = parse_zarr_format(_data.pop("zarr_format"))
+        dtype = parse_dtype(_data["dtype"])
+
+        if dtype.kind in "SV":
+            fill_value_encoded = _data.get("fill_value")
+            if fill_value_encoded is not None:
+                fill_value = base64.standard_b64decode(fill_value_encoded)
+                _data["fill_value"] = fill_value
+
+        # zarr v2 allowed arbitrary keys here.
+        # We don't want the ArrayV2Metadata constructor to fail just because someone put an
+        # extra key in the metadata.
+        expected = {x.name for x in fields(cls)}
+        # https://github.com/zarr-developers/zarr-python/issues/2269
+        # handle the renames
+        expected |= {"dtype", "chunks"}
+
+        _data = {k: v for k, v in _data.items() if k in expected}
+
         return cls(**_data)
 
     def to_dict(self) -> dict[str, JSON]:
         zarray_dict = super().to_dict()
-        _ = zarray_dict.pop("chunk_grid")
-        zarray_dict["chunks"] = self.chunk_grid.chunk_shape
 
-        _ = zarray_dict.pop("data_type")
-        zarray_dict["dtype"] = self.data_type.str
+        if self.dtype.kind in "SV" and self.fill_value is not None:
+            # There's a relationship between self.dtype and self.fill_value
+            # that mypy isn't aware of. The fact that we have S or V dtype here
+            # means we should have a bytes-type fill_value.
+            fill_value = base64.standard_b64encode(cast(bytes, self.fill_value)).decode("ascii")
+            zarray_dict["fill_value"] = fill_value
+
+        _ = zarray_dict.pop("dtype")
+        zarray_dict["dtype"] = self.dtype.str
 
         return zarray_dict
 
@@ -156,7 +188,7 @@ class ArrayV2Metadata(ArrayMetadata):
         self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
     ) -> ArraySpec:
         return ArraySpec(
-            shape=self.chunk_grid.chunk_shape,
+            shape=self.chunks,
             dtype=self.dtype,
             fill_value=self.fill_value,
             order=order,
@@ -175,7 +207,6 @@ class ArrayV2Metadata(ArrayMetadata):
 
 
 def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
-    # todo: real validation
     return np.dtype(data)
 
 
@@ -235,12 +266,13 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
 
     Parameters
     ----------
-    fill_value: Any
+    fill_value : Any
         A potential fill value.
-    dtype: np.dtype[Any]
+    dtype : np.dtype[Any]
         A numpy dtype.
 
     Returns
+    -------
         An instance of `dtype`, or `None`, or any python object (in the case of an object dtype)
     """
 
@@ -273,3 +305,24 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
             raise ValueError(msg) from e
 
     return fill_value
+
+
+def _default_fill_value(dtype: np.dtype[Any]) -> Any:
+    """
+    Get the default fill value for a type.
+
+    Notes
+    -----
+    This differs from :func:`parse_fill_value`, which parses a fill value
+    stored in the Array metadata into an in-memory value. This only gives
+    the default fill value for some type.
+
+    This is useful for reading Zarr V2 arrays, which allow the fill
+    value to be unspecified.
+    """
+    if dtype.kind == "S":
+        return b""
+    elif dtype.kind in "UO":
+        return ""
+    else:
+        return dtype.type(0)
