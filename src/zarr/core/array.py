@@ -314,58 +314,6 @@ class AsyncArray:
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray:
-        """
-        Asynchronously create a Zarr V3 array.
-
-        Parameters
-        ----------
-        store_path : StorePath
-            The path within the store where the array should be created.
-
-        shape : ShapeLike
-            The shape of the array.
-
-        dtype : numpy.typing.DTypeLike
-            The data type of the array elements.
-
-        chunk_shape : ChunkCoords
-            The shape of the chunks in the array.
-
-        fill_value : Any, optional
-            The default value to use for uninitialized regions of the array. Default is None.
-
-        chunk_key_encoding : ChunkKeyEncoding or tuple, optional
-            The encoding to use for chunk keys. Can be either 'default' or 'v2' along with a separator,
-            either "." or "/". Default is None.
-
-        codecs : Iterable of Codec or dict of str to JSON, optional
-            The codecs to apply to each chunk. These can be codec objects or dictionaries specifying codec
-            configurations. Default is None.
-
-        dimension_names : Iterable of str or None, optional
-            The names of the array dimensions. Default is None.
-
-        attributes : dict of str to JSON, optional
-            User-defined attributes to be associated with the array. Default is None.
-
-        exists_ok : bool, optional
-            If False (default), raise an error if the array already exists. If True, overwrite the existing array.
-
-        Returns
-        -------
-        AsyncArray
-            The created Zarr v3 array.
-
-        Raises
-        ------
-        ValueError
-            If the parameters are incompatible or invalid.
-
-        Notes
-        -----
-        - This method is asynchronous and should be awaited.
-        - This function is specific to Zarr V3 format arrays.
-        """
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=3)
 
@@ -414,61 +362,6 @@ class AsyncArray:
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray:
-        """
-        Asynchronously create a Zarr V2 array.
-
-        Parameters
-        ----------
-        store_path : StorePath
-            The path within the store where the array should be created.
-
-        shape : ChunkCoords
-            The shape of the array.
-
-        dtype : numpy.typing.DTypeLike
-            The data type of the array elements.
-
-        chunks : ChunkCoords
-            The shape of the chunks in the array.
-
-        dimension_separator : {'.', '/'} or None, optional
-            The separator to use between chunk dimensions. Default is None.
-
-        fill_value : float or None, optional
-            The default value to use for uninitialized regions of the array. Default is None.
-
-        order : {'C', 'F'} or None, optional
-            The memory layout order for the array. 'C' is row-major (C-style), 'F' is column-major
-            (Fortran-style). Default is None.
-
-        filters : list of dict of str to JSON or None, optional
-            Filters to apply to each chunk. These can be dictionaries specifying filter configurations.
-            Default is None.
-
-        compressor : dict of str to JSON or None, optional
-            The compression algorithm to use for chunks. Default is None.
-
-        attributes : dict of str to JSON, optional
-            User-defined attributes to be associated with the array. Default is None.
-
-        exists_ok : bool, optional
-            If False (default), raise an error if the array already exists. If True, overwrite the existing array.
-
-        Returns
-        -------
-        AsyncArray
-            The created Zarr V2 array.
-
-        Raises
-        ------
-        ValueError
-            If the parameters are incompatible or invalid.
-
-        Notes
-        -----
-        - This method is asynchronous and should be awaited.
-        - This function is specific to Zarr v2 format arrays.
-        """
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=2)
         if order is None:
@@ -702,40 +595,6 @@ class AsyncArray:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
     ) -> NDArrayLike:
-        """
-        Asynchronously retrieve a selection from the array.
-
-        Parameters
-        ----------
-        indexer : Indexer
-            An object representing the indices to be used for selecting data from the array.
-
-        prototype : BufferPrototype
-            A prototype buffer that defines the structure and properties of the output data.
-
-        out : NDBuffer or None, optional
-            An optional output buffer to write the selected data into. If None, a new buffer
-            will be created. Default is None.
-
-        fields : Fields or None, optional
-            Specifies which fields to select if the array has structured data. If None, all fields
-            are selected. Default is None.
-
-        Returns
-        -------
-        NDArrayLike
-            The selected data from the array.
-
-        Raises
-        ------
-        ValueError
-            If the indices or selection criteria are invalid.
-
-        Notes
-        -----
-        - This method is asynchronous and should be awaited.
-        - The selection can be made using advanced indexing and supports structured arrays.
-        """
         # check fields are sensible
         out_dtype = check_fields(fields, self.dtype)
 
@@ -838,37 +697,6 @@ class AsyncArray:
         prototype: BufferPrototype,
         fields: Fields | None = None,
     ) -> None:
-        """
-        Asynchronously set a selection of values in the array.
-
-        Parameters
-        ----------
-        indexer : Indexer
-            An object representing the indices to be used for selecting locations in the array where data will be written.
-
-        value : numpy.typing.ArrayLike
-            The values to be written into the array at the selected locations. Must be compatible with the array's dtype and shape.
-
-        prototype : BufferPrototype
-            A prototype buffer that defines the structure and properties of the array chunks being modified.
-
-        fields : Fields or None, optional
-            Specifies which fields to set if the array has structured data. If None, all fields are set. Default is None.
-
-        Returns
-        -------
-        None
-            This method does not return any value.
-
-        Raises
-        ------
-        ValueError
-            If the indices or values are incompatible with the array's shape or dtype.
-
-        Notes
-        -----
-        - This method is asynchronous and should be awaited.
-        """
         # check fields are sensible
         check_fields(fields, self.dtype)
         fields = check_no_multi_fields(fields)
