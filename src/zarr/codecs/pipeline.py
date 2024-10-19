@@ -162,7 +162,6 @@ class BatchedCodecPipeline(CodecPipeline):
     ) -> Iterable[NDBuffer | None]:
         chunk_bytes_batch: Iterable[Buffer | None]
         chunk_bytes_batch, chunk_specs = _unzip2(chunk_bytes_and_specs)
-
         (
             aa_codecs_with_spec,
             ab_codec_with_spec,
