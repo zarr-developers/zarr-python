@@ -206,6 +206,22 @@ def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
         zarr.open(store=tmp_path, mode="w-")
 
 
+@pytest.mark.parametrize("order", ["C", "F", None])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_array_order(order: str | None, zarr_format: int) -> None:
+    arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
+    expected = order or zarr.config.get("array.order")
+    assert arr.order == expected
+
+    vals = np.asarray(arr)
+    if expected == "C":
+        assert vals.flags.c_contiguous
+    elif expected == "F":
+        assert vals.flags.f_contiguous
+    else:
+        raise AssertionError
+
+
 # def test_lazy_loader():
 #     foo = np.arange(100)
 #     bar = np.arange(100, 0, -1)

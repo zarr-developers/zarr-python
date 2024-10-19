@@ -417,3 +417,20 @@ def test_update_attrs(zarr_format: int) -> None:
 
     arr2 = zarr.open_array(store=store, zarr_format=zarr_format)
     assert arr2.attrs["foo"] == "bar"
+
+
+@pytest.mark.parametrize("order", ["C", "F", None])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_array_create_order(order: str | None, zarr_format: int, store: MemoryStore) -> None:
+    arr = Array.create(store=store, shape=(2, 2), order=order, zarr_format=zarr_format, dtype="i4")
+    expected = order or zarr.config.get("array.order")
+    assert arr.order == expected
+
+    vals = np.asarray(arr)
+    if expected == "C":
+        assert vals.flags.c_contiguous
+    elif expected == "F":
+        assert vals.flags.f_contiguous
+    else:
+        raise AssertionError
