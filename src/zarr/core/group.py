@@ -1744,7 +1744,6 @@ class Group(SyncMixin):
     def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.full_like(name=name, data=data, **kwargs)))
 
-    @_deprecate_positional_args
     def move(self, source: str, dest: str) -> None:
         return self._sync(self._async_group.move(source, dest))
 
