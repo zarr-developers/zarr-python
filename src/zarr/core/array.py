@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from asyncio import gather
 from dataclasses import dataclass, field, replace
+from itertools import starmap
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload
 
@@ -816,7 +817,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Tuple[int]
             The shape of the chunk grid for this array.
         """
-        return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
+        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
 
     @property
     def nchunks(self) -> int:
@@ -1385,7 +1386,7 @@ class Array:
         """
         The shape of the chunk grid for this array.
         """
-        return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
+        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
 
     @property
     def nchunks(self) -> int:

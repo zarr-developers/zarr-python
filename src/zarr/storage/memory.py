@@ -156,8 +156,7 @@ class MemoryStore(Store):
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        if prefix.endswith("/"):
-            prefix = prefix[:-1]
+        prefix = prefix.rstrip("/")
 
         if prefix == "":
             keys_unique = {k.split("/")[0] for k in self._store_dict}
