@@ -638,7 +638,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         data: dict[str, JSON],
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
         """
-        Create a Zarr array from a dictionary.
+        Create a Zarr array from a dictionary, with support for both Zarr v2 and v3 metadata.
 
         Parameters
         ----------
@@ -646,16 +646,19 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The path within the store where the array should be created.
 
         data : dict of str to JSON
-            A dictionary representing the array data and metadata in JSON-serializable format.
+            A dictionary representing the array data. This dictionary should include necessary metadata
+            for the array, such as shape, dtype, and other attributes. The format of the metadata
+            will determine whether a Zarr v2 or v3 array is created.
+
         Returns
         -------
-        AsyncArray
-            The created Zarr array.
+        AsyncArray[ArrayV3Metadata] or AsyncArray[ArrayV2Metadata]
+            The created Zarr array, either using v2 or v3 metadata based on the provided data.
 
         Raises
         ------
         ValueError
-            If the provided dictionary is not compatible with the Zarr array format.
+            If the dictionary data is invalid or incompatible with either Zarr v2 or v3 array creation.
         """
         metadata = parse_array_metadata(data)
         return cls(metadata=metadata, store_path=store_path)
@@ -1180,7 +1183,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
         return await self._set_selection(indexer, value, prototype=prototype)
 
-
     async def resize(self, new_shape: ChunkCoords, delete_outside_chunks: bool = True) -> Self:
         """
         Asynchronously resize the array to a new shape.
@@ -1262,8 +1264,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         - The updated attributes will be merged with existing attributes, and any conflicts will be
           overwritten by the new values.
         """
-        new_metadata = self.metadata.update_attributes(new_attributes)
-        
         # Write new metadata
         await self._save_metadata(self.metadata)
 
@@ -1386,16 +1386,18 @@ class Array:
             The path within the store where the array should be created.
 
         data : dict of str to JSON
-            A dictionary representing the array data and metadata in JSON-serializable format.
+            A dictionary representing the array data. This dictionary should include necessary metadata
+            for the array, such as shape, dtype, fill value, and attributes.
+
         Returns
         -------
-        AsyncArray
+        Array
             The created Zarr array.
 
         Raises
         ------
         ValueError
-            If the provided dictionary is not compatible with the Zarr array format.
+            If the dictionary data is invalid or missing required fields for array creation.
         """
         async_array = AsyncArray.from_dict(store_path=store_path, data=data)
         return cls(async_array)
