@@ -1264,7 +1264,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # metadata.attributes is "frozen" so we simply clear and update the dict
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
-        
+
         # Write new metadata
         await self._save_metadata(self.metadata)
 
