@@ -472,10 +472,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError(
                     "dimension_separator cannot be used for arrays with version 3. Use chunk_key_encoding instead."
                 )
-            if order is not None:
-                raise ValueError(
-                    "order cannot be used for arrays with version 3. Use a transpose codec instead."
-                )
             if filters is not None:
                 raise ValueError(
                     "filters cannot be used for arrays with version 3. Use array-to-array codecs instead."
@@ -495,6 +491,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 dimension_names=dimension_names,
                 attributes=attributes,
                 exists_ok=exists_ok,
+                order=order,
             )
         elif zarr_format == 2:
             if dtype is str or dtype == "str":
@@ -546,6 +543,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dtype: npt.DTypeLike,
         chunk_shape: ChunkCoords,
         fill_value: Any | None = None,
+        order: Literal["C", "F"] | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -589,7 +587,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             attributes=attributes or {},
         )
 
-        array = cls(metadata=metadata, store_path=store_path)
+        array = cls(metadata=metadata, store_path=store_path, order=order)
         await array._save_metadata(metadata, ensure_parents=True)
         return array
 
@@ -612,7 +610,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=2)
         if order is None:
-            order = "C"
+            order = config.get("array.order", "C")
 
         if dimension_separator is None:
             dimension_separator = "."
@@ -628,7 +626,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             filters=filters,
             attributes=attributes,
         )
-        array = cls(metadata=metadata, store_path=store_path)
+        array = cls(metadata=metadata, store_path=store_path, order=order)
         await array._save_metadata(metadata, ensure_parents=True)
         return array
 
