@@ -272,7 +272,7 @@ class StoreTests(Generic[S, B]):
             assert observed == expected
 
     async def test_list_dir(self, store: S) -> None:
-        root = "foo"
+        root = store.resolve_key("foo")
         store_dict = {
             root + "/zarr.json": self.buffer_cls.from_bytes(b"bar"),
             root + "/c/1": self.buffer_cls.from_bytes(b"\x01"),
