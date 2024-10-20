@@ -279,6 +279,7 @@ extend-select = [
     "ISC",  # flake8-implicit-str-concat
     "LOG",  # flake8-logging
     "PERF", # Perflint
+    "PIE",  # flake8-pie
     "PGH",  # pygrep-hooks
     "PT",   # flake8-pytest-style
     "PYI",  # flake8-pyi
