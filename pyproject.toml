@@ -283,8 +283,8 @@ extend-select = [
     "PGH",  # pygrep-hooks
     "PT",   # flake8-pytest-style
     "PYI",  # flake8-pyi
-    "RSE",  # flake8-raise
     "RET",  # flake8-return
+    "RSE",  # flake8-raise
     "RUF",
     "TCH",  # flake8-type-checking
     "TRY",  # tryceratops
