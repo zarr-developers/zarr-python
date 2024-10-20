@@ -271,6 +271,7 @@ extend-select = [
     "B",    # flake8-bugbear
     "EXE",  # flake8-executable
     "C4",   # flake8-comprehensions
+    "FA",   # flake8-future-annotations
     "FLY",  # flynt
     "FURB", # refurb
     "G",    # flake8-logging-format
