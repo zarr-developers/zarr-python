@@ -878,9 +878,8 @@ async def create(
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
     mode = kwargs.pop("mode", None)
-    if mode is None:
-        if not isinstance(store, Store | StorePath):
-            mode = "a"
+    if mode is None and not isinstance(store, Store | StorePath):
+        mode = "a"
 
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
