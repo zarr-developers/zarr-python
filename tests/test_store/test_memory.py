@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import itertools
+
 import pytest
 
 from zarr.core.buffer import Buffer, cpu, gpu
 from zarr.storage.memory import GpuMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
+
+memory_store_kwargs = tuple(itertools.product((None, True), ("", "foo")))
 
 
 class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
@@ -18,18 +22,16 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     async def get(self, store: MemoryStore, key: str) -> Buffer:
         return store._store_dict[store.resolve_key(key)]
 
-    @pytest.fixture(params=[None, True])
+    @pytest.fixture(params=memory_store_kwargs)
     def store_kwargs(
         self, request: pytest.FixtureRequest
     ) -> dict[str, str | None | dict[str, Buffer]]:
-        kwargs = {"store_dict": None, "mode": "r+", "path": ""}
-        if request.param is True:
+        store_dict_req, path = request.param
+        kwargs = {"store_dict": store_dict_req, "mode": "r+", "path": path}
+        if store_dict_req is True:
+            # use a new empty dict each invocation of the function
             kwargs["store_dict"] = {}
         return kwargs
-
-    @pytest.fixture
-    def store(self, store_kwargs: str | None | dict[str, Buffer]) -> MemoryStore:
-        return self.store_cls(**store_kwargs)
 
     def test_store_repr(self, store: MemoryStore) -> None:
         assert str(store) == f"memory://{id(store._store_dict)}"
