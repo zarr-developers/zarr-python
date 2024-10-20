@@ -179,9 +179,9 @@ class ZipStore(Store):
     ) -> Buffer | None:
         # docstring inherited
         assert isinstance(key, str)
-
+        key_absolute = self.resolve_key(key)
         with self._lock:
-            return self._get(self.resolve_key(key), prototype=prototype, byte_range=byte_range)
+            return self._get(key_absolute, prototype=prototype, byte_range=byte_range)
 
     async def get_partial_values(
         self,
@@ -192,9 +192,8 @@ class ZipStore(Store):
         out = []
         with self._lock:
             for key, byte_range in key_ranges:
-                out.append(
-                    self._get(self.resolve_key(key), prototype=prototype, byte_range=byte_range)
-                )
+                key_absolute = self.resolve_key(key)
+                out.append(self._get(key_absolute, prototype=prototype, byte_range=byte_range))
         return out
 
     def _set(self, key: str, value: Buffer) -> None:
@@ -213,21 +212,22 @@ class ZipStore(Store):
         # docstring inherited
         self._check_writable()
         assert isinstance(key, str)
+        key_absolute = self.resolve_key(key)
         if not isinstance(value, Buffer):
             raise TypeError("ZipStore.set(): `value` must a Buffer instance")
         with self._lock:
-            self._set(self.resolve_key(key), value)
+            self._set(key_absolute, value)
 
     async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
         raise NotImplementedError
 
     async def set_if_not_exists(self, key: str, default: Buffer) -> None:
-        key_abs = self.resolve_key(key)
+        key_absolute = self.resolve_key(key)
         self._check_writable()
         with self._lock:
             members = self._zf.namelist()
-            if key_abs not in members:
-                self._set(key_abs, default)
+            if key_absolute not in members:
+                self._set(key_absolute, default)
 
     async def delete(self, key: str) -> None:
         # docstring inherited
@@ -235,9 +235,10 @@ class ZipStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
+        key_absolute = self.resolve_key(key)
         with self._lock:
             try:
-                self._zf.getinfo(self.resolve_key(key))
+                self._zf.getinfo(key_absolute)
             except KeyError:
                 return False
             else:
@@ -245,23 +246,24 @@ class ZipStore(Store):
 
     async def list(self) -> AsyncGenerator[str, None]:
         # docstring inherited
-        with self._lock:
-            for key in self._zf.namelist():
-                yield key.lstrip("/")
+        async for result in self.list_prefix(""):
+            yield result
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        async for key in self.list():
-            if key.startswith(prefix):
-                yield key.removeprefix(prefix)
+        prefix_absolute = self.resolve_key(prefix)
+        with self._lock:
+            for key in self._zf.namelist():
+                if key.startswith(prefix_absolute):
+                    yield key.removeprefix(prefix_absolute).lstrip("/")
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        prefix_abs = self.resolve_key(prefix)
+        prefix_absolute = self.resolve_key(prefix)
 
         keys = self._zf.namelist()
         seen = set()
-        if prefix_abs == "":
+        if prefix_absolute == "":
             keys_unique = {k.split("/")[0] for k in keys}
             for key in keys_unique:
                 if key not in seen:
@@ -269,8 +271,8 @@ class ZipStore(Store):
                     yield key
         else:
             for key in keys:
-                if key.startswith(prefix_abs + "/") and key != prefix_abs:
-                    k = key.removeprefix(prefix_abs + "/").split("/")[0]
+                if key.startswith(prefix_absolute):
+                    k = key.removeprefix(prefix_absolute).lstrip("/").split("/")[0]
                     if k not in seen:
                         seen.add(k)
                         yield k
