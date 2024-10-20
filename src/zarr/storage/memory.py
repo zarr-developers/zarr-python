@@ -61,7 +61,9 @@ class MemoryStore(Store):
 
     async def clear(self) -> None:
         # docstring inherited
-        self._store_dict.clear()
+        for k in tuple(self._store_dict.keys()):
+            if k.startswith(self.path):
+                del self._store_dict[k]
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
         # docstring inherited
