@@ -1147,6 +1147,19 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @property
     def info(self) -> ArrayInfo:
+        """
+        Return the statically known information for an array.
+
+        Returns
+        -------
+        ArrayInfo
+
+        See Also
+        --------
+        AsyncArray.info_complete
+            All information about a group, including dynamic information
+            like the number of bytes and chunks written.
+        """
         return self._info()
 
     async def info_complete(self) -> ArrayInfo:
@@ -2841,6 +2854,19 @@ class Array:
 
     @property
     def info(self) -> ArrayInfo:
+        """
+        Return the statically known information for an array.
+
+        Returns
+        -------
+        ArrayInfo
+
+        See Also
+        --------
+        Array.info_complete
+            All information about a group, including dynamic information
+            like the number of bytes and chunks written.
+        """
         return self._async_array.info
 
     def info_complete(self) -> ArrayInfo:
