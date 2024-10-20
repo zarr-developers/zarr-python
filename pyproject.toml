@@ -185,7 +185,7 @@ serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
 [tool.hatch.envs.upstream]
 dependencies = [
-    'numpy>=2.2.0.dev0',
+    'numpy',  # from scientific-python-nightly-wheels
     'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
     'fsspec @ git+https://github.com/fsspec/filesystem_spec',
     's3fs @ git+https://github.com/fsspec/s3fs',
@@ -201,9 +201,9 @@ dependencies = [
     'moto[s3]',
 ]
 
-# help! this is not working for numpy :(
 [tool.hatch.envs.upstream.env-vars]
-PIP_EXTRA_INDEX_URL = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simple"
+PIP_INDEX_URL = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/"
+PIP_EXTRA_INDEX_URL = "https://pypi.org/simple/"
 PIP_PRE = "1"
 
 [tool.hatch.envs.upstream.scripts]
