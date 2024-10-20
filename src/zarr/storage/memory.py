@@ -114,7 +114,8 @@ class MemoryStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        return self.resolve_key(key) in self._store_dict
+        key_absolute = self.resolve_key(key)
+        return key_absolute in self._store_dict
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         # docstring inherited
@@ -123,25 +124,27 @@ class MemoryStore(Store):
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError(f"Expected Buffer. Got {type(value)}.")
-        key_abs = self.resolve_key(key)
+        key_absolute = self.resolve_key(key)
         if byte_range is not None:
-            buf = self._store_dict[key_abs]
+            buf = self._store_dict[key_absolute]
             buf[byte_range[0] : byte_range[1]] = value
-            self._store_dict[key_abs] = buf
+            self._store_dict[key_absolute] = buf
         else:
-            self._store_dict[key_abs] = value
+            self._store_dict[key_absolute] = value
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
         self._check_writable()
         await self._ensure_open()
-        self._store_dict.setdefault(self.resolve_key(key), value)
+        key_absolute = self.resolve_key(key)
+        self._store_dict.setdefault(key_absolute, value)
 
     async def delete(self, key: str) -> None:
         # docstring inherited
         self._check_writable()
+        key_absolute = self.resolve_key(key)
         try:
-            del self._store_dict[self.resolve_key(key)]
+            del self._store_dict[key_absolute]
         except KeyError:
             pass
 
@@ -155,25 +158,25 @@ class MemoryStore(Store):
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        prefix_abs = self.resolve_key(prefix)
+        prefix_absolute = self.resolve_key(prefix)
         for key in self._store_dict:
-            if key.startswith(prefix_abs):
-                yield key.removeprefix(prefix_abs).lstrip("/")
+            if key.startswith(prefix_absolute):
+                yield key.removeprefix(prefix_absolute).lstrip("/")
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        prefix = self.resolve_key(prefix)
+        prefix_absolute = self.resolve_key(prefix)
 
-        if prefix == "":
+        if prefix_absolute == "":
             keys_unique = {k.split("/")[0] for k in self._store_dict}
         else:
             # Our dictionary doesn't contain directory markers, but we want to include
             # a pseudo directory when there's a nested item and we're listing an
             # intermediate level.
             keys_unique = {
-                key.removeprefix(prefix + "/").split("/")[0]
+                key.removeprefix(prefix_absolute + "/").split("/")[0]
                 for key in self._store_dict
-                if key.startswith(prefix + "/") and key != prefix
+                if key.startswith(prefix_absolute + "/") and key != prefix_absolute
             }
 
         for key in keys_unique:
