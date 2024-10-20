@@ -287,6 +287,7 @@ extend-select = [
     "RSE",  # flake8-raise
     "RUF",
     "SIM",  # flake8-simplify
+    "SLOT", # flake8-slots
     "TCH",  # flake8-type-checking
     "TRY",  # tryceratops
     "UP",   # pyupgrade
