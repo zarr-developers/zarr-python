@@ -22,12 +22,12 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     store_cls = ZipStore
     buffer_cls = cpu.Buffer
 
-    @pytest.fixture
-    def store_kwargs(self, request) -> dict[str, str | bool]:
+    @pytest.fixture(params=["", "test_path"])
+    def store_kwargs(self, request: pytest.FixtureRequest) -> dict[str, str | bool]:
         fd, temp_path = tempfile.mkstemp()
         os.close(fd)
 
-        return {"file_path": temp_path, "mode": "w", "path": ""}
+        return {"file_path": temp_path, "mode": "w", "path": request.param}
 
     async def get(self, store: ZipStore, key: str) -> Buffer:
         return store._get(store.resolve_key(key), prototype=default_buffer_prototype())
