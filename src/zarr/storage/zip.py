@@ -133,7 +133,7 @@ class ZipStore(Store):
 
     def __str__(self) -> str:
         # lets try https://github.com/zarr-developers/zeps/pull/48/files
-        return f"file://{self.file_path}|zip://{self.path}"
+        return f"file:///{self.file_path}|zip://{self.path}"
 
     def __repr__(self) -> str:
         return f"ZipStore({str(self)!r})"
