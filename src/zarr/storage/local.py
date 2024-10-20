@@ -141,7 +141,7 @@ class LocalStore(Store):
         return type(self)(path=self.path, mode=mode)
 
     def __str__(self) -> str:
-        return f"file://{self.path}"
+        return f"file:///{self.path}"
 
     def __repr__(self) -> str:
         return f"LocalStore({str(self)!r})"
