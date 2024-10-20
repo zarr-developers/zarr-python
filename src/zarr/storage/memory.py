@@ -70,7 +70,7 @@ class MemoryStore(Store):
         return type(self)(store_dict=self._store_dict, mode=mode, path=self.path)
 
     def __str__(self) -> str:
-        return f"memory://{id(self._store_dict)}"
+        return f"memory://{id(self._store_dict)}/{self.path}"
 
     def __repr__(self) -> str:
         return f"MemoryStore({str(self)!r})"

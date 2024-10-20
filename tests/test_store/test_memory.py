@@ -34,7 +34,7 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
         return kwargs
 
     def test_store_repr(self, store: MemoryStore) -> None:
-        assert str(store) == f"memory://{id(store._store_dict)}"
+        assert str(store) == f"memory://{id(store._store_dict)}/{store.path}"
 
     def test_store_supports_writes(self, store: MemoryStore) -> None:
         assert store.supports_writes
@@ -74,7 +74,7 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
         return self.store_cls(**store_kwargs)
 
     def test_store_repr(self, store: GpuMemoryStore) -> None:
-        assert str(store) == f"gpumemory://{id(store._store_dict)}"
+        assert str(store) == f"gpumemory://{id(store._store_dict)}/{store.path}"
 
     def test_store_supports_writes(self, store: GpuMemoryStore) -> None:
         assert store.supports_writes
