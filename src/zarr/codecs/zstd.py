@@ -43,7 +43,7 @@ class ZstdCodec(BytesBytesCodec):
 
     def __init__(self, *, level: int = 0, checksum: bool = False) -> None:
         # numcodecs 0.13.0 introduces the checksum attribute for the zstd codec
-        _numcodecs_version = tuple(map(int, version("numcodecs").split(".")))
+        _numcodecs_version = tuple(map(int, version("numcodecs").split(".")[:3]))
         if _numcodecs_version < (0, 13, 0):  # pragma: no cover
             raise RuntimeError(
                 "numcodecs version >= 0.13.0 is required to use the zstd codec. "
