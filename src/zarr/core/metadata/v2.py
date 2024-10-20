@@ -266,12 +266,13 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
 
     Parameters
     ----------
-    fill_value: Any
+    fill_value : Any
         A potential fill value.
-    dtype: np.dtype[Any]
+    dtype : np.dtype[Any]
         A numpy dtype.
 
     Returns
+    -------
         An instance of `dtype`, or `None`, or any python object (in the case of an object dtype)
     """
 
