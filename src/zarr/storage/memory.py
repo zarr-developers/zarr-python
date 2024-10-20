@@ -206,18 +206,19 @@ class GpuMemoryStore(MemoryStore):
         self,
         store_dict: MutableMapping[str, gpu.Buffer] | None = None,
         *,
+        path: str = "",
         mode: AccessModeLiteral = "r",
     ) -> None:
-        super().__init__(store_dict=store_dict, mode=mode)  # type: ignore[arg-type]
+        super().__init__(store_dict=store_dict, path=path, mode=mode)  # type: ignore[arg-type]
 
     def __str__(self) -> str:
-        return f"gpumemory://{id(self._store_dict)}"
+        return f"gpumemory://{id(self._store_dict)}/{self.path}"
 
     def __repr__(self) -> str:
         return f"GpuMemoryStore({str(self)!r})"
 
     @classmethod
-    def from_dict(cls, store_dict: MutableMapping[str, Buffer]) -> Self:
+    def from_dict(cls, store_dict: MutableMapping[str, Buffer], path: str = "") -> Self:
         """
         Create a GpuMemoryStore from a dictionary of buffers at any location.
 
@@ -235,7 +236,7 @@ class GpuMemoryStore(MemoryStore):
         GpuMemoryStore
         """
         gpu_store_dict = {k: gpu.Buffer.from_buffer(v) for k, v in store_dict.items()}
-        return cls(gpu_store_dict)
+        return cls(gpu_store_dict, path=path)
 
     async def set(self, key: str, value: Buffer, byte_range: tuple[int, int] | None = None) -> None:
         # docstring inherited
