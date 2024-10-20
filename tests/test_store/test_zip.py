@@ -80,7 +80,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert np.array_equal(data, z[:])
 
         # you can overwrite existing chunks but zipfile will issue a warning
-        with pytest.warns(UserWarning, match="Duplicate name: 'foo/c/0/0'"):
+        with pytest.warns(UserWarning, match=f"Duplicate name: '{store.resolve_key('foo/c/0/0')}'"):
             z[0, 0] = 100
 
         # TODO: assigning an entire chunk to fill value ends up deleting the chunk which is not supported
