@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import Store
 from zarr.core.buffer import Buffer
 from zarr.core.common import concurrent_map
 
@@ -15,21 +15,23 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
     from typing import Self
 
+    from zarr.abc.store import ByteRangeRequest
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
 
 
-def _get(
-    path: Path, prototype: BufferPrototype, byte_range: tuple[int | None, int | None] | None
-) -> Buffer:
+def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest | None) -> Buffer:
     """
     Fetch a contiguous region of bytes from a file.
 
     Parameters
     ----------
-    path: Path
+
+    path : Path
         The file to read bytes from.
-    byte_range: tuple[int, int | None] | None = None
+    prototype : BufferPrototype
+        The buffer prototype to use when reading the bytes.
+    byte_range : tuple[int | None, int | None] | None = None
         The range of bytes to read. If `byte_range` is `None`, then the entire file will be read.
         If `byte_range` is a tuple, the first value specifies the index of the first byte to read,
         and the second value specifies the total number of bytes to read. If the total value is
@@ -86,7 +88,7 @@ class LocalStore(Store):
 
     Parameters
     ----------
-    root : str or Path
+    path : str or Path
         Directory to use as root of store.
     mode : str
         Mode in which to open the store. Either 'r', 'r+', 'a', 'w', 'w-'.
@@ -97,7 +99,7 @@ class LocalStore(Store):
     supports_deletes
     supports_partial_writes
     supports_listing
-    root
+    path
     """
 
     supports_writes: bool = True
