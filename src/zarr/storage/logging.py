@@ -23,16 +23,16 @@ class LoggingStore(Store):
 
     Parameters
     ----------
-    store: Store
+    store : Store
         Store to wrap
-    log_level: str
+    log_level : str
         Log level
-    log_handler: logging.Handler
+    log_handler : logging.Handler
         Log handler
 
     Attributes
     ----------
-    counter: dict
+    counter : dict
         Counter of number of times each method has been called
     """
 
