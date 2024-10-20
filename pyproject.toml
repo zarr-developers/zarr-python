@@ -269,6 +269,7 @@ extend-exclude = [
 extend-select = [
     "ANN",  # flake8-annotations
     "B",    # flake8-bugbear
+    "EXE",  # flake8-executable
     "C4",   # flake8-comprehensions
     "FLY",  # flynt
     "FURB", # refurb
