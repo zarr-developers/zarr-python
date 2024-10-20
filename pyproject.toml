@@ -286,6 +286,7 @@ extend-select = [
     "RET",  # flake8-return
     "RSE",  # flake8-raise
     "RUF",
+    "SIM",  # flake8-simplify
     "TCH",  # flake8-type-checking
     "TRY",  # tryceratops
     "UP",   # pyupgrade
@@ -302,6 +303,7 @@ ignore = [
     "RET505",
     "RET506",
     "RUF005",
+    "SIM108",
     "TRY003",
     "UP027",  # deprecated
     "UP038",  # https://github.com/astral-sh/ruff/issues/7871
@@ -323,7 +325,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
-"tests/**" = ["ANN001", "ANN201"]
+"tests/**" = ["ANN001", "ANN201", "RUF029", "SIM117", "SIM300"]
 
 [tool.mypy]
 python_version = "3.11"
