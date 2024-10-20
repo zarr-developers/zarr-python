@@ -67,7 +67,7 @@ class MemoryStore(Store):
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
         # docstring inherited
-        return type(self)(store_dict=self._store_dict, mode=mode)
+        return type(self)(store_dict=self._store_dict, mode=mode, path=self.path)
 
     def __str__(self) -> str:
         return f"memory://{id(self._store_dict)}"
