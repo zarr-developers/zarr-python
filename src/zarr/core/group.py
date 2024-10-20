@@ -14,6 +14,7 @@ import numpy.typing as npt
 from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
+from zarr._compat import _deprecate_positional_args
 from zarr._info import GroupInfo
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
@@ -426,9 +427,9 @@ class AsyncGroup:
 
         Parameters
         ----------
-        store: StoreLike
-        zarr_format: {2, 3}, optional
-        use_consolidated: bool or str, default None
+        store : StoreLike
+        zarr_format : {2, 3}, optional
+        use_consolidated : bool or str, default None
             Whether to use consolidated metadata.
 
             By default, consolidated metadata is used if it's present in the
@@ -959,32 +960,32 @@ class AsyncGroup:
 
         Parameters
         ----------
-        name: str
+        name : str
             The name of the array.
-        shape: tuple[int, ...]
+        shape : tuple[int, ...]
             The shape of the array.
-        dtype: np.DtypeLike = float64
+        dtype : np.DtypeLike = float64
             The data type of the array.
-        chunk_shape: tuple[int, ...] | None = None
+        chunk_shape : tuple[int, ...] | None = None
             The shape of the chunks of the array. V3 only.
-        chunk_key_encoding: ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
+        chunk_key_encoding : ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
             A specification of how the chunk keys are represented in storage.
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None
+        codecs : Iterable[Codec | dict[str, JSON]] | None = None
             An iterable of Codec or dict serializations thereof. The elements of
             this collection specify the transformation from array values to stored bytes.
-        dimension_names: Iterable[str] | None = None
+        dimension_names : Iterable[str] | None = None
             The names of the dimensions of the array. V3 only.
-        chunks: ChunkCoords | None = None
+        chunks : ChunkCoords | None = None
             The shape of the chunks of the array. V2 only.
-        dimension_separator: Literal[".", "/"] | None = None
+        dimension_separator : Literal[".", "/"] | None = None
             The delimiter used for the chunk keys.
-        order: Literal["C", "F"] | None = None
+        order : Literal["C", "F"] | None = None
             The memory order of the array.
-        filters: list[dict[str, JSON]] | None = None
+        filters : list[dict[str, JSON]] | None = None
             Filters for the array.
-        compressor: dict[str, JSON] | None = None
+        compressor : dict[str, JSON] | None = None
             The compressor for the array.
-        exists_ok: bool = False
+        exists_ok : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
             an error.
@@ -1027,7 +1028,7 @@ class AsyncGroup:
         ----------
         name : str
             Array name.
-        kwargs : dict
+        **kwargs : dict
             Additional arguments passed to :func:`zarr.AsyncGroup.create_array`.
 
         Returns
@@ -1430,7 +1431,7 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        key : str
+        path : str
             Group member name.
         default : object
             Default value to return if key is not found (default: None).
@@ -1608,8 +1609,6 @@ class Group(SyncMixin):
         ----------
         name : str
             Group name.
-        overwrite : bool, optional
-            Overwrite any existing group with given `name` if present.
 
         Returns
         -------
@@ -1625,6 +1624,7 @@ class Group(SyncMixin):
         # Backwards compatibility for 2.x
         return self.create_array(*args, **kwargs)
 
+    @_deprecate_positional_args
     def create_array(
         self,
         name: str,
@@ -1659,36 +1659,36 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        name: str
+        name : str
             The name of the array.
-        shape: tuple[int, ...]
+        shape : tuple[int, ...]
             The shape of the array.
-        dtype: np.DtypeLike = float64
+        dtype : np.DtypeLike = float64
             The data type of the array.
-        chunk_shape: tuple[int, ...] | None = None
+        chunk_shape : tuple[int, ...] | None = None
             The shape of the chunks of the array. V3 only.
-        chunk_key_encoding: ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
+        chunk_key_encoding : ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
             A specification of how the chunk keys are represented in storage.
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None
+        codecs : Iterable[Codec | dict[str, JSON]] | None = None
             An iterable of Codec or dict serializations thereof. The elements of this collection
             specify the transformation from array values to stored bytes.
-        dimension_names: Iterable[str] | None = None
+        dimension_names : Iterable[str] | None = None
             The names of the dimensions of the array. V3 only.
-        chunks: ChunkCoords | None = None
+        chunks : ChunkCoords | None = None
             The shape of the chunks of the array. V2 only.
-        dimension_separator: Literal[".", "/"] | None = None
+        dimension_separator : Literal[".", "/"] | None = None
             The delimiter used for the chunk keys.
-        order: Literal["C", "F"] | None = None
+        order : Literal["C", "F"] | None = None
             The memory order of the array.
-        filters: list[dict[str, JSON]] | None = None
+        filters : list[dict[str, JSON]] | None = None
             Filters for the array.
-        compressor: dict[str, JSON] | None = None
+        compressor : dict[str, JSON] | None = None
             The compressor for the array.
-        exists_ok: bool = False
+        exists_ok : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
             an error.
-        data: npt.ArrayLike | None = None
+        data : npt.ArrayLike | None = None
             Array data to initialize the array with.
 
         Returns
@@ -1730,7 +1730,7 @@ class Group(SyncMixin):
         ----------
         name : str
             Array name.
-        kwargs : dict
+        **kwargs : dict
             Additional arguments passed to :func:`zarr.Group.create_array`
 
         Returns
@@ -1755,13 +1755,8 @@ class Group(SyncMixin):
         ----------
         name : str
             Array name.
-        shape : int or tuple of ints
-            Array shape.
-        dtype : str or dtype, optional
-            NumPy dtype.
-        exact : bool, optional
-            If True, require `dtype` to match exactly. If false, require
-            `dtype` can be cast from array dtype.
+        **kwargs :
+            See :func:`zarr.Group.create_dataset`.
 
         Returns
         -------
@@ -1782,13 +1777,8 @@ class Group(SyncMixin):
         ----------
         name : str
             Array name.
-        shape : int or tuple of ints
-            Array shape.
-        dtype : str or dtype, optional
-            NumPy dtype.
-        exact : bool, optional
-            If True, require `dtype` to match exactly. If false, require
-            `dtype` can be cast from array dtype.
+        **kwargs :
+            See :func:`zarr.Group.create_array`.
 
         Returns
         -------
@@ -1796,15 +1786,19 @@ class Group(SyncMixin):
         """
         return Array(self._sync(self._async_group.require_array(name, **kwargs)))
 
+    @_deprecate_positional_args
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
+    @_deprecate_positional_args
     def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
 
+    @_deprecate_positional_args
     def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.ones(name=name, shape=shape, **kwargs)))
 
+    @_deprecate_positional_args
     def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
     ) -> Array:
@@ -1814,15 +1808,19 @@ class Group(SyncMixin):
             )
         )
 
+    @_deprecate_positional_args
     def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 
+    @_deprecate_positional_args
     def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
 
+    @_deprecate_positional_args
     def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
 
+    @_deprecate_positional_args
     def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
         return Array(self._sync(self._async_group.full_like(name=name, data=data, **kwargs)))
 
@@ -1830,6 +1828,7 @@ class Group(SyncMixin):
         return self._sync(self._async_group.move(source, dest))
 
     @deprecated("Use Group.create_array instead.")
+    @_deprecate_positional_args
     def array(
         self,
         name: str,
@@ -1864,36 +1863,36 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        name: str
+        name : str
             The name of the array.
-        shape: tuple[int, ...]
+        shape : tuple[int, ...]
             The shape of the array.
-        dtype: np.DtypeLike = float64
+        dtype : np.DtypeLike = float64
             The data type of the array.
-        chunk_shape: tuple[int, ...] | None = None
+        chunk_shape : tuple[int, ...] | None = None
             The shape of the chunks of the array. V3 only.
-        chunk_key_encoding: ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
+        chunk_key_encoding : ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
             A specification of how the chunk keys are represented in storage.
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None
+        codecs : Iterable[Codec | dict[str, JSON]] | None = None
             An iterable of Codec or dict serializations thereof. The elements of
             this collection specify the transformation from array values to stored bytes.
-        dimension_names: Iterable[str] | None = None
+        dimension_names : Iterable[str] | None = None
             The names of the dimensions of the array. V3 only.
-        chunks: ChunkCoords | None = None
+        chunks : ChunkCoords | None = None
             The shape of the chunks of the array. V2 only.
-        dimension_separator: Literal[".", "/"] | None = None
+        dimension_separator : Literal[".", "/"] | None = None
             The delimiter used for the chunk keys.
-        order: Literal["C", "F"] | None = None
+        order : Literal["C", "F"] | None = None
             The memory order of the array.
-        filters: list[dict[str, JSON]] | None = None
+        filters : list[dict[str, JSON]] | None = None
             Filters for the array.
-        compressor: dict[str, JSON] | None = None
+        compressor : dict[str, JSON] | None = None
             The compressor for the array.
-        exists_ok: bool = False
+        exists_ok : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
             an error.
-        data: npt.ArrayLike | None = None
+        data : npt.ArrayLike | None = None
             Array data to initialize the array with.
 
         Returns
