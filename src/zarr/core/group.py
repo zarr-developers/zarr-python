@@ -15,9 +15,9 @@ from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 from zarr._compat import _deprecate_positional_args
-from zarr._info import GroupInfo
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
+from zarr.core._info import GroupInfo
 from zarr.core.array import Array, AsyncArray, _build_parents
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype

@@ -1,4 +1,3 @@
-from zarr._info import GroupInfo
 from zarr._version import version as __version__
 from zarr.api.synchronous import (
     array,
@@ -27,6 +26,7 @@ from zarr.api.synchronous import (
     zeros,
     zeros_like,
 )
+from zarr.core._info import GroupInfo
 from zarr.core.array import Array, AsyncArray
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, Group

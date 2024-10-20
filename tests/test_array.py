@@ -7,8 +7,8 @@ import pytest
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
-from zarr._info import ArrayInfo
 from zarr.codecs import BytesCodec, VLenBytesCodec
+from zarr.core._info import ArrayInfo
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import JSON, ZarrFormat

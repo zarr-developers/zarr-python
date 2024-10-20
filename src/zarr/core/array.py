@@ -11,10 +11,10 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr._compat import _deprecate_positional_args
-from zarr._info import ArrayInfo
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs import _get_default_array_bytes_codec
 from zarr.codecs._v2 import V2Compressor, V2Filters
+from zarr.core._info import ArrayInfo
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,

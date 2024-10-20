@@ -8,7 +8,7 @@ class GroupInfo:
     """
     Information about a group.
 
-    Parameters
+    Attributes
     ----------
     name : str
         The path of the group within the Store

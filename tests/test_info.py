@@ -2,7 +2,7 @@ import textwrap
 
 import pytest
 
-from zarr._info import ArrayInfo, GroupInfo, human_readable_size
+from zarr.core._info import ArrayInfo, GroupInfo, human_readable_size
 from zarr.core.common import ZarrFormat
 
 ZARR_FORMATS = [2, 3]
@@ -55,7 +55,7 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
         order="C",
         read_only=True,
         store_type="MemoryStore",
-        codecs=["BytesCodec(endian=<Endian.little: 'little'>"],
+        codecs="[\"BytesCodec(endian=<Endian.little: 'little'>\"]",
     )
     result = repr(info)
     assert result == textwrap.dedent(f"""\
@@ -91,7 +91,7 @@ def test_array_info_complete(
         order="C",
         read_only=True,
         store_type="MemoryStore",
-        codecs=["BytesCodec(endian=<Endian.little: 'little'>"],
+        codecs="[\"BytesCodec(endian=<Endian.little: 'little'>\"]",
         count_bytes=count_bytes,
         count_bytes_stored=count_bytes_stored,
         count_chunks_initialized=count_chunks_initialized,
