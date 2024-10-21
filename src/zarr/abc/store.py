@@ -168,7 +168,7 @@ class Store(ABC):
 
         Returns
         -------
-        store:
+        store
             A new store of the same type with the new mode.
 
         Examples
