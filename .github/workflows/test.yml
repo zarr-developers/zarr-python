@@ -44,14 +44,19 @@ jobs:
       run: |
         hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run
 
-  upstream:
-    name: py=${{ matrix.python-version }}-upstream
+  test-upstream-and-min-deps:
+    name: py=${{ matrix.python-version }}-${{ matrix.dependency-set }}
 
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.13']
-
+        python-version: ['3.11', "3.13"]
+        dependency-set: ["upstream", "min_deps"]
+        exclude:
+          - python-version: "3.13"
+            dependency-set: min_deps
+          - python-version: "3.11"
+            dependency-set: upstream
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python
@@ -65,35 +70,8 @@ jobs:
         pip install hatch
     - name: Set Up Hatch Env
       run: |
-        hatch env create upstream
-        hatch env run -e upstream list-env
+        hatch env create ${{ matrix.dependency-set }}
+        hatch env run -e ${{ matrix.dependency-set }} list-env
     - name: Run Tests
       run: |
-        hatch env run --env upstream run
-
-  min_deps:
-    name: py=${{ matrix.python-version }}-min_deps
-
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.11']
-
-    steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-        cache: 'pip'
-    - name: Install Hatch
-      run: |
-        python -m pip install --upgrade pip 
-        pip install hatch
-    - name: Set Up Hatch Env
-      run: |
-        hatch env create min_deps
-        hatch env run -e min_deps list-env
-    - name: Run Tests
-      run: |
-        hatch env run --env min_deps run
+        hatch env run --env ${{ matrix.dependency-set }} run
