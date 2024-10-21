@@ -1,14 +1,13 @@
 import sys
 import timeit
 
+import line_profiler
 import numpy as np
 
-import line_profiler
 import zarr
 from zarr import blosc
 
 if __name__ == "__main__":
-
     sys.path.insert(0, "..")
 
     # setup
@@ -17,7 +16,7 @@ if __name__ == "__main__":
         a,
         chunks=1000000,
         compression="blosc",
-        compression_opts=dict(cname="lz4", clevel=5, shuffle=2),
+        compression_opts={"cname": "lz4", "clevel": 5, "shuffle": 2},
     )
     print(z)
 

@@ -13,10 +13,183 @@ Release notes
     # to document your changes. On releases it will be
     # re-indented so that it does not show up in the notes.
 
-.. _unreleased(v3):
+.. note::
+   Zarr-Python 2.18.* is expected be the final release in the 2.* series. Work on Zarr-Python 3.0 is underway.
+   See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
+   3.0 release.
 
-Unreleased (v3)
----------------
+.. release_3.0.0-alpha:
+
+3.0.0-alpha
+-----------
+
+.. warning::
+   Zarr-Python 3.0.0-alpha is a pre-release of the upcoming 3.0 release. This release is not feature complete or
+   expected to be ready for production applications.
+
+.. note::
+   The complete release notes for 3.0 have not been added to this document yet. See the
+   `3.0.0-alpha <https://github.com/zarr-developers/zarr-python/releases/tag/v3.0.0-alpha>`_ release on GitHub
+   for a record of changes included in this release.
+
+Enhancements
+~~~~~~~~~~~~
+
+* Implement listing of the sub-arrays and sub-groups for a V3 ``Group``.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1726`.
+
+* Bootstrap v3 branch with zarrita.
+  By :user:`Joe Hamman <jhamman>` :issue:`1584`.
+
+* Extensible codecs for V3.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1588`.
+
+* Don't import from tests.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1601`.
+
+* Listable V3 Stores.
+  By :user:`Joe Hamman <jhamman>` :issue:`1634`.
+
+* Codecs without array metadata.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1632`.
+
+* fix sync group class methods.
+  By :user:`Joe Hamman <jhamman>` :issue:`1652`.
+
+* implement eq for LocalStore.
+  By :user:`Charoula Kyriakides <Charoula-Kyriakides>` :issue:`1792`.
+
+* V3 reorg.
+  By :user:`Joe Hamman <jhamman>` :issue:`1809`.
+
+* [v3] Sync with futures.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1804`.
+
+* implement group.members.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1726`.
+
+* Remove implicit groups.
+  By :user:`Joe Hamman <jhamman>` :issue:`1827`.
+
+* feature(store): ``list_*`` -> AsyncGenerators.
+  By :user:`Joe Hamman <jhamman>` :issue:`1844`.
+
+* Test codec entrypoints.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1835`.
+
+* Remove extra v3 sync module.
+  By :user:`Max Jones <maxrjones>` :issue:`1856`.
+
+* Use donfig for V3 configuration.
+  By :user:`Max Jones <maxrjones>` :issue:`1655`.
+
+* groundwork for V3 group tests.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1743`.
+
+* [v3] First step to generalizes ndarray and bytes.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1826`.
+
+* Reworked codec pipelines.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1670`.
+
+* Followup on codecs.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1889`.
+
+* Protocols for Buffer and NDBuffer.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1899`.
+
+* [V3] Expand store tests.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1900`.
+
+* [v3] Feature: Store open mode.
+  By :user:`Joe Hamman <jhamman>` :issue:`1911`.
+
+* fix(types): Group.info -> NotImplementedError.
+  By :user:`Joe Hamman <jhamman>` :issue:`1936`.
+
+* feature(typing): add py.typed file to package root.
+  By :user:`Joe Hamman <jhamman>` :issue:`1935`.
+
+* Support all indexing variants.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1917`.
+
+* Feature: group and array name properties.
+  By :user:`Joe Hamman <jhamman>` :issue:`1940`.
+
+* implement .chunks on v3 arrays.
+  By :user:`Ryan Abernathey <rabernat>` :issue:`1929`.
+
+* Fixes bug in transpose.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1949`.
+
+* Buffer Prototype Argument.
+  By :user:`Mads R. B. Kristensen <madsbk>` :issue:`1910`.
+
+* Feature: Top level V3 API.
+  By :user:`Joe Hamman <jhamman>` :issue:`1884`.
+
+* Basic working FsspecStore.
+  By :user:`Martin Durant <martindurant>`; :issue:`1785`.
+
+Typing
+~~~~~~
+
+* Resolve Mypy errors in v3 branch.
+  By :user:`Daniel Jahn <DahnJ>` :issue:`1692`.
+
+* Allow dmypy to be run on v3 branch.
+  By :user:`David Stansby <dstansby>` :issue:`1780`.
+
+* Remove unused typing ignore comments.
+  By :user:`David Stansby <dstansby>` :issue:`1781`.
+
+* Check untyped defs on v3.
+  By :user:`David Stansby <dstansby>` :issue:`1784`.
+
+* [v3] Enable some more strict mypy options.
+  By :user:`David Stansby <dstansby>` :issue:`1793`.
+
+* [v3] Disallow generic Any typing.
+  By :user:`David Stansby <dstansby>` :issue:`1794`.
+
+* Disallow incomplete type definitions.
+  By :user:`David Stansby <dstansby>` :issue:`1814`.
+
+* Disallow untyped calls.
+  By :user:`David Stansby <dstansby>` :issue:`1811`.
+
+* Fix some untyped calls.
+  By :user:`David Stansby <dstansby>` :issue:`1865`.
+
+* Disallow untyped defs.
+  By :user:`David Stansby <dstansby>` :issue:`1834`.
+
+* Add more typing to zarr.group.
+  By :user:`David Stansby <dstansby>` :issue:`1870`.
+
+* Fix any generics in zarr.array.
+  By :user:`David Stansby <dstansby>` :issue:`1861`.
+
+* Remove some unused mypy overrides.
+  By :user:`David Stansby <dstansby>` :issue:`1894`.
+
+* Finish typing zarr.metadata.
+  By :user:`David Stansby <dstansby>` :issue:`1880`.
+
+* Disallow implicit re-exports.
+  By :user:`David Stansby <dstansby>` :issue:`1908`.
+
+* Make typing strict.
+  By :user:`David Stansby <dstansby>` :issue:`1879`.
+
+* Enable extra mypy error codes.
+  By :user:`David Stansby <dstansby>` :issue:`1909`.
+
+* Enable warn_unreachable for mypy.
+  By :user:`David Stansby <dstansby>` :issue:`1937`.
+
+* Fix final typing errors.
+  By :user:`David Stansby <dstansby>` :issue:`1939`.
 
 Maintenance
 ~~~~~~~~~~~
@@ -25,10 +198,297 @@ Maintenance
   The dependency relationship is now reversed: the test suite imports this class from ``zarr-python``.
   By :user:`Davis Bennett <d-v-b>` :issue:`1601`.
 
-.. _unreleased:
+* [V3] Update minimum supported Python and Numpy versions. 
+  By :user:`Joe Hamman <jhamman>` :issue:`1638`
 
-Unreleased (v2)
----------------
+* use src layout and use hatch for packaging.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1592`.
+
+* temporarily disable mypy in v3 directory. 
+  By :user:`Joe Hamman <jhamman>` :issue:`1649`.
+
+* create hatch test env.
+  By :user:`Ryan Abernathey <rabernat>` :issue:`1650`.
+
+* removed unused environments and workflows.
+  By :user:`Ryan Abernathey <rabernat>` :issue:`1651`.
+
+* Add env variables to sprint setup instructions.
+  By :user:`Max Jones <maxrjones>` :issue:`1654`.
+
+* Add test matrix for V3.
+  By :user:`Max Jones <maxrjones>` :issue:`1656`.
+
+* Remove attrs.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1660`.
+
+* Specify hatch envs using GitHub actions matrix for v3 tests.
+  By :user:`Max Jones <maxrjones>` :issue:`1728`.
+
+* black -> ruff format + cleanup.
+  By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1639`.
+
+* Remove old v3.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1742`.
+
+* V3 update pre commit.
+  By :user:`Joe Hamman <jhamman>` :issue:`1808`.
+
+* remove windows testing on v3 branch.
+  By :user:`Joe Hamman <jhamman>` :issue:`1817`.
+
+* fix: add mypy to test dependencies.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1789`.
+
+* chore(ci): add numpy 2 release candidate to test matrix.
+  By :user:`Joe Hamman <jhamman>` :issue:`1828`.
+
+* fix dependencies.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1840`.
+
+* Add pytest to mypy dependencies.
+  By :user:`David Stansby <dstansby>` :issue:`1846`.
+
+* chore(pre-commit): update pre-commit versions and remove attrs dep mypy section.
+  By :user:`Joe Hamman <jhamman>` :issue:`1848`.
+
+* Enable some ruff rules (RUF) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1869`.
+
+* Configure Ruff to apply flake8-bugbear/isort/pyupgrade.
+  By :user:`Norman Rzepka <normanrz>` :issue:`1890`.
+
+* chore(ci): remove mypy from test action in favor of pre-commit action.
+  By :user:`Joe Hamman <jhamman>` :issue:`1887`.
+
+* Enable ruff/flake8-raise rules (RSE) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1872`.
+
+* Apply assorted ruff/refurb rules (FURB).
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1873`.
+
+* Enable ruff/flake8-implicit-str-concat rules (ISC) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1868`.
+
+* Add numpy to mypy pre-commit check env.
+  By :user:`David Stansby <dstansby>` :issue:`1893`.
+
+* remove fixture files from src.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1897`.
+
+* Fix list of packages in mypy pre-commit environment.
+  By :user:`David Stansby <dstansby>` :issue:`1907`.
+
+* Run sphinx directly on readthedocs.
+  By :user:`David Stansby <dstansby>` :issue:`1919`.
+
+* Apply preview ruff rules.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1942`.
+
+* Enable and apply ruff rule RUF009.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1941`.
+
+Documentation
+~~~~~~~~~~~~~
+
+* Specify docs hatch env for v3 branch. 
+  By :user:`Max Jones <maxrjones>` :issue:`1655`.
+
+* Development installation/contributing docs updates. 
+  By :user:`Alden Keefe Sampson <aldenks>` :issue:`1643`.
+
+* chore: update project settings per scientific python repo-review.
+  By :user:`Joe Hamman <jhamman>` :issue:`1863`.
+
+* doc: update release notes for 3.0.0.alpha.
+  By :user:`Joe Hamman <jhamman>` :issue:`1959`.
+
+.. _release_2.18.3:
+
+2.18.3
+------
+
+Enhancements
+~~~~~~~~~~~~
+* Added support for creating a copy of data when converting a `zarr.Array`
+  to a numpy array.
+  By :user:`David Stansby <dstansby>` (:issue:`2106`) and 
+  :user:`Joe Hamman <jhamman>` (:issue:`2123`).
+
+Maintenance
+~~~~~~~~~~~
+* Removed support for Python 3.9.
+  By :user:`David Stansby <dstansby>` (:issue:`2074`).
+
+* Fix a regression when using orthogonal indexing with a scalar.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1931`
+
+* Added compatibility with NumPy 2.1.
+  By :user:`David Stansby <dstansby>`
+
+* Bump minimum NumPy version to 1.24.
+  :user:`Joe Hamman <jhamman>` (:issue:`2127`).
+
+Deprecations
+~~~~~~~~~~~~
+
+* Deprecate :class:`zarr.n5.N5Store` and :class:`zarr.n5.N5FSStore`. These
+  stores are slated to be removed in Zarr Python 3.0.
+  By :user:`Joe Hamman <jhamman>` :issue:`2085`.
+
+.. _release_2.18.2:
+
+2.18.2
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Add Zstd codec to old V3 code path.
+  By :user:`Ryan Abernathey <rabernat>`
+
+.. _release_2.18.1:
+
+2.18.1
+------
+
+Maintenance
+~~~~~~~~~~~
+* Fix a regression when getting or setting a single value from arrays with size-1 chunks.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1874`
+
+.. _release_2.18.0:
+
+2.18.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+* Performance improvement for reading and writing chunks if any of the dimensions is size 1.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1730`.
+
+Maintenance
+~~~~~~~~~~~
+* Enable ruff/bugbear rules (B) and fix issues.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1702`.
+
+* Minor updates to use `np.inf` instead of `np.PINF` / `np.NINF` in preparation for NumPy 2.0.0 release.
+  By :user:`Joe Hamman <jhamman>` :issue:`1842`.
+
+Deprecations
+~~~~~~~~~~~~
+
+* Deprecate experimental v3 support by issuing a `FutureWarning`.
+  Also updated docs to warn about using the experimental v3 version.
+  By :user:`Joe Hamman <jhamman>` :issue:`1802` and :issue:`1807`.
+
+* Deprecate the following stores: :class:`zarr.storage.DBMStore`, :class:`zarr.storage.LMDBStore`,
+  :class:`zarr.storage.SQLiteStore`, :class:`zarr.storage.MongoDBStore`, :class:`zarr.storage.RedisStore`,
+  and :class:`zarr.storage.ABSStore`. These stores are slated to be removed from Zarr-Python in version 3.0.
+  By :user:`Joe Hamman <jhamman>` :issue:`1801`.
+
+.. _release_2.17.2:
+
+2.17.2
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* [v3] Dramatically reduce number of ``__contains__`` requests in favor of optimistically calling `__getitem__`
+  and handling any error that may arise.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1741`.
+
+* [v3] Reuse the downloaded array metadata when creating an ``Array``.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1734`.
+
+* Optimize ``Array.info`` so that it calls `getsize` only once.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1733`.
+
+* Override IPython ``_repr_*_`` methods to avoid expensive lookups against object stores.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1716`.
+
+* FSStore now raises rather than return bad data.
+  By :user:`Martin Durant <martindurant>` and :user:`Ian Carroll <itcarroll>` :issue:`1604`.
+
+* Avoid redundant ``__contains__``.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1739`.
+
+Docs
+~~~~
+
+* Fix link to GCSMap in ``tutorial.rst``.
+  By :user:`Daniel Jahn <dahnj>` :issue:`1689`.
+
+* Endorse `SPEC0000 <https://scientific-python.org/specs/spec-0000/>`_ and state version support policy in ``installation.rst``.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1665`.
+
+* Migrate v1 and v2 specification to `Zarr-Specs <https://zarr-specs.readthedocs.io/en/latest/specs.html>`_.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1582`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Add CI test environment for Python 3.12
+  By :user:`Joe Hamman <jhamman>` :issue:`1719`.
+
+* Bump minimum supported NumPy version to 1.23 (per spec 0000)
+  By :user:`Joe Hamman <jhamman>` :issue:`1719`.
+
+* Minor fixes: Using ``is`` instead of ``type`` and removing unnecessary ``None``.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1737`.
+
+* Fix tests failure related to Pytest 8.
+  By :user:`David Stansby <dstansby>` :issue:`1714`.
+
+.. _release_2.17.1:
+
+2.17.1
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Change occurrences of % and format() to f-strings.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1423`.
+
+* Proper argument for numpy.reshape.
+  By :user:`Dimitri Papadopoulos Orfanos <DmitriPapadopoulos>` :issue:`1425`.
+
+* Add typing to dimension separator arguments.
+  By :user:`David Stansby <dstansby>` :issue:`1620`.
+
+Docs
+~~~~
+
+* ZIP related tweaks.
+  By :user:`Davis Bennett <d-v-b>` :issue:`1641`.
+
+Maintenance
+~~~~~~~~~~~
+
+* Update config.yml with Zulip.
+  By :user:`Josh Moore <joshmoore>`.
+
+* Replace Gitter with the new Zulip Chat link.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1685`.
+
+* Fix RTD build.
+  By :user:`Sanket Verma <msankeys963>` :issue:`1694`.
+
+.. _release_2.17.0:
+
+2.17.0
+------
+
+Enhancements
+~~~~~~~~~~~~
+
+* Added type hints to ``zarr.creation.create()``.
+  By :user:`David Stansby <dstansby>` :issue:`1536`.
+
+* Pyodide support: Don't require fasteners on Emscripten.
+  By :user:`Hood Chatham <hoodmane>` :issue:`1663`.
 
 Docs
 ~~~~
@@ -51,9 +511,29 @@ Docs
 * Minor tweak to advanced indexing tutorial examples.
   By :user:`Ross Barnowski <rossbar>` :issue:`1550`.
 
+* Automatically document array members using sphinx-automodapi.
+  By :user:`David Stansby <dstansby>` :issue:`1547`.
+
+* Add a markdown file documenting the current and former core-developer team.
+  By :user:`Joe Hamman <jhamman>` :issue:`1628`.
+
+* Add Norman Rzepka to core-dev team.
+  By :user:`Joe Hamman <jhamman>` :issue:`1630`.
+
+* Added section about accessing ZIP archives on s3.
+  By :user:`Jeff Peck <jeffpeck10x>` :issue:`1613`, :issue:`1615`, and :user:`Davis Bennett <d-v-b>` :issue:`1641`.
+
+* Add V3 roadmap and design document.
+  By :user:`Joe Hamman <jhamman>` :issue:`1583`.
 
 Maintenance
 ~~~~~~~~~~~
+
+* Drop Python 3.8 and NumPy 1.20
+  By :user:`Josh Moore <joshmoore>`; :issue:`1557`.
+
+* Cache result of ``FSStore._fsspec_installed()``.
+  By :user:`Janick Martinez Esturo <ph03>` :issue:`1581`.
 
 * Extend copyright notice to 2023.
   By :user:`Jack Kelly <JackKelly>` :issue:`1528`.
@@ -72,6 +552,27 @@ Maintenance
 
 * Remove ``sphinx-rtd-theme`` dependency from ``pyproject.toml``.
   By :user:`Sanket Verma <MSanKeys963>` :issue:`1563`.
+
+* Remove ``CODE_OF_CONDUCT.md`` file from the Zarr-Python repository.
+  By :user:`Sanket Verma <MSanKeys963>` :issue:`1572`.
+
+* Bump version of black in pre-commit.
+  By :user:`David Stansby <dtstansby>` :issue:`1559`.
+
+* Use list comprehension where applicable.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1555`.
+
+* Use format specification mini-language to format string.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1558`.
+
+* Single startswith() call instead of multiple ones.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1556`.
+
+* Move codespell options around.
+  By :user:`Dimitri Papadopoulos Orfanos <DimitriPapadopoulos>` :issue:`1196`.
+
+* Remove unused mypy ignore comments.
+  By :user:`David Stansby <dtstansby>` :issue:`1602`.
 
 .. _release_2.16.1:
 
@@ -114,10 +615,10 @@ Maintenance
   By :user:`Davis Bennett <d-v-b>` :issue:`1462`.
 
 * Style the codebase with ``ruff`` and ``black``.
-  By :user:`Davis Bennett` <d-v-b> :issue:`1459`
+  By :user:`Davis Bennett <d-v-b>` :issue:`1459`
 
 * Ensure that chunks is tuple of ints upon array creation.
-  By :user:`Philipp Hanslovsky` <hanslovsky> :issue:`1461`
+  By :user:`Philipp Hanslovsky <hanslovsky>` :issue:`1461`
 
 .. _release_2.15.0:
 
@@ -505,7 +1006,7 @@ Maintenance
   By :user:`Saransh Chopra <Saransh-cpp>` :issue:`1079`.
 
 * Remove option to return None from _ensure_store.
-  By :user:`Greggory Lee <grlee77>` :issue:`1068`.
+  By :user:`Gregory Lee <grlee77>` :issue:`1068`.
 
 * Fix a typo of "integers".
   By :user:`Richard Scott <RichardScottOZ>` :issue:`1056`.
@@ -523,7 +1024,7 @@ Enhancements
   Since the format is not yet finalized, the classes and functions are not
   automatically imported into the regular `zarr` name space. Setting the
   `ZARR_V3_EXPERIMENTAL_API` environment variable will activate them.
-  By :user:`Greggory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`
+  By :user:`Gregory Lee <grlee77>`; :issue:`898`, :issue:`1006`, and :issue:`1007`
   as well as by :user:`Josh Moore <joshmoore>` :issue:`1032`.
 
 * **Create FSStore from an existing fsspec filesystem**. If you have created
@@ -645,7 +1146,7 @@ Enhancements
   higher-level array creation and convenience functions still accept plain
   Python dicts or other mutable mappings for the ``store`` argument, but will
   internally convert these to a ``KVStore``.
-  By :user:`Greggory Lee <grlee77>`; :issue:`839`, :issue:`789`, and :issue:`950`.
+  By :user:`Gregory Lee <grlee77>`; :issue:`839`, :issue:`789`, and :issue:`950`.
 
 * Allow to assign array ``fill_values`` and update metadata accordingly.
   By :user:`Ryan Abernathey <rabernat>`, :issue:`662`.
@@ -674,7 +1175,7 @@ Documentation
 * Update docs to use ``python -m pytest``.
   By :user:`Ray Bell <raybellwaves>` :issue:`923`.
 
-* Fix versionadded tag in zarr.core.Array docstring.
+* Fix versionadded tag in zarr.Array docstring.
   By :user:`Juan Nunez-Iglesias <jni>` :issue:`852`.
 
 * Doctest seem to be stricter now, updating tostring() to tobytes().
@@ -792,7 +1293,7 @@ Bug fixes
 ~~~~~~~~~
 
 * Fix FSStore.listdir behavior for nested directories.
-  By :user:`Greggory Lee <grlee77>`; :issue:`802`.
+  By :user:`Gregory Lee <grlee77>`; :issue:`802`.
 
 .. _release_2.9.4:
 
@@ -876,7 +1377,7 @@ Bug fixes
   By :user:`Josh Moore <joshmoore>`; :issue:`781`.
 
 * avoid NumPy 1.21.0 due to https://github.com/numpy/numpy/issues/19325
-  By :user:`Greggory Lee <grlee77>`; :issue:`791`.
+  By :user:`Gregory Lee <grlee77>`; :issue:`791`.
 
 Maintenance
 ~~~~~~~~~~~
@@ -888,7 +1389,7 @@ Maintenance
   By :user:`Elliott Sales de Andrade <QuLogic>`; :issue:`799`.
 
 * TST: add missing assert in test_hexdigest.
-  By :user:`Greggory Lee <grlee77>`; :issue:`801`.
+  By :user:`Gregory Lee <grlee77>`; :issue:`801`.
 
 .. _release_2.8.3:
 
@@ -1428,7 +1929,7 @@ Enhancements
   :user:`John Kirkham <jakirkham>`, :issue:`92`, :issue:`122`.
 
 * **Viewing an array as a different dtype**. The ``Array`` class has a new
-  :func:`zarr.core.Array.astype` method, which is a convenience that enables an
+  :func:`zarr.Array.astype` method, which is a convenience that enables an
   array to be viewed as a different dtype. By :user:`John Kirkham <jakirkham>`,
   :issue:`94`, :issue:`96`.
 
@@ -1532,11 +2033,11 @@ Bug fixes
 Documentation
 ~~~~~~~~~~~~~
 
-* Some changes have been made to the :ref:`spec_v2` document to clarify
+* Some changes have been made to the Zarr Specification v2 document to clarify
   ambiguities and add some missing information. These changes do not break compatibility
   with any of the material as previously implemented, and so the changes have been made
   in-place in the document without incrementing the document version number. See the
-  section on :ref:`spec_v2_changes` in the specification document for more information.
+  section on changes in the specification document for more information.
 * A new :ref:`tutorial_indexing` section has been added to the tutorial.
 * A new :ref:`tutorial_strings` section has been added to the tutorial
   (:issue:`135`, :issue:`175`).
