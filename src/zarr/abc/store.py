@@ -284,7 +284,6 @@ class Store(ABC):
         Insert multiple (key, value) pairs into storage.
         """
         await gather(*starmap(self.set, values))
-        return
 
     @property
     @abstractmethod
