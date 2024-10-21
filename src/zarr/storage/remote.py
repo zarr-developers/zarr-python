@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.storage.common import _dereference_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
+    from typing import Self
 
     from fsspec.asyn import AsyncFileSystem
 
@@ -59,7 +60,7 @@ class RemoteStore(Store):
         self,
         fs: AsyncFileSystem,
         mode: AccessModeLiteral = "r",
-        path: str = "/",
+        path: str = "",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> None:
         super().__init__(mode=mode)

@@ -22,18 +22,18 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     store_cls = ZipStore
     buffer_cls = cpu.Buffer
 
-    @pytest.fixture
-    def store_kwargs(self, request) -> dict[str, str | bool]:
+    @pytest.fixture(params=["", "test_path"])
+    def store_kwargs(self, request: pytest.FixtureRequest) -> dict[str, str | bool]:
         fd, temp_path = tempfile.mkstemp()
         os.close(fd)
 
-        return {"path": temp_path, "mode": "w"}
+        return {"file_path": temp_path, "mode": "w", "path": request.param}
 
     async def get(self, store: ZipStore, key: str) -> Buffer:
-        return store._get(key, prototype=default_buffer_prototype())
+        return store._get(store.resolve_key(key), prototype=default_buffer_prototype())
 
     async def set(self, store: ZipStore, key: str, value: Buffer) -> None:
-        return store._set(key, value)
+        return store._set(store.resolve_key(key), value)
 
     def test_store_mode(self, store: ZipStore, store_kwargs: dict[str, Any]) -> None:
         assert store.mode == AccessMode.from_literal(store_kwargs["mode"])
@@ -54,7 +54,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             await store.set("foo", cpu.Buffer.from_bytes(b"bar"))
 
     def test_store_repr(self, store: ZipStore) -> None:
-        assert str(store) == f"zip://{store.path!s}"
+        assert str(store) == f"file:///{store.file_path!s}|zip://{store.path}"
 
     def test_store_supports_writes(self, store: ZipStore) -> None:
         assert store.supports_writes
@@ -80,7 +80,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert np.array_equal(data, z[:])
 
         # you can overwrite existing chunks but zipfile will issue a warning
-        with pytest.warns(UserWarning, match="Duplicate name: 'foo/c/0/0'"):
+        with pytest.warns(UserWarning, match=f"Duplicate name: '{store.resolve_key('foo/c/0/0')}'"):
             z[0, 0] = 100
 
         # TODO: assigning an entire chunk to fill value ends up deleting the chunk which is not supported
