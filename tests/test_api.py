@@ -208,7 +208,7 @@ def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
 
 @pytest.mark.parametrize("order", ["C", "F", None])
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_array_order(order: str | None, zarr_format: int) -> None:
+def test_array_order(order: Literal["C", "F"] | None, zarr_format: ZarrFormat) -> None:
     arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
     expected = order or zarr.config.get("array.order")
     assert arr.order == expected
