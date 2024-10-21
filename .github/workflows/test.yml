@@ -70,3 +70,30 @@ jobs:
     - name: Run Tests
       run: |
         hatch env run --env upstream run
+
+  min_deps:
+    name: py=${{ matrix.python-version }}-min_deps
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11']
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    - name: Install Hatch
+      run: |
+        python -m pip install --upgrade pip 
+        pip install hatch
+    - name: Set Up Hatch Env
+      run: |
+        hatch env create min_deps
+        hatch env run -e min_deps list-env
+    - name: Run Tests
+      run: |
+        hatch env run --env min_deps run
