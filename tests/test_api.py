@@ -21,7 +21,7 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.common import ZarrFormat
+from zarr.core.common import MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
 from zarr.storage._utils import normalize_path
 from zarr.storage.memory import MemoryStore
@@ -208,7 +208,7 @@ def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
 
 @pytest.mark.parametrize("order", ["C", "F", None])
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_array_order(order: Literal["C", "F"] | None, zarr_format: ZarrFormat) -> None:
+def test_array_order(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
     arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
     expected = order or zarr.config.get("array.order")
     assert arr.order == expected
