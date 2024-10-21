@@ -1,13 +1,13 @@
 # This workflow will install Python dependencies, run tests and lint with a variety of Python versions
 # For more information see: https://help.github.com/actions/language-and-framework-guides/using-python-with-github-actions
 
-name: Test V3
+name: Test
 
 on:
   push:
-    branches: [ v3 ]
+    branches: [ main ]
   pull_request:
-    branches: [ v3 ]
+    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.11', '3.12']
+        python-version: ['3.11', '3.12', '3.13']
         numpy-version: ['1.25', '1.26', '2.0']
         dependency-set: ["minimal", "optional"]
 

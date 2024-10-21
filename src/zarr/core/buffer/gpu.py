@@ -132,7 +132,7 @@ class NDBuffer(core.NDBuffer):
 
     Parameters
     ----------
-    ndarray_like
+    array
         ndarray-like object that is convertible to a regular Numpy array.
     """
 

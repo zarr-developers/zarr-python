@@ -16,18 +16,18 @@ from zarr.api.synchronous import (
 )
 
 __all__ = [
+    "array",
     "create",
     "empty",
-    "zeros",
-    "ones",
-    "full",
-    "array",
-    "open_array",
     "empty_like",
-    "zeros_like",
-    "ones_like",
+    "full",
     "full_like",
+    "ones",
+    "ones_like",
+    "open_array",
     "open_like",
+    "zeros",
+    "zeros_like",
 ]
 
 warnings.warn(

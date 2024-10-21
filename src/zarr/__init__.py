@@ -34,14 +34,13 @@ from zarr.core.group import AsyncGroup, Group
 assert not __version__.startswith("0.0.0")
 
 __all__ = [
-    "__version__",
-    "config",
     "Array",
     "AsyncArray",
-    "Group",
     "AsyncGroup",
-    "tree",
+    "Group",
+    "__version__",
     "array",
+    "config",
     "consolidate_metadata",
     "copy",
     "copy_all",
@@ -63,6 +62,7 @@ __all__ = [
     "save",
     "save_array",
     "save_group",
+    "tree",
     "zeros",
     "zeros_like",
 ]

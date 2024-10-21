@@ -7,7 +7,7 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.buffer import Buffer, BufferPrototype, cpu
-from zarr.store import MemoryStore
+from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -15,9 +15,9 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    "TestBuffer",
     "NDBufferUsingTestNDArrayLike",
     "StoreExpectingTestBuffer",
+    "TestBuffer",
 ]
 
 

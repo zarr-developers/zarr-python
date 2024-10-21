@@ -22,7 +22,6 @@ class Metadata:
         are instances of `Metadata`. Sequences of `Metadata` are similarly recursed into, and
         the output of that recursion is collected in a list.
         """
-        ...
         out_dict = {}
         for field in fields(self):
             key = field.name

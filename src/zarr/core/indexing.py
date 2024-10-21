@@ -113,13 +113,13 @@ def _iter_grid(
 
     Parameters
     ----------
-    grid_shape: Sequence[int]
+    grid_shape : Sequence[int]
         The size of the domain to iterate over.
-    origin: Sequence[int] | None, default=None
+    origin : Sequence[int] | None, default=None
         The first coordinate of the domain to return.
-    selection_shape: Sequence[int] | None, default=None
+    selection_shape : Sequence[int] | None, default=None
         The shape of the selection.
-    order: Literal["lexicographic"], default="lexicographic"
+    order : Literal["lexicographic"], default="lexicographic"
         The linear indexing order to use.
 
     Returns
@@ -310,7 +310,7 @@ def normalize_integer_selection(dim_sel: int, dim_len: int) -> int:
 class ChunkDimProjection(NamedTuple):
     """A mapping from chunk to output array for a single dimension.
 
-    Parameters
+    Attributes
     ----------
     dim_chunk_ix
         Index of chunk.
@@ -482,7 +482,7 @@ class ChunkProjection(NamedTuple):
     chunk array for loading into an output array. Can also be used to extract items from a
     value array for setting/updating in a chunk array.
 
-    Parameters
+    Attributes
     ----------
     chunk_coords
         Indices of chunk.
@@ -732,7 +732,6 @@ class IntArrayDimIndexer:
         order = Order(order)
 
         if order == Order.INCREASING:
-            dim_sel = dim_sel
             dim_out_sel = None
         elif order == Order.DECREASING:
             dim_sel = dim_sel[::-1]
@@ -880,9 +879,7 @@ class OrthogonalIndexer(Indexer):
 
             dim_indexers.append(dim_indexer)
 
-        dim_indexers = dim_indexers
         shape = tuple(s.nitems for s in dim_indexers if not isinstance(s, IntDimIndexer))
-        chunk_shape = chunk_shape
         is_advanced = not is_basic_selection(selection)
         if is_advanced:
             drop_axes = tuple(
@@ -1017,7 +1014,6 @@ class BlockIndexer(Indexer):
             if start >= dim_len or start < 0:
                 raise BoundsCheckError(dim_len)
 
-        dim_indexers = dim_indexers
         shape = tuple(s.nitems for s in dim_indexers)
 
         object.__setattr__(self, "dim_indexers", dim_indexers)
@@ -1133,7 +1129,7 @@ class CoordinateIndexer(Indexer):
         chunks_multi_index_broadcast = np.broadcast_arrays(*chunks_multi_index)
 
         # remember shape of selection, because we will flatten indices for processing
-        sel_shape = selection_broadcast[0].shape if selection_broadcast[0].shape else (1,)
+        sel_shape = selection_broadcast[0].shape or (1,)
 
         # flatten selection
         selection_broadcast = tuple(dim_sel.reshape(-1) for dim_sel in selection_broadcast)
@@ -1154,7 +1150,7 @@ class CoordinateIndexer(Indexer):
         else:
             sel_sort = None
 
-        shape = selection_broadcast[0].shape if selection_broadcast[0].shape else (1,)
+        shape = selection_broadcast[0].shape or (1,)
 
         # precompute number of selected items for each chunk
         chunk_nitems = np.bincount(chunks_raveled_indices, minlength=nchunks)

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import itertools
 import math
+import numbers
 import operator
 from abc import abstractmethod
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -41,15 +42,15 @@ def _guess_chunks(
 
     Parameters
     ----------
-    shape: ChunkCoords
+    shape : ChunkCoords
         The chunk shape.
-    typesize: int
+    typesize : int
         The size, in bytes, of each element of the chunk.
-    increment_bytes: int = 256 * 1024
+    increment_bytes : int = 256 * 1024
         The number of bytes used to increment or decrement the target chunk size in bytes.
-    min_bytes: int = 128 * 1024
+    min_bytes : int = 128 * 1024
         The soft lower bound on the final chunk size in bytes.
-    max_bytes: int = 64 * 1024 * 1024
+    max_bytes : int = 64 * 1024 * 1024
         The hard upper bound on the final chunk size in bytes.
 
     Returns
@@ -95,6 +96,49 @@ def _guess_chunks(
         idx += 1
 
     return tuple(int(x) for x in chunks)
+
+
+def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tuple[int, ...]:
+    """Convenience function to normalize the `chunks` argument for an array
+    with the given `shape`."""
+
+    # N.B., expect shape already normalized
+
+    # handle auto-chunking
+    if chunks is None or chunks is True:
+        return _guess_chunks(shape, typesize)
+
+    # handle no chunking
+    if chunks is False:
+        return shape
+
+    # handle 1D convenience form
+    if isinstance(chunks, numbers.Integral):
+        chunks = tuple(int(chunks) for _ in shape)
+
+    # handle dask-style chunks (iterable of iterables)
+    if all(isinstance(c, (tuple | list)) for c in chunks):
+        # take first chunk size for each dimension
+        chunks = tuple(
+            c[0] for c in chunks
+        )  # TODO: check/error/warn for irregular chunks (e.g. if c[0] != c[1:-1])
+
+    # handle bad dimensionality
+    if len(chunks) > len(shape):
+        raise ValueError("too many dimensions in chunks")
+
+    # handle underspecified chunks
+    if len(chunks) < len(shape):
+        # assume chunks across remaining dimensions
+        chunks += shape[len(chunks) :]
+
+    # handle None or -1 in chunks
+    if -1 in chunks or None in chunks:
+        chunks = tuple(
+            s if c == -1 or c is None else int(c) for s, c in zip(shape, chunks, strict=False)
+        )
+
+    return tuple(int(c) for c in chunks)
 
 
 @dataclass(frozen=True)
@@ -144,6 +188,6 @@ class RegularChunkGrid(ChunkGrid):
     def get_nchunks(self, array_shape: ChunkCoords) -> int:
         return reduce(
             operator.mul,
-            (ceildiv(s, c) for s, c in zip(array_shape, self.chunk_shape, strict=True)),
+            itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
             1,
         )

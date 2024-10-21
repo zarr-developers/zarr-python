@@ -15,20 +15,20 @@ if TYPE_CHECKING:
 
 __all__ = [
     "Registry",
-    "register_codec",
-    "register_pipeline",
-    "register_buffer",
-    "register_ndbuffer",
-    "get_codec_class",
-    "get_pipeline_class",
     "get_buffer_class",
+    "get_codec_class",
     "get_ndbuffer_class",
+    "get_pipeline_class",
+    "register_buffer",
+    "register_codec",
+    "register_ndbuffer",
+    "register_pipeline",
 ]
 
 T = TypeVar("T")
 
 
-class Registry(Generic[T], dict[str, type[T]]):
+class Registry(dict[str, type[T]], Generic[T]):
     def __init__(self) -> None:
         super().__init__()
         self.lazy_load_list: list[EntryPoint] = []
@@ -48,9 +48,9 @@ __buffer_registry: Registry[Buffer] = Registry()
 __ndbuffer_registry: Registry[NDBuffer] = Registry()
 
 """
-The registry module is responsible for managing implementations of codecs, pipelines, buffers and ndbuffers and 
-collecting them from entrypoints.
-The implementation used is determined by the config
+The registry module is responsible for managing implementations of codecs,
+pipelines, buffers and ndbuffers and collecting them from entrypoints.
+The implementation used is determined by the config.
 """
 
 

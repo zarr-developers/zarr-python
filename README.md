@@ -70,10 +70,10 @@
   </td>
 </tr>
 <tr>
-	<td>Gitter</td>
+	<td>Zulip</td>
 	<td>
-		<a href="https://gitter.im/zarr-developers/community">
-		<img src="https://badges.gitter.im/zarr-developers/community.svg" />
+		<a href="https://ossci.zulipchat.com/">
+		<img src="https://img.shields.io/badge/zulip-join_chat-brightgreen.svg" />
 		</a>
 	</td>
 </tr>

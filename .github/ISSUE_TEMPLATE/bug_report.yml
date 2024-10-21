@@ -1,5 +1,5 @@
-name: 🐛 File a bug report
-description: X's behavior is deviating from its documented behavior.
+name: Bug Report
+description: Report incorrect behaviour in the library.
 labels: ["bug"]
 body:
   - type: markdown
@@ -27,7 +27,7 @@ body:
     attributes:
       label: Python Version
       description: Version of Python interpreter
-      placeholder: 3.8.5, 3.9, 3.10, etc.
+      placeholder: 3.10, 3.11, 3.12 etc.
     validations:
       required: true
   - type: input

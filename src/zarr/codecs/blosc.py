@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, replace
 from enum import Enum
 from functools import cached_property
@@ -10,7 +11,7 @@ from numcodecs.blosc import Blosc
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
-from zarr.core.common import JSON, parse_enum, parse_named_configuration, to_thread
+from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.registry import register_codec
 
 if TYPE_CHECKING:
@@ -169,7 +170,7 @@ class BloscCodec(BytesBytesCodec):
         chunk_bytes: Buffer,
         chunk_spec: ArraySpec,
     ) -> Buffer:
-        return await to_thread(
+        return await asyncio.to_thread(
             as_numpy_array_wrapper, self._blosc_codec.decode, chunk_bytes, chunk_spec.prototype
         )
 
@@ -180,7 +181,7 @@ class BloscCodec(BytesBytesCodec):
     ) -> Buffer | None:
         # Since blosc only support host memory, we convert the input and output of the encoding
         # between numpy array and buffer
-        return await to_thread(
+        return await asyncio.to_thread(
             lambda chunk: chunk_spec.prototype.buffer.from_bytes(
                 self._blosc_codec.encode(chunk.as_numpy_array())
             ),
