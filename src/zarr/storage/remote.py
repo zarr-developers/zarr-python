@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Self
 
-import fsspec
-
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.storage.common import _dereference_path
 
@@ -130,7 +128,13 @@ class RemoteStore(Store):
         -------
         RemoteStore
         """
-        fs, path = fsspec.url_to_fs(url, **storage_options)
+        try:
+            from fsspec import url_to_fs
+        except ImportError:
+            # before fsspec==2024.3.1
+            from fsspec.core import url_to_fs
+
+        fs, path = url_to_fs(url, **storage_options)
         return cls(fs=fs, path=path, mode=mode, allowed_exceptions=allowed_exceptions)
 
     async def clear(self) -> None:
