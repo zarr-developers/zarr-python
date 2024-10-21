@@ -167,14 +167,14 @@ class RemoteStore(Store):
         # https://github.com/fsspec/filesystem_spec/issues/1722
         if "://" in path and not path.startswith("http"):
             # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
-            _, path = path.split("://", maxsplit=1)
+            path = fs._strip_protocol(path)
 
         return cls(fs=fs, path=path, mode=mode, allowed_exceptions=allowed_exceptions)
 
     async def clear(self) -> None:
         # docstring inherited
         try:
-            for subpath in await self.fs._find(self.path, withdirs=True, refresh=True):
+            for subpath in await self.fs._find(self.path, withdirs=True):
                 if subpath != self.path:
                     await self.fs._rm(subpath, recursive=True)
         except FileNotFoundError:
@@ -186,7 +186,7 @@ class RemoteStore(Store):
         # TODO: it would be nice if we didn't have to list all keys here
         # it should be possible to stop after the first key is discovered
         try:
-            return not await self.fs._ls(self.path, refresh=True)
+            return not await self.fs._ls(self.path)
         except FileNotFoundError:
             return True
 
@@ -320,7 +320,7 @@ class RemoteStore(Store):
 
     async def list(self) -> AsyncGenerator[str, None]:
         # docstring inherited
-        allfiles = await self.fs._find(self.path, detail=False, withdirs=False, refresh=True)
+        allfiles = await self.fs._find(self.path, detail=False, withdirs=False)
         for onefile in (a.replace(self.path + "/", "") for a in allfiles):
             yield onefile
 
@@ -328,7 +328,7 @@ class RemoteStore(Store):
         # docstring inherited
         prefix = f"{self.path}/{prefix.rstrip('/')}"
         try:
-            allfiles = await self.fs._ls(prefix, detail=False, refresh=True)
+            allfiles = await self.fs._ls(prefix, detail=False)
         except FileNotFoundError:
             return
         for onefile in (a.replace(prefix + "/", "") for a in allfiles):
@@ -337,7 +337,5 @@ class RemoteStore(Store):
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
         find_str = f"{self.path}/{prefix}"
-        for onefile in await self.fs._find(
-            find_str, detail=False, maxdepth=None, withdirs=False, refresh=True
-        ):
+        for onefile in await self.fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
             yield onefile.removeprefix(find_str)
