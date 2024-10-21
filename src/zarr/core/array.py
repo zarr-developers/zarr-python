@@ -637,6 +637,29 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         data: dict[str, JSON],
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+        """
+        Create a Zarr array from a dictionary, with support for both Zarr v2 and v3 metadata.
+
+        Parameters
+        ----------
+        store_path : StorePath
+            The path within the store where the array should be created.
+
+        data : dict of str to JSON
+            A dictionary representing the array data. This dictionary should include necessary metadata
+            for the array, such as shape, dtype, and other attributes. The format of the metadata
+            will determine whether a Zarr v2 or v3 array is created.
+
+        Returns
+        -------
+        AsyncArray[ArrayV3Metadata] or AsyncArray[ArrayV2Metadata]
+            The created Zarr array, either using v2 or v3 metadata based on the provided data.
+
+        Raises
+        ------
+        ValueError
+            If the dictionary data is invalid or incompatible with either Zarr v2 or v3 array creation.
+        """
         metadata = parse_array_metadata(data)
         return cls(metadata=metadata, store_path=store_path)
 
@@ -1018,6 +1041,28 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return await self._get_selection(indexer, prototype=prototype)
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
+        """
+        Asynchronously save the array metadata.
+
+        Parameters
+        ----------
+        metadata : ArrayMetadata
+            The metadata to be saved for the array. This typically includes information about the
+            array's shape, dtype, chunking, etc.
+
+        ensure_parents : bool, optional
+            If True, ensures that any necessary parent directories are created before saving the metadata.
+            Default is False.
+
+        Returns
+        -------
+        None
+            This method does not return any value.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        """
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
 
@@ -1096,6 +1141,39 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         value: npt.ArrayLike,
         prototype: BufferPrototype | None = None,
     ) -> None:
+        """
+        Asynchronously set values in the array using basic indexing.
+
+        Parameters
+        ----------
+        selection : BasicSelection
+            The selection defining the region of the array to set.
+
+        value : numpy.typing.ArrayLike
+            The values to be written into the selected region of the array.
+
+        prototype : BufferPrototype or None, optional
+            A prototype buffer that defines the structure and properties of the array chunks being modified.
+            If None, the default buffer prototype is used. Default is None.
+
+        Returns
+        -------
+        None
+            This method does not return any value.
+
+        Raises
+        ------
+        IndexError
+            If the selection is out of bounds for the array.
+
+        ValueError
+            If the values are not compatible with the array's dtype or shape.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        - Supports basic indexing, where the selection is contiguous and does not involve advanced indexing.
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BasicIndexer(
@@ -1106,6 +1184,32 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return await self._set_selection(indexer, value, prototype=prototype)
 
     async def resize(self, new_shape: ChunkCoords, delete_outside_chunks: bool = True) -> Self:
+        """
+        Asynchronously resize the array to a new shape.
+
+        Parameters
+        ----------
+        new_shape : ChunkCoords
+            The desired new shape of the array.
+
+        delete_outside_chunks : bool, optional
+            If True (default), chunks that fall outside the new shape will be deleted. If False,
+            the data in those chunks will be preserved.
+
+        Returns
+        -------
+        AsyncArray
+            The resized array.
+
+        Raises
+        ------
+        ValueError
+            If the new shape is incompatible with the current array's chunking configuration.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        """
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = self.metadata.update_shape(new_shape)
 
@@ -1132,6 +1236,31 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return replace(self, metadata=new_metadata)
 
     async def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
+        """
+        Asynchronously update the array's attributes.
+
+        Parameters
+        ----------
+        new_attributes : dict of str to JSON
+            A dictionary of new attributes to update or add to the array. The keys represent attribute
+            names, and the values must be JSON-compatible.
+
+        Returns
+        -------
+        AsyncArray
+            The array with the updated attributes.
+
+        Raises
+        ------
+        ValueError
+            If the attributes are invalid or incompatible with the array's metadata.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        - The updated attributes will be merged with existing attributes, and any conflicts will be
+          overwritten by the new values.
+        """
         # metadata.attributes is "frozen" so we simply clear and update the dict
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -1249,6 +1378,28 @@ class Array:
         store_path: StorePath,
         data: dict[str, JSON],
     ) -> Array:
+        """
+        Create a Zarr array from a dictionary.
+
+        Parameters
+        ----------
+        store_path : StorePath
+            The path within the store where the array should be created.
+
+        data : dict of str to JSON
+            A dictionary representing the array data. This dictionary should include necessary metadata
+            for the array, such as shape, dtype, fill value, and attributes.
+
+        Returns
+        -------
+        Array
+            The created Zarr array.
+
+        Raises
+        ------
+        ValueError
+            If the dictionary data is invalid or missing required fields for array creation.
+        """
         async_array = AsyncArray.from_dict(store_path=store_path, data=data)
         return cls(async_array)
 
@@ -2798,6 +2949,30 @@ class Array:
         return type(self)(_resized)
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
+        """
+        Update the array's attributes.
+
+        Parameters
+        ----------
+        new_attributes : dict of str to JSON
+            A dictionary of new attributes to update or add to the array. The keys represent attribute
+            names, and the values must be JSON-compatible.
+
+        Returns
+        -------
+        Array
+            The array with the updated attributes.
+
+        Raises
+        ------
+        ValueError
+            If the attributes are invalid or incompatible with the array's metadata.
+
+        Notes
+        -----
+        - The updated attributes will be merged with existing attributes, and any conflicts will be
+          overwritten by the new values.
+        """
         # TODO: remove this cast when type inference improves
         new_array = sync(self._async_array.update_attributes(new_attributes))
         # TODO: remove this cast when type inference improves
