@@ -31,6 +31,7 @@ from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ChunkCoords,
+    MemoryOrder,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -289,7 +290,7 @@ class ArrayV3Metadata(Metadata):
         return len(self.shape)
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+        self, _chunk_coords: ChunkCoords, order: MemoryOrder, prototype: BufferPrototype
     ) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
