@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import warnings
 from asyncio import gather
 from dataclasses import dataclass, field
 from itertools import starmap
@@ -1161,9 +1160,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         data_shape_preserved = tuple(s for i, s in enumerate(data.shape) if i != axis)
         if self_shape_preserved != data_shape_preserved:
             raise ValueError(
-                "shape of data to append is not compatible with the array; "
-                "all dimensions must match except for the dimension being "
-                "appended"
+                f"shape of data to append is not compatible with the array. "
+                f"The shape of the data is ({data_shape_preserved})"
+                f"and the shape of the array is ({self_shape_preserved})."
+                "All dimensions must match except for the dimension being "
+                "appended."
             )
         # remember old shape
         old_shape = self.shape
@@ -1356,16 +1357,7 @@ class Array:
 
     @shape.setter
     def shape(self, value: ChunkCoords) -> None:
-        """Sets the shape of the array by calling resize.
-
-        .. deprecated:: 3.0.0
-            Setting a shape using the shape setter is deprecated, use Array.resize instead.
-        """
-        warnings.warn(
-            "Setting a shape using the shape setter is deprecated, use Array.resize instead.",
-            stacklevel=2,
-            category=DeprecationWarning,
-        )
+        """Sets the shape of the array by calling resize."""
         self.resize(value)
 
     @property
