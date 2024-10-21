@@ -4,6 +4,7 @@ import json
 import warnings
 from asyncio import gather
 from dataclasses import dataclass, field
+from itertools import starmap
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload
 
@@ -185,8 +186,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         The metadata of the array.
     store_path : StorePath
         The path to the Zarr store.
-    codec_pipeline : CodecPipeline, optional
-        The codec pipeline used for encoding and decoding chunks, by default None.
     order : {'C', 'F'}, optional
         The order of the array data in memory, by default None.
 
@@ -819,7 +818,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Tuple[int]
             The shape of the chunk grid for this array.
         """
-        return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
+        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
 
     @property
     def nchunks(self) -> int:
@@ -858,9 +857,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Parameters
         ----------
-        origin: Sequence[int] | None, default=None
+        origin : Sequence[int] | None, default=None
             The origin of the selection relative to the array's chunk grid.
-        selection_shape: Sequence[int] | None, default=None
+        selection_shape : Sequence[int] | None, default=None
             The shape of the selection in chunk grid coordinates.
 
         Yields
@@ -879,9 +878,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Parameters
         ----------
-        origin: Sequence[int] | None, default=None
+        origin : Sequence[int] | None, default=None
             The origin of the selection relative to the array's chunk grid.
-        selection_shape: Sequence[int] | None, default=None
+        selection_shape : Sequence[int] | None, default=None
             The shape of the selection in chunk grid coordinates.
 
         Yields
@@ -902,9 +901,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Parameters
         ----------
-        origin: Sequence[int] | None, default=None
+        origin : Sequence[int] | None, default=None
             The origin of the selection relative to the array's chunk grid.
-        selection_shape: Sequence[int] | None, default=None
+        selection_shape : Sequence[int] | None, default=None
             The shape of the selection in chunk grid coordinates.
 
         Yields
@@ -1207,17 +1206,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 # TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
 @dataclass(frozen=False)
 class Array:
-    """Instantiate an array from an initialized store.
-
-    Parameters
-    ----------
-    store : StoreLike
-        The array store that has already been initialized.
-    shape : ChunkCoords
-        The shape of the array.
-    dtype : npt.DTypeLike
-        The dtype of the array.
-    """
+    """Instantiate an array from an initialized store."""
 
     _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
 
@@ -1467,7 +1456,7 @@ class Array:
         """
         The shape of the chunk grid for this array.
         """
-        return tuple(ceildiv(s, c) for s, c in zip(self.shape, self.chunks, strict=False))
+        return tuple(starmap(ceildiv, zip(self.shape, self.chunks, strict=False)))
 
     @property
     def nchunks(self) -> int:
@@ -1489,9 +1478,9 @@ class Array:
 
         Parameters
         ----------
-        origin: Sequence[int] | None, default=None
+        origin : Sequence[int] | None, default=None
             The origin of the selection relative to the array's chunk grid.
-        selection_shape: Sequence[int] | None, default=None
+        selection_shape : Sequence[int] | None, default=None
             The shape of the selection in chunk grid coordinates.
 
         Yields
@@ -1526,9 +1515,9 @@ class Array:
 
         Parameters
         ----------
-        origin: Sequence[int] | None, default=None
+        origin : Sequence[int] | None, default=None
             The origin of the selection relative to the array's chunk grid.
-        selection_shape: Sequence[int] | None, default=None
+        selection_shape : Sequence[int] | None, default=None
             The shape of the selection in chunk grid coordinates.
 
         Yields
@@ -1548,9 +1537,9 @@ class Array:
 
         Parameters
         ----------
-        origin: Sequence[int] | None, default=None
+        origin : Sequence[int] | None, default=None
             The origin of the selection relative to the array's chunk grid.
-        selection_shape: Sequence[int] | None, default=None
+        selection_shape : Sequence[int] | None, default=None
             The shape of the selection in chunk grid coordinates.
 
         Yields
@@ -2301,7 +2290,7 @@ class Array:
 
         Parameters
         ----------
-        selection : ndarray, bool
+        mask : ndarray, bool
             A Boolean array of the same shape as the array against which the selection is
             being made.
         out : NDBuffer, optional
@@ -2384,7 +2373,7 @@ class Array:
 
         Parameters
         ----------
-        selection : ndarray, bool
+        mask : ndarray, bool
             A Boolean array of the same shape as the array against which the selection is
             being made.
         value : npt.ArrayLike
