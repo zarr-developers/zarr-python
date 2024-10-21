@@ -61,6 +61,9 @@ templates_path = ["_templates"]
 # source_suffix = ['.rst', '.md']
 source_suffix = ".rst"
 
+# Fail the build on broken links
+nitpicky = True
+
 # The encoding of source files.
 # source_encoding = 'utf-8-sig'
 
