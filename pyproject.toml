@@ -183,6 +183,35 @@ features = ['docs']
 build = "cd docs && make html"
 serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
+[tool.hatch.envs.upstream]
+dependencies = [
+    'numpy',  # from scientific-python-nightly-wheels
+    'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
+    'fsspec @ git+https://github.com/fsspec/filesystem_spec',
+    's3fs @ git+https://github.com/fsspec/s3fs',
+    'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
+    'crc32c @ git+https://github.com/ICRAR/crc32c',
+    'typing_extensions @ git+https://github.com/python/typing_extensions',
+    'donfig @ git+https://github.com/pytroll/donfig',
+    # test deps
+    'hypothesis',
+    'pytest',
+    'pytest-cov',
+    'pytest-asyncio',
+    'moto[s3]',
+]
+
+[tool.hatch.envs.upstream.env-vars]
+PIP_INDEX_URL = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/"
+PIP_EXTRA_INDEX_URL = "https://pypi.org/simple/"
+PIP_PRE = "1"
+
+[tool.hatch.envs.upstream.scripts]
+run = "pytest --verbose"
+run-mypy = "mypy src"
+run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+list-env = "pip list"
+
 [tool.ruff]
 line-length = 100
 force-exclude = true
