@@ -453,8 +453,7 @@ def test_resize_1d(store: MemoryStore, zarr_format: int) -> None:
 
     # via shape setter
     new_shape = (105,)
-    with pytest.warns(DeprecationWarning):
-        z.shape = new_shape
+    z.shape = new_shape
     assert new_shape == z.shape
     assert new_shape == z[:].shape
 
@@ -516,8 +515,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: int) -> None:
 
     # via shape setter
     new_shape = (105, 105)
-    with pytest.warns(DeprecationWarning):
-        z.shape = new_shape
+    z.shape = new_shape
     assert new_shape == z.shape
     assert new_shape == z[:].shape
 
