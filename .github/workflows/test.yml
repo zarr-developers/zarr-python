@@ -43,3 +43,30 @@ jobs:
     - name: Run Tests
       run: |
         hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run
+
+  upstream:
+    name: py=${{ matrix.python-version }}-upstream
+
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.13']
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+    - name: Install Hatch
+      run: |
+        python -m pip install --upgrade pip 
+        pip install hatch
+    - name: Set Up Hatch Env
+      run: |
+        hatch env create upstream
+        hatch env run -e upstream list-env
+    - name: Run Tests
+      run: |
+        hatch env run --env upstream run
