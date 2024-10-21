@@ -338,3 +338,15 @@ class StoreTests(Generic[S, B]):
 
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
+
+    async def test_getsize(self, store: S) -> None:
+        key = "k"
+        data = self.buffer_cls.from_bytes(b"0" * 10)
+        await self.set(store, key, data)
+
+        result = await store.getsize(key)
+        assert result == 10
+
+    async def test_getsize_raises(self, store: S) -> None:
+        with pytest.raises(FileNotFoundError):
+            await store.getsize("not-a-real-key")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Self, cast
 
 import fsspec
 
@@ -301,3 +301,16 @@ class RemoteStore(Store):
         find_str = f"{self.path}/{prefix}"
         for onefile in await self.fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
             yield onefile.removeprefix(find_str)
+
+    async def getsize(self, key: str) -> int:
+        path = _dereference_path(self.path, key)
+        info = await self.fs._info(path)
+
+        size = info.get("size")
+
+        if size is None:
+            # Not all filesystems support size. Fall back to reading the entire object
+            return await super().getsize(key)
+        else:
+            # fsspec doesn't have typing. We'll need to assume this is correct.
+            return cast(int, size)

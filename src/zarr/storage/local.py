@@ -242,3 +242,6 @@ class LocalStore(Store):
                 yield str(key).replace(to_strip, "")
         except (FileNotFoundError, NotADirectoryError):
             pass
+
+    async def getsize(self, key: str) -> int:
+        return os.path.getsize(self.root / key)
