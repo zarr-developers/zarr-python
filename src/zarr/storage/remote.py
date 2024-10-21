@@ -62,7 +62,7 @@ class RemoteStore(Store):
         self,
         fs: AsyncFileSystem,
         mode: AccessModeLiteral = "r",
-        path: str = "/",
+        path: str = "",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> None:
         super().__init__(mode=mode)
