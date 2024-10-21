@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from asyncio import gather
+from itertools import starmap
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
@@ -282,7 +283,7 @@ class Store(ABC):
         """
         Insert multiple (key, value) pairs into storage.
         """
-        await gather(*(self.set(key, value) for key, value in values))
+        await gather(*starmap(self.set, values))
         return
 
     @property
