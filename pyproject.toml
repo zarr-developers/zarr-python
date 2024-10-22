@@ -61,7 +61,6 @@ test = [
     "pytest",
     "pytest-cov",
     "msgpack",
-    "lmdb",
     "s3fs",
     "pytest-asyncio",
     "moto[s3]",
@@ -92,13 +91,11 @@ docs = [
     'numpydoc',
     'numcodecs[msgpack]',
     'msgpack',
-    'lmdb',
 ]
 extra = [
     'msgpack',
 ]
 optional = [
-    'lmdb',
     'universal-pathlib>=0.0.22',
 ]
 
