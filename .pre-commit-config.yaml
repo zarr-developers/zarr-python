@@ -37,8 +37,6 @@ repos:
           - universal-pathlib
           # Tests
           - pytest
-          # Zarr v2
-          - types-redis
   - repo: https://github.com/scientific-python/cookie
     rev: 2024.08.19
     hooks:
