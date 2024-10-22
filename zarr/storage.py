@@ -1186,7 +1186,7 @@ class DirectoryStore(Store):
 
     @staticmethod
     def _keys_fast(path, walker=os.walk):
-        for dirpath, _, filenames in walker(path):
+        for dirpath, _, filenames in walker(path, followlinks=True):
             dirpath = os.path.relpath(dirpath, path)
             if dirpath == os.curdir:
                 for f in filenames:
