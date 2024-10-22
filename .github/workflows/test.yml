@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   test:
-    name: py=${{ matrix.python-version }}, np=${{ matrix.numpy-version }}, deps=${{ matrix.dependency-set }}
+    name: os=${{ matrix.os }}, py=${{ matrix.python-version }}, np=${{ matrix.numpy-version }}, deps=${{ matrix.dependency-set }}
 
     strategy:
       matrix:
