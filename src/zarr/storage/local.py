@@ -226,7 +226,9 @@ class LocalStore(Store):
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        to_strip = os.path.join(str(self.root / prefix))
+        to_strip = str(self.root)
+        if prefix.endswith("/"):
+            prefix = prefix[:-1]
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
                 yield str(p.relative_to(to_strip))

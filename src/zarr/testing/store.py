@@ -249,8 +249,7 @@ class StoreTests(Generic[S, B]):
     async def test_list_prefix(self, store: S) -> None:
         """
         Test that the `list_prefix` method works as intended. Given a prefix, it should return
-        all the keys in storage that start with this prefix. Keys should be returned with the shared
-        prefix removed.
+        all the keys in storage that start with this prefix.
         """
         prefixes = ("", "a/", "a/b/", "a/b/c/")
         data = self.buffer_cls.from_bytes(b"")
@@ -264,7 +263,7 @@ class StoreTests(Generic[S, B]):
             expected: tuple[str, ...] = ()
             for key in store_dict:
                 if key.startswith(prefix):
-                    expected += (key.removeprefix(prefix),)
+                    expected += (key,)
             expected = tuple(sorted(expected))
             assert observed == expected
 

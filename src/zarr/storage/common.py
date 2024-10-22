@@ -101,6 +101,18 @@ class StorePath:
         """
         await self.store.delete(self.path)
 
+    async def delete_dir(self, recursive: bool = False) -> None:
+        """
+        Delete all keys with the given prefix from the store.
+        """
+        await self.store.delete_dir(self.path, recursive=recursive)
+
+    async def delete_prefix(self) -> None:
+        """
+        Delete all keys with the given prefix from the store.
+        """
+        await self.store.delete_prefix(self.path)
+
     async def set_if_not_exists(self, default: Buffer) -> None:
         """
         Store a key to ``value`` if the key is not already present.

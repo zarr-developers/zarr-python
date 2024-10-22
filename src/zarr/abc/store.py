@@ -371,6 +371,36 @@ class Store(ABC):
         """
         ...
 
+    async def delete_dir(self, prefix: str, recursive: bool = True) -> None:
+        """
+        Remove all keys and prefixes in the store that begin with a given prefix.
+        """
+        if not self.supports_deletes:
+            raise NotImplementedError
+        if not self.supports_listing:
+            raise NotImplementedError
+        self._check_writable()
+        if recursive:
+            if not prefix.endswith("/"):
+                prefix += "/"
+            async for key in self.list_prefix(prefix):
+                await self.delete(f"{key}")
+        else:
+            async for key in self.list_dir(prefix):
+                await self.delete(f"{prefix}/{key}")
+
+    async def delete_prefix(self, prefix: str) -> None:
+        """
+        Remove all keys in the store that begin with a given prefix.
+        """
+        if not self.supports_deletes:
+            raise NotImplementedError
+        if not self.supports_listing:
+            raise NotImplementedError
+        self._check_writable()
+        async for key in self.list_prefix(prefix):
+            await self.delete(f"{key}")
+
     def close(self) -> None:
         """Close the store."""
         self._is_open = False

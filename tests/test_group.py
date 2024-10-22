@@ -290,6 +290,10 @@ def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> N
         with pytest.raises(ContainsGroupError):
             Group.from_store(store, attributes=attrs, zarr_format=zarr_format, exists_ok=exists_ok)
     else:
+        if not store.supports_deletes:
+            pytest.skip(
+                "Store does not support deletes but `exists_ok` is True, requiring deletes to override a group"
+            )
         group_created_again = Group.from_store(
             store, attributes=new_attrs, zarr_format=zarr_format, exists_ok=exists_ok
         )
@@ -703,6 +707,8 @@ def test_group_creation_existing_node(
     new_attributes = {"new": True}
 
     if exists_ok:
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes but exists_ok is True")
         node_new = Group.from_store(
             spath / "extant",
             attributes=new_attributes,
@@ -1075,7 +1081,9 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
     assert foo_group.attrs == {"foo": 100}
 
     # test that we can get the group using require_group and overwrite=True
-    foo_group = await root.require_group("foo", overwrite=True)
+    if store.supports_deletes:
+        foo_group = await root.require_group("foo", overwrite=True)
+        assert foo_group.attrs == {}
 
     _ = await foo_group.create_array(
         "bar", shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
@@ -1354,3 +1362,16 @@ def test_group_deprecated_positional_args(method: str) -> None:
     with pytest.warns(FutureWarning, match=r"Pass name=.*, data=.* as keyword args."):
         arr = getattr(root, method)("foo_like", data, **kwargs)
         assert arr.shape == data.shape
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2191
+    g1 = zarr.group(store=store)
+    g1.create_group("0")
+    g1.create_group("0/0")
+    arr = g1.create_array("0/0/0", shape=(1,))
+    arr[:] = 1
+    del g1["0"]
+    with pytest.raises(KeyError):
+        g1["0/0"]
