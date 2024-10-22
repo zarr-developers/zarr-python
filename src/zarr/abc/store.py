@@ -207,10 +207,10 @@ class Store(ABC):
         Parameters
         ----------
         key : str
-        byte_range : tuple[int | None, int | None], optional
-        prototype: BufferPrototype, optional
+        prototype : BufferPrototype, optional
             The prototype giving the buffer classes to use for buffers and nbuffers.
             By default, :func:`zarr.buffer.default_buffer_prototype` is used.
+        byte_range : tuple[int | None, int | None], optional
 
         Returns
         -------
