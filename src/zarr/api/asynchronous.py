@@ -16,6 +16,7 @@ from zarr.core.common import (
     ChunkCoords,
     MemoryOrder,
     ZarrFormat,
+    _warn_write_empty_chunks_kwarg,
 )
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
@@ -724,7 +725,6 @@ async def create(
     read_only: bool | None = None,
     object_codec: Codec | None = None,  # TODO: type has changed
     dimension_separator: Literal[".", "/"] | None = None,
-    write_empty_chunks: bool = False,  # TODO: default has changed
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # TODO: need type
@@ -794,17 +794,6 @@ async def create(
 
         .. versionadded:: 2.8
 
-    write_empty_chunks : bool, optional
-        If True (default), all chunks will be stored regardless of their
-        contents. If False, each chunk is compared to the array's fill value
-        prior to storing. If a chunk is uniformly equal to the fill value, then
-        that chunk is not be stored, and the store entry for that chunk's key
-        is deleted. This setting enables sparser storage, as only chunks with
-        non-fill-value data are stored, at the expense of overhead associated
-        with checking the data of each chunk.
-
-        .. versionadded:: 2.11
-
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     meta_array : array-like, optional
@@ -856,8 +845,12 @@ async def create(
                 RuntimeWarning,
                 stacklevel=2,
             )
-    if write_empty_chunks:
-        warnings.warn("write_empty_chunks is not yet implemented", RuntimeWarning, stacklevel=2)
+
+    if "write_empty_chunks" in kwargs:
+        # warn users if the write_empty_chunks kwarg was used
+        write_empty_chunks = kwargs.pop("write_empty_chunks")
+        _warn_write_empty_chunks_kwarg(write_empty_chunks)
+
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
@@ -1057,6 +1050,11 @@ async def open_array(
     store_path = await make_store_path(store, path=path, mode=mode)
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+
+    if "write_empty_chunks" in kwargs:
+        # warn users if the write_empty_chunks kwarg was used
+        write_empty_chunks = kwargs.pop("write_empty_chunks")
+        _warn_write_empty_chunks_kwarg(write_empty_chunks)
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
