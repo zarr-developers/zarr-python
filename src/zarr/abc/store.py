@@ -199,7 +199,7 @@ class Store(ABC):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferPrototype | None = None,
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
@@ -208,6 +208,9 @@ class Store(ABC):
         ----------
         key : str
         byte_range : tuple[int | None, int | None], optional
+        prototype: BufferPrototype, optional
+            The prototype giving the buffer classes to use for buffers and nbuffers.
+            By default, :func:`zarr.buffer.default_buffer_prototype` is used.
 
         Returns
         -------

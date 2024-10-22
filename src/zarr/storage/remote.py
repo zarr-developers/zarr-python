@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Self, cast
+from typing import TYPE_CHECKING, Any, Self
 
 import fsspec
 
 from zarr.abc.store import ByteRangeRequest, Store
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.storage.common import _dereference_path
 
 if TYPE_CHECKING:
@@ -175,10 +176,12 @@ class RemoteStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferPrototype | None = None,
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
+        if prototype is None:
+            prototype = default_buffer_prototype()
         if not self._is_open:
             await self._open()
         path = _dereference_path(self.path, key)
@@ -312,5 +315,5 @@ class RemoteStore(Store):
             # Not all filesystems support size. Fall back to reading the entire object
             return await super().getsize(key)
         else:
-            # fsspec doesn't have typing. We'll need to assume this is correct.
-            return cast(int, size)
+            # fsspec doesn't have typing. We'll need to assume or verify this is true
+            return int(size)

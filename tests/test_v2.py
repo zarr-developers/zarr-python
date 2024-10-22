@@ -9,6 +9,7 @@ from numcodecs import Delta
 from numcodecs.blosc import Blosc
 
 import zarr
+import zarr.buffer
 import zarr.storage
 from zarr import Array
 from zarr.storage import MemoryStore, StorePath
@@ -90,7 +91,7 @@ async def test_v2_encode_decode(dtype):
         fill_value=b"X",
     )
 
-    result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
+    result = await store.get("foo/.zarray", zarr.buffer.default_buffer_prototype())
     assert result is not None
 
     serialized = json.loads(result.to_bytes())

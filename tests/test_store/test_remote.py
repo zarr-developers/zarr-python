@@ -10,7 +10,8 @@ from botocore.session import Session
 from upath import UPath
 
 import zarr.api.asynchronous
-from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
+from zarr.buffer import default_buffer_prototype
+from zarr.core.buffer import Buffer, cpu
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.storage import RemoteStore
 from zarr.testing.store import StoreTests

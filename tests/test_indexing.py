@@ -11,7 +11,7 @@ import pytest
 from numpy.testing import assert_array_equal
 
 import zarr
-from zarr.core.buffer import BufferPrototype, default_buffer_prototype
+from zarr.buffer import default_buffer_prototype
 from zarr.core.indexing import (
     BasicSelection,
     CoordinateSelection,
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
     from zarr.core.array import Array
+    from zarr.core.buffer import BufferPrototype
     from zarr.core.buffer.core import Buffer
     from zarr.core.common import ChunkCoords
 
