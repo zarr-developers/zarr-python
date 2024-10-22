@@ -331,6 +331,7 @@ class BatchedCodecPipeline(CodecPipeline):
         value: NDBuffer,
         drop_axes: tuple[int, ...] = (),
     ) -> None:
+        write_empty_chunks = config.get("array.write_empty_chunks") == True  # noqa: E712
         if self.supports_partial_encode:
             await self.encode_partial_batch(
                 [
@@ -377,15 +378,16 @@ class BatchedCodecPipeline(CodecPipeline):
                     chunk_array_batch, batch_info, strict=False
                 )
             ]
-
-            chunk_array_batch = [
-                None
-                if chunk_array is None or chunk_array.all_equal(chunk_spec.fill_value)
-                else chunk_array
-                for chunk_array, (_, chunk_spec, _, _) in zip(
-                    chunk_array_batch, batch_info, strict=False
-                )
-            ]
+            for chunk_array, (_, chunk_spec, _, _) in zip(
+                chunk_array_batch, batch_info, strict=False
+            ):
+                if chunk_array is None:
+                    chunk_array_batch.append(None)
+                else:
+                    if not write_empty_chunks and chunk_array.all_equal(chunk_spec.fill_value):
+                        chunk_array_batch.append(None)
+                    else:
+                        chunk_array_batch.append(chunk_array)
 
             chunk_bytes_batch = await self.encode_batch(
                 [
