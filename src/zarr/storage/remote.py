@@ -164,7 +164,7 @@ class RemoteStore(Store):
 
         opts = storage_options or {}
         opts = {"asynchronous": True, **opts}
-            
+
         fs, path = url_to_fs(url, **opts)
 
         # fsspec is not consistent about removing the scheme from the path, so check and strip it here
