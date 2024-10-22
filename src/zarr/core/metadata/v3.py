@@ -43,6 +43,13 @@ from zarr.registry import get_codec_class
 
 DEFAULT_DTYPE = "float64"
 
+# Keep in sync with _replace_special_floats
+SPECIAL_FLOATS_ENCODED = {
+    "Infinity": np.inf,
+    "-Infinity": -np.inf,
+    "NaN": np.nan,
+}
+
 
 def parse_zarr_format(data: object) -> Literal[3]:
     if data == 3:
@@ -447,8 +454,11 @@ def parse_fill_value(
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if data_type in (DataType.complex64, DataType.complex128):
             if len(fill_value) == 2:
+                decoded_fill_value = tuple(
+                    SPECIAL_FLOATS_ENCODED.get(value, value) for value in fill_value
+                )
                 # complex datatypes serialize to JSON arrays with two elements
-                return np_dtype.type(complex(*fill_value))
+                return np_dtype.type(complex(*decoded_fill_value))
             else:
                 msg = (
                     f"Got an invalid fill value for complex data type {data_type.value}."
