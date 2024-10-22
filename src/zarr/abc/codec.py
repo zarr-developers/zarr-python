@@ -85,7 +85,7 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
 
         Parameters
         ----------
-        chunk_spec : ArraySpec
+        array_spec : ArraySpec
 
         Returns
         -------
@@ -99,11 +99,11 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
 
         Parameters
         ----------
-        shape: ChunkCoords
+        shape : ChunkCoords
             The array shape
-        dtype: np.dtype[Any]
+        dtype : np.dtype[Any]
             The array data type
-        chunk_grid: ChunkGrid
+        chunk_grid : ChunkGrid
             The array chunk grid
         """
         ...
@@ -156,19 +156,13 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
 class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
     """Base class for array-to-array codecs."""
 
-    ...
-
 
 class ArrayBytesCodec(BaseCodec[NDBuffer, Buffer]):
     """Base class for array-to-bytes codecs."""
 
-    ...
-
 
 class BytesBytesCodec(BaseCodec[Buffer, Buffer]):
     """Base class for bytes-to-bytes codecs."""
-
-    ...
 
 
 Codec = ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
@@ -298,11 +292,11 @@ class CodecPipeline:
 
         Parameters
         ----------
-        shape: ChunkCoords
+        shape : ChunkCoords
             The array shape
-        dtype: np.dtype[Any]
+        dtype : np.dtype[Any]
             The array data type
-        chunk_grid: ChunkGrid
+        chunk_grid : ChunkGrid
             The array chunk grid
         """
         ...
@@ -314,7 +308,7 @@ class CodecPipeline:
 
         Parameters
         ----------
-        input_byte_length : int
+        byte_length : int
         array_spec : ArraySpec
 
         Returns
@@ -333,7 +327,7 @@ class CodecPipeline:
 
         Parameters
         ----------
-        chunks_and_specs : Iterable[tuple[Buffer | None, ArraySpec]]
+        chunk_bytes_and_specs : Iterable[tuple[Buffer | None, ArraySpec]]
             Ordered set of encoded chunks with their accompanying chunk spec.
 
         Returns
@@ -352,7 +346,7 @@ class CodecPipeline:
 
         Parameters
         ----------
-        chunks_and_specs : Iterable[tuple[NDBuffer | None, ArraySpec]]
+        chunk_arrays_and_specs : Iterable[tuple[NDBuffer | None, ArraySpec]]
             Ordered set of to-be-encoded chunks with their accompanying chunk spec.
 
         Returns

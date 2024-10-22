@@ -8,6 +8,7 @@ from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
+from zarr.storage._utils import normalize_path
 from zarr.storage.local import LocalStore
 from zarr.storage.memory import MemoryStore
 
@@ -41,9 +42,9 @@ class StorePath:
     store: Store
     path: str
 
-    def __init__(self, store: Store, path: str | None = None) -> None:
+    def __init__(self, store: Store, path: str = "") -> None:
         self.store = store
-        self.path = path or ""
+        self.path = path
 
     async def get(
         self,
@@ -123,7 +124,7 @@ class StorePath:
         return await self.store.exists(self.path)
 
     def __truediv__(self, other: str) -> StorePath:
-        """combine this store path with another path"""
+        """Combine this store path with another path"""
         return self.__class__(self.store, _dereference_path(self.path, other))
 
     def __str__(self) -> str:
@@ -159,6 +160,7 @@ StoreLike = Store | StorePath | Path | str | dict[str, Buffer]
 async def make_store_path(
     store_like: StoreLike | None,
     *,
+    path: str | None = "",
     mode: AccessModeLiteral | None = None,
     storage_options: dict[str, Any] | None = None,
 ) -> StorePath:
@@ -189,6 +191,9 @@ async def make_store_path(
     ----------
     store_like : StoreLike | None
         The object to convert to a `StorePath` object.
+    path : str | None, optional
+        The path to use when creating the `StorePath` object.  If None, the
+        default path is the empty string.
     mode : AccessModeLiteral | None, optional
         The mode to use when creating the `StorePath` object.  If None, the
         default mode is 'r'.
@@ -209,37 +214,44 @@ async def make_store_path(
     from zarr.storage.remote import RemoteStore  # circular import
 
     used_storage_options = False
-
+    path_normalized = normalize_path(path)
     if isinstance(store_like, StorePath):
         if mode is not None and mode != store_like.store.mode.str:
             _store = store_like.store.with_mode(mode)
             await _store._ensure_open()
-            store_like = StorePath(_store)
-        result = store_like
+            store_like = StorePath(_store, path=store_like.path)
+        result = store_like / path_normalized
     elif isinstance(store_like, Store):
         if mode is not None and mode != store_like.mode.str:
             store_like = store_like.with_mode(mode)
         await store_like._ensure_open()
-        result = StorePath(store_like)
+        result = StorePath(store_like, path=path_normalized)
     elif store_like is None:
         # mode = "w" is an exception to the default mode = 'r'
-        result = StorePath(await MemoryStore.open(mode=mode or "w"))
+        result = StorePath(await MemoryStore.open(mode=mode or "w"), path=path_normalized)
     elif isinstance(store_like, Path):
-        result = StorePath(await LocalStore.open(root=store_like, mode=mode or "r"))
+        result = StorePath(
+            await LocalStore.open(root=store_like, mode=mode or "r"), path=path_normalized
+        )
     elif isinstance(store_like, str):
         storage_options = storage_options or {}
 
         if _is_fsspec_uri(store_like):
             used_storage_options = True
             result = StorePath(
-                RemoteStore.from_url(store_like, storage_options=storage_options, mode=mode or "r")
+                RemoteStore.from_url(store_like, storage_options=storage_options, mode=mode or "r"),
+                path=path_normalized,
             )
         else:
-            result = StorePath(await LocalStore.open(root=Path(store_like), mode=mode or "r"))
+            result = StorePath(
+                await LocalStore.open(root=Path(store_like), mode=mode or "r"), path=path_normalized
+            )
     elif isinstance(store_like, dict):
         # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
         # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
-        result = StorePath(await MemoryStore.open(store_dict=store_like, mode=mode or "r"))
+        result = StorePath(
+            await MemoryStore.open(store_dict=store_like, mode=mode or "r"), path=path_normalized
+        )
     else:
         msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
         raise TypeError(msg)
@@ -274,9 +286,9 @@ async def ensure_no_existing_node(store_path: StorePath, zarr_format: ZarrFormat
 
     Parameters
     ----------
-    store_path: StorePath
+    store_path : StorePath
         The storage location to check.
-    zarr_format: ZarrFormat
+    zarr_format : ZarrFormat
         The Zarr format to check.
 
     Raises
@@ -306,7 +318,7 @@ async def _contains_node_v3(store_path: StorePath) -> Literal["array", "group", 
 
     Parameters
     ----------
-    store_path: StorePath
+    store_path : StorePath
         The location in storage to check.
 
     Returns
@@ -340,7 +352,7 @@ async def _contains_node_v2(store_path: StorePath) -> Literal["array", "group", 
 
     Parameters
     ----------
-    store_path: StorePath
+    store_path : StorePath
         The location in storage to check.
 
     Returns
@@ -367,9 +379,9 @@ async def contains_array(store_path: StorePath, zarr_format: ZarrFormat) -> bool
 
     Parameters
     ----------
-    store_path: StorePath
+    store_path : StorePath
         The StorePath to check for an existing group.
-    zarr_format:
+    zarr_format :
         The zarr format to check for.
 
     Returns
@@ -403,9 +415,9 @@ async def contains_group(store_path: StorePath, zarr_format: ZarrFormat) -> bool
     Parameters
     ----------
 
-    store_path: StorePath
+    store_path : StorePath
         The StorePath to check for an existing group.
-    zarr_format:
+    zarr_format :
         The zarr format to check for.
 
     Returns

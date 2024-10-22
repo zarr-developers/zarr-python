@@ -25,7 +25,7 @@ import numpy as np
 from zarr.core.array_spec import ArraySpec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
-from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, parse_shapelike
+from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, MemoryOrder, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import parse_attributes
 
@@ -45,7 +45,7 @@ class ArrayV2Metadata(Metadata):
     chunks: tuple[int, ...]
     dtype: np.dtype[Any]
     fill_value: None | int | float | str | bytes = 0
-    order: Literal["C", "F"] = "C"
+    order: MemoryOrder = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
     compressor: numcodecs.abc.Codec | None = None
@@ -59,7 +59,7 @@ class ArrayV2Metadata(Metadata):
         dtype: npt.DTypeLike,
         chunks: ChunkCoords,
         fill_value: Any,
-        order: Literal["C", "F"],
+        order: MemoryOrder,
         dimension_separator: Literal[".", "/"] = ".",
         compressor: numcodecs.abc.Codec | dict[str, JSON] | None = None,
         filters: Iterable[numcodecs.abc.Codec | dict[str, JSON]] | None = None,
@@ -185,7 +185,7 @@ class ArrayV2Metadata(Metadata):
         return zarray_dict
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+        self, _chunk_coords: ChunkCoords, order: MemoryOrder, prototype: BufferPrototype
     ) -> ArraySpec:
         return ArraySpec(
             shape=self.chunks,
@@ -266,12 +266,13 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
 
     Parameters
     ----------
-    fill_value: Any
+    fill_value : Any
         A potential fill value.
-    dtype: np.dtype[Any]
+    dtype : np.dtype[Any]
         A numpy dtype.
 
     Returns
+    -------
         An instance of `dtype`, or `None`, or any python object (in the case of an object dtype)
     """
 

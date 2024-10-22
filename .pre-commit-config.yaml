@@ -31,7 +31,6 @@ repos:
           - asciitree
           - crc32c
           - donfig
-          - fasteners
           - numcodecs
           - numpy
           - typing_extensions

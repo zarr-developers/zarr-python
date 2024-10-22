@@ -31,6 +31,7 @@ from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ChunkCoords,
+    MemoryOrder,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -77,10 +78,7 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
     """Check that the codecs are valid for the given dtype"""
 
     # ensure that we have at least one ArrayBytesCodec
-    abcs: list[ArrayBytesCodec] = []
-    for codec in codecs:
-        if isinstance(codec, ArrayBytesCodec):
-            abcs.append(codec)
+    abcs: list[ArrayBytesCodec] = [codec for codec in codecs if isinstance(codec, ArrayBytesCodec)]
     if len(abcs) == 0:
         raise ValueError("At least one ArrayBytesCodec is required.")
     elif len(abcs) > 1:
@@ -292,7 +290,7 @@ class ArrayV3Metadata(Metadata):
         return len(self.shape)
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: Literal["C", "F"], prototype: BufferPrototype
+        self, _chunk_coords: ChunkCoords, order: MemoryOrder, prototype: BufferPrototype
     ) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
@@ -426,9 +424,9 @@ def parse_fill_value(
 
     Parameters
     ----------
-    fill_value: Any
+    fill_value : Any
         A potential fill value.
-    dtype: str
+    dtype : str
         A valid Zarr V3 DataType.
 
     Returns

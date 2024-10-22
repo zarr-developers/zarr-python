@@ -1,5 +1,6 @@
 import pathlib
 import warnings
+from typing import Literal
 
 import numpy as np
 import pytest
@@ -10,9 +11,19 @@ import zarr.api.asynchronous
 import zarr.core.group
 from zarr import Array, Group
 from zarr.abc.store import Store
-from zarr.api.synchronous import create, group, load, open, open_group, save, save_array, save_group
-from zarr.core.common import ZarrFormat
+from zarr.api.synchronous import (
+    create,
+    group,
+    load,
+    open,
+    open_group,
+    save,
+    save_array,
+    save_group,
+)
+from zarr.core.common import MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
+from zarr.storage._utils import normalize_path
 from zarr.storage.memory import MemoryStore
 
 
@@ -35,6 +46,20 @@ def test_create_array(memory_store: Store) -> None:
     assert isinstance(z, Array)
     assert z.shape == (400,)
     assert z.chunks == (40,)
+
+
+@pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
+@pytest.mark.parametrize("node_type", ["array", "group"])
+def test_open_normalized_path(
+    memory_store: MemoryStore, path: str, node_type: Literal["array", "group"]
+) -> None:
+    node: Group | Array
+    if node_type == "group":
+        node = group(store=memory_store, path=path)
+    elif node_type == "array":
+        node = create(store=memory_store, path=path, shape=(2,))
+
+    assert node.path == normalize_path(path)
 
 
 async def test_open_array(memory_store: MemoryStore) -> None:
@@ -91,7 +116,7 @@ async def test_open_group(memory_store: MemoryStore) -> None:
 async def test_open_group_unspecified_version(
     tmpdir: pathlib.Path, zarr_format: ZarrFormat
 ) -> None:
-    """regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
+    """Regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
 
     # create a group with specified zarr format (could be 2, 3, or None)
     _ = await zarr.api.asynchronous.open_group(
@@ -179,6 +204,22 @@ def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
     arr[...] = 1
     with pytest.raises(FileExistsError):
         zarr.open(store=tmp_path, mode="w-")
+
+
+@pytest.mark.parametrize("order", ["C", "F", None])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_array_order(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
+    arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
+    expected = order or zarr.config.get("array.order")
+    assert arr.order == expected
+
+    vals = np.asarray(arr)
+    if expected == "C":
+        assert vals.flags.c_contiguous
+    elif expected == "F":
+        assert vals.flags.f_contiguous
+    else:
+        raise AssertionError
 
 
 # def test_lazy_loader():

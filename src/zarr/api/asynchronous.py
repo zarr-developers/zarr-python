@@ -68,7 +68,7 @@ __all__ = [
 
 
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
-    """helper function to get the shape and chunks from an array-like object"""
+    """Helper function to get the shape and chunks from an array-like object"""
     shape = None
     chunks = None
 
@@ -86,7 +86,7 @@ def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoor
 
 
 def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
-    """set default values for shape and chunks if they are not present in the array-like object"""
+    """Set default values for shape and chunks if they are not present in the array-like object"""
 
     new = kwargs.copy()
 
@@ -121,7 +121,7 @@ def _like_args(a: ArrayLike, kwargs: dict[str, Any]) -> dict[str, Any]:
 def _handle_zarr_version_or_format(
     *, zarr_version: ZarrFormat | None, zarr_format: ZarrFormat | None
 ) -> ZarrFormat | None:
-    """handle the deprecated zarr_version kwarg and return zarr_format"""
+    """Handle the deprecated zarr_version kwarg and return zarr_format"""
     if zarr_format is not None and zarr_version is not None and zarr_format != zarr_version:
         raise ValueError(
             f"zarr_format {zarr_format} does not match zarr_version {zarr_version}, please only set one"
@@ -135,7 +135,7 @@ def _handle_zarr_version_or_format(
 
 
 def _default_zarr_version() -> ZarrFormat:
-    """return the default zarr_version"""
+    """Return the default zarr_version"""
     return cast(ZarrFormat, int(config.get("default_zarr_version", 3)))
 
 
@@ -152,9 +152,9 @@ async def consolidate_metadata(
 
     Parameters
     ----------
-    store: StoreLike
+    store : StoreLike
         The store-like object whose metadata you wish to consolidate.
-    path: str, optional
+    path : str, optional
         A path to a group in the store to consolidate at. Only children
         below that group will be consolidated.
 
@@ -170,10 +170,7 @@ async def consolidate_metadata(
         The group, with the ``consolidated_metadata`` field set to include
         the metadata of each child node.
     """
-    store_path = await make_store_path(store)
-
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, path=path)
 
     group = await AsyncGroup.open(store_path, zarr_format=zarr_format, use_consolidated=False)
     group.store_path.store._check_writable()
@@ -291,10 +288,7 @@ async def open(
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
-
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     if "shape" not in kwargs and mode in {"a", "w", "w-"}:
         try:
@@ -347,13 +341,13 @@ async def save(
     ----------
     store : Store or str
         Store or path to directory in file system or name of zip file.
-    args : ndarray
+    *args : ndarray
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str or None, optional
         The path within the group where the arrays will be saved.
-    kwargs
+    **kwargs
         NumPy arrays with data to save.
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
@@ -392,7 +386,7 @@ async def save_array(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    kwargs
+    **kwargs
         Passed through to :func:`create`, e.g., compressor.
     """
     zarr_format = (
@@ -401,9 +395,7 @@ async def save_array(
     )
 
     mode = kwargs.pop("mode", None)
-    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
     new = await AsyncArray.create(
         store_path,
         zarr_format=zarr_format,
@@ -431,7 +423,7 @@ async def save_group(
     ----------
     store : Store or str
         Store or path to directory in file system or name of zip file.
-    args : ndarray
+    *args : ndarray
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
@@ -440,7 +432,7 @@ async def save_group(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    kwargs
+    **kwargs
         NumPy arrays with data to save.
     """
     zarr_format = (
@@ -487,7 +479,7 @@ async def array(
     ----------
     data : array_like
         The data to fill the array with.
-    kwargs
+    **kwargs
         Passed through to :func:`create`.
 
     Returns
@@ -582,9 +574,7 @@ async def group(
 
     mode = None if isinstance(store, Store) else cast(AccessModeLiteral, "a")
 
-    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -697,9 +687,7 @@ async def open_group(
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
 
     if attributes is None:
         attributes = {}
@@ -724,7 +712,7 @@ async def create(
     dtype: npt.DTypeLike | None = None,
     compressor: dict[str, JSON] | None = None,  # TODO: default and type change
     fill_value: Any | None = 0,  # TODO: need type
-    order: MemoryOrder | None = None,  # TODO: default change
+    order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
     overwrite: bool = False,
@@ -773,6 +761,7 @@ async def create(
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
+        Default is set in Zarr's config (`array.order`).
     store : Store or str
         Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
@@ -846,12 +835,6 @@ async def create(
         else:
             chunk_shape = shape
 
-    if order is not None:
-        warnings.warn(
-            "order is deprecated, use config `array.order` instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
     if chunk_store is not None:
@@ -883,9 +866,7 @@ async def create(
         if not isinstance(store, Store | StorePath):
             mode = "a"
 
-    store_path = await make_store_path(store, mode=mode, storage_options=storage_options)
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     return await AsyncArray.create(
         store_path,
@@ -903,6 +884,7 @@ async def create(
         codecs=codecs,
         dimension_names=dimension_names,
         attributes=attributes,
+        order=order,
         **kwargs,
     )
 
@@ -925,6 +907,7 @@ async def empty(
     retrieve data from an empty Zarr array, any values may be returned,
     and these are not guaranteed to be stable from one access to the next.
     """
+
     return await create(shape=shape, fill_value=None, **kwargs)
 
 
@@ -1044,7 +1027,7 @@ async def open_array(
     store: StoreLike | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
-    path: PathLike | None = None,
+    path: PathLike = "",
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
@@ -1071,9 +1054,7 @@ async def open_array(
     """
 
     mode = kwargs.pop("mode", None)
-    store_path = await make_store_path(store, mode=mode)
-    if path is not None:
-        store_path = store_path / path
+    store_path = await make_store_path(store, path=path, mode=mode)
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
