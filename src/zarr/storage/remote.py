@@ -3,8 +3,6 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any, Self
 
-import fsspec
-
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.storage.common import _dereference_path
 
@@ -158,10 +156,16 @@ class RemoteStore(Store):
         -------
         RemoteStore
         """
+        try:
+            from fsspec import url_to_fs
+        except ImportError:
+            # before fsspec==2024.3.1
+            from fsspec.core import url_to_fs
+
         opts = storage_options or {}
         opts = {"asynchronous": True, **opts}
-
-        fs, path = fsspec.url_to_fs(url, **opts)
+            
+        fs, path = url_to_fs(url, **opts)
 
         # fsspec is not consistent about removing the scheme from the path, so check and strip it here
         # https://github.com/fsspec/filesystem_spec/issues/1722
