@@ -1325,7 +1325,20 @@ def make_slice_selection(selection: Any) -> list[slice]:
 
 
 def decode_morton(z: int, chunk_shape: ChunkCoords) -> ChunkCoords:
-    out = [int(i) for i in np.unravel_index(z, chunk_shape)]
+    # Inspired by compressed morton code as implemented in Neuroglancer
+    # https://github.com/google/neuroglancer/blob/master/src/neuroglancer/datasource/precomputed/volume.md#compressed-morton-code
+    bits = tuple(math.ceil(math.log2(c)) for c in chunk_shape)
+    max_coords_bits = max(bits)
+    input_bit = 0
+    input_value = z
+    out = [0] * len(chunk_shape)
+
+    for coord_bit in range(max_coords_bits):
+        for dim in range(len(chunk_shape)):
+            if coord_bit < bits[dim]:
+                bit = (input_value >> input_bit) & 1
+                out[dim] |= bit << coord_bit
+                input_bit += 1
     return tuple(out)
 
 
