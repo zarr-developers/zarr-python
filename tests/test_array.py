@@ -445,13 +445,30 @@ def test_array_create_order(
 def test_write_empty_chunks(
     zarr_format: ZarrFormat, store: MemoryStore, write_empty_chunks: bool, fill_value: int
 ) -> None:
+    """
+    Check that the write_empty_chunks value of the config is applied correctly. We expect that
+    when write_empty_chunks is True, writing chunks equal to the fill value will result in
+    those chunks appearing in the store.
+
+    When write_empty_chunks is False, writing chunks that are equal to the fill value will result in
+    those chunks not being present in the store. In particular, they should be deleted if they were
+    already present.
+    """
     arr = Array.create(
-        store=store, shape=(1,), zarr_format=zarr_format, dtype="i4", fill_value=fill_value
+        store=store,
+        shape=(2,),
+        zarr_format=zarr_format,
+        dtype="i4",
+        fill_value=fill_value,
+        chunk_shape=(1,),
     )
+
+    # initialize the store with some non-fill value chunks
+    arr[:] = fill_value + 1
+    assert arr.nchunks_initialized == arr.nchunks
 
     with config.set({"array.write_empty_chunks": write_empty_chunks}):
         arr[:] = fill_value
-
     if not write_empty_chunks:
         assert arr.nchunks_initialized == 0
     else:
