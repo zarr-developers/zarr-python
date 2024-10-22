@@ -331,6 +331,28 @@ def test_pickle() -> None:
     codec = ShardingCodec(chunk_shape=(8, 8))
     assert pickle.loads(pickle.dumps(codec)) == codec
 
+@pytest.mark.parametrize("store", ("local", "memory"), indirect=["store"])
+@pytest.mark.parametrize("index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end])
+async def test_sharding_with_empty_inner_chunk(store: Store, index_location):
+    data = np.arange(0, 16 * 16, dtype="uint32").reshape((16, 16))
+    fill_value = 1
+
+    path = f"sharding_with_empty_inner_chunk_{index_location}"
+    spath = StorePath(store, path)
+    a = await AsyncArray.create(
+        spath,
+        shape=(16, 16),
+        chunk_shape=(8, 8),
+        dtype="uint32",
+        fill_value=fill_value,
+        codecs=[ShardingCodec(chunk_shape=(4, 4), index_location=index_location, index_codecs=[BytesCodec()])],
+    )
+    data[:4, :4] = fill_value
+    await a.setitem(..., data)
+    print("read data")
+    data_read = await a.getitem(...)
+    assert np.array_equal(data_read, data)
+
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize(
