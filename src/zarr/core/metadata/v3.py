@@ -149,7 +149,7 @@ class V3JsonEncoder(json.JSONEncoder):
                 if isinstance(out, complex):
                     # python complex types are not JSON serializable, so we use the
                     # serialization defined in the zarr v3 spec
-                    return [out.real, out.imag]
+                    return _replace_special_floats([out.real, out.imag])
                 elif np.isnan(out):
                     return "NaN"
                 elif np.isinf(out):

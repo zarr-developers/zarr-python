@@ -1,3 +1,5 @@
+import json
+import math
 import pickle
 from itertools import accumulate
 from typing import Any, Literal
@@ -9,6 +11,7 @@ import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
 from zarr.codecs import BytesCodec, VLenBytesCodec
 from zarr.core.array import chunks_initialized
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
@@ -436,3 +439,23 @@ def test_array_create_order(
         assert vals.flags.f_contiguous
     else:
         raise AssertionError
+
+
+@pytest.mark.parametrize(
+    ("fill_value", "expected"),
+    [
+        (np.nan * 1j, ["NaN", "NaN"]),
+        (np.nan, ["NaN", 0.0]),
+        (np.inf, ["Infinity", 0.0]),
+        (np.inf * 1j, ["NaN", "Infinity"]),
+        (-np.inf, ["-Infinity", 0.0]),
+        (math.inf, ["Infinity", 0.0]),
+    ],
+)
+async def test_special_complex_fill_values_roundtrip(fill_value: Any, expected: list[Any]) -> None:
+    store = MemoryStore({}, mode="w")
+    Array.create(store=store, shape=(1,), dtype=np.complex64, fill_value=fill_value)
+    content = await store.get("zarr.json", prototype=default_buffer_prototype())
+    assert content is not None
+    actual = json.loads(content.to_bytes())
+    assert actual["fill_value"] == expected
