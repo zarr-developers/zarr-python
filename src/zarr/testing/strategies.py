@@ -65,7 +65,7 @@ paths = st.just("/") | keys
 stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
 compressors = st.sampled_from([None, "default"])
 zarr_formats: st.SearchStrategy[Literal[2, 3]] = st.sampled_from([2, 3])
-array_shapes = npst.array_shapes(max_dims=4)
+array_shapes = npst.array_shapes(max_dims=4, min_side=0)
 
 
 @st.composite  # type: ignore[misc]
