@@ -485,11 +485,19 @@ def parse_fill_value(
         pass
     elif fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value):
         pass
-    elif np_dtype.kind in "cf":
+    elif np_dtype.kind == "f":
         # float comparison is not exact, especially when dtype <float64
-        # so we us np.isclose for this comparison.
+        # so we use np.isclose for this comparison.
         # this also allows us to compare nan fill_values
         if not np.isclose(fill_value, casted_value, equal_nan=True):
+            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
+    elif np_dtype.kind == "c":
+        # confusingly np.isclose(np.inf, np.inf + 0j) is False, so compare real and imag parts
+        # explicitly.
+        if not (
+            np.isclose(np.real(fill_value), np.real(casted_value), equal_nan=True)
+            and np.isclose(np.imag(fill_value), np.imag(casted_value), equal_nan=True)
+        ):
             raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
     else:
         if fill_value != casted_value:
