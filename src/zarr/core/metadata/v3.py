@@ -492,7 +492,7 @@ def parse_fill_value(
         if not np.isclose(fill_value, casted_value, equal_nan=True):
             raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
     elif np_dtype.kind == "c":
-        # confusingly np.isclose(np.inf, np.inf + 0j) is False, so compare real and imag parts
+        # confusingly np.isclose(np.inf, np.inf + 0j) is False on numpy<2, so compare real and imag parts
         # explicitly.
         if not (
             np.isclose(np.real(fill_value), np.real(casted_value), equal_nan=True)
