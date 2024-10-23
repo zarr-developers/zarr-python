@@ -606,6 +606,7 @@ def test_append_bad_shape(store: MemoryStore, zarr_format: int) -> None:
     with pytest.raises(ValueError):
         z.append(b)
 
+
 @pytest.mark.parametrize("order", ["C", "F", None])
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
