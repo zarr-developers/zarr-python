@@ -1006,4 +1006,4 @@ async def test_metadata_validation_error() -> None:
 def test_zarr_save(store: Store) -> None:
     a = np.arange(1000).reshape(10, 10, 10)
     zarr.save(StorePath(store), a, mode="w")
-    assert_array_equal(zarr.load(store)[...], a) # type: ignore[index]
+    assert_array_equal(zarr.load(store)[...], a)  # type: ignore[index]
