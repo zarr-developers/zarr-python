@@ -384,7 +384,7 @@ class Store(ABC):
             if not prefix.endswith("/"):
                 prefix += "/"
             async for key in self.list_prefix(prefix):
-                await self.delete(f"{key}")
+                await self.delete(key)
         else:
             async for key in self.list_dir(prefix):
                 await self.delete(f"{prefix}/{key}")
