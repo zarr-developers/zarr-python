@@ -346,7 +346,7 @@ async def save(
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
-    mode: {'r', 'r+', 'a', 'w', 'w-'}, optional
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
@@ -395,7 +395,7 @@ async def save_array(
         NumPy array with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
-    mode: {'r', 'r+', 'a', 'w', 'w-'}, optional
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
@@ -446,7 +446,7 @@ async def save_group(
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
-    mode: {'r', 'r+', 'a', 'w', 'w-'}, optional
+    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
         Persistence mode: 'r' means read only (must exist); 'r+' means
         read/write (must exist); 'a' means read/write (create if doesn't
         exist); 'w' means create (overwrite if exists); 'w-' means create
