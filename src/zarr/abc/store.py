@@ -399,7 +399,7 @@ class Store(ABC):
             raise NotImplementedError
         self._check_writable()
         async for key in self.list_prefix(prefix):
-            await self.delete(f"{key}")
+            await self.delete(key)
 
     def close(self) -> None:
         """Close the store."""
