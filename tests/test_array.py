@@ -1,5 +1,4 @@
 import json
-import math
 import pickle
 from itertools import accumulate
 from typing import Any, Literal
@@ -449,7 +448,7 @@ def test_array_create_order(
         (np.inf, ["Infinity", 0.0]),
         (np.inf * 1j, ["NaN", "Infinity"]),
         (-np.inf, ["-Infinity", 0.0]),
-        (math.inf, ["Infinity", 0.0]),
+        # (math.inf, ["Infinity", 0.0]),
     ],
 )
 async def test_special_complex_fill_values_roundtrip(fill_value: Any, expected: list[Any]) -> None:
