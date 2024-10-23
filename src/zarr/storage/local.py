@@ -219,17 +219,17 @@ class LocalStore(Store):
 
     async def list(self) -> AsyncGenerator[str, None]:
         # docstring inherited
-        to_strip = str(self.root) + "/"
+        to_strip = self.root.as_posix() + "/"
         for p in list(self.root.rglob("*")):
             if p.is_file():
-                yield str(p).replace(to_strip, "")
+                yield p.as_posix().replace(to_strip, "")
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        to_strip = os.path.join(str(self.root / prefix))
+        to_strip = (self.root / prefix).as_posix() + "/"  # TODO: fixme in 2430
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
-                yield str(p.relative_to(to_strip))
+                yield p.as_posix().replace(to_strip, "")
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
@@ -239,6 +239,6 @@ class LocalStore(Store):
         try:
             key_iter = base.iterdir()
             for key in key_iter:
-                yield str(key).replace(to_strip, "")
+                yield key.as_posix().replace(to_strip, "")
         except (FileNotFoundError, NotADirectoryError):
             pass
