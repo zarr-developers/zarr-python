@@ -101,6 +101,9 @@ optional = [
     'lmdb',
     'universal-pathlib>=0.0.22',
 ]
+tree = [
+    "rich",
+]
 
 [project.urls]
 "Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
