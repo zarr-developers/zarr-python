@@ -42,7 +42,7 @@ config = Config(
     defaults=[
         {
             "default_zarr_version": 3,
-            "array": {"order": "C"},
+            "array": {"order": "C", "write_empty_chunks": False},
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,

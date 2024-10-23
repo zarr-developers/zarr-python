@@ -48,6 +48,21 @@ def test_create_array(memory_store: Store) -> None:
     assert z.chunks == (40,)
 
 
+@pytest.mark.parametrize("write_empty_chunks", [True, False])
+def test_write_empty_chunks_warns(write_empty_chunks: bool) -> None:
+    """
+    Test that using the `write_empty_chunks` kwarg on array access will raise a warning.
+    """
+    match = f"The `write_empty_chunks` keyword argument was provided to this function with a value of {write_empty_chunks}."
+    with pytest.warns(RuntimeWarning, match=match):
+        _ = zarr.array(
+            data=np.arange(10), shape=(10,), dtype="uint8", write_empty_chunks=write_empty_chunks
+        )
+
+    with pytest.warns(RuntimeWarning, match=match):
+        _ = zarr.create(shape=(10,), dtype="uint8", write_empty_chunks=write_empty_chunks)
+
+
 @pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
 @pytest.mark.parametrize("node_type", ["array", "group"])
 def test_open_normalized_path(

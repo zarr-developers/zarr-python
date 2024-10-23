@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import operator
+import warnings
 from collections.abc import Iterable, Mapping
 from enum import Enum
 from itertools import starmap
@@ -166,3 +167,12 @@ def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
         else:
             return _STRING_DTYPE
     return np.dtype(dtype)
+
+
+def _warn_write_empty_chunks_kwarg(write_empty_chunks: bool) -> None:
+    msg = (
+        f"The `write_empty_chunks` keyword argument was provided to this function with a value of {write_empty_chunks}."
+        "This keyword argument has no effect. To control whether empty chunks are written to"
+        " storage, change the 'array.write_empty_chunks' configuration variable."
+    )
+    warnings.warn(msg, RuntimeWarning, stacklevel=2)
