@@ -156,8 +156,7 @@ class MemoryStore(Store):
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        if prefix.endswith("/"):
-            prefix = prefix[:-1]
+        prefix = prefix.rstrip("/")
 
         if prefix == "":
             keys_unique = {k.split("/")[0] for k in self._store_dict}
@@ -187,7 +186,7 @@ class GpuMemoryStore(MemoryStore):
 
     Parameters
     ----------
-    store_dict: MutableMapping, optional
+    store_dict : MutableMapping, optional
         A mutable mapping with string keys and :class:`zarr.core.buffer.gpu.Buffer`
         values.
     """
@@ -218,7 +217,7 @@ class GpuMemoryStore(MemoryStore):
 
         Parameters
         ----------
-        store_dict: mapping
+        store_dict : mapping
             A mapping of strings keys to arbitrary Buffers. The buffer data
             will be moved into a :class:`gpu.Buffer`.
 

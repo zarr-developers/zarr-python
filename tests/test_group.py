@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import operator
 import pickle
 import warnings
 from typing import TYPE_CHECKING, Any, Literal
@@ -306,17 +307,52 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
     group = Group.from_store(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
     subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+    subsubarray = subgroup.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
 
     if consolidated:
         group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
+        # we're going to assume that `group.metadata` is correct, and reuse that to focus
+        # on indexing in this test. Other tests verify the correctness of group.metadata
         object.__setattr__(
-            subgroup.metadata, "consolidated_metadata", ConsolidatedMetadata(metadata={})
+            subgroup.metadata,
+            "consolidated_metadata",
+            ConsolidatedMetadata(
+                metadata={"subarray": group.metadata.consolidated_metadata.metadata["subarray"]}
+            ),
         )
 
     assert group["subgroup"] == subgroup
     assert group["subarray"] == subarray
+    assert group["subgroup"]["subarray"] == subsubarray
+    assert group["subgroup/subarray"] == subsubarray
+
     with pytest.raises(KeyError):
         group["nope"]
+
+    with pytest.raises(KeyError, match="subarray/subsubarray"):
+        group["subarray/subsubarray"]
+
+    # Now test the mixed case
+    if consolidated:
+        object.__setattr__(
+            group.metadata.consolidated_metadata.metadata["subgroup"],
+            "consolidated_metadata",
+            None,
+        )
+
+        # test the implementation directly
+        with pytest.raises(KeyError):
+            group._async_group._getitem_consolidated(
+                group.store_path, "subgroup/subarray", prefix="/"
+            )
+
+        with pytest.raises(KeyError):
+            # We've chosen to trust the consolidted metadata, which doesn't
+            # contain this array
+            group["subgroup/subarray"]
+
+        with pytest.raises(KeyError, match="subarray/subsubarray"):
+            group["subarray/subsubarray"]
 
 
 def test_group_get_with_default(store: Store, zarr_format: ZarrFormat) -> None:
@@ -546,14 +582,14 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
             ConsolidatedMetadata(metadata={}),
         )
 
-    result = sorted(group.groups(), key=lambda x: x[0])
+    result = sorted(group.groups(), key=operator.itemgetter(0))
     assert result == expected_groups
 
-    assert sorted(group.groups(), key=lambda x: x[0]) == expected_groups
+    assert sorted(group.groups(), key=operator.itemgetter(0)) == expected_groups
     assert sorted(group.group_keys()) == expected_group_keys
     assert sorted(group.group_values(), key=lambda x: x.name) == expected_group_values
 
-    assert sorted(group.arrays(), key=lambda x: x[0]) == expected_arrays
+    assert sorted(group.arrays(), key=operator.itemgetter(0)) == expected_arrays
     assert sorted(group.array_keys()) == expected_array_keys
     assert sorted(group.array_values(), key=lambda x: x.name) == expected_array_values
 
@@ -1013,7 +1049,7 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
     g2 = await g1.create_group("g2")
 
     # immediate children
-    children = sorted([x async for x in group.members()], key=lambda x: x[0])
+    children = sorted([x async for x in group.members()], key=operator.itemgetter(0))
     assert children == [
         ("a0", a0),
         ("g0", g0),
@@ -1023,7 +1059,7 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
     assert nmembers == 2
 
     # partial
-    children = sorted([x async for x in group.members(max_depth=1)], key=lambda x: x[0])
+    children = sorted([x async for x in group.members(max_depth=1)], key=operator.itemgetter(0))
     expected = [
         ("a0", a0),
         ("g0", g0),
@@ -1035,7 +1071,9 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
     assert nmembers == 4
 
     # all children
-    all_children = sorted([x async for x in group.members(max_depth=None)], key=lambda x: x[0])
+    all_children = sorted(
+        [x async for x in group.members(max_depth=None)], key=operator.itemgetter(0)
+    )
     expected = [
         ("a0", a0),
         ("g0", g0),
@@ -1055,6 +1093,23 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
 
     with pytest.raises(ValueError, match="max_depth"):
         [x async for x in group.members(max_depth=-1)]
+
+    if consolidated_metadata:
+        # test for mixed known and unknown metadata.
+        # For now, we trust the consolidated metadata.
+        object.__setattr__(
+            group.metadata.consolidated_metadata.metadata["g0"].consolidated_metadata.metadata[
+                "g1"
+            ],
+            "consolidated_metadata",
+            None,
+        )
+        all_children = sorted(
+            [x async for x in group.members(max_depth=None)], key=operator.itemgetter(0)
+        )
+        assert len(all_children) == 4
+        nmembers = await group.nmembers(max_depth=None)
+        assert nmembers == 4
 
 
 async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
@@ -1327,3 +1382,23 @@ def test_update_attrs() -> None:
     )
     root.attrs["foo"] = "bar"
     assert root.attrs["foo"] == "bar"
+
+
+@pytest.mark.parametrize("method", ["empty", "zeros", "ones", "full"])
+def test_group_deprecated_positional_args(method: str) -> None:
+    if method == "full":
+        kwargs = {"fill_value": 0}
+    else:
+        kwargs = {}
+
+    root = zarr.group()
+    with pytest.warns(FutureWarning, match=r"Pass name=.* as keyword args."):
+        arr = getattr(root, method)("foo", shape=1, **kwargs)
+        assert arr.shape == (1,)
+
+    method += "_like"
+    data = np.ones(1)
+
+    with pytest.warns(FutureWarning, match=r"Pass name=.*, data=.* as keyword args."):
+        arr = getattr(root, method)("foo_like", data, **kwargs)
+        assert arr.shape == data.shape

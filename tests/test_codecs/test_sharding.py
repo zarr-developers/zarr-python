@@ -118,6 +118,42 @@ def test_sharding_partial(
     assert np.array_equal(data, read_data)
 
 
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize(
+    "array_fixture",
+    [
+        ArrayRequest(shape=(128,) * 3, dtype="uint16", order="F"),
+    ],
+    indirect=["array_fixture"],
+)
+def test_sharding_partial_readwrite(
+    store: Store, array_fixture: npt.NDArray[Any], index_location: ShardingCodecIndexLocation
+) -> None:
+    data = array_fixture
+    spath = StorePath(store)
+    a = Array.create(
+        spath,
+        shape=data.shape,
+        chunk_shape=data.shape,
+        dtype=data.dtype,
+        fill_value=0,
+        codecs=[
+            ShardingCodec(
+                chunk_shape=(1, data.shape[1], data.shape[2]),
+                codecs=[BytesCodec()],
+                index_location=index_location,
+            )
+        ],
+    )
+
+    a[:] = data
+
+    for x in range(data.shape[0]):
+        read_data = a[x, :, :]
+        assert np.array_equal(data[x], read_data)
+
+
 @pytest.mark.parametrize(
     "array_fixture",
     [
@@ -330,3 +366,30 @@ async def test_delete_empty_shards(store: Store) -> None:
 def test_pickle() -> None:
     codec = ShardingCodec(chunk_shape=(8, 8))
     assert pickle.loads(pickle.dumps(codec)) == codec
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize(
+    "index_location", [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end]
+)
+async def test_sharding_with_empty_inner_chunk(
+    store: Store, index_location: ShardingCodecIndexLocation
+) -> None:
+    data = np.arange(0, 16 * 16, dtype="uint32").reshape((16, 16))
+    fill_value = 1
+
+    path = f"sharding_with_empty_inner_chunk_{index_location}"
+    spath = StorePath(store, path)
+    a = await AsyncArray.create(
+        spath,
+        shape=(16, 16),
+        chunk_shape=(8, 8),
+        dtype="uint32",
+        fill_value=fill_value,
+        codecs=[ShardingCodec(chunk_shape=(4, 4), index_location=index_location)],
+    )
+    data[:4, :4] = fill_value
+    await a.setitem(..., data)
+    print("read data")
+    data_read = await a.getitem(...)
+    assert np.array_equal(data_read, data)
