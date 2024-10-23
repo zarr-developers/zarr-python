@@ -422,6 +422,194 @@ def test_update_attrs(zarr_format: int) -> None:
     assert arr2.attrs["foo"] == "bar"
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_resize_1d(store: MemoryStore, zarr_format: int) -> None:
+    z = zarr.create(
+        shape=105, chunks=10, dtype="i4", fill_value=0, store=store, zarr_format=zarr_format
+    )
+    a = np.arange(105, dtype="i4")
+    z[:] = a
+    assert (105,) == z.shape
+    assert (105,) == z[:].shape
+    assert np.dtype("i4") == z.dtype
+    assert np.dtype("i4") == z[:].dtype
+    assert (10,) == z.chunks
+    np.testing.assert_array_equal(a, z[:])
+
+    z.resize(205)
+    assert (205,) == z.shape
+    assert (205,) == z[:].shape
+    assert np.dtype("i4") == z.dtype
+    assert np.dtype("i4") == z[:].dtype
+    assert (10,) == z.chunks
+    np.testing.assert_array_equal(a, z[:105])
+    np.testing.assert_array_equal(np.zeros(100, dtype="i4"), z[105:])
+
+    z.resize(55)
+    assert (55,) == z.shape
+    assert (55,) == z[:].shape
+    assert np.dtype("i4") == z.dtype
+    assert np.dtype("i4") == z[:].dtype
+    assert (10,) == z.chunks
+    np.testing.assert_array_equal(a[:55], z[:])
+
+    # via shape setter
+    new_shape = (105,)
+    z.shape = new_shape
+    assert new_shape == z.shape
+    assert new_shape == z[:].shape
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_resize_2d(store: MemoryStore, zarr_format: int) -> None:
+    z = zarr.create(
+        shape=(105, 105),
+        chunks=(10, 10),
+        dtype="i4",
+        fill_value=0,
+        store=store,
+        zarr_format=zarr_format,
+    )
+    a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
+    z[:] = a
+    assert (105, 105) == z.shape
+    assert (105, 105) == z[:].shape
+    assert np.dtype("i4") == z.dtype
+    assert np.dtype("i4") == z[:].dtype
+    assert (10, 10) == z.chunks
+    np.testing.assert_array_equal(a, z[:])
+
+    z.resize((205, 205))
+    assert (205, 205) == z.shape
+    assert (205, 205) == z[:].shape
+    assert np.dtype("i4") == z.dtype
+    assert np.dtype("i4") == z[:].dtype
+    assert (10, 10) == z.chunks
+    np.testing.assert_array_equal(a, z[:105, :105])
+    np.testing.assert_array_equal(np.zeros((100, 205), dtype="i4"), z[105:, :])
+    np.testing.assert_array_equal(np.zeros((205, 100), dtype="i4"), z[:, 105:])
+
+    z.resize((55, 55))
+    assert (55, 55) == z.shape
+    assert (55, 55) == z[:].shape
+    assert np.dtype("i4") == z.dtype
+    assert np.dtype("i4") == z[:].dtype
+    assert (10, 10) == z.chunks
+    np.testing.assert_array_equal(a[:55, :55], z[:])
+
+    z.resize((55, 1))
+    assert (55, 1) == z.shape
+    assert (55, 1) == z[:].shape
+    assert np.dtype("i4") == z.dtype
+    assert np.dtype("i4") == z[:].dtype
+    assert (10, 10) == z.chunks
+    np.testing.assert_array_equal(a[:55, :1], z[:])
+
+    z.resize((1, 55))
+    assert (1, 55) == z.shape
+    assert (1, 55) == z[:].shape
+    assert np.dtype("i4") == z.dtype
+    assert np.dtype("i4") == z[:].dtype
+    assert (10, 10) == z.chunks
+    np.testing.assert_array_equal(a[:1, :10], z[:, :10])
+    np.testing.assert_array_equal(np.zeros((1, 55 - 10), dtype="i4"), z[:, 10:55])
+
+    # via shape setter
+    new_shape = (105, 105)
+    z.shape = new_shape
+    assert new_shape == z.shape
+    assert new_shape == z[:].shape
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_append_1d(store: MemoryStore, zarr_format: int) -> None:
+    a = np.arange(105)
+    z = zarr.create(shape=a.shape, chunks=10, dtype=a.dtype, store=store, zarr_format=zarr_format)
+    z[:] = a
+    assert a.shape == z.shape
+    assert a.dtype == z.dtype
+    assert (10,) == z.chunks
+    np.testing.assert_array_equal(a, z[:])
+
+    b = np.arange(105, 205)
+    e = np.append(a, b)
+    assert z.shape == (105,)
+    z.append(b)
+    assert e.shape == z.shape
+    assert e.dtype == z.dtype
+    assert (10,) == z.chunks
+    np.testing.assert_array_equal(e, z[:])
+
+    # check append handles array-like
+    c = [1, 2, 3]
+    f = np.append(e, c)
+    z.append(c)
+    assert f.shape == z.shape
+    assert f.dtype == z.dtype
+    assert (10,) == z.chunks
+    np.testing.assert_array_equal(f, z[:])
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_append_2d(store: MemoryStore, zarr_format: int) -> None:
+    a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
+    z = zarr.create(
+        shape=a.shape, chunks=(10, 10), dtype=a.dtype, store=store, zarr_format=zarr_format
+    )
+    z[:] = a
+    assert a.shape == z.shape
+    assert a.dtype == z.dtype
+    assert (10, 10) == z.chunks
+    actual = z[:]
+    np.testing.assert_array_equal(a, actual)
+
+    b = np.arange(105 * 105, 2 * 105 * 105, dtype="i4").reshape((105, 105))
+    e = np.append(a, b, axis=0)
+    z.append(b)
+    assert e.shape == z.shape
+    assert e.dtype == z.dtype
+    assert (10, 10) == z.chunks
+    actual = z[:]
+    np.testing.assert_array_equal(e, actual)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_append_2d_axis(store: MemoryStore, zarr_format: int) -> None:
+    a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
+    z = zarr.create(
+        shape=a.shape, chunks=(10, 10), dtype=a.dtype, store=store, zarr_format=zarr_format
+    )
+    z[:] = a
+    assert a.shape == z.shape
+    assert a.dtype == z.dtype
+    assert (10, 10) == z.chunks
+    np.testing.assert_array_equal(a, z[:])
+
+    b = np.arange(105 * 105, 2 * 105 * 105, dtype="i4").reshape((105, 105))
+    e = np.append(a, b, axis=1)
+    z.append(b, axis=1)
+    assert e.shape == z.shape
+    assert e.dtype == z.dtype
+    assert (10, 10) == z.chunks
+    np.testing.assert_array_equal(e, z[:])
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_append_bad_shape(store: MemoryStore, zarr_format: int) -> None:
+    a = np.arange(100)
+    z = zarr.create(shape=a.shape, chunks=10, dtype=a.dtype, store=store, zarr_format=zarr_format)
+    z[:] = a
+    b = a.reshape(10, 10)
+    with pytest.raises(ValueError):
+        z.append(b)
+
+
 @pytest.mark.parametrize("order", ["C", "F", None])
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("store", ["memory"], indirect=True)

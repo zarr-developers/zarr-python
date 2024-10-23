@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from asyncio import gather
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from itertools import starmap
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload
@@ -1104,15 +1104,15 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         )
         return await self._set_selection(indexer, value, prototype=prototype)
 
-    async def resize(self, new_shape: ChunkCoords, delete_outside_chunks: bool = True) -> Self:
+    async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
+        new_shape = parse_shapelike(new_shape)
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = self.metadata.update_shape(new_shape)
 
-        # Remove all chunks outside of the new shape
-        old_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(self.metadata.shape))
-        new_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(new_shape))
-
         if delete_outside_chunks:
+            # Remove all chunks outside of the new shape
+            old_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(self.metadata.shape))
+            new_chunk_coords = set(self.metadata.chunk_grid.all_chunk_coords(new_shape))
 
             async def _delete_key(key: str) -> None:
                 await (self.store_path / key).delete()
@@ -1128,7 +1128,63 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         # Write new metadata
         await self._save_metadata(new_metadata)
-        return replace(self, metadata=new_metadata)
+
+        # Update metadata (in place)
+        object.__setattr__(self, "metadata", new_metadata)
+
+    async def append(self, data: npt.ArrayLike, axis: int = 0) -> ChunkCoords:
+        """Append `data` to `axis`.
+
+        Parameters
+        ----------
+        data : array-like
+            Data to be appended.
+        axis : int
+            Axis along which to append.
+
+        Returns
+        -------
+        new_shape : tuple
+
+        Notes
+        -----
+        The size of all dimensions other than `axis` must match between this
+        array and `data`.
+        """
+        # ensure data is array-like
+        if not hasattr(data, "shape"):
+            data = np.asanyarray(data)
+
+        self_shape_preserved = tuple(s for i, s in enumerate(self.shape) if i != axis)
+        data_shape_preserved = tuple(s for i, s in enumerate(data.shape) if i != axis)
+        if self_shape_preserved != data_shape_preserved:
+            raise ValueError(
+                f"shape of data to append is not compatible with the array. "
+                f"The shape of the data is ({data_shape_preserved})"
+                f"and the shape of the array is ({self_shape_preserved})."
+                "All dimensions must match except for the dimension being "
+                "appended."
+            )
+        # remember old shape
+        old_shape = self.shape
+
+        # determine new shape
+        new_shape = tuple(
+            self.shape[i] if i != axis else self.shape[i] + data.shape[i]
+            for i in range(len(self.shape))
+        )
+
+        # resize
+        await self.resize(new_shape)
+
+        # store data
+        append_selection = tuple(
+            slice(None) if i != axis else slice(old_shape[i], new_shape[i])
+            for i in range(len(self.shape))
+        )
+        await self.setitem(append_selection, data)
+
+        return new_shape
 
     async def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
         # metadata.attributes is "frozen" so we simply clear and update the dict
@@ -1147,7 +1203,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         raise NotImplementedError
 
 
-@dataclass(frozen=True)
+# TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
+@dataclass(frozen=False)
 class Array:
     """Instantiate an array from an initialized store."""
 
@@ -1296,6 +1353,11 @@ class Array:
             The shape of the array.
         """
         return self._async_array.shape
+
+    @shape.setter
+    def shape(self, value: ChunkCoords) -> None:
+        """Sets the shape of the array by calling resize."""
+        self.resize(value)
 
     @property
     def chunks(self) -> ChunkCoords:
@@ -2754,18 +2816,18 @@ class Array:
         :func:`set_block_selection` for documentation and examples."""
         return BlockIndex(self)
 
-    def resize(self, new_shape: ChunkCoords) -> Array:
+    def resize(self, new_shape: ShapeLike) -> None:
         """
         Change the shape of the array by growing or shrinking one or more
         dimensions.
 
-        This method does not modify the original Array object. Instead, it returns a new Array
-        with the specified shape.
+        Parameters
+        ----------
+        new_shape : tuple
+            New shape of the array.
 
         Notes
         -----
-        When resizing an array, the data are not rearranged in any way.
-
         If one or more dimensions are shrunk, any chunks falling outside the
         new array shape will be deleted from the underlying store.
         However, it is noteworthy that the chunks partially falling inside the new array
@@ -2778,7 +2840,6 @@ class Array:
         >>> import zarr
         >>> z = zarr.zeros(shape=(10000, 10000),
         >>>                chunk_shape=(1000, 1000),
-        >>>                store=StorePath(MemoryStore(mode="w")),
         >>>                dtype="i4",)
         >>> z.shape
         (10000, 10000)
@@ -2791,10 +2852,43 @@ class Array:
         >>> z2.shape
         (50, 50)
         """
-        resized = sync(self._async_array.resize(new_shape))
-        # TODO: remove this cast when type inference improves
-        _resized = cast(AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata], resized)
-        return type(self)(_resized)
+        sync(self._async_array.resize(new_shape))
+
+    def append(self, data: npt.ArrayLike, axis: int = 0) -> ChunkCoords:
+        """Append `data` to `axis`.
+
+        Parameters
+        ----------
+        data : array-like
+            Data to be appended.
+        axis : int
+            Axis along which to append.
+
+        Returns
+        -------
+        new_shape : tuple
+
+        Notes
+        -----
+        The size of all dimensions other than `axis` must match between this
+        array and `data`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import zarr
+        >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
+        >>> z = zarr.array(a, chunks=(1000, 100))
+        >>> z.shape
+        (10000, 1000)
+        >>> z.append(a)
+        (20000, 1000)
+        >>> z.append(np.vstack([a, a]), axis=1)
+        (20000, 2000)
+        >>> z.shape
+        (20000, 2000)
+        """
+        return sync(self._async_array.append(data, axis=axis))
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
         # TODO: remove this cast when type inference improves
