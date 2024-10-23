@@ -424,12 +424,12 @@ def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
 
 def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
     """
-    Test the `Group.__setitem__` method.
+    Test the `Group.__setitem__` method. (Deprecated)
     """
     group = Group.from_store(store, zarr_format=zarr_format)
     arr = np.ones((2, 4))
-    with pytest.warns(DeprecationWarning):
-        group["key"] = arr
+    group["key"] = arr
+    assert list(group.array_keys()) == ["key"]
     assert group["key"].shape == (2, 4)
     np.testing.assert_array_equal(group["key"][:], arr)
 
@@ -442,8 +442,8 @@ def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
 
     # overwrite with another array
     arr = np.zeros((3, 5))
-    with pytest.warns(DeprecationWarning):
-        group[key] = arr
+    group[key] = arr
+    assert key in list(group.array_keys())
     assert group[key].shape == (3, 5)
     np.testing.assert_array_equal(group[key], arr)
 

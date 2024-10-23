@@ -295,36 +295,6 @@ class ConsolidatedMetadata:
         return metadata
 
 
-class ArraysProxy:
-    """
-    Proxy for arrays in a group.
-
-    Used to implement the `Group.arrays` property
-    """
-
-    def __init__(self, group: Group) -> None:
-        self._group = group
-
-    def __getitem__(self, key: str) -> Array:
-        obj = self._group[key]
-        if isinstance(obj, Array):
-            return obj
-        raise KeyError(key)
-
-    def __setitem__(self, key: str, value: npt.ArrayLike) -> None:
-        """
-        Set an array in the group.
-        """
-        self._group._sync(self._group._async_group.set_array(key, value))
-
-    def __iter__(self) -> Generator[tuple[str, Array], None]:
-        for name, async_array in self._group._sync_iter(self._group._async_group.arrays()):
-            yield name, Array(async_array)
-
-    def __call__(self) -> Generator[tuple[str, Array], None]:
-        return iter(self)
-
-
 @dataclass(frozen=True)
 class GroupMetadata(Metadata):
     attributes: dict[str, Any] = field(default_factory=dict)
@@ -630,8 +600,10 @@ class AsyncGroup:
             store_path=store_path,
         )
 
-    async def set_array(self, key: str, value: Any) -> None:
-        """fastpath for creating a new array
+    async def setitem(self, key: str, value: Any) -> None:
+        """Fastpath for creating a new array
+
+        New arrays will be created with default array settings for the array type.
 
         Parameters
         ----------
@@ -1438,14 +1410,12 @@ class Group(SyncMixin):
     def __len__(self) -> int:
         return self.nmembers()
 
-    @deprecated("Use Group.arrays setter instead.")
     def __setitem__(self, key: str, value: Any) -> None:
-        """Create a new array
+        """Fastpath for creating a new array.
 
-        .. deprecated:: 3.0.0
-            Use Group.arrays.setter instead.
+        New arrays will be created using default settings for the array type.
         """
-        self._sync(self._async_group.set_array(key, value))
+        self._sync(self._async_group.setitem(key, value))
 
     def __repr__(self) -> str:
         return f"<Group {self.store_path}>"
@@ -1542,9 +1512,9 @@ class Group(SyncMixin):
         for _, group in self.groups():
             yield group
 
-    @property
-    def arrays(self) -> ArraysProxy:
-        return ArraysProxy(self)
+    def arrays(self) -> Generator[tuple[str, Array], None]:
+        for name, async_array in self._sync_iter(self._async_group.arrays()):
+            yield name, Array(async_array)
 
     def array_keys(self) -> Generator[str, None]:
         for name, _ in self.arrays():
