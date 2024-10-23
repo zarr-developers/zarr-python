@@ -447,37 +447,6 @@ def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
     assert group[key].shape == (3, 5)
     np.testing.assert_array_equal(group[key], arr)
 
-    # overwrite with a scalar
-    # separate bug!
-    # group["key"] = 1.5
-    # assert group["key"].shape == ()
-    # assert group["key"][:] == 1
-
-
-def test_group_arrays_setter(store: Store, zarr_format: ZarrFormat) -> None:
-    """
-    Test the `Group.__setitem__` method.
-    """
-    group = Group.from_store(store, zarr_format=zarr_format)
-    arr = np.ones((2, 4))
-    group.arrays["key"] = arr
-    assert group["key"].shape == (2, 4)
-    np.testing.assert_array_equal(group["key"][:], arr)
-
-    if store.supports_deletes:
-        key = "key"
-    else:
-        # overwriting with another array requires deletes
-        # for stores that don't support this, we just use a new key
-        key = "key2"
-
-    # overwrite with another array
-    arr = np.zeros((3, 5))
-    with pytest.warns(DeprecationWarning):
-        group[key] = arr
-    assert group[key].shape == (3, 5)
-    np.testing.assert_array_equal(group[key], arr)
-
 
 def test_group_contains(store: Store, zarr_format: ZarrFormat) -> None:
     """

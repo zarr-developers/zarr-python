@@ -399,7 +399,7 @@ async def save_array(
     if np.isscalar(arr):
         arr = np.array(arr)
     shape = arr.shape
-    chunks = getattr(arr, "chunks", shape)  # for array-likes with chunks attribute
+    chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
     new = await AsyncArray.create(
         store_path,
         zarr_format=zarr_format,
