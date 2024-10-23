@@ -33,6 +33,7 @@ from zarr.core.common import (
     ZARRAY_JSON,
     ZATTRS_JSON,
     ChunkCoords,
+    MemoryOrder,
     ShapeLike,
     ZarrFormat,
     concurrent_map,
@@ -203,14 +204,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     metadata: T_ArrayMetadata
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
-    order: Literal["C", "F"]
+    order: MemoryOrder
 
     @overload
     def __init__(
         self: AsyncArray[ArrayV2Metadata],
         metadata: ArrayV2Metadata | ArrayV2MetadataDict,
         store_path: StorePath,
-        order: Literal["C", "F"] | None = None,
+        order: MemoryOrder | None = None,
     ) -> None: ...
 
     @overload
@@ -218,14 +219,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         self: AsyncArray[ArrayV3Metadata],
         metadata: ArrayV3Metadata | ArrayV3MetadataDict,
         store_path: StorePath,
-        order: Literal["C", "F"] | None = None,
+        order: MemoryOrder | None = None,
     ) -> None: ...
 
     def __init__(
         self,
         metadata: ArrayMetadata | ArrayMetadataDict,
         store_path: StorePath,
-        order: Literal["C", "F"] | None = None,
+        order: MemoryOrder | None = None,
     ) -> None:
         if isinstance(metadata, dict):
             zarr_format = metadata["zarr_format"]
@@ -261,7 +262,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         attributes: dict[str, JSON] | None = None,
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
-        order: Literal["C", "F"] | None = None,
+        order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
@@ -350,7 +351,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # v2 only
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
-        order: Literal["C", "F"] | None = None,
+        order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
@@ -382,7 +383,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # v2 only
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
-        order: Literal["C", "F"] | None = None,
+        order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
@@ -422,7 +423,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             V2 only. V3 arrays cannot have a dimension separator.
         order : Literal["C", "F"], optional
             The order of the array (default is None).
-            V2 only. V3 arrays should not have 'order' parameter.
         filters : list[dict[str, JSON]], optional
             The filters used to compress the data (default is None).
             V2 only. V3 arrays should not have 'filters' parameter.
@@ -471,10 +471,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError(
                     "dimension_separator cannot be used for arrays with version 3. Use chunk_key_encoding instead."
                 )
-            if order is not None:
-                raise ValueError(
-                    "order cannot be used for arrays with version 3. Use a transpose codec instead."
-                )
             if filters is not None:
                 raise ValueError(
                     "filters cannot be used for arrays with version 3. Use array-to-array codecs instead."
@@ -494,6 +490,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 dimension_names=dimension_names,
                 attributes=attributes,
                 exists_ok=exists_ok,
+                order=order,
             )
         elif zarr_format == 2:
             if dtype is str or dtype == "str":
@@ -545,6 +542,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dtype: npt.DTypeLike,
         chunk_shape: ChunkCoords,
         fill_value: Any | None = None,
+        order: MemoryOrder | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -588,7 +586,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             attributes=attributes or {},
         )
 
-        array = cls(metadata=metadata, store_path=store_path)
+        array = cls(metadata=metadata, store_path=store_path, order=order)
         await array._save_metadata(metadata, ensure_parents=True)
         return array
 
@@ -602,7 +600,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         chunks: ChunkCoords,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: None | float = None,
-        order: Literal["C", "F"] | None = None,
+        order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -610,8 +608,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV2Metadata]:
         if not exists_ok:
             await ensure_no_existing_node(store_path, zarr_format=2)
+
         if order is None:
-            order = "C"
+            order = parse_indexing_order(config.get("array.order"))
 
         if dimension_separator is None:
             dimension_separator = "."
@@ -627,7 +626,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             filters=filters,
             attributes=attributes,
         )
-        array = cls(metadata=metadata, store_path=store_path)
+        array = cls(metadata=metadata, store_path=store_path, order=order)
         await array._save_metadata(metadata, ensure_parents=True)
         return array
 
@@ -1236,7 +1235,7 @@ class Array:
         # v2 only
         chunks: ChunkCoords | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
-        order: Literal["C", "F"] | None = None,
+        order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
@@ -1432,7 +1431,7 @@ class Array:
         return self._async_array.store_path
 
     @property
-    def order(self) -> Literal["C", "F"]:
+    def order(self) -> MemoryOrder:
         return self._async_array.order
 
     @property

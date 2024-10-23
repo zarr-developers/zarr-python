@@ -10,7 +10,7 @@ from zarr import Array, AsyncArray, Group
 from zarr.codecs import BytesCodec, VLenBytesCodec
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer.cpu import NDBuffer
-from zarr.core.common import JSON, ZarrFormat
+from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
 from zarr.core.sync import sync
@@ -605,3 +605,21 @@ def test_append_bad_shape(store: MemoryStore, zarr_format: int) -> None:
     b = a.reshape(10, 10)
     with pytest.raises(ValueError):
         z.append(b)
+
+@pytest.mark.parametrize("order", ["C", "F", None])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_array_create_order(
+    order: MemoryOrder | None, zarr_format: int, store: MemoryStore
+) -> None:
+    arr = Array.create(store=store, shape=(2, 2), order=order, zarr_format=zarr_format, dtype="i4")
+    expected = order or zarr.config.get("array.order")
+    assert arr.order == expected
+
+    vals = np.asarray(arr)
+    if expected == "C":
+        assert vals.flags.c_contiguous
+    elif expected == "F":
+        assert vals.flags.f_contiguous
+    else:
+        raise AssertionError
