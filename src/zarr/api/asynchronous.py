@@ -332,6 +332,7 @@ async def save(
     *args: NDArrayLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
+    mode: AccessModeLiteral | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to save
 ) -> None:
@@ -345,6 +346,11 @@ async def save(
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
+    mode: {'r', 'r+', 'a', 'w', 'w-'}, optional
+        Persistence mode: 'r' means read only (must exist); 'r+' means
+        read/write (must exist); 'a' means read/write (create if doesn't
+        exist); 'w' means create (overwrite if exists); 'w-' means create
+        (fail if exists).
     path : str or None, optional
         The path within the group where the arrays will be saved.
     **kwargs
@@ -352,12 +358,19 @@ async def save(
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
+    for arg in args:
+        if not isinstance(arg, np.ndarray):
+            raise TypeError("All arguments must be numpy arrays")
+    for k, v in kwargs.items():
+        if not isinstance(v, np.ndarray):
+            raise TypeError(f"Keyword argument '{k}' must be a numpy array")
+
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
     if len(args) == 1 and len(kwargs) == 0:
-        await save_array(store, args[0], zarr_format=zarr_format, path=path)
+        await save_array(store, args[0], zarr_format=zarr_format, mode=mode, path=path)
     else:
-        await save_group(store, *args, zarr_format=zarr_format, path=path, **kwargs)
+        await save_group(store, *args, zarr_format=zarr_format, mode=mode, path=path, **kwargs)
 
 
 async def save_array(
@@ -366,6 +379,7 @@ async def save_array(
     *,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
+    mode: AccessModeLiteral | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to create
@@ -381,6 +395,11 @@ async def save_array(
         NumPy array with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
+    mode: {'r', 'r+', 'a', 'w', 'w-'}, optional
+        Persistence mode: 'r' means read only (must exist); 'r+' means
+        read/write (must exist); 'a' means read/write (create if doesn't
+        exist); 'w' means create (overwrite if exists); 'w-' means create
+        (fail if exists).
     path : str or None, optional
         The path within the store where the array will be saved.
     storage_options : dict
@@ -394,7 +413,6 @@ async def save_array(
         or _default_zarr_version()
     )
 
-    mode = kwargs.pop("mode", None)
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
     new = await AsyncArray.create(
         store_path,
@@ -412,6 +430,7 @@ async def save_group(
     *args: NDArrayLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
+    mode: AccessModeLiteral | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
     **kwargs: NDArrayLike,
@@ -427,6 +446,11 @@ async def save_group(
         NumPy arrays with data to save.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
+    mode: {'r', 'r+', 'a', 'w', 'w-'}, optional
+        Persistence mode: 'r' means read only (must exist); 'r+' means
+        read/write (must exist); 'a' means read/write (create if doesn't
+        exist); 'w' means create (overwrite if exists); 'w-' means create
+        (fail if exists).
     path : str or None, optional
         Path within the store where the group will be saved.
     storage_options : dict
@@ -452,6 +476,7 @@ async def save_group(
                 store,
                 arr,
                 zarr_format=zarr_format,
+                mode=mode,
                 path=f"{path}/arr_{i}",
                 storage_options=storage_options,
             )
@@ -460,7 +485,12 @@ async def save_group(
         _path = f"{path}/{k}" if path is not None else k
         aws.append(
             save_array(
-                store, arr, zarr_format=zarr_format, path=_path, storage_options=storage_options
+                store,
+                arr,
+                zarr_format=zarr_format,
+                mode=mode,
+                path=_path,
+                storage_options=storage_options,
             )
         )
     await asyncio.gather(*aws)

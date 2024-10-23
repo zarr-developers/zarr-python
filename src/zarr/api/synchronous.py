@@ -101,12 +101,19 @@ def save(
     *args: NDArrayLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
+    mode: AccessModeLiteral | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save
 ) -> None:
     return sync(
         async_api.save(
-            store, *args, zarr_version=zarr_version, zarr_format=zarr_format, path=path, **kwargs
+            store,
+            *args,
+            zarr_version=zarr_version,
+            zarr_format=zarr_format,
+            mode=mode,
+            path=path,
+            **kwargs,
         )
     )
 
@@ -118,6 +125,7 @@ def save_array(
     *,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
+    mode: AccessModeLiteral | None = None,
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save_array
 ) -> None:
@@ -127,6 +135,7 @@ def save_array(
             arr=arr,
             zarr_version=zarr_version,
             zarr_format=zarr_format,
+            mode=mode,
             path=path,
             **kwargs,
         )
@@ -138,6 +147,7 @@ def save_group(
     *args: NDArrayLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
+    mode: AccessModeLiteral | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
     **kwargs: NDArrayLike,
@@ -148,6 +158,7 @@ def save_group(
             *args,
             zarr_version=zarr_version,
             zarr_format=zarr_format,
+            mode=mode,
             path=path,
             storage_options=storage_options,
             **kwargs,

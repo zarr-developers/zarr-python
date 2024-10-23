@@ -23,6 +23,7 @@ from zarr.api.synchronous import (
 )
 from zarr.core.common import MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
+from zarr.storage import StorePath
 from zarr.storage._utils import normalize_path
 from zarr.storage.memory import MemoryStore
 
@@ -999,3 +1000,10 @@ async def test_metadata_validation_error() -> None:
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
         await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+def test_zarr_save(store: Store) -> None:
+    a = np.arange(1000).reshape(10, 10, 10)
+    zarr.save(StorePath(store), a, mode="w")
+    assert_array_equal(zarr.load(store), a)
