@@ -401,8 +401,8 @@ class Store(ABC):
 
         Returns
         -------
-        nbytes: int
-            The size of the value in bytes.
+        nbytes : int
+            The size of the value (in bytes).
 
         Raises
         ------
@@ -416,6 +416,33 @@ class Store(ABC):
         if value is None:
             raise FileNotFoundError(key)
         return len(value)
+
+    async def getsize_dir(self, prefix: str) -> int:
+        """
+        Return the size, in bytes, of all values in a directory.
+
+        This will include just values whose keys start with ``prefix`` and
+        do not contain the character ``/`` after the given prefix.
+
+        Parameters
+        ----------
+        prefix : str
+            The prefix of the directory to measure.
+
+        Returns
+        -------
+        nbytes : int
+            The sum of the sizes of the values in the directory (in bytes).
+
+        Notes
+        -----
+        ``getsize_dir`` is just provided as a potentially faster alternative to
+        listing all the keys in a directory and calling :meth:`Store.getsize`
+        on each.
+        """
+        keys = [x async for x in self.list_dir(prefix)]
+        sizes = await gather(*[self.getsize(key) for key in keys])
+        return sum(sizes)
 
 
 @runtime_checkable

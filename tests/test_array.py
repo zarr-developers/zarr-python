@@ -371,6 +371,15 @@ def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> No
         assert observed == expected
 
 
+def test_nbytes_stored():
+    arr = zarr.create(shape=(100,), chunks=(10,), dtype="i4")
+    result = arr.nbytes_stored()
+    assert result == 366  # the size of the metadata document. This is a fragile test
+    arr[:50] = 1
+    result = arr.nbytes_stored()
+    assert result == 366
+
+
 def test_default_fill_values() -> None:
     a = Array.create(MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="<U4")
     assert a.fill_value == ""
