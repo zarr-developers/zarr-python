@@ -435,6 +435,7 @@ class TestInfo:
             order="C",
             read_only=False,
             store_type="MemoryStore",
+            count_bytes=128,
         )
         assert result == expected
 
@@ -450,6 +451,7 @@ class TestInfo:
             read_only=False,
             store_type="MemoryStore",
             codecs="[BytesCodec(endian=<Endian.little: 'little'>)]",
+            count_bytes=128,
         )
         assert result == expected
 

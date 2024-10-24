@@ -1219,6 +1219,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     async def info_complete(self) -> ArrayInfo:
         # TODO: get the size of the object from the store.
+        extra = {
+            "count_chunks_initialized": self.nchunks_initialized,  # this should be async?
+            # count_bytes_stored isn't yet implemented.
+        }
+        return self._info(extra=extra)
+
         raise NotImplementedError
 
     def _info(self, extra: dict[str, int] | None = None) -> ArrayInfo:
@@ -1239,8 +1245,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             if isinstance(chunk_grid, RegularChunkGrid):
                 kwargs["chunk_shape"] = chunk_grid.chunk_shape
             else:
-                msg = f"'info' is not yet implemented for chunk grids of type {type(self.metadata.chunk_grid)}"
-                raise NotImplementedError(msg)
+                raise NotImplementedError(
+                    "'info' is not yet implemented for chunk grids of type {type(self.metadata.chunk_grid)}"
+                )
 
         return ArrayInfo(
             zarr_format=self.metadata.zarr_format,
@@ -1248,6 +1255,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             order=self.order,
             read_only=self.store_path.store.mode.readonly,
             store_type=type(self.store_path.store).__name__,
+            count_bytes=self.dtype.itemsize * self.size,
             **kwargs,
         )
 
