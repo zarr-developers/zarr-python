@@ -94,6 +94,8 @@ class Indexer(Protocol):
 
 
 def ceildiv(a: float, b: float) -> int:
+    if a == 0:
+        return 0
     return math.ceil(a / b)
 
 
@@ -374,7 +376,7 @@ class SliceDimIndexer:
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
         # figure out the range of chunks we need to visit
-        dim_chunk_ix_from = self.start // self.dim_chunk_len
+        dim_chunk_ix_from = 0 if self.start == 0 else self.start // self.dim_chunk_len
         dim_chunk_ix_to = ceildiv(self.stop, self.dim_chunk_len)
 
         # iterate over chunks in range
