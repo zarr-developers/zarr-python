@@ -393,3 +393,32 @@ async def test_sharding_with_empty_inner_chunk(
     print("read data")
     data_read = await a.getitem(...)
     assert np.array_equal(data_read, data)
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize(
+    "index_location",
+    [ShardingCodecIndexLocation.start, ShardingCodecIndexLocation.end],
+)
+@pytest.mark.parametrize("chunks_per_shard", [(5, 2), (2, 5), (5, 5)])
+async def test_sharding_with_chunks_per_shard(
+    store: Store, index_location: ShardingCodecIndexLocation, chunks_per_shard: tuple[int]
+) -> None:
+    chunk_shape = (2, 1)
+    shape = [x * y for x, y in zip(chunks_per_shard, chunk_shape, strict=False)]
+    data = np.ones(np.prod(shape), dtype="int32").reshape(shape)
+    fill_value = 42
+
+    path = f"test_sharding_with_chunks_per_shard_{index_location}"
+    spath = StorePath(store, path)
+    a = Array.create(
+        spath,
+        shape=shape,
+        chunk_shape=shape,
+        dtype="int32",
+        fill_value=fill_value,
+        codecs=[ShardingCodec(chunk_shape=chunk_shape, index_location=index_location)],
+    )
+    a[...] = data
+    data_read = a[...]
+    assert np.array_equal(data_read, data)
