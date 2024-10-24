@@ -100,9 +100,10 @@ extra = [
 optional = [
     'lmdb',
     'universal-pathlib>=0.0.22',
+    'rich'
 ]
 tree = [
-    "rich",
+    'rich',
 ]
 
 [project.urls]

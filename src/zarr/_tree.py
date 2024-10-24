@@ -1,4 +1,5 @@
 import io
+from typing import Any
 
 from zarr.core.group import AsyncGroup
 
@@ -15,13 +16,19 @@ class TreeRepr:
         self.tree = tree
 
     def __repr__(self) -> str:
-        console = rich.console.Console(file=io.StringIO())
+        terminal = rich.get_console()
+        console = rich.console.Console(file=io.StringIO(), color_system=terminal.color_system)
         console.print(self.tree)
         return str(console.file.getvalue())
 
+    def _repr_mimebundle_(self, **kwargs: dict[str, Any]) -> dict[str, str]:
+        # For jupyter support.
+        # We don't depend on jupyter, so we can't do the static types appropriately here.
+        return self.tree._repr_mimebundle_(**kwargs)  # type: ignore[no-any-return]
+
 
 async def group_tree_async(group: AsyncGroup, max_depth: int | None = None) -> TreeRepr:
-    tree = rich.tree.Tree(label=f"[b]{group.name}[/b]")
+    tree = rich.tree.Tree(label=f"[bold]{group.name}[/bold]")
     nodes = {"": tree}
     members = sorted([x async for x in group.members(max_depth=max_depth)])
 
@@ -36,9 +43,9 @@ async def group_tree_async(group: AsyncGroup, max_depth: int | None = None) -> T
         # /'s and path segments. But node.name includes all that, so we build it here.
         name = key.rsplit("/")[-1]
         if isinstance(node, AsyncGroup):
-            label = f"[b]{name}[/b]"
+            label = f"[bold]{name}[/bold]"
         else:
-            label = f"[b]{name}[/b] {node.shape} {node.dtype}"
+            label = f"[bold]{name}[/bold] {node.shape} {node.dtype}"
         nodes[key] = parent.add(label)
 
     return TreeRepr(tree)

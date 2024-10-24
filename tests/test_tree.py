@@ -5,6 +5,8 @@ import pytest
 
 import zarr
 
+pytest.importorskip("rich")
+
 
 @pytest.mark.parametrize("root_name", [None, "root"])
 def test_tree(root_name: Any) -> None:
@@ -23,26 +25,29 @@ def test_tree(root_name: Any) -> None:
     result = repr(g.tree())
     root = root_name or ""
 
+    BOPEN = "\x1b[1m"
+    BCLOSE = "\x1b[0m"
+
     expected = textwrap.dedent(f"""\
-        /{root}
-        ├── A
-        │   ├── x (2,) float64
-        │   └── y (0,) int8
-        └── B
-            ├── C
-            │   ├── C
-            │   │   └── x (0,) float64
-            │   └── x (0,) float64
-            └── x (0,) float64
+        {BOPEN}/{root}{BCLOSE}
+        ├── {BOPEN}A{BCLOSE}
+        │   ├── {BOPEN}x{BCLOSE} (2,) float64
+        │   └── {BOPEN}y{BCLOSE} (0,) int8
+        └── {BOPEN}B{BCLOSE}
+            ├── {BOPEN}C{BCLOSE}
+            │   ├── {BOPEN}C{BCLOSE}
+            │   │   └── {BOPEN}x{BCLOSE} (0,) float64
+            │   └── {BOPEN}x{BCLOSE} (0,) float64
+            └── {BOPEN}x{BCLOSE} (0,) float64
         """)
 
     assert result == expected
 
     result = repr(g.tree(level=0))
     expected = textwrap.dedent(f"""\
-        /{root}
-        ├── A
-        └── B
+        {BOPEN}/{root}{BCLOSE}
+        ├── {BOPEN}A{BCLOSE}
+        └── {BOPEN}B{BCLOSE}
         """)
 
     assert result == expected
