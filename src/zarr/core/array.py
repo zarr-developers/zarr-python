@@ -844,7 +844,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return nchunks_initialized(self)
 
     async def nbytes_stored(self) -> int:
-        return await self.store_path.store.getsize_dir(self.store_path.path)
+        return await self.store_path.store.getsize_prefix(self.store_path.path)
 
     def _iter_chunk_coords(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None

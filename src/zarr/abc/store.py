@@ -417,9 +417,9 @@ class Store(ABC):
             raise FileNotFoundError(key)
         return len(value)
 
-    async def getsize_dir(self, prefix: str) -> int:
+    async def getsize_prefix(self, prefix: str) -> int:
         """
-        Return the size, in bytes, of all values in a directory.
+        Return the size, in bytes, of all values under a prefix.
 
         This will include just values whose keys start with ``prefix`` and
         do not contain the character ``/`` after the given prefix.
@@ -440,7 +440,7 @@ class Store(ABC):
         listing all the keys in a directory and calling :meth:`Store.getsize`
         on each.
         """
-        keys = [x async for x in self.list_dir(prefix)]
+        keys = [x async for x in self.list_prefix(prefix)]
         sizes = await gather(*[self.getsize(key) for key in keys])
         return sum(sizes)
 
