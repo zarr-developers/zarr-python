@@ -4,6 +4,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.storage.common import _dereference_path
 
 if TYPE_CHECKING:
@@ -217,10 +218,12 @@ class RemoteStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferPrototype | None = None,
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
+        if prototype is None:
+            prototype = default_buffer_prototype()
         if not self._is_open:
             await self._open()
         path = _dereference_path(self.path, key)
@@ -343,3 +346,16 @@ class RemoteStore(Store):
         find_str = f"{self.path}/{prefix}"
         for onefile in await self.fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
             yield onefile.removeprefix(find_str)
+
+    async def getsize(self, key: str) -> int:
+        path = _dereference_path(self.path, key)
+        info = await self.fs._info(path)
+
+        size = info.get("size")
+
+        if size is None:
+            # Not all filesystems support size. Fall back to reading the entire object
+            return await super().getsize(key)
+        else:
+            # fsspec doesn't have typing. We'll need to assume or verify this is true
+            return int(size)

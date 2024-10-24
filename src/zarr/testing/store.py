@@ -121,6 +121,15 @@ class StoreTests(Generic[S, B]):
         expected = data_buf[start : start + length]
         assert_bytes_equal(observed, expected)
 
+    async def test_get_default_prototype(self, store: S) -> None:
+        key = "c/0"
+        data = b"\x01\x02\x03\x04"
+        data_buf = self.buffer_cls.from_bytes(data)
+        await self.set(store, key, data_buf)
+        observed = await store.get(key)
+        expected = data_buf[:]
+        assert_bytes_equal(observed, expected)
+
     async def test_get_many(self, store: S) -> None:
         """
         Ensure that multiple keys can be retrieved at once with the _get_many method.
@@ -338,3 +347,15 @@ class StoreTests(Generic[S, B]):
 
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
+
+    async def test_getsize(self, store: S) -> None:
+        key = "k"
+        data = self.buffer_cls.from_bytes(b"0" * 10)
+        await self.set(store, key, data)
+
+        result = await store.getsize(key)
+        assert result == 10
+
+    async def test_getsize_raises(self, store: S) -> None:
+        with pytest.raises(FileNotFoundError):
+            await store.getsize("not-a-real-key")

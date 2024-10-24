@@ -5,8 +5,8 @@ import pytest
 
 from zarr import AsyncArray
 from zarr.abc.store import Store
+from zarr.buffer import default_buffer_prototype
 from zarr.codecs import BloscCodec, BytesCodec, ShardingCodec
-from zarr.core.buffer import default_buffer_prototype
 from zarr.storage.common import StorePath
 
 

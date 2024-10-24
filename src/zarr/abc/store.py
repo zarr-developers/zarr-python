@@ -5,6 +5,8 @@ from asyncio import gather
 from itertools import starmap
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
+from zarr.core.buffer.core import default_buffer_prototype
+
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
     from types import TracebackType
@@ -197,7 +199,7 @@ class Store(ABC):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferPrototype | None = None,
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
@@ -205,6 +207,9 @@ class Store(ABC):
         Parameters
         ----------
         key : str
+        prototype : BufferPrototype, optional
+            The prototype giving the buffer classes to use for buffers and nbuffers.
+            By default, :func:`zarr.buffer.default_buffer_prototype` is used.
         byte_range : tuple[int | None, int | None], optional
 
         Returns
@@ -385,6 +390,60 @@ class Store(ABC):
         """
         for req in requests:
             yield (req[0], await self.get(*req))
+
+    async def getsize(self, key: str) -> int:
+        """
+        Return the size, in bytes, of a value in a Store.
+
+        Parameters
+        ----------
+        key : str
+
+        Returns
+        -------
+        nbytes : int
+            The size of the value (in bytes).
+
+        Raises
+        ------
+        FileNotFoundError
+            When the given key does not exist in the store.
+        """
+        # Note to implementers: this default implementation is very inefficient since
+        # it requires reading the entire object. Many systems will have ways to get the
+        # size of an object without reading it.
+        value = await self.get(key, prototype=default_buffer_prototype())
+        if value is None:
+            raise FileNotFoundError(key)
+        return len(value)
+
+    async def getsize_prefix(self, prefix: str) -> int:
+        """
+        Return the size, in bytes, of all values under a prefix.
+
+        Parameters
+        ----------
+        prefix : str
+            The prefix of the directory to measure.
+
+        Returns
+        -------
+        nbytes : int
+            The sum of the sizes of the values in the directory (in bytes).
+
+        See Also
+        --------
+        zarr.Array.nbytes_stored
+        Store.getsize
+
+        Notes
+        -----
+        ``getsize_prefix`` is just provided as a potentially faster alternative to
+        listing all the keys under a prefix calling :meth:`Store.getsize` on each.
+        """
+        keys = [x async for x in self.list_prefix(prefix)]
+        sizes = await gather(*[self.getsize(key) for key in keys])
+        return sum(sizes)
 
 
 @runtime_checkable
