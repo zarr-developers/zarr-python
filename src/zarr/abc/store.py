@@ -421,9 +421,6 @@ class Store(ABC):
         """
         Return the size, in bytes, of all values under a prefix.
 
-        This will include just values whose keys start with ``prefix`` and
-        do not contain the character ``/`` after the given prefix.
-
         Parameters
         ----------
         prefix : str
@@ -434,11 +431,15 @@ class Store(ABC):
         nbytes : int
             The sum of the sizes of the values in the directory (in bytes).
 
+        See Also
+        --------
+        zarr.Array.nbytes_stored
+        Store.getsize
+
         Notes
         -----
-        ``getsize_dir`` is just provided as a potentially faster alternative to
-        listing all the keys in a directory and calling :meth:`Store.getsize`
-        on each.
+        ``getsize_prefix`` is just provided as a potentially faster alternative to
+        listing all the keys under a prefix calling :meth:`Store.getsize` on each.
         """
         keys = [x async for x in self.list_prefix(prefix)]
         sizes = await gather(*[self.getsize(key) for key in keys])
