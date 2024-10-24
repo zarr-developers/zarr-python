@@ -61,7 +61,6 @@ test = [
     "pytest",
     "pytest-cov",
     "msgpack",
-    "lmdb",
     "s3fs",
     "pytest-asyncio",
     "moto[s3]",
@@ -92,13 +91,11 @@ docs = [
     'numpydoc',
     'numcodecs[msgpack]',
     'msgpack',
-    'lmdb',
 ]
 extra = [
     'msgpack',
 ]
 optional = [
-    'lmdb',
     'universal-pathlib>=0.0.22',
 ]
 
@@ -135,17 +132,17 @@ features = ["test", "extra"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "1.26", "2.0"]
+numpy = ["1.25", "2.1"]
 version = ["minimal"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "1.26", "2.0"]
+numpy = ["1.25", "2.1"]
 features = ["optional"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "1.26", "2.0"]
+numpy = ["1.25", "2.1"]
 features = ["gpu"]
 
 [tool.hatch.envs.test.scripts]
@@ -166,7 +163,7 @@ features = ["test", "extra", "gpu"]
 
 [[tool.hatch.envs.gputest.matrix]]
 python = ["3.11", "3.12", "3.13"]
-numpy = ["1.25", "1.26", "2.0"]
+numpy = ["1.25", "2.1"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
