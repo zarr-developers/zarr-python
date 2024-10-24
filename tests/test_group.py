@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import operator
 import pickle
 import warnings
 from typing import TYPE_CHECKING, Any, Literal
@@ -533,14 +534,14 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
             ConsolidatedMetadata(metadata={}),
         )
 
-    result = sorted(group.groups(), key=lambda x: x[0])
+    result = sorted(group.groups(), key=operator.itemgetter(0))
     assert result == expected_groups
 
-    assert sorted(group.groups(), key=lambda x: x[0]) == expected_groups
+    assert sorted(group.groups(), key=operator.itemgetter(0)) == expected_groups
     assert sorted(group.group_keys()) == expected_group_keys
     assert sorted(group.group_values(), key=lambda x: x.name) == expected_group_values
 
-    assert sorted(group.arrays(), key=lambda x: x[0]) == expected_arrays
+    assert sorted(group.arrays(), key=operator.itemgetter(0)) == expected_arrays
     assert sorted(group.array_keys()) == expected_array_keys
     assert sorted(group.array_values(), key=lambda x: x.name) == expected_array_values
 
@@ -1000,7 +1001,7 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
     g2 = await g1.create_group("g2")
 
     # immediate children
-    children = sorted([x async for x in group.members()], key=lambda x: x[0])
+    children = sorted([x async for x in group.members()], key=operator.itemgetter(0))
     assert children == [
         ("a0", a0),
         ("g0", g0),
@@ -1010,7 +1011,7 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
     assert nmembers == 2
 
     # partial
-    children = sorted([x async for x in group.members(max_depth=1)], key=lambda x: x[0])
+    children = sorted([x async for x in group.members(max_depth=1)], key=operator.itemgetter(0))
     expected = [
         ("a0", a0),
         ("g0", g0),
@@ -1022,7 +1023,9 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
     assert nmembers == 4
 
     # all children
-    all_children = sorted([x async for x in group.members(max_depth=None)], key=lambda x: x[0])
+    all_children = sorted(
+        [x async for x in group.members(max_depth=None)], key=operator.itemgetter(0)
+    )
     expected = [
         ("a0", a0),
         ("g0", g0),
@@ -1053,7 +1056,9 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
             "consolidated_metadata",
             None,
         )
-        all_children = sorted([x async for x in group.members(max_depth=None)], key=lambda x: x[0])
+        all_children = sorted(
+            [x async for x in group.members(max_depth=None)], key=operator.itemgetter(0)
+        )
         assert len(all_children) == 4
         nmembers = await group.nmembers(max_depth=None)
         assert nmembers == 4
@@ -1329,3 +1334,23 @@ def test_update_attrs() -> None:
     )
     root.attrs["foo"] = "bar"
     assert root.attrs["foo"] == "bar"
+
+
+@pytest.mark.parametrize("method", ["empty", "zeros", "ones", "full"])
+def test_group_deprecated_positional_args(method: str) -> None:
+    if method == "full":
+        kwargs = {"fill_value": 0}
+    else:
+        kwargs = {}
+
+    root = zarr.group()
+    with pytest.warns(FutureWarning, match=r"Pass name=.* as keyword args."):
+        arr = getattr(root, method)("foo", shape=1, **kwargs)
+        assert arr.shape == (1,)
+
+    method += "_like"
+    data = np.ones(1)
+
+    with pytest.warns(FutureWarning, match=r"Pass name=.*, data=.* as keyword args."):
+        arr = getattr(root, method)("foo_like", data, **kwargs)
+        assert arr.shape == data.shape

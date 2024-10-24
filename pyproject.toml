@@ -28,12 +28,13 @@ requires-python = ">=3.11"
 dependencies = [
     'asciitree',
     'numpy>=1.25',
-    'numcodecs>=0.10.2',
-    'fsspec>2024',
-    'crc32c',
-    'typing_extensions',
-    'donfig',
+    'numcodecs>=0.13',
+    'fsspec>=2022.10.0',
+    'crc32c>=2.3',
+    'typing_extensions>=4.6',
+    'donfig>=0.8',
 ]
+
 dynamic = [
   "version",
 ]
@@ -98,7 +99,7 @@ extra = [
 ]
 optional = [
     'lmdb',
-    'universal-pathlib',
+    'universal-pathlib>=0.0.22',
 ]
 
 [project.urls]
@@ -183,6 +184,65 @@ features = ['docs']
 build = "cd docs && make html"
 serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 
+[tool.hatch.envs.upstream]
+python = "3.13"
+dependencies = [
+    'numpy',  # from scientific-python-nightly-wheels
+    'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
+    'fsspec @ git+https://github.com/fsspec/filesystem_spec',
+    's3fs @ git+https://github.com/fsspec/s3fs',
+    'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
+    'crc32c @ git+https://github.com/ICRAR/crc32c',
+    'typing_extensions @ git+https://github.com/python/typing_extensions',
+    'donfig @ git+https://github.com/pytroll/donfig',
+    # test deps
+    'hypothesis',
+    'pytest',
+    'pytest-cov',
+    'pytest-asyncio',
+    'moto[s3]',
+]
+
+[tool.hatch.envs.upstream.env-vars]
+PIP_INDEX_URL = "https://pypi.anaconda.org/scientific-python-nightly-wheels/simple/"
+PIP_EXTRA_INDEX_URL = "https://pypi.org/simple/"
+PIP_PRE = "1"
+
+[tool.hatch.envs.upstream.scripts]
+run = "pytest --verbose"
+run-mypy = "mypy src"
+run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+list-env = "pip list"
+
+[tool.hatch.envs.min_deps]
+description = """Test environment for minimum supported dependencies
+
+See Spec 0000 for details and drop schedule: https://scientific-python.org/specs/spec-0000/
+"""
+python = "3.11"
+dependencies = [
+    'numpy==1.25.*',
+    'numcodecs==0.13.*',  # 0.13 needed for? (should be 0.11)
+    'fsspec==2022.10.0',
+    's3fs==2022.10.0',
+    'universal_pathlib==0.0.22',
+    'crc32c==2.3.*',
+    'typing_extensions==4.6.*',  # 4.5 needed for @deprecated, 4.6 for Buffer
+    'donfig==0.8.*',
+    # test deps
+    'hypothesis',
+    'pytest',
+    'pytest-cov',
+    'pytest-asyncio',
+    'moto[s3]',
+]
+
+[tool.hatch.envs.min_deps.scripts]
+run = "pytest --verbose"
+run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+list-env = "pip list"
+
+
 [tool.ruff]
 line-length = 100
 force-exclude = true
@@ -214,6 +274,7 @@ extend-select = [
     "B",    # flake8-bugbear
     "C4",   # flake8-comprehensions
     "FLY",  # flynt
+    "FURB", # refurb
     "G",    # flake8-logging-format
     "I",    # isort
     "ISC",  # flake8-implicit-str-concat
@@ -329,4 +390,15 @@ ignore = [
 
 [tool.numpydoc_validation]
 # See https://numpydoc.readthedocs.io/en/latest/validation.html#built-in-validation-checks for list of checks
-checks = ["GL06", "GL07", "GL10", "PR03", "PR05", "PR06"]
+checks = [
+    "GL06",
+    "GL07",
+    "GL09",
+    "GL10",
+    "SS02",
+    "SS04",
+    "PR02",
+    "PR03",
+    "PR05",
+    "PR06",
+]
