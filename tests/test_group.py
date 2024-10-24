@@ -1334,6 +1334,7 @@ class TestInfo:
             name="A",
             read_only=False,
             store_type="MemoryStore",
+            zarr_format=3,
         )
         assert result == expected
 
@@ -1342,6 +1343,7 @@ class TestInfo:
             name="A",
             read_only=False,
             store_type="MemoryStore",
+            zarr_format=3,
             count_members=3,
             count_arrays=2,
             count_groups=1,
