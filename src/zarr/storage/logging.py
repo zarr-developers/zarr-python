@@ -235,6 +235,3 @@ class LoggingStore(Store):
                 log_level=self.log_level,
                 log_handler=self.log_handler,
             )
-
-
-# TODO: wrap delete methods here

@@ -224,10 +224,12 @@ class StoreTests(Generic[S, B]):
         if not store.supports_deletes:
             pytest.skip("store does not support deletes")
         await store.set("zarr.json", self.buffer_cls.from_bytes(b"root"))
+        await store.set("foo-bar/zarr.json", self.buffer_cls.from_bytes(b"root"))
         await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
         await store.set("foo/c/0", self.buffer_cls.from_bytes(b"chunk"))
         await store.delete_dir("foo")
         assert await store.exists("zarr.json")
+        assert await store.exists("foo-bar/zarr.json")
         assert not await store.exists("foo/zarr.json")
         assert not await store.exists("foo/c/0")
 

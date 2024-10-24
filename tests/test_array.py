@@ -52,7 +52,6 @@ def test_array_creation_existing_node(
 
     if exists_ok:
         if not store.supports_deletes:
-            # TODO: confirm you get the expected error here
             pytest.skip("store does not support deletes")
         arr_new = Array.create(
             spath / "extant",
