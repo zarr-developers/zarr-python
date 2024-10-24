@@ -396,12 +396,16 @@ async def save_array(
 
     mode = kwargs.pop("mode", None)
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+    if np.isscalar(arr):
+        arr = np.array(arr)
+    shape = arr.shape
+    chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
     new = await AsyncArray.create(
         store_path,
         zarr_format=zarr_format,
-        shape=arr.shape,
+        shape=shape,
         dtype=arr.dtype,
-        chunks=arr.shape,
+        chunks=chunks,
         **kwargs,
     )
     await new.setitem(slice(None), arr)
