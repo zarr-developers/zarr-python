@@ -424,7 +424,7 @@ def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
 
 def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
     """
-    Test the `Group.__setitem__` method. (Deprecated)
+    Test the `Group.__setitem__` method.
     """
     group = Group.from_store(store, zarr_format=zarr_format)
     arr = np.ones((2, 4))
