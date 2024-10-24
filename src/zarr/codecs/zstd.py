@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from functools import cached_property
-from importlib.metadata import version
 from typing import TYPE_CHECKING
 
+import numcodecs
 from numcodecs.zstd import Zstd
+from packaging.version import Version
 
 from zarr.abc.codec import BytesBytesCodec
 from zarr.core.buffer.cpu import as_numpy_array_wrapper
@@ -43,8 +44,8 @@ class ZstdCodec(BytesBytesCodec):
 
     def __init__(self, *, level: int = 0, checksum: bool = False) -> None:
         # numcodecs 0.13.0 introduces the checksum attribute for the zstd codec
-        _numcodecs_version = tuple(map(int, version("numcodecs").split(".")))
-        if _numcodecs_version < (0, 13, 0):  # pragma: no cover
+        _numcodecs_version = Version(numcodecs.__version__)
+        if _numcodecs_version < Version("0.13.0"):
             raise RuntimeError(
                 "numcodecs version >= 0.13.0 is required to use the zstd codec. "
                 f"Version {_numcodecs_version} is currently installed."

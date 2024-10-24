@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from zarr.core.common import parse_fill_value, parse_order, parse_shapelike
+from zarr.core.common import MemoryOrder, parse_fill_value, parse_order, parse_shapelike
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
@@ -17,7 +17,7 @@ class ArraySpec:
     shape: ChunkCoords
     dtype: np.dtype[Any]
     fill_value: Any
-    order: Literal["C", "F"]
+    order: MemoryOrder
     prototype: BufferPrototype
 
     def __init__(
@@ -25,7 +25,7 @@ class ArraySpec:
         shape: ChunkCoords,
         dtype: np.dtype[Any],
         fill_value: Any,
-        order: Literal["C", "F"],
+        order: MemoryOrder,
         prototype: BufferPrototype,
     ) -> None:
         shape_parsed = parse_shapelike(shape)
