@@ -26,6 +26,7 @@ from zarr.api.synchronous import (
     zeros,
     zeros_like,
 )
+from zarr.core._info import GroupInfo
 from zarr.core.array import Array, AsyncArray
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, Group
@@ -38,6 +39,7 @@ __all__ = [
     "AsyncArray",
     "AsyncGroup",
     "Group",
+    "GroupInfo",
     "__version__",
     "array",
     "config",
