@@ -342,8 +342,8 @@ class Store(ABC):
     @abstractmethod
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         """
-        Retrieve all keys in the store that begin with a given prefix. Keys are returned with the
-        common leading prefix removed.
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned as
+        absolute paths (i.e. including the prefix).
 
         Parameters
         ----------
@@ -371,7 +371,7 @@ class Store(ABC):
         """
         ...
 
-    async def delete_dir(self, prefix: str, recursive: bool = True) -> None:
+    async def delete_dir(self, prefix: str) -> None:
         """
         Remove all keys and prefixes in the store that begin with a given prefix.
         """
@@ -380,24 +380,8 @@ class Store(ABC):
         if not self.supports_listing:
             raise NotImplementedError
         self._check_writable()
-        if recursive:
-            if not prefix.endswith("/"):
-                prefix += "/"
-            async for key in self.list_prefix(prefix):
-                await self.delete(key)
-        else:
-            async for key in self.list_dir(prefix):
-                await self.delete(f"{prefix}/{key}")
-
-    async def delete_prefix(self, prefix: str) -> None:
-        """
-        Remove all keys in the store that begin with a given prefix.
-        """
-        if not self.supports_deletes:
-            raise NotImplementedError
-        if not self.supports_listing:
-            raise NotImplementedError
-        self._check_writable()
+        if not prefix.endswith("/"):
+            prefix += "/"
         async for key in self.list_prefix(prefix):
             await self.delete(key)
 

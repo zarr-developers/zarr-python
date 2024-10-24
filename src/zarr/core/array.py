@@ -556,7 +556,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV3Metadata]:
         if exists_ok:
             if store_path.store.supports_deletes:
-                await store_path.delete_dir(recursive=True)
+                await store_path.delete_dir()
             else:
                 await ensure_no_existing_node(store_path, zarr_format=3)
         else:
@@ -613,7 +613,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV2Metadata]:
         if exists_ok:
             if store_path.store.supports_deletes:
-                await store_path.delete_dir(recursive=True)
+                await store_path.delete_dir()
             else:
                 await ensure_no_existing_node(store_path, zarr_format=2)
         else:

@@ -101,17 +101,14 @@ class StorePath:
         """
         await self.store.delete(self.path)
 
-    async def delete_dir(self, recursive: bool = False) -> None:
+    async def delete_dir(self) -> None:
         """
         Delete all keys with the given prefix from the store.
         """
-        await self.store.delete_dir(self.path, recursive=recursive)
-
-    async def delete_prefix(self) -> None:
-        """
-        Delete all keys with the given prefix from the store.
-        """
-        await self.store.delete_prefix(self.path)
+        path = self.path
+        if not path.endswith("/"):
+            path += "/"
+        await self.store.delete_dir(path)
 
     async def set_if_not_exists(self, default: Buffer) -> None:
         """

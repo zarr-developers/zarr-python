@@ -14,7 +14,6 @@ from zarr.storage.zip import ZipStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
-    from collections.abc import Coroutine
     from typing import Any
 
 
@@ -64,9 +63,6 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
     def test_store_supports_listing(self, store: ZipStore) -> None:
         assert store.supports_listing
-
-    def test_delete(self, store: ZipStore) -> Coroutine[Any, Any, None]:
-        pass
 
     def test_api_integration(self, store: ZipStore) -> None:
         root = zarr.open_group(store=store)

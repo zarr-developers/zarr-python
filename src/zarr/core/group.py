@@ -407,7 +407,7 @@ class AsyncGroup:
 
         if exists_ok:
             if store_path.store.supports_deletes:
-                await store_path.delete_dir(recursive=True)
+                await store_path.delete_dir()
             else:
                 await ensure_no_existing_node(store_path, zarr_format=zarr_format)
         else:
@@ -717,7 +717,7 @@ class AsyncGroup:
     async def delitem(self, key: str) -> None:
         store_path = self.store_path / key
 
-        await store_path.delete_dir(recursive=True)
+        await store_path.delete_dir()
         if self.metadata.consolidated_metadata:
             self.metadata.consolidated_metadata.metadata.pop(key, None)
             await self._save_metadata()
