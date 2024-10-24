@@ -97,6 +97,10 @@ extra = [
 ]
 optional = [
     'universal-pathlib>=0.0.22',
+    'rich'
+]
+tree = [
+    'rich',
 ]
 
 [project.urls]
