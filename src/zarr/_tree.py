@@ -1,4 +1,5 @@
 import io
+from collections.abc import Sequence
 from typing import Any
 
 from zarr.core.group import AsyncGroup
@@ -21,10 +22,15 @@ class TreeRepr:
         console.print(self.tree)
         return str(console.file.getvalue())
 
-    def _repr_mimebundle_(self, **kwargs: dict[str, Any]) -> dict[str, str]:
+    def _repr_mimebundle_(
+        self,
+        include: Sequence[str],
+        exclude: Sequence[str],
+        **kwargs: Any,
+    ) -> dict[str, str]:
         # For jupyter support.
-        # We don't depend on jupyter, so we can't do the static types appropriately here.
-        return self.tree._repr_mimebundle_(**kwargs)  # type: ignore[no-any-return]
+        # Unsure why mypy infers the return type to by Any
+        return self.tree._repr_mimebundle_(include=include, exclude=exclude, **kwargs)  # type: ignore[no-any-return]
 
 
 async def group_tree_async(group: AsyncGroup, max_depth: int | None = None) -> TreeRepr:
