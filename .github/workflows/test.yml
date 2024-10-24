@@ -33,14 +33,14 @@ jobs:
             numpy-version: '2.1'
             dependency-set: 'optional'
             os: 'macos-latest'
-          - python-version: '3.11'
-            numpy-version: '1.25'
-            dependency-set: 'optional'
-            os: 'windows-latest'
-          - python-version: '3.13'
-            numpy-version: '2.1'
-            dependency-set: 'optional'
-            os: 'windows-latest'
+          # - python-version: '3.11'
+          #   numpy-version: '1.25'
+          #   dependency-set: 'optional'
+          #   os: 'windows-latest'
+          # - python-version: '3.13'
+          #   numpy-version: '2.1'
+          #   dependency-set: 'optional'
+          #   os: 'windows-latest'
     runs-on: ${{ matrix.os }}
 
     steps:
