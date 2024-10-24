@@ -1235,8 +1235,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             kwargs["codecs"] = str(self.metadata.codecs)
             kwargs["data_type"] = str(self.metadata.data_type)
             # just regular?
-            if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
-                kwargs["chunk_shape"] = self.metadata.chunk_grid.chunk_shape
+            chunk_grid = self.metadata.chunk_grid
+            if isinstance(chunk_grid, RegularChunkGrid):
+                kwargs["chunk_shape"] = chunk_grid.chunk_shape
+            else:
+                msg = f"'info' is not yet implemented for chunk grids of type {type(self.metadata.chunk_grid)}"
+                raise NotImplementedError(msg)
 
         return ArrayInfo(
             zarr_format=self.metadata.zarr_format,
