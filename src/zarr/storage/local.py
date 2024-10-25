@@ -226,9 +226,8 @@ class LocalStore(Store):
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        to_strip = (
-            (self.root / prefix).as_posix() + "/"
-        )  # TODO: fixme in https://github.com/zarr-developers/zarr-python/issues/2438
+        to_strip = self.root.as_posix() + "/"
+        prefix = prefix.rstrip("/")
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
                 yield p.as_posix().replace(to_strip, "")

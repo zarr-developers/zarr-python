@@ -553,7 +553,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray[ArrayV3Metadata]:
-        if not exists_ok:
+        if exists_ok:
+            if store_path.store.supports_deletes:
+                await store_path.delete_dir()
+            else:
+                await ensure_no_existing_node(store_path, zarr_format=3)
+        else:
             await ensure_no_existing_node(store_path, zarr_format=3)
 
         shape = parse_shapelike(shape)
@@ -605,7 +610,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray[ArrayV2Metadata]:
-        if not exists_ok:
+        if exists_ok:
+            if store_path.store.supports_deletes:
+                await store_path.delete_dir()
+            else:
+                await ensure_no_existing_node(store_path, zarr_format=2)
+        else:
             await ensure_no_existing_node(store_path, zarr_format=2)
 
         if order is None:

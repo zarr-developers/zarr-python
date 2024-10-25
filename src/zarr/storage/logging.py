@@ -222,6 +222,11 @@ class LoggingStore(Store):
             async for key in self._store.list_dir(prefix=prefix):
                 yield key
 
+    async def delete_dir(self, prefix: str) -> None:
+        # docstring inherited
+        with self.log(prefix):
+            await self._store.delete_dir(prefix=prefix)
+
     def with_mode(self, mode: AccessModeLiteral) -> Self:
         # docstring inherited
         with self.log(mode):

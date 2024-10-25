@@ -51,6 +51,8 @@ def test_array_creation_existing_node(
     new_dtype = "float32"
 
     if exists_ok:
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
         arr_new = Array.create(
             spath / "extant",
             shape=new_shape,
