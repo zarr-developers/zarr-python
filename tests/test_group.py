@@ -1384,7 +1384,7 @@ def test_group_deprecated_positional_args(method: str) -> None:
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2191
-    g1 = zarr.group(store=store)
+    g1 = zarr.group(store=store, zarr_format=zarr_format)
     g1.create_group("0")
     g1.create_group("0/0")
     arr = g1.create_array("0/0/0", shape=(1,))
