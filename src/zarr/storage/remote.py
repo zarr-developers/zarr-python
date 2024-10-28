@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any, Self
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import ByteRangeRequest, Store, StoreAccessMode
 from zarr.storage.common import _dereference_path
 
 if TYPE_CHECKING:
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import AccessModeLiteral, BytesLike
+    from zarr.core.common import BytesLike
 
 
 ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
@@ -30,7 +30,7 @@ class RemoteStore(Store):
     ----------
     fs : AsyncFileSystem
         The Async FSSpec filesystem to use with this store.
-    mode : AccessModeLiteral
+    mode : StoreAccessMode
         The access mode to use.
     path : str
         The root path of the store. This should be a relative path and must not include the
@@ -77,7 +77,7 @@ class RemoteStore(Store):
     def __init__(
         self,
         fs: AsyncFileSystem,
-        mode: AccessModeLiteral = "r",
+        mode: StoreAccessMode = "r",
         path: str = "/",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> None:
@@ -102,7 +102,7 @@ class RemoteStore(Store):
     def from_upath(
         cls,
         upath: Any,
-        mode: AccessModeLiteral = "r",
+        mode: StoreAccessMode = "r",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> RemoteStore:
         """
@@ -134,7 +134,7 @@ class RemoteStore(Store):
         cls,
         url: str,
         storage_options: dict[str, Any] | None = None,
-        mode: AccessModeLiteral = "r",
+        mode: StoreAccessMode = "r",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> RemoteStore:
         """
@@ -184,17 +184,7 @@ class RemoteStore(Store):
         except FileNotFoundError:
             pass
 
-    async def empty(self) -> bool:
-        # docstring inherited
-
-        # TODO: it would be nice if we didn't have to list all keys here
-        # it should be possible to stop after the first key is discovered
-        try:
-            return not await self.fs._ls(self.path)
-        except FileNotFoundError:
-            return True
-
-    def with_mode(self, mode: AccessModeLiteral) -> Self:
+    def with_mode(self, mode: StoreAccessMode) -> Self:
         # docstring inherited
         return type(self)(
             fs=self.fs,

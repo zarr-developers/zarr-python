@@ -6,8 +6,10 @@ import numpy as np
 from hypothesis import given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
+import zarr
 from zarr.core.array import Array
-from zarr.core.group import Group
+
+# from zarr.core.group import Group
 from zarr.storage import MemoryStore, StoreLike
 
 # Copied from Xarray
@@ -134,7 +136,12 @@ def arrays(
     expected_attrs = {} if attributes is None else attributes
 
     array_path = path + ("/" if not path.endswith("/") else "") + name
-    root = Group.from_store(store, zarr_format=zarr_format)
+    root = zarr.open_group(store, mode="w")
+
+    # try:
+    #     del root[array_path]
+    # except KeyError:
+    #     pass
 
     a = root.create_array(
         array_path,
@@ -144,6 +151,7 @@ def arrays(
         attributes=attributes,
         # compressor=compressor,  # FIXME
         fill_value=fill_value,
+        # exists_ok=True,  # TODO: shouldn't need this!
     )
 
     assert isinstance(a, Array)

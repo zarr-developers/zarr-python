@@ -80,7 +80,7 @@ async def test_open_array(memory_store: MemoryStore) -> None:
     # open array, read-only
     store_cls = type(store)
     ro_store = await store_cls.open(store_dict=store._store_dict, mode="r")
-    z = open(store=ro_store)
+    z = open(store=ro_store, mode="r")
     assert isinstance(z, Array)
     assert z.shape == (200,)
     assert z.read_only

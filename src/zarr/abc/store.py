@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from asyncio import gather
 from itertools import starmap
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
@@ -11,51 +11,12 @@ if TYPE_CHECKING:
     from typing import Any, Self, TypeAlias
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import AccessModeLiteral, BytesLike
+    from zarr.core.common import BytesLike
 
-__all__ = ["AccessMode", "ByteGetter", "ByteSetter", "Store", "set_or_delete"]
+__all__ = ["StoreAccessMode", "ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
 ByteRangeRequest: TypeAlias = tuple[int | None, int | None]
-
-
-class AccessMode(NamedTuple):
-    """Access mode flags."""
-
-    str: AccessModeLiteral
-    readonly: bool
-    overwrite: bool
-    create: bool
-    update: bool
-
-    @classmethod
-    def from_literal(cls, mode: AccessModeLiteral) -> Self:
-        """
-        Create an AccessMode instance from a literal.
-
-        Parameters
-        ----------
-        mode : AccessModeLiteral
-            One of 'r', 'r+', 'w', 'w-', 'a'.
-
-        Returns
-        -------
-        AccessMode
-            The created instance.
-
-        Raises
-        ------
-        ValueError
-            If mode is not one of 'r', 'r+', 'w', 'w-', 'a'.
-        """
-        if mode in ("r", "r+", "a", "w", "w-"):
-            return cls(
-                str=mode,
-                readonly=mode == "r",
-                overwrite=mode == "w",
-                create=mode in ("a", "w", "w-"),
-                update=mode in ("r+", "a"),
-            )
-        raise ValueError("mode must be one of 'r', 'r+', 'w', 'w-', 'a'")
+StoreAccessMode = Literal["r", "w"]
 
 
 class Store(ABC):
@@ -63,12 +24,13 @@ class Store(ABC):
     Abstract base class for Zarr stores.
     """
 
-    _mode: AccessMode
+    _mode: StoreAccessMode
     _is_open: bool
 
-    def __init__(self, *args: Any, mode: AccessModeLiteral = "r", **kwargs: Any) -> None:
+    def __init__(self, *args: Any, mode: StoreAccessMode = "r", **kwargs: Any) -> None:
         self._is_open = False
-        self._mode = AccessMode.from_literal(mode)
+        assert mode in ("r", "w")
+        self._mode = mode
 
     @classmethod
     async def open(cls, *args: Any, **kwargs: Any) -> Self:
@@ -112,19 +74,9 @@ class Store(ABC):
         ------
         ValueError
             If the store is already open.
-        FileExistsError
-            If ``mode='w-'`` and the store already exists.
-
-        Notes
-        -----
-        * When ``mode='w'`` and the store already exists, it will be cleared.
         """
         if self._is_open:
             raise ValueError("store is already open")
-        if self.mode.str == "w":
-            await self.clear()
-        elif self.mode.str == "w-" and not await self.empty():
-            raise FileExistsError("Store already exists")
         self._is_open = True
 
     async def _ensure_open(self) -> None:
@@ -132,29 +84,38 @@ class Store(ABC):
         if not self._is_open:
             await self._open()
 
-    @abstractmethod
-    async def empty(self) -> bool:
+    async def empty(self, prefix: str = "") -> bool:
         """
-        Check if the store is empty.
+        Check if the directory is empty.
+
+        Parameters
+        ----------
+        prefix : str
+            Prefix of keys to check.
 
         Returns
         -------
         bool
             True if the store is empty, False otherwise.
         """
-        ...
 
-    @abstractmethod
+        if not prefix.endswith("/"):
+            prefix += "/"
+        async for _ in self.list_prefix(prefix):
+            return False
+        return True
+
     async def clear(self) -> None:
         """
         Clear the store.
 
         Remove all keys and values from the store.
         """
-        ...
+        async for key in self.list():
+            await self.delete(key)
 
     @abstractmethod
-    def with_mode(self, mode: AccessModeLiteral) -> Self:
+    def with_mode(self, mode: StoreAccessMode) -> Self:
         """
         Return a new store of the same type pointing to the same location with a new mode.
 
@@ -163,7 +124,7 @@ class Store(ABC):
 
         Parameters
         ----------
-        mode : AccessModeLiteral
+        mode : StoreAccessMode
             The new mode to use.
 
         Returns
@@ -179,14 +140,19 @@ class Store(ABC):
         ...
 
     @property
-    def mode(self) -> AccessMode:
+    def mode(self) -> StoreAccessMode:
         """Access mode of the store."""
         return self._mode
 
+    @property
+    def readonly(self) -> bool:
+        """Is the store read-only?"""
+        return self.mode == "r"
+
     def _check_writable(self) -> None:
         """Raise an exception if the store is not writable."""
-        if self.mode.readonly:
-            raise ValueError("store mode does not support writing")
+        if self.mode != "w":
+            raise ValueError(f"store mode ({self.mode}) does not support writing")
 
     @abstractmethod
     def __eq__(self, value: object) -> bool:

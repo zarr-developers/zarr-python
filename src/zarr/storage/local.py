@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import io
-import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Self
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import ByteRangeRequest, Store, StoreAccessMode
 from zarr.core.buffer import Buffer
 from zarr.core.common import concurrent_map
 
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
 
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import AccessModeLiteral
 
 
 def _get(
@@ -75,7 +73,7 @@ class LocalStore(Store):
     root : str or Path
         Directory to use as root of store.
     mode : str
-        Mode in which to open the store. Either 'r', 'r+', 'a', 'w', 'w-'.
+        Mode in which to open the store. Either 'r', or 'w'.
 
     Attributes
     ----------
@@ -93,7 +91,7 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r") -> None:
+    def __init__(self, root: Path | str, *, mode: StoreAccessMode = "r") -> None:
         super().__init__(mode=mode)
         if isinstance(root, str):
             root = Path(root)
@@ -104,7 +102,7 @@ class LocalStore(Store):
         self.root = root
 
     async def _open(self) -> None:
-        if not self.mode.readonly:
+        if self.mode == "w":
             self.root.mkdir(parents=True, exist_ok=True)
         return await super()._open()
 
@@ -114,20 +112,7 @@ class LocalStore(Store):
         shutil.rmtree(self.root)
         self.root.mkdir()
 
-    async def empty(self) -> bool:
-        # docstring inherited
-        try:
-            with os.scandir(self.root) as it:
-                for entry in it:
-                    if entry.is_file():
-                        # stop once a file is found
-                        return False
-        except FileNotFoundError:
-            return True
-        else:
-            return True
-
-    def with_mode(self, mode: AccessModeLiteral) -> Self:
+    def with_mode(self, mode: StoreAccessMode) -> Self:
         # docstring inherited
         return type(self)(root=self.root, mode=mode)
 

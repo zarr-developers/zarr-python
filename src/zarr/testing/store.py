@@ -1,11 +1,10 @@
 import pickle
-from typing import Any, Generic, TypeVar, cast
+from typing import Any, Generic, TypeVar
 
 import pytest
 
-from zarr.abc.store import AccessMode, Store
+from zarr.abc.store import Store, StoreAccessMode
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.core.common import AccessModeLiteral
 from zarr.core.sync import _collect_aiterator
 from zarr.storage._utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
@@ -40,7 +39,7 @@ class StoreTests(Generic[S, B]):
 
     @pytest.fixture
     def store_kwargs(self) -> dict[str, Any]:
-        return {"mode": "r+"}
+        return {"mode": "w"}
 
     @pytest.fixture
     async def store(self, store_kwargs: dict[str, Any]) -> Store:
@@ -63,27 +62,27 @@ class StoreTests(Generic[S, B]):
         foo = pickle.dumps(store)
         assert pickle.loads(foo) == store
 
-    def test_store_mode(self, store: S, store_kwargs: dict[str, Any]) -> None:
-        assert store.mode == AccessMode.from_literal("r+")
-        assert not store.mode.readonly
+    def test_store_mode(self, store: S) -> None:
+        assert store.mode == "w"
+        assert not store.readonly
 
         with pytest.raises(AttributeError):
-            store.mode = AccessMode.from_literal("w")  # type: ignore[misc]
+            store.mode = "w"  # type: ignore[misc]
 
-    @pytest.mark.parametrize("mode", ["r", "r+", "a", "w", "w-"])
+    @pytest.mark.parametrize("mode", ["r", "w"])
     async def test_store_open_mode(
-        self, store_kwargs: dict[str, Any], mode: AccessModeLiteral
+        self, store_kwargs: dict[str, Any], mode: StoreAccessMode
     ) -> None:
         store_kwargs["mode"] = mode
         store = await self.store_cls.open(**store_kwargs)
         assert store._is_open
-        assert store.mode == AccessMode.from_literal(mode)
+        assert store.mode == mode
 
     async def test_not_writable_store_raises(self, store_kwargs: dict[str, Any]) -> None:
         kwargs = {**store_kwargs, "mode": "r"}
         store = await self.store_cls.open(**kwargs)
-        assert store.mode == AccessMode.from_literal("r")
-        assert store.mode.readonly
+        assert store.mode == "r"
+        assert store.readonly
 
         # set
         with pytest.raises(ValueError):
@@ -149,7 +148,7 @@ class StoreTests(Generic[S, B]):
         """
         Ensure that data can be written to the store using the store.set method.
         """
-        assert not store.mode.readonly
+        assert not store.readonly
         data_buf = self.buffer_cls.from_bytes(data)
         await store.set(key, data_buf)
         observed = await self.get(store, key)
@@ -307,12 +306,11 @@ class StoreTests(Generic[S, B]):
         await self.set(store, "key", self.buffer_cls.from_bytes(data))
         assert (await self.get(store, "key")).to_bytes() == data
 
-        for mode in ["r", "a"]:
-            mode = cast(AccessModeLiteral, mode)
+        modes: list[StoreAccessMode] = ["r", "w"]
+        for mode in modes:
             clone = store.with_mode(mode)
-            # await store.close()
             await clone._ensure_open()
-            assert clone.mode == AccessMode.from_literal(mode)
+            assert clone.mode == mode
             assert isinstance(clone, type(store))
 
             # earlier writes are visible
@@ -326,7 +324,7 @@ class StoreTests(Generic[S, B]):
             assert result is not None
             assert result.to_bytes() == data
 
-            if mode == "a":
+            if mode == "w":
                 # writes to clone is visible in the original
                 await clone.set("key-3", self.buffer_cls.from_bytes(data))
                 result = await clone.get("key-3", default_buffer_prototype())

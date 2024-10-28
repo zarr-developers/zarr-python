@@ -4,9 +4,9 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import ByteRangeRequest, Store, StoreAccessMode
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
+from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, AccessModeLiteral, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._utils import normalize_path
 from zarr.storage.local import LocalStore
@@ -16,7 +16,6 @@ from zarr.storage.memory import MemoryStore
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import AccessModeLiteral
 
 
 def _dereference_path(root: str, path: str) -> str:
@@ -45,6 +44,36 @@ class StorePath:
     def __init__(self, store: Store, path: str = "") -> None:
         self.store = store
         self.path = path
+
+    async def _init(self, mode: AccessModeLiteral) -> None:
+        """
+        Initialize the StorePath based on the provided mode.
+
+        * If the mode is 'w-' and the StorePath contains keys, raise a FileExistsError.
+        * If the mode is 'w', delete all keys nested within the StorePath
+        * If the mode is 'a', 'r', or 'r+', do nothing
+
+        Parameters
+        ----------
+        mode : AccessModeLiteral
+            The mode to use when initializing the store path.
+
+        Raises
+        ------
+        FileExistsError
+            If the mode is 'w-' and the store path already exists.
+        """
+        match mode:
+            case "w-":
+                if not await self.empty():
+                    raise FileExistsError(f"{self} must be empty. Mode is 'w-'")
+            case "w":
+                await self.delete_dir()
+            case "a" | "r" | "r+":
+                # No init action
+                pass
+            case _:
+                raise ValueError(f"Invalid mode: {mode}")
 
     async def get(
         self,
@@ -132,6 +161,17 @@ class StorePath:
         """
         return await self.store.exists(self.path)
 
+    async def empty(self) -> bool:
+        """
+        Check if any keys exist in the store with the given prefix.
+
+        Returns
+        -------
+        bool
+            True if no keys exist in the store with the given prefix, False otherwise.
+        """
+        return await self.store.empty(self.path)
+
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
         return self.__class__(self.store, _dereference_path(self.path, other))
@@ -170,7 +210,7 @@ async def make_store_path(
     store_like: StoreLike | None,
     *,
     path: str | None = "",
-    mode: AccessModeLiteral | None = None,
+    mode: StoreAccessMode | None = None,
     storage_options: dict[str, Any] | None = None,
 ) -> StorePath:
     """
@@ -203,7 +243,7 @@ async def make_store_path(
     path : str | None, optional
         The path to use when creating the `StorePath` object.  If None, the
         default path is the empty string.
-    mode : AccessModeLiteral | None, optional
+    mode : StoreAccessMode | None, optional
         The mode to use when creating the `StorePath` object.  If None, the
         default mode is 'r'.
     storage_options : dict[str, Any] | None, optional
@@ -224,14 +264,15 @@ async def make_store_path(
 
     used_storage_options = False
     path_normalized = normalize_path(path)
+    assert mode in (None, "r", "r+", "a", "w", "w-")
     if isinstance(store_like, StorePath):
-        if mode is not None and mode != store_like.store.mode.str:
+        if mode is not None and mode != store_like.store.mode:
             _store = store_like.store.with_mode(mode)
             await _store._ensure_open()
             store_like = StorePath(_store, path=store_like.path)
         result = store_like / path_normalized
     elif isinstance(store_like, Store):
-        if mode is not None and mode != store_like.mode.str:
+        if mode is not None and mode != store_like.mode:
             store_like = store_like.with_mode(mode)
         await store_like._ensure_open()
         result = StorePath(store_like, path=path_normalized)

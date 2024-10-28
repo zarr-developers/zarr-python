@@ -3,7 +3,7 @@ from __future__ import annotations
 from logging import getLogger
 from typing import TYPE_CHECKING, Self
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import ByteRangeRequest, Store, StoreAccessMode
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.common import concurrent_map
 from zarr.storage._utils import _normalize_interval_index
@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable, MutableMapping
 
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import AccessModeLiteral
 
 
 logger = getLogger(__name__)
@@ -48,22 +47,18 @@ class MemoryStore(Store):
         self,
         store_dict: MutableMapping[str, Buffer] | None = None,
         *,
-        mode: AccessModeLiteral = "r",
+        mode: StoreAccessMode = "r",
     ) -> None:
         super().__init__(mode=mode)
         if store_dict is None:
             store_dict = {}
         self._store_dict = store_dict
 
-    async def empty(self) -> bool:
-        # docstring inherited
-        return not self._store_dict
-
     async def clear(self) -> None:
         # docstring inherited
         self._store_dict.clear()
 
-    def with_mode(self, mode: AccessModeLiteral) -> Self:
+    def with_mode(self, mode: StoreAccessMode) -> Self:
         # docstring inherited
         return type(self)(store_dict=self._store_dict, mode=mode)
 
@@ -202,7 +197,7 @@ class GpuMemoryStore(MemoryStore):
         self,
         store_dict: MutableMapping[str, gpu.Buffer] | None = None,
         *,
-        mode: AccessModeLiteral = "r",
+        mode: StoreAccessMode = "r",
     ) -> None:
         super().__init__(store_dict=store_dict, mode=mode)  # type: ignore[arg-type]
 

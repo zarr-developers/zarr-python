@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Self
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import ByteRangeRequest, Store, StoreAccessMode
 from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
@@ -68,7 +68,12 @@ class ZipStore(Store):
         compression: int = zipfile.ZIP_STORED,
         allowZip64: bool = True,
     ) -> None:
-        super().__init__(mode=mode)
+        _mode: StoreAccessMode
+        if mode in ("w", "a", "x"):
+            _mode = "w"
+        else:
+            _mode = "r"
+        super().__init__(mode=_mode)
 
         if isinstance(path, str):
             path = Path(path)
@@ -121,12 +126,7 @@ class ZipStore(Store):
                 self.path, mode="w", compression=self.compression, allowZip64=self.allowZip64
             )
 
-    async def empty(self) -> bool:
-        # docstring inherited
-        with self._lock:
-            return not self._zf.namelist()
-
-    def with_mode(self, mode: ZipStoreAccessModeLiteral) -> Self:  # type: ignore[override]
+    def with_mode(self, mode: StoreAccessMode) -> Self:
         # docstring inherited
         raise NotImplementedError("ZipStore cannot be reopened with a new mode.")
 

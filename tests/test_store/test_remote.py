@@ -113,7 +113,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         fs, path = fsspec.url_to_fs(
             f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=True
         )
-        return {"fs": fs, "path": path, "mode": "r+"}
+        return {"fs": fs, "path": path, "mode": "w"}
 
     @pytest.fixture
     def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:

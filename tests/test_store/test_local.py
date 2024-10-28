@@ -28,7 +28,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
     @pytest.fixture
     def store_kwargs(self, tmpdir) -> dict[str, str]:
-        return {"root": str(tmpdir), "mode": "r+"}
+        return {"root": str(tmpdir), "mode": "w"}
 
     def test_store_repr(self, store: LocalStore) -> None:
         assert str(store) == f"file://{store.root!s}"

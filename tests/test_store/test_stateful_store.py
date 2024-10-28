@@ -14,7 +14,7 @@ from hypothesis.stateful import (
 from hypothesis.strategies import DataObject
 
 import zarr
-from zarr.abc.store import AccessMode, Store
+from zarr.abc.store import Store, StoreAccessMode
 from zarr.core.buffer import BufferPrototype, cpu, default_buffer_prototype
 from zarr.storage import LocalStore, ZipStore
 from zarr.testing.strategies import key_ranges
@@ -35,8 +35,12 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
         self.store = store
 
     @property
-    def mode(self) -> AccessMode:
+    def mode(self) -> StoreAccessMode:
         return self.store.mode
+
+    @property
+    def readonly(self) -> bool:
+        return self.store.readonly
 
     def set(self, key: str, data_buffer: zarr.core.buffer.Buffer) -> None:
         return self._sync(self.store.set(key, data_buffer))
@@ -117,7 +121,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @rule(key=zarr_keys, data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
     def set(self, key: str, data: DataObject) -> None:
         note(f"(set) Setting {key!r} with {data}")
-        assert not self.store.mode.readonly
+        assert not self.store.readonly
         data_buf = cpu.Buffer.from_bytes(data)
         self.store.set(key, data_buf)
         self.model[key] = data_buf
@@ -179,7 +183,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
     @rule()
     def clear(self) -> None:
-        assert not self.store.mode.readonly
+        assert not self.store.readonly
         note("(clear)")
         self.store.clear()
         self.model.clear()

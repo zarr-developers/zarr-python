@@ -6,6 +6,7 @@ import pytest
 from _pytest.compat import LEGACY_PATH
 from upath import UPath
 
+from zarr.abc.store import StoreAccessMode
 from zarr.storage._utils import normalize_path
 from zarr.storage.common import StoreLike, StorePath, make_store_path
 from zarr.storage.local import LocalStore
@@ -25,12 +26,12 @@ async def test_make_store_path_none(path: str) -> None:
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
 @pytest.mark.parametrize("store_type", [str, Path, LocalStore])
-@pytest.mark.parametrize("mode", ["r", "w", "a"])
+@pytest.mark.parametrize("mode", ["r", "w"])
 async def test_make_store_path_local(
     tmpdir: LEGACY_PATH,
     store_type: type[str] | type[Path] | type[LocalStore],
     path: str,
-    mode: Literal["r", "w", "a"],
+    mode: StoreAccessMode,
 ) -> None:
     """
     Test the various ways of invoking make_store_path that create a LocalStore
@@ -40,13 +41,13 @@ async def test_make_store_path_local(
     assert isinstance(store_path.store, LocalStore)
     assert Path(store_path.store.root) == Path(tmpdir)
     assert store_path.path == normalize_path(path)
-    assert store_path.store.mode.str == mode
+    assert store_path.store.mode == mode
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
-@pytest.mark.parametrize("mode", ["r", "w", "a"])
+@pytest.mark.parametrize("mode", ["r", "w"])
 async def test_make_store_path_store_path(
-    tmpdir: LEGACY_PATH, path: str, mode: Literal["r", "w", "a"]
+    tmpdir: LEGACY_PATH, path: str, mode: Literal["r", "w"]
 ) -> None:
     """
     Test invoking make_store_path when the input is another store_path. In particular we want to ensure
@@ -59,7 +60,7 @@ async def test_make_store_path_store_path(
     path_normalized = normalize_path(path)
     assert store_path.path == (store_like / path_normalized).path
 
-    assert store_path.store.mode.str == mode
+    assert store_path.store.mode == mode
 
 
 async def test_make_store_path_invalid() -> None:

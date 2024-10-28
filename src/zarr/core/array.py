@@ -772,7 +772,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             True if the array is read-only
         """
         # Backwards compatibility for 2.x
-        return self.store_path.store.mode.readonly
+        return self.store_path.store.readonly
 
     @property
     def path(self) -> str:
