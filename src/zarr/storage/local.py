@@ -227,24 +227,19 @@ class LocalStore(Store):
         return await asyncio.to_thread(path.is_file)
 
     async def list(self) -> AsyncGenerator[str, None]:
-        """Retrieve all keys in the store.
-
-        Returns
-        -------
-        AsyncGenerator[str, None]
-        """
+        # docstring inherited
         # TODO: just invoke list_prefix with the prefix "/"
         to_strip = self.path + "/"
         for p in self._path.rglob("*"):
             if p.is_file():
-                yield str(p.relative_to(to_strip))
+                yield p.relative_to(to_strip).as_posix()
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
         to_strip = os.path.join(self.path, prefix)
         for p in (self._path / prefix).rglob("*"):
             if p.is_file():
-                yield str(p.relative_to(to_strip))
+                yield p.relative_to(to_strip).as_posix()
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
@@ -254,6 +249,6 @@ class LocalStore(Store):
         try:
             key_iter = Path(base).iterdir()
             for key in key_iter:
-                yield str(key.relative_to(to_strip))
+                yield key.relative_to(to_strip).as_posix()
         except (FileNotFoundError, NotADirectoryError):
             pass

@@ -61,13 +61,13 @@ def test_sync_raises(sync_loop: asyncio.AbstractEventLoop | None) -> None:
 
 
 def test_sync_timeout() -> None:
-    duration = 0.002
+    duration = 0.02
 
     async def foo() -> None:
         await asyncio.sleep(duration)
 
     with pytest.raises(asyncio.TimeoutError):
-        sync(foo(), timeout=duration / 2)
+        sync(foo(), timeout=duration / 10)
 
 
 def test_sync_raises_if_no_coroutine(sync_loop: asyncio.AbstractEventLoop | None) -> None:

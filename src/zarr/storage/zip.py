@@ -231,7 +231,10 @@ class ZipStore(Store):
 
     async def delete(self, key: str) -> None:
         # docstring inherited
-        raise NotImplementedError
+        # we choose to only raise NotImplementedError here if the key exists
+        # this allows the array/group APIs to avoid the overhead of existence checks
+        if await self.exists(key):
+            raise NotImplementedError
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
