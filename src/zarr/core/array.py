@@ -5,7 +5,7 @@ from asyncio import gather
 from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
-from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypedDict, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -41,7 +41,8 @@ from zarr.core.common import (
     parse_shapelike,
     product,
 )
-from zarr.core.config import config, parse_indexing_order
+from zarr.core.config import config as base_config
+from zarr.core.config import parse_indexing_order
 from zarr.core.indexing import (
     BasicIndexer,
     BasicSelection,
@@ -94,6 +95,15 @@ if TYPE_CHECKING:
 __all__ = ["create_codec_pipeline", "parse_array_metadata"]
 
 logger = getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ArrayConfig:
+    write_empty_chunks: bool
+
+
+class ArrayConfigDict(TypedDict):
+    write_empty_chunks: bool
 
 
 def parse_array_metadata(data: Any) -> ArrayMetadata:
@@ -205,6 +215,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
     order: MemoryOrder
+    config: ArrayConfig
 
     @overload
     def __init__(
@@ -212,6 +223,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         metadata: ArrayV2Metadata | ArrayV2MetadataDict,
         store_path: StorePath,
         order: MemoryOrder | None = None,
+        config: ArrayConfig | ArrayConfigDict | None = None,
     ) -> None: ...
 
     @overload
@@ -220,6 +232,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         metadata: ArrayV3Metadata | ArrayV3MetadataDict,
         store_path: StorePath,
         order: MemoryOrder | None = None,
+        config: ArrayConfig | ArrayConfigDict | None = None,
     ) -> None: ...
 
     def __init__(
@@ -227,6 +240,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         metadata: ArrayMetadata | ArrayMetadataDict,
         store_path: StorePath,
         order: MemoryOrder | None = None,
+        config: ArrayConfig | ArrayConfigDict | None = None,
     ) -> None:
         if isinstance(metadata, dict):
             zarr_format = metadata["zarr_format"]
@@ -240,7 +254,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
 
         metadata_parsed = parse_array_metadata(metadata)
-        order_parsed = parse_indexing_order(order or config.get("array.order"))
+        order_parsed = parse_indexing_order(order or base_config.get("array.order"))
 
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
@@ -610,7 +624,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             await ensure_no_existing_node(store_path, zarr_format=2)
 
         if order is None:
-            order = parse_indexing_order(config.get("array.order"))
+            order = parse_indexing_order(base_config.get("array.order"))
 
         if dimension_separator is None:
             dimension_separator = "."
@@ -1123,7 +1137,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
                 ],
                 _delete_key,
-                config.get("async.concurrency"),
+                base_config.get("async.concurrency"),
             )
 
         # Write new metadata
