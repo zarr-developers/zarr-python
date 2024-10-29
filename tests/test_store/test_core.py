@@ -38,7 +38,7 @@ async def test_make_store_path_local(
     store_like = store_type(str(tmpdir))
     store_path = await make_store_path(store_like, path=path, mode=mode)
     assert isinstance(store_path.store, LocalStore)
-    assert Path(store_path.store.root) == Path(tmpdir)
+    assert Path(store_path.store.path) == Path(tmpdir)
     assert store_path.path == normalize_path(path)
     assert store_path.store.mode.str == mode
 
@@ -55,7 +55,7 @@ async def test_make_store_path_store_path(
     store_like = StorePath(LocalStore(str(tmpdir)), path="root")
     store_path = await make_store_path(store_like, path=path, mode=mode)
     assert isinstance(store_path.store, LocalStore)
-    assert Path(store_path.store.root) == Path(tmpdir)
+    assert Path(store_path.store.path) == Path(tmpdir)
     path_normalized = normalize_path(path)
     assert store_path.path == (store_like / path_normalized).path
 

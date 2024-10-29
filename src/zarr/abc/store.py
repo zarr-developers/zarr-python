@@ -65,10 +65,26 @@ class Store(ABC):
 
     _mode: AccessMode
     _is_open: bool
+    path: str
 
-    def __init__(self, *args: Any, mode: AccessModeLiteral = "r", **kwargs: Any) -> None:
-        self._is_open = False
-        self._mode = AccessMode.from_literal(mode)
+    # TODO: Make store immutable
+    # def __setattr__(self, *args: Any, **kwargs: Any) -> None:
+    #     msg = (
+    #         'Stores are immutable. To modify a Store object, create a new one with the desired'
+    #         'attributes')
+    #     raise NotImplementedError(msg)
+
+    def __init__(self, path: str = "", mode: AccessModeLiteral = "r") -> None:
+        object.__setattr__(self, "_is_open", False)
+        object.__setattr__(self, "_mode", AccessMode.from_literal(mode))
+        object.__setattr__(self, "path", validate_path(path))
+
+    def resolve_key(self, key: str) -> str:
+        key = parse_path(key)
+        if self.path == "":
+            return key
+        else:
+            return f"{self.path}/{key}"
 
     @classmethod
     async def open(cls, *args: Any, **kwargs: Any) -> Self:
@@ -386,6 +402,13 @@ class Store(ABC):
         for req in requests:
             yield (req[0], await self.get(*req))
 
+    def with_path(self, path: str) -> Self:
+        """
+        Return a copy of this store with a new path attribute
+        """
+        # TODO: implement me
+        raise NotImplementedError
+
 
 @runtime_checkable
 class ByteGetter(Protocol):
@@ -423,3 +446,20 @@ async def set_or_delete(byte_setter: ByteSetter, value: Buffer | None) -> None:
         await byte_setter.delete()
     else:
         await byte_setter.set(value)
+
+
+def validate_path(path: str) -> str:
+    """
+    Ensure that the input string is a valid relative path in the abstract zarr object storage scheme.
+    """
+    if path.endswith("/"):
+        raise ValueError(f"Invalid path: {path} ends with '/'.")
+    if "//" in path:
+        raise ValueError(f"Invalid path: {path} contains '//'.")
+    if "\\" in path:
+        raise ValueError(f"Invalid path: {path} contains '\"'.")
+    return path
+
+
+def parse_path(path: str) -> str:
+    return path.rstrip("/").lstrip("/")

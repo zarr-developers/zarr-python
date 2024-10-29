@@ -5,22 +5,38 @@ import io
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import Store
 from zarr.core.buffer import Buffer
 from zarr.core.common import concurrent_map
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
+    from typing import Self
 
+    from zarr.abc.store import ByteRangeRequest
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
 
 
-def _get(
-    path: Path, prototype: BufferPrototype, byte_range: tuple[int | None, int | None] | None
-) -> Buffer:
+def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest | None) -> Buffer:
+    """
+    Fetch a contiguous region of bytes from a file.
+
+    Parameters
+    ----------
+
+    path : Path
+        The file to read bytes from.
+    prototype : BufferPrototype
+        The buffer prototype to use when reading the bytes.
+    byte_range : tuple[int | None, int | None] | None = None
+        The range of bytes to read. If `byte_range` is `None`, then the entire file will be read.
+        If `byte_range` is a tuple, the first value specifies the index of the first byte to read,
+        and the second value specifies the total number of bytes to read. If the total value is
+        `None`, then the entire file after the first byte will be read.
+    """
     if byte_range is not None:
         if byte_range[0] is None:
             start = 0
@@ -72,7 +88,7 @@ class LocalStore(Store):
 
     Parameters
     ----------
-    root : str or Path
+    path : str or Path
         Directory to use as root of store.
     mode : str
         Mode in which to open the store. Either 'r', 'r+', 'a', 'w', 'w-'.
@@ -83,41 +99,34 @@ class LocalStore(Store):
     supports_deletes
     supports_partial_writes
     supports_listing
-    root
+    path
     """
 
     supports_writes: bool = True
     supports_deletes: bool = True
     supports_partial_writes: bool = True
     supports_listing: bool = True
+    _path: Path
 
-    root: Path
-
-    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r") -> None:
-        super().__init__(mode=mode)
-        if isinstance(root, str):
-            root = Path(root)
-        if not isinstance(root, Path):
-            raise TypeError(
-                f'"root" must be a string or Path instance. Got an object with type {type(root)} instead.'
-            )
-        self.root = root
+    def __init__(self, path: Path | str, *, mode: AccessModeLiteral = "r") -> None:
+        super().__init__(mode=mode, path=str(path))
+        self._path = Path(self.path)
 
     async def _open(self) -> None:
         if not self.mode.readonly:
-            self.root.mkdir(parents=True, exist_ok=True)
+            self._path.mkdir(parents=True, exist_ok=True)
         return await super()._open()
 
     async def clear(self) -> None:
         # docstring inherited
         self._check_writable()
-        shutil.rmtree(self.root)
-        self.root.mkdir()
+        shutil.rmtree(self.path)
+        os.mkdir(self.path)
 
     async def empty(self) -> bool:
         # docstring inherited
         try:
-            with os.scandir(self.root) as it:
+            with os.scandir(self.path) as it:
                 for entry in it:
                     if entry.is_file():
                         # stop once a file is found
@@ -129,16 +138,16 @@ class LocalStore(Store):
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
         # docstring inherited
-        return type(self)(root=self.root, mode=mode)
+        return type(self)(path=self.path, mode=mode)
 
     def __str__(self) -> str:
-        return f"file://{self.root}"
+        return f"file:///{self.path}"
 
     def __repr__(self) -> str:
         return f"LocalStore({str(self)!r})"
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, type(self)) and self.root == other.root
+        return isinstance(other, type(self)) and self.path == other.path
 
     async def get(
         self,
@@ -149,8 +158,8 @@ class LocalStore(Store):
         # docstring inherited
         if not self._is_open:
             await self._open()
-        assert isinstance(key, str)
-        path = self.root / key
+
+        path = self._path / key
 
         try:
             return await asyncio.to_thread(_get, path, prototype, byte_range)
@@ -166,7 +175,7 @@ class LocalStore(Store):
         args = []
         for key, byte_range in key_ranges:
             assert isinstance(key, str)
-            path = self.root / key
+            path = self._path / key
             args.append((_get, path, prototype, byte_range))
         return await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
 
@@ -188,7 +197,7 @@ class LocalStore(Store):
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
             raise TypeError("LocalStore.set(): `value` must a Buffer instance")
-        path = self.root / key
+        path = self._path / key
         await asyncio.to_thread(_put, path, value, start=None, exclusive=exclusive)
 
     async def set_partial_values(
@@ -199,14 +208,14 @@ class LocalStore(Store):
         args = []
         for key, start, value in key_start_values:
             assert isinstance(key, str)
-            path = self.root / key
+            path = os.path.join(self.path, key)
             args.append((_put, path, value, start))
         await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
 
     async def delete(self, key: str) -> None:
         # docstring inherited
         self._check_writable()
-        path = self.root / key
+        path = self._path / key
         if path.is_dir():  # TODO: support deleting directories? shutil.rmtree?
             shutil.rmtree(path)
         else:
@@ -214,33 +223,32 @@ class LocalStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
-        path = self.root / key
+        path = self._path / key
         return await asyncio.to_thread(path.is_file)
 
     async def list(self) -> AsyncGenerator[str, None]:
         # docstring inherited
-        to_strip = self.root.as_posix() + "/"
-        for p in list(self.root.rglob("*")):
+        # TODO: just invoke list_prefix with the prefix "/"
+        to_strip = self.path + "/"
+        for p in self._path.rglob("*"):
             if p.is_file():
-                yield p.as_posix().replace(to_strip, "")
+                yield p.relative_to(to_strip).as_posix()
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        to_strip = (
-            (self.root / prefix).as_posix() + "/"
-        )  # TODO: fixme in https://github.com/zarr-developers/zarr-python/issues/2438
-        for p in (self.root / prefix).rglob("*"):
+        to_strip = os.path.join(self.path, prefix)
+        for p in (self._path / prefix).rglob("*"):
             if p.is_file():
-                yield p.as_posix().replace(to_strip, "")
+                yield p.relative_to(to_strip).as_posix()
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        base = self.root / prefix
-        to_strip = str(base) + "/"
+        base = os.path.join(self.path, prefix)
+        to_strip = base + "/"
 
         try:
-            key_iter = base.iterdir()
+            key_iter = Path(base).iterdir()
             for key in key_iter:
-                yield key.as_posix().replace(to_strip, "")
+                yield key.relative_to(to_strip).as_posix()
         except (FileNotFoundError, NotADirectoryError):
             pass
