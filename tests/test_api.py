@@ -142,6 +142,10 @@ def test_save_errors() -> None:
     with pytest.raises(ValueError):
         # no arrays provided
         save("data/group.zarr")
+    with pytest.raises(TypeError):
+        # mode is no valid argument and would get handled as an array
+        a = np.arange(10)
+        zarr.save('data/example.zarr', a, mode='w')
 
 
 def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
