@@ -133,28 +133,30 @@ async def test_open_group_unspecified_version(
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
-@pytest.mark.parametrize("n_args", [2, 1, 0])
-@pytest.mark.parametrize("n_kwargs", [2, 1, 0])
+@pytest.mark.parametrize("n_args", [10, 1, 0])
+@pytest.mark.parametrize("n_kwargs", [10, 1, 0])
 def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
     data = np.arange(10)
+
     if n_kwargs == 0 and n_args == 0:
         with pytest.raises(ValueError):
             save(store)
-        return
-    args = [np.arange(10) for _ in range(n_args)]
-    kwargs = {f"arg_{i}": data for i in range(n_kwargs)}
-    save(store, *args, **kwargs)
-    # open arrays
-    if n_args == 1 and n_kwargs == 0:
-        a = open(store)
-        assert isinstance(a, Array)
-        assert_array_equal(a, data)
+    elif n_args == 1 and n_kwargs == 0:
+        save(store, data)
+        array = open(store)
+        assert isinstance(array, Array)
+        assert_array_equal(array, data)
     else:
-        g = open(store)
-        assert isinstance(g, Group)
-        for a in g.array_values():
-            assert_array_equal(a, data)
-        assert g.nmembers() == n_args + n_kwargs
+        args = [np.arange(10) for _ in range(n_args)]
+        kwargs = {f"arg_{i}": data for i in range(n_kwargs)}
+        save(store, *args, **kwargs)
+        group = open(store)
+        assert isinstance(group, Group)
+        for array in group.array_values():
+            assert_array_equal(array[:], data)
+        for k in kwargs.keys():
+            assert k in group
+        assert group.nmembers() == n_args + n_kwargs
 
 
 def test_save_errors() -> None:
