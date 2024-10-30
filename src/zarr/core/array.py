@@ -2971,10 +2971,43 @@ class Array:
         Array.info_complete
             All information about a group, including dynamic information
             like the number of bytes and chunks written.
+
+        Examples
+        --------
+        >>> arr = zarr.create(shape=(10,), chunks=(2,), dtype="float32")
+        >>> arr.info
+        Type               : Array
+        Zarr format        : 3
+        Data type          : DataType.float32
+        Shape              : (10,)
+        Chunk shape        : (2,)
+        Order              : C
+        Read-only          : False
+        Store type         : MemoryStore
+        Codecs             : [BytesCodec(endian=<Endian.little: 'little'>)]
+        No. bytes          : 40
         """
         return self._async_array.info
 
     def info_complete(self) -> ArrayInfo:
+        """
+        Returns all the information about an array, including information from the Store.
+
+        In addition to the statically known information like ``name`` and ``zarr_format``,
+        this includes additional information like the size of the array in bytes and
+        the number of chunks written.
+
+        Note that this method will need to read metadata from the store.
+
+        Returns
+        -------
+        ArrayInfo
+
+        See Also
+        --------
+        Array.info
+            The statically known subset of metadata about an array.
+        """
         return sync(self._async_array.info_complete())
 
 
