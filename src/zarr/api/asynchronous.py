@@ -702,7 +702,9 @@ async def open_group(
         return await AsyncGroup.open(
             store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
         )
-    except (KeyError, FileNotFoundError):
+    except (KeyError, FileNotFoundError) as e:
+        if mode in ("r", "r+"):
+            raise FileNotFoundError(f"Group '{path}' not found in store '{store_path}'") from e
         return await AsyncGroup.from_store(
             store_path,
             zarr_format=zarr_format or _default_zarr_version(),
