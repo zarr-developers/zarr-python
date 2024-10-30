@@ -139,18 +139,18 @@ async def test_open_group_unspecified_version(
 def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
     data = np.arange(10)
     data = cast(NDArrayLike, data)
+    args = [np.arange(10) for _ in range(n_args)]
+    kwargs = {f"arg_{i}": data for i in range(n_kwargs)}
 
     if n_kwargs == 0 and n_args == 0:
         with pytest.raises(ValueError):
             save(store)
     elif n_args == 1 and n_kwargs == 0:
-        save(store, data)
+        save(store, *args)
         array = open(store)
         assert isinstance(array, Array)
-        assert_array_equal(array, data)
+        assert_array_equal(array[:], data)
     else:
-        args = [np.arange(10) for _ in range(n_args)]
-        kwargs = {f"arg_{i}": data for i in range(n_kwargs)}
         save(store, *args, **kwargs)
         group = open(store)
         assert isinstance(group, Group)

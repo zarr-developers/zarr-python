@@ -10,6 +10,7 @@ import numpy.typing as npt
 
 from zarr.abc.store import Store
 from zarr.core.array import Array, AsyncArray, get_array_metadata
+from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
@@ -31,7 +32,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
-    from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
     # TODO: this type could use some more thought
