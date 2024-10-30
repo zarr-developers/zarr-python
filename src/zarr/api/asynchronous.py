@@ -312,7 +312,7 @@ async def open(
         # TODO: consolidate these exceptions
         # NodeTypeValidationError for failing to parse node metadata as an array when it's
         # actually a group
-        return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
+        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
 
 async def open_consolidated(
