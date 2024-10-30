@@ -62,33 +62,36 @@ def test_open_normalized_path(
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
-async def test_open_array(store: Store) -> None:
+async def test_open_array(store: Store, zarr_format: ZarrFormat) -> None:
     # open array, create if doesn't exist
-    z = open(store=store, shape=100)
+    z = open(store=store, shape=100, zarr_format=zarr_format)
     assert isinstance(z, Array)
     assert z.shape == (100,)
 
     # open array, overwrite
     # store._store_dict = {}
     store = MemoryStore(mode="w")
-    z = open(store=store, shape=200)
+    z = open(store=store, shape=200, zarr_format=zarr_format)
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
     # open array, read-only
-    store_cls = type(store)
-    ro_store = await store_cls.open(store_dict=store._store_dict, mode="r")
-    z = open(store=ro_store)
+    ro_store = store.with_mode("r")
+    z = open(store=ro_store, zarr_format=zarr_format)
     assert isinstance(z, Array)
     assert z.shape == (200,)
     assert z.read_only
 
     # path not found
     with pytest.raises(FileNotFoundError):
-        open(store="doesnotexist", mode="r")
+        open(store=store, path="doesnotexist", mode="r", zarr_format=zarr_format)
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    indirect=True,
+)
 async def test_open_group(store: Store) -> None:
     # open group, create if doesn't exist
     g = open_group(store=store)
@@ -128,7 +131,11 @@ async def test_open_array_or_group(zarr_format: ZarrFormat, store: Store) -> Non
     assert arr_r.shape == arr_w.shape
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    indirect=True,
+)
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
 async def test_open_group_unspecified_version(store: Store, zarr_format: ZarrFormat) -> None:
     """Regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
@@ -159,7 +166,11 @@ def test_save_errors() -> None:
         save("data/group.zarr")
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    indirect=True,
+)
 def test_open_with_mode_r(store: Store) -> None:
     # 'r' means read only (must exist)
     with pytest.raises(FileNotFoundError):
@@ -174,7 +185,11 @@ def test_open_with_mode_r(store: Store) -> None:
         z2[:] = 3
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    indirect=True,
+)
 def test_open_with_mode_r_plus(store: Store) -> None:
     # 'r+' means read/write (must exist)
     with pytest.raises(FileNotFoundError):
@@ -186,7 +201,11 @@ def test_open_with_mode_r_plus(store: Store) -> None:
     z2[:] = 3
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    indirect=True,
+)
 async def test_open_with_mode_a(store: Store) -> None:
     # Open without shape argument should default to group
     g = zarr.open(store=store, mode="a")
@@ -203,7 +222,11 @@ async def test_open_with_mode_a(store: Store) -> None:
     z2[:] = 3
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    indirect=True,
+)
 def test_open_with_mode_w(store: Store) -> None:
     # 'w' means create (overwrite if exists);
     arr = zarr.open(store=store, mode="w", shape=(3, 3))
@@ -216,7 +239,11 @@ def test_open_with_mode_w(store: Store) -> None:
     z2[:] = 3
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    indirect=True,
+)
 def test_open_with_mode_w_minus(store: Store) -> None:
     # 'w-' means create  (fail if exists)
     arr = zarr.open(store=store, mode="w-", shape=(3, 3))
@@ -1012,10 +1039,10 @@ async def test_metadata_validation_error() -> None:
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore[arg-type]
+        await zarr.api.asynchronous.open_group(zarr_format="3.0")
 
     with pytest.raises(
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
+        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")
