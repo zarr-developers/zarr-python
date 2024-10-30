@@ -290,7 +290,12 @@ async def open(
 
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
-    if "shape" not in kwargs and mode in {"a", "w", "w-"}:
+    # TODO: check for more array-only kwargs
+    expect_array = "shape" in kwargs
+
+    if expect_array:
+        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+    else:
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
@@ -300,18 +305,8 @@ async def open(
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
                 return AsyncArray(store_path=store_path, metadata=_metadata_dict)
-        except (AssertionError, FileNotFoundError):
+        except (AssertionError, NodeTypeValidationError, FileNotFoundError):
             pass
-        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
-
-    try:
-        return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
-    except (KeyError, FileNotFoundError, NodeTypeValidationError):
-        # KeyError for a missing key
-        # FileNotFoundError for missing key as well.
-        # TODO: consolidate these exceptions
-        # NodeTypeValidationError for failing to parse node metadata as an array when it's
-        # actually a group
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
 
