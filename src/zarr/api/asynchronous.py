@@ -394,7 +394,7 @@ async def save_array(
         or _default_zarr_version()
     )
     if not isinstance(arr, NDArrayLike):
-        raise TypeError("arr argument must be numpy array")
+        raise TypeError("arr argument must be numpy or other NDArrayLike array")
 
     mode = kwargs.pop("mode", None)
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
@@ -450,13 +450,13 @@ async def save_group(
     )
 
     for arg in args:
-        if not isinstance(arg, np.ndarray):
+        if not isinstance(arg, NDArrayLike):
             raise TypeError(
-                "All arguments must be numpy arrays (except store, path, storage_options, and zarr_format)"
+                "All arguments must be numpy or other NDArrayLike arrays (except store, path, storage_options, and zarr_format)"
             )
     for k, v in kwargs.items():
-        if not isinstance(v, np.ndarray):
-            raise TypeError(f"Keyword argument '{k}' must be a numpy array")
+        if not isinstance(v, NDArrayLike):
+            raise TypeError(f"Keyword argument '{k}' must be a numpy or other NDArrayLike array")
 
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
