@@ -1,6 +1,6 @@
 import pathlib
 import warnings
-from typing import Literal
+from typing import Literal, cast
 
 import numpy as np
 import pytest
@@ -21,6 +21,7 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
+from zarr.core.buffer import NDArrayLike
 from zarr.core.common import MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
 from zarr.storage._utils import normalize_path
@@ -137,6 +138,7 @@ async def test_open_group_unspecified_version(
 @pytest.mark.parametrize("n_kwargs", [10, 1, 0])
 def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
     data = np.arange(10)
+    data = cast(NDArrayLike, data)
 
     if n_kwargs == 0 and n_args == 0:
         with pytest.raises(ValueError):
