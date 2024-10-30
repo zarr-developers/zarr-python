@@ -306,7 +306,7 @@ async def open(
 
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
-    except (KeyError, NodeTypeValidationError):
+    except (KeyError, FileNotFoundError, NodeTypeValidationError):
         # KeyError for a missing key
         # FileNotFoundError for missing key as well.
         # TODO: consolidate these exceptions
