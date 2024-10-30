@@ -5,8 +5,6 @@ import pathlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-import botocore
-import fsspec
 import numpy as np
 import numpy.typing as npt
 import pytest
@@ -23,6 +21,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
     from typing import Any, Literal
 
+    import botocore
     from _pytest.compat import LEGACY_PATH
 
     from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
@@ -47,8 +46,11 @@ async def parse_store(
     if store == "memory":
         return await MemoryStore.open(mode="a")
     if store == "remote":
-        fs = fsspec.filesystem("s3", endpoint_url=endpoint_url, anon=False, asynchronous=True)
-        return await RemoteStore.open(fs, mode="a")
+        return RemoteStore.from_url(
+            f"s3://{test_bucket_name}/foo/spam/",
+            mode="a",
+            storage_options={"endpoint_url": endpoint_url, "anon": False},
+        )
     if store == "zip":
         return await ZipStore.open(path + "/zarr.zip", mode="a")
     raise AssertionError
@@ -167,7 +169,7 @@ def get_boto3_client() -> botocore.client.BaseClient:
 
 
 @pytest.fixture(autouse=True)
-def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
+def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:  # type: ignore[name-defined]
     """
     Quoting Martin Durant:
     pytest-asyncio creates a new event loop for each async test.
