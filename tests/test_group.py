@@ -13,7 +13,6 @@ import zarr
 import zarr.api.asynchronous
 import zarr.api.synchronous
 from zarr import Array, AsyncArray, AsyncGroup, Group
-from zarr.abc.store import Store
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
@@ -21,20 +20,9 @@ from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage.common import make_store_path
 
-from .conftest import parse_store
-
 if TYPE_CHECKING:
-    from _pytest.compat import LEGACY_PATH
-
+    from zarr.abc.store import Store
     from zarr.core.common import JSON, ZarrFormat
-
-
-@pytest.fixture(params=["local", "memory", "zip"])
-async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
-    result = await parse_store(request.param, str(tmpdir))
-    if not isinstance(result, Store):
-        raise TypeError("Wrong store class returned by test fixture! got " + result + " instead")
-    return result
 
 
 @pytest.fixture(params=[True, False])
@@ -45,6 +33,7 @@ def exists_ok(request: pytest.FixtureRequest) -> bool:
     return result
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_init(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test that initializing a group from an asyncgroup works.
@@ -54,6 +43,7 @@ def test_group_init(store: Store, zarr_format: ZarrFormat) -> None:
     assert group._async_group == agroup
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> None:
     # prepare a root node, with some data set
     await zarr.api.asynchronous.open_group(
@@ -106,6 +96,7 @@ async def test_create_creates_parents(store: Store, zarr_format: ZarrFormat) -> 
             assert g.attrs == {}
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_name_properties(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test basic properties of groups
@@ -126,6 +117,7 @@ def test_group_name_properties(store: Store, zarr_format: ZarrFormat) -> None:
     assert bar.basename == "bar"
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 @pytest.mark.parametrize("consolidated_metadata", [True, False])
 def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metadata: bool) -> None:
     """
@@ -208,6 +200,7 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
         members_observed = group.members(max_depth=-1)
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test basic Group routines.
@@ -250,6 +243,7 @@ def test_group(store: Store, zarr_format: ZarrFormat) -> None:
     assert dict(bar3.attrs) == {"baz": "qux", "name": "bar"}
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_create(store: Store, exists_ok: bool, zarr_format: ZarrFormat) -> None:
     """
     Test that `Group.from_store` works as expected.
@@ -266,6 +260,7 @@ def test_group_create(store: Store, exists_ok: bool, zarr_format: ZarrFormat) ->
             _ = Group.from_store(store, exists_ok=exists_ok, zarr_format=zarr_format)
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> None:
     """
     Test the `Group.open` method.
@@ -299,6 +294,7 @@ def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> N
 
 
 @pytest.mark.parametrize("consolidated", [True, False])
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool) -> None:
     """
     Test the `Group.__getitem__` method.
@@ -355,6 +351,7 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
             group["subarray/subsubarray"]
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_get_with_default(store: Store, zarr_format: ZarrFormat) -> None:
     group = Group.from_store(store, zarr_format=zarr_format)
 
@@ -375,6 +372,7 @@ def test_group_get_with_default(store: Store, zarr_format: ZarrFormat) -> None:
 
 
 @pytest.mark.parametrize("consolidated", [True, False])
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool) -> None:
     """
     Test the `Group.__delitem__` method.
@@ -404,6 +402,7 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
         group["subarray"]
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__iter__` method.
@@ -413,6 +412,7 @@ def test_group_iter(store: Store, zarr_format: ZarrFormat) -> None:
     assert list(group) == []
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__len__` method.
@@ -422,6 +422,7 @@ def test_group_len(store: Store, zarr_format: ZarrFormat) -> None:
     assert len(group) == 0
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__setitem__` method.
@@ -448,6 +449,7 @@ def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
     np.testing.assert_array_equal(group[key], arr)
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_contains(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the `Group.__contains__` method
@@ -458,6 +460,7 @@ def test_group_contains(store: Store, zarr_format: ZarrFormat) -> None:
     assert "foo" in group
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 @pytest.mark.parametrize("consolidate", [True, False])
 def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidate: bool):
     group = Group.from_store(store, zarr_format=zarr_format)
@@ -563,6 +566,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
     assert sorted(group.array_values(), key=lambda x: x.name) == expected_array_values
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the behavior of `Group.update_attributes`
@@ -575,6 +579,7 @@ def test_group_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:
     assert new_group.attrs == new_attrs
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_group_update_attributes_async(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test the behavior of `Group.update_attributes_async`
@@ -588,6 +593,7 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
 
 
 @pytest.mark.parametrize("method", ["create_array", "array"])
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_create_array(
     store: Store,
     zarr_format: ZarrFormat,
@@ -622,6 +628,7 @@ def test_group_create_array(
     assert np.array_equal(array[:], data)
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_array_creation(
     store: Store,
     zarr_format: ZarrFormat,
@@ -690,7 +697,7 @@ def test_group_array_creation(
     assert full_like_array.store_path.store == store
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("exists_ok", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
@@ -737,6 +744,7 @@ def test_group_creation_existing_node(
             )
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_asyncgroup_create(
     store: Store,
     exists_ok: bool,
@@ -779,6 +787,7 @@ async def test_asyncgroup_create(
             )
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_asyncgroup_attrs(store: Store, zarr_format: ZarrFormat) -> None:
     attributes = {"foo": 100}
     agroup = await AsyncGroup.from_store(store, zarr_format=zarr_format, attributes=attributes)
@@ -786,6 +795,7 @@ async def test_asyncgroup_attrs(store: Store, zarr_format: ZarrFormat) -> None:
     assert agroup.attrs == agroup.metadata.attributes == attributes
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_asyncgroup_info(store: Store, zarr_format: ZarrFormat) -> None:
     agroup = await AsyncGroup.from_store(  # noqa: F841
         store,
@@ -795,6 +805,7 @@ async def test_asyncgroup_info(store: Store, zarr_format: ZarrFormat) -> None:
     # assert agroup.info == agroup.metadata.info
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_asyncgroup_open(
     store: Store,
     zarr_format: ZarrFormat,
@@ -816,6 +827,7 @@ async def test_asyncgroup_open(
     assert group_w == group_r
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_asyncgroup_open_wrong_format(
     store: Store,
     zarr_format: ZarrFormat,
@@ -836,6 +848,7 @@ async def test_asyncgroup_open_wrong_format(
 
 # todo: replace the dict[str, Any] type with something a bit more specific
 # should this be async?
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 @pytest.mark.parametrize(
     "data",
     [
@@ -858,6 +871,7 @@ def test_asyncgroup_from_dict(store: Store, data: dict[str, Any]) -> None:
 # todo: replace this with a declarative API where we model a full hierarchy
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Create an `AsyncGroup`, then create members of that group, and ensure that we can access those
@@ -880,6 +894,7 @@ async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None
         await agroup.getitem("foo")
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None:
     if not store.supports_deletes:
         pytest.skip("store does not support deletes")
@@ -916,6 +931,7 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
         raise AssertionError
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_asyncgroup_create_group(
     store: Store,
     zarr_format: ZarrFormat,
@@ -932,6 +948,7 @@ async def test_asyncgroup_create_group(
     assert subnode.metadata.zarr_format == zarr_format
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_asyncgroup_create_array(
     store: Store, zarr_format: ZarrFormat, exists_ok: bool
 ) -> None:
@@ -971,6 +988,7 @@ async def test_asyncgroup_create_array(
     assert subnode.metadata.zarr_format == zarr_format
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_asyncgroup_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test that the AsyncGroup.update_attributes method works correctly.
@@ -985,7 +1003,7 @@ async def test_asyncgroup_update_attributes(store: Store, zarr_format: ZarrForma
     assert agroup_new_attributes.attrs == attributes_new
 
 
-@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = await AsyncGroup.from_store(
@@ -996,7 +1014,7 @@ async def test_serializable_async_group(store: LocalStore, zarr_format: ZarrForm
     assert actual == expected
 
 
-@pytest.mark.parametrize("store", ["local"], indirect=["store"])
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = Group.from_store(store=store, attributes={"foo": 999}, zarr_format=zarr_format)
@@ -1006,6 +1024,7 @@ def test_serializable_sync_group(store: LocalStore, zarr_format: ZarrFormat) -> 
 
 
 @pytest.mark.parametrize("consolidated_metadata", [True, False])
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_group_members_async(store: Store, consolidated_metadata: bool) -> None:
     group = await AsyncGroup.from_store(
         store=store,
@@ -1081,7 +1100,8 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
         assert nmembers == 4
 
 
-async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+async def test_require_group(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
 
     # create foo group
@@ -1109,7 +1129,8 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
         await foo_group.require_group("bar")
 
 
-async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+async def test_require_groups(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     # create foo group
     _ = await root.create_group("foo", attributes={"foo": 100})
@@ -1130,6 +1151,7 @@ async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: Zarr
     assert no_group == ()
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     with pytest.warns(DeprecationWarning):
@@ -1144,6 +1166,7 @@ async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
         await root.create_dataset("bar", shape=(100,), dtype="int8")
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     foo1 = await root.require_array("foo", shape=(10,), dtype="i8", attributes={"foo": 101})
@@ -1170,6 +1193,7 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
 
 
 @pytest.mark.parametrize("consolidate", [True, False])
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFormat):
     group = Group.from_store(store=store, zarr_format=zarr_format)
     a = group.create_group(name="a")
@@ -1205,6 +1229,7 @@ def test_open_mutable_mapping_sync():
 
 
 class TestConsolidated:
+    @pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
     async def test_group_getitem_consolidated(self, store: Store) -> None:
         root = await AsyncGroup.from_store(store=store)
         # Set up the test structure with
@@ -1255,6 +1280,7 @@ class TestConsolidated:
         rg2 = await rg1.getitem("g2")
         assert rg2.metadata.consolidated_metadata == ConsolidatedMetadata(metadata={})
 
+    @pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
     async def test_group_delitem_consolidated(self, store: Store) -> None:
         if isinstance(store, ZipStore):
             raise pytest.skip("Not implemented")
@@ -1291,6 +1317,7 @@ class TestConsolidated:
         assert len(group.metadata.consolidated_metadata.metadata) == 1
         assert "g0" not in group.metadata.consolidated_metadata.metadata
 
+    @pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
     def test_open_consolidated_raises(self, store: Store) -> None:
         if isinstance(store, ZipStore):
             raise pytest.skip("Not implemented")
@@ -1311,6 +1338,7 @@ class TestConsolidated:
         group = zarr.open_group(store=store, use_consolidated=False)
         assert group.metadata.consolidated_metadata is None
 
+    @pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
     async def test_open_consolidated_raises_async(self, store: Store) -> None:
         if isinstance(store, ZipStore):
             raise pytest.skip("Not implemented")

@@ -34,25 +34,40 @@ moto = pytest.importorskip("moto")
 # ### amended from s3fs ### #
 test_bucket_name = "test"
 secure_bucket_name = "test-secure"
-port = 5555
-endpoint_url = f"http://127.0.0.1:{port}/"
 
 
 async def parse_store(
-    store: Literal["local", "memory", "remote", "zip"], path: str
+    store: str, path: str, s3_base: str
 ) -> LocalStore | MemoryStore | RemoteStore | ZipStore:
-    if store == "local":
-        return await LocalStore.open(path, mode="a")
-    if store == "memory":
-        return await MemoryStore.open(mode="a")
-    if store == "remote":
-        return RemoteStore.from_url(
-            f"s3://{test_bucket_name}/foo/spam/",
-            mode="a",
-            storage_options={"endpoint_url": endpoint_url, "anon": False},
-        )
-    if store == "zip":
-        return await ZipStore.open(path + "/zarr.zip", mode="a")
+    """
+    Take a string representation of a store + access mode, e.g. 'local_a', which would encode
+    LocalStore + access mode `a`, and convert that string representation into the appropriate store object,
+    which is then returned.
+    """
+    store_parsed = store.split("_")
+
+    if len(store_parsed) == 1:
+        store_type = store_parsed[0]
+        # the default mode for testing is a
+        mode = "a"
+    elif len(store_parsed) == 2:
+        store_type, mode = store_parsed
+    else:
+        raise ValueError(f"Invalid store specification: {store}")
+
+    match store_type:
+        case "local":
+            return await LocalStore.open(path, mode=mode)
+        case "memory":
+            return await MemoryStore.open(mode=mode)
+        case "remote":
+            return RemoteStore.from_url(
+                f"s3://{test_bucket_name}/foo/spam/",
+                mode=mode,
+                storage_options={"endpoint_url": s3_base, "anon": False},
+            )
+        case "zip":
+            return await ZipStore.open(path + "/zarr.zip", mode=mode)
     raise AssertionError
 
 
@@ -69,14 +84,14 @@ async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
 
 
 @pytest.fixture
-async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
+async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH, s3_base: str) -> Store:
     param = request.param
-    return await parse_store(param, str(tmpdir))
+    return await parse_store(param, str(tmpdir), s3_base)
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
-def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
-    result = sync(parse_store(request.param, str(tmp_path)))
+def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH, s3_base: str) -> Store:
+    result = sync(parse_store(request.param, str(tmp_path), s3_base))
     if not isinstance(result, Store):
         raise TypeError("Wrong store class returned by test fixture! got " + result + " instead")
     return result
@@ -90,10 +105,12 @@ class AsyncGroupRequest:
 
 
 @pytest.fixture
-async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> AsyncGroup:
+async def async_group(
+    request: pytest.FixtureRequest, tmpdir: LEGACY_PATH, s3_base: str
+) -> AsyncGroup:
     param: AsyncGroupRequest = request.param
 
-    store = await parse_store(param.store, str(tmpdir))
+    store = await parse_store(param.store, str(tmpdir), s3_base)
     return await AsyncGroup.from_store(
         store,
         attributes=param.attributes,
@@ -147,29 +164,31 @@ def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
 
 
 @pytest.fixture(scope="module")
-def s3_base() -> Generator[None, None, None]:
+def s3_base() -> Generator[str, None, None]:
     # writable local S3 system
+    from moto.server import ThreadedMotoServer
 
-    # This fixture is module-scoped, meaning that we can reuse the MotoServer across all tests
-    server = moto_server.ThreadedMotoServer(ip_address="127.0.0.1", port=port)
-    server.start()
     if "AWS_SECRET_ACCESS_KEY" not in os.environ:
         os.environ["AWS_SECRET_ACCESS_KEY"] = "foo"
     if "AWS_ACCESS_KEY_ID" not in os.environ:
         os.environ["AWS_ACCESS_KEY_ID"] = "foo"
+    server = ThreadedMotoServer(ip_address="127.0.0.1", port=0)
+    server.start()
+    host, port = server._server.server_address
+    endpoint_url = f"http://{host}:{port}"
 
-    yield
+    yield endpoint_url
     server.stop()
 
 
-def get_boto3_client() -> botocore.client.BaseClient:
+def get_boto3_client(endpoint_url: str) -> botocore.client.BaseClient:
     # NB: we use the sync botocore client for setup
     session = Session()
     return session.create_client("s3", endpoint_url=endpoint_url, region_name="us-east-1")
 
 
 @pytest.fixture(autouse=True)
-def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:  # type: ignore[name-defined]
+def s3(s3_base: str) -> Generator[s3fs.S3FileSystem, None, None]:  # type: ignore[name-defined]
     """
     Quoting Martin Durant:
     pytest-asyncio creates a new event loop for each async test.
@@ -182,14 +201,14 @@ def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:  # type: igno
 
     https://github.com/zarr-developers/zarr-python/pull/1785#discussion_r1634856207
     """
-    client = get_boto3_client()
+    client = get_boto3_client(s3_base)
     client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
     s3fs.S3FileSystem.clear_instance_cache()
-    s3 = s3fs.S3FileSystem(anon=False, client_kwargs={"endpoint_url": endpoint_url})
+    s3 = s3fs.S3FileSystem(anon=False, client_kwargs={"endpoint_url": s3_base})
     session = sync(s3.set_session())
     s3.invalidate_cache()
     yield s3
-    requests.post(f"{endpoint_url}/moto-api/reset")
+    requests.post(f"{s3_base}/moto-api/reset")
     client.close()
     sync(session.close())
 

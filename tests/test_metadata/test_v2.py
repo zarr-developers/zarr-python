@@ -82,9 +82,7 @@ def test_metadata_to_dict(
 
 class TestConsolidated:
     @pytest.fixture
-    async def v2_consolidated_metadata(
-        self, memory_store: zarr.storage.MemoryStore
-    ) -> zarr.storage.MemoryStore:
+    async def v2_consolidated_metadata(self) -> zarr.storage.MemoryStore:
         zmetadata = {
             "metadata": {
                 ".zattrs": {

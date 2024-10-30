@@ -28,7 +28,8 @@ if TYPE_CHECKING:
 
 
 @pytest.fixture
-async def memory_store_with_hierarchy(memory_store: Store) -> None:
+async def memory_store_with_hierarchy() -> None:
+    memory_store = await zarr.storage.MemoryStore.open(mode="a")
     g = await group(store=memory_store, attributes={"foo": "bar"})
     await g.create_array(name="air", shape=(1, 2, 3))
     await g.create_array(name="lat", shape=(1,))
@@ -211,15 +212,20 @@ class TestConsolidated:
             "time",
         ]
 
-    def test_consolidated_sync(self, memory_store):
-        g = zarr.api.synchronous.group(store=memory_store, attributes={"foo": "bar"})
+    @pytest.mark.parametrize(
+        "store",
+        ["memory_a"],
+        indirect=True,
+    )
+    def test_consolidated_sync(self, store: Store):
+        g = zarr.api.synchronous.group(store=store, attributes={"foo": "bar"})
         g.create_array(name="air", shape=(1, 2, 3))
         g.create_array(name="lat", shape=(1,))
         g.create_array(name="lon", shape=(2,))
         g.create_array(name="time", shape=(3,))
 
-        zarr.api.synchronous.consolidate_metadata(memory_store)
-        group2 = zarr.api.synchronous.Group.open(memory_store)
+        zarr.api.synchronous.consolidate_metadata(store)
+        group2 = zarr.api.synchronous.Group.open(store)
 
         array_metadata = {
             "attributes": {},
@@ -291,15 +297,20 @@ class TestConsolidated:
             ),
         )
         assert group2.metadata == expected
-        group3 = zarr.api.synchronous.open(store=memory_store)
+        group3 = zarr.api.synchronous.open(store=store)
         assert group3.metadata == expected
 
-        group4 = zarr.api.synchronous.open_consolidated(store=memory_store)
+        group4 = zarr.api.synchronous.open_consolidated(store=store)
         assert group4.metadata == expected
 
-    async def test_not_writable_raises(self, memory_store: zarr.storage.MemoryStore) -> None:
-        await group(store=memory_store, attributes={"foo": "bar"})
-        read_store = zarr.storage.MemoryStore(store_dict=memory_store._store_dict)
+    @pytest.mark.parametrize(
+        "store",
+        ["memory_a"],
+        indirect=True,
+    )
+    async def test_not_writable_raises(self, store: zarr.storage.MemoryStore) -> None:
+        await group(store=store, attributes={"foo": "bar"})
+        read_store = zarr.storage.MemoryStore(store_dict=store._store_dict)
         with pytest.raises(ValueError, match="does not support writing"):
             await consolidate_metadata(read_store)
 
@@ -481,7 +492,6 @@ class TestConsolidated:
         }
         assert result == expected
 
-    @pytest.mark.parametrize("zarr_format", [2, 3])
     async def test_open_consolidated_raises_async(self, zarr_format: ZarrFormat):
         store = zarr.storage.MemoryStore(mode="w")
         await AsyncGroup.from_store(store, zarr_format=zarr_format)
@@ -532,33 +542,35 @@ class TestConsolidated:
         )
         assert result.metadata == expected
 
-    @pytest.mark.parametrize("zarr_format", [2, 3])
+    @pytest.mark.parametrize(
+        "store",
+        ["memory_a"],
+        indirect=True,
+    )
     async def test_use_consolidated_false(
-        self, memory_store: zarr.storage.MemoryStore, zarr_format: ZarrFormat
+        self, store: zarr.storage.MemoryStore, zarr_format: ZarrFormat
     ) -> None:
         with zarr.config.set(default_zarr_version=zarr_format):
-            g = await group(store=memory_store, attributes={"foo": "bar"})
+            g = await group(store=store, attributes={"foo": "bar"})
             await g.create_group(name="a")
 
             # test a stale read
-            await zarr.api.asynchronous.consolidate_metadata(memory_store)
+            await zarr.api.asynchronous.consolidate_metadata(store)
             await g.create_group(name="b")
 
-            stale = await zarr.api.asynchronous.open_group(store=memory_store)
+            stale = await zarr.api.asynchronous.open_group(store=store)
             assert len([x async for x in stale.members()]) == 1
             assert stale.metadata.consolidated_metadata
             assert list(stale.metadata.consolidated_metadata.metadata) == ["a"]
 
             # bypass stale data
-            good = await zarr.api.asynchronous.open_group(
-                store=memory_store, use_consolidated=False
-            )
+            good = await zarr.api.asynchronous.open_group(store=store, use_consolidated=False)
             assert len([x async for x in good.members()]) == 2
 
             # reconsolidate
-            await zarr.api.asynchronous.consolidate_metadata(memory_store)
+            await zarr.api.asynchronous.consolidate_metadata(store)
 
-            good = await zarr.api.asynchronous.open_group(store=memory_store)
+            good = await zarr.api.asynchronous.open_group(store=store)
             assert len([x async for x in good.members()]) == 2
             assert good.metadata.consolidated_metadata
             assert sorted(good.metadata.consolidated_metadata.metadata) == ["a", "b"]
