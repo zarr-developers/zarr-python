@@ -1299,16 +1299,66 @@ class AsyncGroup:
     async def zeros(
         self, *, name: str, shape: ChunkCoords, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create an array, with zero being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.zeros(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def ones(
         self, *, name: str, shape: ChunkCoords, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create an array, with one being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.ones(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        fill_value : scalar
+            Value to fill the array with.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.full(
             shape=shape,
             fill_value=fill_value,
@@ -1320,24 +1370,89 @@ class AsyncGroup:
     async def empty_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create an empty sub-array like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create an empty array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.empty_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def zeros_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create a sub-array of zeros like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.zeros_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def ones_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create a sub-array of ones like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.ones_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def full_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create a sub-array like `data` filled with the `fill_value` of `data` .
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
+        """not implemented"""
         raise NotImplementedError
 
 
@@ -1743,9 +1858,28 @@ class Group(SyncMixin):
             yield array
 
     def tree(self, expand: bool = False, level: int | None = None) -> Any:
+        """not implemented"""
         return self._sync(self._async_group.tree(expand=expand, level=level))
 
     def create_group(self, name: str, **kwargs: Any) -> Group:
+        """Create a sub-group.
+        Parameters
+        ----------
+        name : str
+            Name of the new subgroup.
+
+        Returns
+        -------
+        Group
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> subgroup = group.create_group("subgroup")
+        >>> subgroup
+        <Group memory://132270269438272/subgroup>
+        """
         return Group(self._sync(self._async_group.create_group(name, **kwargs)))
 
     def require_group(self, name: str, **kwargs: Any) -> Group:
@@ -1934,20 +2068,87 @@ class Group(SyncMixin):
 
     @_deprecate_positional_args
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+        """Create an empty array in this Group.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Notes
+        -----
+        The contents of an empty Zarr array are not defined. On attempting to
+        retrieve data from an empty Zarr array, any values may be returned,
+        and these are not guaranteed to be stable from one access to the next.
+        """
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
     @_deprecate_positional_args
     def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+        """Create an array, with zero being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
 
     @_deprecate_positional_args
     def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+        """Create an array, with one being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(self._sync(self._async_group.ones(name=name, shape=shape, **kwargs)))
 
     @_deprecate_positional_args
     def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
     ) -> Array:
+        """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        fill_value : scalar
+            Value to fill the array with.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(
             self._sync(
                 self._async_group.full(name=name, shape=shape, fill_value=fill_value, **kwargs)
@@ -1956,21 +2157,87 @@ class Group(SyncMixin):
 
     @_deprecate_positional_args
     def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        """Create an empty sub-array like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create an empty array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 
     @_deprecate_positional_args
     def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        """Create a sub-array of zeros like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
+
         return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
 
     @_deprecate_positional_args
     def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        """Create a sub-array of ones like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
 
     @_deprecate_positional_args
     def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        """Create a sub-array like `data` filled with the `fill_value` of `data` .
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(self._sync(self._async_group.full_like(name=name, data=data, **kwargs)))
 
     def move(self, source: str, dest: str) -> None:
+        """not implemented"""
         return self._sync(self._async_group.move(source, dest))
 
     @deprecated("Use Group.create_array instead.")
