@@ -393,7 +393,7 @@ async def save_array(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_version()
     )
-    if not isinstance(arr, np.ndarray):
+    if not isinstance(arr, NDArrayLike):
         raise TypeError("arr argument must be numpy array")
 
     mode = kwargs.pop("mode", None)
