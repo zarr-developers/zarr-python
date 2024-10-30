@@ -1276,6 +1276,24 @@ class AsyncGroup:
     async def empty(
         self, *, name: str, shape: ChunkCoords, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create an empty array in this Group.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Notes
+        -----
+        The contents of an empty Zarr array are not defined. On attempting to
+        retrieve data from an empty Zarr array, any values may be returned,
+        and these are not guaranteed to be stable from one access to the next.
+        """
+
         return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def zeros(
@@ -1336,6 +1354,29 @@ class Group(SyncMixin):
         zarr_format: ZarrFormat = 3,
         exists_ok: bool = False,
     ) -> Group:
+        """Instantiate a group from an initialized store.
+
+        Parameters
+        ----------
+        store : StoreLike
+            StoreLike containing the Group.
+        attributes : dict, optional
+            A dictionary of JSON-serializable values with user-defined attributes.
+        zarr_format : {2, 3}, optional
+            Zarr storage format version.
+        exists_ok : bool, optional
+            If True, do not raise an error if the group already exists.
+
+        Returns
+        -------
+        Group
+            Group instantiated from the store.
+
+        Raises
+        ------
+        ContainsArrayError, ContainsGroupError, ContainsArrayAndGroupError
+
+        """
         attributes = attributes or {}
         obj = sync(
             AsyncGroup.from_store(
@@ -1354,10 +1395,48 @@ class Group(SyncMixin):
         store: StoreLike,
         zarr_format: Literal[2, 3, None] = 3,
     ) -> Group:
+        """Open a group from an initialized store.
+        Parameters
+        ----------
+        store : StoreLike
+            Store containing the Group.
+        zarr_format : {2, 3, None}, optional
+            Zarr storage format version.
+
+        Returns
+        -------
+        Group
+            Group instantiated from the store.
+        """
         obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
         return cls(obj)
 
     def __getitem__(self, path: str) -> Array | Group:
+        """Obtain a group member.
+        Parameters
+        ----------
+        path : str
+            Group member name.
+
+        Returns
+        -------
+        Array | Group
+            Group member (Array or Group) at the specified key
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = Group.from_store(zarr.storage.MemoryStore(mode="w"))
+        >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+        >>> group.create_group(name="subgroup").create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+        >>> group["subarray"]
+        <Array memory://132270269438272/subarray shape=(10,) dtype=float64>
+        >>> group["subgroup"]
+        <Group memory://132270269438272/subgroup>
+        >>> group["subgroup"]["subarray"]
+        <Array memory://132270269438272/subgroup/subarray shape=(10,) dtype=float64>
+
+        """
         obj = self._sync(self._async_group.getitem(path))
         if isinstance(obj, AsyncArray):
             return Array(obj)
@@ -1378,6 +1457,19 @@ class Group(SyncMixin):
         -------
         object
             Group member (Array or Group) or default if not found.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = Group.from_store(zarr.storage.MemoryStore(mode="w"))
+        >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+        >>> group.create_group(name="subgroup")
+        >>> group.get("subarray")
+        <Array memory://132270269438272/subarray shape=(10,) dtype=float64>
+        >>> group.get("subgroup")
+        <Group memory://132270269438272/subgroup>
+        >>> group.get("nonexistent", None)
+
         """
         try:
             return self[path]
@@ -1385,12 +1477,30 @@ class Group(SyncMixin):
             return default
 
     def __delitem__(self, key: str) -> None:
+        """Delete a group member."""
         self._sync(self._async_group.delitem(key))
 
     def __iter__(self) -> Iterator[str]:
+        """Return an iterator over group member names.
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_array('baz', shape=(10,), chunk_shape=(10,))
+        >>> d2 = g1.create_array('quux', shape=(10,), chunk_shape=(10,))
+        >>> for name in g1:
+        ...     print(name)
+        baz
+        bar
+        foo
+        quux
+        """
         yield from self.keys()
 
     def __len__(self) -> int:
+        """Number of members."""
         return self.nmembers()
 
     def __setitem__(self, key: str, value: Any) -> None:
@@ -1401,6 +1511,15 @@ class Group(SyncMixin):
         return f"<Group {self.store_path}>"
 
     async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
+        """Update the attributes of this group.
+        Example
+        -------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> await group.update_attributes_async({"foo": "bar"})
+        >>> group.attrs.asdict()
+        {'foo': 'bar'}
+        """
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
@@ -1413,10 +1532,12 @@ class Group(SyncMixin):
 
     @property
     def store_path(self) -> StorePath:
+        """Path-like interface for the Store."""
         return self._async_group.store_path
 
     @property
     def metadata(self) -> GroupMetadata:
+        """Group metadata."""
         return self._async_group.metadata
 
     @property
@@ -1436,6 +1557,7 @@ class Group(SyncMixin):
 
     @property
     def attrs(self) -> Attributes:
+        """Attributes of this Group"""
         return Attributes(self)
 
     @property
@@ -1459,10 +1581,32 @@ class Group(SyncMixin):
         return self._async_group.synchronizer
 
     def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
+        """Update the attributes of this group.
+        Example
+        -------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.update_attributes({"foo": "bar"})
+        >>> group.attrs.asdict()
+        {'foo': 'bar'}
+        """
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
     def nmembers(self, max_depth: int | None = 0) -> int:
+        """Count the number of members in this group.
+        Parameters
+        ----------
+        max_depth : int, default 0
+            The maximum number of levels of the hierarchy to include. By
+            default, (``max_depth=0``) only immediate children are included. Set
+            ``max_depth=None`` to include all nodes, and some positive integer
+            to consider children within that many levels of the root Group.
+        Returns
+        -------
+        count : int
+        """
+
         return self._sync(self._async_group.nmembers(max_depth=max_depth))
 
     def members(self, max_depth: int | None = 0) -> tuple[tuple[str, Array | Group], ...]:
@@ -1475,32 +1619,126 @@ class Group(SyncMixin):
         return tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
 
     def keys(self) -> Generator[str, None]:
+        """Return an iterator over group member names.
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_array('baz', shape=(10,), chunk_shape=(10,))
+        >>> d2 = g1.create_array('quux', shape=(10,), chunk_shape=(10,))
+        >>> for name in g1.keys():
+        ...     print(name)
+        baz
+        bar
+        foo
+        quux
+        """
         yield from self._sync_iter(self._async_group.keys())
 
     def __contains__(self, member: str) -> bool:
+        """Test for group membership.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> d1 = g1.create_array('bar', shape=(10,), chunk_shape=(10,))
+        >>> 'foo' in g1
+        True
+        >>> 'bar' in g1
+        True
+        >>> 'baz' in g1
+        False
+
+        """
         return self._sync(self._async_group.contains(member))
 
     def groups(self) -> Generator[tuple[str, Group], None]:
+        """Return the sub-groups of this group as a generator of (name, group) pairs.
+        Example
+        -------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_group("subgroup")
+        >>> for name, subgroup in group.groups():
+        ...     print(name, subgroup)
+        subgroup <Group memory://132270269438272/subgroup>
+        """
         for name, async_group in self._sync_iter(self._async_group.groups()):
             yield name, Group(async_group)
 
     def group_keys(self) -> Generator[str, None]:
+        """Return an iterator over group member names.
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_group("subgroup")
+        >>> for name in group.group_keys():
+        ...     print(name)
+        subgroup
+        """
         for name, _ in self.groups():
             yield name
 
     def group_values(self) -> Generator[Group, None]:
+        """Return an iterator over group members.
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_group("subgroup")
+        >>> for subgroup in group.group_values():
+        ...     print(subgroup)
+        <Group memory://132270269438272/subgroup>
+        """
         for _, group in self.groups():
             yield group
 
     def arrays(self) -> Generator[tuple[str, Array], None]:
+        """
+        Return the sub-arrays of this group as a generator of (name, array) pairs
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_array("subarray", shape=(10,), chunk_shape=(10,))
+        >>> for name, subarray in group.arrays():
+        ...     print(name, subarray)
+        subarray <Array memory://140198565357056/subarray shape=(10,) dtype=float64>
+        """
         for name, async_array in self._sync_iter(self._async_group.arrays()):
             yield name, Array(async_array)
 
     def array_keys(self) -> Generator[str, None]:
+        """Return an iterator over group member names.
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_array("subarray", shape=(10,), chunk_shape=(10,))
+        >>> for name in group.array_keys():
+        ...     print(name)
+        subarray
+        """
+
         for name, _ in self.arrays():
             yield name
 
     def array_values(self) -> Generator[Array, None]:
+        """Return an iterator over group members.
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_array("subarray", shape=(10,), chunk_shape=(10,))
+        >>> for subarray in group.array_values():
+        ...     print(subarray)
+        <Array memory://140198565357056/subarray shape=(10,) dtype=float64>
+        """
         for _, array in self.arrays():
             yield array
 
