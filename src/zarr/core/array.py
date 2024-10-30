@@ -77,7 +77,7 @@ from zarr.core.metadata import (
     T_ArrayMetadata,
 )
 from zarr.core.metadata.v3 import parse_node_type_array
-from zarr.core.sync import collect_aiterator, sync
+from zarr.core.sync import sync
 from zarr.errors import MetadataValidationError
 from zarr.registry import get_pipeline_class
 from zarr.storage import StoreLike, make_store_path
@@ -829,17 +829,31 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         return product(self.cdata_shape)
 
-    @property
-    def nchunks_initialized(self) -> int:
+    async def nchunks_initialized(self) -> int:
         """
-        The number of chunks that have been persisted in storage.
+        Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
+        been persisted to the storage backend.
 
         Returns
         -------
-        int
-            The number of initialized chunks in the array.
+        nchunks_initialized : int
+            The number of chunks that have been initialized.
+
+        Notes
+        -----
+        On :class:`AsyncArray` this is an asynchronous method, unlike the (synchronous)
+        property :attr:`Array.nchunks_initialized`.
+
+        Examples
+        --------
+        >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
+        >>> await arr.nchunks_initialized()
+        0
+        >>> await arr.setitem(slice(5), 1)
+        >>> await arr.nchunks_initialized()
+        3
         """
-        return nchunks_initialized(self)
+        return len(await chunks_initialized(self))
 
     def _iter_chunk_coords(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -1492,9 +1506,29 @@ class Array:
     @property
     def nchunks_initialized(self) -> int:
         """
-        The number of chunks that have been initialized in the stored representation of this array.
+        Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
+        been persisted to the storage backend.
+
+        Returns
+        -------
+        nchunks_initialized : int
+            The number of chunks that have been initialized.
+
+        Notes
+        -----
+        On :class:`Array` this is a (synchronous) property, unlike asynchronous function
+        :meth:`AsyncArray.nchunks_initialized`.
+
+        Examples
+        --------
+        >>> arr = await zarr.create(shape=(10,), chunks=(2,))
+        >>> arr.nchunks_initialized
+        0
+        >>> arr[:5] = 1
+        >>> arr.nchunks_initialized
+        3
         """
-        return self._async_array.nchunks_initialized
+        return sync(self._async_array.nchunks_initialized())
 
     def _iter_chunk_keys(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2905,39 +2939,15 @@ class Array:
         )
 
 
-def nchunks_initialized(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array,
-) -> int:
-    """
-    Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
-    been persisted to the storage backend.
-
-    Parameters
-    ----------
-    array : Array
-        The array to inspect.
-
-    Returns
-    -------
-    nchunks_initialized : int
-        The number of chunks that have been initialized.
-
-    See Also
-    --------
-    chunks_initialized
-    """
-    return len(chunks_initialized(array))
-
-
-def chunks_initialized(
-    array: Array | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+async def chunks_initialized(
+    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
 ) -> tuple[str, ...]:
     """
     Return the keys of the chunks that have been persisted to the storage backend.
 
     Parameters
     ----------
-    array : Array
+    array : AsyncArray
         The array to inspect.
 
     Returns
@@ -2950,10 +2960,9 @@ def chunks_initialized(
     nchunks_initialized
 
     """
-    # TODO: make this compose with the underlying async iterator
-    store_contents = list(
-        collect_aiterator(array.store_path.store.list_prefix(prefix=array.store_path.path))
-    )
+    store_contents = [
+        x async for x in array.store_path.store.list_prefix(prefix=array.store_path.path)
+    ]
     return tuple(chunk_key for chunk_key in array._iter_chunk_keys() if chunk_key in store_contents)
 
 

@@ -323,7 +323,7 @@ def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) ->
 
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
-def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
+async def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
     """
     Test that nchunks_initialized accurately returns the number of stored chunks.
     """
@@ -337,7 +337,7 @@ def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> N
         if test_cls == Array:
             observed = arr.nchunks_initialized
         else:
-            observed = arr._async_array.nchunks_initialized
+            observed = await arr._async_array.nchunks_initialized()
         assert observed == expected
 
     # delete chunks
@@ -346,13 +346,13 @@ def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> N
         if test_cls == Array:
             observed = arr.nchunks_initialized
         else:
-            observed = arr._async_array.nchunks_initialized
+            observed = await arr._async_array.nchunks_initialized()
         expected = arr.nchunks - idx - 1
         assert observed == expected
 
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
-def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
+async def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
     """
     Test that chunks_initialized accurately returns the keys of stored chunks.
     """
@@ -366,9 +366,9 @@ def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> No
         arr[region] = 1
 
         if test_cls == Array:
-            observed = sorted(chunks_initialized(arr))
+            observed = sorted(await chunks_initialized(arr))  # Why doesn't mypy error here?
         else:
-            observed = sorted(chunks_initialized(arr._async_array))
+            observed = sorted(await chunks_initialized(arr._async_array))
 
         expected = sorted(keys)
         assert observed == expected
