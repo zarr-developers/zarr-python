@@ -427,8 +427,25 @@ def test_group_setitem(store: Store, zarr_format: ZarrFormat) -> None:
     Test the `Group.__setitem__` method.
     """
     group = Group.from_store(store, zarr_format=zarr_format)
-    with pytest.raises(NotImplementedError):
-        group["key"] = 10
+    arr = np.ones((2, 4))
+    group["key"] = arr
+    assert list(group.array_keys()) == ["key"]
+    assert group["key"].shape == (2, 4)
+    np.testing.assert_array_equal(group["key"][:], arr)
+
+    if store.supports_deletes:
+        key = "key"
+    else:
+        # overwriting with another array requires deletes
+        # for stores that don't support this, we just use a new key
+        key = "key2"
+
+    # overwrite with another array
+    arr = np.zeros((3, 5))
+    group[key] = arr
+    assert key in list(group.array_keys())
+    assert group[key].shape == (3, 5)
+    np.testing.assert_array_equal(group[key], arr)
 
 
 def test_group_contains(store: Store, zarr_format: ZarrFormat) -> None:

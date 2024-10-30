@@ -600,6 +600,23 @@ class AsyncGroup:
             store_path=store_path,
         )
 
+    async def setitem(self, key: str, value: Any) -> None:
+        """Fastpath for creating a new array
+
+        New arrays will be created with default array settings for the array type.
+
+        Parameters
+        ----------
+        key : str
+            Array name
+        value : array-like
+            Array data
+        """
+        path = self.store_path / key
+        await async_api.save_array(
+            store=path, arr=value, zarr_format=self.metadata.zarr_format, exists_ok=True
+        )
+
     async def getitem(
         self,
         key: str,
@@ -1504,8 +1521,11 @@ class Group(SyncMixin):
         return self.nmembers()
 
     def __setitem__(self, key: str, value: Any) -> None:
-        """__setitem__ is not supported in v3"""
-        raise NotImplementedError
+        """Fastpath for creating a new array.
+
+        New arrays will be created using default settings for the array type.
+        """
+        self._sync(self._async_group.setitem(key, value))
 
     def __repr__(self) -> str:
         return f"<Group {self.store_path}>"
