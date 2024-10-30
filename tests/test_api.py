@@ -149,7 +149,7 @@ def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
         assert isinstance(array, Array)
         assert_array_equal(array[:], data)
     else:
-        save(store, *args, zarr_format=None, path=None, **kwargs)
+        save(store, *args, **kwargs) # type: ignore[arg-type]
         group = open(store)
         assert isinstance(group, Group)
         for array in group.array_values():
