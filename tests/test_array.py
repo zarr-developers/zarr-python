@@ -351,8 +351,7 @@ async def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]
         assert observed == expected
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
-async def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
+async def test_chunks_initialized() -> None:
     """
     Test that chunks_initialized accurately returns the keys of stored chunks.
     """
@@ -364,12 +363,7 @@ async def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]])
     )
     for keys, region in zip(chunks_accumulated, arr._iter_chunk_regions(), strict=False):
         arr[region] = 1
-
-        if test_cls == Array:
-            observed = sorted(await chunks_initialized(arr))  # Why doesn't mypy error here?
-        else:
-            observed = sorted(await chunks_initialized(arr._async_array))
-
+        observed = sorted(await chunks_initialized(arr._async_array))
         expected = sorted(keys)
         assert observed == expected
 
