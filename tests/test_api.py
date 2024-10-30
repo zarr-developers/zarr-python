@@ -1,4 +1,3 @@
-import pathlib
 import warnings
 from typing import Literal
 
@@ -27,9 +26,8 @@ from zarr.storage._utils import normalize_path
 from zarr.storage.memory import MemoryStore
 
 
-def test_create_array(memory_store: Store) -> None:
-    store = memory_store
-
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+def test_create_array(store: Store) -> None:
     # create array
     z = create(shape=100, store=store)
     assert isinstance(z, Array)
@@ -48,23 +46,23 @@ def test_create_array(memory_store: Store) -> None:
     assert z.chunks == (40,)
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 @pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
 @pytest.mark.parametrize("node_type", ["array", "group"])
 def test_open_normalized_path(
-    memory_store: MemoryStore, path: str, node_type: Literal["array", "group"]
+    store: Store, path: str, node_type: Literal["array", "group"]
 ) -> None:
     node: Group | Array
     if node_type == "group":
-        node = group(store=memory_store, path=path)
+        node = group(store=store, path=path)
     elif node_type == "array":
-        node = create(store=memory_store, path=path, shape=(2,))
+        node = create(store=store, path=path, shape=(2,))
 
     assert node.path == normalize_path(path)
 
 
-async def test_open_array(memory_store: MemoryStore) -> None:
-    store = memory_store
-
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+async def test_open_array(store: Store) -> None:
     # open array, create if doesn't exist
     z = open(store=store, shape=100)
     assert isinstance(z, Array)
@@ -90,9 +88,8 @@ async def test_open_array(memory_store: MemoryStore) -> None:
         open(store="doesnotexist", mode="r")
 
 
-async def test_open_group(memory_store: MemoryStore) -> None:
-    store = memory_store
-
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+async def test_open_group(store: Store) -> None:
     # open group, create if doesn't exist
     g = open_group(store=store)
     g.create_group("foo")
@@ -105,26 +102,44 @@ async def test_open_group(memory_store: MemoryStore) -> None:
     # assert "foo" not in g
 
     # open group, read-only
-    store_cls = type(store)
-    ro_store = await store_cls.open(store_dict=store._store_dict, mode="r")
+    ro_store = store.with_mode("r")
     g = open_group(store=ro_store)
     assert isinstance(g, Group)
     # assert g.read_only
 
 
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    indirect=True,
+)
+async def test_open_array_or_group(zarr_format: ZarrFormat, store: Store) -> None:
+    # create a group and an array
+    grp_attrs = {"foo": "bar"}
+    grp_w = group(store=store, path="group", zarr_format=zarr_format, attributes=grp_attrs)
+    arr_w = grp_w.create_array(name="foo", shape=(1,))
+
+    grp_r = open(store=store, path="group", mode="r", zarr_format=zarr_format)
+    assert isinstance(grp_r, Group)
+    assert grp_r.attrs == grp_attrs
+
+    arr_r = open(store=store, path="group/foo", mode="r", zarr_format=zarr_format)
+    assert isinstance(arr_r, Array)
+    assert arr_r.shape == arr_w.shape
+
+
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
-async def test_open_group_unspecified_version(
-    tmpdir: pathlib.Path, zarr_format: ZarrFormat
-) -> None:
+async def test_open_group_unspecified_version(store: Store, zarr_format: ZarrFormat) -> None:
     """Regression test for https://github.com/zarr-developers/zarr-python/issues/2175"""
 
     # create a group with specified zarr format (could be 2, 3, or None)
     _ = await zarr.api.asynchronous.open_group(
-        store=str(tmpdir), mode="w", zarr_format=zarr_format, attributes={"foo": "bar"}
+        store=store, mode="w", zarr_format=zarr_format, attributes={"foo": "bar"}
     )
 
     # now open that group without specifying the format
-    g2 = await zarr.api.asynchronous.open_group(store=str(tmpdir), mode="r")
+    g2 = await zarr.api.asynchronous.open_group(store, mode="r")
 
     assert g2.attrs == {"foo": "bar"}
 
@@ -144,13 +159,14 @@ def test_save_errors() -> None:
         save("data/group.zarr")
 
 
-def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+def test_open_with_mode_r(store: Store) -> None:
     # 'r' means read only (must exist)
     with pytest.raises(FileNotFoundError):
-        zarr.open(store=tmp_path, mode="r")
-    z1 = zarr.ones(store=tmp_path, shape=(3, 3))
+        zarr.open(store=store, mode="r")
+    z1 = zarr.ones(store=store, shape=(3, 3))
     assert z1.fill_value == 1
-    z2 = zarr.open(store=tmp_path, mode="r")
+    z2 = zarr.open(store=store, mode="r")
     assert isinstance(z2, Array)
     assert z2.fill_value == 1
     assert (z2[:] == 1).all()
@@ -158,52 +174,56 @@ def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
         z2[:] = 3
 
 
-def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+def test_open_with_mode_r_plus(store: Store) -> None:
     # 'r+' means read/write (must exist)
     with pytest.raises(FileNotFoundError):
-        zarr.open(store=tmp_path, mode="r+")
-    zarr.ones(store=tmp_path, shape=(3, 3))
-    z2 = zarr.open(store=tmp_path, mode="r+")
+        zarr.open(store=store, mode="r+")
+    zarr.ones(store=store, shape=(3, 3))
+    z2 = zarr.open(store=store, mode="r+")
     assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
 
 
-async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+async def test_open_with_mode_a(store: Store) -> None:
     # Open without shape argument should default to group
-    g = zarr.open(store=tmp_path, mode="a")
+    g = zarr.open(store=store, mode="a")
     assert isinstance(g, Group)
     await g.store_path.delete()
 
     # 'a' means read/write (create if doesn't exist)
-    arr = zarr.open(store=tmp_path, mode="a", shape=(3, 3))
+    arr = zarr.open(store=store, mode="a", shape=(3, 3))
     assert isinstance(arr, Array)
     arr[...] = 1
-    z2 = zarr.open(store=tmp_path, mode="a")
+    z2 = zarr.open(store=store, mode="a")
     assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
 
 
-def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+def test_open_with_mode_w(store: Store) -> None:
     # 'w' means create (overwrite if exists);
-    arr = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
+    arr = zarr.open(store=store, mode="w", shape=(3, 3))
     assert isinstance(arr, Array)
 
     arr[...] = 3
-    z2 = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
+    z2 = zarr.open(store=store, mode="w", shape=(3, 3))
     assert isinstance(z2, Array)
     assert not (z2[:] == 3).all()
     z2[:] = 3
 
 
-def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+def test_open_with_mode_w_minus(store: Store) -> None:
     # 'w-' means create  (fail if exists)
-    arr = zarr.open(store=tmp_path, mode="w-", shape=(3, 3))
+    arr = zarr.open(store=store, mode="w-", shape=(3, 3))
     assert isinstance(arr, Array)
     arr[...] = 1
     with pytest.raises(FileExistsError):
-        zarr.open(store=tmp_path, mode="w-")
+        zarr.open(store=store, mode="w-")
 
 
 @pytest.mark.parametrize("order", ["C", "F", None])
@@ -238,8 +258,8 @@ def test_array_order(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None
 #     assert "LazyLoader: " in repr(loader)
 
 
-def test_load_array(memory_store: Store) -> None:
-    store = memory_store
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+def test_load_array(store: Store) -> None:
     foo = np.arange(100)
     bar = np.arange(100, 0, -1)
     save(store, foo=foo, bar=bar)
@@ -967,9 +987,9 @@ def test_open_group_positional_args_deprecated() -> None:
         open_group(store, "w")
 
 
-def test_open_falls_back_to_open_group() -> None:
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+def test_open_falls_back_to_open_group(store: Store) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
-    store = MemoryStore(mode="w")
     zarr.open_group(store, attributes={"key": "value"})
 
     group = zarr.open(store)
@@ -977,9 +997,9 @@ def test_open_falls_back_to_open_group() -> None:
     assert group.attrs == {"key": "value"}
 
 
-async def test_open_falls_back_to_open_group_async() -> None:
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+async def test_open_falls_back_to_open_group_async(store: Store) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
-    store = MemoryStore(mode="w")
     await zarr.api.asynchronous.open_group(store, attributes={"key": "value"})
 
     group = await zarr.api.asynchronous.open(store=store)

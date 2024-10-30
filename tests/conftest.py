@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import os
 import pathlib
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+import botocore
+import fsspec
 import numpy as np
 import numpy.typing as npt
 import pytest
+from botocore.session import Session
 from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr import AsyncGroup, config
@@ -23,18 +27,30 @@ if TYPE_CHECKING:
 
     from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
 
+s3fs = pytest.importorskip("s3fs")
+requests = pytest.importorskip("requests")
+moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
+moto = pytest.importorskip("moto")
+
+# ### amended from s3fs ### #
+test_bucket_name = "test"
+secure_bucket_name = "test-secure"
+port = 5555
+endpoint_url = f"http://127.0.0.1:{port}/"
+
 
 async def parse_store(
     store: Literal["local", "memory", "remote", "zip"], path: str
 ) -> LocalStore | MemoryStore | RemoteStore | ZipStore:
     if store == "local":
-        return await LocalStore.open(path, mode="w")
+        return await LocalStore.open(path, mode="a")
     if store == "memory":
-        return await MemoryStore.open(mode="w")
+        return await MemoryStore.open(mode="a")
     if store == "remote":
-        return await RemoteStore.open(url=path, mode="w")
+        fs = fsspec.filesystem("s3", endpoint_url=endpoint_url, anon=False, asynchronous=True)
+        return await RemoteStore.open(fs, mode="a")
     if store == "zip":
-        return await ZipStore.open(path + "/zarr.zip", mode="w")
+        return await ZipStore.open(path + "/zarr.zip", mode="a")
     raise AssertionError
 
 
@@ -48,26 +64,6 @@ def path_type(request: pytest.FixtureRequest) -> Any:
 async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
     store = await LocalStore.open(str(tmpdir), mode="w")
     return StorePath(store)
-
-
-@pytest.fixture
-async def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
-    return await LocalStore.open(str(tmpdir), mode="w")
-
-
-@pytest.fixture
-async def remote_store(url: str) -> RemoteStore:
-    return await RemoteStore.open(url, mode="w")
-
-
-@pytest.fixture
-async def memory_store() -> MemoryStore:
-    return await MemoryStore.open(mode="w")
-
-
-@pytest.fixture
-async def zip_store(tmpdir: LEGACY_PATH) -> ZipStore:
-    return await ZipStore.open(str(tmpdir / "zarr.zip"), mode="w")
 
 
 @pytest.fixture
@@ -146,6 +142,54 @@ def zarr_format(request: pytest.FixtureRequest) -> ZarrFormat:
         return 3
     msg = f"Invalid zarr format requested. Got {request.param}, expected on of (2,3)."
     raise ValueError(msg)
+
+
+@pytest.fixture(scope="module")
+def s3_base() -> Generator[None, None, None]:
+    # writable local S3 system
+
+    # This fixture is module-scoped, meaning that we can reuse the MotoServer across all tests
+    server = moto_server.ThreadedMotoServer(ip_address="127.0.0.1", port=port)
+    server.start()
+    if "AWS_SECRET_ACCESS_KEY" not in os.environ:
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "foo"
+    if "AWS_ACCESS_KEY_ID" not in os.environ:
+        os.environ["AWS_ACCESS_KEY_ID"] = "foo"
+
+    yield
+    server.stop()
+
+
+def get_boto3_client() -> botocore.client.BaseClient:
+    # NB: we use the sync botocore client for setup
+    session = Session()
+    return session.create_client("s3", endpoint_url=endpoint_url, region_name="us-east-1")
+
+
+@pytest.fixture(autouse=True)
+def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
+    """
+    Quoting Martin Durant:
+    pytest-asyncio creates a new event loop for each async test.
+    When an async-mode s3fs instance is made from async, it will be assigned to the loop from
+    which it is made. That means that if you use s3fs again from a subsequent test,
+    you will have the same identical instance, but be running on a different loop - which fails.
+
+    For the rest: it's very convenient to clean up the state of the store between tests,
+    make sure we start off blank each time.
+
+    https://github.com/zarr-developers/zarr-python/pull/1785#discussion_r1634856207
+    """
+    client = get_boto3_client()
+    client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
+    s3fs.S3FileSystem.clear_instance_cache()
+    s3 = s3fs.S3FileSystem(anon=False, client_kwargs={"endpoint_url": endpoint_url})
+    session = sync(s3.set_session())
+    s3.invalidate_cache()
+    yield s3
+    requests.post(f"{endpoint_url}/moto-api/reset")
+    client.close()
+    sync(session.close())
 
 
 settings.register_profile(
