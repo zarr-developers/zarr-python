@@ -37,7 +37,7 @@ secure_bucket_name = "test-secure"
 
 
 async def parse_store(
-    store: str, path: str, s3_base: str
+    store: str, path: str, s3: s3fs.S3FileSystem
 ) -> LocalStore | MemoryStore | RemoteStore | ZipStore:
     """
     Take a string representation of a store + access mode, e.g. 'local_a', which would encode
@@ -61,11 +61,7 @@ async def parse_store(
         case "memory":
             return await MemoryStore.open(mode=mode)
         case "remote":
-            return RemoteStore.from_url(
-                f"s3://{test_bucket_name}/foo/spam/",
-                mode=mode,
-                storage_options={"endpoint_url": s3_base, "anon": False},
-            )
+            return await RemoteStore.open(fs=s3, path=test_bucket_name, mode=mode)
         case "zip":
             return await ZipStore.open(path + "/zarr.zip", mode=mode)
     raise AssertionError
@@ -84,9 +80,11 @@ async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
 
 
 @pytest.fixture
-async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH, s3_base: str) -> Store:
+async def store(
+    request: pytest.FixtureRequest, tmpdir: LEGACY_PATH, s3: s3fs.S3FileSystem
+) -> Store:
     param = request.param
-    return await parse_store(param, str(tmpdir), s3_base)
+    return await parse_store(param, str(tmpdir), s3)
 
 
 @pytest.fixture(params=["local", "memory", "zip"])
@@ -204,7 +202,7 @@ def s3(s3_base: str) -> Generator[s3fs.S3FileSystem, None, None]:  # type: ignor
     client = get_boto3_client(s3_base)
     client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
     s3fs.S3FileSystem.clear_instance_cache()
-    s3 = s3fs.S3FileSystem(anon=False, client_kwargs={"endpoint_url": s3_base})
+    s3 = s3fs.S3FileSystem(anon=False, client_kwargs={"endpoint_url": s3_base}, asynchronous=True)
     session = sync(s3.set_session())
     s3.invalidate_cache()
     yield s3
