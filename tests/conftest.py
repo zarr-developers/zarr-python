@@ -37,7 +37,9 @@ secure_bucket_name = "test-secure"
 
 
 async def parse_store(
-    store: str, path: str, s3: s3fs.S3FileSystem
+    store: str,
+    path: str,
+    s3: s3fs.S3FileSystem,  # type: ignore[name-defined]
 ) -> LocalStore | MemoryStore | RemoteStore | ZipStore:
     """
     Take a string representation of a store + access mode, e.g. 'local_a', which would encode
@@ -81,7 +83,9 @@ async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
 
 @pytest.fixture
 async def store(
-    request: pytest.FixtureRequest, tmpdir: LEGACY_PATH, s3: s3fs.S3FileSystem
+    request: pytest.FixtureRequest,
+    tmpdir: LEGACY_PATH,
+    s3: s3fs.S3FileSystem,  # type: ignore[name-defined]
 ) -> Store:
     param = request.param
     return await parse_store(param, str(tmpdir), s3)
