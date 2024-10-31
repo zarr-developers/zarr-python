@@ -579,19 +579,6 @@ def test_group_update_attributes(store: Store, zarr_format: ZarrFormat) -> None:
     assert new_group.attrs == new_attrs
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
-async def test_group_update_attributes_async(store: Store, zarr_format: ZarrFormat) -> None:
-    """
-    Test the behavior of `Group.update_attributes_async`
-    """
-    attrs = {"foo": 100}
-    group = Group.from_store(store, zarr_format=zarr_format, attributes=attrs)
-    assert group.attrs == attrs
-    new_attrs = {"bar": 100}
-    new_group = await group.update_attributes_async(new_attrs)
-    assert new_group.attrs == new_attrs
-
-
 @pytest.mark.parametrize("method", ["create_array", "array"])
 @pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_group_create_array(
