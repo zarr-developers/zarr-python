@@ -231,7 +231,7 @@ dependencies = [
     'pytest',
     'pytest-cov',
     'pytest-asyncio',
-    'moto[s3]',
+    'moto[s3, server]',
 ]
 
 [tool.hatch.envs.min_deps.scripts]
