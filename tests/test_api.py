@@ -70,6 +70,8 @@ async def test_open_array(store: Store, zarr_format: ZarrFormat) -> None:
     assert isinstance(z, Array)
     assert z.shape == (100,)
 
+    store_w: Store
+
     if isinstance(store, ZipStore):
         store.close()
         store_w = await ZipStore.open(store.path, mode="w")
@@ -80,6 +82,8 @@ async def test_open_array(store: Store, zarr_format: ZarrFormat) -> None:
     z = open(store=store_w, shape=200, zarr_format=zarr_format)
     assert isinstance(z, Array)
     assert z.shape == (200,)
+
+    store_r: Store
 
     if isinstance(store, ZipStore):
         store_w.close()
@@ -121,6 +125,7 @@ async def test_open_group(store: Store) -> None:
     # g = open_group(store=store)
     # assert isinstance(g, Group)
     # assert "foo" not in g
+    store_r: Store
 
     # open group, read-only
     if isinstance(store, ZipStore):
@@ -147,6 +152,8 @@ async def test_open_array_or_group(zarr_format: ZarrFormat, store: Store) -> Non
     grp_attrs = {"foo": "bar"}
     grp_w = group(store=store, path="group", zarr_format=zarr_format, attributes=grp_attrs)
     arr_w = grp_w.create_array(name="foo", shape=(1,))
+
+    store_2: Store
 
     if isinstance(store, ZipStore):
         store.close()
@@ -176,7 +183,7 @@ async def test_open_group_unspecified_version(store: Store, zarr_format: ZarrFor
     _ = await zarr.api.asynchronous.open_group(
         store=store, mode="a", zarr_format=zarr_format, attributes={"foo": "bar"}
     )
-
+    store_2: Store
     if isinstance(store, ZipStore):
         store.close()
         store_2 = await ZipStore.open(store.path, mode="r")
