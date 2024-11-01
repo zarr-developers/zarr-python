@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Coroutine, Iterable
     from typing import Any
 
+    from obstore import Buffer as ObjectStoreBuffer
     from obstore import ListStream, ObjectMeta
     from obstore.store import ObjectStore as _ObjectStore
 
@@ -71,21 +72,21 @@ class ObjectStore(Store):
         for idx, (path, range_) in enumerate(key_ranges):
             per_file_requests[path].append((range_[0], range_[1], idx))
 
-        futs: list[Coroutine[Any, Any, list[bytes]]] = []
+        futs: list[Coroutine[Any, Any, list[ObjectStoreBuffer]]] = []
         for path, ranges in per_file_requests.items():
-            offsets = [r[0] for r in ranges]
-            lengths = [r[1] - r[0] for r in ranges]
-            fut = obs.get_ranges_async(self.store, path, offsets=offsets, lengths=lengths)
+            starts = [r[0] for r in ranges]
+            ends = [r[1] for r in ranges]
+            fut = obs.get_ranges_async(self.store, path, starts=starts, ends=ends)
             futs.append(fut)
 
         result = await asyncio.gather(*futs)
 
-        output_buffers: list[bytes] = [b""] * len(key_ranges)
+        output_buffers: list[type[BufferPrototype]] = [b""] * len(key_ranges)
         for per_file_request, buffers in zip(per_file_requests.items(), result, strict=True):
             path, ranges = per_file_request
             for buffer, ranges_ in zip(buffers, ranges, strict=True):
                 initial_index = ranges_[2]
-                output_buffers[initial_index] = buffer
+                output_buffers[initial_index] = prototype.buffer.from_buffer(memoryview(buffer))
 
         return output_buffers
 
