@@ -5,7 +5,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any
 
-import object_store_rs as obs
+import obstore as obs
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
@@ -15,7 +15,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Coroutine, Iterable
     from typing import Any
 
-    from object_store_rs.store import ObjectStore as _ObjectStore
+    from obstore import ListStream, ObjectMeta
+    from obstore.store import ObjectStore as _ObjectStore
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import BytesLike
@@ -93,8 +94,9 @@ class ObjectStore(Store):
         buf = value.to_bytes()
         await obs.put_async(self.store, key, buf)
 
-    # TODO:
-    # async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+    async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        buf = value.to_bytes()
+        await obs.put_async(self.store, key, buf, mode="create")
 
     @property
     def supports_deletes(self) -> bool:
@@ -117,25 +119,35 @@ class ObjectStore(Store):
         return True
 
     def list(self) -> AsyncGenerator[str, None]:
-        # object-store-rs does not yet support list results as an async generator
-        # https://github.com/apache/arrow-rs/issues/6587
-        objects = obs.list(self.store)
-        paths = [object["path"] for object in objects]
-        # Not sure how to convert list to async generator
-        return paths
+        objects: ListStream[list[ObjectMeta]] = obs.list(self.store)
+        return _transform_list(objects)
 
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
-        # object-store-rs does not yet support list results as an async generator
-        # https://github.com/apache/arrow-rs/issues/6587
-        objects = obs.list(self.store, prefix=prefix)
-        paths = [object["path"] for object in objects]
-        # Not sure how to convert list to async generator
-        return paths
+        objects: ListStream[list[ObjectMeta]] = obs.list(self.store, prefix=prefix)
+        return _transform_list(objects)
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
-        # object-store-rs does not yet support list results as an async generator
-        # https://github.com/apache/arrow-rs/issues/6587
-        objects = obs.list_with_delimiter(self.store, prefix=prefix)
-        paths = [object["path"] for object in objects["objects"]]
-        # Not sure how to convert list to async generator
-        return paths
+        objects: ListStream[list[ObjectMeta]] = obs.list(self.store, prefix=prefix)
+        return _transform_list_dir(objects, prefix)
+
+
+async def _transform_list(
+    list_stream: AsyncGenerator[list[ObjectMeta], None],
+) -> AsyncGenerator[str, None]:
+    async for batch in list_stream:
+        for item in batch:
+            yield item["path"]
+
+
+async def _transform_list_dir(
+    list_stream: AsyncGenerator[list[ObjectMeta], None], prefix: str
+) -> AsyncGenerator[str, None]:
+    # We assume that the underlying object-store implementation correctly handles the
+    # prefix, so we don't double-check that the returned results actually start with the
+    # given prefix.
+    prefix_len = len(prefix)
+    async for batch in list_stream:
+        for item in batch:
+            # Yield this item if "/" does not exist after the prefix.
+            if "/" not in item["path"][prefix_len:]:
+                yield item["path"]
