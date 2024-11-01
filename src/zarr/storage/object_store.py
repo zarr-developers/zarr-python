@@ -39,11 +39,22 @@ class ObjectStore(Store):
     ) -> Buffer:
         if byte_range is None:
             resp = await obs.get_async(self.store, key)
-            return await resp.bytes_async()
+            return prototype.buffer.from_buffer(memoryview(await resp.bytes_async()))  # type: ignore not assignable to buffer
 
-            pass
+        start, end = byte_range
+        if start is not None and end is not None:
+            resp = await obs.get_range_async(self.store, key, start=start, end=end)
+            return prototype.buffer.from_buffer(memoryview(await resp.bytes_async()))  # type: ignore not assignable to buffer
+        elif start is not None:
+            if start >= 0:
+                # Offset request
+                resp = await obs.get_async(self.store, key, options={"range": {"offset": start}})
+            else:
+                resp = await obs.get_async(self.store, key, options={"range": {"suffix": start}})
 
-        raise NotImplementedError
+            return prototype.buffer.from_buffer(memoryview(await resp.bytes_async()))  # type: ignore not assignable to buffer
+        else:
+            raise ValueError(f"Unexpected input to `get`: {start=}, {end=}")
 
     async def get_partial_values(
         self,
