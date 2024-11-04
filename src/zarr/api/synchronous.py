@@ -90,6 +90,16 @@ def open(
         return Group(obj)
 
 
+def read(
+    store: StoreLike,
+    *,
+    zarr_format: ZarrFormat | None = None,
+    path: str | None = None,
+    **kwargs: Any,
+) -> Array | Group:
+    return open(store=store, mode="r", zarr_format=zarr_format, path=path, **kwargs)
+
+
 def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwargs: Any) -> Group:
     return Group(
         sync(async_api.open_consolidated(*args, use_consolidated=use_consolidated, **kwargs))
@@ -232,9 +242,30 @@ def open_group(
     )
 
 
+def read_group(
+    store: StoreLike | None = None,
+    path: str | None = None,
+    storage_options: dict[str, Any] | None = None,  # not used in async api
+    zarr_format: ZarrFormat | None = None,
+    use_consolidated: bool | str | None = None,
+) -> Group:
+    return open_group(
+        store=store,
+        path=path,
+        mode="r",
+        zarr_format=zarr_format,
+        use_consolidated=use_consolidated,
+        storage_options=storage_options,
+    )
+
+
 # TODO: add type annotations for kwargs
 def create(*args: Any, **kwargs: Any) -> Array:
     return Array(sync(async_api.create(*args, **kwargs)))
+
+
+def read_array(*args: Any, **kwargs: Any) -> Array:
+    return Array(sync(async_api.read_array(*args, **kwargs)))
 
 
 # TODO: add type annotations for kwargs
@@ -295,6 +326,7 @@ copy_all.__doc__ = async_api.copy_all.__doc__
 copy_store.__doc__ = async_api.copy_store.__doc__
 load.__doc__ = async_api.load.__doc__
 open.__doc__ = async_api.open.__doc__
+read.__doc__ = async_api.read.__doc__
 open_consolidated.__doc__ = async_api.open_consolidated.__doc__
 save.__doc__ = async_api.save.__doc__
 save_array.__doc__ = async_api.save_array.__doc__
@@ -303,7 +335,9 @@ tree.__doc__ = async_api.tree.__doc__
 array.__doc__ = async_api.array.__doc__
 group.__doc__ = async_api.group.__doc__
 open_group.__doc__ = async_api.open_group.__doc__
+read_group.__doc__ = async_api.read_group.__doc__
 create.__doc__ = async_api.create.__doc__
+read_array.__doc__ = async_api.read_array.__doc__
 empty.__doc__ = async_api.empty.__doc__
 empty_like.__doc__ = async_api.empty_like.__doc__
 full.__doc__ = async_api.full.__doc__
