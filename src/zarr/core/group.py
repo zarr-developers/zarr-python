@@ -1230,7 +1230,7 @@ class AsyncGroup:
 
         # we kind of just want the top-level keys.
         if consolidated_metadata is not None:
-            for key in consolidated_metadata.metadata.keys():
+            for key in consolidated_metadata.metadata:
                 obj = self._getitem_consolidated(
                     self.store_path, key, prefix=self.name
                 )  # Metadata -> Group/Array
