@@ -342,7 +342,7 @@ class Store(ABC):
     @abstractmethod
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         """
-        Retrieve all keys in the store that begin with a given prefix. Keys are returned relative 
+        Retrieve all keys in the store that begin with a given prefix. Keys are returned relative
         to the root of the store.
 
         Parameters
