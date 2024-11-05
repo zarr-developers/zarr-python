@@ -244,7 +244,7 @@ class ZipStore(Store):
         # docstring inherited
         async for key in self.list():
             if key.startswith(prefix):
-                yield key.removeprefix(prefix)
+                yield key
 
     async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
