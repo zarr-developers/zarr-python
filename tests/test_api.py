@@ -132,6 +132,33 @@ async def test_open_group_unspecified_version(
         assert g2.metadata.zarr_format == zarr_format
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("n_args", [10, 1, 0])
+@pytest.mark.parametrize("n_kwargs", [10, 1, 0])
+def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
+    data = np.arange(10)
+    args = [np.arange(10) for _ in range(n_args)]
+    kwargs = {f"arg_{i}": data for i in range(n_kwargs)}
+
+    if n_kwargs == 0 and n_args == 0:
+        with pytest.raises(ValueError):
+            save(store)
+    elif n_args == 1 and n_kwargs == 0:
+        save(store, *args)
+        array = open(store)
+        assert isinstance(array, Array)
+        assert_array_equal(array[:], data)
+    else:
+        save(store, *args, **kwargs)  # type: ignore[arg-type]
+        group = open(store)
+        assert isinstance(group, Group)
+        for array in group.array_values():
+            assert_array_equal(array[:], data)
+        for k in kwargs.keys():
+            assert k in group
+        assert group.nmembers() == n_args + n_kwargs
+
+
 def test_save_errors() -> None:
     with pytest.raises(ValueError):
         # no arrays provided
@@ -142,6 +169,10 @@ def test_save_errors() -> None:
     with pytest.raises(ValueError):
         # no arrays provided
         save("data/group.zarr")
+    with pytest.raises(TypeError):
+        # mode is no valid argument and would get handled as an array
+        a = np.arange(10)
+        zarr.save("data/example.zarr", a, mode="w")
 
 
 def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
