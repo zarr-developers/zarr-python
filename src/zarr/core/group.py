@@ -967,7 +967,7 @@ class AsyncGroup:
 
     @deprecated("Use AsyncGroup.create_array instead.")
     async def create_dataset(
-        self, name: str, **kwargs: Any
+        self, name: str, *, shape: ShapeLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array.
 
@@ -988,7 +988,7 @@ class AsyncGroup:
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.create_array` instead.
         """
-        return await self.create_array(name, **kwargs)
+        return await self.create_array(name, shape=shape, **kwargs)
 
     @deprecated("Use AsyncGroup.require_array instead.")
     async def require_dataset(
@@ -1666,7 +1666,7 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
     @deprecated("Use Group.require_array instead.")
-    def require_dataset(self, name: str, **kwargs: Any) -> Array:
+    def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -1688,9 +1688,9 @@ class Group(SyncMixin):
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
         """
-        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
+        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    def require_array(self, name: str, **kwargs: Any) -> Array:
+    def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
 
@@ -1707,7 +1707,7 @@ class Group(SyncMixin):
         -------
         a : Array
         """
-        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
+        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
     @_deprecate_positional_args
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
