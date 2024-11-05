@@ -88,31 +88,27 @@ class TestConsolidated:
                 metadata={
                     "air": ArrayV3Metadata.from_dict(
                         {
-                            **{
-                                "shape": (1, 2, 3),
-                                "chunk_grid": {
-                                    "configuration": {"chunk_shape": (1, 2, 3)},
-                                    "name": "regular",
-                                },
+                            "shape": (1, 2, 3),
+                            "chunk_grid": {
+                                "configuration": {"chunk_shape": (1, 2, 3)},
+                                "name": "regular",
                             },
                             **array_metadata,
                         }
                     ),
                     "lat": ArrayV3Metadata.from_dict(
                         {
-                            **{
-                                "shape": (1,),
-                                "chunk_grid": {
-                                    "configuration": {"chunk_shape": (1,)},
-                                    "name": "regular",
-                                },
+                            "shape": (1,),
+                            "chunk_grid": {
+                                "configuration": {"chunk_shape": (1,)},
+                                "name": "regular",
                             },
                             **array_metadata,
                         }
                     ),
                     "lon": ArrayV3Metadata.from_dict(
                         {
-                            **{"shape": (2,)},
+                            "shape": (2,),
                             "chunk_grid": {
                                 "configuration": {"chunk_shape": (2,)},
                                 "name": "regular",
@@ -122,12 +118,10 @@ class TestConsolidated:
                     ),
                     "time": ArrayV3Metadata.from_dict(
                         {
-                            **{
-                                "shape": (3,),
-                                "chunk_grid": {
-                                    "configuration": {"chunk_shape": (3,)},
-                                    "name": "regular",
-                                },
+                            "shape": (3,),
+                            "chunk_grid": {
+                                "configuration": {"chunk_shape": (3,)},
+                                "name": "regular",
                             },
                             **array_metadata,
                         }
@@ -139,13 +133,11 @@ class TestConsolidated:
                                 "array": ArrayV3Metadata.from_dict(
                                     {
                                         **array_metadata,
-                                        **{
-                                            "attributes": {"key": "child"},
-                                            "shape": (4, 4),
-                                            "chunk_grid": {
-                                                "configuration": {"chunk_shape": (4, 4)},
-                                                "name": "regular",
-                                            },
+                                        "attributes": {"key": "child"},
+                                        "shape": (4, 4),
+                                        "chunk_grid": {
+                                            "configuration": {"chunk_shape": (4, 4)},
+                                            "name": "regular",
                                         },
                                     }
                                 ),
@@ -163,15 +155,11 @@ class TestConsolidated:
                                             "array": ArrayV3Metadata.from_dict(
                                                 {
                                                     **array_metadata,
-                                                    **{
-                                                        "attributes": {"key": "grandchild"},
-                                                        "shape": (4, 4),
-                                                        "chunk_grid": {
-                                                            "configuration": {
-                                                                "chunk_shape": (4, 4)
-                                                            },
-                                                            "name": "regular",
-                                                        },
+                                                    "attributes": {"key": "grandchild"},
+                                                    "shape": (4, 4),
+                                                    "chunk_grid": {
+                                                        "configuration": {"chunk_shape": (4, 4)},
+                                                        "name": "regular",
                                                     },
                                                 }
                                             ),
@@ -249,31 +237,27 @@ class TestConsolidated:
                 metadata={
                     "air": ArrayV3Metadata.from_dict(
                         {
-                            **{
-                                "shape": (1, 2, 3),
-                                "chunk_grid": {
-                                    "configuration": {"chunk_shape": (1, 2, 3)},
-                                    "name": "regular",
-                                },
+                            "shape": (1, 2, 3),
+                            "chunk_grid": {
+                                "configuration": {"chunk_shape": (1, 2, 3)},
+                                "name": "regular",
                             },
                             **array_metadata,
                         }
                     ),
                     "lat": ArrayV3Metadata.from_dict(
                         {
-                            **{
-                                "shape": (1,),
-                                "chunk_grid": {
-                                    "configuration": {"chunk_shape": (1,)},
-                                    "name": "regular",
-                                },
+                            "shape": (1,),
+                            "chunk_grid": {
+                                "configuration": {"chunk_shape": (1,)},
+                                "name": "regular",
                             },
                             **array_metadata,
                         }
                     ),
                     "lon": ArrayV3Metadata.from_dict(
                         {
-                            **{"shape": (2,)},
+                            "shape": (2,),
                             "chunk_grid": {
                                 "configuration": {"chunk_shape": (2,)},
                                 "name": "regular",
@@ -283,12 +267,10 @@ class TestConsolidated:
                     ),
                     "time": ArrayV3Metadata.from_dict(
                         {
-                            **{
-                                "shape": (3,),
-                                "chunk_grid": {
-                                    "configuration": {"chunk_shape": (3,)},
-                                    "name": "regular",
-                                },
+                            "shape": (3,),
+                            "chunk_grid": {
+                                "configuration": {"chunk_shape": (3,)},
+                                "name": "regular",
                             },
                             **array_metadata,
                         }
@@ -368,24 +350,20 @@ class TestConsolidated:
             metadata={
                 "air": ArrayV3Metadata.from_dict(
                     {
-                        **{
-                            "shape": (1, 2, 3),
-                            "chunk_grid": {
-                                "configuration": {"chunk_shape": (1, 2, 3)},
-                                "name": "regular",
-                            },
+                        "shape": (1, 2, 3),
+                        "chunk_grid": {
+                            "configuration": {"chunk_shape": (1, 2, 3)},
+                            "name": "regular",
                         },
                         **array_metadata,
                     }
                 ),
                 "lat": ArrayV3Metadata.from_dict(
                     {
-                        **{
-                            "shape": (1,),
-                            "chunk_grid": {
-                                "configuration": {"chunk_shape": (1,)},
-                                "name": "regular",
-                            },
+                        "shape": (1,),
+                        "chunk_grid": {
+                            "configuration": {"chunk_shape": (1,)},
+                            "name": "regular",
                         },
                         **array_metadata,
                     }
@@ -397,13 +375,11 @@ class TestConsolidated:
                             "array": ArrayV3Metadata.from_dict(
                                 {
                                     **array_metadata,
-                                    **{
-                                        "attributes": {"key": "child"},
-                                        "shape": (4, 4),
-                                        "chunk_grid": {
-                                            "configuration": {"chunk_shape": (4, 4)},
-                                            "name": "regular",
-                                        },
+                                    "attributes": {"key": "child"},
+                                    "shape": (4, 4),
+                                    "chunk_grid": {
+                                        "configuration": {"chunk_shape": (4, 4)},
+                                        "name": "regular",
                                     },
                                 }
                             ),
@@ -414,13 +390,11 @@ class TestConsolidated:
                                         "array": ArrayV3Metadata.from_dict(
                                             {
                                                 **array_metadata,
-                                                **{
-                                                    "attributes": {"key": "grandchild"},
-                                                    "shape": (4, 4),
-                                                    "chunk_grid": {
-                                                        "configuration": {"chunk_shape": (4, 4)},
-                                                        "name": "regular",
-                                                    },
+                                                "attributes": {"key": "grandchild"},
+                                                "shape": (4, 4),
+                                                "chunk_grid": {
+                                                    "configuration": {"chunk_shape": (4, 4)},
+                                                    "name": "regular",
                                                 },
                                             }
                                         )
