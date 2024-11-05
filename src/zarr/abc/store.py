@@ -6,6 +6,8 @@ from itertools import starmap
 from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
 
 from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.common import concurrent_map
+from zarr.core.config import config
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
@@ -453,9 +455,14 @@ class Store(ABC):
         -----
         ``getsize_prefix`` is just provided as a potentially faster alternative to
         listing all the keys under a prefix calling :meth:`Store.getsize` on each.
+
+        In general, ``prefix`` should be the path of an Array or Group in the Store.
+        Implementations may differ on the behavior when some other ``prefix``
+        is provided.
         """
-        keys = [x async for x in self.list_prefix(prefix)]
-        sizes = await gather(*[self.getsize(key) for key in keys])
+        keys = ((x,) async for x in self.list_prefix(prefix))
+        limit = config.get("async.concurrency")
+        sizes = await concurrent_map(keys, self.getsize, limit=limit)
         return sum(sizes)
 
 

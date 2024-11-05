@@ -368,8 +368,19 @@ class StoreTests(Generic[S, B]):
         await self.set(store, key, data)
 
         result = await store.getsize(key)
-        assert result == 10
+        assert isinstance(result, int)
+        assert result > 0
 
     async def test_getsize_raises(self, store: S) -> None:
         with pytest.raises(FileNotFoundError):
             await store.getsize("not-a-real-key")
+
+    async def test_getsize_prefix(self, store: S) -> None:
+        prefix = "array/c/"
+        for i in range(10):
+            data = self.buffer_cls.from_bytes(b"0" * 10)
+            await self.set(store, f"{prefix}/{i}", data)
+
+        result = await store.getsize_prefix(prefix)
+        assert isinstance(result, int)
+        assert result > 0

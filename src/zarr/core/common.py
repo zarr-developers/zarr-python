@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import operator
-from collections.abc import Iterable, Mapping
+from collections.abc import AsyncIterable, Iterable, Mapping
 from enum import Enum
 from itertools import starmap
 from typing import (
@@ -50,10 +50,15 @@ V = TypeVar("V")
 
 
 async def concurrent_map(
-    items: Iterable[T], func: Callable[..., Awaitable[V]], limit: int | None = None
+    items: Iterable[T] | AsyncIterable[T],
+    func: Callable[..., Awaitable[V]],
+    limit: int | None = None,
 ) -> list[V]:
     if limit is None:
-        return await asyncio.gather(*list(starmap(func, items)))
+        if isinstance(items, AsyncIterable):
+            return await asyncio.gather(*list(starmap(func, [x async for x in items])))
+        else:
+            return await asyncio.gather(*list(starmap(func, items)))
 
     else:
         sem = asyncio.Semaphore(limit)
@@ -62,7 +67,10 @@ async def concurrent_map(
             async with sem:
                 return await func(*item)
 
-        return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
+        if isinstance(items, AsyncIterable):
+            return await asyncio.gather(*[asyncio.ensure_future(run(item)) async for item in items])
+        else:
+            return await asyncio.gather(*[asyncio.ensure_future(run(item)) for item in items])
 
 
 E = TypeVar("E", bound=Enum)
