@@ -145,7 +145,7 @@ async def get_array_metadata(
             (store_path / ZATTRS_JSON).get(),
         )
         if zarr_json_bytes is not None and zarray_bytes is not None:
-            # wwarn and favor v3
+            # warn and favor v3
             msg = f"Both zarr.json (zarr v3) and .zarray (zarr v2) metadata objects exist at {store_path}."
             warnings.warn(msg, stacklevel=1)
         if zarr_json_bytes is None and zarray_bytes is None:

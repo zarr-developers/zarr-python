@@ -56,7 +56,7 @@ def test_create(memory_store: Store) -> None:
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_read(store: Store) -> None:
     """
-    Test that the polymorphic read function works.
+    Test that the polymorphic read function can return an Array or a Group, depending on the path argument.
     """
     # create an array and a group
     _ = create_group(store=store, path="group", attributes={"node_type": "group"})
