@@ -61,10 +61,9 @@ def cast_to_string_dtype(
         return cast_array(data)
         # out = data.astype(STRING_DTYPE, copy=False)
         # return cast(np.ndarray[Any, np.dtypes.StringDType | np.dtypes.ObjectDType], out)
-    if _NUMPY_SUPPORTS_VLEN_STRING:
-        if np.issubdtype(data.dtype, _STRING_DTYPE):
-            # already a valid string variable length string dtype
-            return cast_array(data)
+    if _NUMPY_SUPPORTS_VLEN_STRING and np.issubdtype(data.dtype, _STRING_DTYPE):
+        # already a valid string variable length string dtype
+        return cast_array(data)
     if np.issubdtype(data.dtype, np.object_):
         # object arrays require more careful handling
         if _NUMPY_SUPPORTS_VLEN_STRING:
