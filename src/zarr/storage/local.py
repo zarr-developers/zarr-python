@@ -217,23 +217,22 @@ class LocalStore(Store):
         path = self.root / key
         return await asyncio.to_thread(path.is_file)
 
-    async def list(self) -> AsyncGenerator[str, None]:
+    async def list(self) -> AsyncGenerator[str]:
         # docstring inherited
         to_strip = self.root.as_posix() + "/"
         for p in list(self.root.rglob("*")):
             if p.is_file():
                 yield p.as_posix().replace(to_strip, "")
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
-        to_strip = (
-            (self.root / prefix).as_posix() + "/"
-        )  # TODO: fixme in https://github.com/zarr-developers/zarr-python/issues/2438
+        to_strip = self.root.as_posix() + "/"
+        prefix = prefix.rstrip("/")
         for p in (self.root / prefix).rglob("*"):
             if p.is_file():
                 yield p.as_posix().replace(to_strip, "")
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         base = self.root / prefix
         try:
