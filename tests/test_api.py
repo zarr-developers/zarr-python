@@ -63,9 +63,11 @@ def test_read(store: Store) -> None:
     _ = create_array(store=store, path="array", shape=(10, 10), attributes={"node_type": "array"})
 
     group_r = read(store, path="group")
+    assert isinstance(group_r, Group)
     assert group_r.attrs == {"node_type": "group"}
 
     array_r = read(store, path="array")
+    assert isinstance(array_r, Array)
     assert array_r.attrs == {"node_type": "array"}
     assert array_r.shape == (10, 10)
 
