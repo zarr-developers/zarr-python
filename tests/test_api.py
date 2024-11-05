@@ -19,6 +19,7 @@ from zarr.api.synchronous import (
     load,
     open,
     open_group,
+    read,
     read_array,
     read_group,
     save,
@@ -50,6 +51,23 @@ def test_create(memory_store: Store) -> None:
     assert isinstance(z, Array)
     assert z.shape == (400,)
     assert z.chunks == (40,)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_read(store: Store) -> None:
+    """
+    Test that the polymorphic read function works.
+    """
+    # create an array and a group
+    _ = create_group(store=store, path="group", attributes={"node_type": "group"})
+    _ = create_array(store=store, path="array", shape=(10, 10), attributes={"node_type": "array"})
+
+    group_r = read(store, path="group")
+    assert group_r.attrs == {"node_type": "group"}
+
+    array_r = read(store, path="array")
+    assert array_r.attrs == {"node_type": "array"}
+    assert array_r.shape == (10, 10)
 
 
 # TODO: parametrize over everything this function takes
