@@ -6,6 +6,8 @@ from zarr.api.synchronous import (
     copy_all,
     copy_store,
     create,
+    create_array,
+    create_group,
     empty,
     empty_like,
     full,
