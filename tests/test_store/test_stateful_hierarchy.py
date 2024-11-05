@@ -85,6 +85,8 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
             parent = data.draw(st.sampled_from(sorted(self.all_groups)), label="Array parent")
         else:
             parent = ""
+        # TODO: support creating deeper paths
+        # TODO: support overwriting potentially by just skipping `self.can_add`
         path = f"{parent}/{name}".lstrip("/")
         assume(self.can_add(path))
         note(f"Adding array:  path='{path}'  shape={array.shape}  chunks={chunks}")
