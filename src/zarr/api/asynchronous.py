@@ -644,6 +644,54 @@ async def group(
         )
 
 
+async def create_group(
+    *,
+    store: StoreLike,
+    path: str | None = None,
+    overwrite: bool = False,
+    zarr_format: ZarrFormat | None = None,
+    attributes: dict[str, Any] | None = None,
+    storage_options: dict[str, Any] | None = None,
+) -> AsyncGroup:
+    """Create a group.
+
+    Parameters
+    ----------
+    store : Store or str
+        Store or path to directory in file system.
+    path : str, optional
+        Group path within store.
+    overwrite : bool, optional
+        If True, pre-existing data at ``path`` will be deleted before
+        creating the group.
+    zarr_format : {2, 3, None}, optional
+        The zarr format to use when saving.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
+
+    Returns
+    -------
+    g : group
+        The new group.
+    """
+
+    if zarr_format is None:
+        zarr_format = _default_zarr_version()
+
+    # TODO: fix this when modes make sense. It should be `w` for overwriting, `w-` otherwise
+    mode: Literal["a"] = "a"
+
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+
+    return await AsyncGroup.from_store(
+        store=store_path,
+        zarr_format=zarr_format,
+        exists_ok=overwrite,
+        attributes=attributes,
+    )
+
+
 async def open_group(
     store: StoreLike | None = None,
     *,  # Note: this is a change from v2
@@ -752,6 +800,7 @@ async def open_group(
 
 async def read_group(
     store: StoreLike,
+    *,
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
     storage_options: dict[str, Any] | None = None,
@@ -807,6 +856,127 @@ async def read_group(
         storage_options=storage_options,
         zarr_format=zarr_format,
         use_consolidated=use_consolidated,
+    )
+
+
+async def create_array(
+    store: str | StoreLike,
+    *,
+    shape: ChunkCoords,
+    chunks: ChunkCoords | None = None,  # TODO: v2 allowed chunks=True
+    dtype: npt.DTypeLike | None = None,
+    compressor: dict[str, JSON] | None = None,  # TODO: default and type change
+    fill_value: Any | None = 0,  # TODO: need type
+    order: MemoryOrder | None = None,
+    overwrite: bool = False,
+    path: PathLike | None = None,
+    filters: list[dict[str, JSON]] | None = None,  # TODO: type has changed
+    dimension_separator: Literal[".", "/"] | None = None,
+    zarr_format: ZarrFormat | None = None,
+    attributes: dict[str, JSON] | None = None,
+    # v3 only
+    chunk_shape: ChunkCoords | None = None,
+    chunk_key_encoding: (
+        ChunkKeyEncoding
+        | tuple[Literal["default"], Literal[".", "/"]]
+        | tuple[Literal["v2"], Literal[".", "/"]]
+        | None
+    ) = None,
+    codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+    dimension_names: Iterable[str] | None = None,
+    storage_options: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    """Create an array.
+
+    Parameters
+    ----------
+    shape : int or tuple of ints
+        Array shape.
+    chunks : int or tuple of ints, optional
+        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
+        False, will be set to `shape`, i.e., single chunk for the whole array.
+        If an int, the chunk size in each dimension will be given by the value
+        of `chunks`. Default is True.
+    dtype : str or dtype, optional
+        NumPy dtype.
+    compressor : Codec, optional
+        Primary compressor.
+    fill_value : object
+        Default value to use for uninitialized portions of the array.
+    order : {'C', 'F'}, optional
+        Memory layout to be used within each chunk.
+        Default is set in Zarr's config (`array.order`).
+    store : Store or str
+        Store or path to directory in file system or name of zip file.
+    overwrite : bool, optional
+        If True, delete all pre-existing data in `store` at `path` before
+        creating the array.
+    path : str, optional
+        Path under which array is stored.
+    filters : sequence of Codecs, optional
+        Sequence of filters to use to encode chunk data prior to compression.
+    dimension_separator : {'.', '/'}, optional
+        Separator placed between the dimensions of a chunk.
+    zarr_format : {2, 3, None}, optional
+        The zarr format to use when saving.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
+
+    Returns
+    -------
+    z : array
+        The array.
+    """
+
+    if zarr_format is None:
+        zarr_format = _default_zarr_version()
+
+    if zarr_format == 2 and chunks is None:
+        chunks = shape
+    elif zarr_format == 3 and chunk_shape is None:
+        if chunks is not None:
+            chunk_shape = chunks
+            chunks = None
+        else:
+            chunk_shape = shape
+
+    if dimension_separator is not None:
+        if zarr_format == 3:
+            raise ValueError(
+                "dimension_separator is not supported for zarr format 3, use chunk_key_encoding instead"
+            )
+        else:
+            warnings.warn(
+                "dimension_separator is not yet implemented",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
+    # TODO: fix this when modes make sense. It should be `w` for overwriting, `w-` otherwise
+    mode: Literal["a"] = "a"
+
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+
+    return await AsyncArray.create(
+        store_path,
+        shape=shape,
+        chunks=chunks,
+        dtype=dtype,
+        compressor=compressor,
+        fill_value=fill_value,
+        exists_ok=overwrite,
+        filters=filters,
+        dimension_separator=dimension_separator,
+        zarr_format=zarr_format,
+        chunk_shape=chunk_shape,
+        chunk_key_encoding=chunk_key_encoding,
+        codecs=codecs,
+        dimension_names=dimension_names,
+        attributes=attributes,
+        order=order,
+        **kwargs,
     )
 
 
@@ -996,6 +1166,7 @@ async def create(
 
 async def read_array(
     store: StoreLike,
+    *,
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
     storage_options: dict[str, Any] | None = None,

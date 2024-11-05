@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from asyncio import gather
 from dataclasses import dataclass, field
 from itertools import starmap
@@ -144,9 +145,9 @@ async def get_array_metadata(
             (store_path / ZATTRS_JSON).get(),
         )
         if zarr_json_bytes is not None and zarray_bytes is not None:
-            # TODO: revisit this exception type
-            # alternatively, we could warn and favor v3
-            raise ValueError("Both zarr.json and .zarray objects exist")
+            # wwarn and favor v3
+            msg = f"Both zarr.json (zarr v3) and .zarray (zarr v2) metadata objects exist at {store_path}."
+            warnings.warn(msg, stacklevel=1)
         if zarr_json_bytes is None and zarray_bytes is None:
             raise FileNotFoundError(store_path)
         # set zarr_format based on which keys were found

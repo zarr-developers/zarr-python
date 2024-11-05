@@ -486,9 +486,9 @@ class AsyncGroup:
                 (store_path / str(consolidated_key)).get(),
             )
             if zarr_json_bytes is not None and zgroup_bytes is not None:
-                # TODO: revisit this exception type
-                # alternatively, we could warn and favor v3
-                raise ValueError("Both zarr.json and .zgroup objects exist")
+                # we could warn and favor v3
+                msg = f"Both zarr.json (zarr v3) and .zgroup (zarr v2) metadata objects exist at {store_path}."
+                warnings.warn(msg, stacklevel=1)
             if zarr_json_bytes is None and zgroup_bytes is None:
                 raise FileNotFoundError(
                     f"could not find zarr.json or .zgroup objects in {store_path}"

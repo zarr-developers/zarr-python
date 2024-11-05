@@ -242,10 +242,34 @@ def open_group(
     )
 
 
-def read_group(
-    store: StoreLike | None = None,
+def create_group(
+    store: StoreLike,
+    *,
     path: str | None = None,
-    storage_options: dict[str, Any] | None = None,  # not used in async api
+    zarr_format: ZarrFormat | None = None,
+    overwrite: bool = False,
+    attributes: dict[str, Any] | None = None,
+    storage_options: dict[str, Any] | None = None,
+) -> Group:
+    return Group(
+        sync(
+            async_api.create_group(
+                store=store,
+                path=path,
+                overwrite=overwrite,
+                storage_options=storage_options,
+                zarr_format=zarr_format,
+                attributes=attributes,
+            )
+        )
+    )
+
+
+def read_group(
+    store: StoreLike,
+    *,
+    path: str | None = None,
+    storage_options: dict[str, Any] | None = None,
     zarr_format: ZarrFormat | None = None,
     use_consolidated: bool | str | None = None,
 ) -> Group:
@@ -262,6 +286,10 @@ def read_group(
 # TODO: add type annotations for kwargs
 def create(*args: Any, **kwargs: Any) -> Array:
     return Array(sync(async_api.create(*args, **kwargs)))
+
+
+def create_array(*args: Any, **kwargs: Any) -> Array:
+    return Array(sync(async_api.create_array(*args, **kwargs)))
 
 
 def read_array(*args: Any, **kwargs: Any) -> Array:
