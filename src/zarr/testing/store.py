@@ -222,10 +222,25 @@ class StoreTests(Generic[S, B]):
         assert await store.exists("foo/zarr.json")
 
     async def test_delete(self, store: S) -> None:
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
         await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
         assert await store.exists("foo/zarr.json")
         await store.delete("foo/zarr.json")
         assert not await store.exists("foo/zarr.json")
+
+    async def test_delete_dir(self, store: S) -> None:
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        await store.set("zarr.json", self.buffer_cls.from_bytes(b"root"))
+        await store.set("foo-bar/zarr.json", self.buffer_cls.from_bytes(b"root"))
+        await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
+        await store.set("foo/c/0", self.buffer_cls.from_bytes(b"chunk"))
+        await store.delete_dir("foo")
+        assert await store.exists("zarr.json")
+        assert await store.exists("foo-bar/zarr.json")
+        assert not await store.exists("foo/zarr.json")
+        assert not await store.exists("foo/c/0")
 
     async def test_empty(self, store: S) -> None:
         assert await store.empty()
@@ -258,8 +273,7 @@ class StoreTests(Generic[S, B]):
     async def test_list_prefix(self, store: S) -> None:
         """
         Test that the `list_prefix` method works as intended. Given a prefix, it should return
-        all the keys in storage that start with this prefix. Keys should be returned with the shared
-        prefix removed.
+        all the keys in storage that start with this prefix.
         """
         prefixes = ("", "a/", "a/b/", "a/b/c/")
         data = self.buffer_cls.from_bytes(b"")
@@ -273,7 +287,7 @@ class StoreTests(Generic[S, B]):
             expected: tuple[str, ...] = ()
             for key in store_dict:
                 if key.startswith(prefix):
-                    expected += (key.removeprefix(prefix),)
+                    expected += (key,)
             expected = tuple(sorted(expected))
             assert observed == expected
 

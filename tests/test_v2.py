@@ -122,3 +122,12 @@ async def test_create_dtype_str(dtype: Any) -> None:
     arr[:] = ["a", "bb", "ccc"]
     result = arr[:]
     np.testing.assert_array_equal(result, np.array(["a", "bb", "ccc"], dtype="object"))
+
+
+@pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
+def test_v2_filters_codecs(filters: Any) -> None:
+    array_fixture = [42]
+    arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
+    arr[:] = array_fixture
+    result = arr[:]
+    np.testing.assert_array_equal(result, array_fixture)

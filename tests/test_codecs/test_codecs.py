@@ -56,7 +56,6 @@ def test_sharding_pickle() -> None:
     """
     Test that sharding codecs can be pickled
     """
-    pass
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])

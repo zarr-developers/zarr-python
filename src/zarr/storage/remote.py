@@ -343,9 +343,10 @@ class RemoteStore(Store):
 
     async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
-        find_str = f"{self.path}/{prefix}"
-        for onefile in await self.fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
-            yield onefile.removeprefix(find_str)
+        for onefile in await self.fs._find(
+            f"{self.path}/{prefix}", detail=False, maxdepth=None, withdirs=False
+        ):
+            yield onefile.removeprefix(f"{self.path}/")
 
     async def getsize(self, key: str) -> int:
         path = _dereference_path(self.path, key)
