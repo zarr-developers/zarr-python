@@ -55,6 +55,7 @@ DefaultT = TypeVar("DefaultT")
 
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
+    """Parse the zarr_format field from metadata."""
     if data in (2, 3):
         return cast(Literal[2, 3], data)
     msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
@@ -62,6 +63,7 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 
 
 def parse_node_type(data: Any) -> NodeType:
+    """Parse the node_type field from metadata."""
     if data in ("array", "group"):
         return cast(Literal["array", "group"], data)
     raise MetadataValidationError("node_type", "array or group", data)
@@ -69,6 +71,7 @@ def parse_node_type(data: Any) -> NodeType:
 
 # todo: convert None to empty dict
 def parse_attributes(data: Any) -> dict[str, Any]:
+    """Parse the attributes field from metadata."""
     if data is None:
         return {}
     elif isinstance(data, dict) and all(isinstance(k, str) for k in data):
@@ -88,9 +91,7 @@ def _parse_async_node(node: AsyncGroup) -> Group: ...
 def _parse_async_node(
     node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
 ) -> Array | Group:
-    """
-    Wrap an AsyncArray in an Array, or an AsyncGroup in a Group.
-    """
+    """Wrap an AsyncArray in an Array, or an AsyncGroup in a Group."""
     if isinstance(node, AsyncArray):
         return Array(node)
     elif isinstance(node, AsyncGroup):
@@ -297,6 +298,10 @@ class ConsolidatedMetadata:
 
 @dataclass(frozen=True)
 class GroupMetadata(Metadata):
+    """
+    Metadata for a Group.
+    """
+
     attributes: dict[str, Any] = field(default_factory=dict)
     zarr_format: ZarrFormat = 3
     consolidated_metadata: ConsolidatedMetadata | None = None
@@ -391,6 +396,10 @@ class GroupMetadata(Metadata):
 
 @dataclass(frozen=True)
 class AsyncGroup:
+    """
+    Asynchronous Group object.
+    """
+
     metadata: GroupMetadata
     store_path: StorePath
 
@@ -620,6 +629,18 @@ class AsyncGroup:
         self,
         key: str,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
+        """
+        Get a subarray or subgroup from the group.
+
+        Parameters
+        ----------
+        key : str
+            Array or group name
+
+        Returns
+        -------
+        AsyncArray or AsyncGroup
+        """
         store_path = self.store_path / key
         logger.debug("key=%s, store_path=%s", key, store_path)
 
@@ -725,6 +746,13 @@ class AsyncGroup:
             return AsyncArray(metadata=metadata, store_path=store_path)
 
     async def delitem(self, key: str) -> None:
+        """Delete a group member.
+
+        Parameters
+        ----------
+        key : str
+            Array or group name
+        """
         store_path = self.store_path / key
         if self.metadata.zarr_format == 3:
             await (store_path / ZARR_JSON).delete()
@@ -834,6 +862,21 @@ class AsyncGroup:
         exists_ok: bool = False,
         attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
+        """Create a sub-group.
+
+        Parameters
+        ----------
+        name : str
+            Group name.
+        exists_ok : bool, optional
+            If True, do not raise an error if the group already exists.
+        attributes : dict, optional
+            Group attributes.
+
+        Returns
+        -------
+        g : AsyncGroup
+        """
         attributes = attributes or {}
         return await type(self).from_store(
             self.store_path / name,
@@ -875,7 +918,17 @@ class AsyncGroup:
         return grp
 
     async def require_groups(self, *names: str) -> tuple[AsyncGroup, ...]:
-        """Convenience method to require multiple groups in a single call."""
+        """Convenience method to require multiple groups in a single call.
+
+        Parameters
+        ----------
+        *names : str
+            Group names.
+
+        Returns
+        -------
+        Tuple[AsyncGroup, ...]
+        """
         if not names:
             return ()
         return tuple(await asyncio.gather(*(self.require_group(name) for name in names)))
@@ -1083,6 +1136,17 @@ class AsyncGroup:
         return ds
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
+        """Update group attributes.
+
+        Parameters
+        ----------
+        new_attributes : dict
+            New attributes to set on the group.
+
+        Returns
+        -------
+        self : AsyncGroup
+        """
         # metadata.attributes is "frozen" so we simply clear and update the dict
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -1241,10 +1305,22 @@ class AsyncGroup:
                     yield from obj._members_consolidated(max_depth, current_depth + 1, prefix=key)
 
     async def keys(self) -> AsyncGenerator[str, None]:
+        """Iterate over member names."""
         async for key, _ in self.members():
             yield key
 
     async def contains(self, member: str) -> bool:
+        """Check if a member exists in the group.
+
+        Parameters
+        ----------
+        member : str
+            Member name.
+
+        Returns
+        -------
+        bool
+        """
         # TODO: this can be made more efficient.
         try:
             await self.getitem(member)
@@ -1254,15 +1330,18 @@ class AsyncGroup:
             return True
 
     async def groups(self) -> AsyncGenerator[tuple[str, AsyncGroup], None]:
+        """Iterate over subgroups."""
         async for name, value in self.members():
             if isinstance(value, AsyncGroup):
                 yield name, value
 
     async def group_keys(self) -> AsyncGenerator[str, None]:
+        """Iterate over group names."""
         async for key, _ in self.groups():
             yield key
 
     async def group_values(self) -> AsyncGenerator[AsyncGroup, None]:
+        """Iterate over group values."""
         async for _, group in self.groups():
             yield group
 
@@ -1271,21 +1350,25 @@ class AsyncGroup:
     ) -> AsyncGenerator[
         tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]], None
     ]:
+        """Iterate over arrays."""
         async for key, value in self.members():
             if isinstance(value, AsyncArray):
                 yield key, value
 
     async def array_keys(self) -> AsyncGenerator[str, None]:
+        """Iterate over array names."""
         async for key, _ in self.arrays():
             yield key
 
     async def array_values(
         self,
     ) -> AsyncGenerator[AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata], None]:
+        """Iterate over array values."""
         async for _, array in self.arrays():
             yield array
 
     async def tree(self, expand: bool = False, level: int | None = None) -> Any:
+        """Return a nested representation of the group hierarchy."""
         raise NotImplementedError
 
     async def empty(
@@ -1467,7 +1550,12 @@ class AsyncGroup:
         return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
-        """Not implemented"""
+        """Move a sub-group or sub-array from one path to another.
+
+        Notes
+        -----
+        Not implemented
+        """
         raise NotImplementedError
 
 
@@ -1609,7 +1697,22 @@ class Group(SyncMixin):
             return default
 
     def __delitem__(self, key: str) -> None:
-        """Delete a group member."""
+        """Delete a group member.
+
+        Parameters
+        ----------
+        key : str
+            Group member name.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = Group.from_store(zarr.storage.MemoryStore(mode="w"))
+        >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+        >>> del group["subarray"]
+        >>> "subarray" in group
+        False
+        """
         self._sync(self._async_group.delitem(key))
 
     def __iter__(self) -> Iterator[str]:
@@ -1639,6 +1742,22 @@ class Group(SyncMixin):
         """Fastpath for creating a new array.
 
         New arrays will be created using default settings for the array type.
+        If you need to create an array with custom settings, use the `create_array` method.
+
+        Parameters
+        ----------
+        key : str
+            Array name.
+        value : Any
+            Array data.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group["foo"] = zarr.zeros((10,))
+        >>> group["foo"]
+        <Array memory://132270269438272/foo shape=(10,) dtype=float64>
         """
         self._sync(self._async_group.setitem(key, value))
 
@@ -1647,6 +1766,7 @@ class Group(SyncMixin):
 
     async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
         """Update the attributes of this group.
+
         Example
         -------
         >>> import zarr
@@ -1697,6 +1817,7 @@ class Group(SyncMixin):
 
     @property
     def info(self) -> None:
+        """Group information."""
         raise NotImplementedError
 
     @property
@@ -1757,6 +1878,7 @@ class Group(SyncMixin):
 
     def keys(self) -> Generator[str, None]:
         """Return an iterator over group member names.
+
         Examples
         --------
         >>> import zarr
@@ -1795,6 +1917,7 @@ class Group(SyncMixin):
 
     def groups(self) -> Generator[tuple[str, Group], None]:
         """Return the sub-groups of this group as a generator of (name, group) pairs.
+
         Example
         -------
         >>> import zarr
@@ -1809,6 +1932,7 @@ class Group(SyncMixin):
 
     def group_keys(self) -> Generator[str, None]:
         """Return an iterator over group member names.
+
         Examples
         --------
         >>> import zarr
@@ -1823,6 +1947,7 @@ class Group(SyncMixin):
 
     def group_values(self) -> Generator[Group, None]:
         """Return an iterator over group members.
+
         Examples
         --------
         >>> import zarr
@@ -1836,8 +1961,8 @@ class Group(SyncMixin):
             yield group
 
     def arrays(self) -> Generator[tuple[str, Array], None]:
-        """
-        Return the sub-arrays of this group as a generator of (name, array) pairs
+        """Return the sub-arrays of this group as a generator of (name, array) pairs
+
         Examples
         --------
         >>> import zarr
@@ -1852,6 +1977,7 @@ class Group(SyncMixin):
 
     def array_keys(self) -> Generator[str, None]:
         """Return an iterator over group member names.
+
         Examples
         --------
         >>> import zarr
@@ -1867,6 +1993,7 @@ class Group(SyncMixin):
 
     def array_values(self) -> Generator[Array, None]:
         """Return an iterator over group members.
+
         Examples
         --------
         >>> import zarr
@@ -1880,7 +2007,12 @@ class Group(SyncMixin):
             yield array
 
     def tree(self, expand: bool = False, level: int | None = None) -> Any:
-        """Not implemented"""
+        """Return a nested representation of the group hierarchy.
+
+        Notes
+        -----
+        Not implemented
+        """
         return self._sync(self._async_group.tree(expand=expand, level=level))
 
     def create_group(self, name: str, **kwargs: Any) -> Group:
@@ -1920,7 +2052,17 @@ class Group(SyncMixin):
         return Group(self._sync(self._async_group.require_group(name, **kwargs)))
 
     def require_groups(self, *names: str) -> tuple[Group, ...]:
-        """Convenience method to require multiple groups in a single call."""
+        """Convenience method to require multiple groups in a single call.
+
+        Parameters
+        ----------
+        *names : str
+            Group names.
+
+        Returns
+        -------
+        groups : tuple of Groups
+        """
         return tuple(map(Group, self._sync(self._async_group.require_groups(*names))))
 
     def create(self, *args: Any, **kwargs: Any) -> Array:
@@ -2259,7 +2401,12 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.full_like(name=name, data=data, **kwargs)))
 
     def move(self, source: str, dest: str) -> None:
-        """Not implemented"""
+        """Move a sub-group or sub-array from one path to another.
+
+        Notes
+        -----
+        Not implemented
+        """
         return self._sync(self._async_group.move(source, dest))
 
     @deprecated("Use Group.create_array instead.")
