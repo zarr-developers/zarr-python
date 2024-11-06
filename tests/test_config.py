@@ -63,9 +63,9 @@ def test_config_defaults_set() -> None:
                 "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                 "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
             },
-            "v2_dtype_kind_to_default_compressor": {
-                "biufcmM": "zstd",
-                "OSUV": "vlen-bytes",
+            "v2_dtype_kind_to_default_filters_and_compressor": {
+                "biufcmM": ["zstd"],
+                "OSUV": ["vlen-utf8"],
             },
         }
     ]

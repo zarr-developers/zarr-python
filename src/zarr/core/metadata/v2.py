@@ -4,7 +4,7 @@ import base64
 from collections.abc import Iterable
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 
@@ -71,8 +71,14 @@ class ArrayV2Metadata(Metadata):
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
         chunks_parsed = parse_shapelike(chunks)
-        if compressor is None:
-            compressor = _default_compressor(dtype_parsed)
+        if not filters and not compressor:
+            filters, compressor = _default_filters_and_compressor(dtype_parsed)
+        if dtype is str or dtype == "str":
+            vlen_codec: dict[str, JSON] = {"id": "vlen-utf8"}
+            if filters and not any(x["id"] == "vlen-utf8" for x in filters):
+                filters = list(filters) + [vlen_codec]
+            else:
+                filters = [vlen_codec]
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
@@ -240,15 +246,15 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
     raise TypeError(msg)
 
 
-def parse_compressor(data: object) -> numcodecs.abc.Codec:
+def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
     """
     Parse a potential compressor.
     """
-    if isinstance(data, numcodecs.abc.Codec):
+    if data is None or isinstance(data, numcodecs.abc.Codec):
         return data
     if isinstance(data, dict):
         return numcodecs.get_codec(data)
-    msg = f"Invalid compressor. Expected a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
+    msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
 
 
@@ -330,14 +336,18 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
         return dtype.type(0)
 
 
-def _default_compressor(dtype: np.dtype[Any]) -> numcodecs.abc.Codec:
-    """Get the default compressor for a type.
+def _default_filters_and_compressor(
+    dtype: np.dtype[Any],
+) -> tuple[list[dict[str, str]], dict[str, str] | None]:
+    """Get the default filters and compressor for a dtype.
 
     The config contains a mapping from numpy dtype kind to the default compressor.
     https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
     """
-    dtype_kind_to_default_compressor = config.get("v2_dtype_kind_to_default_compressor")
-    for dtype_kinds, compressor in dtype_kind_to_default_compressor.items():
+    dtype_kind_to_default_compressor = config.get("v2_dtype_kind_to_default_filters_and_compressor")
+    for dtype_kinds, filters_and_compressor in dtype_kind_to_default_compressor.items():
         if dtype.kind in dtype_kinds:
-            return numcodecs.get_codec({"id": compressor})
-    raise ValueError(f"No default compressor found for dtype {dtype} of kind {dtype.kind}")
+            filters = [{"id": f} for f in filters_and_compressor]
+            compressor = None
+            return filters, compressor
+    return [], None

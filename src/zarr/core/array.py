@@ -492,14 +492,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 order=order,
             )
         elif zarr_format == 2:
-            if dtype is str or dtype == "str":
-                # another special case: zarr v2 added the vlen-utf8 codec
-                vlen_codec: dict[str, JSON] = {"id": "vlen-utf8"}
-                if filters and not any(x["id"] == "vlen-utf8" for x in filters):
-                    filters = list(filters) + [vlen_codec]
-                else:
-                    filters = [vlen_codec]
-
             if codecs is not None:
                 raise ValueError(
                     "codecs cannot be used for arrays with version 2. Use filters and compressor instead."

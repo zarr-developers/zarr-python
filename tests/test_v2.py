@@ -80,36 +80,43 @@ def test_codec_pipeline() -> None:
 
 @pytest.mark.parametrize("dtype", ["|S", "|V"])
 async def test_v2_encode_decode(dtype):
-    store = zarr.storage.MemoryStore(mode="w")
-    g = zarr.group(store=store, zarr_format=2)
-    g.create_array(
-        name="foo",
-        shape=(3,),
-        chunks=(3,),
-        dtype=dtype,
-        fill_value=b"X",
-    )
+    with config.set(
+        {
+            "v2_dtype_kind_to_default_filters_and_compressor": {
+                "OSUV": ["vlen-bytes"],
+            },
+        }
+    ):
+        store = zarr.storage.MemoryStore(mode="w")
+        g = zarr.group(store=store, zarr_format=2)
+        g.create_array(
+            name="foo",
+            shape=(3,),
+            chunks=(3,),
+            dtype=dtype,
+            fill_value=b"X",
+        )
 
-    result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
-    assert result is not None
+        result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
+        assert result is not None
 
-    serialized = json.loads(result.to_bytes())
-    expected = {
-        "chunks": [3],
-        "dtype": f"{dtype}0",
-        "fill_value": "WA==",
-        "filters": None,
-        "order": "C",
-        "shape": [3],
-        "zarr_format": 2,
-        "dimension_separator": ".",
-    }
-    del serialized["compressor"]
-    assert serialized == expected
+        serialized = json.loads(result.to_bytes())
+        expected = {
+            "chunks": [3],
+            "compressor": None,
+            "dtype": f"{dtype}0",
+            "fill_value": "WA==",
+            "filters": [{"id": "vlen-bytes"}],
+            "order": "C",
+            "shape": [3],
+            "zarr_format": 2,
+            "dimension_separator": ".",
+        }
+        assert serialized == expected
 
-    data = zarr.open_array(store=store, path="foo")[:]
-    expected = np.full((3,), b"X", dtype=dtype)
-    np.testing.assert_equal(data, expected)
+        data = zarr.open_array(store=store, path="foo")[:]
+        expected = np.full((3,), b"X", dtype=dtype)
+        np.testing.assert_equal(data, expected)
 
 
 @pytest.mark.parametrize("dtype", [str, "str"])
@@ -133,18 +140,19 @@ def test_v2_filters_codecs(filters: Any) -> None:
 
 
 @pytest.mark.parametrize(
-    "dtype_compressor",
-    [["b", "zstd"], ["i", "zstd"], ["f", "zstd"], ["|S1", "vlen-bytes"], ["|U1", "vlen-bytes"]],
+    "dtype_expected",
+    [["b", "zstd"], ["i", "zstd"], ["f", "zstd"], ["|S1", "vlen-utf8"], ["|U1", "vlen-utf8"]],
 )
-def test_default_compressors(dtype_compressor: Any) -> None:
+def test_default_filters_and_compressor(dtype_expected: Any) -> None:
     with config.set(
         {
-            "v2_dtype_kind_to_default_compressor": {
-                "biufcmM": "zstd",
-                "OSUV": "vlen-bytes",
+            "v2_dtype_kind_to_default_filters_and_compressor": {
+                "biufcmM": ["zstd"],
+                "OSUV": ["vlen-utf8"],
             },
         }
     ):
-        dtype, expected_compressor = dtype_compressor
+        dtype, expected = dtype_expected
         arr = zarr.create(shape=(10,), path="foo", store={}, zarr_format=2, dtype=dtype)
-        assert arr.metadata.compressor.codec_id == expected_compressor
+        assert arr.metadata.filters[0].codec_id == expected
+        print(arr.metadata)
