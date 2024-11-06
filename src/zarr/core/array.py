@@ -1367,7 +1367,7 @@ class Array:
         store_path : StorePath
             The path within the store where the array should be created.
 
-        data : dict of str to JSON
+        data : dict
             A dictionary representing the array data. This dictionary should include necessary metadata
             for the array, such as shape, dtype, fill value, and attributes.
 
