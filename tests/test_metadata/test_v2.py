@@ -11,7 +11,7 @@ import zarr.storage
 from zarr.core.buffer import cpu
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata
-from zarr.core.metadata.v2 import parse_zarr_format
+from zarr.core.metadata.v2 import _default_filters_and_compressor, parse_zarr_format
 
 if TYPE_CHECKING:
     from typing import Any
@@ -76,6 +76,15 @@ def test_metadata_to_dict(
         expected_dimension_sep = "."
         assert observed["dimension_separator"] == expected_dimension_sep
         observed.pop("dimension_separator")
+
+    if not filters and not compressor:
+        assert observed["filters"], observed["compressor"] == _default_filters_and_compressor(
+            np.dtype(data_type)
+        )
+        observed.pop("filters")
+        observed.pop("compressor")
+        expected.pop("filters")
+        expected.pop("compressor")
 
     assert observed == expected
 
