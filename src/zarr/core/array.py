@@ -2935,7 +2935,7 @@ class Array:
 
         Parameters
         ----------
-        new_attributes : dict of str to JSON
+        new_attributes : dict
             A dictionary of new attributes to update or add to the array. The keys represent attribute
             names, and the values must be JSON-compatible.
 
