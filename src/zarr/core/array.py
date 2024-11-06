@@ -1043,25 +1043,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
         """
         Asynchronously save the array metadata.
-
-        Parameters
-        ----------
-        metadata : ArrayMetadata
-            The metadata to be saved for the array. This typically includes information about the
-            array's shape, dtype, chunking, etc.
-
-        ensure_parents : bool, optional
-            If True, ensures that any necessary parent directories are created before saving the metadata.
-            Default is False.
-
-        Returns
-        -------
-        None
-            This method does not return any value.
-
-        Notes
-        -----
-        - This method is asynchronous and should be awaited.
         """
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
