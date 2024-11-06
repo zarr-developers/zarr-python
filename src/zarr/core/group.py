@@ -1469,7 +1469,7 @@ class AsyncGroup:
         return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
-        """not implemented"""
+        """Not implemented"""
         raise NotImplementedError
 
 
@@ -1878,7 +1878,7 @@ class Group(SyncMixin):
             yield array
 
     def tree(self, expand: bool = False, level: int | None = None) -> Any:
-        """not implemented"""
+        """Not implemented"""
         return self._sync(self._async_group.tree(expand=expand, level=level))
 
     def create_group(self, name: str, **kwargs: Any) -> Group:
@@ -2257,7 +2257,7 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.full_like(name=name, data=data, **kwargs)))
 
     def move(self, source: str, dest: str) -> None:
-        """not implemented"""
+        """Not implemented"""
         return self._sync(self._async_group.move(source, dest))
 
     @deprecated("Use Group.create_array instead.")
