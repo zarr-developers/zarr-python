@@ -421,8 +421,7 @@ class AsyncGroup:
         zarr_format: Literal[2, 3, None] = 3,
         use_consolidated: bool | str | None = None,
     ) -> AsyncGroup:
-        """
-        Open a new AsyncGroup
+        """Open a new AsyncGroup
 
         Parameters
         ----------
@@ -601,8 +600,8 @@ class AsyncGroup:
         )
 
     async def setitem(self, key: str, value: Any) -> None:
-        """Fastpath for creating a new array
-
+        """
+        Fastpath for creating a new array
         New arrays will be created with default array settings for the array type.
 
         Parameters
@@ -1100,8 +1099,7 @@ class AsyncGroup:
         self,
         max_depth: int | None = 0,
     ) -> int:
-        """
-        Count the number of members in this group.
+        """Count the number of members in this group.
 
         Parameters
         ----------
@@ -1528,6 +1526,7 @@ class Group(SyncMixin):
         zarr_format: Literal[2, 3, None] = 3,
     ) -> Group:
         """Open a group from an initialized store.
+
         Parameters
         ----------
         store : StoreLike
@@ -1545,6 +1544,7 @@ class Group(SyncMixin):
 
     def __getitem__(self, path: str) -> Array | Group:
         """Obtain a group member.
+
         Parameters
         ----------
         path : str
@@ -1730,6 +1730,7 @@ class Group(SyncMixin):
 
     def nmembers(self, max_depth: int | None = 0) -> int:
         """Count the number of members in this group.
+
         Parameters
         ----------
         max_depth : int, default 0
@@ -1883,6 +1884,7 @@ class Group(SyncMixin):
 
     def create_group(self, name: str, **kwargs: Any) -> Group:
         """Create a sub-group.
+
         Parameters
         ----------
         name : str
@@ -1953,8 +1955,8 @@ class Group(SyncMixin):
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> Array:
-        """
-        Create a zarr array within this AsyncGroup.
+        """Create a zarr array within this AsyncGroup.
+
         This method lightly wraps AsyncArray.create.
 
         Parameters
@@ -2069,7 +2071,6 @@ class Group(SyncMixin):
 
     def require_array(self, name: str, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
-
 
         Other `kwargs` are as per :func:`zarr.Group.create_array`.
 
@@ -2290,8 +2291,8 @@ class Group(SyncMixin):
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> Array:
-        """
-        Create a zarr array within this AsyncGroup.
+        """Create a zarr array within this AsyncGroup.
+
         This method lightly wraps `AsyncArray.create`.
 
         Parameters
