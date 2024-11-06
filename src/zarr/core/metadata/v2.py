@@ -71,6 +71,8 @@ class ArrayV2Metadata(Metadata):
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
         chunks_parsed = parse_shapelike(chunks)
+        if compressor is None:
+            compressor = _default_compressor(dtype_parsed)
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
@@ -238,15 +240,15 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
     raise TypeError(msg)
 
 
-def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
+def parse_compressor(data: object) -> numcodecs.abc.Codec:
     """
     Parse a potential compressor.
     """
-    if data is None or isinstance(data, numcodecs.abc.Codec):
+    if isinstance(data, numcodecs.abc.Codec):
         return data
     if isinstance(data, dict):
         return numcodecs.get_codec(data)
-    msg = f"Invalid compressor. Expected None, a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
+    msg = f"Invalid compressor. Expected a numcodecs.abc.Codec, or a dict representation of a numcodecs.abc.Codec. Got {type(data)} instead."
     raise ValueError(msg)
 
 
@@ -326,3 +328,16 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
         return ""
     else:
         return dtype.type(0)
+
+
+def _default_compressor(dtype: np.dtype[Any]) -> numcodecs.abc.Codec:
+    """Get the default compressor for a type.
+
+    The config contains a mapping from numpy dtype kind to the default compressor.
+    https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
+    """
+    dtype_kind_to_default_compressor = config.get("v2_dtype_kind_to_default_compressor")
+    for dtype_kinds, compressor in dtype_kind_to_default_compressor.items():
+        if dtype.kind in dtype_kinds:
+            return numcodecs.get_codec({"id": compressor})
+    raise ValueError(f"No default compressor found for dtype {dtype} of kind {dtype.kind}")

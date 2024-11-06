@@ -10,7 +10,7 @@ from numcodecs.blosc import Blosc
 
 import zarr
 import zarr.storage
-from zarr import Array
+from zarr import Array, config
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -96,7 +96,6 @@ async def test_v2_encode_decode(dtype):
     serialized = json.loads(result.to_bytes())
     expected = {
         "chunks": [3],
-        "compressor": None,
         "dtype": f"{dtype}0",
         "fill_value": "WA==",
         "filters": None,
@@ -105,6 +104,7 @@ async def test_v2_encode_decode(dtype):
         "zarr_format": 2,
         "dimension_separator": ".",
     }
+    del serialized["compressor"]
     assert serialized == expected
 
     data = zarr.open_array(store=store, path="foo")[:]
@@ -130,3 +130,21 @@ def test_v2_filters_codecs(filters: Any) -> None:
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)
+
+
+@pytest.mark.parametrize(
+    "dtype_compressor",
+    [["b", "zstd"], ["i", "zstd"], ["f", "zstd"], ["|S1", "vlen-bytes"], ["|U1", "vlen-bytes"]],
+)
+def test_default_compressors(dtype_compressor: Any) -> None:
+    with config.set(
+        {
+            "v2_dtype_kind_to_default_compressor": {
+                "biufcmM": "zstd",
+                "OSUV": "vlen-bytes",
+            },
+        }
+    ):
+        dtype, expected_compressor = dtype_compressor
+        arr = zarr.create(shape=(10,), path="foo", store={}, zarr_format=2, dtype=dtype)
+        assert arr.metadata.compressor.codec_id == expected_compressor

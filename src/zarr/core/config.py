@@ -64,6 +64,10 @@ config = Config(
             },
             "buffer": "zarr.core.buffer.cpu.Buffer",
             "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
+            "v2_dtype_kind_to_default_compressor": {
+                "biufcmM": "zstd",
+                "OSUV": "vlen-bytes",
+            },
         }
     ],
 )
