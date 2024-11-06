@@ -481,9 +481,9 @@ def parse_fill_value(
     except (ValueError, OverflowError, TypeError) as e:
         raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}") from e
     # Check if the value is still representable by the dtype
-    if fill_value == "NaN" and np.isnan(casted_value):
-        pass
-    elif fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value):
+    if (fill_value == "NaN" and np.isnan(casted_value)) or (
+        fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value)
+    ):
         pass
     elif np_dtype.kind == "f":
         # float comparison is not exact, especially when dtype <float64
