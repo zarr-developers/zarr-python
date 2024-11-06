@@ -1738,6 +1738,7 @@ class Group(SyncMixin):
             default, (``max_depth=0``) only immediate children are included. Set
             ``max_depth=None`` to include all nodes, and some positive integer
             to consider children within that many levels of the root Group.
+
         Returns
         -------
         count : int
