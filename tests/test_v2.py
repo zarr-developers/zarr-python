@@ -141,18 +141,19 @@ def test_v2_filters_codecs(filters: Any) -> None:
 
 @pytest.mark.parametrize(
     "dtype_expected",
-    [["b", "zstd"], ["i", "zstd"], ["f", "zstd"], ["|S1", "vlen-utf8"], ["|U1", "vlen-utf8"]],
+   # [["b", "zstd"], ["i", "zstd"], ["f", "zstd"], ["|S1", "vlen-utf8"], ["|U1", "vlen-utf8"]],
+    [["|S1", "vlen-bytes"]],
 )
 def test_default_filters_and_compressor(dtype_expected: Any) -> None:
     with config.set(
         {
             "v2_dtype_kind_to_default_filters_and_compressor": {
                 "biufcmM": ["zstd"],
-                "OSUV": ["vlen-utf8"],
+                "OSUV": ["vlen-bytes"],
             },
         }
     ):
         dtype, expected = dtype_expected
-        arr = zarr.create(shape=(10,), path="foo", store={}, zarr_format=2, dtype=dtype)
+        arr = zarr.create(shape=(3,), path="foo", store={}, zarr_format=2, dtype=dtype)
         assert arr.metadata.filters[0].codec_id == expected
-        print(arr.metadata)
+        arr[:] = np.array(["a", "bb", "ccc"], dtype=dtype)

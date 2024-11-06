@@ -46,7 +46,10 @@ class V2Codec(ArrayBytesCodec):
         # special case object dtype, because incorrect handling can lead to
         # segfaults and other bad things happening
         if chunk_spec.dtype != object:
+            print(chunk_spec.dtype, chunk.dtype)
             chunk = chunk.view(chunk_spec.dtype)
+            print("worked")
+
         elif chunk.dtype != object:
             # If we end up here, someone must have hacked around with the filters.
             # We cannot deal with object arrays unless there is an object
