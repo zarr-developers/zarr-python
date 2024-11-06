@@ -42,6 +42,5 @@ class Metadata:
         """
         Create an instance of the model from a dictionary
         """
-        ...
 
         return cls(**data)

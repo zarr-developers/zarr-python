@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 def parse_gzip_level(data: JSON) -> int:
     if not isinstance(data, (int)):
         raise TypeError(f"Expected int, got {type(data)}")
-    if data not in range(0, 10):
+    if data not in range(10):
         raise ValueError(
             f"Expected an integer from the inclusive range (0, 9). Got {data} instead."
         )

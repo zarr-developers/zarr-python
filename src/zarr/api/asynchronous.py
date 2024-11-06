@@ -10,6 +10,7 @@ import numpy.typing as npt
 
 from zarr.abc.store import Store
 from zarr.core.array import Array, AsyncArray, get_array_metadata
+from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
@@ -31,7 +32,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
-    from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
     # TODO: this type could use some more thought
@@ -393,15 +393,21 @@ async def save_array(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_version()
     )
+    if not isinstance(arr, NDArrayLike):
+        raise TypeError("arr argument must be numpy or other NDArrayLike array")
 
     mode = kwargs.pop("mode", None)
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+    if np.isscalar(arr):
+        arr = np.array(arr)
+    shape = arr.shape
+    chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
     new = await AsyncArray.create(
         store_path,
         zarr_format=zarr_format,
-        shape=arr.shape,
+        shape=shape,
         dtype=arr.dtype,
-        chunks=arr.shape,
+        chunks=chunks,
         **kwargs,
     )
     await new.setitem(slice(None), arr)
@@ -443,16 +449,26 @@ async def save_group(
         or _default_zarr_version()
     )
 
+    for arg in args:
+        if not isinstance(arg, NDArrayLike):
+            raise TypeError(
+                "All arguments must be numpy or other NDArrayLike arrays (except store, path, storage_options, and zarr_format)"
+            )
+    for k, v in kwargs.items():
+        if not isinstance(v, NDArrayLike):
+            raise TypeError(f"Keyword argument '{k}' must be a numpy or other NDArrayLike array")
+
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
     aws = []
     for i, arr in enumerate(args):
+        _path = f"{path}/arr_{i}" if path is not None else f"arr_{i}"
         aws.append(
             save_array(
                 store,
                 arr,
                 zarr_format=zarr_format,
-                path=f"{path}/arr_{i}",
+                path=_path,
                 storage_options=storage_options,
             )
         )
@@ -712,7 +728,7 @@ async def create(
     dtype: npt.DTypeLike | None = None,
     compressor: dict[str, JSON] | None = None,  # TODO: default and type change
     fill_value: Any | None = 0,  # TODO: need type
-    order: MemoryOrder | None = None,  # TODO: default change
+    order: MemoryOrder | None = None,
     store: str | StoreLike | None = None,
     synchronizer: Any | None = None,
     overwrite: bool = False,
@@ -761,6 +777,7 @@ async def create(
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
+        Default is set in Zarr's config (`array.order`).
     store : Store or str
         Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
@@ -834,12 +851,6 @@ async def create(
         else:
             chunk_shape = shape
 
-    if order is not None:
-        warnings.warn(
-            "order is deprecated, use config `array.order` instead",
-            DeprecationWarning,
-            stacklevel=2,
-        )
     if synchronizer is not None:
         warnings.warn("synchronizer is not yet implemented", RuntimeWarning, stacklevel=2)
     if chunk_store is not None:
@@ -867,9 +878,8 @@ async def create(
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
     mode = kwargs.pop("mode", None)
-    if mode is None:
-        if not isinstance(store, Store | StorePath):
-            mode = "a"
+    if mode is None and not isinstance(store, Store | StorePath):
+        mode = "a"
 
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
@@ -889,6 +899,7 @@ async def create(
         codecs=codecs,
         dimension_names=dimension_names,
         attributes=attributes,
+        order=order,
         **kwargs,
     )
 

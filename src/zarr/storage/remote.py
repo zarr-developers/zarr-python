@@ -1,8 +1,7 @@
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any, Self
-
-import fsspec
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.storage.common import _dereference_path
@@ -34,7 +33,8 @@ class RemoteStore(Store):
     mode : AccessModeLiteral
         The access mode to use.
     path : str
-        The root path of the store.
+        The root path of the store. This should be a relative path and must not include the
+        filesystem scheme.
     allowed_exceptions : tuple[type[Exception], ...]
         When fetching data, these cases will be deemed to correspond to missing keys.
 
@@ -46,6 +46,23 @@ class RemoteStore(Store):
     supports_deletes
     supports_partial_writes
     supports_listing
+
+    Raises
+    ------
+    TypeError
+        If the Filesystem does not support async operations.
+    ValueError
+        If the path argument includes a scheme.
+
+    Warns
+    -----
+    UserWarning
+        If the file system (fs) was not created with `asynchronous=True`.
+
+    See Also
+    --------
+    RemoteStore.from_upath
+    RemoteStore.from_url
     """
 
     # based on FSSpec
@@ -71,6 +88,15 @@ class RemoteStore(Store):
 
         if not self.fs.async_impl:
             raise TypeError("Filesystem needs to support async operations.")
+        if not self.fs.asynchronous:
+            warnings.warn(
+                f"fs ({fs}) was not created with `asynchronous=True`, this may lead to surprising behavior",
+                stacklevel=2,
+            )
+        if "://" in path and not path.startswith("http"):
+            # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
+            scheme, _ = path.split("://", maxsplit=1)
+            raise ValueError(f"path argument to RemoteStore must not include scheme ({scheme}://)")
 
     @classmethod
     def from_upath(
@@ -130,7 +156,23 @@ class RemoteStore(Store):
         -------
         RemoteStore
         """
-        fs, path = fsspec.url_to_fs(url, **storage_options)
+        try:
+            from fsspec import url_to_fs
+        except ImportError:
+            # before fsspec==2024.3.1
+            from fsspec.core import url_to_fs
+
+        opts = storage_options or {}
+        opts = {"asynchronous": True, **opts}
+
+        fs, path = url_to_fs(url, **opts)
+
+        # fsspec is not consistent about removing the scheme from the path, so check and strip it here
+        # https://github.com/fsspec/filesystem_spec/issues/1722
+        if "://" in path and not path.startswith("http"):
+            # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
+            path = fs._strip_protocol(path)
+
         return cls(fs=fs, path=path, mode=mode, allowed_exceptions=allowed_exceptions)
 
     async def clear(self) -> None:
@@ -280,13 +322,13 @@ class RemoteStore(Store):
         # docstring inherited
         raise NotImplementedError
 
-    async def list(self) -> AsyncGenerator[str, None]:
+    async def list(self) -> AsyncGenerator[str]:
         # docstring inherited
         allfiles = await self.fs._find(self.path, detail=False, withdirs=False)
         for onefile in (a.replace(self.path + "/", "") for a in allfiles):
             yield onefile
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         prefix = f"{self.path}/{prefix.rstrip('/')}"
         try:
@@ -296,8 +338,9 @@ class RemoteStore(Store):
         for onefile in (a.replace(prefix + "/", "") for a in allfiles):
             yield onefile.removeprefix(self.path).removeprefix("/")
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
-        find_str = f"{self.path}/{prefix}"
-        for onefile in await self.fs._find(find_str, detail=False, maxdepth=None, withdirs=False):
-            yield onefile.removeprefix(find_str)
+        for onefile in await self.fs._find(
+            f"{self.path}/{prefix}", detail=False, maxdepth=None, withdirs=False
+        ):
+            yield onefile.removeprefix(f"{self.path}/")

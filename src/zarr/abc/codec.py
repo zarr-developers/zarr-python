@@ -106,7 +106,6 @@ class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
         chunk_grid : ChunkGrid
             The array chunk grid
         """
-        ...
 
     async def _decode_single(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
         raise NotImplementedError
