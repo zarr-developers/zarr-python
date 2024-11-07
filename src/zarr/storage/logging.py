@@ -55,7 +55,7 @@ class LoggingStore(Store):
         self, log_level: str = "DEBUG", log_handler: logging.Handler | None = None
     ) -> None:
         self.log_level = log_level
-        self.logger = logging.getLogger(f"LoggingStore({self._store!s})")
+        self.logger = logging.getLogger(f"LoggingStore({self._store})")
         self.logger.setLevel(log_level)
 
         if not self.logger.hasHandlers():
@@ -147,7 +147,7 @@ class LoggingStore(Store):
             return await self._store.clear()
 
     def __str__(self) -> str:
-        return f"logging-{self._store!s}"
+        return f"logging-{self._store}"
 
     def __repr__(self) -> str:
         return f"LoggingStore({repr(self._store)!r})"
