@@ -53,7 +53,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
             await store.set("foo", cpu.Buffer.from_bytes(b"bar"))
 
     def test_store_repr(self, store: ZipStore) -> None:
-        assert str(store) == f"zip://{store.path!s}"
+        assert str(store) == f"zip://{store.path}"
 
     def test_store_supports_writes(self, store: ZipStore) -> None:
         assert store.supports_writes
