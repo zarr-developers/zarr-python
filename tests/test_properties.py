@@ -6,7 +6,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst  # noqa: E402
 import hypothesis.strategies as st  # noqa: E402
-from hypothesis import given  # noqa: E402
+from hypothesis import assume, given  # noqa: E402
 
 from zarr.testing.strategies import arrays, basic_indices, numpy_arrays, zarr_formats  # noqa: E402
 
@@ -35,11 +35,13 @@ def test_basic_indexing(data: st.DataObject) -> None:
 @given(data=st.data())
 def test_vindex(data: st.DataObject) -> None:
     zarray = data.draw(arrays())
+    # integer_array_indices can't handle 0-size dimensions.
+    assume(all(s > 0 for s in zarray.shape))
     nparray = zarray[:]
 
     indexer = data.draw(
         npst.integer_array_indices(
-            shape=nparray.shape, result_shape=npst.array_shapes(max_dims=None)
+            shape=nparray.shape, result_shape=npst.array_shapes(min_side=1, max_dims=None)
         )
     )
     actual = zarray.vindex[indexer]
