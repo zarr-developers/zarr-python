@@ -260,12 +260,12 @@ async def _get_partial_values(
             per_file_bounded_requests[path].append(
                 {"original_request_index": idx, "start": start, "end": end}
             )
-        elif end is None and start < 0:
+        elif start < 0:
             # Suffix request from the end
             other_requests.append(
                 {"original_request_index": idx, "path": path, "range": {"suffix": abs(start)}}
             )
-        elif end is None and start >= 0:
+        elif start >= 0:
             # Offset request to the end
             other_requests.append(
                 {"original_request_index": idx, "path": path, "range": {"offset": start}}
