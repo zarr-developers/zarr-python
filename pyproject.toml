@@ -269,19 +269,25 @@ extend-exclude = [
 extend-select = [
     "ANN",  # flake8-annotations
     "B",    # flake8-bugbear
+    "EXE",  # flake8-executable
     "C4",   # flake8-comprehensions
+    "FA",   # flake8-future-annotations
     "FLY",  # flynt
     "FURB", # refurb
     "G",    # flake8-logging-format
     "I",    # isort
     "ISC",  # flake8-implicit-str-concat
+    "LOG",  # flake8-logging
     "PERF", # Perflint
+    "PIE",  # flake8-pie
     "PGH",  # pygrep-hooks
     "PT",   # flake8-pytest-style
     "PYI",  # flake8-pyi
-    "RSE",  # flake8-raise
     "RET",  # flake8-return
+    "RSE",  # flake8-raise
     "RUF",
+    "SIM",  # flake8-simplify
+    "SLOT", # flake8-slots
     "TCH",  # flake8-type-checking
     "TRY",  # tryceratops
     "UP",   # pyupgrade
@@ -298,6 +304,7 @@ ignore = [
     "RET505",
     "RET506",
     "RUF005",
+    "SIM108",
     "TRY003",
     "UP027",  # deprecated
     "UP038",  # https://github.com/astral-sh/ruff/issues/7871
@@ -319,7 +326,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
-"tests/**" = ["ANN001", "ANN201"]
+"tests/**" = ["ANN001", "ANN201", "RUF029", "SIM117", "SIM300"]
 
 [tool.mypy]
 python_version = "3.11"

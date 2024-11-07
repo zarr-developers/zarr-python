@@ -8,10 +8,10 @@ ArrayMetadataDict: TypeAlias = ArrayV2MetadataDict | ArrayV3MetadataDict
 T_ArrayMetadata = TypeVar("T_ArrayMetadata", ArrayV2Metadata, ArrayV3Metadata)
 
 __all__ = [
-    "ArrayV2Metadata",
-    "ArrayV3Metadata",
     "ArrayMetadata",
     "ArrayMetadataDict",
-    "ArrayV3MetadataDict",
+    "ArrayV2Metadata",
     "ArrayV2MetadataDict",
+    "ArrayV3Metadata",
+    "ArrayV3MetadataDict",
 ]
