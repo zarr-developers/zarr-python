@@ -806,9 +806,12 @@ class AsyncGroup:
         return self.metadata.attributes
 
     @property
-    def info(self) -> GroupInfo:
+    def info(self) -> Any:
         """
-        Return the statically known information for a group.
+        Return a visual representation of the statically known information about a group.
+
+        Note that this doesn't include dynamic information, like the number of child
+        Groups or Arrays.
 
         Returns
         -------
@@ -818,7 +821,6 @@ class AsyncGroup:
         --------
         AsyncGroup.info_complete
             All information about a group, including dynamic information
-            like the children members.
         """
 
         if self.metadata.consolidated_metadata:
@@ -827,12 +829,13 @@ class AsyncGroup:
             members = None
         return self._info(members=members)
 
-    async def info_complete(self) -> GroupInfo:
+    async def info_complete(self) -> Any:
         """
-        Return information for a group.
+        Return all the information for a group.
 
-        If this group doesn't contain consolidated metadata then
-        this will need to read from the backing Store.
+        This includes dynamic information like the number
+        of child Groups or Arrays. If this group doesn't contain consolidated
+        metadata then this will need to read from the backing Store.
 
         Returns
         -------
@@ -847,10 +850,10 @@ class AsyncGroup:
 
     def _info(
         self, members: list[ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] | None = None
-    ) -> GroupInfo:
+    ) -> Any:
         kwargs = {}
         if members is not None:
-            kwargs["count_members"] = len(members)
+            kwargs["_count_members"] = len(members)
             count_arrays = 0
             count_groups = 0
             for member in members:
@@ -858,14 +861,14 @@ class AsyncGroup:
                     count_groups += 1
                 else:
                     count_arrays += 1
-            kwargs["count_arrays"] = count_arrays
-            kwargs["count_groups"] = count_groups
+            kwargs["_count_arrays"] = count_arrays
+            kwargs["_count_groups"] = count_groups
 
         return GroupInfo(
-            name=self.store_path.path,
-            read_only=self.store_path.store.mode.readonly,
-            store_type=type(self.store_path.store).__name__,
-            zarr_format=self.metadata.zarr_format,
+            _name=self.store_path.path,
+            _read_only=self.store_path.store.mode.readonly,
+            _store_type=type(self.store_path.store).__name__,
+            _zarr_format=self.metadata.zarr_format,
             # maybe do a typeddict
             **kwargs,  # type: ignore[arg-type]
         )
@@ -1516,7 +1519,7 @@ class Group(SyncMixin):
         return Attributes(self)
 
     @property
-    def info(self) -> GroupInfo:
+    def info(self) -> Any:
         """
         Return the statically known information for a group.
 
@@ -1532,7 +1535,7 @@ class Group(SyncMixin):
         """
         return self._async_group.info
 
-    def info_complete(self) -> GroupInfo:
+    def info_complete(self) -> Any:
         """
         Return information for a group.
 

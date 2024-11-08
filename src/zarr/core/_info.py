@@ -33,29 +33,29 @@ class GroupInfo:
         or when using :class:`Group.info_complete`.
     """
 
-    name: str
-    type: Literal["Group"] = "Group"
-    zarr_format: Literal[2, 3]
-    read_only: bool
-    store_type: str
-    count_members: int | None = None
-    count_arrays: int | None = None
-    count_groups: int | None = None
+    _name: str
+    _type: Literal["Group"] = "Group"
+    _zarr_format: Literal[2, 3]
+    _read_only: bool
+    _store_type: str
+    _count_members: int | None = None
+    _count_arrays: int | None = None
+    _count_groups: int | None = None
 
     def __repr__(self) -> str:
         template = textwrap.dedent("""\
-        Name        : {name}
-        Type        : {type}
-        Zarr format : {zarr_format}
-        Read-only   : {read_only}
-        Store type  : {store_type}""")
+        Name        : {_name}
+        Type        : {_type}
+        Zarr format : {_zarr_format}
+        Read-only   : {_read_only}
+        Store type  : {_store_type}""")
 
-        if self.count_members is not None:
-            template += "\nNo. members : {count_members}"
-        if self.count_arrays is not None:
-            template += "\nNo. arrays  : {count_arrays}"
-        if self.count_groups is not None:
-            template += "\nNo. groups  : {count_groups}"
+        if self._count_members is not None:
+            template += "\nNo. members : {_count_members}"
+        if self._count_arrays is not None:
+            template += "\nNo. arrays  : {_count_arrays}"
+        if self._count_groups is not None:
+            template += "\nNo. groups  : {_count_groups}"
         return template.format(**dataclasses.asdict(self))
 
 
@@ -83,61 +83,68 @@ def byte_info(size: int) -> str:
 
 @dataclasses.dataclass(kw_only=True)
 class ArrayInfo:
-    type: Literal["Array"] = "Array"
-    zarr_format: Literal[2, 3]
-    data_type: str
-    shape: tuple[int, ...]
-    chunk_shape: tuple[int, ...] | None = None
-    order: Literal["C", "F"]
-    read_only: bool
-    store_type: str
-    compressor: str | None = None
-    filters: list[str] | None = None
-    codecs: str | None = None
-    count_bytes: int | None = None
-    count_bytes_stored: int | None = None
-    count_chunks_initialized: int | None = None
+    """
+    Render the information for an array.
+
+    Note that this method and its properties is not part of
+    Zarr's public API.
+    """
+
+    _type: Literal["Array"] = "Array"
+    _zarr_format: Literal[2, 3]
+    _data_type: str
+    _shape: tuple[int, ...]
+    _chunk_shape: tuple[int, ...] | None = None
+    _order: Literal["C", "F"]
+    _read_only: bool
+    _store_type: str
+    _compressor: str | None = None
+    _filters: list[str] | None = None
+    _codecs: str | None = None
+    _count_bytes: int | None = None
+    _count_bytes_stored: int | None = None
+    _count_chunks_initialized: int | None = None
 
     def __repr__(self) -> str:
         template = textwrap.dedent("""\
-        Type               : {type}
-        Zarr format        : {zarr_format}
-        Data type          : {data_type}
-        Shape              : {shape}
-        Chunk shape        : {chunk_shape}
-        Order              : {order}
-        Read-only          : {read_only}
-        Store type         : {store_type}""")
+        Type               : {_type}
+        Zarr format        : {_zarr_format}
+        Data type          : {_data_type}
+        Shape              : {_shape}
+        Chunk shape        : {_chunk_shape}
+        Order              : {_order}
+        Read-only          : {_read_only}
+        Store type         : {_store_type}""")
 
         kwargs = dataclasses.asdict(self)
-        if self.chunk_shape is None:
+        if self._chunk_shape is None:
             # for non-regular chunk grids
             kwargs["chunk_shape"] = "<variable>"
-        if self.compressor is not None:
-            template += "\nCompressor         : {compressor}"
+        if self._compressor is not None:
+            template += "\nCompressor         : {_compressor}"
 
-        if self.filters is not None:
-            template += "\nFilters            : {filters}"
+        if self._filters is not None:
+            template += "\nFilters            : {_filters}"
 
-        if self.codecs is not None:
-            template += "\nCodecs             : {codecs}"
+        if self._codecs is not None:
+            template += "\nCodecs             : {_codecs}"
 
-        if self.count_bytes is not None:
-            template += "\nNo. bytes          : {count_bytes}"
-            kwargs["count_bytes"] = byte_info(self.count_bytes)
+        if self._count_bytes is not None:
+            template += "\nNo. bytes          : {_count_bytes}"
+            kwargs["_count_bytes"] = byte_info(self._count_bytes)
 
-        if self.count_bytes_stored is not None:
-            template += "\nNo. bytes stored   : {count_bytes_stored}"
-            kwargs["count_stored"] = byte_info(self.count_bytes_stored)
+        if self._count_bytes_stored is not None:
+            template += "\nNo. bytes stored   : {_count_bytes_stored}"
+            kwargs["_count_stored"] = byte_info(self._count_bytes_stored)
 
         if (
-            self.count_bytes is not None
-            and self.count_bytes_stored is not None
-            and self.count_bytes_stored > 0
+            self._count_bytes is not None
+            and self._count_bytes_stored is not None
+            and self._count_bytes_stored > 0
         ):
-            template += "\nStorage ratio      : {storage_ratio}"
-            kwargs["storage_ratio"] = f"{self.count_bytes / self.count_bytes_stored:.1f}"
+            template += "\nStorage ratio      : {_storage_ratio}"
+            kwargs["_storage_ratio"] = f"{self._count_bytes / self._count_bytes_stored:.1f}"
 
-        if self.count_chunks_initialized is not None:
-            template += "\nChunks Initialized : {count_chunks_initialized}"
+        if self._count_chunks_initialized is not None:
+            template += "\nChunks Initialized : {_count_chunks_initialized}"
         return template.format(**kwargs)

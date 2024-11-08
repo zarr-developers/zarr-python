@@ -1334,7 +1334,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
     @property
-    def info(self) -> ArrayInfo:
+    def info(self) -> Any:
         """
         Return the statically known information for an array.
 
@@ -1350,17 +1350,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         return self._info()
 
-    async def info_complete(self) -> ArrayInfo:
+    async def info_complete(self) -> Any:
         # TODO: get the size of the object from the store.
         extra = {
-            "count_chunks_initialized": self.nchunks_initialized,  # this should be async?
+            "count_chunks_initialized": await self.nchunks_initialized(),
             # count_bytes_stored isn't yet implemented.
         }
         return self._info(extra=extra)
 
         raise NotImplementedError
 
-    def _info(self, extra: dict[str, int] | None = None) -> ArrayInfo:
+    def _info(self, extra: dict[str, int] | None = None) -> Any:
         kwargs: dict[str, Any] = {}
         if self.metadata.zarr_format == 2:
             assert isinstance(self.metadata, ArrayV2Metadata)
@@ -1383,12 +1383,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 )
 
         return ArrayInfo(
-            zarr_format=self.metadata.zarr_format,
-            shape=self.shape,
-            order=self.order,
-            read_only=self.store_path.store.mode.readonly,
-            store_type=type(self.store_path.store).__name__,
-            count_bytes=self.dtype.itemsize * self.size,
+            _zarr_format=self.metadata.zarr_format,
+            _shape=self.shape,
+            _order=self.order,
+            _read_only=self.store_path.store.mode.readonly,
+            _store_type=type(self.store_path.store).__name__,
+            _count_bytes=self.dtype.itemsize * self.size,
             **kwargs,
         )
 
@@ -3157,7 +3157,7 @@ class Array:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
     @property
-    def info(self) -> ArrayInfo:
+    def info(self) -> Any:
         """
         Return the statically known information for an array.
 
@@ -3188,7 +3188,7 @@ class Array:
         """
         return self._async_array.info
 
-    def info_complete(self) -> ArrayInfo:
+    def info_complete(self) -> Any:
         """
         Returns all the information about an array, including information from the Store.
 

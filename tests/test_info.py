@@ -10,7 +10,9 @@ ZARR_FORMATS = [2, 3]
 
 @pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
 def test_group_info_repr(zarr_format: ZarrFormat) -> None:
-    info = GroupInfo(name="a", store_type="MemoryStore", read_only=False, zarr_format=zarr_format)
+    info = GroupInfo(
+        _name="a", _store_type="MemoryStore", _read_only=False, _zarr_format=zarr_format
+    )
     result = repr(info)
     expected = textwrap.dedent(f"""\
         Name        : a
@@ -24,13 +26,13 @@ def test_group_info_repr(zarr_format: ZarrFormat) -> None:
 @pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
 def test_group_info_complete(zarr_format: ZarrFormat) -> None:
     info = GroupInfo(
-        name="a",
-        store_type="MemoryStore",
-        zarr_format=zarr_format,
-        read_only=False,
-        count_arrays=10,
-        count_groups=4,
-        count_members=14,
+        _name="a",
+        _store_type="MemoryStore",
+        _zarr_format=zarr_format,
+        _read_only=False,
+        _count_arrays=10,
+        _count_groups=4,
+        _count_members=14,
     )
     result = repr(info)
     expected = textwrap.dedent(f"""\
@@ -48,14 +50,14 @@ def test_group_info_complete(zarr_format: ZarrFormat) -> None:
 @pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
 def test_array_info(zarr_format: ZarrFormat) -> None:
     info = ArrayInfo(
-        zarr_format=zarr_format,
-        data_type="int32",
-        shape=(100, 100),
-        chunk_shape=(10, 100),
-        order="C",
-        read_only=True,
-        store_type="MemoryStore",
-        codecs="[\"BytesCodec(endian=<Endian.little: 'little'>\"]",
+        _zarr_format=zarr_format,
+        _data_type="int32",
+        _shape=(100, 100),
+        _chunk_shape=(10, 100),
+        _order="C",
+        _read_only=True,
+        _store_type="MemoryStore",
+        _codecs="[\"BytesCodec(endian=<Endian.little: 'little'>\"]",
     )
     result = repr(info)
     assert result == textwrap.dedent(f"""\
@@ -84,17 +86,17 @@ def test_array_info_complete(
         count_chunks_initialized,
     ) = bytes_things
     info = ArrayInfo(
-        zarr_format=zarr_format,
-        data_type="int32",
-        shape=(100, 100),
-        chunk_shape=(10, 100),
-        order="C",
-        read_only=True,
-        store_type="MemoryStore",
-        codecs="[\"BytesCodec(endian=<Endian.little: 'little'>\"]",
-        count_bytes=count_bytes,
-        count_bytes_stored=count_bytes_stored,
-        count_chunks_initialized=count_chunks_initialized,
+        _zarr_format=zarr_format,
+        _data_type="int32",
+        _shape=(100, 100),
+        _chunk_shape=(10, 100),
+        _order="C",
+        _read_only=True,
+        _store_type="MemoryStore",
+        _codecs="[\"BytesCodec(endian=<Endian.little: 'little'>\"]",
+        _count_bytes=count_bytes,
+        _count_bytes_stored=count_bytes_stored,
+        _count_chunks_initialized=count_chunks_initialized,
     )
     result = repr(info)
     assert result == textwrap.dedent(f"""\

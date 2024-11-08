@@ -424,14 +424,14 @@ class TestInfo:
         arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=2)
         result = arr.info
         expected = ArrayInfo(
-            zarr_format=2,
-            data_type="float64",
-            shape=(4, 4),
-            chunk_shape=(2, 2),
-            order="C",
-            read_only=False,
-            store_type="MemoryStore",
-            count_bytes=128,
+            _zarr_format=2,
+            _data_type="float64",
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _count_bytes=128,
         )
         assert result == expected
 
@@ -439,15 +439,15 @@ class TestInfo:
         arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
         result = arr.info
         expected = ArrayInfo(
-            zarr_format=3,
-            data_type="DataType.float64",
-            shape=(4, 4),
-            chunk_shape=(2, 2),
-            order="C",
-            read_only=False,
-            store_type="MemoryStore",
-            codecs="[BytesCodec(endian=<Endian.little: 'little'>)]",
-            count_bytes=128,
+            _zarr_format=3,
+            _data_type="DataType.float64",
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _codecs="[BytesCodec(endian=<Endian.little: 'little'>)]",
+            _count_bytes=128,
         )
         assert result == expected
 
