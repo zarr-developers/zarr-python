@@ -378,11 +378,11 @@ class LatencyStore(WrapperStore[Store]):
     def __init__(self, cls: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
         self.get_latency = float(get_latency)
         self.set_latency = float(set_latency)
-        self._wrapped = cls
+        self._store = cls
 
     async def set(self, key: str, value: Buffer) -> None:
         await asyncio.sleep(self.set_latency)
-        await self._wrapped.set(key, value)
+        await self._store.set(key, value)
 
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
@@ -403,4 +403,4 @@ class LatencyStore(WrapperStore[Store]):
         buffer : Buffer or None
         """
         await asyncio.sleep(self.get_latency)
-        return await self._wrapped.get(key, prototype=prototype, byte_range=byte_range)
+        return await self._store.get(key, prototype=prototype, byte_range=byte_range)

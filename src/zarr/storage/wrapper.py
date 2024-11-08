@@ -13,10 +13,10 @@ if TYPE_CHECKING:
 
 from zarr.abc.store import AccessMode, Store
 
-T_Wrapped = TypeVar("T_Wrapped", bound=Store)
+T_Store = TypeVar("T_Store", bound=Store)
 
 
-class WrapperStore(Store, Generic[T_Wrapped]):
+class WrapperStore(Store, Generic[T_Store]):
     """
     A store class that wraps an existing ``Store`` instance.
     By default all of the store methods are delegated to the wrapped store instance, which is
@@ -25,21 +25,19 @@ class WrapperStore(Store, Generic[T_Wrapped]):
     Use this class to modify or extend the behavior of the other store classes.
     """
 
-    _wrapped: T_Wrapped
+    _store: T_Store
 
-    def __init__(self, wrapped: T_Wrapped) -> None:
-        self._wrapped = wrapped
+    def __init__(self, store: T_Store) -> None:
+        self._store = store
 
     @classmethod
-    async def open(
-        cls: type[Self], wrapped_class: type[T_Wrapped], *args: Any, **kwargs: Any
-    ) -> Self:
-        wrapped = wrapped_class(*args, **kwargs)
-        await wrapped._open()
-        return cls(wrapped=wrapped)
+    async def open(cls: type[Self], store_cls: type[T_Store], *args: Any, **kwargs: Any) -> Self:
+        store = store_cls(*args, **kwargs)
+        await store._open()
+        return cls(store=store)
 
     def __enter__(self) -> Self:
-        return type(self)(self._wrapped.__enter__())
+        return type(self)(self._store.__enter__())
 
     def __exit__(
         self,
@@ -47,98 +45,98 @@ class WrapperStore(Store, Generic[T_Wrapped]):
         exc_value: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
-        return self._wrapped.__exit__(exc_type, exc_value, traceback)
+        return self._store.__exit__(exc_type, exc_value, traceback)
 
     async def _open(self) -> None:
-        await self._wrapped._open()
+        await self._store._open()
 
     async def _ensure_open(self) -> None:
-        await self._wrapped._ensure_open()
+        await self._store._ensure_open()
 
     async def empty(self) -> bool:
-        return await self._wrapped.empty()
+        return await self._store.empty()
 
     async def clear(self) -> None:
-        return await self._wrapped.clear()
+        return await self._store.clear()
 
     def with_mode(self, mode: AccessModeLiteral) -> Self:
-        return type(self)(wrapped=self._wrapped.with_mode(mode=mode))
+        return type(self)(store=self._store.with_mode(mode=mode))
 
     @property
     def mode(self) -> AccessMode:
-        return self._wrapped._mode
+        return self._store._mode
 
     def _check_writable(self) -> None:
-        return self._wrapped._check_writable()
+        return self._store._check_writable()
 
     def __eq__(self, value: object) -> bool:
-        return type(self) is type(value) and self._wrapped.__eq__(value)
+        return type(self) is type(value) and self._store.__eq__(value)
 
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
     ) -> Buffer | None:
-        return await self._wrapped.get(key, prototype, byte_range)
+        return await self._store.get(key, prototype, byte_range)
 
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
         key_ranges: Iterable[tuple[str, ByteRangeRequest]],
     ) -> list[Buffer | None]:
-        return await self._wrapped.get_partial_values(prototype, key_ranges)
+        return await self._store.get_partial_values(prototype, key_ranges)
 
     async def exists(self, key: str) -> bool:
-        return await self._wrapped.exists(key)
+        return await self._store.exists(key)
 
     async def set(self, key: str, value: Buffer) -> None:
-        await self._wrapped.set(key, value)
+        await self._store.set(key, value)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
-        return await self._wrapped.set_if_not_exists(key, value)
+        return await self._store.set_if_not_exists(key, value)
 
     async def _set_many(self, values: Iterable[tuple[str, Buffer]]) -> None:
-        await self._wrapped._set_many(values)
+        await self._store._set_many(values)
 
     @property
     def supports_writes(self) -> bool:
-        return self._wrapped.supports_writes
+        return self._store.supports_writes
 
     @property
     def supports_deletes(self) -> bool:
-        return self._wrapped.supports_deletes
+        return self._store.supports_deletes
 
     async def delete(self, key: str) -> None:
-        await self._wrapped.delete(key)
+        await self._store.delete(key)
 
     @property
     def supports_partial_writes(self) -> bool:
-        return self._wrapped.supports_partial_writes
+        return self._store.supports_partial_writes
 
     async def set_partial_values(
         self, key_start_values: Iterable[tuple[str, int, BytesLike]]
     ) -> None:
-        return await self._wrapped.set_partial_values(key_start_values)
+        return await self._store.set_partial_values(key_start_values)
 
     @property
     def supports_listing(self) -> bool:
-        return self._wrapped.supports_listing
+        return self._store.supports_listing
 
     def list(self) -> AsyncGenerator[str]:
-        return self._wrapped.list()
+        return self._store.list()
 
     def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
-        return self._wrapped.list_prefix(prefix)
+        return self._store.list_prefix(prefix)
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str]:
-        return self._wrapped.list_dir(prefix)
+        return self._store.list_dir(prefix)
 
     async def delete_dir(self, prefix: str) -> None:
-        return await self._wrapped.delete_dir(prefix)
+        return await self._store.delete_dir(prefix)
 
     def close(self) -> None:
-        self._wrapped.close()
+        self._store.close()
 
     async def _get_many(
         self, requests: Iterable[tuple[str, BufferPrototype, ByteRangeRequest | None]]
     ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
-        async for req in self._wrapped._get_many(requests):
+        async for req in self._store._get_many(requests):
             yield req
