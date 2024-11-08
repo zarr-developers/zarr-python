@@ -52,6 +52,8 @@ def test_array_creation_existing_node(
     new_dtype = "float32"
 
     if exists_ok:
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
         arr_new = Array.create(
             spath / "extant",
             shape=new_shape,
@@ -324,7 +326,7 @@ def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) ->
 
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
-def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
+async def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
     """
     Test that nchunks_initialized accurately returns the number of stored chunks.
     """
@@ -338,7 +340,7 @@ def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> N
         if test_cls == Array:
             observed = arr.nchunks_initialized
         else:
-            observed = arr._async_array.nchunks_initialized
+            observed = await arr._async_array.nchunks_initialized()
         assert observed == expected
 
     # delete chunks
@@ -347,13 +349,12 @@ def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> N
         if test_cls == Array:
             observed = arr.nchunks_initialized
         else:
-            observed = arr._async_array.nchunks_initialized
+            observed = await arr._async_array.nchunks_initialized()
         expected = arr.nchunks - idx - 1
         assert observed == expected
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
-def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
+async def test_chunks_initialized() -> None:
     """
     Test that chunks_initialized accurately returns the keys of stored chunks.
     """
@@ -365,12 +366,7 @@ def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> No
     )
     for keys, region in zip(chunks_accumulated, arr._iter_chunk_regions(), strict=False):
         arr[region] = 1
-
-        if test_cls == Array:
-            observed = sorted(chunks_initialized(arr))
-        else:
-            observed = sorted(chunks_initialized(arr._async_array))
-
+        observed = sorted(await chunks_initialized(arr._async_array))
         expected = sorted(keys)
         assert observed == expected
 

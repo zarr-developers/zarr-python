@@ -11,9 +11,10 @@ import zarr
 from zarr import Array, zeros
 from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter, Store
-from zarr.codecs import BatchedCodecPipeline, BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
+from zarr.codecs import BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
+from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
 from zarr.registry import (
@@ -45,7 +46,7 @@ def test_config_defaults_set() -> None:
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
-                "path": "zarr.codecs.pipeline.BatchedCodecPipeline",
+                "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
             },
             "buffer": "zarr.core.buffer.cpu.Buffer",
@@ -96,8 +97,8 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     # has default value
     assert get_pipeline_class().__name__ != ""
 
-    config.set({"codec_pipeline.name": "zarr.codecs.pipeline.BatchedCodecPipeline"})
-    assert get_pipeline_class() == zarr.codecs.pipeline.BatchedCodecPipeline
+    config.set({"codec_pipeline.name": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
+    assert get_pipeline_class() == zarr.core.codec_pipeline.BatchedCodecPipeline
 
     _mock = Mock()
 
