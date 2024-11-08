@@ -12,7 +12,6 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from zarr import Array
-from zarr.core.array import Array
 from zarr.core.buffer import BufferPrototype, default_buffer_prototype
 from zarr.core.indexing import (
     BasicSelection,
