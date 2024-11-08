@@ -91,7 +91,7 @@ async def test_v2_encode_decode(dtype):
         fill_value=b"X",
     )
 
-    result = await store.get("foo/.zarray", zarr.buffer.default_buffer_prototype())
+    result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
     assert result is not None
 
     serialized = json.loads(result.to_bytes())
