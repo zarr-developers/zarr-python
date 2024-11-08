@@ -1849,32 +1849,56 @@ class Group(SyncMixin):
 
 
 async def members_v3(
-    node: AsyncGroup, max_depth: int | None, current_depth: int, prototype: BufferPrototype
+    store: Store,
+    path: str,
 ) -> Any:
-    node_path = node.store_path.path
     metadata_keys = ("zarr.json",)
 
-    members_flat: dict[
-        str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup
-    ] = {"": node}
+    members_flat: tuple[tuple[str, ArrayV3Metadata | GroupMetadata], ...] = ()
 
-    group_queue: asyncio.Queue[AsyncGroup] = asyncio.Queue()
-    key_queue: asyncio.Queue[str] = asyncio.Queue()
-
-    keys = [key async for key in node.store_path.store.list_dir(node_path)]
+    keys = [key async for key in store.list_dir(path)]
     keys_filtered = tuple(filter(lambda v: v not in metadata_keys, keys))
     doc_keys = []
 
     for key in keys_filtered:
         for metadata_key in metadata_keys:
-            doc_keys.append("/".join([key, metadata_key]))
+            doc_keys.append("/".join([path, key, metadata_key]).lstrip("/"))
 
     # optimistically fetch extant metadata documents
-    blobs = asyncio.gather(
-        *(node.store.get(key, prototype=prototype) for key in doc_keys),
+    blobs = await asyncio.gather(
+        *(store.get(key, prototype=default_buffer_prototype()) for key in doc_keys)
     )
+
+    to_recurse = []
+
     # insert resolved metadata_documents into members_flat
+    for key, blob in zip(doc_keys, blobs, strict=False):
+        key_body = "/".join(key.split("/")[:-1])
 
-    # repeat for groups
+        if blob is not None:
+            resolved_metadata = resolve_metadata_v3(blob.to_bytes())
+            members_flat += ((key_body, resolved_metadata),)
+            if isinstance(resolved_metadata, GroupMetadata):
+                to_recurse.append(members_v3(store, key_body))
 
-    return objects
+    # for r in to_recurse:
+    #    members_flat += await r
+
+    subgroups = await asyncio.gather(*to_recurse)
+    members_flat += tuple(subgroup for subgroup in subgroups)
+
+    # recurse for groups
+
+    return members_flat
+
+
+def resolve_metadata_v3(blob: str | bytes | bytearray) -> ArrayV3Metadata | GroupMetadata:
+    zarr_json = json.loads(blob)
+    if "node_type" not in zarr_json:
+        raise ValueError("missing node_type in metadata document")
+    if zarr_json["node_type"] == "array":
+        return ArrayV3Metadata.from_dict(zarr_json)
+    elif zarr_json["node_type"] == "group":
+        return GroupMetadata.from_dict(zarr_json)
+    else:
+        raise ValueError("invalid node_type in metadata document")
