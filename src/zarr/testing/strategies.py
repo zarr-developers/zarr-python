@@ -138,10 +138,6 @@ def arrays(
     array_path = path + ("/" if not path.endswith("/") else "") + name
     root = zarr.open_group(store, mode="w")
 
-    # try:
-    #     del root[array_path]
-    # except KeyError:
-    #     pass
 
     a = root.create_array(
         array_path,

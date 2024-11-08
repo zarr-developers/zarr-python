@@ -627,7 +627,6 @@ async def group(
     else:
         mode = "r+"
     store_mode = _handle_store_mode(mode)
-    print(f"store_mode: {store_mode}")
     store_path = await make_store_path(
         store, path=path, mode=store_mode, storage_options=storage_options
     )

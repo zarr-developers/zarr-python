@@ -66,7 +66,13 @@ class StorePath:
         match mode:
             case "w-":
                 if not await self.empty():
-                    raise FileExistsError(f"{self} must be empty. Mode is 'w-'")
+                    msg = (
+                      f"{self} is not empty, but `mode` is set to 'w-'."
+                      "Either remove the existing objects in storage,"
+                      "or set `mode` to a value that handles pre-existing objects"
+                      "in storage, like `a` or `w`."
+                      )
+                    raise FileExistsError(msg)
             case "w":
                 await self.delete_dir()
             case "a" | "r" | "r+":
