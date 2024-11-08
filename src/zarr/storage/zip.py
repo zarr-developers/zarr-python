@@ -237,19 +237,19 @@ class ZipStore(Store):
             else:
                 return True
 
-    async def list(self) -> AsyncGenerator[str, None]:
+    async def list(self) -> AsyncGenerator[str]:
         # docstring inherited
         with self._lock:
             for key in self._zf.namelist():
                 yield key
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         async for key in self.list():
             if key.startswith(prefix):
                 yield key
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         prefix = prefix.rstrip("/")
 
