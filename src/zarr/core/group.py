@@ -1301,7 +1301,7 @@ class AsyncGroup:
         TreeRepr
             A pretty-printable object displaying the hierarchy.
         """
-        from zarr._tree import group_tree_async
+        from zarr.core._tree import group_tree_async
 
         if expand is not None:
             raise NotImplementedError("'expanded' is not yet implemented.")

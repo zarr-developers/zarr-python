@@ -13,13 +13,20 @@ except ImportError as e:
 
 
 class TreeRepr:
+    """
+    A simple object with a tree-like repr for the Zarr Group.
+
+    Note that this object and it's implementation isn't considered part
+    of Zarr's public API.
+    """
+
     def __init__(self, tree: rich.tree.Tree) -> None:
-        self.tree = tree
+        self._tree = tree
 
     def __repr__(self) -> str:
         terminal = rich.get_console()
         console = rich.console.Console(file=io.StringIO(), color_system=terminal.color_system)
-        console.print(self.tree)
+        console.print(self._tree)
         return str(console.file.getvalue())
 
     def _repr_mimebundle_(
@@ -30,7 +37,7 @@ class TreeRepr:
     ) -> dict[str, str]:
         # For jupyter support.
         # Unsure why mypy infers the return type to by Any
-        return self.tree._repr_mimebundle_(include=include, exclude=exclude, **kwargs)  # type: ignore[no-any-return]
+        return self._tree._repr_mimebundle_(include=include, exclude=exclude, **kwargs)  # type: ignore[no-any-return]
 
 
 async def group_tree_async(group: AsyncGroup, max_depth: int | None = None) -> TreeRepr:
