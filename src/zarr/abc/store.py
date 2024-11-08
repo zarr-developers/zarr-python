@@ -454,7 +454,12 @@ class Store(ABC):
         Implementations may differ on the behavior when some other ``prefix``
         is provided.
         """
-        keys = ((x,) async for x in self.list_prefix(prefix))
+        # TODO: Overlap listing keys with getsize calls.
+        # Currently, we load the list of keys into memory and only then move
+        # on to getting sizes. Ideally we would overlap those two, which should
+        # improve tail latency and might reduce memory pressure (since not all keys
+        # would be in memory at once).
+        keys = [(x,) async for x in self.list_prefix(prefix)]
         limit = config.get("async.concurrency")
         sizes = await concurrent_map(keys, self.getsize, limit=limit)
         return sum(sizes)
