@@ -1846,3 +1846,35 @@ class Group(SyncMixin):
                 )
             )
         )
+
+
+async def members_v3(
+    node: AsyncGroup, max_depth: int | None, current_depth: int, prototype: BufferPrototype
+) -> Any:
+    node_path = node.store_path.path
+    metadata_keys = ("zarr.json",)
+
+    members_flat: dict[
+        str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup
+    ] = {"": node}
+
+    group_queue: asyncio.Queue[AsyncGroup] = asyncio.Queue()
+    key_queue: asyncio.Queue[str] = asyncio.Queue()
+
+    keys = [key async for key in node.store_path.store.list_dir(node_path)]
+    keys_filtered = tuple(filter(lambda v: v not in metadata_keys, keys))
+    doc_keys = []
+
+    for key in keys_filtered:
+        for metadata_key in metadata_keys:
+            doc_keys.append("/".join([key, metadata_key]))
+
+    # optimistically fetch extant metadata documents
+    blobs = asyncio.gather(
+        *(node.store.get(key, prototype=prototype) for key in doc_keys),
+    )
+    # insert resolved metadata_documents into members_flat
+
+    # repeat for groups
+
+    return objects
