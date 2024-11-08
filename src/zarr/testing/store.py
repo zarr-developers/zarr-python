@@ -1,9 +1,20 @@
+from __future__ import annotations
+
+import asyncio
 import pickle
-from typing import Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Generic, TypeVar, cast
+
+from zarr.storage.wrapper import WrapperStore
+
+if TYPE_CHECKING:
+    from typing import Any
+
+    from zarr.abc.store import ByteRangeRequest
+    from zarr.core.buffer.core import BufferPrototype
 
 import pytest
 
-from zarr.abc.store import AccessMode, Store
+from zarr.abc.store import AccessMode, ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import AccessModeLiteral
 from zarr.core.sync import _collect_aiterator
@@ -352,3 +363,44 @@ class StoreTests(Generic[S, B]):
 
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
+
+
+class LatencyStore(WrapperStore[Store]):
+    """
+    A wrapper class that takes any store class in its constructor and
+    adds latency to the `set` and `get` methods. This can be used for
+    performance testing.
+    """
+
+    get_latency: float
+    set_latency: float
+
+    def __init__(self, cls: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
+        self.get_latency = float(get_latency)
+        self.set_latency = float(set_latency)
+        self._wrapped = cls
+
+    async def set(self, key: str, value: Buffer) -> None:
+        await asyncio.sleep(self.set_latency)
+        await self._wrapped.set(key, value)
+
+    async def get(
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
+    ) -> Buffer | None:
+        """
+        Add latency to the get method.
+
+        Adds a sleep of `self.get_latency` seconds before calling the wrapped method.
+
+        Parameters
+        ----------
+        key : str
+        prototype : BufferPrototype
+        byte_range : ByteRangeRequest, optional
+
+        Returns
+        -------
+        buffer : Buffer or None
+        """
+        await asyncio.sleep(self.get_latency)
+        return await self._wrapped.get(key, prototype=prototype, byte_range=byte_range)
