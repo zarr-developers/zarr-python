@@ -97,13 +97,5 @@ Zarr-Python :class:`zarr.abc.store.Store` API is meant to be extended. The Store
 Class includes all of the methods needed to be a fully operational store in Zarr Python.
 Zarr also provides a test harness for custom stores: :class:`zarr.testing.store.StoreTests`.
 
-``Store.get``
-~~~~~~~~~~~~~
-
-The ``prototype`` keyword of :func:`zarr.abc.store.Store.get` uses a default of
-``None``.  When given ``None``, implementations should use
-:func:`zarr.buffer.default_buffer_prototype` to look up the prototype users have
-configured.
-
 .. _Zip Store Specification: https://github.com/zarr-developers/zarr-specs/pull/311
 .. _Fsspec: https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html#consolidated-metadata

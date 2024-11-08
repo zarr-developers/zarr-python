@@ -6,7 +6,7 @@ import pytest
 
 import zarr
 import zarr.storage
-from zarr.buffer import default_buffer_prototype
+from zarr.core.buffer import default_buffer_prototype
 from zarr.storage.logging import LoggingStore
 
 if TYPE_CHECKING:

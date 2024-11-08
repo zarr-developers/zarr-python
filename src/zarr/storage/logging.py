@@ -159,7 +159,7 @@ class LoggingStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype | None = None,
+        prototype: BufferPrototype,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         # docstring inherited

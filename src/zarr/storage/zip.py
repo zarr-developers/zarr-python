@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Literal, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
-from zarr.core.buffer.core import default_buffer_prototype
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
@@ -167,13 +166,11 @@ class ZipStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype | None = None,
+        prototype: BufferPrototype,
         byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         assert isinstance(key, str)
-        if prototype is None:
-            prototype = default_buffer_prototype()
 
         with self._lock:
             return self._get(key, prototype=prototype, byte_range=byte_range)

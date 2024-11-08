@@ -8,13 +8,13 @@ import numpy as np
 import pytest
 
 from zarr import Array, AsyncArray, config
-from zarr.buffer import default_buffer_prototype
 from zarr.codecs import (
     BytesCodec,
     GzipCodec,
     ShardingCodec,
     TransposeCodec,
 )
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import Selection, morton_order_iter
 from zarr.storage import StorePath
 

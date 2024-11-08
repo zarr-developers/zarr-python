@@ -121,15 +121,6 @@ class StoreTests(Generic[S, B]):
         expected = data_buf[start : start + length]
         assert_bytes_equal(observed, expected)
 
-    async def test_get_default_prototype(self, store: S) -> None:
-        key = "c/0"
-        data = b"\x01\x02\x03\x04"
-        data_buf = self.buffer_cls.from_bytes(data)
-        await self.set(store, key, data_buf)
-        observed = await store.get(key)
-        expected = data_buf[:]
-        assert_bytes_equal(observed, expected)
-
     async def test_get_many(self, store: S) -> None:
         """
         Ensure that multiple keys can be retrieved at once with the _get_many method.

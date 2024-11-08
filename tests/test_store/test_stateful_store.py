@@ -15,8 +15,7 @@ from hypothesis.strategies import DataObject
 
 import zarr
 from zarr.abc.store import AccessMode, Store
-from zarr.buffer import default_buffer_prototype
-from zarr.core.buffer import BufferPrototype, cpu
+from zarr.core.buffer import BufferPrototype, cpu, default_buffer_prototype
 from zarr.storage import LocalStore, ZipStore
 from zarr.testing.strategies import key_ranges
 from zarr.testing.strategies import keys as zarr_keys
