@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Self
 
 from zarr.abc.store import AccessMode, ByteRangeRequest, Store
+from zarr.storage.wrapper import WrapperStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
@@ -15,8 +16,10 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import AccessModeLiteral
 
+    counter: defaultdict[str, int]
 
-class LoggingStore(Store):
+
+class LoggingStore(WrapperStore[Store]):
     """
     Store wrapper that logs all calls to the wrapped store.
 
@@ -35,7 +38,6 @@ class LoggingStore(Store):
         Counter of number of times each method has been called
     """
 
-    _store: Store
     counter: defaultdict[str, int]
 
     def __init__(
@@ -44,11 +46,10 @@ class LoggingStore(Store):
         log_level: str = "DEBUG",
         log_handler: logging.Handler | None = None,
     ) -> None:
-        self._store = store
+        super().__init__(store)
         self.counter = defaultdict(int)
         self.log_level = log_level
         self.log_handler = log_handler
-
         self._configure_logger(log_level, log_handler)
 
     def _configure_logger(
