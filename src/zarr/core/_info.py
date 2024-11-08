@@ -1,6 +1,12 @@
 import dataclasses
 import textwrap
-from typing import Literal
+from typing import Any, Literal
+
+import numcodecs.abc
+import numpy as np
+
+from zarr.abc.codec import Codec
+from zarr.core.metadata.v3 import DataType
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -92,15 +98,15 @@ class ArrayInfo:
 
     _type: Literal["Array"] = "Array"
     _zarr_format: Literal[2, 3]
-    _data_type: str
+    _data_type: np.dtype[Any] | DataType
     _shape: tuple[int, ...]
     _chunk_shape: tuple[int, ...] | None = None
     _order: Literal["C", "F"]
     _read_only: bool
     _store_type: str
-    _compressor: str | None = None
-    _filters: list[str] | None = None
-    _codecs: str | None = None
+    _compressor: numcodecs.abc.Codec | None = None
+    _filters: tuple[numcodecs.abc.Codec, ...] | None = None
+    _codecs: tuple[Codec, ...] | None = None
     _count_bytes: int | None = None
     _count_bytes_stored: int | None = None
     _count_chunks_initialized: int | None = None

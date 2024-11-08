@@ -17,6 +17,7 @@ from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
+from zarr.core.metadata.v3 import DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore
@@ -425,7 +426,7 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=2,
-            _data_type="float64",
+            _data_type=np.dtype("float64"),
             _shape=(4, 4),
             _chunk_shape=(2, 2),
             _order="C",
@@ -440,13 +441,13 @@ class TestInfo:
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
-            _data_type="DataType.float64",
+            _data_type=DataType.parse("float64"),
             _shape=(4, 4),
             _chunk_shape=(2, 2),
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs="[BytesCodec(endian=<Endian.little: 'little'>)]",
+            _codecs=(BytesCodec(),),
             _count_bytes=128,
         )
         assert result == expected

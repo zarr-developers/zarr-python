@@ -1365,18 +1365,18 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if self.metadata.zarr_format == 2:
             assert isinstance(self.metadata, ArrayV2Metadata)
             if self.metadata.compressor is not None:
-                kwargs["compressor"] = str(self.metadata.compressor)
+                kwargs["_compressor"] = self.metadata.compressor
             if self.metadata.filters is not None:
-                kwargs["filters"] = str(self.metadata.filters)
-            kwargs["data_type"] = str(self.metadata.dtype)
-            kwargs["chunk_shape"] = self.metadata.chunks
+                kwargs["_filters"] = self.metadata.filters
+            kwargs["_data_type"] = self.metadata.dtype
+            kwargs["_chunk_shape"] = self.metadata.chunks
         else:
-            kwargs["codecs"] = str(self.metadata.codecs)
-            kwargs["data_type"] = str(self.metadata.data_type)
+            kwargs["_codecs"] = self.metadata.codecs
+            kwargs["_data_type"] = self.metadata.data_type
             # just regular?
             chunk_grid = self.metadata.chunk_grid
             if isinstance(chunk_grid, RegularChunkGrid):
-                kwargs["chunk_shape"] = chunk_grid.chunk_shape
+                kwargs["_chunk_shape"] = chunk_grid.chunk_shape
             else:
                 raise NotImplementedError(
                     "'info' is not yet implemented for chunk grids of type {type(self.metadata.chunk_grid)}"

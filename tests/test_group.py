@@ -1356,22 +1356,22 @@ class TestInfo:
 
         result = A.info
         expected = GroupInfo(
-            name="A",
-            read_only=False,
-            store_type="MemoryStore",
-            zarr_format=3,
+            _name="A",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _zarr_format=3,
         )
         assert result == expected
 
         result = A.info_complete()
         expected = GroupInfo(
-            name="A",
-            read_only=False,
-            store_type="MemoryStore",
-            zarr_format=3,
-            count_members=3,
-            count_arrays=2,
-            count_groups=1,
+            _name="A",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _zarr_format=3,
+            _count_members=3,
+            _count_arrays=2,
+            _count_groups=1,
         )
         assert result == expected
 
