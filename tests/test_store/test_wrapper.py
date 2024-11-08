@@ -32,14 +32,14 @@ async def test_wrapped_set(store: Store, capsys: pytest.CaptureFixture[str]) -> 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
 async def test_wrapped_get(store: Store, capsys: pytest.CaptureFixture[str]) -> None:
     # define a class that prints when it sets
-    class NoisySetter(WrapperStore):
+    class NoisyGetter(WrapperStore):
         def get(self, key: str, prototype: BufferPrototype) -> None:
             print(f"getting {key}")
             return super().get(key, prototype=prototype)
 
     key = "foo"
     value = Buffer.from_bytes(b"bar")
-    store_wrapped = NoisySetter(store)
+    store_wrapped = NoisyGetter(store)
     await store_wrapped.set(key, value)
     assert await store_wrapped.get(key, buffer_prototype) == value
     captured = capsys.readouterr()
