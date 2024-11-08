@@ -12,31 +12,10 @@ from zarr.core.metadata.v3 import DataType
 @dataclasses.dataclass(kw_only=True)
 class GroupInfo:
     """
-    Information about a group.
+    Visual summary for a Group.
 
-    Attributes
-    ----------
-    name : str
-        The path of the group within the Store
-    type : "Group"
-    zarr_format : {2, 3}
-        The zarr format of the Group.
-    read_only : bool
-        Whether the Group's access mode is read only.
-    store_type : str
-        The name of the Store class containing this group.
-    count_members : int, optional
-        The number of child members below this group. This
-        will be set when the Group has consolidated metadata
-        or when using :class:`Group.info_complete`.
-    count_arrays : int, optional
-        The number of child arrays below this group. This
-        will be set when the Group has consolidated metadata
-        or when using :class:`Group.info_complete`.
-    count_groups : int, optional
-        The number of child groups below this group. This
-        will be set when the Group has consolidated metadata
-        or when using :class:`Group.info_complete`.
+    Note that this method and its properties is not part of
+    Zarr's public API.
     """
 
     _name: str
@@ -90,7 +69,7 @@ def byte_info(size: int) -> str:
 @dataclasses.dataclass(kw_only=True)
 class ArrayInfo:
     """
-    Render the information for an array.
+    Visual summary for an Array.
 
     Note that this method and its properties is not part of
     Zarr's public API.
