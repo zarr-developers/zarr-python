@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 logger = getLogger(__name__)
 
 
+logger = getLogger(__name__)
+
+
 class MemoryStore(Store):
     """
     In-memory store for testing purposes.
@@ -142,19 +145,19 @@ class MemoryStore(Store):
         # docstring inherited
         raise NotImplementedError
 
-    async def list(self) -> AsyncGenerator[str, None]:
+    async def list(self) -> AsyncGenerator[str]:
         # docstring inherited
         for key in self._store_dict:
             yield key
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         # note: we materialize all dict keys into a list here so we can mutate the dict in-place (e.g. in delete_prefix)
         for key in list(self._store_dict):
             if key.startswith(prefix):
                 yield key
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         prefix = prefix.rstrip("/")
 

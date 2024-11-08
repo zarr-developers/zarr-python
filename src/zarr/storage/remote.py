@@ -312,13 +312,13 @@ class RemoteStore(Store):
         # docstring inherited
         raise NotImplementedError
 
-    async def list(self) -> AsyncGenerator[str, None]:
+    async def list(self) -> AsyncGenerator[str]:
         # docstring inherited
         allfiles = await self.fs._find(self.path, detail=False, withdirs=False)
         for onefile in (a.replace(self.path + "/", "") for a in allfiles):
             yield onefile
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         prefix = f"{self.path}/{prefix.rstrip('/')}"
         try:
@@ -328,7 +328,7 @@ class RemoteStore(Store):
         for onefile in (a.replace(prefix + "/", "") for a in allfiles):
             yield onefile.removeprefix(self.path).removeprefix("/")
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         for onefile in await self.fs._find(
             f"{self.path}/{prefix}", detail=False, maxdepth=None, withdirs=False

@@ -54,7 +54,7 @@ class LoggingStore(Store):
         self, log_level: str = "DEBUG", log_handler: logging.Handler | None = None
     ) -> None:
         self.log_level = log_level
-        self.logger = logging.getLogger(f"LoggingStore({self._store!s})")
+        self.logger = logging.getLogger(f"LoggingStore({self._store})")
         self.logger.setLevel(log_level)
 
         if not self.logger.hasHandlers():
@@ -146,7 +146,7 @@ class LoggingStore(Store):
             return await self._store.clear()
 
     def __str__(self) -> str:
-        return f"logging-{self._store!s}"
+        return f"logging-{self._store}"
 
     def __repr__(self) -> str:
         return f"LoggingStore({repr(self._store)!r})"
@@ -203,19 +203,19 @@ class LoggingStore(Store):
         with self.log(keys):
             return await self._store.set_partial_values(key_start_values=key_start_values)
 
-    async def list(self) -> AsyncGenerator[str, None]:
+    async def list(self) -> AsyncGenerator[str]:
         # docstring inherited
         with self.log():
             async for key in self._store.list():
                 yield key
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         with self.log(prefix):
             async for key in self._store.list_prefix(prefix=prefix):
                 yield key
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
         # docstring inherited
         with self.log(prefix):
             async for key in self._store.list_dir(prefix=prefix):

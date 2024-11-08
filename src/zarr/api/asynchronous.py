@@ -9,6 +9,7 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.array import Array, AsyncArray, get_array_metadata
+from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
@@ -422,6 +423,8 @@ async def save_array(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_version()
     )
+    if not isinstance(arr, NDArrayLike):
+        raise TypeError("arr argument must be numpy or other NDArrayLike array")
 
     mode = kwargs.pop("mode", "a")
     store_mode = _handle_store_mode(mode)
@@ -484,16 +487,27 @@ async def save_group(
         or _default_zarr_version()
     )
 
+    for arg in args:
+        if not isinstance(arg, NDArrayLike):
+            raise TypeError(
+                "All arguments must be numpy or other NDArrayLike arrays (except store, path, storage_options, and zarr_format)"
+            )
+    for k, v in kwargs.items():
+        if not isinstance(v, NDArrayLike):
+            raise TypeError(f"Keyword argument '{k}' must be a numpy or other NDArrayLike array")
+
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
     aws = []
     for i, arr in enumerate(args):
+        _path = f"{path}/arr_{i}" if path is not None else f"arr_{i}"
         aws.append(
             save_array(
                 store_path,
                 arr,
                 zarr_format=zarr_format,
-                path=f"arr_{i}",
+                path=_path,
+                storage_options=storage_options,
             )
         )
     for k, arr in kwargs.items():
@@ -923,7 +937,6 @@ async def create(
         store, path=path, mode=store_mode, storage_options=storage_options
     )
     await store_path._init(mode)
-
     return await AsyncArray.create(
         store_path,
         shape=shape,

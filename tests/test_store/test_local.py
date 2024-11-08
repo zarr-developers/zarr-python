@@ -31,7 +31,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         return {"root": str(tmpdir), "mode": "w"}
 
     def test_store_repr(self, store: LocalStore) -> None:
-        assert str(store) == f"file://{store.root!s}"
+        assert str(store) == f"file://{store.root.as_posix()}"
 
     def test_store_supports_writes(self, store: LocalStore) -> None:
         assert store.supports_writes
