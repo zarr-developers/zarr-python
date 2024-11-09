@@ -4,9 +4,9 @@ import asyncio
 import io
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING
 
-from zarr.abc.store import ByteRangeRequest, Store, StoreAccessMode
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
 from zarr.core.common import concurrent_map
 
@@ -72,8 +72,8 @@ class LocalStore(Store):
     ----------
     root : str or Path
         Directory to use as root of store.
-    mode : str
-        Mode in which to open the store. Either 'r', or 'w'.
+    readonly : bool
+        Whether the store is read-only
 
     Attributes
     ----------
@@ -91,8 +91,8 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, mode: StoreAccessMode = "r") -> None:
-        super().__init__(mode=mode)
+    def __init__(self, root: Path | str, *, readonly: bool = False) -> None:
+        super().__init__(readonly=readonly)
         if isinstance(root, str):
             root = Path(root)
         if not isinstance(root, Path):
@@ -102,7 +102,7 @@ class LocalStore(Store):
         self.root = root
 
     async def _open(self) -> None:
-        if self.mode == "w":
+        if not self.readonly:
             self.root.mkdir(parents=True, exist_ok=True)
         return await super()._open()
 
@@ -111,10 +111,6 @@ class LocalStore(Store):
         self._check_writable()
         shutil.rmtree(self.root)
         self.root.mkdir()
-
-    def with_mode(self, mode: StoreAccessMode) -> Self:
-        # docstring inherited
-        return type(self)(root=self.root, mode=mode)
 
     def __str__(self) -> str:
         return f"file://{self.root.as_posix()}"

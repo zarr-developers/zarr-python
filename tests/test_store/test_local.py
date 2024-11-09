@@ -28,7 +28,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
     @pytest.fixture
     def store_kwargs(self, tmpdir) -> dict[str, str]:
-        return {"root": str(tmpdir), "mode": "w"}
+        return {"root": str(tmpdir)}
 
     def test_store_repr(self, store: LocalStore) -> None:
         assert str(store) == f"file://{store.root.as_posix()}"
@@ -51,5 +51,5 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         target = tmp_path.joinpath("a", "b", "c")
         assert not target.exists()
 
-        store = self.store_cls(root=target, mode="w")
+        store = self.store_cls(root=target)
         zarr.group(store=store)

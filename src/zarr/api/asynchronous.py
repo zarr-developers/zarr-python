@@ -30,8 +30,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
-    from zarr.abc.store import StoreAccessMode
-    from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
     # TODO: this type could use some more thought
@@ -66,30 +64,9 @@ __all__ = [
     "zeros_like",
 ]
 
-# Persistence mode: 'r' means read only (must exist); 'r+' means
-# read/write (must exist); 'a' means read/write (create if doesn't
-# exist); 'w' means create (overwrite if exists); 'w-' means create
-# (fail if exists).
-persistence_to_store_modes: dict[AccessModeLiteral, StoreAccessMode] = {
-    "r": "r",
-    "r+": "w",
-    "a": "w",
-    "w": "w",
-    "w-": "w",
-}
-
-
-def _handle_store_mode(mode: AccessModeLiteral | None) -> StoreAccessMode:
-    if mode is None:
-        return "r"
-    else:
-        return persistence_to_store_modes[mode]
-
 
 def _infer_exists_ok(mode: AccessModeLiteral) -> bool:
-    if mode in ("a", "r+", "w"):
-        return True
-    return False
+    return mode in ("a", "r+", "w")
 
 
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
@@ -313,11 +290,7 @@ async def open(
     """
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    store_mode = _handle_store_mode(mode)
-    store_path = await make_store_path(
-        store, mode=store_mode, path=path, storage_options=storage_options
-    )
-    await store_path._init(mode=mode)
+    store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     # TODO: the mode check below seems wrong!
     if "shape" not in kwargs and mode in {"a", "r", "r+"}:
@@ -427,11 +400,7 @@ async def save_array(
         raise TypeError("arr argument must be numpy or other NDArrayLike array")
 
     mode = kwargs.pop("mode", "a")
-    store_mode = _handle_store_mode(mode)
-    store_path = await make_store_path(
-        store, path=path, mode=store_mode, storage_options=storage_options
-    )
-    await store_path._init(mode=mode)
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
     if np.isscalar(arr):
         arr = np.array(arr)
     shape = arr.shape
@@ -626,11 +595,7 @@ async def group(
         mode = "w"
     else:
         mode = "r+"
-    store_mode = _handle_store_mode(mode)
-    store_path = await make_store_path(
-        store, path=path, mode=store_mode, storage_options=storage_options
-    )
-    await store_path._init(mode=mode)
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
@@ -743,12 +708,8 @@ async def open_group(
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    store_mode = _handle_store_mode(mode)
     exists_ok = _infer_exists_ok(mode)
-    store_path = await make_store_path(
-        store, mode=store_mode, storage_options=storage_options, path=path
-    )
-    await store_path._init(mode=mode)
+    store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
 
     if attributes is None:
         attributes = {}
@@ -931,11 +892,7 @@ async def create(
     mode = kwargs.pop("mode", None)
     if mode is None:
         mode = "a"
-    store_mode = _handle_store_mode(mode)
-    store_path = await make_store_path(
-        store, path=path, mode=store_mode, storage_options=storage_options
-    )
-    await store_path._init(mode)
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
     return await AsyncArray.create(
         store_path,
         shape=shape,
@@ -1122,10 +1079,7 @@ async def open_array(
     """
 
     mode = kwargs.pop("mode", None)
-    store_mode = _handle_store_mode(mode)
-    store_path = await make_store_path(
-        store, path=path, mode=store_mode, storage_options=storage_options
-    )
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 

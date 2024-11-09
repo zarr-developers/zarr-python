@@ -5,9 +5,9 @@ import logging
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any
 
-from zarr.abc.store import ByteRangeRequest, Store, StoreAccessMode
+from zarr.abc.store import ByteRangeRequest, Store
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
@@ -113,9 +113,9 @@ class LoggingStore(Store):
             return self._store.supports_listing
 
     @property
-    def mode(self) -> StoreAccessMode:
+    def readonly(self) -> bool:
         with self.log():
-            return self._store.mode
+            return self._store.readonly
 
     @property
     def _is_open(self) -> bool:
@@ -225,12 +225,3 @@ class LoggingStore(Store):
         # docstring inherited
         with self.log(prefix):
             await self._store.delete_dir(prefix=prefix)
-
-    def with_mode(self, mode: StoreAccessMode) -> Self:
-        # docstring inherited
-        with self.log(mode):
-            return type(self)(
-                self._store.with_mode(mode),
-                log_level=self.log_level,
-                log_handler=self.log_handler,
-            )

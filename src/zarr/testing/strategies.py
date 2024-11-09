@@ -64,7 +64,7 @@ array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
 keys = st.lists(node_names, min_size=1).map("/".join)
 paths = st.just("/") | keys
-stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
+stores = st.builds(MemoryStore, st.just({}))
 compressors = st.sampled_from([None, "default"])
 zarr_formats: st.SearchStrategy[Literal[2, 3]] = st.sampled_from([2, 3])
 array_shapes = npst.array_shapes(max_dims=4, min_side=0)
@@ -137,7 +137,6 @@ def arrays(
 
     array_path = path + ("/" if not path.endswith("/") else "") + name
     root = zarr.open_group(store, mode="w")
-
 
     a = root.create_array(
         array_path,

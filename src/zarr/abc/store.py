@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from asyncio import gather
 from itertools import starmap
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable
@@ -13,10 +13,9 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import BytesLike
 
-__all__ = ["StoreAccessMode", "ByteGetter", "ByteSetter", "Store", "set_or_delete"]
+__all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
 ByteRangeRequest: TypeAlias = tuple[int | None, int | None]
-StoreAccessMode = Literal["r", "w"]
 
 
 class Store(ABC):
@@ -24,13 +23,12 @@ class Store(ABC):
     Abstract base class for Zarr stores.
     """
 
-    _mode: StoreAccessMode
+    _readonly: bool
     _is_open: bool
 
-    def __init__(self, *args: Any, mode: StoreAccessMode = "r", **kwargs: Any) -> None:
+    def __init__(self, *, readonly: bool = False) -> None:
         self._is_open = False
-        assert mode in ("r", "w")
-        self._mode = mode
+        self._readonly = readonly
 
     @classmethod
     async def open(cls, *args: Any, **kwargs: Any) -> Self:
@@ -99,7 +97,7 @@ class Store(ABC):
             True if the store is empty, False otherwise.
         """
 
-        if not prefix.endswith("/"):
+        if prefix and not prefix.endswith("/"):
             prefix += "/"
         async for _ in self.list_prefix(prefix):
             return False
@@ -114,45 +112,15 @@ class Store(ABC):
         async for key in self.list():
             await self.delete(key)
 
-    @abstractmethod
-    def with_mode(self, mode: StoreAccessMode) -> Self:
-        """
-        Return a new store of the same type pointing to the same location with a new mode.
-
-        The returned Store is not automatically opened. Call :meth:`Store.open` before
-        using.
-
-        Parameters
-        ----------
-        mode : StoreAccessMode
-            The new mode to use.
-
-        Returns
-        -------
-        store
-            A new store of the same type with the new mode.
-
-        Examples
-        --------
-        >>> writer = zarr.store.MemoryStore(mode="w")
-        >>> reader = writer.with_mode("r")
-        """
-        ...
-
-    @property
-    def mode(self) -> StoreAccessMode:
-        """Access mode of the store."""
-        return self._mode
-
     @property
     def readonly(self) -> bool:
         """Is the store read-only?"""
-        return self.mode == "r"
+        return self._readonly
 
     def _check_writable(self) -> None:
         """Raise an exception if the store is not writable."""
-        if self.mode != "w":
-            raise ValueError(f"store mode ({self.mode}) does not support writing")
+        if self.readonly:
+            raise ValueError("store was opened in read-only mode and does not support writing")
 
     @abstractmethod
     def __eq__(self, value: object) -> bool:
@@ -332,20 +300,6 @@ class Store(ABC):
         -------
         AsyncGenerator[str, None]
         """
-
-    async def delete_dir(self, prefix: str) -> None:
-        """
-        Remove all keys and prefixes in the store that begin with a given prefix.
-        """
-        if not self.supports_deletes:
-            raise NotImplementedError
-        if not self.supports_listing:
-            raise NotImplementedError
-        self._check_writable()
-        if not prefix.endswith("/"):
-            prefix += "/"
-        async for key in self.list_prefix(prefix):
-            await self.delete(key)
 
     async def delete_dir(self, prefix: str) -> None:
         """

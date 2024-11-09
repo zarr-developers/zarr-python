@@ -5,9 +5,9 @@ import threading
 import time
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import ByteRangeRequest, Store, StoreAccessMode
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
@@ -65,15 +65,11 @@ class ZipStore(Store):
         path: Path | str,
         *,
         mode: ZipStoreAccessModeLiteral = "r",
+        readonly: bool = True,
         compression: int = zipfile.ZIP_STORED,
         allowZip64: bool = True,
     ) -> None:
-        _mode: StoreAccessMode
-        if mode in ("w", "a", "x"):
-            _mode = "w"
-        else:
-            _mode = "r"
-        super().__init__(mode=_mode)
+        super().__init__(readonly=readonly)
 
         if isinstance(path, str):
             path = Path(path)
@@ -125,10 +121,6 @@ class ZipStore(Store):
             self._zf = zipfile.ZipFile(
                 self.path, mode="w", compression=self.compression, allowZip64=self.allowZip64
             )
-
-    def with_mode(self, mode: StoreAccessMode) -> Self:
-        # docstring inherited
-        raise NotImplementedError("ZipStore cannot be reopened with a new mode.")
 
     def __str__(self) -> str:
         return f"zip://{self.path}"
@@ -216,6 +208,12 @@ class ZipStore(Store):
             members = self._zf.namelist()
             if key not in members:
                 self._set(key, value)
+
+    async def delete_dir(self, prefix: str) -> None:
+        if not prefix.endswith("/"):
+            prefix += "/"
+        async for _ in self.list_prefix(prefix):
+            raise NotImplementedError
 
     async def delete(self, key: str) -> None:
         # docstring inherited

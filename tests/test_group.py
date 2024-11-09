@@ -1355,7 +1355,7 @@ class TestGroupMetadata:
 def test_update_attrs() -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
     root = Group.from_store(
-        MemoryStore({}, mode="w"),
+        MemoryStore(),
     )
     root.attrs["foo"] = "bar"
     assert root.attrs["foo"] == "bar"

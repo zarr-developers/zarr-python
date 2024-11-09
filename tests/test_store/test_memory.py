@@ -22,7 +22,7 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     def store_kwargs(
         self, request: pytest.FixtureRequest
     ) -> dict[str, str | None | dict[str, Buffer]]:
-        kwargs = {"store_dict": None, "mode": "w"}
+        kwargs = {"store_dict": None}
         if request.param is True:
             kwargs["store_dict"] = {}
         return kwargs

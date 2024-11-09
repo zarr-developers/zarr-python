@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any
 
-from zarr.abc.store import ByteRangeRequest, Store, StoreAccessMode
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.storage.common import _dereference_path
 
 if TYPE_CHECKING:
@@ -30,8 +30,8 @@ class RemoteStore(Store):
     ----------
     fs : AsyncFileSystem
         The Async FSSpec filesystem to use with this store.
-    mode : StoreAccessMode
-        The access mode to use.
+    readonly : bool
+        Whether the store is read-only
     path : str
         The root path of the store. This should be a relative path and must not include the
         filesystem scheme.
@@ -77,11 +77,11 @@ class RemoteStore(Store):
     def __init__(
         self,
         fs: AsyncFileSystem,
-        mode: StoreAccessMode = "r",
+        readonly: bool = False,
         path: str = "/",
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> None:
-        super().__init__(mode=mode)
+        super().__init__(readonly=readonly)
         self.fs = fs
         self.path = path
         self.allowed_exceptions = allowed_exceptions
@@ -102,7 +102,7 @@ class RemoteStore(Store):
     def from_upath(
         cls,
         upath: Any,
-        mode: StoreAccessMode = "r",
+        readonly: bool = False,
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> RemoteStore:
         """
@@ -112,8 +112,8 @@ class RemoteStore(Store):
         ----------
         upath : UPath
             The upath to the root of the store.
-        mode : str, optional
-            The mode of the store. Defaults to "r".
+        readonly : bool
+            Whether the store is read-only, defaults to False.
         allowed_exceptions : tuple, optional
             The exceptions that are allowed to be raised when accessing the
             store. Defaults to ALLOWED_EXCEPTIONS.
@@ -125,7 +125,7 @@ class RemoteStore(Store):
         return cls(
             fs=upath.fs,
             path=upath.path.rstrip("/"),
-            mode=mode,
+            readonly=readonly,
             allowed_exceptions=allowed_exceptions,
         )
 
@@ -134,7 +134,7 @@ class RemoteStore(Store):
         cls,
         url: str,
         storage_options: dict[str, Any] | None = None,
-        mode: StoreAccessMode = "r",
+        readonly: bool = False,
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> RemoteStore:
         """
@@ -146,8 +146,8 @@ class RemoteStore(Store):
             The URL to the root of the store.
         storage_options : dict, optional
             The options to pass to fsspec when creating the filesystem.
-        mode : str, optional
-            The mode of the store. Defaults to "r".
+        readonly : bool
+            Whether the store is read-only, defaults to False.
         allowed_exceptions : tuple, optional
             The exceptions that are allowed to be raised when accessing the
             store. Defaults to ALLOWED_EXCEPTIONS.
@@ -173,7 +173,7 @@ class RemoteStore(Store):
             # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
             path = fs._strip_protocol(path)
 
-        return cls(fs=fs, path=path, mode=mode, allowed_exceptions=allowed_exceptions)
+        return cls(fs=fs, path=path, readonly=readonly, allowed_exceptions=allowed_exceptions)
 
     async def clear(self) -> None:
         # docstring inherited
@@ -184,15 +184,6 @@ class RemoteStore(Store):
         except FileNotFoundError:
             pass
 
-    def with_mode(self, mode: StoreAccessMode) -> Self:
-        # docstring inherited
-        return type(self)(
-            fs=self.fs,
-            mode=mode,
-            path=self.path,
-            allowed_exceptions=self.allowed_exceptions,
-        )
-
     def __repr__(self) -> str:
         return f"<RemoteStore({type(self.fs).__name__}, {self.path})>"
 
@@ -200,7 +191,7 @@ class RemoteStore(Store):
         return (
             isinstance(other, type(self))
             and self.path == other.path
-            and self.mode == other.mode
+            and self.readonly == other.readonly
             and self.fs == other.fs
         )
 

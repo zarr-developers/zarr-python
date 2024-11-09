@@ -14,7 +14,7 @@ from hypothesis.stateful import (
 from hypothesis.strategies import DataObject
 
 import zarr
-from zarr.abc.store import Store, StoreAccessMode
+from zarr.abc.store import Store
 from zarr.core.buffer import BufferPrototype, cpu, default_buffer_prototype
 from zarr.storage import LocalStore, ZipStore
 from zarr.testing.strategies import key_ranges
@@ -33,10 +33,6 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
         https://github.com/HypothesisWorks/hypothesis/issues/3712#issuecomment-1668999041
         """
         self.store = store
-
-    @property
-    def mode(self) -> StoreAccessMode:
-        return self.store.mode
 
     @property
     def readonly(self) -> bool:

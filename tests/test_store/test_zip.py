@@ -27,7 +27,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         os.close(fd)
         os.unlink(temp_path)
 
-        return {"path": temp_path, "mode": "w"}
+        return {"path": temp_path, "mode": "w", "readonly": False}
 
     async def get(self, store: ZipStore, key: str) -> Buffer:
         return store._get(key, prototype=default_buffer_prototype())
@@ -35,8 +35,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     async def set(self, store: ZipStore, key: str, value: Buffer) -> None:
         return store._set(key, value)
 
-    def test_store_mode(self, store: ZipStore, store_kwargs: dict[str, Any]) -> None:
-        assert store.mode == "w"
+    def test_store_readonly(self, store: ZipStore, store_kwargs: dict[str, Any]) -> None:
         assert not store.readonly
 
     async def test_not_writable_store_raises(self, store_kwargs: dict[str, Any]) -> None:
@@ -44,9 +43,9 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         store = await self.store_cls.open(**store_kwargs)
         store.close()
 
-        kwargs = {**store_kwargs, "mode": "r"}
+        kwargs = {**store_kwargs, "mode": "a", "readonly": True}
         store = await self.store_cls.open(**kwargs)
-        assert store.mode == "r"
+        assert store._zmode == "a"
         assert store.readonly
 
         # set
@@ -94,23 +93,19 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
         store.close()
 
-    async def test_with_mode(self, store: ZipStore) -> None:
-        with pytest.raises(NotImplementedError, match="new mode"):
-            await super().test_with_mode(store)
-
-    @pytest.mark.parametrize("mode", ["r", "w"])
-    async def test_store_open_mode(self, store_kwargs: dict[str, Any], mode: str) -> None:
-        if mode == "r":
+    @pytest.mark.parametrize("readonly", [True, False])
+    async def test_store_open_readonly(self, store_kwargs: dict[str, Any], readonly: bool) -> None:
+        if readonly == "r":
             # create an empty zipfile
             with zipfile.ZipFile(store_kwargs["path"], mode="w"):
                 pass
 
-        await super().test_store_open_mode(store_kwargs, mode)
+        await super().test_store_open_readonly(store_kwargs, readonly)
 
-    @pytest.mark.parametrize(("zip_mode", "store_mode"), [("w", "w"), ("a", "w"), ("x", "w")])
+    @pytest.mark.parametrize(("zip_mode", "readonly"), [("w", False), ("a", False), ("x", False)])
     async def test_zip_open_mode_translation(
-        self, store_kwargs: dict[str, Any], zip_mode: str, store_mode: str
+        self, store_kwargs: dict[str, Any], zip_mode: str, readonly: bool
     ) -> None:
         kws = {**store_kwargs, "mode": zip_mode}
         store = await self.store_cls.open(**kws)
-        assert store.mode == store_mode
+        assert store.readonly == readonly
