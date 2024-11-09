@@ -65,10 +65,13 @@ class ZipStore(Store):
         path: Path | str,
         *,
         mode: ZipStoreAccessModeLiteral = "r",
-        readonly: bool = True,
+        readonly: bool | None = None,
         compression: int = zipfile.ZIP_STORED,
         allowZip64: bool = True,
     ) -> None:
+        if readonly is None:
+            readonly = mode == "r"
+
         super().__init__(readonly=readonly)
 
         if isinstance(path, str):
@@ -210,6 +213,8 @@ class ZipStore(Store):
                 self._set(key, value)
 
     async def delete_dir(self, prefix: str) -> None:
+        # only raise NotImplementedError if any keys are found
+        self._check_writable()
         if not prefix.endswith("/"):
             prefix += "/"
         async for _ in self.list_prefix(prefix):
@@ -219,6 +224,7 @@ class ZipStore(Store):
         # docstring inherited
         # we choose to only raise NotImplementedError here if the key exists
         # this allows the array/group APIs to avoid the overhead of existence checks
+        self._check_writable()
         if await self.exists(key):
             raise NotImplementedError
 

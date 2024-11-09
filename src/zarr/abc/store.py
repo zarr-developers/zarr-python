@@ -82,7 +82,7 @@ class Store(ABC):
         if not self._is_open:
             await self._open()
 
-    async def empty(self, prefix: str = "") -> bool:
+    async def empty_dir(self, prefix: str = "") -> bool:
         """
         Check if the directory is empty.
 
@@ -310,7 +310,7 @@ class Store(ABC):
         if not self.supports_listing:
             raise NotImplementedError
         self._check_writable()
-        if not prefix.endswith("/"):
+        if prefix and not prefix.endswith("/"):
             prefix += "/"
         async for key in self.list_prefix(prefix):
             await self.delete(key)

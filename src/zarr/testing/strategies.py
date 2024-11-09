@@ -8,8 +8,6 @@ from hypothesis.strategies import SearchStrategy
 
 import zarr
 from zarr.core.array import Array
-
-# from zarr.core.group import Group
 from zarr.storage import MemoryStore, StoreLike
 
 # Copied from Xarray

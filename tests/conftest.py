@@ -28,13 +28,13 @@ async def parse_store(
     store: Literal["local", "memory", "remote", "zip"], path: str
 ) -> LocalStore | MemoryStore | RemoteStore | ZipStore:
     if store == "local":
-        return await LocalStore.open(path, readonly=False)
+        return await LocalStore.open(path)
     if store == "memory":
         return await MemoryStore.open(readonly=False)
     if store == "remote":
-        return await RemoteStore.open(url=path, readonly=False)
+        return await RemoteStore.open(url=path)
     if store == "zip":
-        return await ZipStore.open(path + "/zarr.zip", readonly=False, mode="w")
+        return await ZipStore.open(path + "/zarr.zip", mode="w")
     raise AssertionError
 
 
@@ -46,18 +46,18 @@ def path_type(request: pytest.FixtureRequest) -> Any:
 # todo: harmonize this with local_store fixture
 @pytest.fixture
 async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
-    store = await LocalStore.open(str(tmpdir), readonly=False)
+    store = await LocalStore.open(str(tmpdir))
     return StorePath(store)
 
 
 @pytest.fixture
 async def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
-    return await LocalStore.open(str(tmpdir), readonly=False)
+    return await LocalStore.open(str(tmpdir))
 
 
 @pytest.fixture
 async def remote_store(url: str) -> RemoteStore:
-    return await RemoteStore.open(url, readonly=False)
+    return await RemoteStore.open(url)
 
 
 @pytest.fixture
@@ -67,7 +67,7 @@ async def memory_store() -> MemoryStore:
 
 @pytest.fixture
 async def zip_store(tmpdir: LEGACY_PATH) -> ZipStore:
-    return await ZipStore.open(str(tmpdir / "zarr.zip"), mode="w", readonly=False)
+    return await ZipStore.open(str(tmpdir / "zarr.zip"), mode="w")
 
 
 @pytest.fixture

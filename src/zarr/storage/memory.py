@@ -17,9 +17,6 @@ if TYPE_CHECKING:
 logger = getLogger(__name__)
 
 
-logger = getLogger(__name__)
-
-
 class MemoryStore(Store):
     """
     In-memory store for testing purposes.

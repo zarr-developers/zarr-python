@@ -213,4 +213,4 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         # regression test for https://github.com/zarr-developers/zarr-python/pull/2343
         store_kwargs["path"] += "/abc"
         store = await self.store_cls.open(**store_kwargs)
-        assert await store.empty()
+        assert await store.empty_dir()
