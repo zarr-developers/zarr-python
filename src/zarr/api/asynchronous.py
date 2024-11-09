@@ -65,8 +65,13 @@ __all__ = [
 ]
 
 
+_READ_MODES: tuple[AccessModeLiteral, ...] = ("r", "r+", "a")
+_CREATE_MODES: tuple[AccessModeLiteral, ...] = ("a", "w", "w-")
+_OVERWRITE_MODES: tuple[AccessModeLiteral, ...] = ("a", "r+", "w")
+
+
 def _infer_exists_ok(mode: AccessModeLiteral) -> bool:
-    return mode in ("a", "r+", "w")
+    return mode in _OVERWRITE_MODES
 
 
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
@@ -708,24 +713,23 @@ async def open_group(
     if chunk_store is not None:
         warnings.warn("chunk_store is not yet implemented", RuntimeWarning, stacklevel=2)
 
-    exists_ok = _infer_exists_ok(mode)
     store_path = await make_store_path(store, mode=mode, storage_options=storage_options, path=path)
 
     if attributes is None:
         attributes = {}
 
     try:
-        if mode in {"r", "r+", "a"}:
+        if mode in _READ_MODES:
             return await AsyncGroup.open(
                 store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
             )
     except (KeyError, FileNotFoundError):
         pass
-    if mode in {"a", "w", "w-"}:
+    if mode in _CREATE_MODES:
         return await AsyncGroup.from_store(
             store_path,
             zarr_format=zarr_format or _default_zarr_version(),
-            exists_ok=exists_ok,
+            exists_ok=_infer_exists_ok(mode),
             attributes=attributes,
         )
     raise FileNotFoundError(f"Unable to find group: {store_path}")

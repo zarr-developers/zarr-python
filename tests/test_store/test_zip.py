@@ -38,7 +38,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     def test_store_readonly(self, store: ZipStore, store_kwargs: dict[str, Any]) -> None:
         assert not store.readonly
 
-    async def test_not_writable_store_raises(self, store_kwargs: dict[str, Any]) -> None:
+    async def test_readonly_store_raises(self, store_kwargs: dict[str, Any]) -> None:
         # we need to create the zipfile in write mode before switching to read mode
         store = await self.store_cls.open(**store_kwargs)
         store.close()

@@ -62,7 +62,7 @@ async def remote_store(url: str) -> RemoteStore:
 
 @pytest.fixture
 async def memory_store() -> MemoryStore:
-    return await MemoryStore.open(readonly=False)
+    return await MemoryStore.open()
 
 
 @pytest.fixture

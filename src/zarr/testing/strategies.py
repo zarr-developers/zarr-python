@@ -144,7 +144,6 @@ def arrays(
         attributes=attributes,
         # compressor=compressor,  # FIXME
         fill_value=fill_value,
-        # exists_ok=True,  # TODO: shouldn't need this!
     )
 
     assert isinstance(a, Array)
