@@ -815,7 +815,7 @@ class AsyncGroup:
     @property
     def read_only(self) -> bool:
         # Backwards compatibility for 2.x
-        return self.store_path.store.readonly
+        return self.store_path.readonly
 
     @property
     def synchronizer(self) -> None:
