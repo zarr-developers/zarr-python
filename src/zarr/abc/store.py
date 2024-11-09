@@ -6,7 +6,7 @@ from itertools import starmap
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterable
     from types import TracebackType
     from typing import Any, Self, TypeAlias
 
@@ -263,16 +263,19 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    def list(self) -> AsyncGenerator[str]:
+    def list(self) -> AsyncIterator[str]:
         """Retrieve all keys in the store.
 
         Returns
         -------
-        AsyncGenerator[str, None]
+        AsyncIterator[str]
         """
+        # This method should be async, like overridden methods in child classes.
+        # However, that's not straightforward:
+        # https://stackoverflow.com/questions/68905848
 
     @abstractmethod
-    def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
+    def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         """
         Retrieve all keys in the store that begin with a given prefix. Keys are returned relative
         to the root of the store.
@@ -283,11 +286,14 @@ class Store(ABC):
 
         Returns
         -------
-        AsyncGenerator[str, None]
+        AsyncIterator[str]
         """
+        # This method should be async, like overridden methods in child classes.
+        # However, that's not straightforward:
+        # https://stackoverflow.com/questions/68905848
 
     @abstractmethod
-    def list_dir(self, prefix: str) -> AsyncGenerator[str]:
+    def list_dir(self, prefix: str) -> AsyncIterator[str]:
         """
         Retrieve all keys and prefixes with a given prefix and which do not contain the character
         “/” after the given prefix.
@@ -298,8 +304,11 @@ class Store(ABC):
 
         Returns
         -------
-        AsyncGenerator[str, None]
+        AsyncIterator[str]
         """
+        # This method should be async, like overridden methods in child classes.
+        # However, that's not straightforward:
+        # https://stackoverflow.com/questions/68905848
 
     async def delete_dir(self, prefix: str) -> None:
         """
