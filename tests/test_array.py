@@ -447,7 +447,7 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=(BytesCodec(),),
+            _codecs=[BytesCodec()],
             _count_bytes=128,
         )
         assert result == expected

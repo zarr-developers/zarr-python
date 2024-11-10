@@ -85,7 +85,7 @@ class ArrayInfo:
     _store_type: str
     _compressor: numcodecs.abc.Codec | None = None
     _filters: tuple[numcodecs.abc.Codec, ...] | None = None
-    _codecs: tuple[Codec, ...] | None = None
+    _codecs: list[Codec] | None = None
     _count_bytes: int | None = None
     _count_bytes_stored: int | None = None
     _count_chunks_initialized: int | None = None
