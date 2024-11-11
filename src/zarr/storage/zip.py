@@ -65,14 +65,14 @@ class ZipStore(Store):
         path: Path | str,
         *,
         mode: ZipStoreAccessModeLiteral = "r",
-        readonly: bool | None = None,
+        read_only: bool | None = None,
         compression: int = zipfile.ZIP_STORED,
         allowZip64: bool = True,
     ) -> None:
-        if readonly is None:
-            readonly = mode == "r"
+        if read_only is None:
+            read_only = mode == "r"
 
-        super().__init__(readonly=readonly)
+        super().__init__(read_only=read_only)
 
         if isinstance(path, str):
             path = Path(path)

@@ -79,7 +79,7 @@ async def test_open_array(memory_store: MemoryStore) -> None:
 
     # open array, read-only
     store_cls = type(store)
-    ro_store = await store_cls.open(store_dict=store._store_dict, readonly=True)
+    ro_store = await store_cls.open(store_dict=store._store_dict, read_only=True)
     z = open(store=ro_store, mode="r")
     assert isinstance(z, Array)
     assert z.shape == (200,)
@@ -106,7 +106,7 @@ async def test_open_group(memory_store: MemoryStore) -> None:
 
     # open group, read-only
     store_cls = type(store)
-    ro_store = await store_cls.open(store_dict=store._store_dict, readonly=True)
+    ro_store = await store_cls.open(store_dict=store._store_dict, read_only=True)
     g = open_group(store=ro_store, mode="r")
     assert isinstance(g, Group)
     assert g.read_only
@@ -149,7 +149,7 @@ def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
         assert isinstance(array, Array)
         assert_array_equal(array[:], data)
     else:
-        save(store, *args, **kwargs)  # type: ignore[arg-type]
+        save(store, *args, **kwargs)
         group = open(store)
         assert isinstance(group, Group)
         for array in group.array_values():
@@ -1023,10 +1023,10 @@ async def test_metadata_validation_error() -> None:
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore[arg-type]
+        await zarr.api.asynchronous.open_group(zarr_format="3.0")
 
     with pytest.raises(
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
+        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")

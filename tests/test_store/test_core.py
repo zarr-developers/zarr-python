@@ -40,7 +40,7 @@ async def test_make_store_path_local(
     assert isinstance(store_path.store, LocalStore)
     assert Path(store_path.store.root) == Path(tmpdir)
     assert store_path.path == normalize_path(path)
-    assert store_path.readonly == (mode == "r")
+    assert store_path.read_only == (mode == "r")
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
@@ -53,14 +53,14 @@ async def test_make_store_path_store_path(
     that a new path is handled correctly.
     """
     ro = mode == "r"
-    store_like = await StorePath.open(LocalStore(str(tmpdir), readonly=ro), path="root", mode=mode)
+    store_like = await StorePath.open(LocalStore(str(tmpdir), read_only=ro), path="root", mode=mode)
     store_path = await make_store_path(store_like, path=path, mode=mode)
     assert isinstance(store_path.store, LocalStore)
     assert Path(store_path.store.root) == Path(tmpdir)
     path_normalized = normalize_path(path)
     assert store_path.path == (store_like / path_normalized).path
 
-    assert store_path.readonly == ro
+    assert store_path.read_only == ro
 
 
 async def test_make_store_path_invalid() -> None:

@@ -72,7 +72,7 @@ class LocalStore(Store):
     ----------
     root : str or Path
         Directory to use as root of store.
-    readonly : bool
+    read_only : bool
         Whether the store is read-only
 
     Attributes
@@ -91,8 +91,8 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, readonly: bool = False) -> None:
-        super().__init__(readonly=readonly)
+    def __init__(self, root: Path | str, *, read_only: bool = False) -> None:
+        super().__init__(read_only=read_only)
         if isinstance(root, str):
             root = Path(root)
         if not isinstance(root, Path):
@@ -102,7 +102,7 @@ class LocalStore(Store):
         self.root = root
 
     async def _open(self) -> None:
-        if not self.readonly:
+        if not self.read_only:
             self.root.mkdir(parents=True, exist_ok=True)
         return await super()._open()
 

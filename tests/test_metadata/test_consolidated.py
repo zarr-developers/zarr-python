@@ -281,7 +281,7 @@ class TestConsolidated:
 
     async def test_not_writable_raises(self, memory_store: zarr.storage.MemoryStore) -> None:
         await group(store=memory_store, attributes={"foo": "bar"})
-        read_store = zarr.storage.MemoryStore(store_dict=memory_store._store_dict, readonly=True)
+        read_store = zarr.storage.MemoryStore(store_dict=memory_store._store_dict, read_only=True)
         with pytest.raises(ValueError, match="does not support writing"):
             await consolidate_metadata(read_store)
 

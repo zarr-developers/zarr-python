@@ -39,7 +39,7 @@ class StoreTests(Generic[S, B]):
 
     @pytest.fixture
     def store_kwargs(self) -> dict[str, Any]:
-        return {"readonly": False}
+        return {"read_only": False}
 
     @pytest.fixture
     async def store(self, store_kwargs: dict[str, Any]) -> Store:
@@ -62,23 +62,25 @@ class StoreTests(Generic[S, B]):
         foo = pickle.dumps(store)
         assert pickle.loads(foo) == store
 
-    def test_store_readonly(self, store: S) -> None:
-        assert not store.readonly
+    def test_store_read_only(self, store: S) -> None:
+        assert not store.read_only
 
         with pytest.raises(AttributeError):
-            store.readonly = False  # type: ignore[misc]
+            store.read_only = False  # type: ignore[misc]
 
-    @pytest.mark.parametrize("readonly", [True, False])
-    async def test_store_open_readonly(self, store_kwargs: dict[str, Any], readonly: bool) -> None:
-        store_kwargs["readonly"] = readonly
+    @pytest.mark.parametrize("read_only", [True, False])
+    async def test_store_open_read_only(
+        self, store_kwargs: dict[str, Any], read_only: bool
+    ) -> None:
+        store_kwargs["read_only"] = read_only
         store = await self.store_cls.open(**store_kwargs)
         assert store._is_open
-        assert store.readonly == readonly
+        assert store.read_only == read_only
 
-    async def test_readonly_store_raises(self, store_kwargs: dict[str, Any]) -> None:
-        kwargs = {**store_kwargs, "readonly": True}
+    async def test_read_only_store_raises(self, store_kwargs: dict[str, Any]) -> None:
+        kwargs = {**store_kwargs, "read_only": True}
         store = await self.store_cls.open(**kwargs)
-        assert store.readonly
+        assert store.read_only
 
         # set
         with pytest.raises(ValueError):
@@ -144,7 +146,7 @@ class StoreTests(Generic[S, B]):
         """
         Ensure that data can be written to the store using the store.set method.
         """
-        assert not store.readonly
+        assert not store.read_only
         data_buf = self.buffer_cls.from_bytes(data)
         await store.set(key, data_buf)
         observed = await self.get(store, key)

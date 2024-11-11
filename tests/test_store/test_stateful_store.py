@@ -35,8 +35,8 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
         self.store = store
 
     @property
-    def readonly(self) -> bool:
-        return self.store.readonly
+    def read_only(self) -> bool:
+        return self.store.read_only
 
     def set(self, key: str, data_buffer: zarr.core.buffer.Buffer) -> None:
         return self._sync(self.store.set(key, data_buffer))
@@ -117,7 +117,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @rule(key=zarr_keys, data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
     def set(self, key: str, data: DataObject) -> None:
         note(f"(set) Setting {key!r} with {data}")
-        assert not self.store.readonly
+        assert not self.store.read_only
         data_buf = cpu.Buffer.from_bytes(data)
         self.store.set(key, data_buf)
         self.model[key] = data_buf
@@ -179,7 +179,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
     @rule()
     def clear(self) -> None:
-        assert not self.store.readonly
+        assert not self.store.read_only
         note("(clear)")
         self.store.clear()
         self.model.clear()

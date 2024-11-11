@@ -25,7 +25,7 @@ class MemoryStore(Store):
     ----------
     store_dict : dict
         Initial data
-    readonly : readonly
+    read_only : bool
         Whether the store is read-only
 
     Attributes
@@ -47,9 +47,9 @@ class MemoryStore(Store):
         self,
         store_dict: MutableMapping[str, Buffer] | None = None,
         *,
-        readonly: bool = False,
+        read_only: bool = False,
     ) -> None:
-        super().__init__(readonly=readonly)
+        super().__init__(read_only=read_only)
         if store_dict is None:
             store_dict = {}
         self._store_dict = store_dict
@@ -68,7 +68,7 @@ class MemoryStore(Store):
         return (
             isinstance(other, type(self))
             and self._store_dict == other._store_dict
-            and self.readonly == other.readonly
+            and self.read_only == other.read_only
         )
 
     async def get(
@@ -185,7 +185,7 @@ class GpuMemoryStore(MemoryStore):
     store_dict : MutableMapping, optional
         A mutable mapping with string keys and :class:`zarr.core.buffer.gpu.Buffer`
         values.
-    readonly : bool, optional
+    read_only : bool
         Whether to open the store in read-only mode.
     """
 
@@ -195,9 +195,9 @@ class GpuMemoryStore(MemoryStore):
         self,
         store_dict: MutableMapping[str, gpu.Buffer] | None = None,
         *,
-        readonly: bool = False,
+        read_only: bool = False,
     ) -> None:
-        super().__init__(store_dict=store_dict, readonly=readonly)  # type: ignore[arg-type]
+        super().__init__(store_dict=store_dict, read_only=read_only)  # type: ignore[arg-type]
 
     def __str__(self) -> str:
         return f"gpumemory://{id(self._store_dict)}"

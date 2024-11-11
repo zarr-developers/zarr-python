@@ -23,12 +23,12 @@ class Store(ABC):
     Abstract base class for Zarr stores.
     """
 
-    _readonly: bool
+    _read_only: bool
     _is_open: bool
 
-    def __init__(self, *, readonly: bool = False) -> None:
+    def __init__(self, *, read_only: bool = False) -> None:
         self._is_open = False
-        self._readonly = readonly
+        self._read_only = read_only
 
     @classmethod
     async def open(cls, *args: Any, **kwargs: Any) -> Self:
@@ -113,13 +113,13 @@ class Store(ABC):
             await self.delete(key)
 
     @property
-    def readonly(self) -> bool:
+    def read_only(self) -> bool:
         """Is the store read-only?"""
-        return self._readonly
+        return self._read_only
 
     def _check_writable(self) -> None:
         """Raise an exception if the store is not writable."""
-        if self.readonly:
+        if self.read_only:
             raise ValueError("store was opened in read-only mode and does not support writing")
 
     @abstractmethod

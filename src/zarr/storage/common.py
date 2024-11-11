@@ -46,8 +46,8 @@ class StorePath:
         self.path = path
 
     @property
-    def readonly(self) -> bool:
-        return self.store.readonly
+    def read_only(self) -> bool:
+        return self.store.read_only
 
     @classmethod
     async def open(
@@ -78,7 +78,7 @@ class StorePath:
         if mode is None:
             return self
 
-        if store.readonly and mode != "r":
+        if store.read_only and mode != "r":
             raise ValueError(f"Store is read-only but mode is '{mode}'")
 
         match mode:
@@ -290,32 +290,32 @@ async def make_store_path(
 
     used_storage_options = False
     path_normalized = normalize_path(path)
-    assert mode in (None, "r", "r+", "a", "w", "w-")
     if isinstance(store_like, StorePath):
         result = store_like / path_normalized
     else:
+        assert mode in (None, "r", "r+", "a", "w", "w-")
         # if mode 'r' was provided, we'll open any new stores as read-only
-        _readonly = mode == "r"
+        _read_only = mode == "r"
         if isinstance(store_like, Store):
             store = store_like
         elif store_like is None:
-            store = await MemoryStore.open(readonly=_readonly)
+            store = await MemoryStore.open(read_only=_read_only)
         elif isinstance(store_like, Path):
-            store = await LocalStore.open(root=store_like, readonly=_readonly)
+            store = await LocalStore.open(root=store_like, read_only=_read_only)
         elif isinstance(store_like, str):
             storage_options = storage_options or {}
 
             if _is_fsspec_uri(store_like):
                 used_storage_options = True
                 store = RemoteStore.from_url(
-                    store_like, storage_options=storage_options, readonly=_readonly
+                    store_like, storage_options=storage_options, read_only=_read_only
                 )
             else:
-                store = await LocalStore.open(root=Path(store_like), readonly=_readonly)
+                store = await LocalStore.open(root=Path(store_like), read_only=_read_only)
         elif isinstance(store_like, dict):
             # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
             # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
-            store = await MemoryStore.open(store_dict=store_like, readonly=_readonly)
+            store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
         else:
             msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
             raise TypeError(msg)

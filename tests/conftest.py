@@ -30,7 +30,7 @@ async def parse_store(
     if store == "local":
         return await LocalStore.open(path)
     if store == "memory":
-        return await MemoryStore.open(readonly=False)
+        return await MemoryStore.open()
     if store == "remote":
         return await RemoteStore.open(url=path)
     if store == "zip":

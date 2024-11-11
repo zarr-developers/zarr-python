@@ -113,9 +113,9 @@ class LoggingStore(Store):
             return self._store.supports_listing
 
     @property
-    def readonly(self) -> bool:
+    def read_only(self) -> bool:
         with self.log():
-            return self._store.readonly
+            return self._store.read_only
 
     @property
     def _is_open(self) -> bool:
