@@ -11,7 +11,7 @@ from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable
+    from collections.abc import AsyncIterator, Iterable
 
 ZipStoreAccessModeLiteral = Literal["r", "w", "a"]
 
@@ -234,19 +234,19 @@ class ZipStore(Store):
             else:
                 return True
 
-    async def list(self) -> AsyncGenerator[str]:
+    async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         with self._lock:
             for key in self._zf.namelist():
                 yield key
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
+    async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         async for key in self.list():
             if key.startswith(prefix):
                 yield key
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
+    async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         prefix = prefix.rstrip("/")
 
