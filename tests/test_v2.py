@@ -11,7 +11,7 @@ from numcodecs.blosc import Blosc
 import zarr
 import zarr.storage
 from zarr import Array
-from zarr.storage import MemoryStore, StorePath
+from zarr.storage import MemoryStore, StorePath, LocalStore
 
 
 @pytest.fixture
@@ -33,6 +33,13 @@ def test_simple(store: StorePath) -> None:
 
     a[:, :] = data
     assert np.array_equal(data, a[:, :])
+
+
+def test_simple_group(tmp_path) -> None:
+    store = LocalStore(tmp_path, mode="w")
+    zarr.group(store=store, zarr_format=2)
+    root_group = zarr.open(tmp_path, zarr_format=2)
+    assert root_group is not None
 
 
 @pytest.mark.parametrize(
