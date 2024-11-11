@@ -71,7 +71,7 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
         Order              : C
         Read-only          : True
         Store type         : MemoryStore
-        Codecs             : ["BytesCodec(endian=<Endian.little: 'little'>"]""")
+        Codecs             : [{{'endian': <Endian.little: 'little'>}}]""")
 
 
 @pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
@@ -110,7 +110,7 @@ def test_array_info_complete(
         Order              : C
         Read-only          : True
         Store type         : MemoryStore
-        Codecs             : ["BytesCodec(endian=<Endian.little: 'little'>"]
+        Codecs             : [{{'endian': <Endian.little: 'little'>}}]
         No. bytes          : {count_bytes} ({count_bytes_formatted})
         No. bytes stored   : {count_bytes_stored_formatted}
         Storage ratio      : {storage_ratio_formatted}
