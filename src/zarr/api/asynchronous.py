@@ -306,10 +306,11 @@ async def open(
 
     try:
         return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
-    except (KeyError, NodeTypeValidationError):
+    except (KeyError, NodeTypeValidationError, FileNotFoundError):
         # KeyError for a missing key
         # NodeTypeValidationError for failing to parse node metadata as an array when it's
         # actually a group
+        # FileNotFoundError for v2 when opening a group
         return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
 
 
