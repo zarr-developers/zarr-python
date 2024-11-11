@@ -11,7 +11,7 @@ from numcodecs.blosc import Blosc
 import zarr
 import zarr.storage
 from zarr import Array
-from zarr.storage import MemoryStore, StorePath, LocalStore
+from zarr.storage import LocalStore, MemoryStore, StorePath
 
 
 @pytest.fixture
