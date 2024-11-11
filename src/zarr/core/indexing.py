@@ -68,7 +68,7 @@ class VindexInvalidSelectionError(IndexError):
     _msg = (
         "unsupported selection type for vectorized indexing; only "
         "coordinate selection (tuple of integer arrays) and mask selection "
-        "(single Boolean array) are supported; got {0!r}"
+        "(single Boolean array) are supported; got {!r}"
     )
 
 
