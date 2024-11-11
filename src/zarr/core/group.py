@@ -17,6 +17,7 @@ import zarr.api.asynchronous as async_api
 from zarr._compat import _deprecate_positional_args
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
+from zarr.core._info import GroupInfo
 from zarr.core.array import Array, AsyncArray, _build_parents
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
@@ -805,8 +806,72 @@ class AsyncGroup:
         return self.metadata.attributes
 
     @property
-    def info(self) -> None:
-        raise NotImplementedError
+    def info(self) -> Any:
+        """
+        Return a visual representation of the statically known information about a group.
+
+        Note that this doesn't include dynamic information, like the number of child
+        Groups or Arrays.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        AsyncGroup.info_complete
+            All information about a group, including dynamic information
+        """
+
+        if self.metadata.consolidated_metadata:
+            members = list(self.metadata.consolidated_metadata.flattened_metadata.values())
+        else:
+            members = None
+        return self._info(members=members)
+
+    async def info_complete(self) -> Any:
+        """
+        Return all the information for a group.
+
+        This includes dynamic information like the number
+        of child Groups or Arrays. If this group doesn't contain consolidated
+        metadata then this will need to read from the backing Store.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        AsyncGroup.info
+        """
+        members = [x[1].metadata async for x in self.members(max_depth=None)]
+        return self._info(members=members)
+
+    def _info(
+        self, members: list[ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] | None = None
+    ) -> Any:
+        kwargs = {}
+        if members is not None:
+            kwargs["_count_members"] = len(members)
+            count_arrays = 0
+            count_groups = 0
+            for member in members:
+                if isinstance(member, GroupMetadata):
+                    count_groups += 1
+                else:
+                    count_arrays += 1
+            kwargs["_count_arrays"] = count_arrays
+            kwargs["_count_groups"] = count_groups
+
+        return GroupInfo(
+            _name=self.store_path.path,
+            _read_only=self.store_path.store.mode.readonly,
+            _store_type=type(self.store_path.store).__name__,
+            _zarr_format=self.metadata.zarr_format,
+            # maybe do a typeddict
+            **kwargs,  # type: ignore[arg-type]
+        )
 
     @property
     def store(self) -> Store:
@@ -967,7 +1032,7 @@ class AsyncGroup:
 
     @deprecated("Use AsyncGroup.create_array instead.")
     async def create_dataset(
-        self, name: str, **kwargs: Any
+        self, name: str, *, shape: ShapeLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array.
 
@@ -988,7 +1053,7 @@ class AsyncGroup:
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.create_array` instead.
         """
-        return await self.create_array(name, **kwargs)
+        return await self.create_array(name, shape=shape, **kwargs)
 
     @deprecated("Use AsyncGroup.require_array instead.")
     async def require_dataset(
@@ -1225,7 +1290,7 @@ class AsyncGroup:
 
         # we kind of just want the top-level keys.
         if consolidated_metadata is not None:
-            for key in consolidated_metadata.metadata.keys():
+            for key in consolidated_metadata.metadata:
                 obj = self._getitem_consolidated(
                     self.store_path, key, prefix=self.name
                 )  # Metadata -> Group/Array
@@ -1454,8 +1519,38 @@ class Group(SyncMixin):
         return Attributes(self)
 
     @property
-    def info(self) -> None:
-        raise NotImplementedError
+    def info(self) -> Any:
+        """
+        Return the statically known information for a group.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        Group.info_complete
+            All information about a group, including dynamic information
+            like the children members.
+        """
+        return self._async_group.info
+
+    def info_complete(self) -> Any:
+        """
+        Return information for a group.
+
+        If this group doesn't contain consolidated metadata then
+        this will need to read from the backing Store.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        Group.info
+        """
+        return self._sync(self._async_group.info_complete())
 
     @property
     def store(self) -> Store:
@@ -1666,7 +1761,7 @@ class Group(SyncMixin):
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
     @deprecated("Use Group.require_array instead.")
-    def require_dataset(self, name: str, **kwargs: Any) -> Array:
+    def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
@@ -1688,9 +1783,9 @@ class Group(SyncMixin):
         .. deprecated:: 3.0.0
             The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
         """
-        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
+        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
-    def require_array(self, name: str, **kwargs: Any) -> Array:
+    def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
 
@@ -1707,7 +1802,7 @@ class Group(SyncMixin):
         -------
         a : Array
         """
-        return Array(self._sync(self._async_group.require_array(name, **kwargs)))
+        return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
     @_deprecate_positional_args
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:

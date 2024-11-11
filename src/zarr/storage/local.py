@@ -12,7 +12,7 @@ from zarr.core.buffer import Buffer
 from zarr.core.common import concurrent_map
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable
+    from collections.abc import AsyncIterator, Iterable
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
@@ -132,7 +132,7 @@ class LocalStore(Store):
         return type(self)(root=self.root, mode=mode)
 
     def __str__(self) -> str:
-        return f"file://{self.root}"
+        return f"file://{self.root.as_posix()}"
 
     def __repr__(self) -> str:
         return f"LocalStore({str(self)!r})"
@@ -217,14 +217,14 @@ class LocalStore(Store):
         path = self.root / key
         return await asyncio.to_thread(path.is_file)
 
-    async def list(self) -> AsyncGenerator[str, None]:
+    async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         to_strip = self.root.as_posix() + "/"
         for p in list(self.root.rglob("*")):
             if p.is_file():
                 yield p.as_posix().replace(to_strip, "")
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         to_strip = self.root.as_posix() + "/"
         prefix = prefix.rstrip("/")
@@ -232,14 +232,12 @@ class LocalStore(Store):
             if p.is_file():
                 yield p.as_posix().replace(to_strip, "")
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         base = self.root / prefix
-        to_strip = str(base) + "/"
-
         try:
             key_iter = base.iterdir()
             for key in key_iter:
-                yield key.as_posix().replace(to_strip, "")
+                yield key.relative_to(base).as_posix()
         except (FileNotFoundError, NotADirectoryError):
             pass

@@ -241,12 +241,13 @@ def is_pure_fancy_indexing(selection: Any, ndim: int) -> bool:
         # is mask selection
         return True
 
-    if ndim == 1:
-        if is_integer_list(selection) or is_integer_array(selection) or is_bool_list(selection):
-            return True
+    if ndim == 1 and (
+        is_integer_list(selection) or is_integer_array(selection) or is_bool_list(selection)
+    ):
+        return True
 
-        # if not, we go through the normal path below, because a 1-tuple
-        # of integers is also allowed.
+    # if not, we go through the normal path below, because a 1-tuple
+    # of integers is also allowed.
     no_slicing = (
         isinstance(selection, tuple)
         and len(selection) == ndim
@@ -675,7 +676,7 @@ class Order(Enum):
 def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> None:
     loc_neg = x < 0
     if np.any(loc_neg):
-        x[loc_neg] = x[loc_neg] + dim_len
+        x[loc_neg] += dim_len
 
 
 def boundscheck_indices(x: npt.NDArray[Any], dim_len: int) -> None:
@@ -1000,8 +1001,8 @@ class BlockIndexer(Indexer):
                 if stop < 0:
                     stop = dim_numchunks + stop
 
-                start = start * dim_chunk_size
-                stop = stop * dim_chunk_size
+                start *= dim_chunk_size
+                stop *= dim_chunk_size
                 slice_ = slice(start, stop)
 
             else:
