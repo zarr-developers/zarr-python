@@ -14,6 +14,7 @@ from zarr._compat import _deprecate_positional_args
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs import _get_default_array_bytes_codec
 from zarr.codecs._v2 import V2Codec
+from zarr.core._info import ArrayInfo
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
@@ -1332,8 +1333,64 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def __repr__(self) -> str:
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
-    async def info(self) -> None:
+    @property
+    def info(self) -> Any:
+        """
+        Return the statically known information for an array.
+
+        Returns
+        -------
+        ArrayInfo
+
+        See Also
+        --------
+        AsyncArray.info_complete
+            All information about a group, including dynamic information
+            like the number of bytes and chunks written.
+        """
+        return self._info()
+
+    async def info_complete(self) -> Any:
+        # TODO: get the size of the object from the store.
+        extra = {
+            "count_chunks_initialized": await self.nchunks_initialized(),
+            # count_bytes_stored isn't yet implemented.
+        }
+        return self._info(extra=extra)
+
         raise NotImplementedError
+
+    def _info(self, extra: dict[str, int] | None = None) -> Any:
+        kwargs: dict[str, Any] = {}
+        if self.metadata.zarr_format == 2:
+            assert isinstance(self.metadata, ArrayV2Metadata)
+            if self.metadata.compressor is not None:
+                kwargs["_compressor"] = self.metadata.compressor
+            if self.metadata.filters is not None:
+                kwargs["_filters"] = self.metadata.filters
+            kwargs["_data_type"] = self.metadata.dtype
+            kwargs["_chunk_shape"] = self.metadata.chunks
+        else:
+            kwargs["_codecs"] = self.metadata.codecs
+            kwargs["_data_type"] = self.metadata.data_type
+            # just regular?
+            chunk_grid = self.metadata.chunk_grid
+            if isinstance(chunk_grid, RegularChunkGrid):
+                kwargs["_chunk_shape"] = chunk_grid.chunk_shape
+            else:
+                raise NotImplementedError(
+                    "'info' is not yet implemented for chunk grids of type {type(self.metadata.chunk_grid)}"
+                )
+
+        return ArrayInfo(
+            _zarr_format=self.metadata.zarr_format,
+            _shape=self.shape,
+            _order=self.order,
+            _read_only=self.store_path.store.mode.readonly,
+            _store_type=type(self.store_path.store).__name__,
+            _count_bytes=self.dtype.itemsize * self.size,
+            **kwargs,
+        )
 
 
 # TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
@@ -3099,10 +3156,58 @@ class Array:
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
-    def info(self) -> None:
-        return sync(
-            self._async_array.info(),
-        )
+    @property
+    def info(self) -> Any:
+        """
+        Return the statically known information for an array.
+
+        Returns
+        -------
+        ArrayInfo
+
+        See Also
+        --------
+        Array.info_complete
+            All information about a group, including dynamic information
+            like the number of bytes and chunks written.
+
+        Examples
+        --------
+        >>> arr = zarr.create(shape=(10,), chunks=(2,), dtype="float32")
+        >>> arr.info
+        Type               : Array
+        Zarr format        : 3
+        Data type          : DataType.float32
+        Shape              : (10,)
+        Chunk shape        : (2,)
+        Order              : C
+        Read-only          : False
+        Store type         : MemoryStore
+        Codecs             : [BytesCodec(endian=<Endian.little: 'little'>)]
+        No. bytes          : 40
+        """
+        return self._async_array.info
+
+    def info_complete(self) -> Any:
+        """
+        Returns all the information about an array, including information from the Store.
+
+        In addition to the statically known information like ``name`` and ``zarr_format``,
+        this includes additional information like the size of the array in bytes and
+        the number of chunks written.
+
+        Note that this method will need to read metadata from the store.
+
+        Returns
+        -------
+        ArrayInfo
+
+        See Also
+        --------
+        Array.info
+            The statically known subset of metadata about an array.
+        """
+        return sync(self._async_array.info_complete())
 
 
 async def chunks_initialized(
