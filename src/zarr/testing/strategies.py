@@ -8,6 +8,7 @@ from hypothesis.strategies import SearchStrategy
 
 import zarr
 from zarr.core.array import Array
+from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 
 # Copied from Xarray
@@ -42,7 +43,7 @@ def v2_dtypes() -> st.SearchStrategy[np.dtype]:
         | npst.complex_number_dtypes(endianness="=")
         | npst.byte_string_dtypes(endianness="=")
         | npst.unicode_string_dtypes(endianness="=")
-        | npst.datetime64_dtypes()
+        | npst.datetime64_dtypes(endianness="=")
         # | npst.timedelta64_dtypes()
     )
 
@@ -62,7 +63,10 @@ array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
 keys = st.lists(node_names, min_size=1).map("/".join)
 paths = st.just("/") | keys
-stores = st.builds(MemoryStore, st.just({}))
+# st.builds will only call a new store constructor for different keyword arguments
+# i.e. stores.examples() will always return the same object per Store class.
+# So we map a clear to reset the store.
+stores = st.builds(MemoryStore, st.just({})).map(lambda x: sync(x.clear()))
 compressors = st.sampled_from([None, "default"])
 zarr_formats: st.SearchStrategy[Literal[2, 3]] = st.sampled_from([2, 3])
 array_shapes = npst.array_shapes(max_dims=4, min_side=0)

@@ -10,12 +10,14 @@ import pytest
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
 from zarr.codecs import BytesCodec, VLenBytesCodec
+from zarr.core._info import ArrayInfo
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
+from zarr.core.metadata.v3 import DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore
@@ -414,6 +416,39 @@ def test_update_attrs(zarr_format: int) -> None:
 
     arr2 = zarr.open_array(store=store, zarr_format=zarr_format)
     assert arr2.attrs["foo"] == "bar"
+
+
+class TestInfo:
+    def test_info_v2(self) -> None:
+        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=2)
+        result = arr.info
+        expected = ArrayInfo(
+            _zarr_format=2,
+            _data_type=np.dtype("float64"),
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _count_bytes=128,
+        )
+        assert result == expected
+
+    def test_info_v3(self) -> None:
+        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        result = arr.info
+        expected = ArrayInfo(
+            _zarr_format=3,
+            _data_type=DataType.parse("float64"),
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _codecs=[BytesCodec()],
+            _count_bytes=128,
+        )
+        assert result == expected
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
