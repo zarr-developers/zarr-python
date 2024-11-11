@@ -154,7 +154,7 @@ def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
         assert isinstance(group, Group)
         for array in group.array_values():
             assert_array_equal(array[:], data)
-        for k in kwargs.keys():
+        for k in kwargs:
             assert k in group
         assert group.nmembers() == n_args + n_kwargs
 

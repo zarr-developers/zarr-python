@@ -241,12 +241,13 @@ def is_pure_fancy_indexing(selection: Any, ndim: int) -> bool:
         # is mask selection
         return True
 
-    if ndim == 1:
-        if is_integer_list(selection) or is_integer_array(selection) or is_bool_list(selection):
-            return True
+    if ndim == 1 and (
+        is_integer_list(selection) or is_integer_array(selection) or is_bool_list(selection)
+    ):
+        return True
 
-        # if not, we go through the normal path below, because a 1-tuple
-        # of integers is also allowed.
+    # if not, we go through the normal path below, because a 1-tuple
+    # of integers is also allowed.
     no_slicing = (
         isinstance(selection, tuple)
         and len(selection) == ndim
