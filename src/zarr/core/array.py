@@ -1358,8 +1358,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         }
         return self._info(extra=extra)
 
-        raise NotImplementedError
-
     def _info(self, extra: dict[str, int] | None = None) -> Any:
         kwargs: dict[str, Any] = {}
         if self.metadata.zarr_format == 2:
