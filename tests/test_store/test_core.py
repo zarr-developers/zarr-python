@@ -80,7 +80,7 @@ async def test_make_store_path_fsspec(monkeypatch) -> None:
     "store_like",
     [
         None,
-        str(tempfile.TemporaryDirectory()),
+        tempfile.TemporaryDirectory().name,
         Path(tempfile.TemporaryDirectory().name),
         StorePath(store=MemoryStore(store_dict={}), path="/"),
         MemoryStore(store_dict={}),
