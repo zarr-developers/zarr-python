@@ -140,7 +140,7 @@ class StorePath:
         return _dereference_path(str(self.store), self.path)
 
     def __repr__(self) -> str:
-        return f"StorePath({self.store.__class__.__name__}, {str(self)!r})"
+        return f"StorePath({self.store.__class__.__name__}, '{self}')"
 
     def __eq__(self, other: object) -> bool:
         """
