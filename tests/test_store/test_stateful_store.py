@@ -55,8 +55,8 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
     def delete(self, path: str) -> None:
         return self._sync(self.store.delete(path))
 
-    def empty_dir(self, prefix: str = "") -> bool:
-        return self._sync(self.store.empty_dir(prefix=prefix))
+    def is_empty(self, prefix: str) -> bool:
+        return self._sync(self.store.is_empty(prefix=prefix))
 
     def clear(self) -> None:
         return self._sync(self.store.clear())
@@ -184,18 +184,18 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         self.store.clear()
         self.model.clear()
 
-        assert self.store.empty_dir()
+        assert self.store.is_empty("")
 
         assert len(self.model.keys()) == len(list(self.store.list())) == 0
 
     @rule()
     # Local store can be non-empty when there are subdirectories but no files
     @precondition(lambda self: not isinstance(self.store.store, LocalStore))
-    def empty_dir(self) -> None:
-        note("(empty_dir)")
+    def is_empty(self) -> None:
+        note("(is_empty)")
 
         # make sure they either both are or both aren't empty (same state)
-        assert self.store.empty_dir() == (not self.model)
+        assert self.store.is_empty("") == (not self.model)
 
     @rule(key=zarr_keys)
     def exists(self, key: str) -> None:
@@ -228,10 +228,10 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         keys = list(self.store.list())
 
         if not keys:
-            assert self.store.empty_dir() is True
+            assert self.store.is_empty("") is True
 
         else:
-            assert self.store.empty_dir() is False
+            assert self.store.is_empty("") is False
 
             for key in keys:
                 assert self.store.exists(key) is True

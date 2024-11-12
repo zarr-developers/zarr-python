@@ -82,7 +82,7 @@ class Store(ABC):
         if not self._is_open:
             await self._open()
 
-    async def empty_dir(self, prefix: str) -> bool:
+    async def is_empty(self, prefix: str) -> bool:
         """
         Check if the directory is empty.
 

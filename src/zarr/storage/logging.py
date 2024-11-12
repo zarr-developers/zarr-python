@@ -135,10 +135,10 @@ class LoggingStore(Store):
         with self.log():
             return await self._store._ensure_open()
 
-    async def empty_dir(self, prefix: str = "") -> bool:
+    async def is_empty(self, prefix: str = "") -> bool:
         # docstring inherited
         with self.log():
-            return await self._store.empty_dir(prefix=prefix)
+            return await self._store.is_empty(prefix=prefix)
 
     async def clear(self) -> None:
         # docstring inherited

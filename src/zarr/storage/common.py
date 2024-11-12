@@ -83,7 +83,7 @@ class StorePath:
 
         match mode:
             case "w-":
-                if not await self.empty_dir():
+                if not await self.is_empty():
                     msg = (
                         f"{self} is not empty, but `mode` is set to 'w-'."
                         "Either remove the existing objects in storage,"
@@ -187,7 +187,7 @@ class StorePath:
         """
         return await self.store.exists(self.path)
 
-    async def empty_dir(self) -> bool:
+    async def is_empty(self) -> bool:
         """
         Check if any keys exist in the store with the given prefix.
 
@@ -196,7 +196,7 @@ class StorePath:
         bool
             True if no keys exist in the store with the given prefix, False otherwise.
         """
-        return await self.store.empty_dir(self.path)
+        return await self.store.is_empty(self.path)
 
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
