@@ -138,7 +138,7 @@ def arrays(
     expected_attrs = {} if attributes is None else attributes
 
     array_path = path + ("/" if not path.endswith("/") else "") + name
-    root = zarr.open_group(store, mode="w")
+    root = zarr.open_group(store, mode="w", zarr_format=zarr_format)
 
     a = root.create_array(
         array_path,

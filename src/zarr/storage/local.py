@@ -116,7 +116,7 @@ class LocalStore(Store):
         return f"file://{self.root.as_posix()}"
 
     def __repr__(self) -> str:
-        return f"LocalStore({str(self)!r})"
+        return f"LocalStore('{self}')"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.root == other.root
