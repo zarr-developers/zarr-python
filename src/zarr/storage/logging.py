@@ -11,7 +11,7 @@ from zarr.abc.store import AccessMode, ByteRangeRequest, Store
 from zarr.storage.wrapper import WrapperStore
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Generator, Iterable
+    from collections.abc import AsyncIterator, Generator, Iterable
 
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import AccessModeLiteral
@@ -205,19 +205,19 @@ class LoggingStore(WrapperStore[Store]):
         with self.log(keys):
             return await self._store.set_partial_values(key_start_values=key_start_values)
 
-    async def list(self) -> AsyncGenerator[str]:
+    async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         with self.log():
             async for key in self._store.list():
                 yield key
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
+    async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         with self.log(prefix):
             async for key in self._store.list_prefix(prefix=prefix):
                 yield key
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
+    async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         with self.log(prefix):
             async for key in self._store.list_dir(prefix=prefix):

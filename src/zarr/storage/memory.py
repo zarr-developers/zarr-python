@@ -9,7 +9,7 @@ from zarr.core.common import concurrent_map
 from zarr.storage._utils import _normalize_interval_index
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable, MutableMapping
+    from collections.abc import AsyncIterator, Iterable, MutableMapping
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import AccessModeLiteral
@@ -71,7 +71,7 @@ class MemoryStore(Store):
         return f"memory://{id(self._store_dict)}"
 
     def __repr__(self) -> str:
-        return f"MemoryStore({str(self)!r})"
+        return f"MemoryStore('{self}')"
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -147,19 +147,19 @@ class MemoryStore(Store):
         # docstring inherited
         raise NotImplementedError
 
-    async def list(self) -> AsyncGenerator[str]:
+    async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         for key in self._store_dict:
             yield key
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
+    async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         # note: we materialize all dict keys into a list here so we can mutate the dict in-place (e.g. in delete_prefix)
         for key in list(self._store_dict):
             if key.startswith(prefix):
                 yield key
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
+    async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         prefix = prefix.rstrip("/")
 
@@ -210,7 +210,7 @@ class GpuMemoryStore(MemoryStore):
         return f"gpumemory://{id(self._store_dict)}"
 
     def __repr__(self) -> str:
-        return f"GpuMemoryStore({str(self)!r})"
+        return f"GpuMemoryStore('{self}')"
 
     @classmethod
     def from_dict(cls, store_dict: MutableMapping[str, Buffer]) -> Self:
