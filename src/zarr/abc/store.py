@@ -82,7 +82,7 @@ class Store(ABC):
         if not self._is_open:
             await self._open()
 
-    async def empty_dir(self, prefix: str = "") -> bool:
+    async def empty_dir(self, prefix: str) -> bool:
         """
         Check if the directory is empty.
 
@@ -96,8 +96,9 @@ class Store(ABC):
         bool
             True if the store is empty, False otherwise.
         """
-
-        if prefix and not prefix.endswith("/"):
+        if not self.supports_listing:
+            raise NotImplementedError
+        if prefix != "" and not prefix.endswith("/"):
             prefix += "/"
         async for _ in self.list_prefix(prefix):
             return False
@@ -109,8 +110,12 @@ class Store(ABC):
 
         Remove all keys and values from the store.
         """
-        async for key in self.list():
-            await self.delete(key)
+        if not self.supports_deletes:
+            raise NotImplementedError
+        if not self.supports_listing:
+            raise NotImplementedError
+        self._check_writable()
+        await self.delete_dir("")
 
     @property
     def read_only(self) -> bool:
@@ -319,7 +324,7 @@ class Store(ABC):
         if not self.supports_listing:
             raise NotImplementedError
         self._check_writable()
-        if prefix and not prefix.endswith("/"):
+        if prefix != "" and not prefix.endswith("/"):
             prefix += "/"
         async for key in self.list_prefix(prefix):
             await self.delete(key)

@@ -71,6 +71,9 @@ _OVERWRITE_MODES: tuple[AccessModeLiteral, ...] = ("a", "r+", "w")
 
 
 def _infer_exists_ok(mode: AccessModeLiteral) -> bool:
+    """
+    Check that an ``AccessModeLiteral`` is compatible with overwriting an existing Zarr node.
+    """
     return mode in _OVERWRITE_MODES
 
 
@@ -410,13 +413,14 @@ async def save_array(
         arr = np.array(arr)
     shape = arr.shape
     chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
+    exists_ok = kwargs.pop("exists_ok", None) or _infer_exists_ok(mode)
     new = await AsyncArray.create(
         store_path,
         zarr_format=zarr_format,
         shape=shape,
         dtype=arr.dtype,
         chunks=chunks,
-        exists_ok=kwargs.pop("exists_ok", None) or _infer_exists_ok(mode),
+        exists_ok=exists_ok,
         **kwargs,
     )
     await new.setitem(slice(None), arr)
@@ -617,9 +621,10 @@ async def group(
     try:
         return await AsyncGroup.open(store=store_path, zarr_format=zarr_format)
     except (KeyError, FileNotFoundError):
+        _zarr_format = zarr_format or _default_zarr_version()
         return await AsyncGroup.from_store(
             store=store_path,
-            zarr_format=zarr_format or _default_zarr_version(),
+            zarr_format=_zarr_format,
             exists_ok=overwrite,
             attributes=attributes,
         )
@@ -726,10 +731,12 @@ async def open_group(
     except (KeyError, FileNotFoundError):
         pass
     if mode in _CREATE_MODES:
+        exists_ok = _infer_exists_ok(mode)
+        _zarr_format = zarr_format or _default_zarr_version()
         return await AsyncGroup.from_store(
             store_path,
-            zarr_format=zarr_format or _default_zarr_version(),
-            exists_ok=_infer_exists_ok(mode),
+            zarr_format=_zarr_format,
+            exists_ok=exists_ok,
             attributes=attributes,
         )
     raise FileNotFoundError(f"Unable to find group: {store_path}")
@@ -904,7 +911,7 @@ async def create(
         dtype=dtype,
         compressor=compressor,
         fill_value=fill_value,
-        exists_ok=overwrite,  # TODO: name change
+        exists_ok=overwrite,
         filters=filters,
         dimension_separator=dimension_separator,
         zarr_format=zarr_format,
@@ -1074,7 +1081,7 @@ async def open_array(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Any keyword arguments to pass to the ``create``.
+        Any keyword arguments to pass to ``create``.
 
     Returns
     -------
@@ -1091,10 +1098,12 @@ async def open_array(
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
     except FileNotFoundError:
         if not store_path.read_only:
+            exists_ok = _infer_exists_ok(mode)
+            _zarr_format = zarr_format or _default_zarr_version()
             return await create(
                 store=store_path,
-                zarr_format=zarr_format or _default_zarr_version(),
-                overwrite=_infer_exists_ok(mode),
+                zarr_format=_zarr_format,
+                overwrite=exists_ok,
                 **kwargs,
             )
         raise

@@ -231,11 +231,13 @@ class StoreTests(Generic[S, B]):
         assert not await store.exists("foo/c/0")
 
     async def test_empty_dir(self, store: S) -> None:
-        assert await store.empty_dir()
+        assert await store.empty_dir("")
         await self.set(
             store, "foo/bar", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8"))
         )
-        assert not await store.empty_dir()
+        assert not await store.empty_dir("")
+        assert await store.empty_dir("fo")
+        assert not await store.empty_dir("foo/")
         assert not await store.empty_dir("foo")
         assert await store.empty_dir("spam/")
 
@@ -244,7 +246,7 @@ class StoreTests(Generic[S, B]):
             store, "key", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8"))
         )
         await store.clear()
-        assert await store.empty_dir()
+        assert await store.empty_dir("")
 
     async def test_list(self, store: S) -> None:
         assert await _collect_aiterator(store.list()) == ()

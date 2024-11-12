@@ -43,7 +43,7 @@ filesystem.
 .. code-block:: python
 
    >>> import zarr
-   >>> store = zarr.storage.LocalStore("data/foo/bar", readonly=True)
+   >>> store = zarr.storage.LocalStore("data/foo/bar", read_only=True)
    >>> zarr.open(store=store)
    <Group file://data/foo/bar>
 
@@ -72,7 +72,7 @@ that implements the `AbstractFileSystem` API,
 .. code-block:: python
 
    >>> import zarr
-   >>> store = zarr.storage.RemoteStore.from_url("gs://foo/bar", readonly=True)
+   >>> store = zarr.storage.RemoteStore.from_url("gs://foo/bar", read_only=True)
    >>> zarr.open(store=store)
    <Array <RemoteStore(GCSFileSystem, foo/bar)> shape=(10, 20) dtype=float32>
 

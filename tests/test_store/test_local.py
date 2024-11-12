@@ -43,9 +43,9 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         assert store.supports_listing
 
     async def test_empty_with_empty_subdir(self, store: LocalStore) -> None:
-        assert await store.empty_dir()
+        assert await store.empty_dir("")
         (store.root / "foo/bar").mkdir(parents=True)
-        assert await store.empty_dir()
+        assert await store.empty_dir("")
 
     def test_creates_new_directory(self, tmp_path: pathlib.Path):
         target = tmp_path.joinpath("a", "b", "c")
