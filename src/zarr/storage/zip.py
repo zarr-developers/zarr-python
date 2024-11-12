@@ -129,7 +129,7 @@ class ZipStore(Store):
         return f"zip://{self.path}"
 
     def __repr__(self) -> str:
-        return f"ZipStore({str(self)!r})"
+        return f"ZipStore('{self}')"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.path == other.path

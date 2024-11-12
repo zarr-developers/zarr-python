@@ -62,7 +62,7 @@ class MemoryStore(Store):
         return f"memory://{id(self._store_dict)}"
 
     def __repr__(self) -> str:
-        return f"MemoryStore({str(self)!r})"
+        return f"MemoryStore('{self}')"
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -203,7 +203,7 @@ class GpuMemoryStore(MemoryStore):
         return f"gpumemory://{id(self._store_dict)}"
 
     def __repr__(self) -> str:
-        return f"GpuMemoryStore({str(self)!r})"
+        return f"GpuMemoryStore('{self}')"
 
     @classmethod
     def from_dict(cls, store_dict: MutableMapping[str, Buffer]) -> Self:
