@@ -141,7 +141,7 @@ def test_v2_filters_codecs(filters: Any) -> None:
 
 @pytest.mark.parametrize(
     "dtype_expected",
-   # [["b", "zstd"], ["i", "zstd"], ["f", "zstd"], ["|S1", "vlen-utf8"], ["|U1", "vlen-utf8"]],
+    # [["b", "zstd"], ["i", "zstd"], ["f", "zstd"], ["|S1", "vlen-utf8"], ["|U1", "vlen-utf8"]],
     [["|S1", "vlen-bytes"]],
 )
 def test_default_filters_and_compressor(dtype_expected: Any) -> None:
