@@ -4,6 +4,7 @@ import pickle
 from itertools import accumulate
 from typing import Any, Literal
 
+import numcodecs
 import numpy as np
 import pytest
 
@@ -431,6 +432,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=128,
+            _filters= (numcodecs.Zstd(),)
         )
         assert result == expected
 

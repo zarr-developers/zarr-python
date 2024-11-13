@@ -65,7 +65,8 @@ def test_config_defaults_set() -> None:
             },
             "v2_dtype_kind_to_default_filters_and_compressor": {
                 "biufcmM": ["zstd"],
-                "OSUV": ["vlen-utf8"],
+                "U": ["vlen-utf8"],
+                "OSV": ["vlen-bytes"],
             },
         }
     ]
