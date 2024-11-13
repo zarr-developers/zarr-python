@@ -142,7 +142,7 @@ def test_sync_mixin(sync_loop) -> None:
 
 
 def test_open_positional_args_deprecate():
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     with pytest.warns(FutureWarning, match="pass"):
         zarr.open(store, "w", shape=(1,))
 

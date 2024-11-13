@@ -16,7 +16,7 @@ from zarr.storage import MemoryStore, StorePath
 
 @pytest.fixture
 async def store() -> Iterator[StorePath]:
-    return StorePath(await MemoryStore.open(mode="w"))
+    return StorePath(await MemoryStore.open())
 
 
 def test_simple(store: StorePath) -> None:
@@ -63,7 +63,7 @@ def test_implicit_fill_value(store: StorePath, dtype: str, fill_value: Any) -> N
 
 def test_codec_pipeline() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2243
-    store = MemoryStore(mode="w")
+    store = MemoryStore()
     array = zarr.create(
         store=store,
         shape=(1,),
@@ -87,7 +87,7 @@ async def test_v2_encode_decode(dtype):
             },
         }
     ):
-        store = zarr.storage.MemoryStore(mode="w")
+        store = zarr.storage.MemoryStore()
         g = zarr.group(store=store, zarr_format=2)
         g.create_array(
             name="foo",

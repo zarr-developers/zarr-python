@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 async def store() -> AsyncGenerator[StorePath]:
-    return StorePath(await MemoryStore.open(mode="w"))
+    return StorePath(await MemoryStore.open())
 
 
 def zarr_array_from_numpy_array(
@@ -62,7 +62,7 @@ class CountingDict(MemoryStore):
 
     @classmethod
     async def open(cls) -> CountingDict:
-        store = await super().open(mode="w")
+        store = await super().open()
         store.counter = Counter()
         return store
 
