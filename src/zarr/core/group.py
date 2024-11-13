@@ -1347,8 +1347,30 @@ class AsyncGroup:
         async for _, array in self.arrays():
             yield array
 
-    async def tree(self, expand: bool = False, level: int | None = None) -> Any:
-        raise NotImplementedError
+    async def tree(self, expand: bool | None = None, level: int | None = None) -> Any:
+        """
+        Return a tree-like representation of a hierarchy.
+
+        This requires the optional ``rich`` dependency.
+
+        Parameters
+        ----------
+        expand : bool, optional
+            This keyword is not yet supported. A NotImplementedError is raised if
+            it's used.
+        level : int, optional
+            The maximum depth below this Group to display in the tree.
+
+        Returns
+        -------
+        TreeRepr
+            A pretty-printable object displaying the hierarchy.
+        """
+        from zarr.core._tree import group_tree_async
+
+        if expand is not None:
+            raise NotImplementedError("'expanded' is not yet implemented.")
+        return await group_tree_async(self, max_depth=level)
 
     async def empty(
         self, *, name: str, shape: ChunkCoords, **kwargs: Any
@@ -1614,7 +1636,25 @@ class Group(SyncMixin):
         for _, array in self.arrays():
             yield array
 
-    def tree(self, expand: bool = False, level: int | None = None) -> Any:
+    def tree(self, expand: bool | None = None, level: int | None = None) -> Any:
+        """
+        Return a tree-like representation of a hierarchy.
+
+        This requires the optional ``rich`` dependency.
+
+        Parameters
+        ----------
+        expand : bool, optional
+            This keyword is not yet supported. A NotImplementedError is raised if
+            it's used.
+        level : int, optional
+            The maximum depth below this Group to display in the tree.
+
+        Returns
+        -------
+        TreeRepr
+            A pretty-printable object displaying the hierarchy.
+        """
         return self._sync(self._async_group.tree(expand=expand, level=level))
 
     def create_group(self, name: str, **kwargs: Any) -> Group:
