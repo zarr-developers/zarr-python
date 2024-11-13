@@ -77,7 +77,7 @@ def path_type(request: pytest.FixtureRequest) -> Any:
 # todo: harmonize this with local_store fixture
 @pytest.fixture
 async def store_path(tmpdir: LEGACY_PATH) -> StorePath:
-    store = await LocalStore.open(str(tmpdir), mode="w")
+    store = await LocalStore.open(str(tmpdir))
     return StorePath(store)
 
 

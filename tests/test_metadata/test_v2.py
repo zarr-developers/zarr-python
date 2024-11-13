@@ -139,7 +139,7 @@ class TestConsolidated:
             "zarr_consolidated_format": 1,
         }
         store_dict = {}
-        store = zarr.storage.MemoryStore(store_dict=store_dict, mode="a")
+        store = zarr.storage.MemoryStore(store_dict=store_dict)
         await store.set(
             ".zattrs", cpu.Buffer.from_bytes(json.dumps({"Conventions": "COARDS"}).encode())
         )

@@ -12,6 +12,7 @@ import pytest
 import zarr
 import zarr.api.asynchronous
 import zarr.api.synchronous
+import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
@@ -285,6 +286,10 @@ def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> N
         with pytest.raises(ContainsGroupError):
             Group.from_store(store, attributes=attrs, zarr_format=zarr_format, exists_ok=exists_ok)
     else:
+        if not store.supports_deletes:
+            pytest.skip(
+                "Store does not support deletes but `exists_ok` is True, requiring deletes to override a group"
+            )
         group_created_again = Group.from_store(
             store, attributes=new_attrs, zarr_format=zarr_format, exists_ok=exists_ok
         )
@@ -714,6 +719,8 @@ def test_group_creation_existing_node(
     new_attributes = {"new": True}
 
     if exists_ok:
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes but exists_ok is True")
         node_new = Group.from_store(
             spath / "extant",
             attributes=new_attributes,
@@ -1099,7 +1106,9 @@ async def test_require_group(store: Store, zarr_format: ZarrFormat) -> None:
     assert foo_group.attrs == {"foo": 100}
 
     # test that we can get the group using require_group and overwrite=True
-    foo_group = await root.require_group("foo", overwrite=True)
+    if store.supports_deletes:
+        foo_group = await root.require_group("foo", overwrite=True)
+        assert foo_group.attrs == {}
 
     _ = await foo_group.create_array(
         "bar", shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
@@ -1206,12 +1215,16 @@ async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFo
 
 
 async def test_open_mutable_mapping():
-    group = await zarr.api.asynchronous.open_group(store={}, mode="w")
+    group = await zarr.api.asynchronous.open_group(
+        store={},
+    )
     assert isinstance(group.store_path.store, MemoryStore)
 
 
 def test_open_mutable_mapping_sync():
-    group = zarr.open_group(store={}, mode="w")
+    group = zarr.open_group(
+        store={},
+    )
     assert isinstance(group.store_path.store, MemoryStore)
 
 
@@ -1359,10 +1372,41 @@ class TestGroupMetadata:
         assert result == expected
 
 
+class TestInfo:
+    def test_info(self):
+        store = zarr.storage.MemoryStore()
+        A = zarr.group(store=store, path="A")
+        B = A.create_group(name="B")
+
+        B.create_array(name="x", shape=(1,))
+        B.create_array(name="y", shape=(2,))
+
+        result = A.info
+        expected = GroupInfo(
+            _name="A",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _zarr_format=3,
+        )
+        assert result == expected
+
+        result = A.info_complete()
+        expected = GroupInfo(
+            _name="A",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _zarr_format=3,
+            _count_members=3,
+            _count_arrays=2,
+            _count_groups=1,
+        )
+        assert result == expected
+
+
 def test_update_attrs() -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
     root = Group.from_store(
-        MemoryStore({}, mode="w"),
+        MemoryStore(),
     )
     root.attrs["foo"] = "bar"
     assert root.attrs["foo"] == "bar"
@@ -1386,3 +1430,16 @@ def test_group_deprecated_positional_args(method: str) -> None:
     with pytest.warns(FutureWarning, match=r"Pass name=.*, data=.* as keyword args."):
         arr = getattr(root, method)("foo_like", data, **kwargs)
         assert arr.shape == data.shape
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2191
+    g1 = zarr.group(store=store, zarr_format=zarr_format)
+    g1.create_group("0")
+    g1.create_group("0/0")
+    arr = g1.create_array("0/0/0", shape=(1,))
+    arr[:] = 1
+    del g1["0"]
+    with pytest.raises(KeyError):
+        g1["0/0"]

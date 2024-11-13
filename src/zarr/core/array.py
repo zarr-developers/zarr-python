@@ -14,6 +14,7 @@ from zarr._compat import _deprecate_positional_args
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs import _get_default_array_bytes_codec
 from zarr.codecs._v2 import V2Codec
+from zarr.core._info import ArrayInfo
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
@@ -77,7 +78,7 @@ from zarr.core.metadata import (
     T_ArrayMetadata,
 )
 from zarr.core.metadata.v3 import parse_node_type_array
-from zarr.core.sync import collect_aiterator, sync
+from zarr.core.sync import sync
 from zarr.errors import MetadataValidationError
 from zarr.registry import get_pipeline_class
 from zarr.storage import StoreLike, make_store_path
@@ -553,7 +554,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray[ArrayV3Metadata]:
-        if not exists_ok:
+        if exists_ok:
+            if store_path.store.supports_deletes:
+                await store_path.delete_dir()
+            else:
+                await ensure_no_existing_node(store_path, zarr_format=3)
+        else:
             await ensure_no_existing_node(store_path, zarr_format=3)
 
         shape = parse_shapelike(shape)
@@ -605,7 +611,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         attributes: dict[str, JSON] | None = None,
         exists_ok: bool = False,
     ) -> AsyncArray[ArrayV2Metadata]:
-        if not exists_ok:
+        if exists_ok:
+            if store_path.store.supports_deletes:
+                await store_path.delete_dir()
+            else:
+                await ensure_no_existing_node(store_path, zarr_format=2)
+        else:
             await ensure_no_existing_node(store_path, zarr_format=2)
 
         if order is None:
@@ -635,6 +646,29 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         data: dict[str, JSON],
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+        """
+        Create a Zarr array from a dictionary, with support for both Zarr v2 and v3 metadata.
+
+        Parameters
+        ----------
+        store_path : StorePath
+            The path within the store where the array should be created.
+
+        data : dict
+            A dictionary representing the array data. This dictionary should include necessary metadata
+            for the array, such as shape, dtype, and other attributes. The format of the metadata
+            will determine whether a Zarr v2 or v3 array is created.
+
+        Returns
+        -------
+        AsyncArray[ArrayV3Metadata] or AsyncArray[ArrayV2Metadata]
+            The created Zarr array, either using v2 or v3 metadata based on the provided data.
+
+        Raises
+        ------
+        ValueError
+            If the dictionary data is invalid or incompatible with either Zarr v2 or v3 array creation.
+        """
         metadata = parse_array_metadata(data)
         return cls(metadata=metadata, store_path=store_path)
 
@@ -762,7 +796,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             True if the array is read-only
         """
         # Backwards compatibility for 2.x
-        return self.store_path.store.mode.readonly
+        return self.store_path.read_only
 
     @property
     def path(self) -> str:
@@ -829,17 +863,31 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         return product(self.cdata_shape)
 
-    @property
-    def nchunks_initialized(self) -> int:
+    async def nchunks_initialized(self) -> int:
         """
-        The number of chunks that have been persisted in storage.
+        Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
+        been persisted to the storage backend.
 
         Returns
         -------
-        int
-            The number of initialized chunks in the array.
+        nchunks_initialized : int
+            The number of chunks that have been initialized.
+
+        Notes
+        -----
+        On :class:`AsyncArray` this is an asynchronous method, unlike the (synchronous)
+        property :attr:`Array.nchunks_initialized`.
+
+        Examples
+        --------
+        >>> arr = await zarr.api.asynchronous.create(shape=(10,), chunks=(2,))
+        >>> await arr.nchunks_initialized()
+        0
+        >>> await arr.setitem(slice(5), 1)
+        >>> await arr.nchunks_initialized()
+        3
         """
-        return nchunks_initialized(self)
+        return len(await chunks_initialized(self))
 
     def _iter_chunk_coords(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -1016,6 +1064,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return await self._get_selection(indexer, prototype=prototype)
 
     async def _save_metadata(self, metadata: ArrayMetadata, ensure_parents: bool = False) -> None:
+        """
+        Asynchronously save the array metadata.
+        """
         to_save = metadata.to_buffer_dict(default_buffer_prototype())
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
 
@@ -1094,6 +1145,39 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         value: npt.ArrayLike,
         prototype: BufferPrototype | None = None,
     ) -> None:
+        """
+        Asynchronously set values in the array using basic indexing.
+
+        Parameters
+        ----------
+        selection : BasicSelection
+            The selection defining the region of the array to set.
+
+        value : numpy.typing.ArrayLike
+            The values to be written into the selected region of the array.
+
+        prototype : BufferPrototype or None, optional
+            A prototype buffer that defines the structure and properties of the array chunks being modified.
+            If None, the default buffer prototype is used. Default is None.
+
+        Returns
+        -------
+        None
+            This method does not return any value.
+
+        Raises
+        ------
+        IndexError
+            If the selection is out of bounds for the array.
+
+        ValueError
+            If the values are not compatible with the array's dtype or shape.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        - Supports basic indexing, where the selection is contiguous and does not involve advanced indexing.
+        """
         if prototype is None:
             prototype = default_buffer_prototype()
         indexer = BasicIndexer(
@@ -1104,6 +1188,32 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return await self._set_selection(indexer, value, prototype=prototype)
 
     async def resize(self, new_shape: ShapeLike, delete_outside_chunks: bool = True) -> None:
+        """
+        Asynchronously resize the array to a new shape.
+
+        Parameters
+        ----------
+        new_shape : ChunkCoords
+            The desired new shape of the array.
+
+        delete_outside_chunks : bool, optional
+            If True (default), chunks that fall outside the new shape will be deleted. If False,
+            the data in those chunks will be preserved.
+
+        Returns
+        -------
+        AsyncArray
+            The resized array.
+
+        Raises
+        ------
+        ValueError
+            If the new shape is incompatible with the current array's chunking configuration.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        """
         new_shape = parse_shapelike(new_shape)
         assert len(new_shape) == len(self.metadata.shape)
         new_metadata = self.metadata.update_shape(new_shape)
@@ -1186,6 +1296,31 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return new_shape
 
     async def update_attributes(self, new_attributes: dict[str, JSON]) -> Self:
+        """
+        Asynchronously update the array's attributes.
+
+        Parameters
+        ----------
+        new_attributes : dict of str to JSON
+            A dictionary of new attributes to update or add to the array. The keys represent attribute
+            names, and the values must be JSON-compatible.
+
+        Returns
+        -------
+        AsyncArray
+            The array with the updated attributes.
+
+        Raises
+        ------
+        ValueError
+            If the attributes are invalid or incompatible with the array's metadata.
+
+        Notes
+        -----
+        - This method is asynchronous and should be awaited.
+        - The updated attributes will be merged with existing attributes, and any conflicts will be
+          overwritten by the new values.
+        """
         # metadata.attributes is "frozen" so we simply clear and update the dict
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -1198,8 +1333,62 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def __repr__(self) -> str:
         return f"<AsyncArray {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
-    async def info(self) -> None:
-        raise NotImplementedError
+    @property
+    def info(self) -> Any:
+        """
+        Return the statically known information for an array.
+
+        Returns
+        -------
+        ArrayInfo
+
+        See Also
+        --------
+        AsyncArray.info_complete
+            All information about a group, including dynamic information
+            like the number of bytes and chunks written.
+        """
+        return self._info()
+
+    async def info_complete(self) -> Any:
+        # TODO: get the size of the object from the store.
+        extra = {
+            "count_chunks_initialized": await self.nchunks_initialized(),
+            # count_bytes_stored isn't yet implemented.
+        }
+        return self._info(extra=extra)
+
+    def _info(self, extra: dict[str, int] | None = None) -> Any:
+        kwargs: dict[str, Any] = {}
+        if self.metadata.zarr_format == 2:
+            assert isinstance(self.metadata, ArrayV2Metadata)
+            if self.metadata.compressor is not None:
+                kwargs["_compressor"] = self.metadata.compressor
+            if self.metadata.filters is not None:
+                kwargs["_filters"] = self.metadata.filters
+            kwargs["_data_type"] = self.metadata.dtype
+            kwargs["_chunk_shape"] = self.metadata.chunks
+        else:
+            kwargs["_codecs"] = self.metadata.codecs
+            kwargs["_data_type"] = self.metadata.data_type
+            # just regular?
+            chunk_grid = self.metadata.chunk_grid
+            if isinstance(chunk_grid, RegularChunkGrid):
+                kwargs["_chunk_shape"] = chunk_grid.chunk_shape
+            else:
+                raise NotImplementedError(
+                    "'info' is not yet implemented for chunk grids of type {type(self.metadata.chunk_grid)}"
+                )
+
+        return ArrayInfo(
+            _zarr_format=self.metadata.zarr_format,
+            _shape=self.shape,
+            _order=self.order,
+            _read_only=self.read_only,
+            _store_type=type(self.store_path.store).__name__,
+            _count_bytes=self.dtype.itemsize * self.size,
+            **kwargs,
+        )
 
 
 # TODO: Array can be a frozen data class again once property setters (e.g. shape) are removed
@@ -1304,6 +1493,28 @@ class Array:
         store_path: StorePath,
         data: dict[str, JSON],
     ) -> Array:
+        """
+        Create a Zarr array from a dictionary.
+
+        Parameters
+        ----------
+        store_path : StorePath
+            The path within the store where the array should be created.
+
+        data : dict
+            A dictionary representing the array data. This dictionary should include necessary metadata
+            for the array, such as shape, dtype, fill value, and attributes.
+
+        Returns
+        -------
+        Array
+            The created Zarr array.
+
+        Raises
+        ------
+        ValueError
+            If the dictionary data is invalid or missing required fields for array creation.
+        """
         async_array = AsyncArray.from_dict(store_path=store_path, data=data)
         return cls(async_array)
 
@@ -1492,9 +1703,29 @@ class Array:
     @property
     def nchunks_initialized(self) -> int:
         """
-        The number of chunks that have been initialized in the stored representation of this array.
+        Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
+        been persisted to the storage backend.
+
+        Returns
+        -------
+        nchunks_initialized : int
+            The number of chunks that have been initialized.
+
+        Notes
+        -----
+        On :class:`Array` this is a (synchronous) property, unlike asynchronous function
+        :meth:`AsyncArray.nchunks_initialized`.
+
+        Examples
+        --------
+        >>> arr = await zarr.create(shape=(10,), chunks=(2,))
+        >>> arr.nchunks_initialized
+        0
+        >>> arr[:5] = 1
+        >>> arr.nchunks_initialized
+        3
         """
-        return self._async_array.nchunks_initialized
+        return sync(self._async_array.nchunks_initialized())
 
     def _iter_chunk_keys(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -2890,6 +3121,30 @@ class Array:
         return sync(self._async_array.append(data, axis=axis))
 
     def update_attributes(self, new_attributes: dict[str, JSON]) -> Array:
+        """
+        Update the array's attributes.
+
+        Parameters
+        ----------
+        new_attributes : dict
+            A dictionary of new attributes to update or add to the array. The keys represent attribute
+            names, and the values must be JSON-compatible.
+
+        Returns
+        -------
+        Array
+            The array with the updated attributes.
+
+        Raises
+        ------
+        ValueError
+            If the attributes are invalid or incompatible with the array's metadata.
+
+        Notes
+        -----
+        - The updated attributes will be merged with existing attributes, and any conflicts will be
+          overwritten by the new values.
+        """
         # TODO: remove this cast when type inference improves
         new_array = sync(self._async_array.update_attributes(new_attributes))
         # TODO: remove this cast when type inference improves
@@ -2899,45 +3154,69 @@ class Array:
     def __repr__(self) -> str:
         return f"<Array {self.store_path} shape={self.shape} dtype={self.dtype}>"
 
-    def info(self) -> None:
-        return sync(
-            self._async_array.info(),
-        )
+    @property
+    def info(self) -> Any:
+        """
+        Return the statically known information for an array.
+
+        Returns
+        -------
+        ArrayInfo
+
+        See Also
+        --------
+        Array.info_complete
+            All information about a group, including dynamic information
+            like the number of bytes and chunks written.
+
+        Examples
+        --------
+        >>> arr = zarr.create(shape=(10,), chunks=(2,), dtype="float32")
+        >>> arr.info
+        Type               : Array
+        Zarr format        : 3
+        Data type          : DataType.float32
+        Shape              : (10,)
+        Chunk shape        : (2,)
+        Order              : C
+        Read-only          : False
+        Store type         : MemoryStore
+        Codecs             : [BytesCodec(endian=<Endian.little: 'little'>)]
+        No. bytes          : 40
+        """
+        return self._async_array.info
+
+    def info_complete(self) -> Any:
+        """
+        Returns all the information about an array, including information from the Store.
+
+        In addition to the statically known information like ``name`` and ``zarr_format``,
+        this includes additional information like the size of the array in bytes and
+        the number of chunks written.
+
+        Note that this method will need to read metadata from the store.
+
+        Returns
+        -------
+        ArrayInfo
+
+        See Also
+        --------
+        Array.info
+            The statically known subset of metadata about an array.
+        """
+        return sync(self._async_array.info_complete())
 
 
-def nchunks_initialized(
-    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array,
-) -> int:
-    """
-    Calculate the number of chunks that have been initialized, i.e. the number of chunks that have
-    been persisted to the storage backend.
-
-    Parameters
-    ----------
-    array : Array
-        The array to inspect.
-
-    Returns
-    -------
-    nchunks_initialized : int
-        The number of chunks that have been initialized.
-
-    See Also
-    --------
-    chunks_initialized
-    """
-    return len(chunks_initialized(array))
-
-
-def chunks_initialized(
-    array: Array | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+async def chunks_initialized(
+    array: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
 ) -> tuple[str, ...]:
     """
     Return the keys of the chunks that have been persisted to the storage backend.
 
     Parameters
     ----------
-    array : Array
+    array : AsyncArray
         The array to inspect.
 
     Returns
@@ -2950,10 +3229,9 @@ def chunks_initialized(
     nchunks_initialized
 
     """
-    # TODO: make this compose with the underlying async iterator
-    store_contents = list(
-        collect_aiterator(array.store_path.store.list_prefix(prefix=array.store_path.path))
-    )
+    store_contents = [
+        x async for x in array.store_path.store.list_prefix(prefix=array.store_path.path)
+    ]
     return tuple(chunk_key for chunk_key in array._iter_chunk_keys() if chunk_key in store_contents)
 
 

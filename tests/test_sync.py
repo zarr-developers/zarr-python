@@ -142,12 +142,12 @@ def test_sync_mixin(sync_loop) -> None:
 
 
 def test_open_positional_args_deprecate():
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     with pytest.warns(FutureWarning, match="pass"):
         zarr.open(store, "w", shape=(1,))
 
 
-@pytest.mark.parametrize("workers", [None, 1, 2])  #
+@pytest.mark.parametrize("workers", [None, 1, 2])
 def test_get_executor(clean_state, workers) -> None:
     with zarr.config.set({"threading.max_workers": workers}):
         e = _get_executor()

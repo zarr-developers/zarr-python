@@ -10,12 +10,14 @@ import pytest
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
 from zarr.codecs import BytesCodec, VLenBytesCodec
+from zarr.core._info import ArrayInfo
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
+from zarr.core.metadata.v3 import DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore
@@ -51,6 +53,8 @@ def test_array_creation_existing_node(
     new_dtype = "float32"
 
     if exists_ok:
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
         arr_new = Array.create(
             spath / "extant",
             shape=new_shape,
@@ -192,13 +196,13 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 
 
 def test_create_positional_args_deprecated() -> None:
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     with pytest.warns(FutureWarning, match="Pass"):
         Array.create(store, (2, 2), dtype="f8")
 
 
 def test_selection_positional_args_deprecated() -> None:
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     arr = Array.create(store, shape=(2, 2), dtype="f8")
 
     with pytest.warns(FutureWarning, match="Pass out"):
@@ -311,7 +315,7 @@ def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) ->
     """
     Test that nchunks returns the number of chunks defined for the array.
     """
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     shape = 100
     arr = Array.create(store, shape=(shape,), chunks=(ceildiv(shape, nchunks),), dtype="i4")
     expected = nchunks
@@ -323,11 +327,11 @@ def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) ->
 
 
 @pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
-def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
+async def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
     """
     Test that nchunks_initialized accurately returns the number of stored chunks.
     """
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     arr = Array.create(store, shape=(100,), chunks=(10,), dtype="i4")
 
     # write chunks one at a time
@@ -337,7 +341,7 @@ def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> N
         if test_cls == Array:
             observed = arr.nchunks_initialized
         else:
-            observed = arr._async_array.nchunks_initialized
+            observed = await arr._async_array.nchunks_initialized()
         assert observed == expected
 
     # delete chunks
@@ -346,17 +350,16 @@ def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> N
         if test_cls == Array:
             observed = arr.nchunks_initialized
         else:
-            observed = arr._async_array.nchunks_initialized
+            observed = await arr._async_array.nchunks_initialized()
         expected = arr.nchunks - idx - 1
         assert observed == expected
 
 
-@pytest.mark.parametrize("test_cls", [Array, AsyncArray[Any]])
-def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> None:
+async def test_chunks_initialized() -> None:
     """
     Test that chunks_initialized accurately returns the keys of stored chunks.
     """
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     arr = Array.create(store, shape=(100,), chunks=(10,), dtype="i4")
 
     chunks_accumulated = tuple(
@@ -364,45 +367,38 @@ def test_chunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]) -> No
     )
     for keys, region in zip(chunks_accumulated, arr._iter_chunk_regions(), strict=False):
         arr[region] = 1
-
-        if test_cls == Array:
-            observed = sorted(chunks_initialized(arr))
-        else:
-            observed = sorted(chunks_initialized(arr._async_array))
-
+        observed = sorted(await chunks_initialized(arr._async_array))
         expected = sorted(keys)
         assert observed == expected
 
 
 def test_default_fill_values() -> None:
-    a = Array.create(MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="<U4")
+    a = Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<U4")
     assert a.fill_value == ""
 
-    b = Array.create(MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="<S4")
+    b = Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<S4")
     assert b.fill_value == b""
 
-    c = Array.create(MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="i")
+    c = Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="i")
     assert c.fill_value == 0
 
-    d = Array.create(MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="f")
+    d = Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="f")
     assert d.fill_value == 0.0
 
 
 def test_vlen_errors() -> None:
     with pytest.raises(ValueError, match="At least one ArrayBytesCodec is required."):
-        Array.create(MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="<U4", codecs=[])
+        Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<U4", codecs=[])
 
     with pytest.raises(
         ValueError,
         match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
     ):
-        Array.create(
-            MemoryStore({}, mode="w"), shape=5, chunk_shape=5, dtype="<U4", codecs=[BytesCodec()]
-        )
+        Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<U4", codecs=[BytesCodec()])
 
     with pytest.raises(ValueError, match="Only one ArrayBytesCodec is allowed."):
         Array.create(
-            MemoryStore({}, mode="w"),
+            MemoryStore(),
             shape=5,
             chunk_shape=5,
             dtype="<U4",
@@ -413,7 +409,7 @@ def test_vlen_errors() -> None:
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_update_attrs(zarr_format: int) -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     arr = Array.create(store=store, shape=5, chunk_shape=5, dtype="f8", zarr_format=zarr_format)
     arr.attrs["foo"] = "bar"
     assert arr.attrs["foo"] == "bar"
@@ -641,7 +637,7 @@ def test_array_create_order(
     ],
 )
 async def test_special_complex_fill_values_roundtrip(fill_value: Any, expected: list[Any]) -> None:
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     Array.create(store=store, shape=(1,), dtype=np.complex64, fill_value=fill_value)
     content = await store.get("zarr.json", prototype=default_buffer_prototype())
     assert content is not None

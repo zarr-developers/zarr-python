@@ -44,7 +44,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         fs, path = fsspec.url_to_fs(
             f"s3://{test_bucket_name}", endpoint_url=s3_base, anon=False, asynchronous=True
         )
-        return {"fs": fs, "path": path, "mode": "r+"}
+        return {"fs": fs, "path": path}
 
     @pytest.fixture
     def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
@@ -137,13 +137,12 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         fs, path = fsspec.url_to_fs(
             f"s3://{test_bucket_name}", endpoint_url=s3_base, anon=False, asynchronous=False
         )
-        store_kwargs = {"fs": fs, "path": path, "mode": "r+"}
+        store_kwargs = {"fs": fs, "path": path}
         with pytest.warns(UserWarning, match=r".* was not created with `asynchronous=True`.*"):
             self.store_cls(**store_kwargs)
 
     async def test_empty_nonexistent_path(self, store_kwargs) -> None:
         # regression test for https://github.com/zarr-developers/zarr-python/pull/2343
-        store_kwargs["mode"] = "w-"
         store_kwargs["path"] += "/abc"
         store = await self.store_cls.open(**store_kwargs)
-        assert await store.empty()
+        assert await store.is_empty("")
