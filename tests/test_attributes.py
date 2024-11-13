@@ -4,7 +4,7 @@ import zarr.storage
 
 
 def test_put() -> None:
-    store = zarr.storage.MemoryStore({}, mode="w")
+    store = zarr.storage.MemoryStore()
     attrs = zarr.core.attributes.Attributes(
         zarr.Group.from_store(store, attributes={"a": 1, "b": 2})
     )
@@ -14,7 +14,7 @@ def test_put() -> None:
 
 
 def test_asdict() -> None:
-    store = zarr.storage.MemoryStore({}, mode="w")
+    store = zarr.storage.MemoryStore()
     attrs = zarr.core.attributes.Attributes(
         zarr.Group.from_store(store, attributes={"a": 1, "b": 2})
     )

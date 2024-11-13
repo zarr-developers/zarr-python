@@ -54,10 +54,3 @@ async def test_logging_store_counter(store: Store) -> None:
     else:
         assert wrapped.counter["get"] == 1
         assert wrapped.counter["delete_dir"] == 0
-
-
-async def test_with_mode():
-    wrapped = LoggingStore(store=zarr.storage.MemoryStore(mode="w"), log_level="INFO")
-    new = wrapped.with_mode(mode="r")
-    assert new.mode.str == "r"
-    assert new.log_level == "INFO"

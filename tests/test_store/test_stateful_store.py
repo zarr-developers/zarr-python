@@ -14,7 +14,7 @@ from hypothesis.stateful import (
 from hypothesis.strategies import DataObject
 
 import zarr
-from zarr.abc.store import AccessMode, Store
+from zarr.abc.store import Store
 from zarr.core.buffer import BufferPrototype, cpu, default_buffer_prototype
 from zarr.storage import LocalStore, ZipStore
 from zarr.testing.strategies import key_ranges
@@ -35,8 +35,8 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
         self.store = store
 
     @property
-    def mode(self) -> AccessMode:
-        return self.store.mode
+    def read_only(self) -> bool:
+        return self.store.read_only
 
     def set(self, key: str, data_buffer: zarr.core.buffer.Buffer) -> None:
         return self._sync(self.store.set(key, data_buffer))
@@ -55,8 +55,8 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
     def delete(self, path: str) -> None:
         return self._sync(self.store.delete(path))
 
-    def empty(self) -> bool:
-        return self._sync(self.store.empty())
+    def is_empty(self, prefix: str) -> bool:
+        return self._sync(self.store.is_empty(prefix=prefix))
 
     def clear(self) -> None:
         return self._sync(self.store.clear())
@@ -117,7 +117,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
     @rule(key=zarr_keys, data=st.binary(min_size=0, max_size=MAX_BINARY_SIZE))
     def set(self, key: str, data: DataObject) -> None:
         note(f"(set) Setting {key!r} with {data}")
-        assert not self.store.mode.readonly
+        assert not self.store.read_only
         data_buf = cpu.Buffer.from_bytes(data)
         self.store.set(key, data_buf)
         self.model[key] = data_buf
@@ -179,23 +179,23 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
 
     @rule()
     def clear(self) -> None:
-        assert not self.store.mode.readonly
+        assert not self.store.read_only
         note("(clear)")
         self.store.clear()
         self.model.clear()
 
-        assert self.store.empty()
+        assert self.store.is_empty("")
 
         assert len(self.model.keys()) == len(list(self.store.list())) == 0
 
     @rule()
     # Local store can be non-empty when there are subdirectories but no files
     @precondition(lambda self: not isinstance(self.store.store, LocalStore))
-    def empty(self) -> None:
-        note("(empty)")
+    def is_empty(self) -> None:
+        note("(is_empty)")
 
         # make sure they either both are or both aren't empty (same state)
-        assert self.store.empty() == (not self.model)
+        assert self.store.is_empty("") == (not self.model)
 
     @rule(key=zarr_keys)
     def exists(self, key: str) -> None:
@@ -228,10 +228,10 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         keys = list(self.store.list())
 
         if not keys:
-            assert self.store.empty() is True
+            assert self.store.is_empty("") is True
 
         else:
-            assert self.store.empty() is False
+            assert self.store.is_empty("") is False
 
             for key in keys:
                 assert self.store.exists(key) is True

@@ -866,7 +866,7 @@ class AsyncGroup:
 
         return GroupInfo(
             _name=self.store_path.path,
-            _read_only=self.store_path.store.mode.readonly,
+            _read_only=self.read_only,
             _store_type=type(self.store_path.store).__name__,
             _zarr_format=self.metadata.zarr_format,
             # maybe do a typeddict
@@ -880,7 +880,7 @@ class AsyncGroup:
     @property
     def read_only(self) -> bool:
         # Backwards compatibility for 2.x
-        return self.store_path.store.mode.readonly
+        return self.store_path.read_only
 
     @property
     def synchronizer(self) -> None:

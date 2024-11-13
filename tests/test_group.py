@@ -1196,12 +1196,16 @@ async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFo
 
 
 async def test_open_mutable_mapping():
-    group = await zarr.api.asynchronous.open_group(store={}, mode="w")
+    group = await zarr.api.asynchronous.open_group(
+        store={},
+    )
     assert isinstance(group.store_path.store, MemoryStore)
 
 
 def test_open_mutable_mapping_sync():
-    group = zarr.open_group(store={}, mode="w")
+    group = zarr.open_group(
+        store={},
+    )
     assert isinstance(group.store_path.store, MemoryStore)
 
 
@@ -1347,7 +1351,7 @@ class TestGroupMetadata:
 
 class TestInfo:
     def test_info(self):
-        store = zarr.storage.MemoryStore(mode="w")
+        store = zarr.storage.MemoryStore()
         A = zarr.group(store=store, path="A")
         B = A.create_group(name="B")
 
@@ -1379,7 +1383,7 @@ class TestInfo:
 def test_update_attrs() -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
     root = Group.from_store(
-        MemoryStore({}, mode="w"),
+        MemoryStore(),
     )
     root.attrs["foo"] = "bar"
     assert root.attrs["foo"] == "bar"

@@ -796,7 +796,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             True if the array is read-only
         """
         # Backwards compatibility for 2.x
-        return self.store_path.store.mode.readonly
+        return self.store_path.read_only
 
     @property
     def path(self) -> str:
@@ -1384,7 +1384,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _zarr_format=self.metadata.zarr_format,
             _shape=self.shape,
             _order=self.order,
-            _read_only=self.store_path.store.mode.readonly,
+            _read_only=self.read_only,
             _store_type=type(self.store_path.store).__name__,
             _count_bytes=self.dtype.itemsize * self.size,
             **kwargs,
