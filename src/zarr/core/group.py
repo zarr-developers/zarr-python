@@ -1588,7 +1588,6 @@ class Group(SyncMixin):
         Raises
         ------
         ContainsArrayError, ContainsGroupError, ContainsArrayAndGroupError
-
         """
         attributes = attributes or {}
         obj = sync(
@@ -1641,7 +1640,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = Group.from_store(zarr.storage.MemoryStore(mode="w"))
+        >>> group = Group.from_store(zarr.storage.MemoryStore()
         >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
         >>> group.create_group(name="subgroup").create_array(name="subarray", shape=(10,), chunk_shape=(10,))
         >>> group["subarray"]
@@ -1676,7 +1675,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = Group.from_store(zarr.storage.MemoryStore(mode="w"))
+        >>> group = Group.from_store(zarr.storage.MemoryStore()
         >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
         >>> group.create_group(name="subgroup")
         >>> group.get("subarray")
@@ -1702,7 +1701,7 @@ class Group(SyncMixin):
         Examples
         --------
         >>> import zarr
-        >>> group = Group.from_store(zarr.storage.MemoryStore(mode="w"))
+        >>> group = Group.from_store(zarr.storage.MemoryStore()
         >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
         >>> del group["subarray"]
         >>> "subarray" in group
