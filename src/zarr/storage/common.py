@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, ZarrFormat
+from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, AccessModeLiteral, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._utils import normalize_path
 from zarr.storage.local import LocalStore
@@ -16,7 +16,6 @@ from zarr.storage.memory import MemoryStore
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import AccessModeLiteral
 
 
 def _dereference_path(root: str, path: str) -> str:
@@ -45,6 +44,62 @@ class StorePath:
     def __init__(self, store: Store, path: str = "") -> None:
         self.store = store
         self.path = path
+
+    @property
+    def read_only(self) -> bool:
+        return self.store.read_only
+
+    @classmethod
+    async def open(
+        cls, store: Store, path: str, mode: AccessModeLiteral | None = None
+    ) -> StorePath:
+        """
+        Open StorePath based on the provided mode.
+
+        * If the mode is 'w-' and the StorePath contains keys, raise a FileExistsError.
+        * If the mode is 'w', delete all keys nested within the StorePath
+        * If the mode is 'a', 'r', or 'r+', do nothing
+
+        Parameters
+        ----------
+        mode : AccessModeLiteral
+            The mode to use when initializing the store path.
+
+        Raises
+        ------
+        FileExistsError
+            If the mode is 'w-' and the store path already exists.
+        """
+
+        await store._ensure_open()
+        self = cls(store, path)
+
+        # fastpath if mode is None
+        if mode is None:
+            return self
+
+        if store.read_only and mode != "r":
+            raise ValueError(f"Store is read-only but mode is '{mode}'")
+
+        match mode:
+            case "w-":
+                if not await self.is_empty():
+                    msg = (
+                        f"{self} is not empty, but `mode` is set to 'w-'."
+                        "Either remove the existing objects in storage,"
+                        "or set `mode` to a value that handles pre-existing objects"
+                        "in storage, like `a` or `w`."
+                    )
+                    raise FileExistsError(msg)
+            case "w":
+                await self.delete_dir()
+            case "a" | "r" | "r+":
+                # No init action
+                pass
+            case _:
+                raise ValueError(f"Invalid mode: {mode}")
+
+        return self
 
     async def get(
         self,
@@ -132,6 +187,17 @@ class StorePath:
         """
         return await self.store.exists(self.path)
 
+    async def is_empty(self) -> bool:
+        """
+        Check if any keys exist in the store with the given prefix.
+
+        Returns
+        -------
+        bool
+            True if no keys exist in the store with the given prefix, False otherwise.
+        """
+        return await self.store.is_empty(self.path)
+
     def __truediv__(self, other: str) -> StorePath:
         """Combine this store path with another path"""
         return self.__class__(self.store, _dereference_path(self.path, other))
@@ -140,7 +206,7 @@ class StorePath:
         return _dereference_path(str(self.store), self.path)
 
     def __repr__(self) -> str:
-        return f"StorePath({self.store.__class__.__name__}, {str(self)!r})"
+        return f"StorePath({self.store.__class__.__name__}, '{self}')"
 
     def __eq__(self, other: object) -> bool:
         """
@@ -203,7 +269,7 @@ async def make_store_path(
     path : str | None, optional
         The path to use when creating the `StorePath` object.  If None, the
         default path is the empty string.
-    mode : AccessModeLiteral | None, optional
+    mode : StoreAccessMode | None, optional
         The mode to use when creating the `StorePath` object.  If None, the
         default mode is 'r'.
     storage_options : dict[str, Any] | None, optional
@@ -225,45 +291,36 @@ async def make_store_path(
     used_storage_options = False
     path_normalized = normalize_path(path)
     if isinstance(store_like, StorePath):
-        if mode is not None and mode != store_like.store.mode.str:
-            _store = store_like.store.with_mode(mode)
-            await _store._ensure_open()
-            store_like = StorePath(_store, path=store_like.path)
         result = store_like / path_normalized
-    elif isinstance(store_like, Store):
-        if mode is not None and mode != store_like.mode.str:
-            store_like = store_like.with_mode(mode)
-        await store_like._ensure_open()
-        result = StorePath(store_like, path=path_normalized)
-    elif store_like is None:
-        # mode = "w" is an exception to the default mode = 'r'
-        result = StorePath(await MemoryStore.open(mode=mode or "w"), path=path_normalized)
-    elif isinstance(store_like, Path):
-        result = StorePath(
-            await LocalStore.open(root=store_like, mode=mode or "r"), path=path_normalized
-        )
-    elif isinstance(store_like, str):
-        storage_options = storage_options or {}
-
-        if _is_fsspec_uri(store_like):
-            used_storage_options = True
-            result = StorePath(
-                RemoteStore.from_url(store_like, storage_options=storage_options, mode=mode or "r"),
-                path=path_normalized,
-            )
-        else:
-            result = StorePath(
-                await LocalStore.open(root=Path(store_like), mode=mode or "r"), path=path_normalized
-            )
-    elif isinstance(store_like, dict):
-        # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
-        # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
-        result = StorePath(
-            await MemoryStore.open(store_dict=store_like, mode=mode or "r"), path=path_normalized
-        )
     else:
-        msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
-        raise TypeError(msg)
+        assert mode in (None, "r", "r+", "a", "w", "w-")
+        # if mode 'r' was provided, we'll open any new stores as read-only
+        _read_only = mode == "r"
+        if isinstance(store_like, Store):
+            store = store_like
+        elif store_like is None:
+            store = await MemoryStore.open(read_only=_read_only)
+        elif isinstance(store_like, Path):
+            store = await LocalStore.open(root=store_like, read_only=_read_only)
+        elif isinstance(store_like, str):
+            storage_options = storage_options or {}
+
+            if _is_fsspec_uri(store_like):
+                used_storage_options = True
+                store = RemoteStore.from_url(
+                    store_like, storage_options=storage_options, read_only=_read_only
+                )
+            else:
+                store = await LocalStore.open(root=Path(store_like), read_only=_read_only)
+        elif isinstance(store_like, dict):
+            # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
+            # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
+            store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
+        else:
+            msg = f"Unsupported type for store_like: '{type(store_like).__name__}'"  # type: ignore[unreachable]
+            raise TypeError(msg)
+
+        result = await StorePath.open(store, path=path_normalized, mode=mode)
 
     if storage_options and not used_storage_options:
         msg = "'storage_options' was provided but unused. 'storage_options' is only used for fsspec filesystem stores."

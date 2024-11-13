@@ -17,6 +17,7 @@ import zarr.api.asynchronous as async_api
 from zarr._compat import _deprecate_positional_args
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
+from zarr.core._info import GroupInfo
 from zarr.core.array import Array, AsyncArray, _build_parents
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
@@ -832,8 +833,72 @@ class AsyncGroup:
         return self.metadata.attributes
 
     @property
-    def info(self) -> None:
-        raise NotImplementedError
+    def info(self) -> Any:
+        """
+        Return a visual representation of the statically known information about a group.
+
+        Note that this doesn't include dynamic information, like the number of child
+        Groups or Arrays.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        AsyncGroup.info_complete
+            All information about a group, including dynamic information
+        """
+
+        if self.metadata.consolidated_metadata:
+            members = list(self.metadata.consolidated_metadata.flattened_metadata.values())
+        else:
+            members = None
+        return self._info(members=members)
+
+    async def info_complete(self) -> Any:
+        """
+        Return all the information for a group.
+
+        This includes dynamic information like the number
+        of child Groups or Arrays. If this group doesn't contain consolidated
+        metadata then this will need to read from the backing Store.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        AsyncGroup.info
+        """
+        members = [x[1].metadata async for x in self.members(max_depth=None)]
+        return self._info(members=members)
+
+    def _info(
+        self, members: list[ArrayV2Metadata | ArrayV3Metadata | GroupMetadata] | None = None
+    ) -> Any:
+        kwargs = {}
+        if members is not None:
+            kwargs["_count_members"] = len(members)
+            count_arrays = 0
+            count_groups = 0
+            for member in members:
+                if isinstance(member, GroupMetadata):
+                    count_groups += 1
+                else:
+                    count_arrays += 1
+            kwargs["_count_arrays"] = count_arrays
+            kwargs["_count_groups"] = count_groups
+
+        return GroupInfo(
+            _name=self.store_path.path,
+            _read_only=self.read_only,
+            _store_type=type(self.store_path.store).__name__,
+            _zarr_format=self.metadata.zarr_format,
+            # maybe do a typeddict
+            **kwargs,  # type: ignore[arg-type]
+        )
 
     @property
     def store(self) -> Store:
@@ -842,7 +907,7 @@ class AsyncGroup:
     @property
     def read_only(self) -> bool:
         # Backwards compatibility for 2.x
-        return self.store_path.store.mode.readonly
+        return self.store_path.read_only
 
     @property
     def synchronizer(self) -> None:
@@ -1810,9 +1875,38 @@ class Group(SyncMixin):
         return Attributes(self)
 
     @property
-    def info(self) -> None:
-        """Group information."""
-        raise NotImplementedError
+    def info(self) -> Any:
+        """
+        Return the statically known information for a group.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        Group.info_complete
+            All information about a group, including dynamic information
+            like the children members.
+        """
+        return self._async_group.info
+
+    def info_complete(self) -> Any:
+        """
+        Return information for a group.
+
+        If this group doesn't contain consolidated metadata then
+        this will need to read from the backing Store.
+
+        Returns
+        -------
+        GroupInfo
+
+        See Also
+        --------
+        Group.info
+        """
+        return self._sync(self._async_group.info_complete())
 
     @property
     def store(self) -> Store:

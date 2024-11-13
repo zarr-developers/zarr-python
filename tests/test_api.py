@@ -72,15 +72,15 @@ async def test_open_array(memory_store: MemoryStore) -> None:
 
     # open array, overwrite
     # store._store_dict = {}
-    store = MemoryStore(mode="w")
+    store = MemoryStore()
     z = open(store=store, shape=200)
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
     # open array, read-only
     store_cls = type(store)
-    ro_store = await store_cls.open(store_dict=store._store_dict, mode="r")
-    z = open(store=ro_store)
+    ro_store = await store_cls.open(store_dict=store._store_dict, read_only=True)
+    z = open(store=ro_store, mode="r")
     assert isinstance(z, Array)
     assert z.shape == (200,)
     assert z.read_only
@@ -106,10 +106,10 @@ async def test_open_group(memory_store: MemoryStore) -> None:
 
     # open group, read-only
     store_cls = type(store)
-    ro_store = await store_cls.open(store_dict=store._store_dict, mode="r")
-    g = open_group(store=ro_store)
+    ro_store = await store_cls.open(store_dict=store._store_dict, read_only=True)
+    g = open_group(store=ro_store, mode="r")
     assert isinstance(g, Group)
-    # assert g.read_only
+    assert g.read_only
 
 
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
@@ -965,13 +965,13 @@ def test_tree() -> None:
 
 
 def test_open_positional_args_deprecated() -> None:
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     with pytest.warns(FutureWarning, match="pass"):
         open(store, "w", shape=(1,))
 
 
 def test_save_array_positional_args_deprecated() -> None:
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", message="zarr_version is deprecated", category=DeprecationWarning
@@ -987,20 +987,20 @@ def test_save_array_positional_args_deprecated() -> None:
 
 
 def test_group_positional_args_deprecated() -> None:
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     with pytest.warns(FutureWarning, match="pass"):
         group(store, True)
 
 
 def test_open_group_positional_args_deprecated() -> None:
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     with pytest.warns(FutureWarning, match="pass"):
         open_group(store, "w")
 
 
 def test_open_falls_back_to_open_group() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
-    store = MemoryStore(mode="w")
+    store = MemoryStore()
     zarr.open_group(store, attributes={"key": "value"})
 
     group = zarr.open(store)
@@ -1010,7 +1010,7 @@ def test_open_falls_back_to_open_group() -> None:
 
 async def test_open_falls_back_to_open_group_async() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
-    store = MemoryStore(mode="w")
+    store = MemoryStore()
     await zarr.api.asynchronous.open_group(store, attributes={"key": "value"})
 
     group = await zarr.api.asynchronous.open(store=store)

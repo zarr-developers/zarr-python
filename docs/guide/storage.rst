@@ -2,7 +2,7 @@ Storage
 =======
 
 Zarr-Python supports multiple storage backends, including: local file systems,
-Zip files, remote stores via ``fspec`` (S3, HTTP, etc.), and in-memory stores. In
+Zip files, remote stores via ``fsspec`` (S3, HTTP, etc.), and in-memory stores. In
 Zarr-Python 3, stores must implement the abstract store API from
 :class:`zarr.abc.store.Store`. 
 
@@ -19,9 +19,9 @@ to Zarr's top level API will result in the store being created automatically.
 .. code-block:: python
 
    >>> import zarr
-   >>> zarr.open("data/foo/bar", mode="r")  # implicitly creates a LocalStore
+   >>> zarr.open("data/foo/bar", mode="r")  # implicitly creates a read-only LocalStore
    <Group file://data/foo/bar>
-   >>> zarr.open("s3://foo/bar", mode="r")  # implicitly creates a RemoteStore
+   >>> zarr.open("s3://foo/bar", mode="r")  # implicitly creates a read-only RemoteStore
    <Group s3://foo/bar>
    >>> data = {}
    >>> zarr.open(data, mode="w")  # implicitly creates a MemoryStore
@@ -43,7 +43,7 @@ filesystem.
 .. code-block:: python
 
    >>> import zarr
-   >>> store = zarr.storage.LocalStore("data/foo/bar", mode="r")
+   >>> store = zarr.storage.LocalStore("data/foo/bar", read_only=True)
    >>> zarr.open(store=store)
    <Group file://data/foo/bar>
 
@@ -72,7 +72,7 @@ that implements the `AbstractFileSystem` API,
 .. code-block:: python
 
    >>> import zarr
-   >>> store = zarr.storage.RemoteStore.from_url("gs://foo/bar", mode="r")
+   >>> store = zarr.storage.RemoteStore.from_url("gs://foo/bar", read_only=True)
    >>> zarr.open(store=store)
    <Array <RemoteStore(GCSFileSystem, foo/bar)> shape=(10, 20) dtype=float32>
 
@@ -86,7 +86,7 @@ Zarr data (metadata and chunks) to a dictionary.
 
    >>> import zarr
    >>> data = {}
-   >>> store = zarr.storage.MemoryStore(data, mode="w")
+   >>> store = zarr.storage.MemoryStore(data)
    >>> zarr.open(store=store, shape=(2, ))
    <Array memory://4943638848 shape=(2,) dtype=float64>
 
