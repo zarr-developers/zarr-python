@@ -432,7 +432,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=128,
-            _filters= (numcodecs.Zstd(),)
+            _filters=(numcodecs.Zstd(),),
         )
         assert result == expected
 
