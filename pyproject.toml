@@ -30,6 +30,7 @@ dependencies = [
     'numcodecs>=0.12',
     'typing_extensions>=4.9',
     'donfig>=0.8.1',
+    'crc32c>=2.4',
 ]
 dynamic = [
   "version",
@@ -53,9 +54,6 @@ keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 [project.optional-dependencies]
 fsspec = [
     "fsspec>=2023.10.0",
-]
-sharding = [
-    "crc32c>=2.4",
 ]
 test = [
     "coverage",
