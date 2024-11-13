@@ -83,7 +83,7 @@ async def test_v2_encode_decode(dtype):
     with config.set(
         {
             "v2_dtype_kind_to_default_filters_and_compressor": {
-                "OSUV": ["vlen-bytes"],
+                "SV": ["vlen-bytes"],
             },
         }
     ):
@@ -119,15 +119,37 @@ async def test_v2_encode_decode(dtype):
         np.testing.assert_equal(data, expected)
 
 
+@pytest.mark.parametrize("dtype_value", [["|S", b"Y"], ["|U", "Y"], ["O", b"Y"]])
+def test_v2_encode_decode_with_data(dtype_value):
+    dtype, value = dtype_value
+    with config.set(
+        {
+            "v2_dtype_kind_to_default_filters_and_compressor": {
+                "U": ["vlen-utf8"],
+                "OSV": ["vlen-bytes"],
+            },
+        }
+    ):
+        expected = np.full((3,), value, dtype=dtype)
+        a = zarr.create(
+            shape=(3,),
+            zarr_format=2,
+            dtype=dtype,
+        )
+        a[:] = expected
+        data = a[:]
+        np.testing.assert_equal(data, expected)
+
+
 @pytest.mark.parametrize("dtype", [str, "str"])
 async def test_create_dtype_str(dtype: Any) -> None:
     arr = zarr.create(shape=3, dtype=dtype, zarr_format=2)
     assert arr.dtype.kind == "O"
     assert arr.metadata.to_dict()["dtype"] == "|O"
-    assert arr.metadata.filters == (numcodecs.vlen.VLenUTF8(),)
-    arr[:] = ["a", "bb", "ccc"]
+    assert arr.metadata.filters == (numcodecs.vlen.VLenBytes(),)
+    arr[:] = [b"a", b"bb", b"ccc"]
     result = arr[:]
-    np.testing.assert_array_equal(result, np.array(["a", "bb", "ccc"], dtype="object"))
+    np.testing.assert_array_equal(result, np.array([b"a", b"bb", b"ccc"], dtype="object"))
 
 
 @pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
@@ -141,19 +163,18 @@ def test_v2_filters_codecs(filters: Any) -> None:
 
 @pytest.mark.parametrize(
     "dtype_expected",
-    # [["b", "zstd"], ["i", "zstd"], ["f", "zstd"], ["|S1", "vlen-utf8"], ["|U1", "vlen-utf8"]],
-    [["|S1", "vlen-bytes"]],
+    [["b", "zstd"], ["i", "zstd"], ["f", "zstd"], ["|S1", "vlen-bytes"], ["|U1", "vlen-utf8"]],
 )
 def test_default_filters_and_compressor(dtype_expected: Any) -> None:
     with config.set(
         {
             "v2_dtype_kind_to_default_filters_and_compressor": {
                 "biufcmM": ["zstd"],
-                "OSUV": ["vlen-bytes"],
+                "U": ["vlen-utf8"],
+                "OSV": ["vlen-bytes"],
             },
         }
     ):
         dtype, expected = dtype_expected
         arr = zarr.create(shape=(3,), path="foo", store={}, zarr_format=2, dtype=dtype)
         assert arr.metadata.filters[0].codec_id == expected
-        arr[:] = np.array(["a", "bb", "ccc"], dtype=dtype)

@@ -66,8 +66,8 @@ config = Config(
             "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
             "v2_dtype_kind_to_default_filters_and_compressor": {
                 "biufcmM": ["zstd"],
-                "SV": ["vlen-bytes"],
-                "OU": ["vlen-utf8"],
+                "U": ["vlen-utf8"],
+                "OSV": ["vlen-bytes"],
             },
         }
     ],
