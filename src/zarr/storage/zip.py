@@ -5,7 +5,7 @@ import threading
 import time
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
@@ -65,10 +65,14 @@ class ZipStore(Store):
         path: Path | str,
         *,
         mode: ZipStoreAccessModeLiteral = "r",
+        read_only: bool | None = None,
         compression: int = zipfile.ZIP_STORED,
         allowZip64: bool = True,
     ) -> None:
-        super().__init__(mode=mode)
+        if read_only is None:
+            read_only = mode == "r"
+
+        super().__init__(read_only=read_only)
 
         if isinstance(path, str):
             path = Path(path)
@@ -121,20 +125,11 @@ class ZipStore(Store):
                 self.path, mode="w", compression=self.compression, allowZip64=self.allowZip64
             )
 
-    async def empty(self) -> bool:
-        # docstring inherited
-        with self._lock:
-            return not self._zf.namelist()
-
-    def with_mode(self, mode: ZipStoreAccessModeLiteral) -> Self:  # type: ignore[override]
-        # docstring inherited
-        raise NotImplementedError("ZipStore cannot be reopened with a new mode.")
-
     def __str__(self) -> str:
         return f"zip://{self.path}"
 
     def __repr__(self) -> str:
-        return f"ZipStore({str(self)!r})"
+        return f"ZipStore('{self}')"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.path == other.path
@@ -217,10 +212,19 @@ class ZipStore(Store):
             if key not in members:
                 self._set(key, value)
 
+    async def delete_dir(self, prefix: str) -> None:
+        # only raise NotImplementedError if any keys are found
+        self._check_writable()
+        if not prefix.endswith("/"):
+            prefix += "/"
+        async for _ in self.list_prefix(prefix):
+            raise NotImplementedError
+
     async def delete(self, key: str) -> None:
         # docstring inherited
         # we choose to only raise NotImplementedError here if the key exists
         # this allows the array/group APIs to avoid the overhead of existence checks
+        self._check_writable()
         if await self.exists(key):
             raise NotImplementedError
 

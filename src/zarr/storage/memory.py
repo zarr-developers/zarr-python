@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, MutableMapping
 
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import AccessModeLiteral
 
 
 logger = getLogger(__name__)
@@ -26,8 +25,8 @@ class MemoryStore(Store):
     ----------
     store_dict : dict
         Initial data
-    mode : str
-        Access mode
+    read_only : bool
+        Whether the store is read-only
 
     Attributes
     ----------
@@ -48,36 +47,28 @@ class MemoryStore(Store):
         self,
         store_dict: MutableMapping[str, Buffer] | None = None,
         *,
-        mode: AccessModeLiteral = "r",
+        read_only: bool = False,
     ) -> None:
-        super().__init__(mode=mode)
+        super().__init__(read_only=read_only)
         if store_dict is None:
             store_dict = {}
         self._store_dict = store_dict
-
-    async def empty(self) -> bool:
-        # docstring inherited
-        return not self._store_dict
 
     async def clear(self) -> None:
         # docstring inherited
         self._store_dict.clear()
 
-    def with_mode(self, mode: AccessModeLiteral) -> Self:
-        # docstring inherited
-        return type(self)(store_dict=self._store_dict, mode=mode)
-
     def __str__(self) -> str:
         return f"memory://{id(self._store_dict)}"
 
     def __repr__(self) -> str:
-        return f"MemoryStore({str(self)!r})"
+        return f"MemoryStore('{self}')"
 
     def __eq__(self, other: object) -> bool:
         return (
             isinstance(other, type(self))
             and self._store_dict == other._store_dict
-            and self.mode == other.mode
+            and self.read_only == other.read_only
         )
 
     async def get(
@@ -194,6 +185,8 @@ class GpuMemoryStore(MemoryStore):
     store_dict : MutableMapping, optional
         A mutable mapping with string keys and :class:`zarr.core.buffer.gpu.Buffer`
         values.
+    read_only : bool
+        Whether to open the store in read-only mode.
     """
 
     _store_dict: MutableMapping[str, gpu.Buffer]  # type: ignore[assignment]
@@ -202,15 +195,15 @@ class GpuMemoryStore(MemoryStore):
         self,
         store_dict: MutableMapping[str, gpu.Buffer] | None = None,
         *,
-        mode: AccessModeLiteral = "r",
+        read_only: bool = False,
     ) -> None:
-        super().__init__(store_dict=store_dict, mode=mode)  # type: ignore[arg-type]
+        super().__init__(store_dict=store_dict, read_only=read_only)  # type: ignore[arg-type]
 
     def __str__(self) -> str:
         return f"gpumemory://{id(self._store_dict)}"
 
     def __repr__(self) -> str:
-        return f"GpuMemoryStore({str(self)!r})"
+        return f"GpuMemoryStore('{self}')"
 
     @classmethod
     def from_dict(cls, store_dict: MutableMapping[str, Buffer]) -> Self:

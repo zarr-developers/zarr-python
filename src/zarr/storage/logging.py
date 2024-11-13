@@ -5,15 +5,14 @@ import logging
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any
 
-from zarr.abc.store import AccessMode, ByteRangeRequest, Store
+from zarr.abc.store import ByteRangeRequest, Store
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Generator, Iterable
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import AccessModeLiteral
 
 
 class LoggingStore(Store):
@@ -114,9 +113,9 @@ class LoggingStore(Store):
             return self._store.supports_listing
 
     @property
-    def _mode(self) -> AccessMode:  # type: ignore[override]
+    def read_only(self) -> bool:
         with self.log():
-            return self._store._mode
+            return self._store.read_only
 
     @property
     def _is_open(self) -> bool:
@@ -136,10 +135,10 @@ class LoggingStore(Store):
         with self.log():
             return await self._store._ensure_open()
 
-    async def empty(self) -> bool:
+    async def is_empty(self, prefix: str = "") -> bool:
         # docstring inherited
         with self.log():
-            return await self._store.empty()
+            return await self._store.is_empty(prefix=prefix)
 
     async def clear(self) -> None:
         # docstring inherited
@@ -226,12 +225,3 @@ class LoggingStore(Store):
         # docstring inherited
         with self.log(prefix):
             await self._store.delete_dir(prefix=prefix)
-
-    def with_mode(self, mode: AccessModeLiteral) -> Self:
-        # docstring inherited
-        with self.log(mode):
-            return type(self)(
-                self._store.with_mode(mode),
-                log_level=self.log_level,
-                log_handler=self.log_handler,
-            )
