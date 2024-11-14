@@ -325,3 +325,16 @@ class RemoteStore(Store):
             f"{self.path}/{prefix}", detail=False, maxdepth=None, withdirs=False
         ):
             yield onefile.removeprefix(f"{self.path}/")
+
+    async def getsize(self, key: str) -> int:
+        path = _dereference_path(self.path, key)
+        info = await self.fs._info(path)
+
+        size = info.get("size")
+
+        if size is None:
+            # Not all filesystems support size. Fall back to reading the entire object
+            return await super().getsize(key)
+        else:
+            # fsspec doesn't have typing. We'll need to assume or verify this is true
+            return int(size)

@@ -9,6 +9,7 @@ from numcodecs import Delta
 from numcodecs.blosc import Blosc
 
 import zarr
+import zarr.core.buffer
 import zarr.storage
 from zarr import Array
 from zarr.storage import MemoryStore, StorePath

@@ -5,6 +5,10 @@ from asyncio import gather
 from itertools import starmap
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
+from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.common import concurrent_map
+from zarr.core.config import config
+
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, AsyncIterator, Iterable
     from types import TracebackType
@@ -343,6 +347,70 @@ class Store(ABC):
         """
         for req in requests:
             yield (req[0], await self.get(*req))
+
+    async def getsize(self, key: str) -> int:
+        """
+        Return the size, in bytes, of a value in a Store.
+
+        Parameters
+        ----------
+        key : str
+
+        Returns
+        -------
+        nbytes : int
+            The size of the value (in bytes).
+
+        Raises
+        ------
+        FileNotFoundError
+            When the given key does not exist in the store.
+        """
+        # Note to implementers: this default implementation is very inefficient since
+        # it requires reading the entire object. Many systems will have ways to get the
+        # size of an object without reading it.
+        value = await self.get(key, prototype=default_buffer_prototype())
+        if value is None:
+            raise FileNotFoundError(key)
+        return len(value)
+
+    async def getsize_prefix(self, prefix: str) -> int:
+        """
+        Return the size, in bytes, of all values under a prefix.
+
+        Parameters
+        ----------
+        prefix : str
+            The prefix of the directory to measure.
+
+        Returns
+        -------
+        nbytes : int
+            The sum of the sizes of the values in the directory (in bytes).
+
+        See Also
+        --------
+        zarr.Array.nbytes_stored
+        Store.getsize
+
+        Notes
+        -----
+        ``getsize_prefix`` is just provided as a potentially faster alternative to
+        listing all the keys under a prefix calling :meth:`Store.getsize` on each.
+
+        In general, ``prefix`` should be the path of an Array or Group in the Store.
+        Implementations may differ on the behavior when some other ``prefix``
+        is provided.
+        """
+        # TODO: Overlap listing keys with getsize calls.
+        # Currently, we load the list of keys into memory and only then move
+        # on to getting sizes. Ideally we would overlap those two, which should
+        # improve tail latency and might reduce memory pressure (since not all keys
+        # would be in memory at once).
+        keys = [(x,) async for x in self.list_prefix(prefix)]
+        limit = config.get("async.concurrency")
+        sizes = await concurrent_map(keys, self.getsize, limit=limit)
+        return sum(sizes)
 
 
 @runtime_checkable
