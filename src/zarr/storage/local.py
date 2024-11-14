@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
