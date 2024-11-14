@@ -3,63 +3,23 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from asyncio import gather
 from itertools import starmap
-from typing import TYPE_CHECKING, NamedTuple, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterable
     from types import TracebackType
     from typing import Any, Self, TypeAlias
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import AccessModeLiteral, BytesLike
+    from zarr.core.common import BytesLike
 
-__all__ = ["AccessMode", "ByteGetter", "ByteSetter", "Store", "set_or_delete"]
+__all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
 ByteRangeRequest: TypeAlias = tuple[int | None, int | None]
-
-
-class AccessMode(NamedTuple):
-    """Access mode flags."""
-
-    str: AccessModeLiteral
-    readonly: bool
-    overwrite: bool
-    create: bool
-    update: bool
-
-    @classmethod
-    def from_literal(cls, mode: AccessModeLiteral) -> Self:
-        """
-        Create an AccessMode instance from a literal.
-
-        Parameters
-        ----------
-        mode : AccessModeLiteral
-            One of 'r', 'r+', 'w', 'w-', 'a'.
-
-        Returns
-        -------
-        AccessMode
-            The created instance.
-
-        Raises
-        ------
-        ValueError
-            If mode is not one of 'r', 'r+', 'w', 'w-', 'a'.
-        """
-        if mode in ("r", "r+", "a", "w", "w-"):
-            return cls(
-                str=mode,
-                readonly=mode == "r",
-                overwrite=mode == "w",
-                create=mode in ("a", "w", "w-"),
-                update=mode in ("r+", "a"),
-            )
-        raise ValueError("mode must be one of 'r', 'r+', 'w', 'w-', 'a'")
 
 
 class Store(ABC):
@@ -67,12 +27,12 @@ class Store(ABC):
     Abstract base class for Zarr stores.
     """
 
-    _mode: AccessMode
+    _read_only: bool
     _is_open: bool
 
-    def __init__(self, *args: Any, mode: AccessModeLiteral = "r", **kwargs: Any) -> None:
+    def __init__(self, *, read_only: bool = False) -> None:
         self._is_open = False
-        self._mode = AccessMode.from_literal(mode)
+        self._read_only = read_only
 
     @classmethod
     async def open(cls, *args: Any, **kwargs: Any) -> Self:
@@ -116,19 +76,9 @@ class Store(ABC):
         ------
         ValueError
             If the store is already open.
-        FileExistsError
-            If ``mode='w-'`` and the store already exists.
-
-        Notes
-        -----
-        * When ``mode='w'`` and the store already exists, it will be cleared.
         """
         if self._is_open:
             raise ValueError("store is already open")
-        if self.mode.str == "w":
-            await self.clear()
-        elif self.mode.str == "w-" and not await self.empty():
-            raise FileExistsError("Store already exists")
         self._is_open = True
 
     async def _ensure_open(self) -> None:
@@ -136,61 +86,50 @@ class Store(ABC):
         if not self._is_open:
             await self._open()
 
-    @abstractmethod
-    async def empty(self) -> bool:
+    async def is_empty(self, prefix: str) -> bool:
         """
-        Check if the store is empty.
+        Check if the directory is empty.
+
+        Parameters
+        ----------
+        prefix : str
+            Prefix of keys to check.
 
         Returns
         -------
         bool
             True if the store is empty, False otherwise.
         """
-        ...
+        if not self.supports_listing:
+            raise NotImplementedError
+        if prefix != "" and not prefix.endswith("/"):
+            prefix += "/"
+        async for _ in self.list_prefix(prefix):
+            return False
+        return True
 
-    @abstractmethod
     async def clear(self) -> None:
         """
         Clear the store.
 
         Remove all keys and values from the store.
         """
-        ...
-
-    @abstractmethod
-    def with_mode(self, mode: AccessModeLiteral) -> Self:
-        """
-        Return a new store of the same type pointing to the same location with a new mode.
-
-        The returned Store is not automatically opened. Call :meth:`Store.open` before
-        using.
-
-        Parameters
-        ----------
-        mode : AccessModeLiteral
-            The new mode to use.
-
-        Returns
-        -------
-        store
-            A new store of the same type with the new mode.
-
-        Examples
-        --------
-        >>> writer = zarr.store.MemoryStore(mode="w")
-        >>> reader = writer.with_mode("r")
-        """
-        ...
+        if not self.supports_deletes:
+            raise NotImplementedError
+        if not self.supports_listing:
+            raise NotImplementedError
+        self._check_writable()
+        await self.delete_dir("")
 
     @property
-    def mode(self) -> AccessMode:
-        """Access mode of the store."""
-        return self._mode
+    def read_only(self) -> bool:
+        """Is the store read-only?"""
+        return self._read_only
 
     def _check_writable(self) -> None:
         """Raise an exception if the store is not writable."""
-        if self.mode.readonly:
-            raise ValueError("store mode does not support writing")
+        if self.read_only:
+            raise ValueError("store was opened in read-only mode and does not support writing")
 
     @abstractmethod
     def __eq__(self, value: object) -> bool:
@@ -333,16 +272,19 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    def list(self) -> AsyncGenerator[str]:
+    def list(self) -> AsyncIterator[str]:
         """Retrieve all keys in the store.
 
         Returns
         -------
-        AsyncGenerator[str, None]
+        AsyncIterator[str]
         """
+        # This method should be async, like overridden methods in child classes.
+        # However, that's not straightforward:
+        # https://stackoverflow.com/questions/68905848
 
     @abstractmethod
-    def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
+    def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         """
         Retrieve all keys in the store that begin with a given prefix. Keys are returned relative
         to the root of the store.
@@ -353,11 +295,14 @@ class Store(ABC):
 
         Returns
         -------
-        AsyncGenerator[str, None]
+        AsyncIterator[str]
         """
+        # This method should be async, like overridden methods in child classes.
+        # However, that's not straightforward:
+        # https://stackoverflow.com/questions/68905848
 
     @abstractmethod
-    def list_dir(self, prefix: str) -> AsyncGenerator[str]:
+    def list_dir(self, prefix: str) -> AsyncIterator[str]:
         """
         Retrieve all keys and prefixes with a given prefix and which do not contain the character
         “/” after the given prefix.
@@ -368,8 +313,11 @@ class Store(ABC):
 
         Returns
         -------
-        AsyncGenerator[str, None]
+        AsyncIterator[str]
         """
+        # This method should be async, like overridden methods in child classes.
+        # However, that's not straightforward:
+        # https://stackoverflow.com/questions/68905848
 
     async def delete_dir(self, prefix: str) -> None:
         """
@@ -380,7 +328,7 @@ class Store(ABC):
         if not self.supports_listing:
             raise NotImplementedError
         self._check_writable()
-        if not prefix.endswith("/"):
+        if prefix != "" and not prefix.endswith("/"):
             prefix += "/"
         async for key in self.list_prefix(prefix):
             await self.delete(key)

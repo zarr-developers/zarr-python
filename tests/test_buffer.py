@@ -48,7 +48,7 @@ async def test_async_array_prototype() -> None:
 
     expect = np.zeros((9, 9), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(StoreExpectingTestBuffer(mode="w")) / "test_async_array_prototype",
+        StorePath(StoreExpectingTestBuffer()) / "test_async_array_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
@@ -77,7 +77,7 @@ async def test_async_array_gpu_prototype() -> None:
 
     expect = cp.zeros((9, 9), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(MemoryStore(mode="w")) / "test_async_array_gpu_prototype",
+        StorePath(MemoryStore()) / "test_async_array_gpu_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
@@ -99,7 +99,7 @@ async def test_async_array_gpu_prototype() -> None:
 async def test_codecs_use_of_prototype() -> None:
     expect = np.zeros((10, 10), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(StoreExpectingTestBuffer(mode="w")) / "test_codecs_use_of_prototype",
+        StorePath(StoreExpectingTestBuffer()) / "test_codecs_use_of_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
@@ -134,7 +134,7 @@ async def test_codecs_use_of_prototype() -> None:
 async def test_codecs_use_of_gpu_prototype() -> None:
     expect = cp.zeros((10, 10), dtype="uint16", order="F")
     a = await AsyncArray.create(
-        StorePath(MemoryStore(mode="w")) / "test_codecs_use_of_gpu_prototype",
+        StorePath(MemoryStore()) / "test_codecs_use_of_gpu_prototype",
         shape=expect.shape,
         chunk_shape=(5, 5),
         dtype=expect.dtype,
