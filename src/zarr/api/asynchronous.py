@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import numpy.typing as npt
 
-from zarr.api.synchronous import open_array
 from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
@@ -53,7 +52,6 @@ __all__ = [
     "ones",
     "ones_like",
     "open",
-    "open_array",
     "open_consolidated",
     "open_group",
     "open_like",
