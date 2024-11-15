@@ -7,10 +7,7 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.core._info import ArrayInfo, GroupInfo, human_readable_size
 from zarr.core.common import ZarrFormat
 
-ZARR_FORMATS = [2, 3]
 
-
-@pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
 def test_group_info_repr(zarr_format: ZarrFormat) -> None:
     info = GroupInfo(
         _name="a", _store_type="MemoryStore", _read_only=False, _zarr_format=zarr_format
@@ -25,7 +22,6 @@ def test_group_info_repr(zarr_format: ZarrFormat) -> None:
     assert result == expected
 
 
-@pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
 def test_group_info_complete(zarr_format: ZarrFormat) -> None:
     info = GroupInfo(
         _name="a",
@@ -49,7 +45,6 @@ def test_group_info_complete(zarr_format: ZarrFormat) -> None:
     assert result == expected
 
 
-@pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
 def test_array_info(zarr_format: ZarrFormat) -> None:
     info = ArrayInfo(
         _zarr_format=zarr_format,
@@ -74,7 +69,6 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
         Codecs             : [{{'endian': <Endian.little: 'little'>}}]""")
 
 
-@pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
 @pytest.mark.parametrize("bytes_things", [(1_000_000, "976.6K", 500_000, "500000", "2.0", 5)])
 def test_array_info_complete(
     zarr_format: ZarrFormat, bytes_things: tuple[int, str, int, str, str, int]
