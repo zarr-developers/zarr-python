@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import operator
 import pickle
+import sys
 import warnings
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -1190,7 +1191,22 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
 
 
 @pytest.mark.parametrize("consolidate", [True, False])
-@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+@pytest.mark.parametrize(
+    "store",
+    [
+        "local",
+        "memory",
+        pytest.param(
+            "remote",
+            marks=pytest.mark.xfail(
+                sys.version_info >= (3, 12),
+                reason="Valid warnings are raised from botocore on python 3.12+",
+            ),
+        ),
+        "zip",
+    ],
+    indirect=True,
+)
 async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFormat):
     group = Group.from_store(store=store, zarr_format=zarr_format)
     a = group.create_group(name="a")
