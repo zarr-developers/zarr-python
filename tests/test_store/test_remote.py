@@ -18,7 +18,6 @@ from ..conftest import test_bucket_name
 async def test_basic(s3_base) -> None:
     store = RemoteStore.from_url(
         f"s3://{test_bucket_name}/foo/spam/",
-        mode="w",
         storage_options={"endpoint_url": s3_base, "anon": False},
     )
     assert store.fs.asynchronous
