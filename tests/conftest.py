@@ -18,7 +18,7 @@ from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage.remote import RemoteStore
 
 if TYPE_CHECKING:
-    from collections.abc import Generator, AsyncGenerator
+    from collections.abc import AsyncGenerator, Generator
     from typing import Any, Literal
 
     import botocore
@@ -42,7 +42,7 @@ async def parse_store(
     s3: s3fs.S3FileSystem,  # type: ignore[name-defined]
 ) -> LocalStore | MemoryStore | RemoteStore | ZipStore:
     """
-    Take a string representation of a store and convert that string representation 
+    Take a string representation of a store and convert that string representation
     into the appropriate store object, which is then returned.
     """
 
@@ -54,14 +54,24 @@ async def parse_store(
         case "remote":
             return RemoteStore(fs=s3, path=test_bucket_name, read_only=False)
         case "zip":
-            _store = await ZipStore.open(path + "/zarr.zip", read_only=False, mode='w')
-            return _store
+            return await ZipStore.open(path + "/zarr.zip", read_only=False, mode="w")
 
     raise AssertionError
 
 
 @pytest.fixture(params=[str, pathlib.Path])
 def path_type(request: pytest.FixtureRequest) -> Any:
+    """
+    A pytest fixture that provides a parameterized path type.
+
+    This fixture yields different types of path representations
+    for testing purposes. The possible types are `str` and
+    `pathlib.Path`. It can be used to test functions or methods
+    that need to handle different path type inputs.
+
+    Returns:
+        The path type specified by the current parameter.
+    """
     return request.param
 
 
@@ -77,7 +87,7 @@ async def store(
     request: pytest.FixtureRequest,
     tmpdir: LEGACY_PATH,
     s3: s3fs.S3FileSystem,  # type: ignore[name-defined]
-) -> AsyncGenerator[Store, None, None]:
+) -> AsyncGenerator[Store, None]:
     param = request.param
     store_instance = await parse_store(param, str(tmpdir), s3)
     yield store_instance
