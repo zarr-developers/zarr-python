@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 @pytest.fixture
 async def memory_store_with_hierarchy() -> None:
-    memory_store = await zarr.storage.MemoryStore.open(mode="a")
+    memory_store = zarr.storage.MemoryStore()
     g = await group(store=memory_store, attributes={"foo": "bar"})
     await g.create_array(name="air", shape=(1, 2, 3))
     await g.create_array(name="lat", shape=(1,))
@@ -202,7 +202,7 @@ class TestConsolidated:
 
     @pytest.mark.parametrize(
         "store",
-        ["memory_a"],
+        ["memory"],
         indirect=True,
     )
     def test_consolidated_sync(self, store: Store):
@@ -287,12 +287,12 @@ class TestConsolidated:
 
     @pytest.mark.parametrize(
         "store",
-        ["memory_a"],
+        ["memory"],
         indirect=True,
     )
     async def test_not_writable_raises(self, store: zarr.storage.MemoryStore) -> None:
         await group(store=store, attributes={"foo": "bar"})
-        read_store = zarr.storage.MemoryStore(store_dict=store._store_dict)
+        read_store = zarr.storage.MemoryStore(store_dict=store._store_dict, read_only=True)
         with pytest.raises(ValueError, match="does not support writing"):
             await consolidate_metadata(read_store)
 
@@ -518,7 +518,7 @@ class TestConsolidated:
 
     @pytest.mark.parametrize(
         "store",
-        ["memory_a"],
+        ["memory"],
         indirect=True,
     )
     async def test_use_consolidated_false(
