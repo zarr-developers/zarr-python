@@ -1111,7 +1111,7 @@ async def test_metadata_validation_error() -> None:
 
 @pytest.mark.parametrize(
     "store",
-    ["local", "memory", "remote", "zip"],
+    ["local", "memory", "zip", "remote"],
     indirect=True,
 )
 def test_open_array_with_mode_r_plus(store: Store) -> None:
@@ -1119,7 +1119,7 @@ def test_open_array_with_mode_r_plus(store: Store) -> None:
     with pytest.raises(FileNotFoundError):
         zarr.open_array(store=store, mode="r+")
     zarr.ones(store=store, shape=(3, 3))
-    z2 = zarr.open(store=store, mode="r+")
+    z2 = zarr.open_array(store=store, mode="r+")
     assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
