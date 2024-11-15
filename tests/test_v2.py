@@ -36,6 +36,7 @@ def test_simple(store: StorePath) -> None:
     assert np.array_equal(data, a[:, :])
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize(
     ("dtype", "fill_value"),
     [
@@ -48,7 +49,7 @@ def test_simple(store: StorePath) -> None:
         (str, ""),
     ],
 )
-def test_implicit_fill_value(store: StorePath, dtype: str, fill_value: Any) -> None:
+def test_implicit_fill_value(store: MemoryStore, dtype: str, fill_value: Any) -> None:
     arr = zarr.open_array(store=store, shape=(4,), fill_value=None, zarr_format=2, dtype=dtype)
     assert arr.metadata.fill_value is None
     assert arr.metadata.to_dict()["fill_value"] is None
