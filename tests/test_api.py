@@ -246,7 +246,7 @@ def test_open_with_mode_r(store: Store) -> None:
 
 @pytest.mark.parametrize(
     "store",
-    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    ["local", "memory", "remote", "zip"],
     indirect=True,
 )
 def test_open_with_mode_r_plus(store: Store) -> None:
