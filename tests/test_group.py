@@ -14,6 +14,7 @@ import zarr.api.asynchronous
 import zarr.api.synchronous
 import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
+from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
