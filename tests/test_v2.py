@@ -50,7 +50,7 @@ def test_simple(store: StorePath) -> None:
     ],
 )
 def test_implicit_fill_value(store: MemoryStore, dtype: str, fill_value: Any) -> None:
-    arr = zarr.open_array(store=store, shape=(4,), fill_value=None, zarr_format=2, dtype=dtype)
+    arr = zarr.create(store=store, shape=(4,), fill_value=None, zarr_format=2, dtype=dtype)
     assert arr.metadata.fill_value is None
     assert arr.metadata.to_dict()["fill_value"] is None
     result = arr[:]
