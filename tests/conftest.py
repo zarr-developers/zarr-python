@@ -35,6 +35,7 @@ moto = pytest.importorskip("moto")
 test_bucket_name = "test"
 secure_bucket_name = "test-secure"
 
+
 def as_mutable(store: Store) -> Store:
     """
     Return a mutable version of the store
@@ -48,7 +49,8 @@ def as_mutable(store: Store) -> Store:
     if isinstance(store, ZipStore):
         store.close()
         return sync(ZipStore.open(path=store.path, read_only=False))
-    raise ValueError(f'Unknown store type: {type(store)}')
+    raise ValueError(f"Unknown store type: {type(store)}")
+
 
 def as_immutable(store: Store) -> Store:
     """
@@ -63,7 +65,8 @@ def as_immutable(store: Store) -> Store:
     if isinstance(store, ZipStore):
         store.close()
         return sync(ZipStore.open(path=store.path, read_only=True))
-    raise ValueError(f'Unknown store type: {type(store)}')
+    raise ValueError(f"Unknown store type: {type(store)}")
+
 
 async def parse_store(
     store: str,
