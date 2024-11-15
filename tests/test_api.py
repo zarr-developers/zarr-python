@@ -1030,3 +1030,19 @@ async def test_metadata_validation_error() -> None:
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
         await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "zip"],
+    indirect=True,
+)
+def test_open_array_with_mode_r_plus(store: Store) -> None:
+    # 'r+' means read/write (must exist)
+    with pytest.raises(FileNotFoundError):
+        zarr.open_array(store=store, mode="r+")
+    zarr.ones(store=store, shape=(3, 3))
+    z2 = zarr.open_array(store=store, mode="r+")
+    assert isinstance(z2, Array)
+    assert (z2[:] == 1).all()
+    z2[:] = 3
