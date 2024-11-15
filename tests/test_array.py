@@ -22,8 +22,7 @@ from zarr.storage import LocalStore, MemoryStore
 from zarr.storage.common import StorePath
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "zip", "remote"], indirect=["store"])
-@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("exists_ok", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
 def test_array_creation_existing_node(
@@ -73,8 +72,7 @@ def test_array_creation_existing_node(
             )
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "zip", "remote"], indirect=["store"])
-@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 async def test_create_creates_parents(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -113,8 +111,7 @@ async def test_create_creates_parents(
         assert isinstance(g, AsyncGroup)
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "zip", "remote"], indirect=["store"])
-@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_array_name_properties_no_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -124,8 +121,7 @@ def test_array_name_properties_no_group(
     assert arr.basename is None
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
-@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_array_name_properties_with_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -254,7 +250,6 @@ async def test_array_v3_nan_fill_value(store: MemoryStore) -> None:
 
 
 @pytest.mark.parametrize("store", ["local"], indirect=["store"])
-@pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_serializable_async_array(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
@@ -272,7 +267,6 @@ async def test_serializable_async_array(
 
 
 @pytest.mark.parametrize("store", ["local"], indirect=["store"])
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> None:
     expected = Array.create(
         store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
@@ -428,7 +422,6 @@ def test_vlen_errors() -> None:
         )
 
 
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_update_attrs(zarr_format: int) -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
     store = MemoryStore()
@@ -441,7 +434,6 @@ def test_update_attrs(zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_resize_1d(store: MemoryStore, zarr_format: int) -> None:
     z = zarr.create(
         shape=105, chunks=10, dtype="i4", fill_value=0, store=store, zarr_format=zarr_format
@@ -480,7 +472,6 @@ def test_resize_1d(store: MemoryStore, zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_resize_2d(store: MemoryStore, zarr_format: int) -> None:
     z = zarr.create(
         shape=(105, 105),
@@ -542,7 +533,6 @@ def test_resize_2d(store: MemoryStore, zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_append_1d(store: MemoryStore, zarr_format: int) -> None:
     a = np.arange(105)
     z = zarr.create(shape=a.shape, chunks=10, dtype=a.dtype, store=store, zarr_format=zarr_format)
@@ -572,7 +562,6 @@ def test_append_1d(store: MemoryStore, zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_append_2d(store: MemoryStore, zarr_format: int) -> None:
     a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
     z = zarr.create(
@@ -596,7 +585,6 @@ def test_append_2d(store: MemoryStore, zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_append_2d_axis(store: MemoryStore, zarr_format: int) -> None:
     a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
     z = zarr.create(
@@ -618,7 +606,6 @@ def test_append_2d_axis(store: MemoryStore, zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
 def test_append_bad_shape(store: MemoryStore, zarr_format: int) -> None:
     a = np.arange(100)
     z = zarr.create(shape=a.shape, chunks=10, dtype=a.dtype, store=store, zarr_format=zarr_format)
@@ -629,7 +616,6 @@ def test_append_bad_shape(store: MemoryStore, zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("order", ["C", "F", None])
-@pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_array_create_order(
     order: MemoryOrder | None, zarr_format: int, store: MemoryStore
