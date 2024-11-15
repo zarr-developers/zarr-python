@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
+from tests.conftest import as_immutable
 import zarr
 import zarr.api.asynchronous
 import zarr.core.group
@@ -70,29 +71,13 @@ async def test_open_array(store: Store, zarr_format: ZarrFormat) -> None:
     assert isinstance(z, Array)
     assert z.shape == (100,)
 
-    store_w: Store
 
-    if isinstance(store, ZipStore):
-        store.close()
-        store_w = await ZipStore.open(store.path, mode="w")
-    else:
-        # open array, overwrite
-        store_w = store.with_mode("w")
-
-    z = open(store=store_w, shape=200, zarr_format=zarr_format)
+    z = open(store=store, shape=200, zarr_format=zarr_format, mode='w')
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
-    store_r: Store
-
-    if isinstance(store, ZipStore):
-        store_w.close()
-        store_r = await ZipStore.open(store.path, mode="r")
-    else:
-        # open array, read-only
-        store_r = store.with_mode("r")
-
-    z = open(store=store_r, zarr_format=zarr_format)
+    store_r = as_immutable(store)
+    z = open(store=store_r, zarr_format=zarr_format, mode='r')
     assert isinstance(z, Array)
     assert z.shape == (200,)
     assert z.read_only
@@ -125,15 +110,7 @@ async def test_open_group(store: Store) -> None:
     # g = open_group(store=store)
     # assert isinstance(g, Group)
     # assert "foo" not in g
-    store_r: Store
-
-    # open group, read-only
-    if isinstance(store, ZipStore):
-        store.close()
-        store_r = await ZipStore.open(store.path, mode="r")
-    else:
-        # open array, read-only
-        store_r = store.with_mode("r")
+    store_r = as_immutable(store)
 
     g = open_group(store=store_r)
     assert isinstance(g, Group)
@@ -1059,13 +1036,14 @@ def test_tree() -> None:
 #             copy(source["foo"], dest, dry_run=True, log=True)
 
 
-def test_open_positional_args_deprecated() -> None:
-    store = MemoryStore()
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_open_positional_args_deprecated(store: MemoryStore) -> None:
     with pytest.warns(FutureWarning, match="pass"):
         open(store, "w", shape=(1,))
 
 
-def test_save_array_positional_args_deprecated() -> None:
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_save_array_positional_args_deprecated(store: MemoryStore) -> None:
     store = MemoryStore()
     with warnings.catch_warnings():
         warnings.filterwarnings(
@@ -1081,14 +1059,14 @@ def test_save_array_positional_args_deprecated() -> None:
             )
 
 
-def test_group_positional_args_deprecated() -> None:
-    store = MemoryStore()
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_group_positional_args_deprecated(store: MemoryStore) -> None:
     with pytest.warns(FutureWarning, match="pass"):
         group(store, True)
 
 
-def test_open_group_positional_args_deprecated() -> None:
-    store = MemoryStore()
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_open_group_positional_args_deprecated(store: MemoryStore) -> None:
     with pytest.warns(FutureWarning, match="pass"):
         open_group(store, "w")
 
