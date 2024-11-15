@@ -18,7 +18,7 @@ from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage.remote import RemoteStore
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Generator, AsyncGenerator
     from typing import Any, Literal
 
     import botocore
@@ -42,30 +42,21 @@ async def parse_store(
     s3: s3fs.S3FileSystem,  # type: ignore[name-defined]
 ) -> LocalStore | MemoryStore | RemoteStore | ZipStore:
     """
-    Take a string representation of a store + access mode, e.g. 'local_a', which would encode
-    LocalStore + access mode `a`, and convert that string representation into the appropriate store object,
-    which is then returned.
+    Take a string representation of a store and convert that string representation 
+    into the appropriate store object, which is then returned.
     """
-    store_parsed = store.split("_")
 
-    if len(store_parsed) == 1:
-        store_type = store_parsed[0]
-        # the default mode for testing is a
-        mode = "a"
-    elif len(store_parsed) == 2:
-        store_type, mode = store_parsed
-    else:
-        raise ValueError(f"Invalid store specification: {store}")
-
-    match store_type:
+    match store:
         case "local":
-            return await LocalStore.open(path, mode=mode)
+            return LocalStore(path, read_only=False)
         case "memory":
-            return await MemoryStore.open(mode=mode)
+            return MemoryStore(read_only=False)
         case "remote":
-            return await RemoteStore.open(fs=s3, path=test_bucket_name, mode=mode)
+            return RemoteStore(fs=s3, path=test_bucket_name, read_only=False)
         case "zip":
-            return await ZipStore.open(path + "/zarr.zip", mode=mode)
+            _store = await ZipStore.open(path + "/zarr.zip", read_only=False, mode='w')
+            return _store
+
     raise AssertionError
 
 
@@ -86,9 +77,11 @@ async def store(
     request: pytest.FixtureRequest,
     tmpdir: LEGACY_PATH,
     s3: s3fs.S3FileSystem,  # type: ignore[name-defined]
-) -> Store:
+) -> AsyncGenerator[Store, None, None]:
     param = request.param
-    return await parse_store(param, str(tmpdir), s3)
+    store_instance = await parse_store(param, str(tmpdir), s3)
+    yield store_instance
+    store_instance.close()
 
 
 @pytest.fixture(params=["local", "memory", "zip"])

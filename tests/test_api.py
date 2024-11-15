@@ -28,7 +28,7 @@ from zarr.storage.memory import MemoryStore
 from zarr.storage.zip import ZipStore
 
 
-@pytest.mark.parametrize("store", ["local_a", "memory_a", "remote_a", "zip_a"], indirect=True)
+@pytest.mark.parametrize("store", ["local", "memory", "remote"], indirect=True)
 def test_create_array(store: Store) -> None:
     # create array
     z = create(shape=100, store=store)
@@ -48,7 +48,7 @@ def test_create_array(store: Store) -> None:
     assert z.chunks == (40,)
 
 
-@pytest.mark.parametrize("store", ["local_a", "memory_a", "remote_a", "zip_a"], indirect=True)
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 @pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
 @pytest.mark.parametrize("node_type", ["array", "group"])
 def test_open_normalized_path(
@@ -63,7 +63,7 @@ def test_open_normalized_path(
     assert node.path == normalize_path(path)
 
 
-@pytest.mark.parametrize("store", ["local_a", "memory_a", "remote_a", "zip_a"], indirect=True)
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_open_array(store: Store, zarr_format: ZarrFormat) -> None:
     # open array, create if doesn't exist
     z = open(store=store, shape=100, zarr_format=zarr_format)
@@ -101,7 +101,7 @@ async def test_open_array(store: Store, zarr_format: ZarrFormat) -> None:
 # zipstore is marked as xfail because you cannot open a zipstore in read-only mode if it doesn't exist in the first place.
 @pytest.mark.parametrize(
     "store",
-    ["local_r", "memory_r", "remote_r", pytest.param("zip_r", marks=pytest.mark.xfail)],
+    ["local", "memory", "remote", "zip"],
     indirect=True,
 )
 def test_open_path_not_found(store: Store, zarr_format: ZarrFormat) -> None:
@@ -111,7 +111,7 @@ def test_open_path_not_found(store: Store, zarr_format: ZarrFormat) -> None:
 
 @pytest.mark.parametrize(
     "store",
-    ["local_a", "memory_a", "remote_a", "zip_a"],
+    ["local", "memory", "remote", "zip"],
     indirect=True,
 )
 async def test_open_group(store: Store) -> None:
@@ -144,7 +144,7 @@ async def test_open_group(store: Store) -> None:
 
 @pytest.mark.parametrize(
     "store",
-    ["local_a", "memory_a", "remote_a", "zip_a"],
+    ["local", "memory", "remote", "zip"],
     indirect=True,
 )
 async def test_open_array_or_group(zarr_format: ZarrFormat, store: Store) -> None:
@@ -172,7 +172,7 @@ async def test_open_array_or_group(zarr_format: ZarrFormat, store: Store) -> Non
 
 @pytest.mark.parametrize(
     "store",
-    ["local_a", "memory_a", "remote_a", "zip_a"],
+    ["local", "memory", "remote", "zip"],
     indirect=True,
 )
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
@@ -244,7 +244,7 @@ def test_save_errors() -> None:
 
 @pytest.mark.parametrize(
     "store",
-    ["local_a", "memory_a", "remote_a", pytest.param("zip_a", marks=pytest.mark.xfail)],
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
     indirect=True,
 )
 def test_open_with_mode_r(store: Store) -> None:
@@ -265,7 +265,7 @@ def test_open_with_mode_r(store: Store) -> None:
 
 @pytest.mark.parametrize(
     "store",
-    ["local_a", "memory_a", "remote_a", pytest.param("zip_a", marks=pytest.mark.xfail)],
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
     indirect=True,
 )
 def test_open_with_mode_r_plus(store: Store) -> None:
@@ -281,7 +281,7 @@ def test_open_with_mode_r_plus(store: Store) -> None:
 
 @pytest.mark.parametrize(
     "store",
-    ["local_a", "memory_a", "remote_a", pytest.param("zip_a", marks=pytest.mark.xfail)],
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
     indirect=True,
 )
 async def test_open_with_mode_a(store: Store) -> None:
@@ -303,7 +303,7 @@ async def test_open_with_mode_a(store: Store) -> None:
 
 @pytest.mark.parametrize(
     "store",
-    ["local_a", "memory_a", "remote_a", pytest.param("zip_a", marks=pytest.mark.xfail)],
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
     indirect=True,
 )
 def test_open_with_mode_w(store: Store) -> None:
@@ -320,7 +320,7 @@ def test_open_with_mode_w(store: Store) -> None:
 
 @pytest.mark.parametrize(
     "store",
-    ["local_a", "memory_a", "remote_a", pytest.param("zip_a", marks=pytest.mark.xfail)],
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
     indirect=True,
 )
 def test_open_with_mode_w_minus(store: Store) -> None:
@@ -364,7 +364,7 @@ def test_array_order(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None
 #     assert "LazyLoader: " in repr(loader)
 
 
-@pytest.mark.parametrize("store", ["local_a", "memory_a", "remote_a", "zip_a"], indirect=True)
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_load_array(store: Store) -> None:
     foo = np.arange(100)
     bar = np.arange(100, 0, -1)
@@ -1093,7 +1093,7 @@ def test_open_group_positional_args_deprecated() -> None:
         open_group(store, "w")
 
 
-@pytest.mark.parametrize("store", ["local_a", "memory_a", "remote_a", "zip_a"], indirect=True)
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 def test_open_falls_back_to_open_group(store: Store) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
     zarr.open_group(store, attributes={"key": "value"})
@@ -1103,7 +1103,7 @@ def test_open_falls_back_to_open_group(store: Store) -> None:
     assert group.attrs == {"key": "value"}
 
 
-@pytest.mark.parametrize("store", ["local_a", "memory_a", "remote_a", "zip_a"], indirect=True)
+@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
 async def test_open_falls_back_to_open_group_async(store: Store) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
     await zarr.api.asynchronous.open_group(store, attributes={"key": "value"})
