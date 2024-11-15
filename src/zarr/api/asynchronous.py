@@ -299,12 +299,8 @@ async def open(
 
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
-    # TODO: check for more array-only kwargs
-    expect_array = "shape" in kwargs
-
-    if expect_array:
-        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
-    else:
+    # TODO: the mode check below seems wrong!
+    if "shape" not in kwargs and mode in _READ_MODES:
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
@@ -314,8 +310,16 @@ async def open(
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
                 return AsyncArray(store_path=store_path, metadata=_metadata_dict)
-        except (AssertionError, NodeTypeValidationError, FileNotFoundError):
+        except (AssertionError, FileNotFoundError, NodeTypeValidationError):
             pass
+        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+
+    try:
+        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+    except (KeyError, NodeTypeValidationError):
+        # KeyError for a missing key
+        # NodeTypeValidationError for failing to parse node metadata as an array when it's
+        # actually a group
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
 
@@ -1088,11 +1092,10 @@ async def open_array(
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
     except FileNotFoundError:
-        if not store_path.read_only:
+        if not store_path.read_only and mode in _CREATE_MODES:
             exists_ok = _infer_exists_ok(mode)
             _zarr_format = zarr_format or _default_zarr_version()
             return await create(
