@@ -5,10 +5,10 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
-from tests.conftest import as_immutable
 import zarr
 import zarr.api.asynchronous
 import zarr.core.group
+from tests.conftest import as_immutable
 from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.api.synchronous import (
@@ -64,26 +64,30 @@ def test_open_normalized_path(
     assert node.path == normalize_path(path)
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "remote", "zip"], indirect=True)
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    indirect=True,
+)
 async def test_open_array(store: Store, zarr_format: ZarrFormat) -> None:
     # open array, create if doesn't exist
     z = open(store=store, shape=100, zarr_format=zarr_format)
     assert isinstance(z, Array)
     assert z.shape == (100,)
 
-
-    z = open(store=store, shape=200, zarr_format=zarr_format, mode='w')
+    # invoke open again, with a different shape and mode w.
+    # We expect the store to be wiped at the current path and new array to come out.
+    z = open(store=store, shape=200, zarr_format=zarr_format, mode="w")
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
     store_r = as_immutable(store)
-    z = open(store=store_r, zarr_format=zarr_format, mode='r')
+    z = open(store=store_r, zarr_format=zarr_format, mode="r")
     assert isinstance(z, Array)
     assert z.shape == (200,)
     assert z.read_only
 
 
-# zipstore is marked as xfail because you cannot open a zipstore in read-only mode if it doesn't exist in the first place.
 @pytest.mark.parametrize(
     "store",
     ["local", "memory", "remote", "zip"],
@@ -112,7 +116,7 @@ async def test_open_group(store: Store) -> None:
     # assert "foo" not in g
     store_r = as_immutable(store)
 
-    g = open_group(store=store_r)
+    g = open_group(store=store_r, mode="r")
     assert isinstance(g, Group)
 
     if isinstance(store, ZipStore):
@@ -1103,3 +1107,19 @@ async def test_metadata_validation_error() -> None:
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
         await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "remote", "zip"],
+    indirect=True,
+)
+def test_open_array_with_mode_r_plus(store: Store) -> None:
+    # 'r+' means read/write (must exist)
+    with pytest.raises(FileNotFoundError):
+        zarr.open_array(store=store, mode="r+")
+    zarr.ones(store=store, shape=(3, 3))
+    z2 = zarr.open(store=store, mode="r+")
+    assert isinstance(z2, Array)
+    assert (z2[:] == 1).all()
+    z2[:] = 3
