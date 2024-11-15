@@ -301,7 +301,7 @@ def test_open_with_mode_w(store: Store) -> None:
 
 @pytest.mark.parametrize(
     "store",
-    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    ["local", "memory", "remote", "zip"],
     indirect=True,
 )
 def test_open_with_mode_w_minus(store: Store) -> None:
