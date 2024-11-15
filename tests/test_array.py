@@ -370,6 +370,30 @@ async def test_chunks_initialized() -> None:
         assert observed == expected
 
 
+def test_nbytes_stored() -> None:
+    arr = zarr.create(shape=(100,), chunks=(10,), dtype="i4")
+    result = arr.nbytes_stored()
+    assert result == 366  # the size of the metadata document. This is a fragile test.
+    arr[:50] = 1
+    result = arr.nbytes_stored()
+    assert result == 566  # the size with 5 chunks filled.
+    arr[50:] = 2
+    result = arr.nbytes_stored()
+    assert result == 766  # the size with all chunks filled.
+
+
+async def test_nbytes_stored_async() -> None:
+    arr = await zarr.api.asynchronous.create(shape=(100,), chunks=(10,), dtype="i4")
+    result = await arr.nbytes_stored()
+    assert result == 366  # the size of the metadata document. This is a fragile test.
+    await arr.setitem(slice(50), 1)
+    result = await arr.nbytes_stored()
+    assert result == 566  # the size with 5 chunks filled.
+    await arr.setitem(slice(50, 100), 2)
+    result = await arr.nbytes_stored()
+    assert result == 766  # the size with all chunks filled.
+
+
 def test_default_fill_values() -> None:
     a = Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<U4")
     assert a.fill_value == ""
