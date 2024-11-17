@@ -1097,7 +1097,7 @@ async def open_array(
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
     except FileNotFoundError:
-        if not store_path.read_only:
+        if not store_path.read_only and mode in _CREATE_MODES:
             exists_ok = _infer_exists_ok(mode)
             _zarr_format = zarr_format or _default_zarr_version()
             return await create(

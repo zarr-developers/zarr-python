@@ -225,3 +225,11 @@ class LoggingStore(Store):
         # docstring inherited
         with self.log(prefix):
             await self._store.delete_dir(prefix=prefix)
+
+    async def getsize(self, key: str) -> int:
+        with self.log(key):
+            return await self._store.getsize(key)
+
+    async def getsize_prefix(self, prefix: str) -> int:
+        with self.log(prefix):
+            return await self._store.getsize_prefix(prefix)

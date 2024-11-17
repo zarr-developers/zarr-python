@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 
 if TYPE_CHECKING:
@@ -124,10 +126,12 @@ class LocalStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferPrototype | None = None,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         # docstring inherited
+        if prototype is None:
+            prototype = default_buffer_prototype()
         if not self._is_open:
             await self._open()
         assert isinstance(key, str)
@@ -222,3 +226,6 @@ class LocalStore(Store):
                 yield key.relative_to(base).as_posix()
         except (FileNotFoundError, NotADirectoryError):
             pass
+
+    async def getsize(self, key: str) -> int:
+        return os.path.getsize(self.root / key)

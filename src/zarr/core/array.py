@@ -881,6 +881,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         return len(await chunks_initialized(self))
 
+    async def nbytes_stored(self) -> int:
+        return await self.store_path.store.getsize_prefix(self.store_path.path)
+
     def _iter_chunk_coords(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
     ) -> Iterator[ChunkCoords]:
@@ -1718,6 +1721,16 @@ class Array:
         3
         """
         return sync(self._async_array.nchunks_initialized())
+
+    def nbytes_stored(self) -> int:
+        """
+        Determine the size, in bytes, of the array actually written to the store.
+
+        Returns
+        -------
+        size : int
+        """
+        return sync(self._async_array.nbytes_stored())
 
     def _iter_chunk_keys(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
