@@ -4,6 +4,7 @@ import itertools
 import math
 import operator
 import re
+import warnings
 from functools import reduce
 from typing import Any
 
@@ -78,6 +79,10 @@ class Array:
     chunk_store : MutableMapping, optional
         Separate storage for chunks. If not provided, `store` will be used
         for storage of both chunks and metadata.
+        [DEPRECATED since version 2.18.4] This argument is deprecated and will be
+        removed in version 3.0. See
+        `GH2495 <https://github.com/zarr-developers/zarr-python/issues/2495>`_
+        for more information.
     synchronizer : object, optional
         Array synchronizer.
     cache_metadata : bool, optional
@@ -139,6 +144,12 @@ class Array:
             assert_zarr_v3_api_available()
 
         if chunk_store is not None:
+            warnings.warn(
+                "chunk_store is deprecated and will be removed in a Zarr-Python version 3, see "
+                "https://github.com/zarr-developers/zarr-python/issues/2495 for more information.",
+                FutureWarning,
+                stacklevel=2,
+            )
             chunk_store = normalize_store_arg(chunk_store, zarr_version=zarr_version)
 
         self._store = store
