@@ -160,10 +160,7 @@ class StorePath:
         """
         Delete all keys with the given prefix from the store.
         """
-        path = self.path
-        if not path.endswith("/"):
-            path += "/"
-        await self.store.delete_dir(path)
+        await self.store.delete_dir(self.path)
 
     async def set_if_not_exists(self, default: Buffer) -> None:
         """
