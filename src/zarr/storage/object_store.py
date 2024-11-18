@@ -146,7 +146,7 @@ async def _transform_list_dir(
                 yield item["path"]
 
 
-class BoundedRequest(TypedDict):
+class _BoundedRequest(TypedDict):
     """Range request with a known start and end byte.
 
     These requests can be multiplexed natively on the Rust side with
@@ -163,7 +163,7 @@ class BoundedRequest(TypedDict):
     """End byte offset."""
 
 
-class OtherRequest(TypedDict):
+class _OtherRequest(TypedDict):
     """Offset or suffix range requests.
 
     These requests cannot be concurrent on the Rust side, and each need their own call
@@ -180,7 +180,7 @@ class OtherRequest(TypedDict):
     """The range request type."""
 
 
-class Response(TypedDict):
+class _Response(TypedDict):
     """A response buffer associated with the original index that it should be restored to."""
 
     original_request_index: int
@@ -193,9 +193,9 @@ class Response(TypedDict):
 async def _make_bounded_requests(
     store: obs.store.ObjectStore,
     path: str,
-    requests: list[BoundedRequest],
+    requests: list[_BoundedRequest],
     prototype: BufferPrototype,
-) -> list[Response]:
+) -> list[_Response]:
     """Make all bounded requests for a specific file.
 
     `obstore.get_ranges_async` allows for making concurrent requests for multiple ranges
@@ -207,7 +207,7 @@ async def _make_bounded_requests(
     ends = [r["end"] for r in requests]
     responses = await obs.get_ranges_async(store, path=path, starts=starts, ends=ends)
 
-    buffer_responses: list[Response] = []
+    buffer_responses: list[_Response] = []
     for request, response in zip(requests, responses, strict=True):
         buffer_responses.append(
             {
@@ -221,12 +221,12 @@ async def _make_bounded_requests(
 
 async def _make_other_request(
     store: obs.store.ObjectStore,
-    request: OtherRequest,
+    request: _OtherRequest,
     prototype: BufferPrototype,
-) -> list[Response]:
+) -> list[_Response]:
     """Make suffix or offset requests.
 
-    We return a `list[Response]` for symmetry with `_make_bounded_requests` so that all
+    We return a `list[_Response]` for symmetry with `_make_bounded_requests` so that all
     futures can be gathered together.
     """
     resp = await obs.get_async(store, request["path"], options={"range": request["range"]})
@@ -256,8 +256,8 @@ async def _get_partial_values(
     - One call to `obstore.get_async` for each other request.
     """
     key_ranges = list(key_ranges)
-    per_file_bounded_requests: dict[str, list[BoundedRequest]] = defaultdict(list)
-    other_requests: list[OtherRequest] = []
+    per_file_bounded_requests: dict[str, list[_BoundedRequest]] = defaultdict(list)
+    other_requests: list[_OtherRequest] = []
 
     for idx, (path, (start, end)) in enumerate(key_ranges):
         if start is None:
@@ -281,7 +281,7 @@ async def _get_partial_values(
         else:
             raise ValueError(f"Unsupported range input: {start=}, {end=}")
 
-    futs: list[Coroutine[Any, Any, list[Response]]] = []
+    futs: list[Coroutine[Any, Any, list[_Response]]] = []
     for path, bounded_ranges in per_file_bounded_requests.items():
         futs.append(_make_bounded_requests(store, path, bounded_ranges, prototype))
 
