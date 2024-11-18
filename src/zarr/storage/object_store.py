@@ -32,6 +32,13 @@ class ObjectStore(Store):
     """
 
     store: _ObjectStore
+    """The underlying obstore instance."""
+
+    def __eq__(self, value: object) -> bool:
+        if not isinstance(value, ObjectStore):
+            return False
+
+        return self.store.__eq__(value.store)
 
     def __init__(self, store: _ObjectStore) -> None:
         self.store = store
