@@ -215,7 +215,7 @@ class ZipStore(Store):
     async def delete_dir(self, prefix: str) -> None:
         # only raise NotImplementedError if any keys are found
         self._check_writable()
-        if not prefix.endswith("/"):
+        if prefix != "" and not prefix.endswith("/"):
             prefix += "/"
         async for _ in self.list_prefix(prefix):
             raise NotImplementedError
