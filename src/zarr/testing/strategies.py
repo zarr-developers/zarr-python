@@ -153,7 +153,7 @@ def arrays(
     assert isinstance(a, Array)
     if a.metadata.zarr_format == 3:
         assert a.fill_value is not None
-        assert a.name is not None
+    assert a.name is not None
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunks == a.chunks
