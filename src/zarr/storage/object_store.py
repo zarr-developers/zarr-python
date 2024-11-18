@@ -23,6 +23,14 @@ if TYPE_CHECKING:
 
 
 class ObjectStore(Store):
+    """A Zarr store that uses obstore for fast read/write from AWS, GCP, and Azure.
+
+    Parameters
+    ----------
+    store : obstore.store.ObjectStore
+        An obstore store instance that is set up with the proper credentials.
+    """
+
     store: _ObjectStore
 
     def __init__(self, store: _ObjectStore) -> None:
