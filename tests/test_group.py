@@ -207,6 +207,68 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
     with pytest.raises(ValueError, match="max_depth"):
         members_observed = group.members(max_depth=-1)
 
+def test_group_members_2(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    Test that `Group.members` returns correct values, i.e. the arrays and groups
+    (explicit and implicit) contained in that group.
+    """
+    # group/
+    #   subgroup/
+    #     subsubgroup/
+    #       subsubsubgroup
+    #   subarray
+
+    path = "group"
+    group = Group.from_store(
+        store=store,
+        zarr_format=zarr_format,
+    )
+    members_expected: dict[str, Array | Group] = {}
+
+    members_expected["subgroup"] = group.create_group("subgroup")
+    # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
+    # too deep in the hierarchy
+    subsubgroup = members_expected["subgroup"].create_group("subsubgroup")
+    subsubsubgroup = subsubgroup.create_group("subsubsubgroup")
+
+    members_expected["subarray"] = group.create_array(
+        "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
+    )
+
+    # add an extra object to the domain of the group.
+    # the list of children should ignore this object.
+    sync(
+        store.set(
+            f"{path}/extra_object-1",
+            default_buffer_prototype().buffer.from_bytes(b"000000"),
+        )
+    )
+    # add an extra object under a directory-like prefix in the domain of the group.
+    # this creates a directory with a random key in it
+    # this should not show up as a member
+    sync(
+        store.set(
+            f"{path}/extra_directory/extra_object-2",
+            default_buffer_prototype().buffer.from_bytes(b"000000"),
+        )
+    )
+
+    # this warning shows up when extra objects show up in the hierarchy
+    warn_context = pytest.warns(
+        UserWarning, match=r"Object at .* is not recognized as a component of a Zarr hierarchy."
+    )
+
+    with warn_context:
+        members_observed = group.members()
+    # members are not guaranteed to be ordered, so sort before comparing
+    assert sorted(dict(members_observed)) == sorted(members_expected)
+
+    # partial
+    with warn_context:
+        members_observed = group.members(max_depth=1)
+    members_expected["subgroup/subsubgroup"] = subsubgroup
+    # members are not guaranteed to be ordered, so sort before comparing
+    assert sorted(dict(members_observed)) == sorted(members_expected)
 
 def test_group(store: Store, zarr_format: ZarrFormat) -> None:
     """

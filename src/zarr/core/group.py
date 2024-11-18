@@ -19,7 +19,7 @@ from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
 from zarr.core.array import Array, AsyncArray, _build_parents
 from zarr.core.attributes import Attributes
-from zarr.core.buffer import default_buffer_prototype
+from zarr.core.buffer import default_buffer_prototype, Buffer
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
@@ -1151,10 +1151,10 @@ class AsyncGroup:
         """
         if max_depth is not None and max_depth < 0:
             raise ValueError(f"max_depth must be None or >= 0. Got '{max_depth}' instead")
-        async for item in self._members(max_depth=max_depth, current_depth=0):
+        async for item in self._members(max_depth=max_depth):
             yield item
 
-    async def _members(
+    async def _members_old(
         self, max_depth: int | None, current_depth: int
     ) -> AsyncGenerator[
         tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
@@ -1162,7 +1162,7 @@ class AsyncGroup:
     ]:
         if self.metadata.consolidated_metadata is not None:
             # we should be able to do members without any additional I/O
-            members = self._members_consolidated(max_depth, current_depth)
+            members = self._members_consolidated(max_depth)
             for member in members:
                 yield member
             return
@@ -1202,8 +1202,7 @@ class AsyncGroup:
                     # implies an AsyncGroup, not an AsyncArray
                     assert isinstance(obj, AsyncGroup)
                     async for child_key, val in obj._members(
-                        max_depth=max_depth, current_depth=current_depth + 1
-                    ):
+                        max_depth=max_depth):
                         yield f"{key}/{child_key}", val
             except KeyError:
                 # keyerror is raised when `key` names an object (in the object storage sense),
@@ -1216,12 +1215,14 @@ class AsyncGroup:
                 )
 
     def _members_consolidated(
-        self, max_depth: int | None, current_depth: int, prefix: str = ""
+        self, max_depth: int | None, prefix: str = ""
     ) -> Generator[
         tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup],
         None,
     ]:
         consolidated_metadata = self.metadata.consolidated_metadata
+        
+        do_recursion = max_depth is None or max_depth > 0
 
         # we kind of just want the top-level keys.
         if consolidated_metadata is not None:
@@ -1232,10 +1233,43 @@ class AsyncGroup:
                 key = f"{prefix}/{key}".lstrip("/")
                 yield key, obj
 
-                if ((max_depth is None) or (current_depth < max_depth)) and isinstance(
+                if do_recursion and isinstance(
                     obj, AsyncGroup
                 ):
-                    yield from obj._members_consolidated(max_depth, current_depth + 1, prefix=key)
+                    if max_depth is None:
+                      new_depth = None
+                    else:
+                        new_depth = max_depth - 1
+                    yield from obj._members_consolidated(new_depth, prefix=key)
+    
+    async def _members(
+        self, 
+        max_depth: int | None) -> AsyncGenerator[tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None]:
+        skip_keys: tuple[str, ...]
+        if self.metadata.zarr_format == 2:
+            skip_keys = ('.zattrs', '.zgroup','.zarray', '.zmetadata')
+        elif self.metadata.zarr_format == 3:
+            skip_keys = ('zarr.json',)
+        else:
+            raise ValueError(f"Unknown Zarr format: {self.metadata.zarr_format}")
+
+        if self.metadata.consolidated_metadata is not None:
+            members = self._members_consolidated(max_depth=max_depth)
+            for member in members:
+                yield member
+            return
+
+        if not self.store_path.store.supports_listing:
+            msg = (
+                f"The store associated with this group ({type(self.store_path.store)}) "
+                "does not support listing, "
+                "specifically via the `list_dir` method. "
+                "This function requires a store that supports listing."
+            )
+
+            raise ValueError(msg)
+        async for member in iter_members_deep(self, max_depth=max_depth, prefix=self.basename, skip_keys=skip_keys):
+            yield member
 
     async def keys(self) -> AsyncGenerator[str, None]:
         async for key, _ in self.members():
@@ -1848,10 +1882,13 @@ class Group(SyncMixin):
         )
 
 
-async def members_v3(
+async def members_recursive(
     store: Store,
     path: str,
 ) -> Any:
+    """
+    Recursively fetch all members of a group.
+    """
     metadata_keys = ("zarr.json",)
 
     members_flat: tuple[tuple[str, ArrayV3Metadata | GroupMetadata], ...] = ()
@@ -1879,18 +1916,88 @@ async def members_v3(
             resolved_metadata = resolve_metadata_v3(blob.to_bytes())
             members_flat += ((key_body, resolved_metadata),)
             if isinstance(resolved_metadata, GroupMetadata):
-                to_recurse.append(members_v3(store, key_body))
-
-    # for r in to_recurse:
-    #    members_flat += await r
+                to_recurse.append(
+                    members_recursive(store, key_body))
 
     subgroups = await asyncio.gather(*to_recurse)
     members_flat += tuple(subgroup for subgroup in subgroups)
 
-    # recurse for groups
-
     return members_flat
 
+async def iter_members(
+    node: AsyncGroup,
+    skip_keys: tuple[str, ...]
+) -> AsyncGenerator[tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None]:
+    """
+    Iterate over the arrays and groups contained in a group.
+    """
+    
+    # retrieve keys from storage
+    keys = [key async for key in node.store.list_dir(node.path)]
+    keys_filtered = tuple(filter(lambda v: v not in skip_keys, keys))
+
+    node_tasks = tuple(asyncio.create_task(
+        node.getitem(key), name=key) for key in keys_filtered)
+
+    for fetched_node_coro in asyncio.as_completed(node_tasks):
+        try:
+            fetched_node = await fetched_node_coro
+        except KeyError as e:
+            # keyerror is raised when `key` names an object (in the object storage sense),
+            # as opposed to a prefix, in the store under the prefix associated with this group
+            # in which case `key` cannot be the name of a sub-array or sub-group.
+            warnings.warn(
+                f"Object at {e.args[0]} is not recognized as a component of a Zarr hierarchy.",
+                UserWarning,
+                stacklevel=1,
+            )
+            continue
+        match fetched_node:
+            case AsyncArray() | AsyncGroup():
+                yield fetched_node.basename, fetched_node
+            case _:
+                raise ValueError(f"Unexpected type: {type(fetched_node)}")
+
+async def iter_members_deep(
+        group: AsyncGroup,
+        *,
+        prefix: str,
+        max_depth: int | None,
+        skip_keys: tuple[str, ...]
+) -> AsyncGenerator[tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None]:
+    """
+    Iterate over the arrays and groups contained in a group, and optionally the 
+    arrays and groups contained in those groups.
+    """
+
+    to_recurse = []
+    do_recursion = max_depth is None or max_depth > 0
+    if max_depth is None:
+        new_depth = None
+    else:
+        new_depth = max_depth - 1
+
+    async for name, node in iter_members(group, skip_keys=skip_keys):
+        yield f'{prefix}/{name}'.lstrip('/'), node
+        if isinstance(node, AsyncGroup) and do_recursion:
+            to_recurse.append(iter_members_deep(
+                node, 
+                max_depth=new_depth, 
+                prefix=f'{prefix}/{name}', 
+                skip_keys=skip_keys))
+
+    for subgroup in to_recurse:
+        async for name, node in subgroup:
+            yield name, node
+        
+
+def resolve_metadata_v2(blobs: tuple[str | bytes | bytearray, str | bytes | bytearray]) -> ArrayV2Metadata | GroupMetadata:
+    zarr_metadata = json.loads(blobs[0])
+    attrs = json.loads(blobs[1])
+    if 'shape' in zarr_metadata:
+        return ArrayV2Metadata.from_dict(zarr_metadata | {'attrs': attrs})
+    else:
+        return GroupMetadata.from_dict(zarr_metadata | {'attrs': attrs})
 
 def resolve_metadata_v3(blob: str | bytes | bytearray) -> ArrayV3Metadata | GroupMetadata:
     zarr_json = json.loads(blob)

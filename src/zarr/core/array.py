@@ -786,7 +786,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.store_path.path
 
     @property
-    def name(self) -> str | None:
+    def name(self) -> str:
         """Array name following h5py convention.
 
         Returns
@@ -794,16 +794,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         str
             The name of the array.
         """
-        if self.path:
-            # follow h5py convention: add leading slash
-            name = self.path
-            if name[0] != "/":
-                name = "/" + name
-            return name
-        return None
+        # follow h5py convention: add leading slash
+        name = self.path
+        if not name.startswith('/'):
+            name = "/" + name
+        return name
 
     @property
-    def basename(self) -> str | None:
+    def basename(self) -> str:
         """Final component of name.
 
         Returns
@@ -811,9 +809,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         str
             The basename or final component of the array name.
         """
-        if self.name is not None:
-            return self.name.split("/")[-1]
-        return None
+        return self.name.split("/")[-1]
 
     @property
     def cdata_shape(self) -> ChunkCoords:
@@ -1436,12 +1432,12 @@ class Array:
         return self._async_array.path
 
     @property
-    def name(self) -> str | None:
+    def name(self) -> str:
         """Array name following h5py convention."""
         return self._async_array.name
 
     @property
-    def basename(self) -> str | None:
+    def basename(self) -> str:
         """Final component of name."""
         return self._async_array.basename
 
