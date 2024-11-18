@@ -5,17 +5,17 @@ import io
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable
+    from collections.abc import AsyncIterator, Iterable
 
     from zarr.core.buffer import BufferPrototype
-    from zarr.core.common import AccessModeLiteral
 
 
 def _get(
@@ -74,8 +74,8 @@ class LocalStore(Store):
     ----------
     root : str or Path
         Directory to use as root of store.
-    mode : str
-        Mode in which to open the store. Either 'r', 'r+', 'a', 'w', 'w-'.
+    read_only : bool
+        Whether the store is read-only
 
     Attributes
     ----------
@@ -93,8 +93,8 @@ class LocalStore(Store):
 
     root: Path
 
-    def __init__(self, root: Path | str, *, mode: AccessModeLiteral = "r") -> None:
-        super().__init__(mode=mode)
+    def __init__(self, root: Path | str, *, read_only: bool = False) -> None:
+        super().__init__(read_only=read_only)
         if isinstance(root, str):
             root = Path(root)
         if not isinstance(root, Path):
@@ -104,7 +104,7 @@ class LocalStore(Store):
         self.root = root
 
     async def _open(self) -> None:
-        if not self.mode.readonly:
+        if not self.read_only:
             self.root.mkdir(parents=True, exist_ok=True)
         return await super()._open()
 
@@ -114,28 +114,11 @@ class LocalStore(Store):
         shutil.rmtree(self.root)
         self.root.mkdir()
 
-    async def empty(self) -> bool:
-        # docstring inherited
-        try:
-            with os.scandir(self.root) as it:
-                for entry in it:
-                    if entry.is_file():
-                        # stop once a file is found
-                        return False
-        except FileNotFoundError:
-            return True
-        else:
-            return True
-
-    def with_mode(self, mode: AccessModeLiteral) -> Self:
-        # docstring inherited
-        return type(self)(root=self.root, mode=mode)
-
     def __str__(self) -> str:
         return f"file://{self.root.as_posix()}"
 
     def __repr__(self) -> str:
-        return f"LocalStore({str(self)!r})"
+        return f"LocalStore('{self}')"
 
     def __eq__(self, other: object) -> bool:
         return isinstance(other, type(self)) and self.root == other.root
@@ -143,10 +126,12 @@ class LocalStore(Store):
     async def get(
         self,
         key: str,
-        prototype: BufferPrototype,
+        prototype: BufferPrototype | None = None,
         byte_range: tuple[int | None, int | None] | None = None,
     ) -> Buffer | None:
         # docstring inherited
+        if prototype is None:
+            prototype = default_buffer_prototype()
         if not self._is_open:
             await self._open()
         assert isinstance(key, str)
@@ -217,14 +202,14 @@ class LocalStore(Store):
         path = self.root / key
         return await asyncio.to_thread(path.is_file)
 
-    async def list(self) -> AsyncGenerator[str]:
+    async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         to_strip = self.root.as_posix() + "/"
         for p in list(self.root.rglob("*")):
             if p.is_file():
                 yield p.as_posix().replace(to_strip, "")
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
+    async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         to_strip = self.root.as_posix() + "/"
         prefix = prefix.rstrip("/")
@@ -232,7 +217,7 @@ class LocalStore(Store):
             if p.is_file():
                 yield p.as_posix().replace(to_strip, "")
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str]:
+    async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         base = self.root / prefix
         try:
@@ -241,3 +226,6 @@ class LocalStore(Store):
                 yield key.relative_to(base).as_posix()
         except (FileNotFoundError, NotADirectoryError):
             pass
+
+    async def getsize(self, key: str) -> int:
+        return os.path.getsize(self.root / key)

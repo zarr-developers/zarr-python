@@ -28,10 +28,10 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
     @pytest.fixture
     def store_kwargs(self, tmpdir) -> dict[str, str]:
-        return {"root": str(tmpdir), "mode": "r+"}
+        return {"root": str(tmpdir)}
 
     def test_store_repr(self, store: LocalStore) -> None:
-        assert str(store) == f"file://{store.root.as_posix()!s}"
+        assert str(store) == f"file://{store.root.as_posix()}"
 
     def test_store_supports_writes(self, store: LocalStore) -> None:
         assert store.supports_writes
@@ -43,13 +43,13 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         assert store.supports_listing
 
     async def test_empty_with_empty_subdir(self, store: LocalStore) -> None:
-        assert await store.empty()
+        assert await store.is_empty("")
         (store.root / "foo/bar").mkdir(parents=True)
-        assert await store.empty()
+        assert await store.is_empty("")
 
     def test_creates_new_directory(self, tmp_path: pathlib.Path):
         target = tmp_path.joinpath("a", "b", "c")
         assert not target.exists()
 
-        store = self.store_cls(root=target, mode="w")
+        store = self.store_cls(root=target)
         zarr.group(store=store)
