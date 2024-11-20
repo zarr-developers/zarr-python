@@ -70,6 +70,7 @@ test = [
     "mypy",
     "hypothesis",
     "universal-pathlib",
+    "obstore==0.3.0b5",
 ]
 
 jupyter = [
