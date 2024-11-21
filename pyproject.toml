@@ -26,7 +26,6 @@ maintainers = [
 requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
-    'asciitree',
     'numpy>=1.25',
     'numcodecs[crc32c]>=0.14',
     'fsspec>=2022.10.0',
