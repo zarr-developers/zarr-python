@@ -28,9 +28,8 @@ requires-python = ">=3.11"
 dependencies = [
     'asciitree',
     'numpy>=1.25',
-    'numcodecs>=0.14',
+    'numcodecs[crc32c]>=0.14',
     'fsspec>=2022.10.0',
-    'crc32c>=2.3',
     'typing_extensions>=4.6',
     'donfig>=0.8',
 ]
@@ -193,7 +192,6 @@ dependencies = [
     'fsspec @ git+https://github.com/fsspec/filesystem_spec',
     's3fs @ git+https://github.com/fsspec/s3fs',
     'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
-    'crc32c @ git+https://github.com/ICRAR/crc32c',
     'typing_extensions @ git+https://github.com/python/typing_extensions',
     'donfig @ git+https://github.com/pytroll/donfig',
     # test deps
@@ -227,7 +225,6 @@ dependencies = [
     'fsspec==2022.10.0',
     's3fs==2022.10.0',
     'universal_pathlib==0.0.22',
-    'crc32c==2.3.*',
     'typing_extensions==4.6.*',  # 4.5 needed for @deprecated, 4.6 for Buffer
     'donfig==0.8.*',
     # test deps
