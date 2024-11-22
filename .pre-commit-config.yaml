@@ -9,9 +9,9 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.7.3
     hooks:
-    - id: ruff
-      args: ["--fix", "--show-fixes"]
-    - id: ruff-format
+      - id: ruff
+        args: ["--fix", "--show-fixes"]
+      - id: ruff-format
   - repo: https://github.com/codespell-project/codespell
     rev: v2.3.0
     hooks:
@@ -20,7 +20,7 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-    - id: check-yaml
+      - id: check-yaml
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.13.0
     hooks:
@@ -35,6 +35,7 @@ repos:
           - numpy
           - typing_extensions
           - universal-pathlib
+          - obstore==0.3.0-beta.8
           # Tests
           - pytest
   - repo: https://github.com/scientific-python/cookie
