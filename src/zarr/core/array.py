@@ -2842,24 +2842,22 @@ class Array:
             try:
                 from numcodecs.compat import ensure_ndarray_like
 
-                value_array = ensure_ndarray_like(value)  # TODO replace with agnostic
+                value = ensure_ndarray_like(value)  # TODO replace with agnostic
             except TypeError:
                 # Handle types like `list` or `tuple`
-                value_array = np.array(value)  # TODO replace with agnostic
+                value = np.array(value)  # TODO replace with agnostic
         if hasattr(value, "shape") and len(value.shape) > 1:
-            value_array = np.array(value).reshape(-1)
+            value = np.array(value).reshape(-1)
 
-        if indexer.sel_shape != value_array.shape:
+        if not is_scalar(value, self.dtype) and (
+            isinstance(value, np.ndarray) and indexer.shape != value.shape
+        ):
             raise ValueError(
                 f"Attempting to set a selection of {indexer.sel_shape[0]} "
-                f"elements with an array of {value_array.shape[0]} elements."
+                f"elements with an array of {value.shape[0]} elements."
             )
 
-        sync(
-            self._async_array._set_selection(
-                indexer, value_array, fields=fields, prototype=prototype
-            )
-        )
+        sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     @_deprecate_positional_args
     def get_block_selection(
