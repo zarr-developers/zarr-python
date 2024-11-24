@@ -132,3 +132,19 @@ def test_v2_filters_codecs(filters: Any) -> None:
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)
+
+
+def test_v2_non_contiguous() -> None:
+    arr = zarr.Array.create(
+        MemoryStore({}),
+        shape=(10, 8),
+        chunks=(3, 3),
+        fill_value=np.nan,
+        dtype="float64",
+        zarr_format=2,
+        exists_ok=True,
+    )
+    a = np.ones(arr.shape)
+    arr[slice(6, 9, None), slice(3, 6, None)] = a[
+        slice(6, 9, None), slice(3, 6, None)
+    ]  # The slice on the RHS is important

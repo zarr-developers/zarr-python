@@ -14,7 +14,14 @@ if TYPE_CHECKING:
     import numcodecs.abc
 
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, NDBuffer
+    from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
+
+
+def ensure_contiguous(arr: NDArrayLike) -> NDArrayLike:
+    if arr.flags.c_contiguous or arr.flags.f_contiguous:
+        return arr
+    else:
+        return arr.copy()
 
 
 @dataclass(frozen=True)
@@ -83,6 +90,7 @@ class V2Codec(ArrayBytesCodec):
         else:
             cdata = chunk
 
+        cdata = ensure_contiguous(ensure_ndarray_like(cdata))
         return chunk_spec.prototype.buffer.from_bytes(cdata)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
