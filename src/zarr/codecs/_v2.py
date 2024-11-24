@@ -18,7 +18,8 @@ if TYPE_CHECKING:
 
 
 def ensure_contiguous(arr: NDArrayLike) -> NDArrayLike:
-    if arr.flags.c_contiguous or arr.flags.f_contiguous:
+    flags = getattr(arr, "flags", None)
+    if flags is not None and (flags.c_contiguous or flags.f_contiguous):
         return arr
     else:
         return arr.copy()
