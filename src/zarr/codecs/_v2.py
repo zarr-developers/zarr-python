@@ -69,7 +69,7 @@ class V2Codec(ArrayBytesCodec):
         chunk = chunk_array.as_ndarray_like()
 
         # ensure contiguous and correct order
-        chunk = chunk.astype(chunk_spec.dtype, order=chunk_spec.order, copy=False)
+        chunk = chunk.astype(chunk_spec.dtype, order=chunk_spec.order)
 
         # apply filters
         if self.filters:
