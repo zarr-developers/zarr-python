@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Literal
 
 import numcodecs.vlen
 import numpy as np
@@ -126,15 +126,17 @@ async def test_create_dtype_str(dtype: Any) -> None:
 
 
 @pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
-def test_v2_filters_codecs(filters: Any) -> None:
+@pytest.mark.parametrize("order", ["C", "F"])
+def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     array_fixture = [42]
-    arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
+    arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters, order=order)
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)
 
 
-def test_v2_non_contiguous() -> None:
+@pytest.mark.parametrize("order", ["C", "F"])
+def test_v2_non_contiguous(order: Literal["C", "F"]) -> None:
     arr = zarr.Array.create(
         MemoryStore({}),
         shape=(10, 8),
@@ -143,16 +145,22 @@ def test_v2_non_contiguous() -> None:
         dtype="float64",
         zarr_format=2,
         exists_ok=True,
+        order=order,
     )
-    a = np.ones(arr.shape)
+    a = np.arange(arr.shape[0] * arr.shape[1]).reshape(arr.shape)
     arr[slice(6, 9, None), slice(3, 6, None)] = a[
         slice(6, 9, None), slice(3, 6, None)
     ]  # The slice on the RHS is important
+    np.testing.assert_array_equal(
+        arr[slice(6, 9, None), slice(3, 6, None)], a[slice(6, 9, None), slice(3, 6, None)]
+    )
 
-    a = np.ones((3, 3), order="F")
+    a = np.arange(9).reshape((3, 3), order="F")
     assert a.flags.f_contiguous
     arr[slice(6, 9, None), slice(3, 6, None)] = a
+    np.testing.assert_array_equal(arr[slice(6, 9, None), slice(3, 6, None)], a)
 
-    a = np.ones((3, 3), order="C")
+    a = np.arange(9).reshape((3, 3), order="C")
     assert a.flags.c_contiguous
     arr[slice(6, 9, None), slice(3, 6, None)] = a
+    np.testing.assert_array_equal(arr[slice(6, 9, None), slice(3, 6, None)], a)

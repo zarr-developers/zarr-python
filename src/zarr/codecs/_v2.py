@@ -5,8 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numcodecs
-import numpy as np
-from numcodecs.compat import ensure_ndarray_like
+from numcodecs.compat import ensure_bytes, ensure_ndarray_like
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.registry import get_ndbuffer_class
@@ -15,15 +14,7 @@ if TYPE_CHECKING:
     import numcodecs.abc
 
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
-
-
-def ensure_contiguous(arr: NDArrayLike) -> NDArrayLike:
-    flags = getattr(arr, "flags", None)
-    if flags is not None and flags.c_contiguous:
-        return arr
-    else:
-        return np.ascontiguousarray(arr)
+    from zarr.core.buffer import Buffer, NDBuffer
 
 
 @dataclass(frozen=True)
@@ -77,6 +68,9 @@ class V2Codec(ArrayBytesCodec):
     ) -> Buffer | None:
         chunk = chunk_array.as_ndarray_like()
 
+        # ensure contiguous and correct order
+        chunk = chunk.astype(chunk_spec.dtype, order=chunk_spec.order, copy=False)
+
         # apply filters
         if self.filters:
             for f in self.filters:
@@ -92,7 +86,7 @@ class V2Codec(ArrayBytesCodec):
         else:
             cdata = chunk
 
-        cdata = ensure_contiguous(ensure_ndarray_like(cdata))
+        cdata = ensure_bytes(cdata)
         return chunk_spec.prototype.buffer.from_bytes(cdata)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:
