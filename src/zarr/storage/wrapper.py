@@ -3,15 +3,15 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Iterable
+    from collections.abc import AsyncGenerator, AsyncIterator, Iterable
     from types import TracebackType
     from typing import Any, Self
 
     from zarr.abc.store import ByteRangeRequest
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import AccessModeLiteral, BytesLike
+    from zarr.core.common import BytesLike
 
-from zarr.abc.store import AccessMode, Store
+from zarr.abc.store import Store
 
 T_Store = TypeVar("T_Store", bound=Store)
 
@@ -53,18 +53,15 @@ class WrapperStore(Store, Generic[T_Store]):
     async def _ensure_open(self) -> None:
         await self._store._ensure_open()
 
-    async def empty(self) -> bool:
-        return await self._store.empty()
+    async def is_empty(self, prefix: str) -> bool:
+        return await self._store.is_empty(prefix)
 
     async def clear(self) -> None:
         return await self._store.clear()
 
-    def with_mode(self, mode: AccessModeLiteral) -> Self:
-        return type(self)(store=self._store.with_mode(mode=mode))
-
     @property
-    def mode(self) -> AccessMode:
-        return self._store._mode
+    def read_only(self) -> bool:
+        return self._store.read_only
 
     def _check_writable(self) -> None:
         return self._store._check_writable()
@@ -120,13 +117,13 @@ class WrapperStore(Store, Generic[T_Store]):
     def supports_listing(self) -> bool:
         return self._store.supports_listing
 
-    def list(self) -> AsyncGenerator[str]:
+    def list(self) -> AsyncIterator[str]:
         return self._store.list()
 
-    def list_prefix(self, prefix: str) -> AsyncGenerator[str]:
+    def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         return self._store.list_prefix(prefix)
 
-    def list_dir(self, prefix: str) -> AsyncGenerator[str]:
+    def list_dir(self, prefix: str) -> AsyncIterator[str]:
         return self._store.list_dir(prefix)
 
     async def delete_dir(self, prefix: str) -> None:

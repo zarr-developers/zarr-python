@@ -9,6 +9,7 @@ from numcodecs import Delta
 from numcodecs.blosc import Blosc
 
 import zarr
+import zarr.core.buffer
 import zarr.storage
 from zarr import Array
 from zarr.storage import MemoryStore, StorePath
@@ -16,7 +17,7 @@ from zarr.storage import MemoryStore, StorePath
 
 @pytest.fixture
 async def store() -> Iterator[StorePath]:
-    return StorePath(await MemoryStore.open(mode="w"))
+    return StorePath(await MemoryStore.open())
 
 
 def test_simple(store: StorePath) -> None:
@@ -35,6 +36,7 @@ def test_simple(store: StorePath) -> None:
     assert np.array_equal(data, a[:, :])
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize(
     ("dtype", "fill_value"),
     [
@@ -47,8 +49,8 @@ def test_simple(store: StorePath) -> None:
         (str, ""),
     ],
 )
-def test_implicit_fill_value(store: StorePath, dtype: str, fill_value: Any) -> None:
-    arr = zarr.open_array(store=store, shape=(4,), fill_value=None, zarr_format=2, dtype=dtype)
+def test_implicit_fill_value(store: MemoryStore, dtype: str, fill_value: Any) -> None:
+    arr = zarr.create(store=store, shape=(4,), fill_value=None, zarr_format=2, dtype=dtype)
     assert arr.metadata.fill_value is None
     assert arr.metadata.to_dict()["fill_value"] is None
     result = arr[:]
@@ -63,7 +65,7 @@ def test_implicit_fill_value(store: StorePath, dtype: str, fill_value: Any) -> N
 
 def test_codec_pipeline() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2243
-    store = MemoryStore(mode="w")
+    store = MemoryStore()
     array = zarr.create(
         store=store,
         shape=(1,),
@@ -80,7 +82,7 @@ def test_codec_pipeline() -> None:
 
 @pytest.mark.parametrize("dtype", ["|S", "|V"])
 async def test_v2_encode_decode(dtype):
-    store = zarr.storage.MemoryStore(mode="w")
+    store = zarr.storage.MemoryStore()
     g = zarr.group(store=store, zarr_format=2)
     g.create_array(
         name="foo",

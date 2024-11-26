@@ -16,7 +16,7 @@ from zarr.api.asynchronous import (
     open,
     open_consolidated,
 )
-from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
@@ -281,7 +281,7 @@ class TestConsolidated:
 
     async def test_not_writable_raises(self, memory_store: zarr.storage.MemoryStore) -> None:
         await group(store=memory_store, attributes={"foo": "bar"})
-        read_store = zarr.storage.MemoryStore(store_dict=memory_store._store_dict)
+        read_store = zarr.storage.MemoryStore(store_dict=memory_store._store_dict, read_only=True)
         with pytest.raises(ValueError, match="does not support writing"):
             await consolidate_metadata(read_store)
 
@@ -457,7 +457,7 @@ class TestConsolidated:
 
     @pytest.mark.parametrize("zarr_format", [2, 3])
     async def test_open_consolidated_raises_async(self, zarr_format: ZarrFormat):
-        store = zarr.storage.MemoryStore(mode="w")
+        store = zarr.storage.MemoryStore()
         await AsyncGroup.from_store(store, zarr_format=zarr_format)
         with pytest.raises(ValueError):
             await zarr.api.asynchronous.open_consolidated(store, zarr_format=zarr_format)
@@ -466,7 +466,7 @@ class TestConsolidated:
             await zarr.api.asynchronous.open_consolidated(store, zarr_format=None)
 
     async def test_consolidated_metadata_v2(self):
-        store = zarr.storage.MemoryStore(mode="w")
+        store = zarr.storage.MemoryStore()
         g = await AsyncGroup.from_store(store, attributes={"key": "root"}, zarr_format=2)
         await g.create_array(name="a", shape=(1,), attributes={"key": "a"})
         g1 = await g.create_group(name="g1", attributes={"key": "g1"})

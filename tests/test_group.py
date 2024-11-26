@@ -12,8 +12,10 @@ import pytest
 import zarr
 import zarr.api.asynchronous
 import zarr.api.synchronous
+import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
+from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
@@ -207,6 +209,7 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
     with pytest.raises(ValueError, match="max_depth"):
         members_observed = group.members(max_depth=-1)
 
+
 def test_group_members_2(store: Store, zarr_format: ZarrFormat) -> None:
     """
     Test that `Group.members` returns correct values, i.e. the arrays and groups
@@ -229,7 +232,7 @@ def test_group_members_2(store: Store, zarr_format: ZarrFormat) -> None:
     # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
     # too deep in the hierarchy
     subsubgroup = members_expected["subgroup"].create_group("subsubgroup")
-    subsubsubgroup = subsubgroup.create_group("subsubsubgroup")
+    _ = subsubgroup.create_group("subsubsubgroup")
 
     members_expected["subarray"] = group.create_array(
         "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
@@ -269,6 +272,7 @@ def test_group_members_2(store: Store, zarr_format: ZarrFormat) -> None:
     members_expected["subgroup/subsubgroup"] = subsubgroup
     # members are not guaranteed to be ordered, so sort before comparing
     assert sorted(dict(members_observed)) == sorted(members_expected)
+
 
 def test_group(store: Store, zarr_format: ZarrFormat) -> None:
     """
@@ -854,15 +858,6 @@ async def test_asyncgroup_attrs(store: Store, zarr_format: ZarrFormat) -> None:
     assert agroup.attrs == agroup.metadata.attributes == attributes
 
 
-async def test_asyncgroup_info(store: Store, zarr_format: ZarrFormat) -> None:
-    agroup = await AsyncGroup.from_store(  # noqa: F841
-        store,
-        zarr_format=zarr_format,
-    )
-    pytest.xfail("Info is not implemented for metadata yet")
-    # assert agroup.info == agroup.metadata.info
-
-
 async def test_asyncgroup_open(
     store: Store,
     zarr_format: ZarrFormat,
@@ -1265,12 +1260,16 @@ async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFo
 
 
 async def test_open_mutable_mapping():
-    group = await zarr.api.asynchronous.open_group(store={}, mode="w")
+    group = await zarr.api.asynchronous.open_group(
+        store={},
+    )
     assert isinstance(group.store_path.store, MemoryStore)
 
 
 def test_open_mutable_mapping_sync():
-    group = zarr.open_group(store={}, mode="w")
+    group = zarr.open_group(
+        store={},
+    )
     assert isinstance(group.store_path.store, MemoryStore)
 
 
@@ -1414,10 +1413,41 @@ class TestGroupMetadata:
         assert result == expected
 
 
+class TestInfo:
+    def test_info(self):
+        store = zarr.storage.MemoryStore()
+        A = zarr.group(store=store, path="A")
+        B = A.create_group(name="B")
+
+        B.create_array(name="x", shape=(1,))
+        B.create_array(name="y", shape=(2,))
+
+        result = A.info
+        expected = GroupInfo(
+            _name="A",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _zarr_format=3,
+        )
+        assert result == expected
+
+        result = A.info_complete()
+        expected = GroupInfo(
+            _name="A",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _zarr_format=3,
+            _count_members=3,
+            _count_arrays=2,
+            _count_groups=1,
+        )
+        assert result == expected
+
+
 def test_update_attrs() -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
     root = Group.from_store(
-        MemoryStore({}, mode="w"),
+        MemoryStore(),
     )
     root.attrs["foo"] = "bar"
     assert root.attrs["foo"] == "bar"
