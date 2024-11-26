@@ -117,8 +117,8 @@ def test_array_name_properties_no_group(
 ) -> None:
     arr = Array.create(store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4")
     assert arr.path == ""
-    assert arr.name is None
-    assert arr.basename is None
+    assert arr.name == "/"
+    assert arr.basename == ""
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
