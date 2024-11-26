@@ -5,7 +5,7 @@ import io
 import os
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
@@ -229,3 +229,9 @@ class LocalStore(Store):
 
     async def getsize(self, key: str) -> int:
         return os.path.getsize(self.root / key)
+
+    def _as_immutable(self: Self) -> Self:
+        return type(self)(self.root, read_only=True)
+
+    def _as_mutable(self: Self) -> Self:
+        return type(self)(self.root, read_only=False)

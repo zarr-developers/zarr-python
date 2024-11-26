@@ -412,6 +412,18 @@ class Store(ABC):
         sizes = await concurrent_map(keys, self.getsize, limit=limit)
         return sum(sizes)
 
+    def _as_immutable(self: Self) -> Self:
+        """
+        Return a mutable copy of the store.
+        """
+        raise NotImplementedError
+
+    def _as_mutable(self: Self) -> Self:
+        """
+        Return an immutable (read-only) copy of the store.
+        """
+        raise NotImplementedError
+
 
 @runtime_checkable
 class ByteGetter(Protocol):

@@ -12,8 +12,6 @@ from zarr.storage._utils import normalize_path
 from zarr.storage.local import LocalStore
 from zarr.storage.memory import MemoryStore
 
-# from zarr.store.remote import RemoteStore
-
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
 
@@ -72,6 +70,8 @@ class StorePath:
         """
 
         await store._ensure_open()
+        if mode == "r" and not store.read_only:
+            store = store._as_immutable()
         self = cls(store, path)
 
         # fastpath if mode is None

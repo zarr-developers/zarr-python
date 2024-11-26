@@ -9,7 +9,6 @@ from numpy.testing import assert_array_equal
 import zarr
 import zarr.api.asynchronous
 import zarr.core.group
-from tests.conftest import as_immutable
 from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.api.synchronous import (
@@ -82,7 +81,7 @@ async def test_open_array(store: Store, zarr_format: ZarrFormat) -> None:
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
-    store_r = as_immutable(store)
+    store_r = store._as_immutable()
     z = open(store=store_r, zarr_format=zarr_format, mode="r")
     assert isinstance(z, Array)
     assert z.shape == (200,)
@@ -115,7 +114,7 @@ async def test_open_group(store: Store) -> None:
     # g = open_group(store=store)
     # assert isinstance(g, Group)
     # assert "foo" not in g
-    store_r = as_immutable(store)
+    store_r = store._as_immutable()
 
     g = open_group(store=store_r, mode="r")
     assert isinstance(g, Group)
@@ -226,7 +225,7 @@ def test_save_errors() -> None:
 
 @pytest.mark.parametrize(
     "store",
-    ["local", "memory", "remote", pytest.param("zip", marks=pytest.mark.xfail)],
+    ["local", "memory", "remote", "zip"],
     indirect=True,
 )
 def test_open_store_with_mode_r(store: Store) -> None:

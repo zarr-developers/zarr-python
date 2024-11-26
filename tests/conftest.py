@@ -36,38 +36,6 @@ test_bucket_name = "test"
 secure_bucket_name = "test-secure"
 
 
-def as_mutable(store: Store) -> Store:
-    """
-    Return a mutable version of the store
-    """
-    if isinstance(store, LocalStore):
-        return LocalStore(store.root, read_only=False)
-    if isinstance(store, MemoryStore):
-        return MemoryStore(store._store_dict, read_only=False)
-    if isinstance(store, RemoteStore):
-        return RemoteStore(fs=store.fs, path=store.path, read_only=False)
-    if isinstance(store, ZipStore):
-        store.close()
-        return sync(ZipStore.open(path=store.path, read_only=False))
-    raise ValueError(f"Unknown store type: {type(store)}")
-
-
-def as_immutable(store: Store) -> Store:
-    """
-    Return an immutable version of the store
-    """
-    if isinstance(store, LocalStore):
-        return LocalStore(store.root, read_only=True)
-    if isinstance(store, MemoryStore):
-        return MemoryStore(store._store_dict, read_only=True)
-    if isinstance(store, RemoteStore):
-        return RemoteStore(fs=store.fs, path=store.path, read_only=True)
-    if isinstance(store, ZipStore):
-        store.close()
-        return sync(ZipStore.open(path=store.path, read_only=True))
-    raise ValueError(f"Unknown store type: {type(store)}")
-
-
 async def parse_store(
     store: str,
     path: str,

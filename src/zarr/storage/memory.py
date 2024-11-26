@@ -169,6 +169,12 @@ class MemoryStore(Store):
         for key in keys_unique:
             yield key
 
+    def _as_immutable(self: Self) -> Self:
+        return type(self)(self._store_dict, read_only=True)
+
+    def _as_mutable(self: Self) -> Self:
+        return type(self)(self._store_dict, read_only=False)
+
 
 class GpuMemoryStore(MemoryStore):
     """A GPU only memory store that stores every chunk in GPU memory irrespective
@@ -236,3 +242,9 @@ class GpuMemoryStore(MemoryStore):
         # Convert to gpu.Buffer
         gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
         await super().set(key, gpu_value, byte_range=byte_range)
+
+    def _as_immutable(self: Self) -> Self:
+        return type(self)(self._store_dict, read_only=True)
+
+    def _as_mutable(self: Self) -> Self:
+        return type(self)(self._store_dict, read_only=False)

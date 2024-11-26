@@ -5,7 +5,7 @@ import threading
 import time
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, BufferPrototype
@@ -269,3 +269,27 @@ class ZipStore(Store):
                     if k not in seen:
                         seen.add(k)
                         yield k
+
+    def _as_immutable(self: Self) -> Self:
+        self.close()
+        new_store = type(self)(
+            self.path,
+            read_only=True,
+            mode="r",
+            compression=self.compression,
+            allowZip64=self.allowZip64,
+        )
+        new_store._sync_open()
+        return new_store
+
+    def _as_mutable(self: Self) -> Self:
+        self.close()
+        new_store = type(self)(
+            self.path,
+            read_only=False,
+            mode="a",
+            compression=self.compression,
+            allowZip64=self.allowZip64,
+        )
+        new_store._sync_open()
+        return new_store
