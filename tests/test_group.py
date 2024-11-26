@@ -1508,7 +1508,11 @@ def test_group_members_performance(store: MemoryStore) -> None:
     group_read = zarr.group(store=latency_store)
 
     # check how long it takes to iterate over the groups
+    # if .members is sensitive to IO latency,
+    # this should take (num_groups * get_latency) seconds
+    # otherwise, it should take only marginally more than get_latency seconds
     start = time.time()
     _ = group_read.members()
     elapsed = time.time() - start
+
     assert elapsed < (1.1 * get_latency) + 0.001
