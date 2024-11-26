@@ -148,3 +148,11 @@ def test_v2_non_contiguous() -> None:
     arr[slice(6, 9, None), slice(3, 6, None)] = a[
         slice(6, 9, None), slice(3, 6, None)
     ]  # The slice on the RHS is important
+
+    a = np.ones((3, 3), order="F")
+    assert a.flags.f_contiguous
+    arr[slice(6, 9, None), slice(3, 6, None)] = a
+
+    a = np.ones((3, 3), order="C")
+    assert a.flags.c_contiguous
+    arr[slice(6, 9, None), slice(3, 6, None)] = a

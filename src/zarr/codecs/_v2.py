@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numcodecs
+import numpy as np
 from numcodecs.compat import ensure_ndarray_like
 
 from zarr.abc.codec import ArrayBytesCodec
@@ -19,10 +20,10 @@ if TYPE_CHECKING:
 
 def ensure_contiguous(arr: NDArrayLike) -> NDArrayLike:
     flags = getattr(arr, "flags", None)
-    if flags is not None and (flags.c_contiguous or flags.f_contiguous):
+    if flags is not None and flags.c_contiguous:
         return arr
     else:
-        return arr.copy()
+        return np.ascontiguousarray(arr)
 
 
 @dataclass(frozen=True)
