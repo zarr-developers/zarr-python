@@ -2601,49 +2601,6 @@ class Group(SyncMixin):
         )
 
 
-async def members_recursive(
-    store: Store,
-    path: str,
-) -> Any:
-    """
-    Recursively fetch all members of a group.
-    """
-    metadata_keys = ("zarr.json",)
-
-    members_flat: tuple[tuple[str, ArrayV3Metadata | GroupMetadata], ...] = ()
-
-    keys = [key async for key in store.list_dir(path)]
-    keys_filtered = tuple(filter(lambda v: v not in metadata_keys, keys))
-    doc_keys = []
-
-    for key in keys_filtered:
-        doc_keys.extend(
-            [f"{path.lstrip('/')}/{key}/{metadata_key}" for metadata_key in metadata_keys]
-        )
-
-    # optimistically fetch extant metadata documents
-    blobs = await asyncio.gather(
-        *(store.get(key, prototype=default_buffer_prototype()) for key in doc_keys)
-    )
-
-    to_recurse = []
-
-    # insert resolved metadata_documents into members_flat
-    for key, blob in zip(doc_keys, blobs, strict=False):
-        key_body = "/".join(key.split("/")[:-1])
-
-        if blob is not None:
-            resolved_metadata = _build_metadata_v3(json.loads(blob.to_bytes()))
-            members_flat += ((key_body, resolved_metadata),)
-            if isinstance(resolved_metadata, GroupMetadata):
-                to_recurse.append(members_recursive(store, key_body))
-
-    subgroups = await asyncio.gather(*to_recurse)
-    members_flat += tuple(subgroup for subgroup in subgroups)
-
-    return members_flat
-
-
 async def _getitem_semaphore(
     node: AsyncGroup, key: str, semaphore: asyncio.Semaphore | None
 ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup:
