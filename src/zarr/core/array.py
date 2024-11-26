@@ -796,7 +796,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             True if the array is read-only
         """
         # Backwards compatibility for 2.x
-        return self.store_path.store.mode.readonly
+        return self.store_path.read_only
 
     @property
     def path(self) -> str:
@@ -810,7 +810,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.store_path.path
 
     @property
-    def name(self) -> str | None:
+    def name(self) -> str:
         """Array name following h5py convention.
 
         Returns
@@ -818,16 +818,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         str
             The name of the array.
         """
-        if self.path:
-            # follow h5py convention: add leading slash
-            name = self.path
-            if name[0] != "/":
-                name = "/" + name
-            return name
-        return None
+        # follow h5py convention: add leading slash
+        name = self.path
+        if not name.startswith("/"):
+            name = "/" + name
+        return name
 
     @property
-    def basename(self) -> str | None:
+    def basename(self) -> str:
         """Final component of name.
 
         Returns
@@ -835,9 +833,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         str
             The basename or final component of the array name.
         """
-        if self.name is not None:
-            return self.name.split("/")[-1]
-        return None
+        return self.name.split("/")[-1]
 
     @property
     def cdata_shape(self) -> ChunkCoords:
@@ -888,6 +884,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         3
         """
         return len(await chunks_initialized(self))
+
+    async def nbytes_stored(self) -> int:
+        return await self.store_path.store.getsize_prefix(self.store_path.path)
 
     def _iter_chunk_coords(
         self, *, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None
@@ -1384,7 +1383,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _zarr_format=self.metadata.zarr_format,
             _shape=self.shape,
             _order=self.order,
-            _read_only=self.store_path.store.mode.readonly,
+            _read_only=self.read_only,
             _store_type=type(self.store_path.store).__name__,
             _count_bytes=self.dtype.itemsize * self.size,
             **kwargs,
@@ -1623,8 +1622,7 @@ class Array:
         return self._async_array.path
 
     @property
-    def name(self) -> str | None:
-        """Array name following h5py convention."""
+    def name(self) -> str:
         return self._async_array.name
 
     @property
@@ -1726,6 +1724,16 @@ class Array:
         3
         """
         return sync(self._async_array.nchunks_initialized())
+
+    def nbytes_stored(self) -> int:
+        """
+        Determine the size, in bytes, of the array actually written to the store.
+
+        Returns
+        -------
+        size : int
+        """
+        return sync(self._async_array.nbytes_stored())
 
     def _iter_chunk_keys(
         self, origin: Sequence[int] | None = None, selection_shape: Sequence[int] | None = None

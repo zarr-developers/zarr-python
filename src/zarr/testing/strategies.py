@@ -6,8 +6,8 @@ import numpy as np
 from hypothesis import given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
+import zarr
 from zarr.core.array import Array
-from zarr.core.group import Group
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 
@@ -138,7 +138,7 @@ def arrays(
     expected_attrs = {} if attributes is None else attributes
 
     array_path = path + ("/" if not path.endswith("/") else "") + name
-    root = Group.from_store(store, zarr_format=zarr_format)
+    root = zarr.open_group(store, mode="w", zarr_format=zarr_format)
 
     a = root.create_array(
         array_path,
@@ -153,6 +153,7 @@ def arrays(
     assert isinstance(a, Array)
     if a.metadata.zarr_format == 3:
         assert a.fill_value is not None
+    assert a.name is not None
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunks == a.chunks
