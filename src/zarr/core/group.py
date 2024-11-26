@@ -692,6 +692,8 @@ class AsyncGroup:
                 metadata = _build_metadata_v2(zarray, zattrs)
                 return _build_node_v2(metadata=metadata, store_path=store_path)
             else:
+                # this is just for mypy
+                assert zgroup is not None
                 metadata = _build_metadata_v2(zgroup, zattrs)
                 return _build_node_v2(metadata=metadata, store_path=store_path)
         else:
@@ -1328,7 +1330,11 @@ class AsyncGroup:
             )
 
             raise ValueError(msg)
-        async for member in _iter_members_deep(self, max_depth=max_depth, skip_keys=skip_keys):
+        # enforce a concurrency limit by passing a semaphore to all the recursive functions
+        semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+        async for member in _iter_members_deep(
+            self, max_depth=max_depth, skip_keys=skip_keys, semaphore=semaphore
+        ):
             yield member
 
     async def keys(self) -> AsyncGenerator[str, None]:
@@ -2638,8 +2644,20 @@ async def members_recursive(
     return members_flat
 
 
+async def _getitem_semaphore(
+    node: AsyncGroup, key: str, semaphore: asyncio.Semaphore | None
+) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup:
+    if semaphore is not None:
+        async with semaphore:
+            return await node.getitem(key)
+    else:
+        return await node.getitem(key)
+
+
 async def iter_members(
-    node: AsyncGroup, skip_keys: tuple[str, ...]
+    node: AsyncGroup,
+    skip_keys: tuple[str, ...],
+    semaphore: asyncio.Semaphore | None,
 ) -> AsyncGenerator[
     tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None
 ]:
@@ -2651,7 +2669,10 @@ async def iter_members(
     keys = [key async for key in node.store.list_dir(node.path)]
     keys_filtered = tuple(filter(lambda v: v not in skip_keys, keys))
 
-    node_tasks = tuple(asyncio.create_task(node.getitem(key), name=key) for key in keys_filtered)
+    node_tasks = tuple(
+        asyncio.create_task(_getitem_semaphore(node, key, semaphore), name=key)
+        for key in keys_filtered
+    )
 
     for fetched_node_coro in asyncio.as_completed(node_tasks):
         try:
@@ -2674,7 +2695,11 @@ async def iter_members(
 
 
 async def _iter_members_deep(
-    group: AsyncGroup, *, max_depth: int | None, skip_keys: tuple[str, ...]
+    group: AsyncGroup,
+    *,
+    max_depth: int | None,
+    skip_keys: tuple[str, ...],
+    semaphore: asyncio.Semaphore | None = None,
 ) -> AsyncGenerator[
     tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup], None
 ]:
@@ -2690,10 +2715,12 @@ async def _iter_members_deep(
         new_depth = None
     else:
         new_depth = max_depth - 1
-    async for name, node in iter_members(group, skip_keys=skip_keys):
+    async for name, node in iter_members(group, skip_keys=skip_keys, semaphore=semaphore):
         yield name, node
         if isinstance(node, AsyncGroup) and do_recursion:
-            to_recurse[name] = _iter_members_deep(node, max_depth=new_depth, skip_keys=skip_keys)
+            to_recurse[name] = _iter_members_deep(
+                node, max_depth=new_depth, skip_keys=skip_keys, semaphore=semaphore
+            )
 
     for prefix, subgroup_iter in to_recurse.items():
         async for name, node in subgroup_iter:
