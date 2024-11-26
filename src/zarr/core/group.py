@@ -2604,6 +2604,12 @@ class Group(SyncMixin):
 async def _getitem_semaphore(
     node: AsyncGroup, key: str, semaphore: asyncio.Semaphore | None
 ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup:
+    """
+    Combine node.getitem with an optional semaphore. If the semaphore parameter is an
+    asyncio.Semaphore instance, then the getitem operation is performed inside an async context
+    manager provided by that semaphore. If the semaphore parameter is None, then getitem is invoked
+    without a context manager.
+    """
     if semaphore is not None:
         async with semaphore:
             return await node.getitem(key)
@@ -2611,7 +2617,7 @@ async def _getitem_semaphore(
         return await node.getitem(key)
 
 
-async def iter_members(
+async def _iter_members(
     node: AsyncGroup,
     skip_keys: tuple[str, ...],
     semaphore: asyncio.Semaphore | None,
@@ -2620,6 +2626,19 @@ async def iter_members(
 ]:
     """
     Iterate over the arrays and groups contained in a group.
+
+    Parameters
+    ----------
+    node : AsyncGroup
+        The group to traverse.
+    skip_keys : tuple[str, ...]
+        A tuple of keys to skip when iterating over the possible members of the group.
+    semaphore : asyncio.Semaphore | None
+        An optional semaphore to use for concurrency control.
+
+    Yields
+    ------
+    tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup]
     """
 
     # retrieve keys from storage
@@ -2663,6 +2682,21 @@ async def _iter_members_deep(
     """
     Iterate over the arrays and groups contained in a group, and optionally the
     arrays and groups contained in those groups.
+
+    Parameters
+    ----------
+    group : AsyncGroup
+        The group to traverse.
+    max_depth : int | None
+        The maximum depth of recursion.
+    skip_keys : tuple[str, ...]
+        A tuple of keys to skip when iterating over the possible members of the group.
+    semaphore : asyncio.Semaphore | None
+        An optional semaphore to use for concurrency control.
+
+    Yields
+    ------
+    tuple[str, AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup]
     """
 
     to_recurse = {}
@@ -2672,7 +2706,7 @@ async def _iter_members_deep(
         new_depth = None
     else:
         new_depth = max_depth - 1
-    async for name, node in iter_members(group, skip_keys=skip_keys, semaphore=semaphore):
+    async for name, node in _iter_members(group, skip_keys=skip_keys, semaphore=semaphore):
         yield name, node
         if isinstance(node, AsyncGroup) and do_recursion:
             to_recurse[name] = _iter_members_deep(
