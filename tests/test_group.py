@@ -1491,7 +1491,7 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_group_members_performance(store: MemoryStore) -> None:
     """
-    Test that the performance of Group.members is robust to asynchronous latency
+    Test that the execution time of Group.members does not scale with asynchronous latency
     """
     get_latency = 0.1
 
@@ -1521,7 +1521,8 @@ def test_group_members_performance(store: MemoryStore) -> None:
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_group_members_concurrency_limit(store: MemoryStore) -> None:
     """
-    Test that the performance of Group.members is robust to asynchronous latency
+    Test that the execution time of Group.members can be constrained by the async concurrency
+    configuration setting.
     """
     get_latency = 0.02
 
