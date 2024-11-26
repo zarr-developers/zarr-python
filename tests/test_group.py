@@ -1488,21 +1488,27 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
         g1["0/0"]
 
 
-@pytest.mark.parametrize('store', ['memory'], indirect=True)
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_group_members_performance(store: MemoryStore) -> None:
     """
     Test that the performance of Group.members is robust to asynchronous latency
     """
     get_latency = 0.1
-    latency_store = LatencyStore(store, get_latency=get_latency)
 
-    group = zarr.group(store=latency_store)
-    num_groups = 100
+    # use the input store to create some groups
+    group_create = zarr.group(store=store)
+    num_groups = 10
+
     # Create some groups
     for i in range(num_groups):
-        group.create_group(f"group{i}")
+        group_create.create_group(f"group{i}")
 
-    start= time.time()
-    members = group.members()
-    elapsed = start = time.time()
-    assert elapsed < 2 * get_latency
+    latency_store = LatencyStore(store, get_latency=get_latency)
+    # create a group with some latency on get operations
+    group_read = zarr.group(store=latency_store)
+
+    # check how long it takes to iterate over the groups
+    start = time.time()
+    _ = group_read.members()
+    elapsed = time.time() - start
+    assert elapsed < (1.1 * get_latency) + 0.001
