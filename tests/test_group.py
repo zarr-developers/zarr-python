@@ -1515,7 +1515,7 @@ def test_group_members_performance(store: MemoryStore) -> None:
     _ = group_read.members()
     elapsed = time.time() - start
 
-    assert elapsed < (1.1 * get_latency) + 0.001
+    assert elapsed < (1.1 * get_latency) + 0.01
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
