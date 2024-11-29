@@ -201,7 +201,7 @@ def test_config_buffer_implementation() -> None:
     # has default value
     assert fully_qualified_name(get_buffer_class()) == config.defaults[0]["buffer"]
 
-    arr = zeros(shape=(100), store=StoreExpectingTestBuffer(mode="w"))
+    arr = zeros(shape=(100), store=StoreExpectingTestBuffer())
 
     # AssertionError of StoreExpectingTestBuffer when not using my buffer
     with pytest.raises(AssertionError):
@@ -219,7 +219,7 @@ def test_config_buffer_implementation() -> None:
     data2d = np.arange(1000).reshape(100, 10)
     arr_sharding = zeros(
         shape=(100, 10),
-        store=StoreExpectingTestBuffer(mode="w"),
+        store=StoreExpectingTestBuffer(),
         codecs=[ShardingCodec(chunk_shape=(10, 10))],
     )
     arr_sharding[:] = data2d
@@ -227,7 +227,7 @@ def test_config_buffer_implementation() -> None:
 
     arr_Crc32c = zeros(
         shape=(100, 10),
-        store=StoreExpectingTestBuffer(mode="w"),
+        store=StoreExpectingTestBuffer(),
         codecs=[BytesCodec(), Crc32cCodec()],
     )
     arr_Crc32c[:] = data2d

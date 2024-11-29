@@ -56,6 +56,7 @@ DefaultT = TypeVar("DefaultT")
 
 
 def parse_zarr_format(data: Any) -> ZarrFormat:
+    """Parse the zarr_format field from metadata."""
     if data in (2, 3):
         return cast(Literal[2, 3], data)
     msg = f"Invalid zarr_format. Expected one of 2 or 3. Got {data}."
@@ -63,6 +64,7 @@ def parse_zarr_format(data: Any) -> ZarrFormat:
 
 
 def parse_node_type(data: Any) -> NodeType:
+    """Parse the node_type field from metadata."""
     if data in ("array", "group"):
         return cast(Literal["array", "group"], data)
     raise MetadataValidationError("node_type", "array or group", data)
@@ -70,6 +72,7 @@ def parse_node_type(data: Any) -> NodeType:
 
 # todo: convert None to empty dict
 def parse_attributes(data: Any) -> dict[str, Any]:
+    """Parse the attributes field from metadata."""
     if data is None:
         return {}
     elif isinstance(data, dict) and all(isinstance(k, str) for k in data):
@@ -89,9 +92,7 @@ def _parse_async_node(node: AsyncGroup) -> Group: ...
 def _parse_async_node(
     node: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup,
 ) -> Array | Group:
-    """
-    Wrap an AsyncArray in an Array, or an AsyncGroup in a Group.
-    """
+    """Wrap an AsyncArray in an Array, or an AsyncGroup in a Group."""
     if isinstance(node, AsyncArray):
         return Array(node)
     elif isinstance(node, AsyncGroup):
@@ -298,6 +299,10 @@ class ConsolidatedMetadata:
 
 @dataclass(frozen=True)
 class GroupMetadata(Metadata):
+    """
+    Metadata for a Group.
+    """
+
     attributes: dict[str, Any] = field(default_factory=dict)
     zarr_format: ZarrFormat = 3
     consolidated_metadata: ConsolidatedMetadata | None = None
@@ -392,6 +397,10 @@ class GroupMetadata(Metadata):
 
 @dataclass(frozen=True)
 class AsyncGroup:
+    """
+    Asynchronous Group object.
+    """
+
     metadata: GroupMetadata
     store_path: StorePath
 
@@ -428,8 +437,7 @@ class AsyncGroup:
         zarr_format: Literal[2, 3, None] = 3,
         use_consolidated: bool | str | None = None,
     ) -> AsyncGroup:
-        """
-        Open a new AsyncGroup
+        """Open a new AsyncGroup
 
         Parameters
         ----------
@@ -608,8 +616,8 @@ class AsyncGroup:
         )
 
     async def setitem(self, key: str, value: Any) -> None:
-        """Fastpath for creating a new array
-
+        """
+        Fastpath for creating a new array
         New arrays will be created with default array settings for the array type.
 
         Parameters
@@ -628,6 +636,18 @@ class AsyncGroup:
         self,
         key: str,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
+        """
+        Get a subarray or subgroup from the group.
+
+        Parameters
+        ----------
+        key : str
+            Array or group name
+
+        Returns
+        -------
+        AsyncArray or AsyncGroup
+        """
         store_path = self.store_path / key
         logger.debug("key=%s, store_path=%s", key, store_path)
 
@@ -733,6 +753,13 @@ class AsyncGroup:
             return AsyncArray(metadata=metadata, store_path=store_path)
 
     async def delitem(self, key: str) -> None:
+        """Delete a group member.
+
+        Parameters
+        ----------
+        key : str
+            Array or group name
+        """
         store_path = self.store_path / key
 
         await store_path.delete_dir()
@@ -866,7 +893,7 @@ class AsyncGroup:
 
         return GroupInfo(
             _name=self.store_path.path,
-            _read_only=self.store_path.store.mode.readonly,
+            _read_only=self.read_only,
             _store_type=type(self.store_path.store).__name__,
             _zarr_format=self.metadata.zarr_format,
             # maybe do a typeddict
@@ -880,7 +907,7 @@ class AsyncGroup:
     @property
     def read_only(self) -> bool:
         # Backwards compatibility for 2.x
-        return self.store_path.store.mode.readonly
+        return self.store_path.read_only
 
     @property
     def synchronizer(self) -> None:
@@ -895,6 +922,21 @@ class AsyncGroup:
         exists_ok: bool = False,
         attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
+        """Create a sub-group.
+
+        Parameters
+        ----------
+        name : str
+            Group name.
+        exists_ok : bool, optional
+            If True, do not raise an error if the group already exists.
+        attributes : dict, optional
+            Group attributes.
+
+        Returns
+        -------
+        g : AsyncGroup
+        """
         attributes = attributes or {}
         return await type(self).from_store(
             self.store_path / name,
@@ -936,7 +978,17 @@ class AsyncGroup:
         return grp
 
     async def require_groups(self, *names: str) -> tuple[AsyncGroup, ...]:
-        """Convenience method to require multiple groups in a single call."""
+        """Convenience method to require multiple groups in a single call.
+
+        Parameters
+        ----------
+        *names : str
+            Group names.
+
+        Returns
+        -------
+        Tuple[AsyncGroup, ...]
+        """
         if not names:
             return ()
         return tuple(await asyncio.gather(*(self.require_group(name) for name in names)))
@@ -1144,6 +1196,17 @@ class AsyncGroup:
         return ds
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
+        """Update group attributes.
+
+        Parameters
+        ----------
+        new_attributes : dict
+            New attributes to set on the group.
+
+        Returns
+        -------
+        self : AsyncGroup
+        """
         # metadata.attributes is "frozen" so we simply clear and update the dict
         self.metadata.attributes.clear()
         self.metadata.attributes.update(new_attributes)
@@ -1160,8 +1223,7 @@ class AsyncGroup:
         self,
         max_depth: int | None = 0,
     ) -> int:
-        """
-        Count the number of members in this group.
+        """Count the number of members in this group.
 
         Parameters
         ----------
@@ -1303,10 +1365,22 @@ class AsyncGroup:
                     yield from obj._members_consolidated(max_depth, current_depth + 1, prefix=key)
 
     async def keys(self) -> AsyncGenerator[str, None]:
+        """Iterate over member names."""
         async for key, _ in self.members():
             yield key
 
     async def contains(self, member: str) -> bool:
+        """Check if a member exists in the group.
+
+        Parameters
+        ----------
+        member : str
+            Member name.
+
+        Returns
+        -------
+        bool
+        """
         # TODO: this can be made more efficient.
         try:
             await self.getitem(member)
@@ -1316,15 +1390,18 @@ class AsyncGroup:
             return True
 
     async def groups(self) -> AsyncGenerator[tuple[str, AsyncGroup], None]:
+        """Iterate over subgroups."""
         async for name, value in self.members():
             if isinstance(value, AsyncGroup):
                 yield name, value
 
     async def group_keys(self) -> AsyncGenerator[str, None]:
+        """Iterate over group names."""
         async for key, _ in self.groups():
             yield key
 
     async def group_values(self) -> AsyncGenerator[AsyncGroup, None]:
+        """Iterate over group values."""
         async for _, group in self.groups():
             yield group
 
@@ -1333,41 +1410,134 @@ class AsyncGroup:
     ) -> AsyncGenerator[
         tuple[str, AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]], None
     ]:
+        """Iterate over arrays."""
         async for key, value in self.members():
             if isinstance(value, AsyncArray):
                 yield key, value
 
     async def array_keys(self) -> AsyncGenerator[str, None]:
+        """Iterate over array names."""
         async for key, _ in self.arrays():
             yield key
 
     async def array_values(
         self,
     ) -> AsyncGenerator[AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata], None]:
+        """Iterate over array values."""
         async for _, array in self.arrays():
             yield array
 
-    async def tree(self, expand: bool = False, level: int | None = None) -> Any:
-        raise NotImplementedError
+    async def tree(self, expand: bool | None = None, level: int | None = None) -> Any:
+        """
+        Return a tree-like representation of a hierarchy.
+
+        This requires the optional ``rich`` dependency.
+
+        Parameters
+        ----------
+        expand : bool, optional
+            This keyword is not yet supported. A NotImplementedError is raised if
+            it's used.
+        level : int, optional
+            The maximum depth below this Group to display in the tree.
+
+        Returns
+        -------
+        TreeRepr
+            A pretty-printable object displaying the hierarchy.
+        """
+        from zarr.core._tree import group_tree_async
+
+        if expand is not None:
+            raise NotImplementedError("'expanded' is not yet implemented.")
+        return await group_tree_async(self, max_depth=level)
 
     async def empty(
         self, *, name: str, shape: ChunkCoords, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create an empty array in this Group.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Notes
+        -----
+        The contents of an empty Zarr array are not defined. On attempting to
+        retrieve data from an empty Zarr array, any values may be returned,
+        and these are not guaranteed to be stable from one access to the next.
+        """
+
         return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def zeros(
         self, *, name: str, shape: ChunkCoords, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create an array, with zero being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.zeros(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def ones(
         self, *, name: str, shape: ChunkCoords, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create an array, with one being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.ones(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        fill_value : scalar
+            Value to fill the array with.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.full(
             shape=shape,
             fill_value=fill_value,
@@ -1379,24 +1549,94 @@ class AsyncGroup:
     async def empty_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create an empty sub-array like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create an empty array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.empty_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def zeros_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create a sub-array of zeros like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.zeros_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def ones_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create a sub-array of ones like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.ones_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def full_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Create a sub-array like `data` filled with the `fill_value` of `data` .
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        AsyncArray
+            The new array.
+        """
         return await async_api.full_like(a=data, store=self.store_path, path=name, **kwargs)
 
     async def move(self, source: str, dest: str) -> None:
+        """Move a sub-group or sub-array from one path to another.
+
+        Notes
+        -----
+        Not implemented
+        """
         raise NotImplementedError
 
 
@@ -1413,6 +1653,28 @@ class Group(SyncMixin):
         zarr_format: ZarrFormat = 3,
         exists_ok: bool = False,
     ) -> Group:
+        """Instantiate a group from an initialized store.
+
+        Parameters
+        ----------
+        store : StoreLike
+            StoreLike containing the Group.
+        attributes : dict, optional
+            A dictionary of JSON-serializable values with user-defined attributes.
+        zarr_format : {2, 3}, optional
+            Zarr storage format version.
+        exists_ok : bool, optional
+            If True, do not raise an error if the group already exists.
+
+        Returns
+        -------
+        Group
+            Group instantiated from the store.
+
+        Raises
+        ------
+        ContainsArrayError, ContainsGroupError, ContainsArrayAndGroupError
+        """
         attributes = attributes or {}
         obj = sync(
             AsyncGroup.from_store(
@@ -1431,10 +1693,50 @@ class Group(SyncMixin):
         store: StoreLike,
         zarr_format: Literal[2, 3, None] = 3,
     ) -> Group:
+        """Open a group from an initialized store.
+
+        Parameters
+        ----------
+        store : StoreLike
+            Store containing the Group.
+        zarr_format : {2, 3, None}, optional
+            Zarr storage format version.
+
+        Returns
+        -------
+        Group
+            Group instantiated from the store.
+        """
         obj = sync(AsyncGroup.open(store, zarr_format=zarr_format))
         return cls(obj)
 
     def __getitem__(self, path: str) -> Array | Group:
+        """Obtain a group member.
+
+        Parameters
+        ----------
+        path : str
+            Group member name.
+
+        Returns
+        -------
+        Array | Group
+            Group member (Array or Group) at the specified key
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = Group.from_store(zarr.storage.MemoryStore()
+        >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+        >>> group.create_group(name="subgroup").create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+        >>> group["subarray"]
+        <Array memory://132270269438272/subarray shape=(10,) dtype=float64>
+        >>> group["subgroup"]
+        <Group memory://132270269438272/subgroup>
+        >>> group["subgroup"]["subarray"]
+        <Array memory://132270269438272/subgroup/subarray shape=(10,) dtype=float64>
+
+        """
         obj = self._sync(self._async_group.getitem(path))
         if isinstance(obj, AsyncArray):
             return Array(obj)
@@ -1455,6 +1757,19 @@ class Group(SyncMixin):
         -------
         object
             Group member (Array or Group) or default if not found.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = Group.from_store(zarr.storage.MemoryStore()
+        >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+        >>> group.create_group(name="subgroup")
+        >>> group.get("subarray")
+        <Array memory://132270269438272/subarray shape=(10,) dtype=float64>
+        >>> group.get("subgroup")
+        <Group memory://132270269438272/subgroup>
+        >>> group.get("nonexistent", None)
+
         """
         try:
             return self[path]
@@ -1462,18 +1777,67 @@ class Group(SyncMixin):
             return default
 
     def __delitem__(self, key: str) -> None:
+        """Delete a group member.
+
+        Parameters
+        ----------
+        key : str
+            Group member name.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = Group.from_store(zarr.storage.MemoryStore()
+        >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+        >>> del group["subarray"]
+        >>> "subarray" in group
+        False
+        """
         self._sync(self._async_group.delitem(key))
 
     def __iter__(self) -> Iterator[str]:
+        """Return an iterator over group member names.
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_array('baz', shape=(10,), chunk_shape=(10,))
+        >>> d2 = g1.create_array('quux', shape=(10,), chunk_shape=(10,))
+        >>> for name in g1:
+        ...     print(name)
+        baz
+        bar
+        foo
+        quux
+        """
         yield from self.keys()
 
     def __len__(self) -> int:
+        """Number of members."""
         return self.nmembers()
 
     def __setitem__(self, key: str, value: Any) -> None:
         """Fastpath for creating a new array.
 
         New arrays will be created using default settings for the array type.
+        If you need to create an array with custom settings, use the `create_array` method.
+
+        Parameters
+        ----------
+        key : str
+            Array name.
+        value : Any
+            Array data.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group["foo"] = zarr.zeros((10,))
+        >>> group["foo"]
+        <Array memory://132270269438272/foo shape=(10,) dtype=float64>
         """
         self._sync(self._async_group.setitem(key, value))
 
@@ -1481,6 +1845,16 @@ class Group(SyncMixin):
         return f"<Group {self.store_path}>"
 
     async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
+        """Update the attributes of this group.
+
+        Example
+        -------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> await group.update_attributes_async({"foo": "bar"})
+        >>> group.attrs.asdict()
+        {'foo': 'bar'}
+        """
         new_metadata = replace(self.metadata, attributes=new_attributes)
 
         # Write new metadata
@@ -1493,10 +1867,12 @@ class Group(SyncMixin):
 
     @property
     def store_path(self) -> StorePath:
+        """Path-like interface for the Store."""
         return self._async_group.store_path
 
     @property
     def metadata(self) -> GroupMetadata:
+        """Group metadata."""
         return self._async_group.metadata
 
     @property
@@ -1516,6 +1892,7 @@ class Group(SyncMixin):
 
     @property
     def attrs(self) -> Attributes:
+        """Attributes of this Group"""
         return Attributes(self)
 
     @property
@@ -1569,10 +1946,34 @@ class Group(SyncMixin):
         return self._async_group.synchronizer
 
     def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
+        """Update the attributes of this group.
+        Example
+        -------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.update_attributes({"foo": "bar"})
+        >>> group.attrs.asdict()
+        {'foo': 'bar'}
+        """
         self._sync(self._async_group.update_attributes(new_attributes))
         return self
 
     def nmembers(self, max_depth: int | None = 0) -> int:
+        """Count the number of members in this group.
+
+        Parameters
+        ----------
+        max_depth : int, default 0
+            The maximum number of levels of the hierarchy to include. By
+            default, (``max_depth=0``) only immediate children are included. Set
+            ``max_depth=None`` to include all nodes, and some positive integer
+            to consider children within that many levels of the root Group.
+
+        Returns
+        -------
+        count : int
+        """
+
         return self._sync(self._async_group.nmembers(max_depth=max_depth))
 
     def members(self, max_depth: int | None = 0) -> tuple[tuple[str, Array | Group], ...]:
@@ -1585,39 +1986,176 @@ class Group(SyncMixin):
         return tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
 
     def keys(self) -> Generator[str, None]:
+        """Return an iterator over group member names.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> g3 = g1.create_group('bar')
+        >>> d1 = g1.create_array('baz', shape=(10,), chunk_shape=(10,))
+        >>> d2 = g1.create_array('quux', shape=(10,), chunk_shape=(10,))
+        >>> for name in g1.keys():
+        ...     print(name)
+        baz
+        bar
+        foo
+        quux
+        """
         yield from self._sync_iter(self._async_group.keys())
 
     def __contains__(self, member: str) -> bool:
+        """Test for group membership.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> g1 = zarr.group()
+        >>> g2 = g1.create_group('foo')
+        >>> d1 = g1.create_array('bar', shape=(10,), chunk_shape=(10,))
+        >>> 'foo' in g1
+        True
+        >>> 'bar' in g1
+        True
+        >>> 'baz' in g1
+        False
+
+        """
         return self._sync(self._async_group.contains(member))
 
     def groups(self) -> Generator[tuple[str, Group], None]:
+        """Return the sub-groups of this group as a generator of (name, group) pairs.
+
+        Example
+        -------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_group("subgroup")
+        >>> for name, subgroup in group.groups():
+        ...     print(name, subgroup)
+        subgroup <Group memory://132270269438272/subgroup>
+        """
         for name, async_group in self._sync_iter(self._async_group.groups()):
             yield name, Group(async_group)
 
     def group_keys(self) -> Generator[str, None]:
+        """Return an iterator over group member names.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_group("subgroup")
+        >>> for name in group.group_keys():
+        ...     print(name)
+        subgroup
+        """
         for name, _ in self.groups():
             yield name
 
     def group_values(self) -> Generator[Group, None]:
+        """Return an iterator over group members.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_group("subgroup")
+        >>> for subgroup in group.group_values():
+        ...     print(subgroup)
+        <Group memory://132270269438272/subgroup>
+        """
         for _, group in self.groups():
             yield group
 
     def arrays(self) -> Generator[tuple[str, Array], None]:
+        """Return the sub-arrays of this group as a generator of (name, array) pairs
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_array("subarray", shape=(10,), chunk_shape=(10,))
+        >>> for name, subarray in group.arrays():
+        ...     print(name, subarray)
+        subarray <Array memory://140198565357056/subarray shape=(10,) dtype=float64>
+        """
         for name, async_array in self._sync_iter(self._async_group.arrays()):
             yield name, Array(async_array)
 
     def array_keys(self) -> Generator[str, None]:
+        """Return an iterator over group member names.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_array("subarray", shape=(10,), chunk_shape=(10,))
+        >>> for name in group.array_keys():
+        ...     print(name)
+        subarray
+        """
+
         for name, _ in self.arrays():
             yield name
 
     def array_values(self) -> Generator[Array, None]:
+        """Return an iterator over group members.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> group.create_array("subarray", shape=(10,), chunk_shape=(10,))
+        >>> for subarray in group.array_values():
+        ...     print(subarray)
+        <Array memory://140198565357056/subarray shape=(10,) dtype=float64>
+        """
         for _, array in self.arrays():
             yield array
 
-    def tree(self, expand: bool = False, level: int | None = None) -> Any:
+    def tree(self, expand: bool | None = None, level: int | None = None) -> Any:
+        """
+        Return a tree-like representation of a hierarchy.
+
+        This requires the optional ``rich`` dependency.
+
+        Parameters
+        ----------
+        expand : bool, optional
+            This keyword is not yet supported. A NotImplementedError is raised if
+            it's used.
+        level : int, optional
+            The maximum depth below this Group to display in the tree.
+
+        Returns
+        -------
+        TreeRepr
+            A pretty-printable object displaying the hierarchy.
+        """
         return self._sync(self._async_group.tree(expand=expand, level=level))
 
     def create_group(self, name: str, **kwargs: Any) -> Group:
+        """Create a sub-group.
+
+        Parameters
+        ----------
+        name : str
+            Name of the new subgroup.
+
+        Returns
+        -------
+        Group
+
+        Examples
+        --------
+        >>> import zarr
+        >>> group = zarr.group()
+        >>> subgroup = group.create_group("subgroup")
+        >>> subgroup
+        <Group memory://132270269438272/subgroup>
+        """
         return Group(self._sync(self._async_group.create_group(name, **kwargs)))
 
     def require_group(self, name: str, **kwargs: Any) -> Group:
@@ -1635,7 +2173,17 @@ class Group(SyncMixin):
         return Group(self._sync(self._async_group.require_group(name, **kwargs)))
 
     def require_groups(self, *names: str) -> tuple[Group, ...]:
-        """Convenience method to require multiple groups in a single call."""
+        """Convenience method to require multiple groups in a single call.
+
+        Parameters
+        ----------
+        *names : str
+            Group names.
+
+        Returns
+        -------
+        groups : tuple of Groups
+        """
         return tuple(map(Group, self._sync(self._async_group.require_groups(*names))))
 
     def create(self, *args: Any, **kwargs: Any) -> Array:
@@ -1671,8 +2219,8 @@ class Group(SyncMixin):
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> Array:
-        """
-        Create a zarr array within this AsyncGroup.
+        """Create a zarr array within this AsyncGroup.
+
         This method lightly wraps AsyncArray.create.
 
         Parameters
@@ -1788,7 +2336,6 @@ class Group(SyncMixin):
     def require_array(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
 
-
         Other `kwargs` are as per :func:`zarr.Group.create_array`.
 
         Parameters
@@ -1806,20 +2353,87 @@ class Group(SyncMixin):
 
     @_deprecate_positional_args
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+        """Create an empty array in this Group.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Notes
+        -----
+        The contents of an empty Zarr array are not defined. On attempting to
+        retrieve data from an empty Zarr array, any values may be returned,
+        and these are not guaranteed to be stable from one access to the next.
+        """
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
     @_deprecate_positional_args
     def zeros(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+        """Create an array, with zero being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(self._sync(self._async_group.zeros(name=name, shape=shape, **kwargs)))
 
     @_deprecate_positional_args
     def ones(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
+        """Create an array, with one being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(self._sync(self._async_group.ones(name=name, shape=shape, **kwargs)))
 
     @_deprecate_positional_args
     def full(
         self, *, name: str, shape: ChunkCoords, fill_value: Any | None, **kwargs: Any
     ) -> Array:
+        """Create an array, with "fill_value" being used as the default value for uninitialized portions of the array.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        shape : int or tuple of int
+            Shape of the empty array.
+        fill_value : scalar
+            Value to fill the array with.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(
             self._sync(
                 self._async_group.full(name=name, shape=shape, fill_value=fill_value, **kwargs)
@@ -1828,21 +2442,92 @@ class Group(SyncMixin):
 
     @_deprecate_positional_args
     def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        """Create an empty sub-array like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create an empty array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 
     @_deprecate_positional_args
     def zeros_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        """Create a sub-array of zeros like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
+
         return Array(self._sync(self._async_group.zeros_like(name=name, data=data, **kwargs)))
 
     @_deprecate_positional_args
     def ones_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        """Create a sub-array of ones like `data`.
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(self._sync(self._async_group.ones_like(name=name, data=data, **kwargs)))
 
     @_deprecate_positional_args
     def full_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
+        """Create a sub-array like `data` filled with the `fill_value` of `data` .
+
+        Parameters
+        ----------
+        name : str
+            Name of the array.
+        data : array-like
+            The array to create the new array like.
+        **kwargs
+            Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+        Returns
+        -------
+        Array
+            The new array.
+        """
         return Array(self._sync(self._async_group.full_like(name=name, data=data, **kwargs)))
 
     def move(self, source: str, dest: str) -> None:
+        """Move a sub-group or sub-array from one path to another.
+
+        Notes
+        -----
+        Not implemented
+        """
         return self._sync(self._async_group.move(source, dest))
 
     @deprecated("Use Group.create_array instead.")
@@ -1875,8 +2560,8 @@ class Group(SyncMixin):
         exists_ok: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> Array:
-        """
-        Create a zarr array within this AsyncGroup.
+        """Create a zarr array within this AsyncGroup.
+
         This method lightly wraps `AsyncArray.create`.
 
         Parameters

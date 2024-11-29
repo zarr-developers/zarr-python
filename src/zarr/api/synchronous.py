@@ -68,7 +68,7 @@ def load(
 def open(
     store: StoreLike | None = None,
     *,
-    mode: AccessModeLiteral | None = None,  # type and value changed
+    mode: AccessModeLiteral = "a",
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -209,8 +209,8 @@ def group(
 @_deprecate_positional_args
 def open_group(
     store: StoreLike | None = None,
-    *,  # Note: this is a change from v2
-    mode: AccessModeLiteral | None = None,  # not used in async api
+    *,
+    mode: AccessModeLiteral = "a",
     cache_attrs: bool | None = None,  # default changed, not used in async api
     synchronizer: Any = None,  # not used in async api
     path: str | None = None,
