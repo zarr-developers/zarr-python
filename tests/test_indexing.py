@@ -11,7 +11,8 @@ import pytest
 from numpy.testing import assert_array_equal
 
 import zarr
-from zarr.core.buffer import BufferPrototype, default_buffer_prototype
+from zarr import Array
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import (
     BasicSelection,
     CoordinateSelection,
@@ -31,14 +32,14 @@ from zarr.storage.memory import MemoryStore
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from zarr.core.array import Array
+    from zarr.core.buffer import BufferPrototype
     from zarr.core.buffer.core import Buffer
     from zarr.core.common import ChunkCoords
 
 
 @pytest.fixture
 async def store() -> AsyncGenerator[StorePath]:
-    return StorePath(await MemoryStore.open(mode="w"))
+    return StorePath(await MemoryStore.open())
 
 
 def zarr_array_from_numpy_array(
@@ -62,7 +63,7 @@ class CountingDict(MemoryStore):
 
     @classmethod
     async def open(cls) -> CountingDict:
-        store = await super().open(mode="w")
+        store = await super().open()
         store.counter = Counter()
         return store
 
@@ -1927,3 +1928,11 @@ def test_indexing_with_zarr_array(store: StorePath) -> None:
 
     assert_array_equal(a[ii], za[zii])
     assert_array_equal(a[ii], za.oindex[zii])
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+@pytest.mark.parametrize("shape", [(0, 2, 3), (0), (3, 0)])
+def test_zero_sized_chunks(store: StorePath, shape: list[int]) -> None:
+    z = Array.create(store=store, shape=shape, chunk_shape=shape, zarr_format=3, dtype="f8")
+    z[...] = 42
+    assert_array_equal(z[...], np.zeros(shape, dtype="f8"))

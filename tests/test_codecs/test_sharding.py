@@ -229,7 +229,7 @@ def test_sharding_partial_overwrite(
     read_data = a[0:10, 0:10, 0:10]
     assert np.array_equal(data, read_data)
 
-    data = data + 10
+    data += 10
     a[:10, :10, :10] = data
     read_data = a[0:10, 0:10, 0:10]
     assert np.array_equal(data, read_data)

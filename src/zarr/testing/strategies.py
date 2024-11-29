@@ -6,8 +6,9 @@ import numpy as np
 from hypothesis import given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
+import zarr
 from zarr.core.array import Array
-from zarr.core.group import Group
+from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 
 # Copied from Xarray
@@ -42,7 +43,7 @@ def v2_dtypes() -> st.SearchStrategy[np.dtype]:
         | npst.complex_number_dtypes(endianness="=")
         | npst.byte_string_dtypes(endianness="=")
         | npst.unicode_string_dtypes(endianness="=")
-        | npst.datetime64_dtypes()
+        | npst.datetime64_dtypes(endianness="=")
         # | npst.timedelta64_dtypes()
     )
 
@@ -62,10 +63,13 @@ array_names = node_names
 attrs = st.none() | st.dictionaries(_attr_keys, _attr_values)
 keys = st.lists(node_names, min_size=1).map("/".join)
 paths = st.just("/") | keys
-stores = st.builds(MemoryStore, st.just({}), mode=st.just("w"))
+# st.builds will only call a new store constructor for different keyword arguments
+# i.e. stores.examples() will always return the same object per Store class.
+# So we map a clear to reset the store.
+stores = st.builds(MemoryStore, st.just({})).map(lambda x: sync(x.clear()))
 compressors = st.sampled_from([None, "default"])
 zarr_formats: st.SearchStrategy[Literal[2, 3]] = st.sampled_from([2, 3])
-array_shapes = npst.array_shapes(max_dims=4)
+array_shapes = npst.array_shapes(max_dims=4, min_side=0)
 
 
 @st.composite  # type: ignore[misc]
@@ -85,7 +89,7 @@ def numpy_arrays(
 @st.composite  # type: ignore[misc]
 def np_array_and_chunks(
     draw: st.DrawFn, *, arrays: st.SearchStrategy[np.ndarray] = numpy_arrays
-) -> tuple[np.ndarray, tuple[int]]:  # type: ignore[type-arg]
+) -> tuple[np.ndarray, tuple[int, ...]]:  # type: ignore[type-arg]
     """A hypothesis strategy to generate small sized random arrays.
 
     Returns: a tuple of the array and a suitable random chunking for it.
@@ -93,9 +97,16 @@ def np_array_and_chunks(
     array = draw(arrays)
     # We want this strategy to shrink towards arrays with smaller number of chunks
     # 1. st.integers() shrinks towards smaller values. So we use that to generate number of chunks
-    numchunks = draw(st.tuples(*[st.integers(min_value=1, max_value=size) for size in array.shape]))
+    numchunks = draw(
+        st.tuples(
+            *[st.integers(min_value=0 if size == 0 else 1, max_value=size) for size in array.shape]
+        )
+    )
     # 2. and now generate the chunks tuple
-    chunks = tuple(size // nchunks for size, nchunks in zip(array.shape, numchunks, strict=True))
+    chunks = tuple(
+        size // nchunks if nchunks > 0 else 0
+        for size, nchunks in zip(array.shape, numchunks, strict=True)
+    )
     return (array, chunks)
 
 
@@ -127,7 +138,7 @@ def arrays(
     expected_attrs = {} if attributes is None else attributes
 
     array_path = path + ("/" if not path.endswith("/") else "") + name
-    root = Group.from_store(store, zarr_format=zarr_format)
+    root = zarr.open_group(store, mode="w", zarr_format=zarr_format)
 
     a = root.create_array(
         array_path,
@@ -142,6 +153,7 @@ def arrays(
     assert isinstance(a, Array)
     if a.metadata.zarr_format == 3:
         assert a.fill_value is not None
+    assert a.name is not None
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunks == a.chunks

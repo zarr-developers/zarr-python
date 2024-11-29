@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 import numpy as np
 import numpy.typing as npt
 
-from zarr.abc.store import Store
 from zarr.core.array import Array, AsyncArray, get_array_metadata
+from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
@@ -23,7 +23,6 @@ from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metada
 from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
     StoreLike,
-    StorePath,
     make_store_path,
 )
 
@@ -31,7 +30,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
-    from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 
     # TODO: this type could use some more thought
@@ -65,6 +63,18 @@ __all__ = [
     "zeros",
     "zeros_like",
 ]
+
+
+_READ_MODES: tuple[AccessModeLiteral, ...] = ("r", "r+", "a")
+_CREATE_MODES: tuple[AccessModeLiteral, ...] = ("a", "w", "w-")
+_OVERWRITE_MODES: tuple[AccessModeLiteral, ...] = ("a", "r+", "w")
+
+
+def _infer_exists_ok(mode: AccessModeLiteral) -> bool:
+    """
+    Check that an ``AccessModeLiteral`` is compatible with overwriting an existing Zarr node.
+    """
+    return mode in _OVERWRITE_MODES
 
 
 def _get_shape_chunks(a: ArrayLike | Any) -> tuple[ChunkCoords | None, ChunkCoords | None]:
@@ -252,7 +262,7 @@ async def load(
 async def open(
     *,
     store: StoreLike | None = None,
-    mode: AccessModeLiteral | None = None,  # type and value changed
+    mode: AccessModeLiteral = "a",
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -290,7 +300,8 @@ async def open(
 
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
-    if "shape" not in kwargs and mode in {"a", "w", "w-"}:
+    # TODO: the mode check below seems wrong!
+    if "shape" not in kwargs and mode in {"a", "r", "r+"}:
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
@@ -300,17 +311,17 @@ async def open(
             is_v3_array = zarr_format == 3 and _metadata_dict.get("node_type") == "array"
             if is_v3_array or zarr_format == 2:
                 return AsyncArray(store_path=store_path, metadata=_metadata_dict)
-        except (AssertionError, FileNotFoundError):
+        except (AssertionError, FileNotFoundError, NodeTypeValidationError):
             pass
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
     try:
-        return await open_array(store=store_path, zarr_format=zarr_format, **kwargs)
+        return await open_array(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
     except (KeyError, NodeTypeValidationError):
         # KeyError for a missing key
         # NodeTypeValidationError for failing to parse node metadata as an array when it's
         # actually a group
-        return await open_group(store=store_path, zarr_format=zarr_format, **kwargs)
+        return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
 
 async def open_consolidated(
@@ -393,15 +404,23 @@ async def save_array(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_version()
     )
+    if not isinstance(arr, NDArrayLike):
+        raise TypeError("arr argument must be numpy or other NDArrayLike array")
 
-    mode = kwargs.pop("mode", None)
+    mode = kwargs.pop("mode", "a")
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+    if np.isscalar(arr):
+        arr = np.array(arr)
+    shape = arr.shape
+    chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
+    exists_ok = kwargs.pop("exists_ok", None) or _infer_exists_ok(mode)
     new = await AsyncArray.create(
         store_path,
         zarr_format=zarr_format,
-        shape=arr.shape,
+        shape=shape,
         dtype=arr.dtype,
-        chunks=arr.shape,
+        chunks=chunks,
+        exists_ok=exists_ok,
         **kwargs,
     )
     await new.setitem(slice(None), arr)
@@ -435,6 +454,9 @@ async def save_group(
     **kwargs
         NumPy arrays with data to save.
     """
+
+    store_path = await make_store_path(store, path=path, mode="w", storage_options=storage_options)
+
     zarr_format = (
         _handle_zarr_version_or_format(
             zarr_version=zarr_version,
@@ -443,26 +465,31 @@ async def save_group(
         or _default_zarr_version()
     )
 
+    for arg in args:
+        if not isinstance(arg, NDArrayLike):
+            raise TypeError(
+                "All arguments must be numpy or other NDArrayLike arrays (except store, path, storage_options, and zarr_format)"
+            )
+    for k, v in kwargs.items():
+        if not isinstance(v, NDArrayLike):
+            raise TypeError(f"Keyword argument '{k}' must be a numpy or other NDArrayLike array")
+
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
     aws = []
     for i, arr in enumerate(args):
+        _path = f"{path}/arr_{i}" if path is not None else f"arr_{i}"
         aws.append(
             save_array(
-                store,
+                store_path,
                 arr,
                 zarr_format=zarr_format,
-                path=f"{path}/arr_{i}",
+                path=_path,
                 storage_options=storage_options,
             )
         )
     for k, arr in kwargs.items():
-        _path = f"{path}/{k}" if path is not None else k
-        aws.append(
-            save_array(
-                store, arr, zarr_format=zarr_format, path=_path, storage_options=storage_options
-            )
-        )
+        aws.append(save_array(store_path, arr, zarr_format=zarr_format, path=k))
     await asyncio.gather(*aws)
 
 
@@ -572,8 +599,11 @@ async def group(
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
-    mode = None if isinstance(store, Store) else cast(AccessModeLiteral, "a")
-
+    mode: AccessModeLiteral
+    if overwrite:
+        mode = "w"
+    else:
+        mode = "r+"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     if chunk_store is not None:
@@ -591,9 +621,10 @@ async def group(
     try:
         return await AsyncGroup.open(store=store_path, zarr_format=zarr_format)
     except (KeyError, FileNotFoundError):
+        _zarr_format = zarr_format or _default_zarr_version()
         return await AsyncGroup.from_store(
             store=store_path,
-            zarr_format=zarr_format or _default_zarr_version(),
+            zarr_format=_zarr_format,
             exists_ok=overwrite,
             attributes=attributes,
         )
@@ -602,7 +633,7 @@ async def group(
 async def open_group(
     store: StoreLike | None = None,
     *,  # Note: this is a change from v2
-    mode: AccessModeLiteral | None = None,
+    mode: AccessModeLiteral = "a",
     cache_attrs: bool | None = None,  # not used, default changed
     synchronizer: Any = None,  # not used
     path: str | None = None,
@@ -693,16 +724,22 @@ async def open_group(
         attributes = {}
 
     try:
-        return await AsyncGroup.open(
-            store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
-        )
+        if mode in _READ_MODES:
+            return await AsyncGroup.open(
+                store_path, zarr_format=zarr_format, use_consolidated=use_consolidated
+            )
     except (KeyError, FileNotFoundError):
+        pass
+    if mode in _CREATE_MODES:
+        exists_ok = _infer_exists_ok(mode)
+        _zarr_format = zarr_format or _default_zarr_version()
         return await AsyncGroup.from_store(
             store_path,
-            zarr_format=zarr_format or _default_zarr_version(),
-            exists_ok=True,
+            zarr_format=_zarr_format,
+            exists_ok=exists_ok,
             attributes=attributes,
         )
+    raise FileNotFoundError(f"Unable to find group: {store_path}")
 
 
 async def create(
@@ -845,6 +882,8 @@ async def create(
         warnings.warn("cache_attrs is not yet implemented", RuntimeWarning, stacklevel=2)
     if object_codec is not None:
         warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
+    if read_only is not None:
+        warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
     if dimension_separator is not None:
         if zarr_format == 3:
             raise ValueError(
@@ -863,11 +902,8 @@ async def create(
 
     mode = kwargs.pop("mode", None)
     if mode is None:
-        if not isinstance(store, Store | StorePath):
-            mode = "a"
-
+        mode = "a"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-
     return await AsyncArray.create(
         store_path,
         shape=shape,
@@ -875,7 +911,7 @@ async def create(
         dtype=dtype,
         compressor=compressor,
         fill_value=fill_value,
-        exists_ok=overwrite,  # TODO: name change
+        exists_ok=overwrite,
         filters=filters,
         dimension_separator=dimension_separator,
         zarr_format=zarr_format,
@@ -1045,7 +1081,7 @@ async def open_array(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Any keyword arguments to pass to the array constructor.
+        Any keyword arguments to pass to ``create``.
 
     Returns
     -------
@@ -1054,18 +1090,20 @@ async def open_array(
     """
 
     mode = kwargs.pop("mode", None)
-    store_path = await make_store_path(store, path=path, mode=mode)
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
     except FileNotFoundError:
-        if store_path.store.mode.create:
+        if not store_path.read_only and mode in _CREATE_MODES:
+            exists_ok = _infer_exists_ok(mode)
+            _zarr_format = zarr_format or _default_zarr_version()
             return await create(
                 store=store_path,
-                zarr_format=zarr_format or _default_zarr_version(),
-                overwrite=store_path.store.mode.overwrite,
+                zarr_format=_zarr_format,
+                overwrite=exists_ok,
                 **kwargs,
             )
         raise

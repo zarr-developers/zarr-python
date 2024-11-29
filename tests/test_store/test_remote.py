@@ -86,10 +86,11 @@ def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
 
 async def test_basic() -> None:
     store = RemoteStore.from_url(
-        f"s3://{test_bucket_name}",
-        mode="w",
+        f"s3://{test_bucket_name}/foo/spam/",
         storage_options={"endpoint_url": endpoint_url, "anon": False},
     )
+    assert store.fs.asynchronous
+    assert store.path == f"{test_bucket_name}/foo/spam"
     assert await _collect_aiterator(store.list()) == ()
     assert not await store.exists("foo")
     data = b"hello"
@@ -109,9 +110,9 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     @pytest.fixture
     def store_kwargs(self, request) -> dict[str, str | bool]:
         fs, path = fsspec.url_to_fs(
-            f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False
+            f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=True
         )
-        return {"fs": fs, "path": path, "mode": "r+"}
+        return {"fs": fs, "path": path}
 
     @pytest.fixture
     def store(self, store_kwargs: dict[str, str | bool]) -> RemoteStore:
@@ -143,9 +144,7 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: RemoteStore) -> None:
         assert store.supports_listing
 
-    async def test_remote_store_from_uri(
-        self, store: RemoteStore, store_kwargs: dict[str, str | bool]
-    ):
+    async def test_remote_store_from_uri(self, store: RemoteStore):
         storage_options = {
             "endpoint_url": endpoint_url,
             "anon": False,
@@ -183,13 +182,35 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         assert dict(group.attrs) == {"key": "value-3"}
 
     def test_from_upath(self) -> None:
-        path = UPath(f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False)
+        path = UPath(
+            f"s3://{test_bucket_name}/foo/bar/",
+            endpoint_url=endpoint_url,
+            anon=False,
+            asynchronous=True,
+        )
         result = RemoteStore.from_upath(path)
         assert result.fs.endpoint_url == endpoint_url
+        assert result.fs.asynchronous
+        assert result.path == f"{test_bucket_name}/foo/bar"
+
+    def test_init_raises_if_path_has_scheme(self, store_kwargs) -> None:
+        # regression test for https://github.com/zarr-developers/zarr-python/issues/2342
+        store_kwargs["path"] = "s3://" + store_kwargs["path"]
+        with pytest.raises(
+            ValueError, match="path argument to RemoteStore must not include scheme .*"
+        ):
+            self.store_cls(**store_kwargs)
+
+    def test_init_warns_if_fs_asynchronous_is_false(self) -> None:
+        fs, path = fsspec.url_to_fs(
+            f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=False
+        )
+        store_kwargs = {"fs": fs, "path": path}
+        with pytest.warns(UserWarning, match=r".* was not created with `asynchronous=True`.*"):
+            self.store_cls(**store_kwargs)
 
     async def test_empty_nonexistent_path(self, store_kwargs) -> None:
         # regression test for https://github.com/zarr-developers/zarr-python/pull/2343
-        store_kwargs["mode"] = "w-"
         store_kwargs["path"] += "/abc"
         store = await self.store_cls.open(**store_kwargs)
-        assert await store.empty()
+        assert await store.is_empty("")

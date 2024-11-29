@@ -16,14 +16,32 @@ concurrency:
 
 jobs:
   test:
-    name: py=${{ matrix.python-version }}, np=${{ matrix.numpy-version }}, deps=${{ matrix.dependency-set }}
+    name: os=${{ matrix.os }}, py=${{ matrix.python-version }}, np=${{ matrix.numpy-version }}, deps=${{ matrix.dependency-set }}
 
-    runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
-        numpy-version: ['1.25', '1.26', '2.0']
+        numpy-version: ['1.25', '2.1']
         dependency-set: ["minimal", "optional"]
+        os: ["ubuntu-latest"]
+        include:
+          - python-version: '3.11'
+            numpy-version: '1.25'
+            dependency-set: 'optional'
+            os: 'macos-latest'
+          - python-version: '3.13'
+            numpy-version: '2.1'
+            dependency-set: 'optional'
+            os: 'macos-latest'
+          - python-version: '3.11'
+            numpy-version: '1.25'
+            dependency-set: 'optional'
+            os: 'windows-latest'
+          - python-version: '3.13'
+            numpy-version: '2.1'
+            dependency-set: 'optional'
+            os: 'windows-latest'
+    runs-on: ${{ matrix.os }}
 
     steps:
     - uses: actions/checkout@v4
