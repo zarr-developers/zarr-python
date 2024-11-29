@@ -1,93 +1,24 @@
 from __future__ import annotations
 
 import json
-import os
-from typing import TYPE_CHECKING
 
 import fsspec
 import pytest
-from botocore.session import Session
 from upath import UPath
 
 import zarr.api.asynchronous
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
-from zarr.core.sync import _collect_aiterator, sync
+from zarr.core.sync import _collect_aiterator
 from zarr.storage import RemoteStore
 from zarr.testing.store import StoreTests
 
-if TYPE_CHECKING:
-    from collections.abc import Generator
-
-    import botocore.client
+from ..conftest import test_bucket_name
 
 
-s3fs = pytest.importorskip("s3fs")
-requests = pytest.importorskip("requests")
-moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
-moto = pytest.importorskip("moto")
-
-# ### amended from s3fs ### #
-test_bucket_name = "test"
-secure_bucket_name = "test-secure"
-port = 5555
-endpoint_url = f"http://127.0.0.1:{port}/"
-
-
-@pytest.fixture(scope="module")
-def s3_base() -> Generator[None, None, None]:
-    # writable local S3 system
-
-    # This fixture is module-scoped, meaning that we can reuse the MotoServer across all tests
-    server = moto_server.ThreadedMotoServer(ip_address="127.0.0.1", port=port)
-    server.start()
-    if "AWS_SECRET_ACCESS_KEY" not in os.environ:
-        os.environ["AWS_SECRET_ACCESS_KEY"] = "foo"
-    if "AWS_ACCESS_KEY_ID" not in os.environ:
-        os.environ["AWS_ACCESS_KEY_ID"] = "foo"
-
-    yield
-    server.stop()
-
-
-def get_boto3_client() -> botocore.client.BaseClient:
-    # NB: we use the sync botocore client for setup
-    session = Session()
-    return session.create_client("s3", endpoint_url=endpoint_url)
-
-
-@pytest.fixture(autouse=True)
-def s3(s3_base: None) -> Generator[s3fs.S3FileSystem, None, None]:
-    """
-    Quoting Martin Durant:
-    pytest-asyncio creates a new event loop for each async test.
-    When an async-mode s3fs instance is made from async, it will be assigned to the loop from
-    which it is made. That means that if you use s3fs again from a subsequent test,
-    you will have the same identical instance, but be running on a different loop - which fails.
-
-    For the rest: it's very convenient to clean up the state of the store between tests,
-    make sure we start off blank each time.
-
-    https://github.com/zarr-developers/zarr-python/pull/1785#discussion_r1634856207
-    """
-    client = get_boto3_client()
-    client.create_bucket(Bucket=test_bucket_name, ACL="public-read")
-    s3fs.S3FileSystem.clear_instance_cache()
-    s3 = s3fs.S3FileSystem(anon=False, client_kwargs={"endpoint_url": endpoint_url})
-    session = sync(s3.set_session())
-    s3.invalidate_cache()
-    yield s3
-    requests.post(f"{endpoint_url}/moto-api/reset")
-    client.close()
-    sync(session.close())
-
-
-# ### end from s3fs ### #
-
-
-async def test_basic() -> None:
+async def test_basic(s3_base) -> None:
     store = RemoteStore.from_url(
         f"s3://{test_bucket_name}/foo/spam/",
-        storage_options={"endpoint_url": endpoint_url, "anon": False},
+        storage_options={"endpoint_url": s3_base, "anon": False},
     )
     assert store.fs.asynchronous
     assert store.path == f"{test_bucket_name}/foo/spam"
@@ -108,9 +39,9 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     buffer_cls = cpu.Buffer
 
     @pytest.fixture
-    def store_kwargs(self, request) -> dict[str, str | bool]:
+    def store_kwargs(self, request, s3_base) -> dict[str, str | bool]:
         fs, path = fsspec.url_to_fs(
-            f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=True
+            f"s3://{test_bucket_name}", endpoint_url=s3_base, anon=False, asynchronous=True
         )
         return {"fs": fs, "path": path}
 
@@ -144,9 +75,9 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: RemoteStore) -> None:
         assert store.supports_listing
 
-    async def test_remote_store_from_uri(self, store: RemoteStore):
+    async def test_remote_store_from_uri(self, store: RemoteStore, s3_base):
         storage_options = {
-            "endpoint_url": endpoint_url,
+            "endpoint_url": s3_base,
             "anon": False,
         }
 
@@ -181,15 +112,15 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         )
         assert dict(group.attrs) == {"key": "value-3"}
 
-    def test_from_upath(self) -> None:
+    def test_from_upath(self, s3_base) -> None:
         path = UPath(
             f"s3://{test_bucket_name}/foo/bar/",
-            endpoint_url=endpoint_url,
+            endpoint_url=s3_base,
             anon=False,
             asynchronous=True,
         )
         result = RemoteStore.from_upath(path)
-        assert result.fs.endpoint_url == endpoint_url
+        assert result.fs.endpoint_url == s3_base
         assert result.fs.asynchronous
         assert result.path == f"{test_bucket_name}/foo/bar"
 
@@ -201,9 +132,9 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         ):
             self.store_cls(**store_kwargs)
 
-    def test_init_warns_if_fs_asynchronous_is_false(self) -> None:
+    def test_init_warns_if_fs_asynchronous_is_false(self, s3_base) -> None:
         fs, path = fsspec.url_to_fs(
-            f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=False
+            f"s3://{test_bucket_name}", endpoint_url=s3_base, anon=False, asynchronous=False
         )
         store_kwargs = {"fs": fs, "path": path}
         with pytest.warns(UserWarning, match=r".* was not created with `asynchronous=True`.*"):

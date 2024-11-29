@@ -52,7 +52,6 @@ __all__ = [
     "ones",
     "ones_like",
     "open",
-    "open_array",
     "open_consolidated",
     "open_group",
     "open_like",
@@ -301,7 +300,7 @@ async def open(
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     # TODO: the mode check below seems wrong!
-    if "shape" not in kwargs and mode in {"a", "r", "r+"}:
+    if "shape" not in kwargs and mode in _READ_MODES:
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
@@ -1093,7 +1092,6 @@ async def open_array(
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
     except FileNotFoundError:

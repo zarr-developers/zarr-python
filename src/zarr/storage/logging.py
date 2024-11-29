@@ -5,7 +5,7 @@ import logging
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 
@@ -233,3 +233,15 @@ class LoggingStore(Store):
     async def getsize_prefix(self, prefix: str) -> int:
         with self.log(prefix):
             return await self._store.getsize_prefix(prefix)
+
+    def _as_immutable(self: Self) -> Self:
+        return type(self)(
+            store=self._store._as_immutable(),
+            log_level=self.log_level,
+            log_handler=self.log_handler,
+        )
+
+    def _as_mutable(self: Self) -> Self:
+        return type(self)(
+            store=self._store._as_mutable(), log_level=self.log_level, log_handler=self.log_handler
+        )

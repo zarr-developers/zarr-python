@@ -804,7 +804,6 @@ class AsyncGroup:
                         ).items()
                     ]
                 )
-
         await asyncio.gather(*awaitables)
 
     @property
@@ -1843,27 +1842,6 @@ class Group(SyncMixin):
 
     def __repr__(self) -> str:
         return f"<Group {self.store_path}>"
-
-    async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
-        """Update the attributes of this group.
-
-        Example
-        -------
-        >>> import zarr
-        >>> group = zarr.group()
-        >>> await group.update_attributes_async({"foo": "bar"})
-        >>> group.attrs.asdict()
-        {'foo': 'bar'}
-        """
-        new_metadata = replace(self.metadata, attributes=new_attributes)
-
-        # Write new metadata
-        to_save = new_metadata.to_buffer_dict(default_buffer_prototype())
-        awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
-        await asyncio.gather(*awaitables)
-
-        async_group = replace(self._async_group, metadata=new_metadata)
-        return replace(self, _async_group=async_group)
 
     @property
     def store_path(self) -> StorePath:

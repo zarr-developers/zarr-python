@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.storage.common import _dereference_path
@@ -338,3 +338,13 @@ class RemoteStore(Store):
         else:
             # fsspec doesn't have typing. We'll need to assume or verify this is true
             return int(size)
+
+    def _as_immutable(self: Self) -> Self:
+        return type(self)(
+            self.fs, read_only=True, path=self.path, allowed_exceptions=self.allowed_exceptions
+        )
+
+    def _as_mutable(self: Self) -> Self:
+        return type(self)(
+            self.fs, read_only=False, path=self.path, allowed_exceptions=self.allowed_exceptions
+        )

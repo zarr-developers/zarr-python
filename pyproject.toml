@@ -61,7 +61,7 @@ test = [
     "msgpack",
     "s3fs",
     "pytest-asyncio",
-    "moto[s3]",
+    "moto[s3, server]",
     "flask-cors",
     "flask",
     "requests",
@@ -198,7 +198,7 @@ dependencies = [
     'pytest',
     'pytest-cov',
     'pytest-asyncio',
-    'moto[s3]',
+    'moto[s3, server]'
 ]
 
 [tool.hatch.envs.upstream.env-vars]
@@ -231,7 +231,7 @@ dependencies = [
     'pytest',
     'pytest-cov',
     'pytest-asyncio',
-    'moto[s3]',
+    'moto[s3, server]',
 ]
 
 [tool.hatch.envs.min_deps.scripts]
