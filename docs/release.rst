@@ -303,6 +303,39 @@ Documentation
 * doc: update release notes for 3.0.0.alpha.
   By :user:`Joe Hamman <jhamman>` :issue:`1959`.
 
+.. _release_2.18.3:
+
+2.18.3
+------
+
+Enhancements
+~~~~~~~~~~~~
+* Added support for creating a copy of data when converting a `zarr.Array`
+  to a numpy array.
+  By :user:`David Stansby <dstansby>` (:issue:`2106`) and 
+  :user:`Joe Hamman <jhamman>` (:issue:`2123`).
+
+Maintenance
+~~~~~~~~~~~
+* Removed support for Python 3.9.
+  By :user:`David Stansby <dstansby>` (:issue:`2074`).
+
+* Fix a regression when using orthogonal indexing with a scalar.
+  By :user:`Deepak Cherian <dcherian>` :issue:`1931`
+
+* Added compatibility with NumPy 2.1.
+  By :user:`David Stansby <dstansby>`
+
+* Bump minimum NumPy version to 1.24.
+  :user:`Joe Hamman <jhamman>` (:issue:`2127`).
+
+Deprecations
+~~~~~~~~~~~~
+
+* Deprecate :class:`zarr.n5.N5Store` and :class:`zarr.n5.N5FSStore`. These
+  stores are slated to be removed in Zarr Python 3.0.
+  By :user:`Joe Hamman <jhamman>` :issue:`2085`.
+
 .. _release_2.18.2:
 
 2.18.2
@@ -1142,7 +1175,7 @@ Documentation
 * Update docs to use ``python -m pytest``.
   By :user:`Ray Bell <raybellwaves>` :issue:`923`.
 
-* Fix versionadded tag in zarr.core.Array docstring.
+* Fix versionadded tag in zarr.Array docstring.
   By :user:`Juan Nunez-Iglesias <jni>` :issue:`852`.
 
 * Doctest seem to be stricter now, updating tostring() to tobytes().
@@ -1896,7 +1929,7 @@ Enhancements
   :user:`John Kirkham <jakirkham>`, :issue:`92`, :issue:`122`.
 
 * **Viewing an array as a different dtype**. The ``Array`` class has a new
-  :func:`zarr.core.Array.astype` method, which is a convenience that enables an
+  :func:`zarr.Array.astype` method, which is a convenience that enables an
   array to be viewed as a different dtype. By :user:`John Kirkham <jakirkham>`,
   :issue:`94`, :issue:`96`.
 

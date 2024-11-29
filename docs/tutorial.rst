@@ -18,7 +18,7 @@ Zarr has several functions for creating arrays. For example::
     >>> import zarr
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z
-    <zarr.core.Array (10000, 10000) int32>
+    <zarr.Array (10000, 10000) int32>
 
 The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
@@ -168,7 +168,7 @@ compression ratio. Zarr arrays provide a ``info`` property which can be used to
 print some diagnostics, e.g.::
 
     >>> z.info
-    Type               : zarr.core.Array
+    Type               : zarr.Array
     Data type          : int32
     Shape              : (10000, 10000)
     Chunk shape        : (1000, 1000)
@@ -260,7 +260,7 @@ Here is an example using a delta filter with the Blosc compressor::
     >>> data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
     >>> z = zarr.array(data, chunks=(1000, 1000), filters=filters, compressor=compressor)
     >>> z.info
-    Type               : zarr.core.Array
+    Type               : zarr.Array
     Data type          : int32
     Shape              : (10000, 10000)
     Chunk shape        : (1000, 1000)
@@ -302,7 +302,7 @@ Groups can also contain arrays, e.g.::
 
     >>> z1 = bar.zeros('baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z1
-    <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
+    <zarr.Array '/foo/bar/baz' (10000, 10000) int32>
 
 Arrays are known as "datasets" in HDF5 terminology. For compatibility with h5py,
 Zarr groups also implement the ``create_dataset()`` and ``require_dataset()``
@@ -310,7 +310,7 @@ methods, e.g.::
 
     >>> z = bar.create_dataset('quux', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z
-    <zarr.core.Array '/foo/bar/quux' (10000, 10000) int32>
+    <zarr.Array '/foo/bar/quux' (10000, 10000) int32>
 
 Members of a group can be accessed via the suffix notation, e.g.::
 
@@ -323,17 +323,17 @@ call, e.g.::
     >>> root['foo/bar']
     <zarr.hierarchy.Group '/foo/bar'>
     >>> root['foo/bar/baz']
-    <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
+    <zarr.Array '/foo/bar/baz' (10000, 10000) int32>
 
 The :func:`zarr.hierarchy.Group.tree` method can be used to print a tree
 representation of the hierarchy, e.g.::
 
     >>> root.tree()
     /
-     └── foo
-         └── bar
-             ├── baz (10000, 10000) int32
-             └── quux (10000, 10000) int32
+    └── foo
+        └── bar
+            ├── baz (10000, 10000) int32
+            └── quux (10000, 10000) int32
 
 The :func:`zarr.convenience.open` function provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with sub-groups stored in
@@ -344,7 +344,7 @@ sub-directories, e.g.::
     <zarr.hierarchy.Group '/'>
     >>> z = root.zeros('foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
     >>> z
-    <zarr.core.Array '/foo/bar/baz' (10000, 10000) int32>
+    <zarr.Array '/foo/bar/baz' (10000, 10000) int32>
 
 Groups can be used as context managers (in a ``with`` statement).
 If the underlying store has a ``close`` method, it will be called on exit.
@@ -388,7 +388,7 @@ property. E.g.::
 
     >>> bar.info
     Name               : /foo/bar
-    Type               : zarr.core.Array
+    Type               : zarr.Array
     Data type          : int64
     Shape              : (1000000,)
     Chunk shape        : (100000,)
@@ -403,7 +403,7 @@ property. E.g.::
 
     >>> baz.info
     Name               : /foo/baz
-    Type               : zarr.core.Array
+    Type               : zarr.Array
     Data type          : float32
     Shape              : (1000, 1000)
     Chunk shape        : (100, 100)
@@ -423,6 +423,12 @@ Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
      └── foo
          ├── bar (1000000,) int64
          └── baz (1000, 1000) float32
+
+
+.. note::
+
+   :func:`zarr.Group.tree` requires the optional `rich <https://rich.readthedocs.io/en/stable/>`_
+   dependency. It can be installed with the ``[tree]`` extra.
 
 If you're using Zarr within a Jupyter notebook (requires
 `ipytree <https://github.com/QuantStack/ipytree>`_), calling ``tree()`` will generate an
@@ -472,7 +478,7 @@ Note that although this functionality is similar to some of the advanced
 indexing capabilities available on NumPy arrays and on h5py datasets, **the Zarr
 API for advanced indexing is different from both NumPy and h5py**, so please
 read this section carefully.  For a complete description of the indexing API,
-see the documentation for the :class:`zarr.core.Array` class.
+see the documentation for the :class:`zarr.Array` class.
 
 Indexing with coordinate arrays
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -774,7 +780,7 @@ the following code::
 
 Any other compatible storage class could be used in place of
 :class:`zarr.storage.DirectoryStore` in the code examples above. For example,
-here is an array stored directly into a Zip file, via the
+here is an array stored directly into a ZIP archive, via the
 :class:`zarr.storage.ZipStore` class::
 
     >>> store = zarr.ZipStore('data/example.zip', mode='w')
@@ -798,12 +804,12 @@ Re-open and check that data have been written::
            [42, 42, 42, ..., 42, 42, 42]], dtype=int32)
     >>> store.close()
 
-Note that there are some limitations on how Zip files can be used, because items
-within a Zip file cannot be updated in place. This means that data in the array
+Note that there are some limitations on how ZIP archives can be used, because items
+within a ZIP archive cannot be updated in place. This means that data in the array
 should only be written once and write operations should be aligned with chunk
 boundaries. Note also that the ``close()`` method must be called after writing
 any data to the store, otherwise essential records will not be written to the
-underlying zip file.
+underlying ZIP archive.
 
 Another storage alternative is the :class:`zarr.storage.DBMStore` class, added
 in Zarr version 2.2. This class allows any DBM-style database to be used for
@@ -846,7 +852,7 @@ respectively require the `redis-py <https://redis-py.readthedocs.io>`_ and
 `pymongo <https://api.mongodb.com/python/current/>`_ packages to be installed.
 
 For compatibility with the `N5 <https://github.com/saalfeldlab/n5>`_ data format, Zarr also provides
-an N5 backend (this is currently an experimental feature). Similar to the zip storage class, an
+an N5 backend (this is currently an experimental feature). Similar to the ZIP storage class, an
 :class:`zarr.n5.N5Store` can be instantiated directly::
 
     >>> store = zarr.N5Store('data/example.n5')
@@ -868,7 +874,7 @@ implementations of the ``MutableMapping`` interface for Amazon S3 (`S3Map
 Distributed File System (`HDFSMap
 <https://hdfs3.readthedocs.io/en/latest/api.html#hdfs3.mapping.HDFSMap>`_) and
 Google Cloud Storage (`GCSMap
-<http://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.mapping.GCSMap>`_), which
+<https://gcsfs.readthedocs.io/en/latest/api.html#gcsfs.core.GCSFileSystem.get_mapper>`_), which
 can be used with Zarr.
 
 Here is an example using S3Map to read an array created previously::
@@ -880,10 +886,10 @@ Here is an example using S3Map to read an array created previously::
     >>> root = zarr.group(store=store)
     >>> z = root['foo/bar/baz']
     >>> z
-    <zarr.core.Array '/foo/bar/baz' (21,) |S1>
+    <zarr.Array '/foo/bar/baz' (21,) |S1>
     >>> z.info
     Name               : /foo/bar/baz
-    Type               : zarr.core.Array
+    Type               : zarr.Array
     Data type          : |S1
     Shape              : (21,)
     Chunk shape        : (7,)
@@ -999,6 +1005,32 @@ separately from Zarr.
 .. _supported by fsspec: https://filesystem-spec.readthedocs.io/en/latest/api.html#built-in-implementations
 
 .. _tutorial_copy:
+
+Accessing ZIP archives on S3
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The built-in :class:`zarr.storage.ZipStore` will only work with paths on the local file-system; however
+it is possible to access ZIP-archived Zarr data on the cloud via the `ZipFileSystem <https://filesystem-spec.readthedocs.io/en/latest/_modules/fsspec/implementations/zip.html>`_
+class from ``fsspec``. The following example demonstrates how to access
+a ZIP-archived Zarr group on s3 using `s3fs <https://s3fs.readthedocs.io/en/latest/>`_ and ``ZipFileSystem``:
+
+    >>> s3_path = "s3://path/to/my.zarr.zip"
+    >>> 
+    >>> s3 = s3fs.S3FileSystem()
+    >>> f = s3.open(s3_path)
+    >>> fs = ZipFileSystem(f, mode="r")
+    >>> store = FSMap("", fs, check=False)
+    >>> 
+    >>> # caching may improve performance when repeatedly reading the same data
+    >>> cache = zarr.storage.LRUStoreCache(store, max_size=2**28)
+    >>> z = zarr.group(store=cache)
+
+This store can also be generated with ``fsspec``'s handler chaining, like so:
+
+    >>> store = zarr.storage.FSStore(url=f"zip::{s3_path}",  mode="r")
+
+This can be especially useful if you have a very large ZIP-archived Zarr array or group on s3
+and only need to access a small portion of it.
 
 Consolidating metadata
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -1136,7 +1168,7 @@ re-compression, and so should be faster. E.g.::
      └── spam (100,) int64
     >>> new_root['foo/bar/baz'][:]
     array([ 0,  1,  2,  ..., 97, 98, 99])
-    >>> store2.close()  # zip stores need to be closed
+    >>> store2.close()  # ZIP stores need to be closed
 
 .. _tutorial_strings:
 
@@ -1150,7 +1182,7 @@ your array, then you can use an array with a fixed-length bytes dtype. E.g.::
 
     >>> z = zarr.zeros(10, dtype='S6')
     >>> z
-    <zarr.core.Array (10,) |S6>
+    <zarr.Array (10,) |S6>
     >>> z[0] = b'Hello'
     >>> z[1] = b'world!'
     >>> z[:]
@@ -1166,7 +1198,7 @@ A fixed-length unicode dtype is also available, e.g.::
     >>> text_data = greetings * 10000
     >>> z = zarr.array(text_data, dtype='U20')
     >>> z
-    <zarr.core.Array (120000,) <U20>
+    <zarr.Array (120000,) <U20>
     >>> z[:]
     array(['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...,
            'Helló, világ!', 'Zdravo svete!', 'เฮลโลเวิลด์'],
@@ -1182,7 +1214,7 @@ E.g. using ``VLenUTF8``::
     >>> import numcodecs
     >>> z = zarr.array(text_data, dtype=object, object_codec=numcodecs.VLenUTF8())
     >>> z
-    <zarr.core.Array (120000,) object>
+    <zarr.Array (120000,) object>
     >>> z.filters
     [VLenUTF8()]
     >>> z[:]
@@ -1194,7 +1226,7 @@ is a short-hand for ``dtype=object, object_codec=numcodecs.VLenUTF8()``, e.g.::
 
     >>> z = zarr.array(text_data, dtype=str)
     >>> z
-    <zarr.core.Array (120000,) object>
+    <zarr.Array (120000,) object>
     >>> z.filters
     [VLenUTF8()]
     >>> z[:]
@@ -1210,7 +1242,7 @@ e.g.::
     >>> bytes_data = [g.encode('utf-8') for g in greetings] * 10000
     >>> z = zarr.array(bytes_data, dtype=bytes)
     >>> z
-    <zarr.core.Array (120000,) object>
+    <zarr.Array (120000,) object>
     >>> z.filters
     [VLenBytes()]
     >>> z[:]
@@ -1225,7 +1257,7 @@ integer. E.g.::
     >>> categorize = numcodecs.Categorize(greetings, dtype=object)
     >>> z = zarr.array(text_data, dtype=object, object_codec=categorize)
     >>> z
-    <zarr.core.Array (120000,) object>
+    <zarr.Array (120000,) object>
     >>> z.filters
     [Categorize(dtype='|O', astype='|u1', labels=['¡Hola mundo!', 'Hej Världen!', 'Servus Woid!', ...])]
     >>> z[:]
@@ -1275,7 +1307,7 @@ and stores the same primitive type (a.k.a. a ragged array), the
 
     >>> z = zarr.empty(4, dtype=object, object_codec=numcodecs.VLenArray(int))
     >>> z
-    <zarr.core.Array (4,) object>
+    <zarr.Array (4,) object>
     >>> z.filters
     [VLenArray(dtype='<i8')]
     >>> z[0] = np.array([1, 3, 5])
@@ -1291,7 +1323,7 @@ primitive dtype such as 'i4' or 'f8'. E.g.::
 
     >>> z = zarr.empty(4, dtype='array:i8')
     >>> z
-    <zarr.core.Array (4,) object>
+    <zarr.Array (4,) object>
     >>> z.filters
     [VLenArray(dtype='<i8')]
     >>> z[0] = np.array([1, 3, 5])
@@ -1367,7 +1399,7 @@ ratios, depending on the correlation structure within the data. E.g.::
     >>> a = np.arange(100000000, dtype='i4').reshape(10000, 10000).T
     >>> c = zarr.array(a, chunks=(1000, 1000))
     >>> c.info
-    Type               : zarr.core.Array
+    Type               : zarr.Array
     Data type          : int32
     Shape              : (10000, 10000)
     Chunk shape        : (1000, 1000)
@@ -1381,7 +1413,7 @@ ratios, depending on the correlation structure within the data. E.g.::
     Chunks initialized : 100/100
     >>> f = zarr.array(a, chunks=(1000, 1000), order='F')
     >>> f.info
-    Type               : zarr.core.Array
+    Type               : zarr.Array
     Data type          : int32
     Shape              : (10000, 10000)
     Chunk shape        : (1000, 1000)
@@ -1549,7 +1581,7 @@ with thread synchronization::
     >>> z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4',
     ...                 synchronizer=zarr.ThreadSynchronizer())
     >>> z
-    <zarr.core.Array (10000, 10000) int32>
+    <zarr.Array (10000, 10000) int32>
 
 This array is safe to read or write within a multi-threaded program.
 
@@ -1563,7 +1595,7 @@ some networked file systems). E.g.::
     ...                     chunks=(1000, 1000), dtype='i4',
     ...                     synchronizer=synchronizer)
     >>> z
-    <zarr.core.Array (10000, 10000) int32>
+    <zarr.Array (10000, 10000) int32>
 
 This array is safe to read or write from multiple processes.
 
@@ -1631,7 +1663,7 @@ arrays, as long as the units are specified. E.g.::
 
     >>> z = zarr.array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='M8[D]')
     >>> z
-    <zarr.core.Array (3,) datetime64[D]>
+    <zarr.Array (3,) datetime64[D]>
     >>> z[:]
     array(['2007-07-13', '2006-01-13', '2010-08-13'], dtype='datetime64[D]')
     >>> z[0]

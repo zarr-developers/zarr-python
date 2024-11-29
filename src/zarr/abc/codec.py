@@ -1,33 +1,49 @@
 from __future__ import annotations
 
 from abc import abstractmethod
-from collections.abc import Awaitable, Callable, Iterable
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-import numpy as np
-
 from zarr.abc.metadata import Metadata
-from zarr.abc.store import ByteGetter, ByteSetter
-from zarr.buffer import Buffer, NDBuffer
-from zarr.chunk_grids import ChunkGrid
-from zarr.common import ChunkCoords, concurrent_map
-from zarr.config import config
+from zarr.core.buffer import Buffer, NDBuffer
+from zarr.core.common import ChunkCoords, concurrent_map
+from zarr.core.config import config
 
 if TYPE_CHECKING:
-    from typing_extensions import Self
+    from collections.abc import Awaitable, Callable, Iterable
+    from typing import Self
 
-    from zarr.array_spec import ArraySpec
-    from zarr.indexing import SelectorTuple
+    import numpy as np
+
+    from zarr.abc.store import ByteGetter, ByteSetter
+    from zarr.core.array_spec import ArraySpec
+    from zarr.core.chunk_grids import ChunkGrid
+    from zarr.core.indexing import SelectorTuple
+
+__all__ = [
+    "ArrayArrayCodec",
+    "ArrayBytesCodec",
+    "ArrayBytesCodecPartialDecodeMixin",
+    "ArrayBytesCodecPartialEncodeMixin",
+    "BaseCodec",
+    "BytesBytesCodec",
+    "CodecInput",
+    "CodecOutput",
+    "CodecPipeline",
+]
 
 CodecInput = TypeVar("CodecInput", bound=NDBuffer | Buffer)
 CodecOutput = TypeVar("CodecOutput", bound=NDBuffer | Buffer)
 
 
-class _Codec(Generic[CodecInput, CodecOutput], Metadata):
+class BaseCodec(Metadata, Generic[CodecInput, CodecOutput]):
     """Generic base class for codecs.
-    Please use ArrayArrayCodec, ArrayBytesCodec or BytesBytesCodec for subclassing.
 
     Codecs can be registered via zarr.codecs.registry.
+
+    Warnings
+    --------
+    This class is not intended to be directly, please use
+    ArrayArrayCodec, ArrayBytesCodec or BytesBytesCodec for subclassing.
     """
 
     is_fixed_size: bool
@@ -69,7 +85,7 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
 
         Parameters
         ----------
-        chunk_spec : ArraySpec
+        array_spec : ArraySpec
 
         Returns
         -------
@@ -83,14 +99,13 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
 
         Parameters
         ----------
-        shape: ChunkCoords
+        shape : ChunkCoords
             The array shape
-        dtype: np.dtype[Any]
+        dtype : np.dtype[Any]
             The array data type
-        chunk_grid: ChunkGrid
+        chunk_grid : ChunkGrid
             The array chunk grid
         """
-        ...
 
     async def _decode_single(self, chunk_data: CodecOutput, chunk_spec: ArraySpec) -> CodecInput:
         raise NotImplementedError
@@ -111,7 +126,7 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         -------
         Iterable[CodecInput | None]
         """
-        return await batching_helper(self._decode_single, chunks_and_specs)
+        return await _batching_helper(self._decode_single, chunks_and_specs)
 
     async def _encode_single(
         self, chunk_data: CodecInput, chunk_spec: ArraySpec
@@ -134,25 +149,19 @@ class _Codec(Generic[CodecInput, CodecOutput], Metadata):
         -------
         Iterable[CodecOutput | None]
         """
-        return await batching_helper(self._encode_single, chunks_and_specs)
+        return await _batching_helper(self._encode_single, chunks_and_specs)
 
 
-class ArrayArrayCodec(_Codec[NDBuffer, NDBuffer]):
+class ArrayArrayCodec(BaseCodec[NDBuffer, NDBuffer]):
     """Base class for array-to-array codecs."""
 
-    ...
 
-
-class ArrayBytesCodec(_Codec[NDBuffer, Buffer]):
+class ArrayBytesCodec(BaseCodec[NDBuffer, Buffer]):
     """Base class for array-to-bytes codecs."""
 
-    ...
 
-
-class BytesBytesCodec(_Codec[Buffer, Buffer]):
+class BytesBytesCodec(BaseCodec[Buffer, Buffer]):
     """Base class for bytes-to-bytes codecs."""
-
-    ...
 
 
 Codec = ArrayArrayCodec | ArrayBytesCodec | BytesBytesCodec
@@ -230,7 +239,7 @@ class ArrayBytesCodecPartialEncodeMixin:
         )
 
 
-class CodecPipeline(Metadata):
+class CodecPipeline:
     """Base class for implementing CodecPipeline.
     A CodecPipeline implements the read and write paths for chunk data.
     On the read path, it is responsible for fetching chunks from a store (via ByteGetter),
@@ -254,12 +263,12 @@ class CodecPipeline(Metadata):
 
     @classmethod
     @abstractmethod
-    def from_list(cls, codecs: list[Codec]) -> Self:
-        """Creates a codec pipeline from a list of codecs.
+    def from_codecs(cls, codecs: Iterable[Codec]) -> Self:
+        """Creates a codec pipeline from an iterable of codecs.
 
         Parameters
         ----------
-        codecs : list[Codec]
+        codecs : Iterable[Codec]
 
         Returns
         -------
@@ -282,11 +291,11 @@ class CodecPipeline(Metadata):
 
         Parameters
         ----------
-        shape: ChunkCoords
+        shape : ChunkCoords
             The array shape
-        dtype: np.dtype[Any]
+        dtype : np.dtype[Any]
             The array data type
-        chunk_grid: ChunkGrid
+        chunk_grid : ChunkGrid
             The array chunk grid
         """
         ...
@@ -298,7 +307,7 @@ class CodecPipeline(Metadata):
 
         Parameters
         ----------
-        input_byte_length : int
+        byte_length : int
         array_spec : ArraySpec
 
         Returns
@@ -317,7 +326,7 @@ class CodecPipeline(Metadata):
 
         Parameters
         ----------
-        chunks_and_specs : Iterable[tuple[Buffer | None, ArraySpec]]
+        chunk_bytes_and_specs : Iterable[tuple[Buffer | None, ArraySpec]]
             Ordered set of encoded chunks with their accompanying chunk spec.
 
         Returns
@@ -336,7 +345,7 @@ class CodecPipeline(Metadata):
 
         Parameters
         ----------
-        chunks_and_specs : Iterable[tuple[NDBuffer | None, ArraySpec]]
+        chunk_arrays_and_specs : Iterable[tuple[NDBuffer | None, ArraySpec]]
             Ordered set of to-be-encoded chunks with their accompanying chunk spec.
 
         Returns
@@ -391,18 +400,18 @@ class CodecPipeline(Metadata):
         ...
 
 
-async def batching_helper(
+async def _batching_helper(
     func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
     batch_info: Iterable[tuple[CodecInput | None, ArraySpec]],
 ) -> list[CodecOutput | None]:
     return await concurrent_map(
         list(batch_info),
-        noop_for_none(func),
+        _noop_for_none(func),
         config.get("async.concurrency"),
     )
 
 
-def noop_for_none(
+def _noop_for_none(
     func: Callable[[CodecInput, ArraySpec], Awaitable[CodecOutput | None]],
 ) -> Callable[[CodecInput | None, ArraySpec], Awaitable[CodecOutput | None]]:
     async def wrap(chunk: CodecInput | None, chunk_spec: ArraySpec) -> CodecOutput | None:
