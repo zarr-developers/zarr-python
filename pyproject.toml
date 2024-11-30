@@ -294,11 +294,7 @@ extend-select = [
     "W",    # pycodestyle warnings
 ]
 ignore = [
-    "ANN101", # deprecated
-    "ANN102", # deprecated
     "ANN401",
-    "PT004",  # deprecated
-    "PT005",  # deprecated
     "PT011",  # TODO: apply this rule
     "PT012",  # TODO: apply this rule
     "RET505",
@@ -306,7 +302,6 @@ ignore = [
     "RUF005",
     "SIM108",
     "TRY003",
-    "UP027",  # deprecated
     "UP038",  # https://github.com/astral-sh/ruff/issues/7871
     # https://docs.astral.sh/ruff/formatter/#conflicting-lint-rules
     "W191",
