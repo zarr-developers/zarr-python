@@ -604,7 +604,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         dtype: npt.DTypeLike,
         chunks: ChunkCoords,
         dimension_separator: Literal[".", "/"] | None = None,
-        fill_value: None | float = None,
+        fill_value: float | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,

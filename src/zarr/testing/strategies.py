@@ -117,7 +117,7 @@ def arrays(
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
     compressors: st.SearchStrategy = compressors,
     stores: st.SearchStrategy[StoreLike] = stores,
-    paths: st.SearchStrategy[None | str] = paths,
+    paths: st.SearchStrategy[str | None] = paths,
     array_names: st.SearchStrategy = array_names,
     arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
