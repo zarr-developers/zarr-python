@@ -2881,6 +2881,14 @@ class Array:
         if hasattr(value, "shape") and len(value.shape) > 1:
             value = np.array(value).reshape(-1)
 
+        if not is_scalar(value, self.dtype) and (
+            isinstance(value, NDArrayLike) and indexer.shape != value.shape
+        ):
+            raise ValueError(
+                f"Attempting to set a selection of {indexer.sel_shape[0]} "
+                f"elements with an array of {value.shape[0]} elements."
+            )
+
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 
     @_deprecate_positional_args
