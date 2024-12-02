@@ -63,6 +63,11 @@ def test_config_defaults_set() -> None:
                 "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                 "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
             },
+            "v2_dtype_kind_to_default_filters_and_compressor": {
+                "biufcmM": ["zstd"],
+                "U": ["vlen-utf8"],
+                "OSV": ["vlen-bytes"],
+            },
         }
     ]
     assert config.get("array.order") == "C"

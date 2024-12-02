@@ -4,7 +4,7 @@ import base64
 from collections.abc import Iterable
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, TypedDict, cast
+from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 
@@ -71,6 +71,14 @@ class ArrayV2Metadata(Metadata):
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
         chunks_parsed = parse_shapelike(chunks)
+        if not filters and not compressor:
+            filters, compressor = _default_filters_and_compressor(dtype_parsed)
+        if dtype is str or dtype == "str":
+            vlen_codec: dict[str, JSON] = {"id": "vlen-utf8"}
+            if filters and not any(x["id"] == "vlen-utf8" for x in filters):
+                filters = list(filters) + [vlen_codec]
+            else:
+                filters = [vlen_codec]
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
@@ -326,3 +334,20 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
         return ""
     else:
         return dtype.type(0)
+
+
+def _default_filters_and_compressor(
+    dtype: np.dtype[Any],
+) -> tuple[list[dict[str, str]], dict[str, str] | None]:
+    """Get the default filters and compressor for a dtype.
+
+    The config contains a mapping from numpy dtype kind to the default compressor.
+    https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
+    """
+    dtype_kind_to_default_compressor = config.get("v2_dtype_kind_to_default_filters_and_compressor")
+    for dtype_kinds, filters_and_compressor in dtype_kind_to_default_compressor.items():
+        if dtype.kind in dtype_kinds:
+            filters = [{"id": f} for f in filters_and_compressor]
+            compressor = None
+            return filters, compressor
+    return [], None
