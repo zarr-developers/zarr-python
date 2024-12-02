@@ -810,7 +810,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return self.store_path.path
 
     @property
-    def name(self) -> str | None:
+    def name(self) -> str:
         """Array name following h5py convention.
 
         Returns
@@ -818,16 +818,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         str
             The name of the array.
         """
-        if self.path:
-            # follow h5py convention: add leading slash
-            name = self.path
-            if name[0] != "/":
-                name = "/" + name
-            return name
-        return None
+        # follow h5py convention: add leading slash
+        name = self.path
+        if not name.startswith("/"):
+            name = "/" + name
+        return name
 
     @property
-    def basename(self) -> str | None:
+    def basename(self) -> str:
         """Final component of name.
 
         Returns
@@ -835,9 +833,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         str
             The basename or final component of the array name.
         """
-        if self.name is not None:
-            return self.name.split("/")[-1]
-        return None
+        return self.name.split("/")[-1]
 
     @property
     def cdata_shape(self) -> ChunkCoords:
@@ -1350,18 +1346,53 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         AsyncArray.info_complete
             All information about a group, including dynamic information
             like the number of bytes and chunks written.
+
+        Examples
+        --------
+
+        >>> arr = await zarr.api.asynchronous.create(
+        ...     path="array", shape=(3, 4, 5), chunks=(2, 2, 2))
+        ... )
+        >>> arr.info
+        Type               : Array
+        Zarr format        : 3
+        Data type          : DataType.float64
+        Shape              : (3, 4, 5)
+        Chunk shape        : (2, 2, 2)
+        Order              : C
+        Read-only          : False
+        Store type         : MemoryStore
+        Codecs             : [{'endian': <Endian.little: 'little'>}]
+        No. bytes          : 480
         """
         return self._info()
 
     async def info_complete(self) -> Any:
-        # TODO: get the size of the object from the store.
-        extra = {
-            "count_chunks_initialized": await self.nchunks_initialized(),
-            # count_bytes_stored isn't yet implemented.
-        }
-        return self._info(extra=extra)
+        """
+        Return all the information for an array, including dynamic information like a storage size.
 
-    def _info(self, extra: dict[str, int] | None = None) -> Any:
+        In addition to the static information, this provides
+
+        - The count of chunks initialized
+        - The sum of the bytes written
+
+        Returns
+        -------
+        ArrayInfo
+
+        See Also
+        --------
+        AsyncArray.info
+            A property giving just the statically known information about an array.
+        """
+        return self._info(
+            await self.nchunks_initialized(),
+            await self.store_path.store.getsize_prefix(self.store_path.path),
+        )
+
+    def _info(
+        self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
+    ) -> Any:
         kwargs: dict[str, Any] = {}
         if self.metadata.zarr_format == 2:
             assert isinstance(self.metadata, ArrayV2Metadata)
@@ -1390,6 +1421,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _read_only=self.read_only,
             _store_type=type(self.store_path.store).__name__,
             _count_bytes=self.dtype.itemsize * self.size,
+            _count_bytes_stored=count_bytes_stored,
+            _count_chunks_initialized=count_chunks_initialized,
             **kwargs,
         )
 
@@ -1626,8 +1659,7 @@ class Array:
         return self._async_array.path
 
     @property
-    def name(self) -> str | None:
-        """Array name following h5py convention."""
+    def name(self) -> str:
         return self._async_array.name
 
     @property
