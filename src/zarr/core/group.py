@@ -434,7 +434,7 @@ class AsyncGroup:
     async def open(
         cls,
         store: StoreLike,
-        zarr_format: Literal[2, 3, None] = 3,
+        zarr_format: Literal[2, 3] | None = 3,
         use_consolidated: bool | str | None = None,
     ) -> AsyncGroup:
         """Open a new AsyncGroup
@@ -1691,7 +1691,7 @@ class Group(SyncMixin):
     def open(
         cls,
         store: StoreLike,
-        zarr_format: Literal[2, 3, None] = 3,
+        zarr_format: Literal[2, 3] | None = 3,
     ) -> Group:
         """Open a group from an initialized store.
 
