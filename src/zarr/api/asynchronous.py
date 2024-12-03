@@ -653,12 +653,12 @@ async def open_group(
         Store or path to directory in file system or name of zip file.
 
         Strings are interpreted as paths on the local file system
-        and used as the ``root`` argument to :class:`zarr.store.LocalStore`.
+        and used as the ``root`` argument to :class:`zarr.storage.LocalStore`.
 
         Dictionaries are used as the ``store_dict`` argument in
-        :class:`zarr.store.MemoryStore``.
+        :class:`zarr.storage.MemoryStore``.
 
-        By default (``store=None``) a new :class:`zarr.store.MemoryStore`
+        By default (``store=None``) a new :class:`zarr.storage.MemoryStore`
         is created.
 
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
