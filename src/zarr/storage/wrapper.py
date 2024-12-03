@@ -20,7 +20,7 @@ class WrapperStore(Store, Generic[T_Store]):
     """
     A store class that wraps an existing ``Store`` instance.
     By default all of the store methods are delegated to the wrapped store instance, which is
-    accessible via the ``._wrapped`` attribute of this class.
+    accessible via the ``._store`` attribute of this class.
 
     Use this class to modify or extend the behavior of the other store classes.
     """
