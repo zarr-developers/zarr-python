@@ -166,6 +166,9 @@ class RemoteStore(Store):
         opts = {"asynchronous": True, **opts}
 
         fs, path = url_to_fs(url, **opts)
+        if not fs.async_impl:
+            from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+            fs = AsyncFileSystemWrapper(fs)
 
         # fsspec is not consistent about removing the scheme from the path, so check and strip it here
         # https://github.com/fsspec/filesystem_spec/issues/1722
