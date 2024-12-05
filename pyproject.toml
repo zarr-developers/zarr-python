@@ -342,6 +342,7 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
+    "zarr.testing.stateful",  # lots of hypothesis decorator errors
     "tests.package_with_entrypoint.*",
     "tests.test_codecs.test_codecs",
     "tests.test_codecs.test_transpose",
