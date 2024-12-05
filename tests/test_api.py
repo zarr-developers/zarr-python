@@ -47,6 +47,14 @@ def test_create_array(memory_store: Store) -> None:
     assert z.shape == (400,)
     assert z.chunks == (40,)
 
+    # create array with float shape
+    with pytest.raises(TypeError):
+        z = create(shape=(400.5, 100), store=store, overwrite=True)
+
+    # create array with float chunk shape
+    with pytest.raises(TypeError):
+        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)
+
 
 @pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
 @pytest.mark.parametrize("node_type", ["array", "group"])
