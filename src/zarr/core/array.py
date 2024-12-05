@@ -461,11 +461,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             raise ValueError("Only one of chunk_shape or chunks can be provided.")
 
         if chunks:
-            chunks = parse_shapelike(chunks)
             _chunks = normalize_chunks(chunks, shape, dtype_parsed.itemsize)
         else:
-            if chunk_shape:
-                chunk_shape = parse_shapelike(chunk_shape)
             _chunks = normalize_chunks(chunk_shape, shape, dtype_parsed.itemsize)
 
         result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
