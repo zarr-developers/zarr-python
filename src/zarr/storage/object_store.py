@@ -40,8 +40,10 @@ class ObjectStore(Store):
 
         return self.store.__eq__(value.store)
 
-    def __init__(self, store: _ObjectStore) -> None:
+    def __init__(self, store: _ObjectStore, *, read_only: bool = False) -> None:
         self.store = store
+
+        super().__init__(read_only=read_only)
 
     def __str__(self) -> str:
         return f"object://{self.store}"
