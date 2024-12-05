@@ -223,7 +223,7 @@ dependencies = [
     'fsspec==2022.10.0',
     's3fs==2022.10.0',
     'universal_pathlib==0.0.22',
-    'typing_extensions==4.6.*',  # 4.5 needed for @deprecated, 4.6 for Buffer
+    'typing_extensions==4.9.*',
     'donfig==0.8.*',
     # test deps
     'hypothesis',
