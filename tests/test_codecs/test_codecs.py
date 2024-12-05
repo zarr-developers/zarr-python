@@ -204,6 +204,26 @@ def test_morton() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "shape",
+    [
+        [2, 2, 2],
+        [5, 2],
+        [2, 5],
+        [2, 9, 2],
+        [3, 2, 12],
+        [2, 5, 1],
+        [4, 3, 6, 2, 7],
+        [3, 2, 1, 6, 4, 5, 2],
+    ],
+)
+def test_morton2(shape) -> None:
+    order = list(morton_order_iter(shape))
+    for i, x in enumerate(order):
+        assert x not in order[:i]  # no duplicates
+        assert all(x[j] < shape[j] for j in range(len(shape)))  # all indices are within bounds
+
+
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_write_partial_chunks(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))

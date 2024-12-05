@@ -1346,8 +1346,15 @@ def decode_morton(z: int, chunk_shape: ChunkCoords) -> ChunkCoords:
 
 
 def morton_order_iter(chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
-    for i in range(product(chunk_shape)):
-        yield decode_morton(i, chunk_shape)
+    i = 0
+    order: list[ChunkCoords] = []
+    while len(order) < product(chunk_shape):
+        m = decode_morton(i, chunk_shape)
+        if m not in order and all(x < y for x, y in zip(m, chunk_shape, strict=False)):
+            order.append(m)
+        i += 1
+    for j in range(product(chunk_shape)):
+        yield order[j]
 
 
 def c_order_iter(chunks_per_shard: ChunkCoords) -> Iterator[ChunkCoords]:
