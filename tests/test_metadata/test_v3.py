@@ -240,8 +240,8 @@ def test_metadata_to_dict(
     chunk_key_encoding: Literal["v2", "default"],
     dimension_separator: Literal[".", "/"] | None,
     dimension_names: Literal["nones", "strings", "missing"],
-    attributes: None | dict[str, Any],
-    storage_transformers: None | tuple[dict[str, JSON]],
+    attributes: dict[str, Any] | None,
+    storage_transformers: tuple[dict[str, JSON]] | None,
 ) -> None:
     shape = (1, 2, 3)
     data_type = DataType.uint8

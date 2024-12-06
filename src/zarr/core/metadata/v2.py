@@ -44,7 +44,7 @@ class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
     chunks: tuple[int, ...]
     dtype: np.dtype[Any]
-    fill_value: None | int | float | str | bytes = 0
+    fill_value: int | float | str | bytes | None = 0
     order: MemoryOrder = "C"
     filters: tuple[numcodecs.abc.Codec, ...] | None = None
     dimension_separator: Literal[".", "/"] = "."
