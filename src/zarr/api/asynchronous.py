@@ -493,8 +493,33 @@ async def save_group(
     await asyncio.gather(*aws)
 
 
-async def tree(*args: Any, **kwargs: Any) -> None:
-    raise NotImplementedError
+async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
+    """Provide a rich display of the hierarchy.
+
+    Parameters
+    ----------
+    grp : Group
+        Zarr or h5py group.
+    expand : bool, optional
+        Only relevant for HTML representation. If True, tree will be fully expanded.
+    level : int, optional
+        Maximum depth to descend into hierarchy.
+
+    Returns
+    -------
+    TreeRepr
+        A pretty-printable object displaying the hierarchy.
+
+    .. deprecated:: 3.0.0
+        `zarr.tree()` is deprecated and will be removed in a future release.
+        Use `group.tree()` instead.
+    """
+    warnings.warn(
+        "zarr.tree() is deprecated and will be removed in a future release. Use group.tree() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return await grp.tree(expand=expand, level=level)
 
 
 async def array(

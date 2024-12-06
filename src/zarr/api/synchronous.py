@@ -155,8 +155,8 @@ def save_group(
     )
 
 
-def tree(*args: Any, **kwargs: Any) -> None:
-    return sync(async_api.tree(*args, **kwargs))
+def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> Any:
+    return sync(async_api.tree(grp._async_group, expand=expand, level=level))
 
 
 # TODO: add type annotations for kwargs
