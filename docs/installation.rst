@@ -6,21 +6,27 @@ Zarr depends on NumPy. It is generally best to `install NumPy
 appropriate for your operating system and Python distribution. Other dependencies should be
 installed automatically if using one of the installation methods below.
 
-Note: Zarr has endorsed `Scientific-Python SPEC 0 <https://scientific-python.org/specs/spec-0000/>`_ and now follows the version support window as outlined below: 
+Note: Zarr has endorsed `Scientific-Python SPEC 0 <https://scientific-python.org/specs/spec-0000/>`_ and now follows the version support window as outlined below:
 
 - Python: 36 months after initial release
 - Core package dependencies (e.g. NumPy): 24 months after initial release
 
-Install Zarr from PyPI::
+Install Zarr from PyPI:
+
+.. code-block:: console
 
     $ pip install zarr
 
-Alternatively, install Zarr via conda::
+Alternatively, install Zarr via conda:
+
+.. code-block:: console
 
     $ conda install -c conda-forge zarr
 
 To install the latest development version of Zarr, you can use pip with the
-latest GitHub main::
+latest GitHub main:
+
+.. code-block:: console
 
     $ pip install git+https://github.com/zarr-developers/zarr-python.git
 
