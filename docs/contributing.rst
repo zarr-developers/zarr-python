@@ -92,12 +92,11 @@ the following::
     $ mkdir -p ~/pyenv/zarr-dev
     $ python -m venv ~/pyenv/zarr-dev
     $ source ~/pyenv/zarr-dev/bin/activate
-    $ pip install -r requirements_dev_minimal.txt -r requirements_dev_numpy.txt
-    $ pip install -e .[docs]
+    $ pip install -e .[test,docs]
 
 To verify that your development environment is working, you can run the unit tests::
 
-    $ python -m pytest -v zarr
+    $ python -m pytest -v tests
 
 Creating a branch
 ~~~~~~~~~~~~~~~~~
@@ -149,7 +148,7 @@ and invoke::
 Some tests require optional dependencies to be installed, otherwise
 the tests will be skipped. To install all optional dependencies, run::
 
-    $ pip install -r requirements_dev_optional.txt
+    $ pip install pytest-doctestplus
 
 To also run the doctests within docstrings (requires optional
 dependencies to be installed), run::
@@ -234,7 +233,7 @@ should run and pass as doctests under Python 3.8. To run doctests,
 activate your development environment, install optional requirements,
 and run::
 
-    $ python -m pytest -v --doctest-plus zarr
+    $ python -m pytest -v --doctest-plus tests
 
 Zarr uses Sphinx for documentation, hosted on readthedocs.org. Documentation is
 written in the RestructuredText markup language (.rst files) in the ``docs`` folder.
