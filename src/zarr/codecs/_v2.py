@@ -44,8 +44,6 @@ class V2Codec(ArrayBytesCodec):
 
         # view as numpy array with correct dtype
         chunk = ensure_ndarray_like(chunk)
-        print(chunk)
-        print(chunk.dtype)
         # special case object dtype, because incorrect handling can lead to
         # segfaults and other bad things happening
         if chunk_spec.dtype != object:
