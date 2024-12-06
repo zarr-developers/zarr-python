@@ -53,9 +53,25 @@ license = {text = "MIT License"}
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
+# User extras
 fsspec = [
     "fsspec>=2023.10.0",
 ]
+jupyter = [
+    'notebook',
+    'ipytree>=0.2.2',
+    'ipywidgets>=8.0.0',
+]
+gpu = [
+    "cupy-cuda12x",
+]
+universal-pathlib = [
+    'universal-pathlib>=0.0.22'
+]
+tree = [
+    'rich',
+]
+# Development extras
 test = [
     "coverage",
     "pytest",
@@ -68,15 +84,7 @@ test = [
     "hypothesis",
     "universal-pathlib",
 ]
-
-jupyter = [
-    'notebook',
-    'ipytree>=0.2.2',
-    'ipywidgets>=8.0.0',
-]
-gpu = [
-    "cupy-cuda12x",
-]
+optional = ["zarr[universal-pathlib, tree]"]
 docs = [
     'sphinx==8.1.3',
     'sphinx-autobuild>=2021.3.14',
@@ -89,16 +97,7 @@ docs = [
     'numcodecs[msgpack]',
     'msgpack',
 ]
-extra = [
-    'msgpack',
-]
-optional = [
-    'universal-pathlib>=0.0.22',
-    'rich'
-]
-tree = [
-    'rich',
-]
+
 
 [project.urls]
 "Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"
