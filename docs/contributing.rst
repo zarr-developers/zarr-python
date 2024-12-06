@@ -1,5 +1,3 @@
-.. _contributing:
-
 Contributing to Zarr
 ====================
 
