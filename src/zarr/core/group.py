@@ -1449,7 +1449,7 @@ class AsyncGroup:
         from zarr.core._tree import group_tree_async
 
         if expand is not None:
-            raise NotImplementedError("'expanded' is not yet implemented.")
+            raise NotImplementedError("'expand' is not yet implemented.")
         return await group_tree_async(self, max_depth=level)
 
     async def empty(

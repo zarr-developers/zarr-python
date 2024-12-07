@@ -294,15 +294,16 @@ def test_load_array(memory_store: Store) -> None:
 
 
 def test_tree() -> None:
+    pytest.importorskip("rich")
     g1 = zarr.group()
     g1.create_group("foo")
     g3 = g1.create_group("bar")
     g3.create_group("baz")
     g5 = g3.create_group("qux")
     g5.create_array("baz", shape=100, chunks=10)
-    # TODO: complete after tree has been reimplemented
-    # assert repr(zarr.tree(g1)) == repr(g1.tree())
-    # assert str(zarr.tree(g1)) == str(g1.tree())
+    with pytest.warns(DeprecationWarning):
+        assert repr(zarr.tree(g1)) == repr(g1.tree())
+        assert str(zarr.tree(g1)) == str(g1.tree())
 
 
 # @pytest.mark.parametrize("stores_from_path", [False, True])
