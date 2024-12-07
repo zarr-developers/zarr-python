@@ -294,6 +294,7 @@ def test_load_array(memory_store: Store) -> None:
 
 
 def test_tree() -> None:
+    pytest.importorskip("rich")
     g1 = zarr.group()
     g1.create_group("foo")
     g3 = g1.create_group("bar")
