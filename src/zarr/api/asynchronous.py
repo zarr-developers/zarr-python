@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
+from typing_extensions import deprecated
 
 from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.buffer import NDArrayLike
@@ -493,6 +494,7 @@ async def save_group(
     await asyncio.gather(*aws)
 
 
+@deprecated("Use AsyncGroup.tree instead.")
 async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
 
@@ -514,11 +516,6 @@ async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = 
         `zarr.tree()` is deprecated and will be removed in a future release.
         Use `group.tree()` instead.
     """
-    warnings.warn(
-        "zarr.tree() is deprecated and will be removed in a future release. Use group.tree() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
     return await grp.tree(expand=expand, level=level)
 
 
