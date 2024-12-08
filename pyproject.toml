@@ -43,6 +43,7 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]!=0.14.0',
+    'pytest-doctestplus',
 ]
 
 [project.urls]

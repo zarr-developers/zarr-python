@@ -2067,7 +2067,7 @@ class DBMStore(Store):
     A different database library can be used by passing a different function to
     the `open` parameter. For example, if the `bsddb3
     <https://www.jcea.es/programacion/pybsddb.htm>`_ package is installed, a
-    Berkeley DB database can be used::
+    Berkeley DB database can be used:
 
     .. doctest-requires:: bsddb3
 
