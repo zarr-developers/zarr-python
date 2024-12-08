@@ -36,6 +36,9 @@ Maintenance
   ``zarr-python`` if you can install it, but to reduce our maintenance
   burden we will no longer run our compatibility tests for it.
   By :user:`David Stansby <dstansby>` (:issue:`2344`).
+* Excluded version 0.14.0 of numcodecs, due to a bug in the implementation of
+  the Delta filter (see https://github.com/zarr-developers/numcodecs/issues/653 for more information).
+  By :user:`David Stansby <dstansby>` (:issue:`2544`).
 
 Deprecations
 ~~~~~~~~~~~~
