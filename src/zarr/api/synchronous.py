@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
+from typing_extensions import deprecated
+
 import zarr.api.asynchronous as async_api
 from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
@@ -155,8 +157,9 @@ def save_group(
     )
 
 
-def tree(*args: Any, **kwargs: Any) -> None:
-    return sync(async_api.tree(*args, **kwargs))
+@deprecated("Use Group.tree instead.")
+def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> Any:
+    return sync(async_api.tree(grp._async_group, expand=expand, level=level))
 
 
 # TODO: add type annotations for kwargs
