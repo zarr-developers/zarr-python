@@ -10,6 +10,7 @@ import pytest
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
+from zarr.core.config import config
 from zarr.core.group import parse_node_type, GroupMetadata
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
@@ -304,17 +305,19 @@ def test_metadata_to_dict(
     assert observed == expected
 
 
-def test_json_indent():
-    m = GroupMetadata()
-    d = m.to_buffer_dict(default_buffer_prototype())["zarr.json"].to_bytes()
-    class TestIndentEncoder(json.JSONEncoder):
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
-            super().__init__(*args, **kwargs)
-            self.indent = 2
+@pytest.mark.parametrize('indent', (2, 4))
+def test_json_indent(indent: int):
+    with config.set({"json_indent": indent}):
+        m = GroupMetadata()
+        d = m.to_buffer_dict(default_buffer_prototype())["zarr.json"].to_bytes()
+        class TestIndentEncoder(json.JSONEncoder):
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                super().__init__(*args, **kwargs)
+                self.indent = indent
 
-    # expected has extra ' ' on each line compared with json.dumps( indent=2)
-    expected = json.dumps(json.loads(d), cls=TestIndentEncoder).encode()
-    assert d == expected
+        # expected has extra ' ' on each line compared with json.dumps( indent=2)
+        expected = json.dumps(json.loads(d), cls=TestIndentEncoder).encode()
+        assert d == expected
 
 
 # @pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
