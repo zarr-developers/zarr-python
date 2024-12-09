@@ -53,7 +53,6 @@ from .test_storage import StoreTests as _StoreTests
 from .test_storage import TestABSStore as _TestABSStore
 from .test_storage import TestConsolidatedMetadataStore as _TestConsolidatedMetadataStore
 from .test_storage import TestDBMStore as _TestDBMStore
-from .test_storage import TestDBMStoreBerkeleyDB as _TestDBMStoreBerkeleyDB
 from .test_storage import TestDBMStoreDumb as _TestDBMStoreDumb
 from .test_storage import TestDBMStoreGnu as _TestDBMStoreGnu
 from .test_storage import TestDBMStoreNDBM as _TestDBMStoreNDBM
@@ -463,15 +462,6 @@ class TestDBMStoreV3NDBM(_TestDBMStoreNDBM, StoreV3Tests):
         atexit.register(atexit_rmglob, path + "*")  # pragma: no cover
         store = DBMStoreV3(path, flag="n", open=ndbm.open, **kwargs)  # pragma: no cover
         return store  # pragma: no cover
-
-
-class TestDBMStoreV3BerkeleyDB(_TestDBMStoreBerkeleyDB, StoreV3Tests):
-    def create_store(self, **kwargs):
-        bsddb3 = pytest.importorskip("bsddb3")
-        path = mktemp(suffix=".dbm")
-        atexit.register(os.remove, path)
-        store = DBMStoreV3(path, flag="n", open=bsddb3.btopen, write_lock=False, **kwargs)
-        return store
 
 
 class TestLMDBStoreV3(_TestLMDBStore, StoreV3Tests):

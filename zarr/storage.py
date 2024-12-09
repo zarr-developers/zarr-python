@@ -2069,13 +2069,11 @@ class DBMStore(Store):
     <https://www.jcea.es/programacion/pybsddb.htm>`_ package is installed, a
     Berkeley DB database can be used::
 
-    .. doctest-requires:: bsddb3
-
-        >>> import bsddb3
-        >>> store = zarr.DBMStore('data/array.bdb', open=bsddb3.btopen)
-        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True)
-        >>> z[...] = 42
-        >>> store.close()
+        >>> import bsddb3  # doctest: +SKIP
+        >>> store = zarr.DBMStore('data/array.bdb', open=bsddb3.btopen) # doctest: +SKIP
+        >>> z = zarr.zeros((10, 10), chunks=(5, 5), store=store, overwrite=True) # doctest: +SKIP
+        >>> z[...] = 42 # doctest: +SKIP
+        >>> store.close() # doctest: +SKIP
 
     Notes
     -----

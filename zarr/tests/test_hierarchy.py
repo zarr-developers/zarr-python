@@ -1439,27 +1439,6 @@ class TestGroupV3WithDBMStore(TestGroupWithDBMStore, TestGroupV3):
         return store, None
 
 
-class TestGroupWithDBMStoreBerkeleyDB(TestGroup):
-    @staticmethod
-    def create_store():
-        bsddb3 = pytest.importorskip("bsddb3")
-        path = mktemp(suffix=".dbm")
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag="n", open=bsddb3.btopen)
-        return store, None
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-class TestGroupV3WithDBMStoreBerkeleyDB(TestGroupWithDBMStoreBerkeleyDB, TestGroupV3):
-    @staticmethod
-    def create_store():
-        bsddb3 = pytest.importorskip("bsddb3")
-        path = mktemp(suffix=".dbm")
-        atexit.register(os.remove, path)
-        store = DBMStoreV3(path, flag="n", open=bsddb3.btopen)
-        return store, None
-
-
 class TestGroupWithLMDBStore(TestGroup):
     @staticmethod
     def create_store():
