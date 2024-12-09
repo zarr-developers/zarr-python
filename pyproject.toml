@@ -11,7 +11,7 @@ maintainers = [{ name = "Alistair Miles", email = "alimanfoo@googlemail.com" }]
 requires-python = ">=3.11"
 dependencies = [
     'asciitree',
-    'numpy>=1.24',
+    'numpy>=1.24,<2.2',
     'fasteners; sys_platform != "emscripten"',
     'numcodecs>=0.10.0,!=0.14.0,!=0.14.1',
 ]
