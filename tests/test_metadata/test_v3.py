@@ -305,7 +305,7 @@ def test_metadata_to_dict(
     assert observed == expected
 
 
-@pytest.mark.parametrize('indent', (2, 4))
+@pytest.mark.parametrize('indent', (2, 4, None))
 def test_json_indent(indent: int):
     with config.set({"json_indent": indent}):
         m = GroupMetadata()
@@ -315,9 +315,13 @@ def test_json_indent(indent: int):
                 super().__init__(*args, **kwargs)
                 self.indent = indent
 
-        # expected has extra ' ' on each line compared with json.dumps( indent=2)
+        # using json.JSONEncoder adds an extra ' ' on each line
+        # compared with json.dumps(json.loads(d), indent=2)...
         expected = json.dumps(json.loads(d), cls=TestIndentEncoder).encode()
         assert d == expected
+        # ...but we can check that None really removes indent.
+        if indent is None:
+            assert d == json.dumps(json.loads(d), indent=indent).encode()
 
 
 # @pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
