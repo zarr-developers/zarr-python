@@ -305,7 +305,7 @@ def test_metadata_to_dict(
     assert observed == expected
 
 
-@pytest.mark.parametrize('indent', (2, 4, None))
+@pytest.mark.parametrize('indent', [2, 4, None])
 def test_json_indent(indent: int):
     with config.set({"json_indent": indent}):
         m = GroupMetadata()
