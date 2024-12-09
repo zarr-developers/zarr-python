@@ -60,12 +60,6 @@ fsspec = [
 gpu = [
     "cupy-cuda12x",
 ]
-universal-pathlib = [
-    'universal-pathlib>=0.0.22'
-]
-tree = [
-    'rich',
-]
 # Development extras
 test = [
     "coverage",
