@@ -3,6 +3,7 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any
 
+from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.storage.common import _dereference_path
 
@@ -166,6 +167,8 @@ class RemoteStore(Store):
         opts = {"asynchronous": True, **opts}
 
         fs, path = url_to_fs(url, **opts)
+        if not fs.async_impl:
+            fs = AsyncFileSystemWrapper(fs)
 
         # fsspec is not consistent about removing the scheme from the path, so check and strip it here
         # https://github.com/fsspec/filesystem_spec/issues/1722
