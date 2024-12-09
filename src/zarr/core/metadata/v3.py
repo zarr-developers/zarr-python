@@ -136,7 +136,7 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
 class V3JsonEncoder(json.JSONEncoder):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.indent = config.get("json_indent")
+        self.indent = kwargs.pop("indent") or config.get("json_indent")
 
     def default(self, o: object) -> Any:
         if isinstance(o, np.dtype):
