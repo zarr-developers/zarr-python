@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import operator
 import pickle
+import time
 import warnings
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -22,6 +23,7 @@ from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage.common import make_store_path
+from zarr.testing.store import LatencyStore
 
 from .conftest import parse_store
 
@@ -208,6 +210,70 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
 
     with pytest.raises(ValueError, match="max_depth"):
         members_observed = group.members(max_depth=-1)
+
+
+def test_group_members_2(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    Test that `Group.members` returns correct values, i.e. the arrays and groups
+    (explicit and implicit) contained in that group.
+    """
+    # group/
+    #   subgroup/
+    #     subsubgroup/
+    #       subsubsubgroup
+    #   subarray
+
+    path = "group"
+    group = Group.from_store(
+        store=store,
+        zarr_format=zarr_format,
+    )
+    members_expected: dict[str, Array | Group] = {}
+
+    members_expected["subgroup"] = group.create_group("subgroup")
+    # make a sub-sub-subgroup, to ensure that the children calculation doesn't go
+    # too deep in the hierarchy
+    subsubgroup = members_expected["subgroup"].create_group("subsubgroup")
+    _ = subsubgroup.create_group("subsubsubgroup")
+
+    members_expected["subarray"] = group.create_array(
+        "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
+    )
+
+    # add an extra object to the domain of the group.
+    # the list of children should ignore this object.
+    sync(
+        store.set(
+            f"{path}/extra_object-1",
+            default_buffer_prototype().buffer.from_bytes(b"000000"),
+        )
+    )
+    # add an extra object under a directory-like prefix in the domain of the group.
+    # this creates a directory with a random key in it
+    # this should not show up as a member
+    sync(
+        store.set(
+            f"{path}/extra_directory/extra_object-2",
+            default_buffer_prototype().buffer.from_bytes(b"000000"),
+        )
+    )
+
+    # this warning shows up when extra objects show up in the hierarchy
+    warn_context = pytest.warns(
+        UserWarning, match=r"Object at .* is not recognized as a component of a Zarr hierarchy."
+    )
+
+    with warn_context:
+        members_observed = group.members()
+    # members are not guaranteed to be ordered, so sort before comparing
+    assert sorted(dict(members_observed)) == sorted(members_expected)
+
+    # partial
+    with warn_context:
+        members_observed = group.members(max_depth=1)
+    members_expected["subgroup/subsubgroup"] = subsubgroup
+    # members are not guaranteed to be ordered, so sort before comparing
+    assert sorted(dict(members_observed)) == sorted(members_expected)
 
 
 def test_group(store: Store, zarr_format: ZarrFormat) -> None:
@@ -1420,3 +1486,67 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
     del g1["0"]
     with pytest.raises(KeyError):
         g1["0/0"]
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_group_members_performance(store: MemoryStore) -> None:
+    """
+    Test that the execution time of Group.members does not scale with asynchronous latency
+    """
+    get_latency = 0.1
+
+    # use the input store to create some groups
+    group_create = zarr.group(store=store)
+    num_groups = 10
+
+    # Create some groups
+    for i in range(num_groups):
+        group_create.create_group(f"group{i}")
+
+    latency_store = LatencyStore(store, get_latency=get_latency)
+    # create a group with some latency on get operations
+    group_read = zarr.group(store=latency_store)
+
+    # check how long it takes to iterate over the groups
+    # if .members is sensitive to IO latency,
+    # this should take (num_groups * get_latency) seconds
+    # otherwise, it should take only marginally more than get_latency seconds
+    start = time.time()
+    _ = group_read.members()
+    elapsed = time.time() - start
+
+    assert elapsed < (1.1 * get_latency) + 0.01
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_group_members_concurrency_limit(store: MemoryStore) -> None:
+    """
+    Test that the execution time of Group.members can be constrained by the async concurrency
+    configuration setting.
+    """
+    get_latency = 0.02
+
+    # use the input store to create some groups
+    group_create = zarr.group(store=store)
+    num_groups = 10
+
+    # Create some groups
+    for i in range(num_groups):
+        group_create.create_group(f"group{i}")
+
+    latency_store = LatencyStore(store, get_latency=get_latency)
+    # create a group with some latency on get operations
+    group_read = zarr.group(store=latency_store)
+
+    # check how long it takes to iterate over the groups
+    # if .members is sensitive to IO latency,
+    # this should take (num_groups * get_latency) seconds
+    # otherwise, it should take only marginally more than get_latency seconds
+    from zarr.core.config import config
+
+    with config.set({"async.concurrency": 1}):
+        start = time.time()
+        _ = group_read.members()
+        elapsed = time.time() - start
+
+        assert elapsed > num_groups * get_latency
