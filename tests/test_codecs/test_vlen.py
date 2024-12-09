@@ -25,7 +25,7 @@ else:
 @pytest.mark.parametrize("as_object_array", [False, True])
 @pytest.mark.parametrize("codecs", [None, [VLenUTF8Codec()], [VLenUTF8Codec(), ZstdCodec()]])
 def test_vlen_string(
-    store: Store, dtype: None | np.dtype[Any], as_object_array: bool, codecs: None | list[Codec]
+    store: Store, dtype: np.dtype[Any] | None, as_object_array: bool, codecs: list[Codec] | None
 ) -> None:
     strings = ["hello", "world", "this", "is", "a", "test"]
     data = np.array(strings, dtype=dtype).reshape((2, 3))
@@ -62,7 +62,7 @@ def test_vlen_string(
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=["store"])
 @pytest.mark.parametrize("as_object_array", [False, True])
 @pytest.mark.parametrize("codecs", [None, [VLenBytesCodec()], [VLenBytesCodec(), ZstdCodec()]])
-def test_vlen_bytes(store: Store, as_object_array: bool, codecs: None | list[Codec]) -> None:
+def test_vlen_bytes(store: Store, as_object_array: bool, codecs: list[Codec] | None) -> None:
     bstrings = [b"hello", b"world", b"this", b"is", b"a", b"test"]
     data = np.array(bstrings).reshape((2, 3))
     assert data.dtype == "|S5"

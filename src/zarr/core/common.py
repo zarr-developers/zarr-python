@@ -36,7 +36,7 @@ ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
-JSON = None | str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...]
+JSON = str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 

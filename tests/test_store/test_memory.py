@@ -21,14 +21,14 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     @pytest.fixture(params=[None, True])
     def store_kwargs(
         self, request: pytest.FixtureRequest
-    ) -> dict[str, str | None | dict[str, Buffer]]:
+    ) -> dict[str, str | dict[str, Buffer] | None]:
         kwargs = {"store_dict": None}
         if request.param is True:
             kwargs["store_dict"] = {}
         return kwargs
 
     @pytest.fixture
-    def store(self, store_kwargs: str | None | dict[str, Buffer]) -> MemoryStore:
+    def store(self, store_kwargs: str | dict[str, Buffer] | None) -> MemoryStore:
         return self.store_cls(**store_kwargs)
 
     def test_store_repr(self, store: MemoryStore) -> None:
@@ -61,14 +61,14 @@ class TestGpuMemoryStore(StoreTests[GpuMemoryStore, gpu.Buffer]):
     @pytest.fixture(params=[None, True])
     def store_kwargs(
         self, request: pytest.FixtureRequest
-    ) -> dict[str, str | None | dict[str, Buffer]]:
+    ) -> dict[str, str | dict[str, Buffer] | None]:
         kwargs = {"store_dict": None}
         if request.param is True:
             kwargs["store_dict"] = {}
         return kwargs
 
     @pytest.fixture
-    def store(self, store_kwargs: str | None | dict[str, gpu.Buffer]) -> GpuMemoryStore:
+    def store(self, store_kwargs: str | dict[str, gpu.Buffer] | None) -> GpuMemoryStore:
         return self.store_cls(**store_kwargs)
 
     def test_store_repr(self, store: GpuMemoryStore) -> None:
