@@ -1,5 +1,4 @@
 import atexit
-import os
 import sys
 import pickle
 import shutil
@@ -75,7 +74,6 @@ from zarr.tests.test_storage_v3 import DummyStorageTransfomer
 from zarr.util import buffer_size
 from zarr.tests.util import (
     abs_container,
-    have_bsddb3,
     have_fsspec,
     have_lmdb,
     have_sqlite3,
@@ -2046,20 +2044,6 @@ class TestArrayWithDBMStore(TestArray):
         pass  # not implemented
 
 
-@pytest.mark.skipif(have_bsddb3 is False, reason="needs bsddb3")
-class TestArrayWithDBMStoreBerkeleyDB(TestArray):
-    def create_store(self):
-        import bsddb3
-
-        path = mktemp(suffix=".dbm")
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag="n", open=bsddb3.btopen)
-        return store
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
-
-
 @pytest.mark.skipif(have_lmdb is False, reason="needs lmdb")
 class TestArrayWithLMDBStore(TestArray):
     def create_store(self):
@@ -2761,21 +2745,6 @@ class TestArrayWithDBMStoreV3(TestArrayV3):
         path = mktemp(suffix=".anydbm")
         atexit.register(atexit_rmglob, path + "*")
         store = DBMStoreV3(path, flag="n")
-        return store
-
-    def test_nbytes_stored(self):
-        pass  # not implemented
-
-
-@pytest.mark.skipif(not v3_api_available, reason="V3 is disabled")
-@pytest.mark.skipif(have_bsddb3 is False, reason="needs bsddb3")
-class TestArrayWithDBMStoreV3BerkeleyDB(TestArrayV3):
-    def create_store(self) -> DBMStoreV3:
-        import bsddb3
-
-        path = mktemp(suffix=".dbm")
-        atexit.register(os.remove, path)
-        store = DBMStoreV3(path, flag="n", open=bsddb3.btopen)
         return store
 
     def test_nbytes_stored(self):

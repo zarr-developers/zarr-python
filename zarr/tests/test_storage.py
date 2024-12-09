@@ -1932,15 +1932,6 @@ class TestDBMStoreNDBM(TestDBMStore):
         return store  # pragma: no cover
 
 
-class TestDBMStoreBerkeleyDB(TestDBMStore):
-    def create_store(self, **kwargs):
-        bsddb3 = pytest.importorskip("bsddb3")
-        path = mktemp(suffix=".dbm")
-        atexit.register(os.remove, path)
-        store = DBMStore(path, flag="n", open=bsddb3.btopen, write_lock=False, **kwargs)
-        return store
-
-
 class TestLMDBStore(StoreTests):
     def create_store(self, **kwargs):
         pytest.importorskip("lmdb")
