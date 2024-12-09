@@ -73,7 +73,7 @@ test = [
     "hypothesis",
     "universal-pathlib",
 ]
-optional = ["zarr[universal-pathlib, tree]"]
+optional = ["rich", "universal-pathlib"]
 docs = [
     'sphinx==8.1.3',
     'sphinx-autobuild>=2021.3.14',
