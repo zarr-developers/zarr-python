@@ -100,7 +100,7 @@ async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> As
         store,
         attributes=param.attributes,
         zarr_format=param.zarr_format,
-        exists_ok=False,
+        overwrite=False,
     )
 
 
