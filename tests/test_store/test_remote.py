@@ -4,10 +4,8 @@ import json
 import os
 from typing import TYPE_CHECKING
 
-import fsspec
 import pytest
 from botocore.session import Session
-from upath import UPath
 
 import zarr.api.asynchronous
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
@@ -21,6 +19,7 @@ if TYPE_CHECKING:
     import botocore.client
 
 
+fsspec = pytest.importorskip("fsspec")
 s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
 moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
@@ -182,7 +181,8 @@ class TestRemoteStoreS3(StoreTests[RemoteStore, cpu.Buffer]):
         assert dict(group.attrs) == {"key": "value-3"}
 
     def test_from_upath(self) -> None:
-        path = UPath(
+        upath = pytest.importorskip("upath")
+        path = upath.UPath(
             f"s3://{test_bucket_name}/foo/bar/",
             endpoint_url=endpoint_url,
             anon=False,
