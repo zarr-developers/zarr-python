@@ -977,6 +977,7 @@ async def create_array(
         if dimension_names is not None:
             raise ValueError("Zarr v2 arrays do not support dimension names.")
         return await AsyncArray._create_v2(
+            store_path=store_path,
             shape=shape,
             dtype=dtype,
             chunks=chunk_shape,
@@ -1006,7 +1007,7 @@ async def create_array(
             codecs = sub_codecs
 
         return await AsyncArray._create_v3(
-            store=store_path,
+            store_path=store_path,
             shape=shape,
             dtype=dtype,
             fill_value=fill_value,

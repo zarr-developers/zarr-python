@@ -154,7 +154,7 @@ def _auto_partition(
     chunk_shape: tuple[int, ...] | Literal["auto"],
 ) -> tuple[tuple[int, ...] | None, tuple[int, ...]]:
     """
-    Automatically determine the shard shape and chunk shape for a new array, given the shape and dtype of the array.
+    Automatically determine the shard shape and chunk shape for an array, given the shape and dtype of the array.
     If `shard_shape` is `None` and the chunk_shape is "auto", the chunks will be set heuristically based
     on the dtype and shape of the array.
     If `shard_shape` is "auto", then the shard shape will be set heuristically from the dtype and shape
