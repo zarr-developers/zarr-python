@@ -10,6 +10,7 @@ import numpy.typing as npt
 
 from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.buffer import NDArrayLike
+from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
@@ -895,67 +896,32 @@ async def read_group(
 async def create_array(
     store: str | StoreLike,
     *,
-    shape: ChunkCoords,
-    chunks: ChunkCoords | None = None,  # TODO: v2 allowed chunks=True
-    dtype: npt.DTypeLike | None = None,
-    compressor: dict[str, JSON] | None = None,  # TODO: default and type change
-    fill_value: Any | None = 0,  # TODO: need type
-    order: MemoryOrder | None = None,
-    overwrite: bool = False,
     path: PathLike | None = None,
-    filters: list[dict[str, JSON]] | None = None,  # TODO: type has changed
-    dimension_separator: Literal[".", "/"] | None = None,
-    zarr_format: ZarrFormat | None = None,
+    shape: ChunkCoords,
+    dtype: npt.DTypeLike,
+    shard_shape: ChunkCoords | None | Literal["auto"] = "auto",
+    chunk_shape: ChunkCoords | Literal["auto"] = "auto",
+    filters: Iterable[dict[str, JSON] | Codec] = (),
+    compressors: Iterable[dict[str, JSON] | Codec] = (),
+    fill_value: Any | None = 0,
+    order: MemoryOrder | None = "C",
+    zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
-    # v3 only
-    chunk_shape: ChunkCoords | None = None,
     chunk_key_encoding: (
         ChunkKeyEncoding
         | tuple[Literal["default"], Literal[".", "/"]]
         | tuple[Literal["v2"], Literal[".", "/"]]
         | None
-    ) = None,
-    codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+    ) = ("default", "/"),
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
-    **kwargs: Any,
+    overwrite: bool = False,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array.
 
     Parameters
     ----------
-    shape : int or tuple of ints
-        Array shape.
-    chunks : int or tuple of ints, optional
-        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
-        False, will be set to `shape`, i.e., single chunk for the whole array.
-        If an int, the chunk size in each dimension will be given by the value
-        of `chunks`. Default is True.
-    dtype : str or dtype, optional
-        NumPy dtype.
-    compressor : Codec, optional
-        Primary compressor.
-    fill_value : object
-        Default value to use for uninitialized portions of the array.
-    order : {'C', 'F'}, optional
-        Memory layout to be used within each chunk.
-        Default is set in Zarr's config (`array.order`).
-    store : Store or str
-        Store or path to directory in file system or name of zip file.
-    overwrite : bool, optional
-        If True, delete all pre-existing data in `store` at `path` before
-        creating the array.
-    path : str, optional
-        Path under which array is stored.
-    filters : sequence of Codecs, optional
-        Sequence of filters to use to encode chunk data prior to compression.
-    dimension_separator : {'.', '/'}, optional
-        Separator placed between the dimensions of a chunk.
-    zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving.
-    storage_options : dict
-        If using an fsspec URL to create the store, these will be passed to
-        the backend implementation. Ignored otherwise.
+
 
     Returns
     -------
@@ -966,51 +932,70 @@ async def create_array(
     if zarr_format is None:
         zarr_format = _default_zarr_version()
 
-    if zarr_format == 2 and chunks is None:
-        chunks = shape
-    elif zarr_format == 3 and chunk_shape is None:
-        if chunks is not None:
-            chunk_shape = chunks
-            chunks = None
-        else:
-            chunk_shape = shape
-
-    if dimension_separator is not None:
-        if zarr_format == 3:
-            raise ValueError(
-                "dimension_separator is not supported for zarr format 3, use chunk_key_encoding instead"
-            )
-        else:
-            warnings.warn(
-                "dimension_separator is not yet implemented",
-                RuntimeWarning,
-                stacklevel=2,
-            )
+    # TODO: figure out why putting these imports at top-level causes circular imports
+    from zarr.codecs.bytes import BytesCodec
+    from zarr.codecs.sharding import ShardingCodec
 
     # TODO: fix this when modes make sense. It should be `w` for overwriting, `w-` otherwise
     mode: Literal["a"] = "a"
 
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+    sub_codecs = (*filters, BytesCodec(), *compressors)
 
-    return await AsyncArray.create(
-        store_path,
-        shape=shape,
-        chunks=chunks,
-        dtype=dtype,
-        compressor=compressor,
-        fill_value=fill_value,
-        exists_ok=overwrite,
-        filters=filters,
-        dimension_separator=dimension_separator,
-        zarr_format=zarr_format,
-        chunk_shape=chunk_shape,
-        chunk_key_encoding=chunk_key_encoding,
-        codecs=codecs,
-        dimension_names=dimension_names,
-        attributes=attributes,
-        order=order,
-        **kwargs,
-    )
+    if zarr_format == 2:
+        if shard_shape is not None or shard_shape != "auto":
+            msg = (
+                'Zarr v2 arrays can only be created with `shard_shape` set to `None` or `"auto"`.'
+                f"Got `shard_shape={shard_shape}` instead."
+            )
+
+            raise ValueError(msg)
+        compressor, *rest = compressors
+        filters = (*filters, *rest)
+        if dimension_names is not None:
+            raise ValueError("Zarr v2 arrays do not support dimension names.")
+        return await AsyncArray._create_v2(
+            shape=shape,
+            dtype=dtype,
+            chunks=chunk_shape,
+            dimension_separator="/",
+            fill_value=fill_value,
+            order=order,
+            filters=filters,
+            compressor=compressor,
+            attributes=attributes,
+            overwrite=overwrite,
+        )
+    else:
+        shard_shape_parsed, chunk_shape_parsed = _auto_partition(
+            shape, dtype, shard_shape, chunk_shape
+        )
+        if shard_shape_parsed is not None:
+            sharding_codec = ShardingCodec(chunk_shape=chunk_shape_parsed, codecs=sub_codecs)
+            sharding_codec.validate(
+                shape=chunk_shape_parsed,
+                dtype=dtype,
+                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+            )
+            codecs = (sharding_codec,)
+            chunks_out = shard_shape_parsed
+        else:
+            chunks_out = chunk_shape_parsed
+            codecs = sub_codecs
+
+        return await AsyncArray._create_v3(
+            store=store_path,
+            shape=shape,
+            dtype=dtype,
+            fill_value=fill_value,
+            attributes=attributes,
+            chunk_shape=chunks_out,
+            chunk_key_encoding=chunk_key_encoding,
+            codecs=codecs,
+            dimension_names=dimension_names,
+            order=order,
+            overwrite=overwrite,
+        )
 
 
 async def create(

@@ -26,6 +26,8 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
+from zarr.codecs.transpose import TransposeCodec
+from zarr.codecs.zstd import ZstdCodec
 from zarr.core.common import MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
 from zarr.storage._utils import normalize_path
@@ -1145,3 +1147,36 @@ def test_open_array_with_mode_r_plus(store: Store) -> None:
     assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_v3(store: MemoryStore) -> None:
+    # TODO: fill in
+    _ = zarr.create_array(
+        store=store,
+        dtype="uint8",
+        shape=(10,),
+        shard_shape=(4,),
+        chunk_shape=(4,),
+        zarr_format=3,
+        filters=(TransposeCodec(order=(0,)),),
+        compressors=(ZstdCodec(level=3),),
+    )
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_v2(store: MemoryStore) -> None:
+    from numcodecs import Delta, Zstd
+
+    # TODO: fill in
+    dtype = "uint8"
+    _ = zarr.create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        shard_shape=(4,),
+        chunk_shape=(4,),
+        zarr_format=3,
+        filters=(Delta(dtype=dtype),),
+        compressors=(Zstd(level=3),),
+    )
