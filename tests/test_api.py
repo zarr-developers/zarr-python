@@ -1,3 +1,4 @@
+import inspect
 import pathlib
 import warnings
 from typing import Literal
@@ -49,11 +50,11 @@ def test_create_array(memory_store: Store) -> None:
 
     # create array with float shape
     with pytest.raises(TypeError):
-        z = create(shape=(400.5, 100), store=store, overwrite=True)
+        z = create(shape=(400.5, 100), store=store, overwrite=True)  # type: ignore [arg-type]
 
     # create array with float chunk shape
     with pytest.raises(TypeError):
-        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)
+        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore [arg-type]
 
 
 @pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
@@ -1055,3 +1056,32 @@ def test_open_array_with_mode_r_plus(store: Store) -> None:
     assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
+
+
+@pytest.mark.parametrize("func_name", zarr.api.synchronous.__all__)
+def test_derived_docstrings(func_name: str) -> None:
+    """
+    Test that functions in the synchronous API module have
+    docstrings that are derived from those in the asynchronous API module
+    """
+    assert (
+        getattr(zarr.api.synchronous, func_name).__doc__
+        == getattr(zarr.api.asynchronous, func_name).__doc__
+    )
+
+
+@pytest.mark.parametrize("func_name", zarr.api.synchronous.__all__)
+def test_derived_signatures(func_name: str) -> None:
+    """
+    Test that functions in the API module have signatures that are derived from those in the asynchronous API module
+    """
+    if func_name in ("tree", "load", "open", "open_array"):
+        msg = (
+            f"{func_name} gets xfailed because the async version and the sync "
+            "version have meaningful differences in their signatures."
+        )
+        pytest.xfail(reason=msg)
+
+    sync_sig_params = inspect.signature(getattr(zarr.api.synchronous, func_name)).parameters
+    async_sig_params = inspect.signature(getattr(zarr.api.asynchronous, func_name)).parameters
+    assert sync_sig_params == async_sig_params
