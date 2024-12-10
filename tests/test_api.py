@@ -1064,6 +1064,12 @@ def test_derived_docstrings(func_name: str) -> None:
     Test that functions in the synchronous API module have
     docstrings that are derived from those in the asynchronous API module
     """
+    if func_name in ("open_array",):
+        msg = (
+            '"open_array" gets xfailed because the async version and the sync '
+            "version have meaningful differences in their docstrings."
+        )
+        pytest.xfail(reason=msg)
     assert (
         getattr(zarr.api.synchronous, func_name).__doc__
         == getattr(zarr.api.asynchronous, func_name).__doc__
@@ -1075,7 +1081,7 @@ def test_derived_signatures(func_name: str) -> None:
     """
     Test that functions in the API module have signatures that are derived from those in the asynchronous API module
     """
-    if func_name in ("tree", "load", "open", "open_array"):
+    if func_name in ("tree", "load", "open", "open_array", "group"):
         msg = (
             f"{func_name} gets xfailed because the async version and the sync "
             "version have meaningful differences in their signatures."

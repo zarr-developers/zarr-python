@@ -789,7 +789,7 @@ async def create(
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
     # v3 only
-    chunk_shape: tuple[int, ...] | int | None = None,
+    chunk_shape: ChunkCoords | int | None = None,
     chunk_key_encoding: (
         ChunkKeyEncoding
         | tuple[Literal["default"], Literal[".", "/"]]
@@ -1095,6 +1095,8 @@ async def open_array(
     ----------
     store : Store or str
         Store or path to directory in file system or name of zip file.
+    zarr_version : {2, 3, None}, optional
+        The zarr format to use when saving. Deprecated in favor of zarr_format.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str, optional
