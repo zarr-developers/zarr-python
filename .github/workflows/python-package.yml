@@ -17,11 +17,17 @@ jobs:
       matrix:
         python-version: ['3.11', '3.12', '3.13']
         numpy_version: ['>=2.1', '==1.24.*']
+        condadeps: ['']
         exclude:
           - python-version: '3.12'
             numpy_version: '==1.24.*'
           - python-version: '3.13'
             numpy_version: '==1.24.*'
+        include:
+          - python-version: '3.13'
+            numpy_version: '>=2.1'
+            # to test alternate hexdigests with zlib-ng
+            condadeps: 'zlib-ng'
     services:
       redis:
         image: redis
@@ -52,7 +58,7 @@ jobs:
     - name: Create Conda environment with the rights deps
       shell: "bash -l {0}"
       run: |
-        conda create -n zarr-env python==${{matrix.python-version}} pip nodejs
+        conda create -n zarr-env python==${{matrix.python-version}} pip nodejs ${{matrix.condadeps}}
         conda activate zarr-env
         npm install -g azurite
     - name: Install dependencies
