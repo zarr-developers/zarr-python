@@ -43,6 +43,9 @@ Maintenance
 Deprecations
 ~~~~~~~~~~~~
 
+* Deprecate ``chunk_store`` argument to ``Array`` and ``Group`` constructors. 
+  By :user:`Joe Hamman <jhamman>` :issue:`2495`.
+
 .. _release_2.18.3:
 
 2.18.3
