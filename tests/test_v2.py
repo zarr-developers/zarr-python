@@ -84,8 +84,8 @@ def test_codec_pipeline() -> None:
 async def test_v2_encode_decode(dtype):
     with config.set(
         {
-            "v2_dtype_kind_to_default_filters_and_compressor": {
-                "SV": ["vlen-bytes"],
+            "v2_default_compressors": {
+                "bytes": ["vlen-bytes"],
             },
         }
     ):
@@ -126,9 +126,9 @@ def test_v2_encode_decode_with_data(dtype_value):
     dtype, value = dtype_value
     with config.set(
         {
-            "v2_dtype_kind_to_default_filters_and_compressor": {
-                "U": ["vlen-utf8"],
-                "OSV": ["vlen-bytes"],
+            "v2_default_compressors": {
+                "unicode": ["vlen-utf8"],
+                "bytes": ["vlen-bytes"],
             },
         }
     ):
@@ -171,9 +171,9 @@ def test_default_filters_and_compressor(dtype_expected: Any) -> None:
     with config.set(
         {
             "v2_dtype_kind_to_default_filters_and_compressor": {
-                "biufcmM": ["zstd"],
-                "U": ["vlen-utf8"],
-                "OSV": ["vlen-bytes"],
+                "numeric": ["zstd"],
+                "unicode": ["vlen-utf8"],
+                "bytes": ["vlen-bytes"],
             },
         }
     ):

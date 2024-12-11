@@ -341,13 +341,16 @@ def _default_filters_and_compressor(
 ) -> tuple[list[dict[str, str]], dict[str, str] | None]:
     """Get the default filters and compressor for a dtype.
 
-    The config contains a mapping from numpy dtype kind to the default compressor.
     https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
     """
-    dtype_kind_to_default_compressor = config.get("v2_dtype_kind_to_default_filters_and_compressor")
-    for dtype_kinds, filters_and_compressor in dtype_kind_to_default_compressor.items():
-        if dtype.kind in dtype_kinds:
-            filters = [{"id": f} for f in filters_and_compressor]
-            compressor = None
-            return filters, compressor
-    return [], None
+    default_compressors = config.get("v2_default_compressors")
+    if dtype.kind in "biufcmM":
+        dtype_key = "numeric"
+    elif dtype.kind in "U":
+        dtype_key = "unicode"
+    elif dtype.kind in "OSV":
+        dtype_key = "bytes"
+    else:
+        raise ValueError(f"Unsupported dtype kind {dtype.kind}")
+
+    return [{"id": f} for f in default_compressors[dtype_key]], None
