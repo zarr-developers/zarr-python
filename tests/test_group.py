@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pytest
+from numcodecs import Zstd
 
 import zarr
 import zarr.api.asynchronous
@@ -496,6 +497,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                     "shape": (1,),
                     "chunks": (1,),
                     "order": "C",
+                    "filters": (Zstd(level=0),),
                     "zarr_format": zarr_format,
                 },
                 "subgroup": {

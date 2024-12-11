@@ -77,6 +77,7 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
+from zarr.core.metadata.v2 import _default_filters_and_compressor
 from zarr.core.metadata.v3 import parse_node_type_array
 from zarr.core.sync import sync
 from zarr.errors import MetadataValidationError
@@ -616,6 +617,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         if dimension_separator is None:
             dimension_separator = "."
+
+        dtype = parse_dtype(dtype, 2)
+        if not filters and not compressor:
+            filters, compressor = _default_filters_and_compressor(dtype)
+        if np.issubdtype(dtype, np.str_):
+            filters = filters or []
+            if not any(x["id"] == "vlen-utf8" for x in filters):
+                filters = list(filters) + [{"id": "vlen-utf8"}]
 
         metadata = ArrayV2Metadata(
             shape=shape,

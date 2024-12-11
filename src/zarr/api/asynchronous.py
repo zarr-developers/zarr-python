@@ -17,10 +17,12 @@ from zarr.core.common import (
     ChunkCoords,
     MemoryOrder,
     ZarrFormat,
+    parse_dtype,
 )
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.v2 import _default_filters_and_compressor
 from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
     StoreLike,
@@ -885,8 +887,17 @@ async def create(
         or _default_zarr_version()
     )
 
-    if zarr_format == 2 and chunks is None:
-        chunks = shape
+    if zarr_format == 2:
+        if chunks is None:
+            chunks = shape
+        dtype = parse_dtype(dtype, zarr_format)
+        if not filters and not compressor:
+            filters, compressor = _default_filters_and_compressor(dtype)
+        if np.issubdtype(dtype, np.str_):
+            filters = filters or []
+            if not any(x["id"] == "vlen-utf8" for x in filters):
+                filters = list(filters) + [{"id": "vlen-utf8"}]
+
     elif zarr_format == 3 and chunk_shape is None:
         if chunks is not None:
             chunk_shape = chunks
