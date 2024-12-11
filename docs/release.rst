@@ -18,10 +18,32 @@ Release notes
    See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
    3.0 release.
 
+.. release_3.0.0-beta:
+
+3.0.0-beta series
+-----------------
+
+.. warning::
+   Zarr-Python 3.0.0-beta is a pre-release of the upcoming 3.0 release. This release is not feature complete or
+   expected to be ready for production applications.
+
+.. note::
+   The complete release notes for 3.0 have not been added to this document yet. See the
+   `3.0.0-beta <https://github.com/zarr-developers/zarr-python/releases/tag/v3.0.0-beta>`_ release on GitHub
+   for a record of changes included in this release.
+
+Dependency Changes
+~~~~~~~~~~~~~~~~~~
+
+* fsspec was moved from a required dependency to an optional one. Users should install
+  fsspec and any relevant implementations (e.g. s3fs) before using the ``RemoteStore``.
+  By :user:`Joe Hamman <jhamman>` :issue:`2391`.
+
+
 .. release_3.0.0-alpha:
 
-3.0.0-alpha
------------
+3.0.0-alpha series
+------------------
 
 .. warning::
    Zarr-Python 3.0.0-alpha is a pre-release of the upcoming 3.0 release. This release is not feature complete or

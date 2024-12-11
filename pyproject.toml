@@ -28,8 +28,7 @@ requires-python = ">=3.11"
 dependencies = [
     'numpy>=1.25',
     'numcodecs[crc32c]>=0.14',
-    'fsspec>=2022.10.0',
-    'typing_extensions>=4.6',
+    'typing_extensions>=4.9',
     'donfig>=0.8',
 ]
 
@@ -54,16 +53,16 @@ license = {text = "MIT License"}
 keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 
 [project.optional-dependencies]
+fsspec = [
+    "fsspec>=2023.10.0",
+]
 test = [
     "coverage",
     "pytest",
     "pytest-cov",
-    "msgpack",
     "s3fs",
     "pytest-asyncio",
     "moto[s3]",
-    "flask-cors",
-    "flask",
     "requests",
     "mypy",
     "hypothesis",
@@ -224,7 +223,7 @@ dependencies = [
     'fsspec==2022.10.0',
     's3fs==2022.10.0',
     'universal_pathlib==0.0.22',
-    'typing_extensions==4.6.*',  # 4.5 needed for @deprecated, 4.6 for Buffer
+    'typing_extensions==4.9.*',
     'donfig==0.8.*',
     # test deps
     'hypothesis',
@@ -342,6 +341,7 @@ ignore_errors = true
 
 [[tool.mypy.overrides]]
 module = [
+    "zarr.testing.stateful",  # lots of hypothesis decorator errors
     "tests.package_with_entrypoint.*",
     "tests.test_codecs.test_codecs",
     "tests.test_codecs.test_transpose",
