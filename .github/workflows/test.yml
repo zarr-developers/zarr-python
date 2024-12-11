@@ -93,3 +93,22 @@ jobs:
     - name: Run Tests
       run: |
         hatch env run --env ${{ matrix.dependency-set }} run
+
+  test-complete:
+    name: Test complete
+
+    needs:
+      [
+        test,
+        test-upstream-and-min-deps,
+      ]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check failure
+        if: |
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - name: Success
+        run: echo Success!

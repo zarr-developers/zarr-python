@@ -12,7 +12,7 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from zarr import Array
-from zarr.core.buffer import BufferPrototype, default_buffer_prototype
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import (
     BasicSelection,
     CoordinateSelection,
@@ -1936,3 +1936,21 @@ def test_zero_sized_chunks(store: StorePath, shape: list[int]) -> None:
     z = Array.create(store=store, shape=shape, chunk_shape=shape, zarr_format=3, dtype="f8")
     z[...] = 42
     assert_array_equal(z[...], np.zeros(shape, dtype="f8"))
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+def test_vectorized_indexing_incompatible_shape(store) -> None:
+    # GH2469
+    shape = (4, 4)
+    chunks = (2, 2)
+    fill_value = 32767
+    arr = zarr.create(
+        shape,
+        store=store,
+        chunks=chunks,
+        dtype=np.int16,
+        fill_value=fill_value,
+        codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()],
+    )
+    with pytest.raises(ValueError, match="Attempting to set"):
+        arr[np.array([1, 2]), np.array([1, 2])] = np.array([[-1, -2], [-3, -4]])

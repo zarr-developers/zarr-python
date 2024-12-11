@@ -80,7 +80,13 @@ class NDArrayLike(Protocol):
 
     def view(self, dtype: npt.DTypeLike) -> Self: ...
 
-    def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
+    def astype(
+        self,
+        dtype: npt.DTypeLike,
+        order: Literal["K", "A", "C", "F"] = ...,
+        *,
+        copy: bool = ...,
+    ) -> Self: ...
 
     def fill(self, value: Any) -> None: ...
 

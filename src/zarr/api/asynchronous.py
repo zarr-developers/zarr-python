@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import numpy.typing as npt
+from typing_extensions import deprecated
 
 from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.buffer import NDArrayLike
@@ -493,8 +494,29 @@ async def save_group(
     await asyncio.gather(*aws)
 
 
-async def tree(*args: Any, **kwargs: Any) -> None:
-    raise NotImplementedError
+@deprecated("Use AsyncGroup.tree instead.")
+async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
+    """Provide a rich display of the hierarchy.
+
+    Parameters
+    ----------
+    grp : Group
+        Zarr or h5py group.
+    expand : bool, optional
+        Only relevant for HTML representation. If True, tree will be fully expanded.
+    level : int, optional
+        Maximum depth to descend into hierarchy.
+
+    Returns
+    -------
+    TreeRepr
+        A pretty-printable object displaying the hierarchy.
+
+    .. deprecated:: 3.0.0
+        `zarr.tree()` is deprecated and will be removed in a future release.
+        Use `group.tree()` instead.
+    """
+    return await grp.tree(expand=expand, level=level)
 
 
 async def array(
@@ -653,12 +675,12 @@ async def open_group(
         Store or path to directory in file system or name of zip file.
 
         Strings are interpreted as paths on the local file system
-        and used as the ``root`` argument to :class:`zarr.store.LocalStore`.
+        and used as the ``root`` argument to :class:`zarr.storage.LocalStore`.
 
         Dictionaries are used as the ``store_dict`` argument in
-        :class:`zarr.store.MemoryStore``.
+        :class:`zarr.storage.MemoryStore``.
 
-        By default (``store=None``) a new :class:`zarr.store.MemoryStore`
+        By default (``store=None``) a new :class:`zarr.storage.MemoryStore`
         is created.
 
     mode : {'r', 'r+', 'a', 'w', 'w-'}, optional

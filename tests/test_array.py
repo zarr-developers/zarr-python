@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import math
 import pickle
@@ -123,8 +124,8 @@ def test_array_name_properties_no_group(
 ) -> None:
     arr = Array.create(store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4")
     assert arr.path == ""
-    assert arr.name is None
-    assert arr.basename is None
+    assert arr.name == "/"
+    assert arr.basename == ""
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -473,6 +474,87 @@ class TestInfo:
             _store_type="MemoryStore",
             _codecs=[BytesCodec()],
             _count_bytes=128,
+        )
+        assert result == expected
+
+    def test_info_complete(self) -> None:
+        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        result = arr.info_complete()
+        expected = ArrayInfo(
+            _zarr_format=3,
+            _data_type=DataType.parse("float64"),
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _codecs=[BytesCodec()],
+            _count_bytes=128,
+            _count_chunks_initialized=0,
+            _count_bytes_stored=373,  # the metadata?
+        )
+        assert result == expected
+
+        arr[:2, :2] = 10
+        result = arr.info_complete()
+        expected = dataclasses.replace(
+            expected, _count_chunks_initialized=1, _count_bytes_stored=405
+        )
+        assert result == expected
+
+    async def test_info_v2_async(self) -> None:
+        arr = await zarr.api.asynchronous.create(shape=(4, 4), chunks=(2, 2), zarr_format=2)
+        result = arr.info
+        expected = ArrayInfo(
+            _zarr_format=2,
+            _data_type=np.dtype("float64"),
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _count_bytes=128,
+        )
+        assert result == expected
+
+    async def test_info_v3_async(self) -> None:
+        arr = await zarr.api.asynchronous.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        result = arr.info
+        expected = ArrayInfo(
+            _zarr_format=3,
+            _data_type=DataType.parse("float64"),
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _codecs=[BytesCodec()],
+            _count_bytes=128,
+        )
+        assert result == expected
+
+    async def test_info_complete_async(self) -> None:
+        arr = await zarr.api.asynchronous.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        result = await arr.info_complete()
+        expected = ArrayInfo(
+            _zarr_format=3,
+            _data_type=DataType.parse("float64"),
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _codecs=[BytesCodec()],
+            _count_bytes=128,
+            _count_chunks_initialized=0,
+            _count_bytes_stored=373,  # the metadata?
+        )
+        assert result == expected
+
+        await arr.setitem((slice(2), slice(2)), 10)
+        result = await arr.info_complete()
+        expected = dataclasses.replace(
+            expected, _count_chunks_initialized=1, _count_bytes_stored=405
         )
         assert result == expected
 
