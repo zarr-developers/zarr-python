@@ -822,7 +822,7 @@ async def create(
         - For numeric arrays, the default is `ZstdCodec`.
         - For Unicode strings, the default is `VLenUTF8Codec`.
         - For bytes or objects, the default is `VLenBytesCodec`.
-        These defaults can be changed using the `v2_default_compressors` variable in the Zarr config.
+        These defaults can be changed using the `v2_default_compressor` variable in the Zarr config.
     fill_value : object
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
@@ -898,7 +898,7 @@ async def create(
         dtype = parse_dtype(dtype, zarr_format)
         if not filters and not compressor:
             filters, compressor = _default_filters_and_compressor(dtype)
-    elif zarr_format == 3 and chunk_shape is None: #type: ignore[redundant-expr]
+    elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
         if chunks is not None:
             chunk_shape = chunks
             chunks = None

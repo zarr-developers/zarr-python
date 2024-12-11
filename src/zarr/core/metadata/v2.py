@@ -337,14 +337,14 @@ def _default_filters_and_compressor(
     https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
     """
     dtype = np.dtype(dtype)
-    default_compressors = config.get("v2_default_compressors")
+    default_compressor = config.get("v2_default_compressor")
     if dtype.kind in "biufcmM":
         dtype_key = "numeric"
     elif dtype.kind in "U":
-        dtype_key = "unicode"
+        dtype_key = "string"
     elif dtype.kind in "OSV":
         dtype_key = "bytes"
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
-    return [{"id": f} for f in default_compressors[dtype_key]], None
+    return [{"id": default_compressor[dtype_key]}], None

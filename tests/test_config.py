@@ -63,10 +63,10 @@ def test_config_defaults_set() -> None:
                 "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                 "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
             },
-            "v2_default_compressors": {
-                "numeric": ["zstd"],
-                "unicode": ["vlen-utf8"],
-                "bytes": ["vlen-bytes"],
+            "v2_default_compressor": {
+                "numeric": "zstd",
+                "string": "vlen-utf8",
+                "bytes": "vlen-bytes",
             },
         }
     ]
