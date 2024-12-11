@@ -434,7 +434,7 @@ class AsyncGroup:
     async def open(
         cls,
         store: StoreLike,
-        zarr_format: Literal[2, 3, None] = 3,
+        zarr_format: Literal[2, 3] | None = 3,
         use_consolidated: bool | str | None = None,
     ) -> AsyncGroup:
         """Open a new AsyncGroup
@@ -1422,7 +1422,7 @@ class AsyncGroup:
         from zarr.core._tree import group_tree_async
 
         if expand is not None:
-            raise NotImplementedError("'expanded' is not yet implemented.")
+            raise NotImplementedError("'expand' is not yet implemented.")
         return await group_tree_async(self, max_depth=level)
 
     async def empty(
@@ -1664,7 +1664,7 @@ class Group(SyncMixin):
     def open(
         cls,
         store: StoreLike,
-        zarr_format: Literal[2, 3, None] = 3,
+        zarr_format: Literal[2, 3] | None = 3,
     ) -> Group:
         """Open a group from an initialized store.
 
@@ -1820,8 +1820,8 @@ class Group(SyncMixin):
     async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
         """Update the attributes of this group.
 
-        Example
-        -------
+        Examples
+        --------
         >>> import zarr
         >>> group = zarr.group()
         >>> await group.update_attributes_async({"foo": "bar"})
@@ -1920,8 +1920,9 @@ class Group(SyncMixin):
 
     def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
         """Update the attributes of this group.
-        Example
-        -------
+
+        Examples
+        --------
         >>> import zarr
         >>> group = zarr.group()
         >>> group.update_attributes({"foo": "bar"})
@@ -2000,8 +2001,8 @@ class Group(SyncMixin):
     def groups(self) -> Generator[tuple[str, Group], None]:
         """Return the sub-groups of this group as a generator of (name, group) pairs.
 
-        Example
-        -------
+        Examples
+        --------
         >>> import zarr
         >>> group = zarr.group()
         >>> group.create_group("subgroup")
