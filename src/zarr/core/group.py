@@ -6,6 +6,7 @@ import json
 import logging
 import warnings
 from collections import defaultdict
+from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
 
@@ -1194,6 +1195,37 @@ class AsyncGroup:
             ds = await self.create_array(name, shape=shape, dtype=dtype, **kwargs)
 
         return ds
+
+    async def create_nodes(
+        self, nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
+    ) -> tuple[tuple[str, AsyncGroup | AsyncArray]]:
+        """
+        Create a set of arrays or groups rooted at this group.
+        """
+        _nodes: (
+            dict[str, GroupMetadata | ArrayV3Metadata] | dict[str, GroupMetadata | ArrayV2Metadata]
+        )
+        match self.metadata.zarr_format:
+            case 2:
+                if not all(
+                    isinstance(node, ArrayV2Metadata | GroupMetadata) for node in nodes.values()
+                ):
+                    raise ValueError("Only v2 arrays and groups are supported")
+                _nodes = cast(dict[str, ArrayV2Metadata | GroupMetadata], nodes)
+                return await create_nodes_v2(
+                    store=self.store_path.store, path=self.path, nodes=_nodes
+                )
+            case 3:
+                if not all(
+                    isinstance(node, ArrayV3Metadata | GroupMetadata) for node in nodes.values()
+                ):
+                    raise ValueError("Only v3 arrays and groups are supported")
+                _nodes = cast(dict[str, ArrayV3Metadata | GroupMetadata], nodes)
+                return await create_nodes_v3(
+                    store=self.store_path.store, path=self.path, nodes=_nodes
+                )
+            case _:
+                raise ValueError(f"Unsupported zarr format: {self.metadata.zarr_format}")
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
         """Update group attributes.
@@ -2627,3 +2659,71 @@ class Group(SyncMixin):
                 )
             )
         )
+
+
+async def _save_metadata_return_node(
+    node: AsyncArray[Any] | AsyncGroup,
+) -> AsyncArray[Any] | AsyncGroup:
+    if isinstance(node, AsyncArray):
+        await node._save_metadata(node.metadata, ensure_parents=False)
+    else:
+        await node._save_metadata(ensure_parents=False)
+    return node
+
+
+async def create_nodes_v2(
+    *, store: Store, path: str, nodes: dict[str, GroupMetadata | ArrayV2Metadata]
+) -> tuple[tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata]]]: ...
+
+
+async def create_nodes(
+    *, store_path: StorePath, nodes: dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
+) -> AsyncIterator[AsyncGroup | AsyncArray[Any]]:
+    """
+    Create a collection of arrays and groups concurrently and atomically. To ensure atomicity,
+    no attempt is made to ensure that intermediate groups are created.
+    """
+    create_tasks = []
+    for key, value in nodes.items():
+        new_store_path = store_path / key
+        node: AsyncArray[Any] | AsyncGroup
+        match value:
+            case ArrayV3Metadata() | ArrayV2Metadata():
+                node = AsyncArray(value, store_path=new_store_path)
+            case GroupMetadata():
+                node = AsyncGroup(value, store_path=new_store_path)
+            case _:
+                raise ValueError(f"Unexpected metadata type {type(value)}")
+        create_tasks.append(_save_metadata_return_node(node))
+    for coro in asyncio.as_completed(create_tasks):
+        yield await coro
+
+
+T = TypeVar("T")
+
+
+def _tuplize_keys(data: dict[str, T], separator: str) -> dict[tuple[str, ...], T]:
+    """
+    Given a dict of {string: T} pairs, where the keys are strings separated by some separator,
+    return the result of splitting each key with the separator.
+
+    Parameters
+    ----------
+    data : dict[str, T]
+        A dict of {string:, T} pairs.
+
+    Returns
+    -------
+    dict[tuple[str,...], T]
+        The same values, but the keys have been split and converted to tuples.
+
+    Examples
+    --------
+    >>> _tuplize_tree({"a": 1}, separator='/')
+    {("a",): 1}
+
+    >>> _tuplize_tree({"a/b": 1, "a/b/c": 2, "c": 3}, separator='/')
+    {("a", "b"): 1, ("a", "b", "c"): 2, ("c",): 3}
+    """
+
+    return {tuple(k.split(separator)): v for k, v in data.items()}
