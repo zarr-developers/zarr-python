@@ -44,6 +44,7 @@ extensions = [
     "sphinx_issues",
     "sphinx_copybutton",
     "sphinx_design",
+    "pytest_doctestplus.sphinx.doctestplus",
 ]
 
 numpydoc_show_class_members = False
