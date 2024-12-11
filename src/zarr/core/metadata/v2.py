@@ -331,7 +331,7 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
 
 def _default_filters_and_compressor(
     dtype: np.dtype[Any],
-) -> tuple[list[dict[str, str]], dict[str, str] | None]:
+) -> tuple[list[dict[str, JSON]], dict[str, JSON] | None]:
     """Get the default filters and compressor for a dtype.
 
     https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html

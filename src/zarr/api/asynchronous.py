@@ -898,8 +898,7 @@ async def create(
         dtype = parse_dtype(dtype, zarr_format)
         if not filters and not compressor:
             filters, compressor = _default_filters_and_compressor(dtype)
-
-    elif zarr_format == 3 and chunk_shape is None:
+    elif zarr_format == 3 and chunk_shape is None: #type: ignore[redundant-expr]
         if chunks is not None:
             chunk_shape = chunks
             chunks = None
