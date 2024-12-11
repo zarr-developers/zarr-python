@@ -50,6 +50,12 @@ class V2Codec(ArrayBytesCodec):
             try:
                 chunk = chunk.view(chunk_spec.dtype)
             except TypeError:
+                # this will happen if the dtype of the chunk
+                # does not match the dtype of the array spec i.g. if
+                # the dtype of the chunk_spec is a string dtype, but the chunk
+                # is an object array. In this case, we need to convert the object
+                # array to the correct dtype.
+
                 chunk = np.array(chunk).astype(chunk_spec.dtype)
 
         elif chunk.dtype != object:

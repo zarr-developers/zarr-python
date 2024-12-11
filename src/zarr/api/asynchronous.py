@@ -17,10 +17,12 @@ from zarr.core.common import (
     ChunkCoords,
     MemoryOrder,
     ZarrFormat,
+    parse_dtype,
 )
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.metadata.v2 import _default_filters_and_compressor
 from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
     StoreLike,
@@ -815,7 +817,12 @@ async def create(
     dtype : str or dtype, optional
         NumPy dtype.
     compressor : Codec, optional
-        Primary compressor.
+        Primary compressor for `zarr_format=2`.
+        If neither `compressor` nor `filters` are provided, a default compressor will be used:
+        - For numeric arrays, the default is `ZstdCodec`.
+        - For Unicode strings, the default is `VLenUTF8Codec`.
+        - For bytes or objects, the default is `VLenBytesCodec`.
+        These defaults can be changed using the `v2_default_compressors` variable in the Zarr config.
     fill_value : object
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
@@ -885,8 +892,13 @@ async def create(
         or _default_zarr_version()
     )
 
-    if zarr_format == 2 and chunks is None:
-        chunks = shape
+    if zarr_format == 2:
+        if chunks is None:
+            chunks = shape
+        dtype = parse_dtype(dtype, zarr_format)
+        if not filters and not compressor:
+            filters, compressor = _default_filters_and_compressor(dtype)
+
     elif zarr_format == 3 and chunk_shape is None:
         if chunks is not None:
             chunk_shape = chunks

@@ -8,6 +8,7 @@ from typing import Any, Literal
 import numcodecs
 import numpy as np
 import pytest
+from numcodecs import Zstd
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
@@ -513,6 +514,7 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
+            _filters=(Zstd(level=0),),
             _count_bytes=128,
         )
         assert result == expected

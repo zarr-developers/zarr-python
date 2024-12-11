@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+from numcodecs import Zstd
 
 import zarr.api.asynchronous
 import zarr.api.synchronous
@@ -486,6 +487,7 @@ class TestConsolidated:
                         attributes={"key": "a"},
                         chunks=(1,),
                         fill_value=None,
+                        filters=(Zstd(level=0),),
                         order="C",
                     ),
                     "g1": GroupMetadata(

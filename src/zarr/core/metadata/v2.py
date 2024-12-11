@@ -71,14 +71,7 @@ class ArrayV2Metadata(Metadata):
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
         chunks_parsed = parse_shapelike(chunks)
-        if not filters and not compressor:
-            filters, compressor = _default_filters_and_compressor(dtype_parsed)
-        if dtype is str or dtype == "str":
-            vlen_codec: dict[str, JSON] = {"id": "vlen-utf8"}
-            if filters and not any(x["id"] == "vlen-utf8" for x in filters):
-                filters = list(filters) + [vlen_codec]
-            else:
-                filters = [vlen_codec]
+
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
@@ -343,6 +336,7 @@ def _default_filters_and_compressor(
 
     https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
     """
+    dtype = np.dtype(dtype)
     default_compressors = config.get("v2_default_compressors")
     if dtype.kind in "biufcmM":
         dtype_key = "numeric"
