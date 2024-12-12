@@ -20,8 +20,8 @@ Release notes
 
 .. _release_2.18.4:
 
-2.18.4 (unreleased)
--------------------
+2.18.4
+------
 
 Enhancements
 ~~~~~~~~~~~~
