@@ -3,6 +3,7 @@ from zarr.storage.local import LocalStore
 from zarr.storage.logging import LoggingStore
 from zarr.storage.memory import MemoryStore
 from zarr.storage.remote import RemoteStore
+from zarr.storage.wrapper import WrapperStore
 from zarr.storage.zip import ZipStore
 
 __all__ = [
@@ -12,6 +13,7 @@ __all__ = [
     "RemoteStore",
     "StoreLike",
     "StorePath",
+    "WrapperStore",
     "ZipStore",
     "make_store_path",
 ]
