@@ -693,7 +693,8 @@ class AsyncGroup:
                 return _build_node_v2(metadata=metadata, store_path=store_path)
             else:
                 # this is just for mypy
-                assert zgroup is not None
+                if TYPE_CHECKING:
+                    assert zgroup is not None
                 metadata = _build_metadata_v2(zgroup, zattrs)
                 return _build_node_v2(metadata=metadata, store_path=store_path)
         else:
