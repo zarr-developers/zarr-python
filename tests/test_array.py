@@ -27,12 +27,12 @@ from zarr.storage.common import StorePath
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 @pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize("exists_ok", [True, False])
+@pytest.mark.parametrize("overwrite", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
 def test_array_creation_existing_node(
     store: LocalStore | MemoryStore,
     zarr_format: ZarrFormat,
-    exists_ok: bool,
+    overwrite: bool,
     extant_node: Literal["array", "group"],
 ) -> None:
     """
@@ -53,14 +53,14 @@ def test_array_creation_existing_node(
     new_shape = (2, 2)
     new_dtype = "float32"
 
-    if exists_ok:
+    if overwrite:
         if not store.supports_deletes:
             pytest.skip("store does not support deletes")
         arr_new = Array.create(
             spath / "extant",
             shape=new_shape,
             dtype=new_dtype,
-            exists_ok=exists_ok,
+            overwrite=overwrite,
             zarr_format=zarr_format,
         )
         assert arr_new.shape == new_shape
@@ -71,7 +71,7 @@ def test_array_creation_existing_node(
                 spath / "extant",
                 shape=new_shape,
                 dtype=new_dtype,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
                 zarr_format=zarr_format,
             )
 
