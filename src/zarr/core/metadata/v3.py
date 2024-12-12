@@ -225,9 +225,9 @@ class ArrayV3Metadata(Metadata):
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
         codecs: Iterable[Codec | dict[str, JSON]],
-        attributes: None | dict[str, JSON],
-        dimension_names: None | Iterable[str],
-        storage_transformers: None | Iterable[dict[str, JSON]] = None,
+        attributes: dict[str, JSON] | None,
+        dimension_names: Iterable[str] | None,
+        storage_transformers: Iterable[dict[str, JSON]] | None = None,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
@@ -540,7 +540,7 @@ class DataType(Enum):
     bytes = "bytes"
 
     @property
-    def byte_count(self) -> None | int:
+    def byte_count(self) -> int | None:
         data_type_byte_counts = {
             DataType.bool: 1,
             DataType.int8: 1,
@@ -626,7 +626,7 @@ class DataType(Enum):
         return DataType[dtype_to_data_type[dtype.str]]
 
     @classmethod
-    def parse(cls, dtype: None | DataType | Any) -> DataType:
+    def parse(cls, dtype: DataType | Any | None) -> DataType:
         if dtype is None:
             return DataType[DEFAULT_DTYPE]
         if isinstance(dtype, DataType):
