@@ -31,6 +31,8 @@ StoreLike = Union[BaseStore, MutableMapping, str, None]
 
 _builtin_open = open  # builtin open is later shadowed by a local open function
 
+__doctest_requires__ = {("*"): ["numpy>=2.2"]}
+
 
 def _check_and_update_path(store: BaseStore, path):
     if getattr(store, "_store_version", 2) > 2 and not path:
@@ -174,13 +176,13 @@ def save_array(store: StoreLike, arr, *, zarr_version=None, path=None, **kwargs)
         >>> arr = np.arange(10000)
         >>> zarr.save_array('data/example.zarr', arr)
         >>> zarr.load('data/example.zarr')
-        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        array([   0,    1,    2, ..., 9997, 9998, 9999], shape=(10000,))
 
     Save an array to a single file (uses a :class:`ZipStore`)::
 
         >>> zarr.save_array('data/example.zip', arr)
         >>> zarr.load('data/example.zip')
-        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        array([   0,    1,    2, ..., 9997, 9998, 9999], shape=(10000,))
 
     """
     may_need_closing = _might_close(store)
@@ -234,9 +236,9 @@ def save_group(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         >>> loader
         <LazyLoader: arr_0, arr_1>
         >>> loader['arr_0']
-        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        array([   0,    1,    2, ..., 9997, 9998, 9999], shape=(10000,))
         >>> loader['arr_1']
-        array([10000,  9999,  9998, ...,     3,     2,     1])
+        array([10000,  9999,  9998, ...,     3,     2,     1], shape=(10000,))
 
     Save several arrays using named keyword arguments::
 
@@ -245,9 +247,9 @@ def save_group(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         >>> loader
         <LazyLoader: bar, foo>
         >>> loader['foo']
-        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        array([   0,    1,    2, ..., 9997, 9998, 9999], shape=(10000,))
         >>> loader['bar']
-        array([10000,  9999,  9998, ...,     3,     2,     1])
+        array([10000,  9999,  9998, ...,     3,     2,     1], shape=(10000,))
 
     Store several arrays in a single zip file (uses a :class:`ZipStore`)::
 
@@ -256,9 +258,9 @@ def save_group(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         >>> loader
         <LazyLoader: bar, foo>
         >>> loader['foo']
-        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        array([   0,    1,    2, ..., 9997, 9998, 9999], shape=(10000,))
         >>> loader['bar']
-        array([10000,  9999,  9998, ...,     3,     2,     1])
+        array([10000,  9999,  9998, ...,     3,     2,     1], shape=(10000,))
 
     Notes
     -----
@@ -316,13 +318,13 @@ def save(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         >>> arr = np.arange(10000)
         >>> zarr.save('data/example.zarr', arr)
         >>> zarr.load('data/example.zarr')
-        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        array([   0,    1,    2, ..., 9997, 9998, 9999], shape=(10000,))
 
     Save an array to a Zip file (uses a :class:`ZipStore`)::
 
         >>> zarr.save('data/example.zip', arr)
         >>> zarr.load('data/example.zip')
-        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        array([   0,    1,    2, ..., 9997, 9998, 9999], shape=(10000,))
 
     Save several arrays to a directory on the file system (uses a
     :class:`DirectoryStore` and stores arrays in a group)::
@@ -336,9 +338,9 @@ def save(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         >>> loader
         <LazyLoader: arr_0, arr_1>
         >>> loader['arr_0']
-        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        array([   0,    1,    2, ..., 9997, 9998, 9999], shape=(10000,))
         >>> loader['arr_1']
-        array([10000,  9999,  9998, ...,     3,     2,     1])
+        array([10000,  9999,  9998, ...,     3,     2,     1], shape=(10000,))
 
     Save several arrays using named keyword arguments::
 
@@ -347,9 +349,9 @@ def save(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         >>> loader
         <LazyLoader: bar, foo>
         >>> loader['foo']
-        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        array([   0,    1,    2, ..., 9997, 9998, 9999], shape=(10000,))
         >>> loader['bar']
-        array([10000,  9999,  9998, ...,     3,     2,     1])
+        array([10000,  9999,  9998, ...,     3,     2,     1], shape=(10000,))
 
     Store several arrays in a single zip file (uses a :class:`ZipStore`)::
 
@@ -358,9 +360,9 @@ def save(store: StoreLike, *args, zarr_version=None, path=None, **kwargs):
         >>> loader
         <LazyLoader: bar, foo>
         >>> loader['foo']
-        array([   0,    1,    2, ..., 9997, 9998, 9999])
+        array([   0,    1,    2, ..., 9997, 9998, 9999], shape=(10000,))
         >>> loader['bar']
-        array([10000,  9999,  9998, ...,     3,     2,     1])
+        array([10000,  9999,  9998, ...,     3,     2,     1], shape=(10000,))
 
     See Also
     --------

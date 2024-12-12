@@ -61,6 +61,7 @@ from zarr.util import (
 )
 
 __all__ = ["Array"]
+__doctest_requires__ = {("*"): ["numpy>=2.2"]}
 
 
 # noinspection PyUnresolvedReferences
@@ -2793,12 +2794,12 @@ class Array:
             >>> a = zarr.array(data, chunks=1000, filters=filters)
             >>> a[:]
             array(['female', 'male', 'female', ..., 'male', 'male', 'female'],
-                  dtype='<U6')
+                  shape=(10000,), dtype='<U6')
             >>> v = a.view(dtype='u1', filters=[])
             >>> v.is_view
             True
             >>> v[:]
-            array([1, 2, 1, ..., 2, 2, 1], dtype=uint8)
+            array([1, 2, 1, ..., 2, 2, 1], shape=(10000,), dtype=uint8)
 
         Views can be used to modify data:
 
@@ -2806,20 +2807,20 @@ class Array:
             >>> x.sort()
             >>> v[:] = x
             >>> v[:]
-            array([1, 1, 1, ..., 2, 2, 2], dtype=uint8)
+            array([1, 1, 1, ..., 2, 2, 2], shape=(10000,), dtype=uint8)
             >>> a[:]
             array(['female', 'female', 'female', ..., 'male', 'male', 'male'],
-                  dtype='<U6')
+                  shape=(10000,), dtype='<U6')
 
         View as a different dtype with the same item size:
 
             >>> data = np.random.randint(0, 2, size=10000, dtype='u1')
             >>> a = zarr.array(data, chunks=1000)
             >>> a[:]
-            array([0, 0, 1, ..., 1, 0, 0], dtype=uint8)
+            array([0, 0, 1, ..., 1, 0, 0], shape=(10000,), dtype=uint8)
             >>> v = a.view(dtype=bool)
             >>> v[:]
-            array([False, False,  True, ...,  True, False, False])
+            array([False, False,  True, ...,  True, False, False], shape=(10000,))
             >>> np.all(a[:].view(dtype=bool) == v[:])
             np.True_
 
@@ -2841,10 +2842,10 @@ class Array:
 
             >>> a = zarr.full(10000, chunks=1000, fill_value=-1, dtype='i1')
             >>> a[:]
-            array([-1, -1, -1, ..., -1, -1, -1], dtype=int8)
+            array([-1, -1, -1, ..., -1, -1, -1], shape=(10000,), dtype=int8)
             >>> v = a.view(fill_value=42)
             >>> v[:]
-            array([42, 42, 42, ..., 42, 42, 42], dtype=int8)
+            array([42, 42, 42, ..., 42, 42, 42], shape=(10000,), dtype=int8)
 
         Note that resizing or appending to views is not permitted:
 
