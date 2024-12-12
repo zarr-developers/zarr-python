@@ -13,21 +13,28 @@ from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.api.synchronous import (
     create,
+    create_array,
+    create_group,
     group,
     load,
     open,
     open_group,
+    read,
+    read_array,
+    read_group,
     save,
     save_array,
     save_group,
 )
+from zarr.codecs.transpose import TransposeCodec
+from zarr.codecs.zstd import ZstdCodec
 from zarr.core.common import MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
 from zarr.storage._utils import normalize_path
 from zarr.storage.memory import MemoryStore
 
 
-def test_create_array(memory_store: Store) -> None:
+def test_create(memory_store: Store) -> None:
     store = memory_store
 
     # create array
@@ -54,6 +61,69 @@ def test_create_array(memory_store: Store) -> None:
     # create array with float chunk shape
     with pytest.raises(TypeError):
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_read(store: Store) -> None:
+    """
+    Test that the polymorphic read function can return an Array or a Group, depending on the path argument.
+    """
+    # create an array and a group
+    _ = create_group(store=store, path="group", attributes={"node_type": "group"})
+    _ = create_array(store=store, path="array", shape=(10, 10), attributes={"node_type": "array"})
+
+    group_r = read(store, path="group")
+    assert isinstance(group_r, Group)
+    assert group_r.attrs == {"node_type": "group"}
+
+    array_r = read(store, path="array")
+    assert isinstance(array_r, Array)
+    assert array_r.attrs == {"node_type": "array"}
+    assert array_r.shape == (10, 10)
+
+
+# TODO: parametrize over everything this function takes
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_create_array(store: Store) -> None:
+    attrs = {"foo": 100}
+    shape = (10, 10)
+    path = "foo"
+    data_val = 1
+    array_w = create_array(store, path=path, shape=shape, attributes=attrs)
+    array_w[:] = data_val
+    assert array_w.shape == shape
+    assert array_w.attrs == attrs
+    assert np.array_equal(array_w[:], np.zeros(shape, dtype=array_w.dtype) + data_val)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_read_array(store: Store) -> None:
+    shape = (10, 10)
+    data_val = 1
+    path = "foo"
+
+    zarr_format: ZarrFormat
+
+    for zarr_format in (2, 3):
+        attrs = {"zarr_format": zarr_format}
+        node_w = create_array(
+            store, path=path, shape=shape, attributes=attrs, zarr_format=zarr_format
+        )
+        node_w[:] = data_val
+
+    # check that the correct array can be read when both v2 and v3 arrays are present
+    for zarr_format in (2, 3):
+        node_r = read_array(store, path=path, zarr_format=zarr_format)
+
+        assert node_r.shape == shape
+        assert node_r.attrs == {"zarr_format": zarr_format}
+        assert np.array_equal(node_r[:], np.zeros(shape, dtype=node_r.dtype) + data_val)
+
+    # check that reading without specifying the zarr_format returns the v3 node
+    with pytest.warns(UserWarning):
+        node_r = read_array(store, path=path)
+
+    assert node_r.metadata.zarr_format == 3
 
 
 @pytest.mark.parametrize("path", ["foo", "/", "/foo", "///foo/bar"])
@@ -98,6 +168,16 @@ async def test_open_array(memory_store: MemoryStore) -> None:
         open(store="doesnotexist", mode="r")
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_group(store: Store, zarr_format: ZarrFormat) -> None:
+    attrs = {"foo": 100}
+    path = "node"
+    node = create_group(store, path=path, attributes=attrs, zarr_format=zarr_format)
+    assert isinstance(node, Group)
+    assert node.attrs == attrs
+    assert node.metadata.zarr_format == zarr_format
+
+
 async def test_open_group(memory_store: MemoryStore) -> None:
     store = memory_store
 
@@ -118,6 +198,27 @@ async def test_open_group(memory_store: MemoryStore) -> None:
     g = open_group(store=ro_store, mode="r")
     assert isinstance(g, Group)
     assert g.read_only
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_read_group(store: Store) -> None:
+    path = "foo"
+
+    zarr_format: ZarrFormat
+    for zarr_format in (2, 3):
+        attrs = {"zarr_format": zarr_format}
+        _ = create_group(store, path=path, attributes=attrs, zarr_format=zarr_format)
+
+    # check that the correct array can be read when both v2 and v3 arrays are present
+    for zarr_format in (2, 3):
+        node_r = read_group(store, path=path, zarr_format=zarr_format)
+        assert node_r.attrs == {"zarr_format": zarr_format}
+
+    # check that reading without specifying the zarr_format returns the v3 node
+    with pytest.warns(UserWarning):
+        node_r = read_group(store, path=path)
+
+    assert node_r.metadata.zarr_format == 3
 
 
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
@@ -1055,3 +1156,36 @@ def test_open_array_with_mode_r_plus(store: Store) -> None:
     assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_v3(store: MemoryStore) -> None:
+    # TODO: fill in
+    _ = zarr.create_array(
+        store=store,
+        dtype="uint8",
+        shape=(10,),
+        shard_shape=(4,),
+        chunk_shape=(4,),
+        zarr_format=3,
+        filters=(TransposeCodec(order=(0,)),),
+        compressors=(ZstdCodec(level=3),),
+    )
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_v2(store: MemoryStore) -> None:
+    from numcodecs import Delta, Zstd
+
+    # TODO: fill in
+    dtype = "uint8"
+    _ = zarr.create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        shard_shape=(4,),
+        chunk_shape=(4,),
+        zarr_format=3,
+        filters=(Delta(dtype=dtype),),
+        compressors=(Zstd(level=3),),
+    )
