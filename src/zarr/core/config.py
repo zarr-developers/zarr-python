@@ -64,6 +64,11 @@ config = Config(
             },
             "buffer": "zarr.core.buffer.cpu.Buffer",
             "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
+            "v2_default_compressor": {
+                "numeric": "zstd",
+                "string": "vlen-utf8",
+                "bytes": "vlen-bytes",
+            },
         }
     ],
 )
