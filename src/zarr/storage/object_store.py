@@ -41,8 +41,19 @@ class ObjectStore(Store):
         return bool(self.store.__eq__(value.store))
 
     def __init__(self, store: _ObjectStore, *, read_only: bool = False) -> None:
+        if not isinstance(
+            store,
+            (
+                obs.store.AzureStore,
+                obs.store.GCSStore,
+                obs.store.HTTPStore,
+                obs.store.S3Store,
+                obs.store.LocalStore,
+                obs.store.MemoryStore,
+            ),
+        ):
+            raise TypeError(f"expected ObjectStore class, got {store!r}")
         self.store = store
-
         super().__init__(read_only=read_only)
 
     def __str__(self) -> str:
