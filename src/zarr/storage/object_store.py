@@ -38,18 +38,29 @@ class ObjectStore(Store):
         if not isinstance(value, ObjectStore):
             return False
 
-        return self.store.__eq__(value.store)
+        return bool(self.store.__eq__(value.store))
 
     def __init__(self, store: _ObjectStore, *, read_only: bool = False) -> None:
+        if not isinstance(
+            store,
+            (
+                obs.store.AzureStore,
+                obs.store.GCSStore,
+                obs.store.HTTPStore,
+                obs.store.S3Store,
+                obs.store.LocalStore,
+                obs.store.MemoryStore,
+            ),
+        ):
+            raise TypeError(f"expected ObjectStore class, got {store!r}")
         self.store = store
-
         super().__init__(read_only=read_only)
 
     def __str__(self) -> str:
         return f"object://{self.store}"
 
     def __repr__(self) -> str:
-        return f"ObjectStore({self!r})"
+        return f"ObjectStore({self})"
 
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
