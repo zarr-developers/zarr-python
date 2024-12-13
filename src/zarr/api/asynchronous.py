@@ -198,7 +198,7 @@ async def consolidate_metadata(
     if any(m.zarr_format == 3 for m in members_metadata.values()):
         warnings.warn(
             "Consolidated metadata is currently not part in the Zarr version 3 specification and "
-            "may not be supported by other zarr implementations.",
+            "may not be supported by other zarr implementations and may change in the future.",
             category=UserWarning,
             stacklevel=1,
         )
