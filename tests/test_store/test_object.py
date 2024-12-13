@@ -20,3 +20,9 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
     @pytest.fixture
     def store(self, store_kwargs: dict[str, str | bool]) -> ObjectStore:
         return self.store_cls(**store_kwargs)
+
+    def test_store_repr(self, store: ObjectStore) -> None:
+        from fnmatch import fnmatch
+
+        pattern = "ObjectStore(object://LocalStore(file:///*))"
+        assert fnmatch(f"{store!r}", pattern)
