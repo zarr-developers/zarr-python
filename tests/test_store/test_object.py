@@ -26,3 +26,12 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
 
         pattern = "ObjectStore(object://LocalStore(file:///*))"
         assert fnmatch(f"{store!r}", pattern)
+
+    def test_store_supports_writes(self, store: ObjectStore) -> None:
+        assert store.supports_writes
+
+    def test_store_supports_partial_writes(self, store: ObjectStore) -> None:
+        assert not store.supports_partial_writes
+
+    def test_store_supports_listing(self, store: ObjectStore) -> None:
+        assert store.supports_listing
