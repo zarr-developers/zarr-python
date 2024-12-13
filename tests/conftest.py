@@ -87,7 +87,7 @@ def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
 @dataclass
 class AsyncGroupRequest:
     zarr_format: ZarrFormat
-    store: Literal["local", "remote", "memory", "zip"]
+    store: Literal["local", "fsspec", "memory", "zip"]
     attributes: dict[str, Any] = field(default_factory=dict)
 
 
