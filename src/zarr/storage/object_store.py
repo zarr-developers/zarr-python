@@ -104,10 +104,12 @@ class ObjectStore(Store):
         return True
 
     async def set(self, key: str, value: Buffer) -> None:
+        self._check_writable()
         buf = value.to_bytes()
         await obs.put_async(self.store, key, buf)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        self._check_writable()
         buf = value.to_bytes()
         await obs.put_async(self.store, key, buf, mode="create")
 
@@ -116,6 +118,7 @@ class ObjectStore(Store):
         return True
 
     async def delete(self, key: str) -> None:
+        self._check_writable()
         await obs.delete_async(self.store, key)
 
     @property
