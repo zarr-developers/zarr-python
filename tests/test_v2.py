@@ -125,6 +125,7 @@ async def test_create_dtype_str(dtype: Any) -> None:
     np.testing.assert_array_equal(result, np.array(["a", "bb", "ccc"], dtype="object"))
 
 
+@pytest.mark.filterwarnings("ignore:The `order` keyword argument.*")
 @pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
 @pytest.mark.parametrize("order", ["C", "F"])
 def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
