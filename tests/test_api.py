@@ -47,6 +47,14 @@ def test_create_array(memory_store: Store) -> None:
     assert z.shape == (400,)
     assert z.chunks == (40,)
 
+    # create array with float shape
+    with pytest.raises(TypeError):
+        z = create(shape=(400.5, 100), store=store, overwrite=True)
+
+    # create array with float chunk shape
+    with pytest.raises(TypeError):
+        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)
+
 
 @pytest.mark.parametrize("write_empty_chunks", [True, False])
 def test_write_empty_chunks_warns(write_empty_chunks: bool) -> None:
@@ -87,15 +95,15 @@ async def test_open_array(memory_store: MemoryStore) -> None:
 
     # open array, overwrite
     # store._store_dict = {}
-    store = MemoryStore(mode="w")
+    store = MemoryStore()
     z = open(store=store, shape=200)
     assert isinstance(z, Array)
     assert z.shape == (200,)
 
     # open array, read-only
     store_cls = type(store)
-    ro_store = await store_cls.open(store_dict=store._store_dict, mode="r")
-    z = open(store=ro_store)
+    ro_store = await store_cls.open(store_dict=store._store_dict, read_only=True)
+    z = open(store=ro_store, mode="r")
     assert isinstance(z, Array)
     assert z.shape == (200,)
     assert z.read_only
@@ -121,10 +129,10 @@ async def test_open_group(memory_store: MemoryStore) -> None:
 
     # open group, read-only
     store_cls = type(store)
-    ro_store = await store_cls.open(store_dict=store._store_dict, mode="r")
-    g = open_group(store=ro_store)
+    ro_store = await store_cls.open(store_dict=store._store_dict, read_only=True)
+    g = open_group(store=ro_store, mode="r")
     assert isinstance(g, Group)
-    # assert g.read_only
+    assert g.read_only
 
 
 @pytest.mark.parametrize("zarr_format", [None, 2, 3])
@@ -147,6 +155,33 @@ async def test_open_group_unspecified_version(
         assert g2.metadata.zarr_format == zarr_format
 
 
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("n_args", [10, 1, 0])
+@pytest.mark.parametrize("n_kwargs", [10, 1, 0])
+def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
+    data = np.arange(10)
+    args = [np.arange(10) for _ in range(n_args)]
+    kwargs = {f"arg_{i}": data for i in range(n_kwargs)}
+
+    if n_kwargs == 0 and n_args == 0:
+        with pytest.raises(ValueError):
+            save(store)
+    elif n_args == 1 and n_kwargs == 0:
+        save(store, *args)
+        array = open(store)
+        assert isinstance(array, Array)
+        assert_array_equal(array[:], data)
+    else:
+        save(store, *args, **kwargs)  # type: ignore[arg-type]
+        group = open(store)
+        assert isinstance(group, Group)
+        for array in group.array_values():
+            assert_array_equal(array[:], data)
+        for k in kwargs:
+            assert k in group
+        assert group.nmembers() == n_args + n_kwargs
+
+
 def test_save_errors() -> None:
     with pytest.raises(ValueError):
         # no arrays provided
@@ -157,6 +192,10 @@ def test_save_errors() -> None:
     with pytest.raises(ValueError):
         # no arrays provided
         save("data/group.zarr")
+    with pytest.raises(TypeError):
+        # mode is no valid argument and would get handled as an array
+        a = np.arange(10)
+        zarr.save("data/example.zarr", a, mode="w")
 
 
 def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
@@ -286,15 +325,16 @@ def test_load_array(memory_store: Store) -> None:
 
 
 def test_tree() -> None:
+    pytest.importorskip("rich")
     g1 = zarr.group()
     g1.create_group("foo")
     g3 = g1.create_group("bar")
     g3.create_group("baz")
     g5 = g3.create_group("qux")
     g5.create_array("baz", shape=100, chunks=10)
-    # TODO: complete after tree has been reimplemented
-    # assert repr(zarr.tree(g1)) == repr(g1.tree())
-    # assert str(zarr.tree(g1)) == str(g1.tree())
+    with pytest.warns(DeprecationWarning):
+        assert repr(zarr.tree(g1)) == repr(g1.tree())
+        assert str(zarr.tree(g1)) == str(g1.tree())
 
 
 # @pytest.mark.parametrize("stores_from_path", [False, True])
@@ -965,13 +1005,13 @@ def test_tree() -> None:
 
 
 def test_open_positional_args_deprecated() -> None:
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     with pytest.warns(FutureWarning, match="pass"):
         open(store, "w", shape=(1,))
 
 
 def test_save_array_positional_args_deprecated() -> None:
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore", message="zarr_version is deprecated", category=DeprecationWarning
@@ -987,20 +1027,20 @@ def test_save_array_positional_args_deprecated() -> None:
 
 
 def test_group_positional_args_deprecated() -> None:
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     with pytest.warns(FutureWarning, match="pass"):
         group(store, True)
 
 
 def test_open_group_positional_args_deprecated() -> None:
-    store = MemoryStore({}, mode="w")
+    store = MemoryStore()
     with pytest.warns(FutureWarning, match="pass"):
         open_group(store, "w")
 
 
 def test_open_falls_back_to_open_group() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
-    store = MemoryStore(mode="w")
+    store = MemoryStore()
     zarr.open_group(store, attributes={"key": "value"})
 
     group = zarr.open(store)
@@ -1010,7 +1050,7 @@ def test_open_falls_back_to_open_group() -> None:
 
 async def test_open_falls_back_to_open_group_async() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
-    store = MemoryStore(mode="w")
+    store = MemoryStore()
     await zarr.api.asynchronous.open_group(store, attributes={"key": "value"})
 
     group = await zarr.api.asynchronous.open(store=store)
@@ -1030,3 +1070,19 @@ async def test_metadata_validation_error() -> None:
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
         await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    "store",
+    ["local", "memory", "zip"],
+    indirect=True,
+)
+def test_open_array_with_mode_r_plus(store: Store) -> None:
+    # 'r+' means read/write (must exist)
+    with pytest.raises(FileNotFoundError):
+        zarr.open_array(store=store, mode="r+")
+    zarr.ones(store=store, shape=(3, 3))
+    z2 = zarr.open_array(store=store, mode="r+")
+    assert isinstance(z2, Array)
+    assert (z2[:] == 1).all()
+    z2[:] = 3

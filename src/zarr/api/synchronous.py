@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
+from typing_extensions import deprecated
+
 import zarr.api.asynchronous as async_api
 from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
@@ -68,7 +70,7 @@ def load(
 def open(
     store: StoreLike | None = None,
     *,
-    mode: AccessModeLiteral | None = None,  # type and value changed
+    mode: AccessModeLiteral = "a",
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -155,8 +157,9 @@ def save_group(
     )
 
 
-def tree(*args: Any, **kwargs: Any) -> None:
-    return sync(async_api.tree(*args, **kwargs))
+@deprecated("Use Group.tree instead.")
+def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> Any:
+    return sync(async_api.tree(grp._async_group, expand=expand, level=level))
 
 
 # TODO: add type annotations for kwargs
@@ -199,8 +202,8 @@ def group(
 @_deprecate_positional_args
 def open_group(
     store: StoreLike | None = None,
-    *,  # Note: this is a change from v2
-    mode: AccessModeLiteral | None = None,  # not used in async api
+    *,
+    mode: AccessModeLiteral = "a",
     cache_attrs: bool | None = None,  # default changed, not used in async api
     synchronizer: Any = None,  # not used in async api
     path: str | None = None,

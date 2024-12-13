@@ -42,6 +42,13 @@ from zarr.registry import get_codec_class
 
 DEFAULT_DTYPE = "float64"
 
+# Keep in sync with _replace_special_floats
+SPECIAL_FLOATS_ENCODED = {
+    "Infinity": np.inf,
+    "-Infinity": -np.inf,
+    "NaN": np.nan,
+}
+
 
 def parse_zarr_format(data: object) -> Literal[3]:
     if data == 3:
@@ -148,7 +155,7 @@ class V3JsonEncoder(json.JSONEncoder):
                 if isinstance(out, complex):
                     # python complex types are not JSON serializable, so we use the
                     # serialization defined in the zarr v3 spec
-                    return [out.real, out.imag]
+                    return _replace_special_floats([out.real, out.imag])
                 elif np.isnan(out):
                     return "NaN"
                 elif np.isinf(out):
@@ -217,9 +224,9 @@ class ArrayV3Metadata(Metadata):
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
         codecs: Iterable[Codec | dict[str, JSON]],
-        attributes: None | dict[str, JSON],
-        dimension_names: None | Iterable[str],
-        storage_transformers: None | Iterable[dict[str, JSON]] = None,
+        attributes: dict[str, JSON] | None,
+        dimension_names: Iterable[str] | None,
+        storage_transformers: Iterable[dict[str, JSON]] | None = None,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
@@ -446,8 +453,11 @@ def parse_fill_value(
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if data_type in (DataType.complex64, DataType.complex128):
             if len(fill_value) == 2:
+                decoded_fill_value = tuple(
+                    SPECIAL_FLOATS_ENCODED.get(value, value) for value in fill_value
+                )
                 # complex datatypes serialize to JSON arrays with two elements
-                return np_dtype.type(complex(*fill_value))
+                return np_dtype.type(complex(*decoded_fill_value))
             else:
                 msg = (
                     f"Got an invalid fill value for complex data type {data_type.value}."
@@ -470,15 +480,23 @@ def parse_fill_value(
     except (ValueError, OverflowError, TypeError) as e:
         raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}") from e
     # Check if the value is still representable by the dtype
-    if fill_value == "NaN" and np.isnan(casted_value):
+    if (fill_value == "NaN" and np.isnan(casted_value)) or (
+        fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value)
+    ):
         pass
-    elif fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value):
-        pass
-    elif np_dtype.kind in "cf":
+    elif np_dtype.kind == "f":
         # float comparison is not exact, especially when dtype <float64
-        # so we us np.isclose for this comparison.
+        # so we use np.isclose for this comparison.
         # this also allows us to compare nan fill_values
         if not np.isclose(fill_value, casted_value, equal_nan=True):
+            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
+    elif np_dtype.kind == "c":
+        # confusingly np.isclose(np.inf, np.inf + 0j) is False on numpy<2, so compare real and imag parts
+        # explicitly.
+        if not (
+            np.isclose(np.real(fill_value), np.real(casted_value), equal_nan=True)
+            and np.isclose(np.imag(fill_value), np.imag(casted_value), equal_nan=True)
+        ):
             raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
     else:
         if fill_value != casted_value:
@@ -521,7 +539,7 @@ class DataType(Enum):
     bytes = "bytes"
 
     @property
-    def byte_count(self) -> None | int:
+    def byte_count(self) -> int | None:
         data_type_byte_counts = {
             DataType.bool: 1,
             DataType.int8: 1,
@@ -607,7 +625,7 @@ class DataType(Enum):
         return DataType[dtype_to_data_type[dtype.str]]
 
     @classmethod
-    def parse(cls, dtype: None | DataType | Any) -> DataType:
+    def parse(cls, dtype: DataType | Any | None) -> DataType:
         if dtype is None:
             return DataType[DEFAULT_DTYPE]
         if isinstance(dtype, DataType):

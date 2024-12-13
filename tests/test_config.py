@@ -11,9 +11,10 @@ import zarr
 from zarr import Array, zeros
 from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter, Store
-from zarr.codecs import BatchedCodecPipeline, BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
+from zarr.codecs import BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
+from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
 from zarr.registry import (
@@ -45,7 +46,7 @@ def test_config_defaults_set() -> None:
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
-                "path": "zarr.codecs.pipeline.BatchedCodecPipeline",
+                "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
             },
             "buffer": "zarr.core.buffer.cpu.Buffer",
@@ -96,8 +97,8 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     # has default value
     assert get_pipeline_class().__name__ != ""
 
-    config.set({"codec_pipeline.name": "zarr.codecs.pipeline.BatchedCodecPipeline"})
-    assert get_pipeline_class() == zarr.codecs.pipeline.BatchedCodecPipeline
+    config.set({"codec_pipeline.name": "zarr.core.codec_pipeline.BatchedCodecPipeline"})
+    assert get_pipeline_class() == zarr.core.codec_pipeline.BatchedCodecPipeline
 
     _mock = Mock()
 
@@ -200,7 +201,7 @@ def test_config_buffer_implementation() -> None:
     # has default value
     assert fully_qualified_name(get_buffer_class()) == config.defaults[0]["buffer"]
 
-    arr = zeros(shape=(100), store=StoreExpectingTestBuffer(mode="w"))
+    arr = zeros(shape=(100), store=StoreExpectingTestBuffer())
 
     # AssertionError of StoreExpectingTestBuffer when not using my buffer
     with pytest.raises(AssertionError):
@@ -218,7 +219,7 @@ def test_config_buffer_implementation() -> None:
     data2d = np.arange(1000).reshape(100, 10)
     arr_sharding = zeros(
         shape=(100, 10),
-        store=StoreExpectingTestBuffer(mode="w"),
+        store=StoreExpectingTestBuffer(),
         codecs=[ShardingCodec(chunk_shape=(10, 10))],
     )
     arr_sharding[:] = data2d
@@ -226,7 +227,7 @@ def test_config_buffer_implementation() -> None:
 
     arr_Crc32c = zeros(
         shape=(100, 10),
-        store=StoreExpectingTestBuffer(mode="w"),
+        store=StoreExpectingTestBuffer(),
         codecs=[BytesCodec(), Crc32cCodec()],
     )
     arr_Crc32c[:] = data2d

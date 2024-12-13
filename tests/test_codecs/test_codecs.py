@@ -56,7 +56,6 @@ def test_sharding_pickle() -> None:
     """
     Test that sharding codecs can be pickled
     """
-    pass
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -203,6 +202,26 @@ def test_morton() -> None:
         (0, 1, 1, 1),
         (1, 1, 1, 1),
     ]
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [
+        [2, 2, 2],
+        [5, 2],
+        [2, 5],
+        [2, 9, 2],
+        [3, 2, 12],
+        [2, 5, 1],
+        [4, 3, 6, 2, 7],
+        [3, 2, 1, 6, 4, 5, 2],
+    ],
+)
+def test_morton2(shape) -> None:
+    order = list(morton_order_iter(shape))
+    for i, x in enumerate(order):
+        assert x not in order[:i]  # no duplicates
+        assert all(x[j] < shape[j] for j in range(len(shape)))  # all indices are within bounds
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -371,8 +390,9 @@ async def test_resize(store: Store) -> None:
     assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
     assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is not None
 
-    a = await a.resize((10, 12))
+    await a.resize((10, 12))
     assert a.metadata.shape == (10, 12)
+    assert a.shape == (10, 12)
     assert await store.get(f"{path}/0.0", prototype=default_buffer_prototype()) is not None
     assert await store.get(f"{path}/0.1", prototype=default_buffer_prototype()) is not None
     assert await store.get(f"{path}/1.0", prototype=default_buffer_prototype()) is None

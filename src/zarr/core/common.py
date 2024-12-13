@@ -37,7 +37,7 @@ ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
-JSON = None | str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...]
+JSON = str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 
@@ -51,7 +51,9 @@ V = TypeVar("V")
 
 
 async def concurrent_map(
-    items: Iterable[T], func: Callable[..., Awaitable[V]], limit: int | None = None
+    items: Iterable[T],
+    func: Callable[..., Awaitable[V]],
+    limit: int | None = None,
 ) -> list[V]:
     if limit is None:
         return await asyncio.gather(*list(starmap(func, items)))

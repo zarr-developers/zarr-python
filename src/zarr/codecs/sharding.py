@@ -252,7 +252,7 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
     def __setitem__(self, chunk_coords: ChunkCoords, value: Buffer) -> None:
         chunk_start = len(self.buf)
         chunk_length = len(value)
-        self.buf = self.buf + value
+        self.buf += value
         self.index.set_chunk_slice(chunk_coords, slice(chunk_start, chunk_start + chunk_length))
 
     def __delitem__(self, chunk_coords: ChunkCoords) -> None:

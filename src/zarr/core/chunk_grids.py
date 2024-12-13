@@ -138,6 +138,9 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
             s if c == -1 or c is None else int(c) for s, c in zip(shape, chunks, strict=False)
         )
 
+    if not all(isinstance(c, numbers.Integral) for c in chunks):
+        raise TypeError("non integer value in chunks")
+
     return tuple(int(c) for c in chunks)
 
 
@@ -182,7 +185,7 @@ class RegularChunkGrid(ChunkGrid):
 
     def all_chunk_coords(self, array_shape: ChunkCoords) -> Iterator[ChunkCoords]:
         return itertools.product(
-            *(range(0, ceildiv(s, c)) for s, c in zip(array_shape, self.chunk_shape, strict=False))
+            *(range(ceildiv(s, c)) for s, c in zip(array_shape, self.chunk_shape, strict=False))
         )
 
     def get_nchunks(self, array_shape: ChunkCoords) -> int:
