@@ -307,7 +307,8 @@ Data format compatibility
 The data format used by Zarr is defined by a specification document, which should be
 platform-independent and contain sufficient detail to construct an interoperable
 software library to read and/or write Zarr data using any programming language. The
-latest version of the specification document is available from the :ref:`spec` page.
+latest version of the specification document is available on the
+`Zarr specifications website <https://zarr-specs.readthedocs.io>`_.
 
 Here, **data format compatibility** means that all software libraries that implement a
 particular version of the Zarr storage specification are interoperable, in the sense
