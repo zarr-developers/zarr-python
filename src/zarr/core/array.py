@@ -1228,6 +1228,7 @@ class Array:
         dimension_separator : Literal[".", "/"], optional
             The dimension separator (default is None).
         order : Literal["C", "F"], optional
+            Deprecated in favor of the `array.order` configuration variable.
             The order of the array (default is None).
         write_empty_chunks: bool, optional
             Deprecated in favor of the `array.write_empty_chunks` configuration variable.
