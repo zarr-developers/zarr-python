@@ -12,6 +12,7 @@ import zarr
 import zarr.core.buffer
 import zarr.storage
 from zarr import Array
+from zarr.core.config import config
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -125,12 +126,12 @@ async def test_create_dtype_str(dtype: Any) -> None:
     np.testing.assert_array_equal(result, np.array(["a", "bb", "ccc"], dtype="object"))
 
 
-@pytest.mark.filterwarnings("ignore:The `order` keyword argument.*")
 @pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
 @pytest.mark.parametrize("order", ["C", "F"])
 def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     array_fixture = [42]
-    arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters, order=order)
+    with config.set({"array.order": order}):
+        arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)
