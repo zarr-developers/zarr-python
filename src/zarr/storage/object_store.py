@@ -49,7 +49,7 @@ class ObjectStore(Store):
         return f"object://{self.store}"
 
     def __repr__(self) -> str:
-        return f"ObjectStore({self!r})"
+        return f"ObjectStore({self})"
 
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
