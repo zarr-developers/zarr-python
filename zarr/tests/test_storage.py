@@ -1072,7 +1072,7 @@ class TestDirectoryStore(StoreTests):
         assert self.root + "foo" in store
 
     def test_listing_keys_slash(self):
-        def mock_walker_slash(_path):
+        def mock_walker_slash(*_args, **_kwargs):
             yield from [
                 # trailing slash in first key
                 ("root_with_slash/", ["d1", "g1"], [".zgroup"]),
@@ -1084,7 +1084,7 @@ class TestDirectoryStore(StoreTests):
         assert res == {".zgroup", "g1/.zgroup", "d1/.zarray"}
 
     def test_listing_keys_no_slash(self):
-        def mock_walker_no_slash(_path):
+        def mock_walker_no_slash(*_args, **_kwargs):
             yield from [
                 # no trailing slash in first key
                 ("root_with_no_slash", ["d1", "g1"], [".zgroup"]),
@@ -1092,7 +1092,7 @@ class TestDirectoryStore(StoreTests):
                 ("root_with_no_slash/g1", [], [".zgroup"]),
             ]
 
-        res = set(DirectoryStore._keys_fast("root_with_no_slash", mock_walker_no_slash))
+        res = set(DirectoryStore._keys_fast("root_with_no_slash", walker=mock_walker_no_slash))
         assert res == {".zgroup", "g1/.zgroup", "d1/.zarray"}
 
 
