@@ -117,7 +117,7 @@ class StoreTests(Generic[S, B]):
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     @pytest.mark.parametrize("byte_range", [None, (0, None), (1, None), (1, 2), (None, 1)])
     async def test_get(
-        self, store: S, key: str, data: bytes, byte_range: None | tuple[int | None, int | None]
+        self, store: S, key: str, data: bytes, byte_range: tuple[int | None, int | None] | None
     ) -> None:
         """
         Ensure that data can be read from the store using the store.get method.
