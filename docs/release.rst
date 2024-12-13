@@ -38,7 +38,8 @@ Dependency Changes
 * fsspec was moved from a required dependency to an optional one. Users should install
   fsspec and any relevant implementations (e.g. s3fs) before using the ``RemoteStore``.
   By :user:`Joe Hamman <jhamman>` :issue:`2391`.
-
+- ``RemoteStore`` was renamed to ``FsspecStore``.
+  By :user:`Joe Hamman <jhamman>` :issue:`2557`.
 
 .. release_3.0.0-alpha:
 
