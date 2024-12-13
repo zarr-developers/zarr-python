@@ -20,7 +20,7 @@ from zarr.abc.codec import (
 from zarr.abc.store import ByteGetter, ByteRangeRequest, ByteSetter
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
-from zarr.core.array_spec import ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import (
     Buffer,
     BufferPrototype,
@@ -665,7 +665,9 @@ class ShardingCodec(
             shape=chunks_per_shard + (2,),
             dtype=np.dtype("<u8"),
             fill_value=MAX_UINT_64,
-            order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
+            config=ArrayConfig(
+                order="C", write_empty_chunks=False
+            ),  # Note: this is hard-coded for simplicity -- it is not surfaced into user code,
             prototype=numpy_buffer_prototype(),
         )
 
@@ -674,7 +676,7 @@ class ShardingCodec(
             shape=self.chunk_shape,
             dtype=shard_spec.dtype,
             fill_value=shard_spec.fill_value,
-            order=shard_spec.order,
+            config=shard_spec.config,
             prototype=shard_spec.prototype,
         )
 

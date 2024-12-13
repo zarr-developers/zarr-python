@@ -53,7 +53,7 @@ def test_write_empty_chunks_warns(write_empty_chunks: bool) -> None:
     """
     Test that using the `write_empty_chunks` kwarg on array access will raise a warning.
     """
-    match = f"The `write_empty_chunks` keyword argument was provided to this function with a value of {write_empty_chunks}."
+    match = "The `write_empty_chunks` keyword argument .*"
     with pytest.warns(RuntimeWarning, match=match):
         _ = zarr.array(
             data=np.arange(10), shape=(10,), dtype="uint8", write_empty_chunks=write_empty_chunks
@@ -221,10 +221,26 @@ def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
         zarr.open(store=tmp_path, mode="w-")
 
 
-@pytest.mark.parametrize("order", ["C", "F", None])
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_array_order(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
-    arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
+def test_array_order(zarr_format: ZarrFormat) -> None:
+    arr = zarr.ones(shape=(2, 2), order=None, zarr_format=zarr_format)
+    expected = zarr.config.get("array.order")
+    assert arr.order == expected
+
+    vals = np.asarray(arr)
+    if expected == "C":
+        assert vals.flags.c_contiguous
+    elif expected == "F":
+        assert vals.flags.f_contiguous
+    else:
+        raise AssertionError
+
+
+@pytest.mark.parametrize("order", ["C", "F"])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_array_order_warns(order: MemoryOrder | None, zarr_format: ZarrFormat) -> None:
+    with pytest.warns(RuntimeWarning, match="The `order` keyword argument .*"):
+        arr = zarr.ones(shape=(2, 2), order=order, zarr_format=zarr_format)
     expected = order or zarr.config.get("array.order")
     assert arr.order == expected
 

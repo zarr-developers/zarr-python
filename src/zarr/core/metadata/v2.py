@@ -22,7 +22,7 @@ from dataclasses import dataclass, field, fields, replace
 import numcodecs
 import numpy as np
 
-from zarr.core.array_spec import ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, MemoryOrder, parse_shapelike
@@ -185,13 +185,13 @@ class ArrayV2Metadata(Metadata):
         return zarray_dict
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: MemoryOrder, prototype: BufferPrototype
+        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
         return ArraySpec(
             shape=self.chunks,
             dtype=self.dtype,
             fill_value=self.fill_value,
-            order=order,
+            config=array_config,
             prototype=prototype,
         )
 

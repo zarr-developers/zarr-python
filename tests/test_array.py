@@ -454,22 +454,31 @@ def test_write_empty_chunks(
     those chunks not being present in the store. In particular, they should be deleted if they were
     already present.
     """
-    arr = Array.create(
-        store=store,
-        shape=(2,),
-        zarr_format=zarr_format,
-        dtype="i4",
-        fill_value=fill_value,
-        chunk_shape=(1,),
-    )
+    with config.set({"array.write_empty_chunks": write_empty_chunks}):
+        arr = Array.create(
+            store=store,
+            shape=(2,),
+            zarr_format=zarr_format,
+            dtype="i4",
+            fill_value=fill_value,
+            chunk_shape=(1,),
+        )
 
     # initialize the store with some non-fill value chunks
     arr[:] = fill_value + 1
     assert arr.nchunks_initialized == arr.nchunks
 
-    with config.set({"array.write_empty_chunks": write_empty_chunks}):
-        arr[:] = fill_value
+    arr[:] = fill_value
+
     if not write_empty_chunks:
         assert arr.nchunks_initialized == 0
     else:
         assert arr.nchunks_initialized == arr.nchunks
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_write_empty_chunks_deprecated(store: MemoryStore) -> None:
+    with pytest.warns(
+        RuntimeWarning, match="The `write_empty_chunks` keyword argument is deprecated.*"
+    ):
+        zarr.open(store=store, mode="a", shape=(3, 3), write_empty_chunks=True)
