@@ -49,6 +49,11 @@ config = Config(
                     "string": "vlen-utf8",
                     "bytes": "vlen-bytes",
                 },
+                "v3_default_codecs": {
+                    "numeric": ["bytes", "zstd"],
+                    "string": ["vlen-utf8"],
+                    "bytes": ["vlen-bytes"],
+                },
             },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},

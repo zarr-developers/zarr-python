@@ -336,7 +336,6 @@ def _default_filters_and_compressor(
 
     https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
     """
-    dtype = np.dtype(dtype)
     default_compressor = config.get("array.v2_default_compressor")
     if dtype.kind in "biufcmM":
         dtype_key = "numeric"

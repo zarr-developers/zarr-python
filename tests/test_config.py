@@ -11,7 +11,8 @@ import zarr
 from zarr import Array, zeros
 from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter, Store
-from zarr.codecs import BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
+from zarr.codecs import BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec, TransposeCodec, GzipCodec, VLenBytesCodec, \
+    VLenUTF8Codec
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
@@ -239,3 +240,18 @@ def test_config_buffer_implementation() -> None:
     )
     arr_Crc32c[:] = data2d
     assert np.array_equal(arr_Crc32c[:], data2d)
+
+@pytest.mark.parametrize("dtype", ["int", "bytes", "str"])
+def test_default_codecs(dtype:str) -> None:
+    with config.set({"array.v3_default_codecs": {
+        "numeric": ["bytes", "gzip"], # test setting non-standard codecs
+        "string": ["vlen-utf8"],
+        "bytes": ["vlen-bytes"],
+    }}):
+        arr = zeros(shape=(100), store=StoreExpectingTestBuffer(), dtype=dtype)
+        if dtype == "int":
+            assert arr.metadata.codecs == [BytesCodec(), GzipCodec()]
+        elif dtype == "bytes":
+            assert arr.metadata.codecs == [VLenBytesCodec()]
+        elif dtype == "str":
+            assert arr.metadata.codecs == [VLenUTF8Codec()]
