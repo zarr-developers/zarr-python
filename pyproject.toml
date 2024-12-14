@@ -67,6 +67,7 @@ test = [
     "mypy",
     "hypothesis",
     "universal-pathlib",
+    "xarray",
 ]
 
 jupyter = [
@@ -209,6 +210,26 @@ PIP_PRE = "1"
 run = "pytest --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+list-env = "pip list"
+
+[tool.hatch.envs.downstream]
+python = "3.13"
+dependencies = [
+    'xarray @ git+https://github.com/pydata/xarray.git', # TODO from main until xarray>2024.11.0
+    'numpy',
+    'numcodecs',
+    'typing_extensions',    
+    'donfig',
+    # test deps
+    'hypothesis',
+    'pytest',
+    'pytest-cov',
+    'pytest-asyncio',
+]
+
+[tool.hatch.envs.downstream.scripts]
+run = "pytest --verbose"
+run-mypy = "mypy src"
 list-env = "pip list"
 
 [tool.hatch.envs.min_deps]
