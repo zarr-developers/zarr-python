@@ -82,11 +82,7 @@ def test_codec_pipeline() -> None:
 
 @pytest.mark.parametrize("dtype", ["|S", "|V"])
 async def test_v2_encode_decode(dtype):
-    with config.set(
-        {
-            "array.v2_default_compressor.bytes": "vlen-bytes",
-        }
-    ):
+    with config.set({"array.v2_default_compressor.bytes": "vlen-bytes"}):
         store = zarr.storage.MemoryStore()
         g = zarr.group(store=store, zarr_format=2)
         g.create_array(
@@ -204,6 +200,11 @@ def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["
         assert a.flags.c_contiguous
     arr[slice(6, 9, None), slice(3, 6, None)] = a
     np.testing.assert_array_equal(arr[slice(6, 9, None), slice(3, 6, None)], a)
+
+
+def test_default_compressor_deprecation_warning():
+    with pytest.warns(DeprecationWarning):
+        zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"
 
 
 @pytest.mark.parametrize(
