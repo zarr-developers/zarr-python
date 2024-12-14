@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr import Array, zeros
-from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
+from zarr import Array, zeros, AsyncArray
+from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline, Codec
 from zarr.abc.store import ByteSetter, Store
 from zarr.codecs import (
     BloscCodec,
@@ -25,6 +25,7 @@ from zarr.core.buffer import NDBuffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
+from zarr.core.strings import _STRING_DTYPE
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -36,6 +37,7 @@ from zarr.registry import (
     register_ndbuffer,
     register_pipeline,
 )
+from zarr.storage import MemoryStore
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,
     StoreExpectingTestBuffer,
@@ -254,8 +256,14 @@ def test_config_buffer_implementation() -> None:
         assert np.array_equal(arr_Crc32c[:], data2d)
 
 
-@pytest.mark.parametrize("dtype", ["int", "bytes", str])
-def test_default_codecs(dtype: str) -> None:
+@pytest.mark.parametrize(("dtype", "expected_codecs"),
+    [
+        ("int", [BytesCodec(), GzipCodec()]),
+        ("bytes", [VLenBytesCodec()]),
+        ("str", [VLenUTF8Codec()]),
+    ]
+                         )
+async def test_default_codecs(dtype: str, expected_codecs: list[Codec]) -> None:
     with config.set(
         {
             "array.v3_default_codecs": {
@@ -265,10 +273,5 @@ def test_default_codecs(dtype: str) -> None:
             }
         }
     ):
-        arr = zeros(shape=(100), dtype=np.dtype(dtype), zarr_format=3)
-        if dtype == "int":
-            assert arr.metadata.codecs == [BytesCodec(), GzipCodec()]
-        elif dtype == "bytes":
-            assert arr.metadata.codecs == [VLenBytesCodec()]
-        elif dtype == "str":
-            assert arr.metadata.codecs == [VLenUTF8Codec()]
+        arr = await AsyncArray.create(shape=(100,), chunk_shape=(100,),dtype=np.dtype(dtype), zarr_format=3, store=MemoryStore())
+        assert arr.metadata.codecs == expected_codecs
