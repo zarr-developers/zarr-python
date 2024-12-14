@@ -62,5 +62,8 @@ def dataset(
 
 def test_roundtrip(store: zarr.abc.store.Store, dataset: xr.Dataset) -> None:
     dataset.to_zarr(store)
-    other_dataset = xr.open_dataset(store)
+    other_dataset = xr.open_dataset(store, engine="zarr")
+    assert dataset.identical(other_dataset)
+
+    other_dataset = xr.open_zarr(store)
     assert dataset.identical(other_dataset)
