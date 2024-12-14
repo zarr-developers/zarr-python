@@ -308,8 +308,9 @@ class StoreTests(Generic[S, B]):
         data_buf = self.buffer_cls.from_bytes(b"0000")
         await self.set(store, key, data_buf)
 
-        new = self.buffer_cls.from_bytes(b"1111")
-        await store.set_if_not_exists("k", new)  # no error
+        with pytest.raises(Exception):
+            new = self.buffer_cls.from_bytes(b"1111")
+            await store.set_if_not_exists("k", new)
 
         result = await store.get(key, default_buffer_prototype())
         assert result == data_buf
