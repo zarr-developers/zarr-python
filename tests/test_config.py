@@ -56,6 +56,11 @@ def test_config_defaults_set() -> None:
                     "string": "vlen-utf8",
                     "bytes": "vlen-bytes",
                 },
+                "v3_default_codecs": {
+                    "bytes": ["vlen-bytes"],
+                    "numeric": ["bytes", "zstd"],
+                    "string": ["vlen-utf8"],
+                },
             },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},

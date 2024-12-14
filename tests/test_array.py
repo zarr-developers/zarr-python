@@ -12,7 +12,7 @@ from numcodecs import Zstd
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
-from zarr.codecs import BytesCodec, VLenBytesCodec
+from zarr.codecs import BytesCodec, VLenBytesCodec, ZstdCodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer import default_buffer_prototype
@@ -376,7 +376,7 @@ async def test_chunks_initialized() -> None:
 
 
 def test_nbytes_stored() -> None:
-    arr = zarr.create(shape=(100,), chunks=(10,), dtype="i4")
+    arr = zarr.create(shape=(100,), chunks=(10,), dtype="i4", codecs=[BytesCodec()])
     result = arr.nbytes_stored()
     assert result == 366  # the size of the metadata document. This is a fragile test.
     arr[:50] = 1
@@ -388,7 +388,9 @@ def test_nbytes_stored() -> None:
 
 
 async def test_nbytes_stored_async() -> None:
-    arr = await zarr.api.asynchronous.create(shape=(100,), chunks=(10,), dtype="i4")
+    arr = await zarr.api.asynchronous.create(
+        shape=(100,), chunks=(10,), dtype="i4", codecs=[BytesCodec()]
+    )
     result = await arr.nbytes_stored()
     assert result == 366  # the size of the metadata document. This is a fragile test.
     await arr.setitem(slice(50), 1)
@@ -473,13 +475,13 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=[BytesCodec()],
+            _codecs=[BytesCodec(), ZstdCodec()],
             _count_bytes=128,
         )
         assert result == expected
 
     def test_info_complete(self) -> None:
-        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=3, codecs=[BytesCodec()])
         result = arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
@@ -530,13 +532,15 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=[BytesCodec()],
+            _codecs=[BytesCodec(), ZstdCodec()],
             _count_bytes=128,
         )
         assert result == expected
 
     async def test_info_complete_async(self) -> None:
-        arr = await zarr.api.asynchronous.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        arr = await zarr.api.asynchronous.create(
+            shape=(4, 4), chunks=(2, 2), zarr_format=3, codecs=[BytesCodec()]
+        )
         result = await arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,

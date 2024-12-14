@@ -523,7 +523,10 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                         "configuration": {"separator": "/"},
                         "name": "default",
                     },
-                    "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
+                    "codecs": (
+                        {"configuration": {"endian": "little"}, "name": "bytes"},
+                        {"configuration": {}, "name": "zstd"},
+                    ),
                     "data_type": "float64",
                     "fill_value": fill_value,
                     "node_type": "array",

@@ -72,7 +72,10 @@ class TestConsolidated:
                 "configuration": {"separator": "/"},
                 "name": "default",
             },
-            "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
+            "codecs": (
+                {"configuration": {"endian": "little"}, "name": "bytes"},
+                {"configuration": {}, "name": "zstd"},
+            ),
             "data_type": "float64",
             "fill_value": np.float64(0.0),
             "node_type": "array",
@@ -216,7 +219,10 @@ class TestConsolidated:
                 "configuration": {"separator": "/"},
                 "name": "default",
             },
-            "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
+            "codecs": (
+                {"configuration": {"endian": "little"}, "name": "bytes"},
+                {"configuration": {}, "name": "zstd"},
+            ),
             "data_type": "float64",
             "fill_value": np.float64(0.0),
             "node_type": "array",
