@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+from numcodecs import LZ4, Blosc, Zlib, Zstd
+from numcodecs.abc import Codec
 
 import zarr
 
@@ -60,10 +62,17 @@ def dataset(
     return obj
 
 
-def test_roundtrip(store: zarr.abc.store.Store, dataset: xr.Dataset) -> None:
-    dataset.to_zarr(store)
+@pytest.mark.parametrize("compressor", [Zstd(level=1), LZ4(), Blosc(), Zlib()])
+def test_roundtrip_v2(store: zarr.abc.store.Store, dataset: xr.Dataset, compressor: Codec) -> None:
+    encoding = {
+        "var1": {
+            "compressor": compressor,
+        }
+    }
+    dataset.to_zarr(store, encoding=encoding, zarr_format=2)
     other_dataset = xr.open_dataset(store, engine="zarr")
     assert dataset.identical(other_dataset)
+    assert isinstance(other_dataset.var1.encoding["compressor"], compressor.__class__)
 
     other_dataset = xr.open_zarr(store)
     assert dataset.identical(other_dataset)
