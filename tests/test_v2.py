@@ -174,7 +174,7 @@ def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["
         fill_value=np.nan,
         dtype="float64",
         zarr_format=2,
-        exists_ok=True,
+        overwrite=True,
         order=array_order,
     )
 
@@ -194,7 +194,7 @@ def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["
         fill_value=np.nan,
         dtype="float64",
         zarr_format=2,
-        exists_ok=True,
+        overwrite=True,
         order=array_order,
     )
 
