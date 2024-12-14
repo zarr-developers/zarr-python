@@ -41,7 +41,14 @@ def test_config_defaults_set() -> None:
     assert config.defaults == [
         {
             "default_zarr_version": 3,
-            "array": {"order": "C"},
+            "array": {
+                "order": "C",
+                "v2_default_compressor": {
+                    "numeric": "zstd",
+                    "string": "vlen-utf8",
+                    "bytes": "vlen-bytes",
+                },
+            },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
@@ -62,11 +69,6 @@ def test_config_defaults_set() -> None:
                 "transpose": "zarr.codecs.transpose.TransposeCodec",
                 "vlen-utf8": "zarr.codecs.vlen_utf8.VLenUTF8Codec",
                 "vlen-bytes": "zarr.codecs.vlen_utf8.VLenBytesCodec",
-            },
-            "v2_default_compressor": {
-                "numeric": "zstd",
-                "string": "vlen-utf8",
-                "bytes": "vlen-bytes",
             },
         }
     ]

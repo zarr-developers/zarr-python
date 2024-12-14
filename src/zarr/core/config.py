@@ -42,7 +42,14 @@ config = Config(
     defaults=[
         {
             "default_zarr_version": 3,
-            "array": {"order": "C"},
+            "array": {
+                "order": "C",
+                "v2_default_compressor": {
+                    "numeric": "zstd",
+                    "string": "vlen-utf8",
+                    "bytes": "vlen-bytes",
+                },
+            },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
@@ -64,11 +71,7 @@ config = Config(
             },
             "buffer": "zarr.core.buffer.cpu.Buffer",
             "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
-            "v2_default_compressor": {
-                "numeric": "zstd",
-                "string": "vlen-utf8",
-                "bytes": "vlen-bytes",
-            },
+
         }
     ],
 )

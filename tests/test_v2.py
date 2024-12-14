@@ -84,9 +84,7 @@ def test_codec_pipeline() -> None:
 async def test_v2_encode_decode(dtype):
     with config.set(
         {
-            "v2_default_compressor": {
-                "bytes": "vlen-bytes",
-            },
+            "array.v2_default_compressor.bytes": "vlen-bytes",
         }
     ):
         store = zarr.storage.MemoryStore()
@@ -126,7 +124,7 @@ def test_v2_encode_decode_with_data(dtype_value):
     dtype, value = dtype_value
     with config.set(
         {
-            "v2_default_compressor": {
+            "array.v2_default_compressor": {
                 "string": "vlen-utf8",
                 "bytes": "vlen-bytes",
             },
@@ -215,7 +213,7 @@ def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["
 def test_default_filters_and_compressor(dtype_expected: Any) -> None:
     with config.set(
         {
-            "v2_default_compressor": {
+            "array.v2_default_compressor": {
                 "numeric": "zstd",
                 "string": "vlen-utf8",
                 "bytes": "vlen-bytes",
