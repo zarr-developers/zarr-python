@@ -19,6 +19,7 @@ jobs:
     name: os=${{ matrix.os }}, py=${{ matrix.python-version }}, np=${{ matrix.numpy-version }}, deps=${{ matrix.dependency-set }}
 
     strategy:
+      fail-fast: false
       matrix:
         python-version: ['3.11', '3.12', '3.13']
         numpy-version: ['1.25', '2.1']
