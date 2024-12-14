@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr import Array, zeros, AsyncArray
-from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline, Codec
+from zarr import Array, AsyncArray, zeros
+from zarr.abc.codec import Codec, CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter, Store
 from zarr.codecs import (
     BloscCodec,
@@ -25,7 +25,6 @@ from zarr.core.buffer import NDBuffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
-from zarr.core.strings import _STRING_DTYPE
 from zarr.registry import (
     fully_qualified_name,
     get_buffer_class,
@@ -256,13 +255,14 @@ def test_config_buffer_implementation() -> None:
         assert np.array_equal(arr_Crc32c[:], data2d)
 
 
-@pytest.mark.parametrize(("dtype", "expected_codecs"),
+@pytest.mark.parametrize(
+    ("dtype", "expected_codecs"),
     [
         ("int", [BytesCodec(), GzipCodec()]),
         ("bytes", [VLenBytesCodec()]),
         ("str", [VLenUTF8Codec()]),
-    ]
-                         )
+    ],
+)
 async def test_default_codecs(dtype: str, expected_codecs: list[Codec]) -> None:
     with config.set(
         {
@@ -273,5 +273,11 @@ async def test_default_codecs(dtype: str, expected_codecs: list[Codec]) -> None:
             }
         }
     ):
-        arr = await AsyncArray.create(shape=(100,), chunk_shape=(100,),dtype=np.dtype(dtype), zarr_format=3, store=MemoryStore())
+        arr = await AsyncArray.create(
+            shape=(100,),
+            chunk_shape=(100,),
+            dtype=np.dtype(dtype),
+            zarr_format=3,
+            store=MemoryStore(),
+        )
         assert arr.metadata.codecs == expected_codecs
