@@ -11,8 +11,15 @@ import zarr
 from zarr import Array, zeros
 from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter, Store
-from zarr.codecs import BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec, TransposeCodec, GzipCodec, VLenBytesCodec, \
-    VLenUTF8Codec
+from zarr.codecs import (
+    BloscCodec,
+    BytesCodec,
+    Crc32cCodec,
+    GzipCodec,
+    ShardingCodec,
+    VLenBytesCodec,
+    VLenUTF8Codec,
+)
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
@@ -216,39 +223,44 @@ def test_config_buffer_implementation() -> None:
         arr[:] = np.arange(100)
 
     register_buffer(TestBuffer)
-    config.set({"buffer": fully_qualified_name(TestBuffer)})
-    assert get_buffer_class() == TestBuffer
+    with config.set({"buffer": fully_qualified_name(TestBuffer)}):
+        assert get_buffer_class() == TestBuffer
 
-    # no error using TestBuffer
-    data = np.arange(100)
-    arr[:] = np.arange(100)
-    assert np.array_equal(arr[:], data)
+        # no error using TestBuffer
+        data = np.arange(100)
+        arr[:] = np.arange(100)
+        assert np.array_equal(arr[:], data)
 
-    data2d = np.arange(1000).reshape(100, 10)
-    arr_sharding = zeros(
-        shape=(100, 10),
-        store=StoreExpectingTestBuffer(),
-        codecs=[ShardingCodec(chunk_shape=(10, 10))],
-    )
-    arr_sharding[:] = data2d
-    assert np.array_equal(arr_sharding[:], data2d)
+        data2d = np.arange(1000).reshape(100, 10)
+        arr_sharding = zeros(
+            shape=(100, 10),
+            store=StoreExpectingTestBuffer(),
+            codecs=[ShardingCodec(chunk_shape=(10, 10))],
+        )
+        arr_sharding[:] = data2d
+        assert np.array_equal(arr_sharding[:], data2d)
 
-    arr_Crc32c = zeros(
-        shape=(100, 10),
-        store=StoreExpectingTestBuffer(),
-        codecs=[BytesCodec(), Crc32cCodec()],
-    )
-    arr_Crc32c[:] = data2d
-    assert np.array_equal(arr_Crc32c[:], data2d)
+        arr_Crc32c = zeros(
+            shape=(100, 10),
+            store=StoreExpectingTestBuffer(),
+            codecs=[BytesCodec(), Crc32cCodec()],
+        )
+        arr_Crc32c[:] = data2d
+        assert np.array_equal(arr_Crc32c[:], data2d)
+
 
 @pytest.mark.parametrize("dtype", ["int", "bytes", "str"])
-def test_default_codecs(dtype:str) -> None:
-    with config.set({"array.v3_default_codecs": {
-        "numeric": ["bytes", "gzip"], # test setting non-standard codecs
-        "string": ["vlen-utf8"],
-        "bytes": ["vlen-bytes"],
-    }}):
-        arr = zeros(shape=(100), store=StoreExpectingTestBuffer(), dtype=dtype)
+def test_default_codecs(dtype: str) -> None:
+    with config.set(
+        {
+            "array.v3_default_codecs": {
+                "numeric": ["bytes", "gzip"],  # test setting non-standard codecs
+                "string": ["vlen-utf8"],
+                "bytes": ["vlen-bytes"],
+            }
+        }
+    ):
+        arr = zeros(shape=(100), dtype=dtype)
         if dtype == "int":
             assert arr.metadata.codecs == [BytesCodec(), GzipCodec()]
         elif dtype == "bytes":

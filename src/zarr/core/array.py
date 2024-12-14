@@ -12,7 +12,6 @@ import numpy.typing as npt
 
 from zarr._compat import _deprecate_positional_args
 from zarr.abc.store import Store, set_or_delete
-from zarr.codecs import _get_default_array_bytes_codec
 from zarr.codecs._v2 import V2Codec
 from zarr.core._info import ArrayInfo
 from zarr.core.attributes import Attributes
@@ -78,7 +77,7 @@ from zarr.core.metadata import (
     T_ArrayMetadata,
 )
 from zarr.core.metadata.v2 import _default_filters_and_compressor
-from zarr.core.metadata.v3 import parse_node_type_array
+from zarr.core.metadata.v3 import DataType, parse_node_type_array
 from zarr.core.sync import sync
 from zarr.errors import MetadataValidationError
 from zarr.registry import get_pipeline_class
@@ -556,11 +555,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             await ensure_no_existing_node(store_path, zarr_format=3)
 
         shape = parse_shapelike(shape)
-        codecs = (
-            list(codecs)
-            if codecs is not None
-            else [_get_default_array_bytes_codec(np.dtype(dtype))]
-        )
+        codecs = list(codecs) if codecs is not None else _get_default_codecs(np.dtype(dtype))
 
         if chunk_key_encoding is None:
             chunk_key_encoding = ("default", "/")
@@ -3318,3 +3313,18 @@ def _build_parents(
         )
 
     return parents
+
+
+def _get_default_codecs(
+    np_dtype: np.dtype[Any],
+) -> list[dict[str, JSON]]:
+    default_codecs = config.get("array.v3_default_codecs")
+    dtype = DataType.from_numpy(np_dtype)
+    if dtype == DataType.string:
+        dtype_key = "string"
+    elif dtype == DataType.bytes:
+        dtype_key = "bytes"
+    else:
+        dtype_key = "numeric"
+
+    return [{"name": codec_id, "configuration": {}} for codec_id in default_codecs[dtype_key]]
