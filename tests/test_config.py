@@ -254,7 +254,7 @@ def test_config_buffer_implementation() -> None:
         assert np.array_equal(arr_Crc32c[:], data2d)
 
 
-@pytest.mark.parametrize("dtype", ["int", "bytes", "str"])
+@pytest.mark.parametrize("dtype", ["int", "bytes", str])
 def test_default_codecs(dtype: str) -> None:
     with config.set(
         {
@@ -265,7 +265,7 @@ def test_default_codecs(dtype: str) -> None:
             }
         }
     ):
-        arr = zeros(shape=(100), dtype=dtype)
+        arr = zeros(shape=(100), dtype=np.dtype(dtype), zarr_format=3)
         if dtype == "int":
             assert arr.metadata.codecs == [BytesCodec(), GzipCodec()]
         elif dtype == "bytes":
