@@ -67,6 +67,7 @@ test = [
     "mypy",
     "hypothesis",
     "universal-pathlib",
+    "xarray",
 ]
 
 jupyter = [
