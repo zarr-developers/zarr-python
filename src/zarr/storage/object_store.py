@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections import defaultdict
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, TypedDict
@@ -111,7 +112,8 @@ class ObjectStore(Store):
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         self._check_writable()
         buf = value.to_bytes()
-        await obs.put_async(self.store, key, buf, mode="create")
+        with contextlib.suppress(obs.exceptions.AlreadyExistsError):
+            await obs.put_async(self.store, key, buf, mode="create")
 
     @property
     def supports_deletes(self) -> bool:
