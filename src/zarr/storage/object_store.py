@@ -161,12 +161,13 @@ async def _transform_list_dir(
     # We assume that the underlying object-store implementation correctly handles the
     # prefix, so we don't double-check that the returned results actually start with the
     # given prefix.
-    prefix_len = len(prefix)
+    prefix_len = len(prefix) + 1  # If one is not added to the length, all items will contain "/"
     async for batch in list_stream:
         for item in batch:
-            # Yield this item if "/" does not exist after the prefix.
-            if "/" not in item["path"][prefix_len:]:
-                yield item["path"]
+            # Yield this item if "/" does not exist after the prefix
+            item_path = item["path"][prefix_len:]
+            if "/" not in item_path:
+                yield item_path
 
 
 class _BoundedRequest(TypedDict):
