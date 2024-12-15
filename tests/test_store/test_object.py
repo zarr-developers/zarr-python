@@ -29,7 +29,7 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
         # TODO: There must be a better way to get the path to the store
         store_path = re.search(PATTERN, str(store)).group(1)
         new_local_store = obstore.store.LocalStore(prefix=store_path)
-        return self.buffer_cls.from_bytes(obstore.get(new_local_store, key))
+        return self.buffer_cls.from_bytes(obstore.get(new_local_store, key).bytes())
 
     async def set(self, store: ObjectStore, key: str, value: Buffer) -> None:
         # TODO: There must be a better way to get the path to the store
