@@ -71,17 +71,22 @@ class ObjectStore(Store):
             return prototype.buffer.from_bytes(await resp.bytes_async())
 
         start, end = byte_range
+        if (start is None or start == 0) and end is None:
+            resp = await obs.get_async(self.store, key)
+            return prototype.buffer.from_bytes(await resp.bytes_async())
         if start is not None and end is not None:
             resp = await obs.get_range_async(self.store, key, start=start, end=end)
             return prototype.buffer.from_bytes(memoryview(resp))
         elif start is not None:
-            if start >= 0:
+            if start > 0:
                 # Offset request
                 resp = await obs.get_async(self.store, key, options={"range": {"offset": start}})
             else:
                 resp = await obs.get_async(self.store, key, options={"range": {"suffix": start}})
-
             return prototype.buffer.from_bytes(await resp.bytes_async())
+        elif end is not None:
+            resp = await obs.get_range_async(self.store, key, start=0, end=end)
+            return prototype.buffer.from_bytes(memoryview(resp))
         else:
             raise ValueError(f"Unexpected input to `get`: {start=}, {end=}")
 
