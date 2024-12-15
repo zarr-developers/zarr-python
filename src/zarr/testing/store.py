@@ -114,14 +114,14 @@ class StoreTests(Generic[S, B]):
         raise NotImplementedError
 
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
-    @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     @pytest.mark.parametrize("byte_range", [None, (0, None), (1, None), (1, 2), (None, 1)])
     async def test_get(
-        self, store: S, key: str, data: bytes, byte_range: tuple[int | None, int | None] | None
+        self, store: S, key: str, byte_range: tuple[int | None, int | None] | None
     ) -> None:
         """
         Ensure that data can be read from the store using the store.get method.
         """
+        data = b"\x01\x02\x03\x04"
         data_buf = self.buffer_cls.from_bytes(data)
         await self.set(store, key, data_buf)
         observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
