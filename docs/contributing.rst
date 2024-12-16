@@ -1,5 +1,5 @@
-Contributing to Zarr
-====================
+Contributing
+============
 
 Zarr is a community maintained project. We welcome contributions in the form of bug
 reports, bug fixes, documentation, enhancement proposals and more. This page provides
