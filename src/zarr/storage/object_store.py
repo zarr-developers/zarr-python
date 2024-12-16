@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from collections import defaultdict
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, TypedDict
@@ -70,17 +71,22 @@ class ObjectStore(Store):
             return prototype.buffer.from_bytes(await resp.bytes_async())
 
         start, end = byte_range
+        if (start is None or start == 0) and end is None:
+            resp = await obs.get_async(self.store, key)
+            return prototype.buffer.from_bytes(await resp.bytes_async())
         if start is not None and end is not None:
             resp = await obs.get_range_async(self.store, key, start=start, end=end)
             return prototype.buffer.from_bytes(memoryview(resp))
         elif start is not None:
-            if start >= 0:
+            if start > 0:
                 # Offset request
                 resp = await obs.get_async(self.store, key, options={"range": {"offset": start}})
             else:
                 resp = await obs.get_async(self.store, key, options={"range": {"suffix": start}})
-
             return prototype.buffer.from_bytes(await resp.bytes_async())
+        elif end is not None:
+            resp = await obs.get_range_async(self.store, key, start=0, end=end)
+            return prototype.buffer.from_bytes(memoryview(resp))
         else:
             raise ValueError(f"Unexpected input to `get`: {start=}, {end=}")
 
@@ -104,18 +110,22 @@ class ObjectStore(Store):
         return True
 
     async def set(self, key: str, value: Buffer) -> None:
+        self._check_writable()
         buf = value.to_bytes()
         await obs.put_async(self.store, key, buf)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        self._check_writable()
         buf = value.to_bytes()
-        await obs.put_async(self.store, key, buf, mode="create")
+        with contextlib.suppress(obs.exceptions.AlreadyExistsError):
+            await obs.put_async(self.store, key, buf, mode="create")
 
     @property
     def supports_deletes(self) -> bool:
         return True
 
     async def delete(self, key: str) -> None:
+        self._check_writable()
         await obs.delete_async(self.store, key)
 
     @property
@@ -158,12 +168,13 @@ async def _transform_list_dir(
     # We assume that the underlying object-store implementation correctly handles the
     # prefix, so we don't double-check that the returned results actually start with the
     # given prefix.
-    prefix_len = len(prefix)
+    prefix_len = len(prefix) + 1  # If one is not added to the length, all items will contain "/"
     async for batch in list_stream:
         for item in batch:
-            # Yield this item if "/" does not exist after the prefix.
-            if "/" not in item["path"][prefix_len:]:
-                yield item["path"]
+            # Yield this item if "/" does not exist after the prefix
+            item_path = item["path"][prefix_len:]
+            if "/" not in item_path:
+                yield item_path
 
 
 class _BoundedRequest(TypedDict):
