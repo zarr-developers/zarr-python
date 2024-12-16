@@ -195,6 +195,14 @@ async def consolidate_metadata(
             v = dataclasses.replace(v, consolidated_metadata=ConsolidatedMetadata(metadata={}))
             members_metadata[k] = v
 
+    if any(m.zarr_format == 3 for m in members_metadata.values()):
+        warnings.warn(
+            "Consolidated metadata is currently not part in the Zarr version 3 specification. It "
+            "may not be supported by other zarr implementations and may change in the future.",
+            category=UserWarning,
+            stacklevel=1,
+        )
+
     ConsolidatedMetadata._flat_to_nested(members_metadata)
 
     consolidated_metadata = ConsolidatedMetadata(metadata=members_metadata)
@@ -203,6 +211,7 @@ async def consolidate_metadata(
         group,
         metadata=metadata,
     )
+
     await group._save_metadata()
     return group
 
