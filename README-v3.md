@@ -38,7 +38,7 @@ hatch env create test
 ## Run the Tests
 
 ```
-hatch run test:run 
+hatch run test:run
 ```
 
 or

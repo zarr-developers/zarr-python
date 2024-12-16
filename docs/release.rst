@@ -218,17 +218,17 @@ Typing
 Maintenance
 ~~~~~~~~~~~
 
-* Remedy a situation where ``zarr-python`` was importing ``DummyStorageTransformer`` from the test suite. 
+* Remedy a situation where ``zarr-python`` was importing ``DummyStorageTransformer`` from the test suite.
   The dependency relationship is now reversed: the test suite imports this class from ``zarr-python``.
   By :user:`Davis Bennett <d-v-b>` :issue:`1601`.
 
-* [V3] Update minimum supported Python and Numpy versions. 
+* [V3] Update minimum supported Python and Numpy versions.
   By :user:`Joe Hamman <jhamman>` :issue:`1638`
 
 * use src layout and use hatch for packaging.
   By :user:`Davis Bennett <d-v-b>` :issue:`1592`.
 
-* temporarily disable mypy in v3 directory. 
+* temporarily disable mypy in v3 directory.
   By :user:`Joe Hamman <jhamman>` :issue:`1649`.
 
 * create hatch test env.
@@ -315,10 +315,10 @@ Maintenance
 Documentation
 ~~~~~~~~~~~~~
 
-* Specify docs hatch env for v3 branch. 
+* Specify docs hatch env for v3 branch.
   By :user:`Max Jones <maxrjones>` :issue:`1655`.
 
-* Development installation/contributing docs updates. 
+* Development installation/contributing docs updates.
   By :user:`Alden Keefe Sampson <aldenks>` :issue:`1643`.
 
 * chore: update project settings per scientific python repo-review.
@@ -336,7 +336,7 @@ Enhancements
 ~~~~~~~~~~~~
 * Added support for creating a copy of data when converting a `zarr.Array`
   to a numpy array.
-  By :user:`David Stansby <dstansby>` (:issue:`2106`) and 
+  By :user:`David Stansby <dstansby>` (:issue:`2106`) and
   :user:`Joe Hamman <jhamman>` (:issue:`2123`).
 
 Maintenance

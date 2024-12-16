@@ -4,7 +4,7 @@ Storage
 Zarr-Python supports multiple storage backends, including: local file systems,
 Zip files, remote stores via ``fsspec`` (S3, HTTP, etc.), and in-memory stores. In
 Zarr-Python 3, stores must implement the abstract store API from
-:class:`zarr.abc.store.Store`. 
+:class:`zarr.abc.store.Store`.
 
 .. note::
    Unlike Zarr-Python 2 where the store interface was built around a generic ``MutableMapping``
@@ -50,8 +50,8 @@ filesystem.
 Zip Store
 ~~~~~~~~~
 
-The :class:`zarr.storage.ZipStore` stores the contents of a Zarr hierarchy in a single 
-Zip file. The `Zip Store specification_` is currently in draft form. 
+The :class:`zarr.storage.ZipStore` stores the contents of a Zarr hierarchy in a single
+Zip file. The `Zip Store specification_` is currently in draft form.
 
 .. code-block:: python
 
@@ -65,7 +65,7 @@ Remote Store
 
 The :class:`zarr.storage.RemoteStore` stores the contents of a Zarr hierarchy in following the same
 logical layout as the ``LocalStore``, except the store is assumed to be on a remote storage system
-such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Store). The 
+such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Store). The
 :class:`zarr.storage.RemoteStore` is backed by `Fsspec_` and can support any Fsspec backend
 that implements the `AbstractFileSystem` API,
 
@@ -80,7 +80,7 @@ Memory Store
 ~~~~~~~~~~~~
 
 The :class:`zarr.storage.RemoteStore` a in-memory store that allows for serialization of
-Zarr data (metadata and chunks) to a dictionary. 
+Zarr data (metadata and chunks) to a dictionary.
 
 .. code-block:: python
 
