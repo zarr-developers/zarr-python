@@ -28,7 +28,7 @@ _vlen_bytes_codec = VLenBytes()
 class VLenUTF8Codec(ArrayBytesCodec):
     def __init__(self) -> None:
         warn(
-            "The codec `vlen-utf8` is currently not part in the Zarr version 3 specification and "
+            "The codec `vlen-utf8` is currently not part in the Zarr version 3 specification. It "
             "may not be supported by other zarr implementations and may change in the future.",
             category=UserWarning,
             stacklevel=2,
@@ -83,7 +83,7 @@ class VLenUTF8Codec(ArrayBytesCodec):
 class VLenBytesCodec(ArrayBytesCodec):
     def __init__(self) -> None:
         warn(
-            "The codec `vlen-bytes` is currently not part in the Zarr version 3 specification and "
+            "The codec `vlen-bytes` is currently not part in the Zarr version 3 specificatio. It "
             "may not be supported by other zarr implementations and may change in the future.",
             category=UserWarning,
             stacklevel=2,

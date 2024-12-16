@@ -583,7 +583,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         if dtype.kind in "UTS":
             warn(
-                f"The dtype `{dtype}` is currently not part in the Zarr version 3 specification and "
+                f"The dtype `{dtype}` is currently not part in the Zarr version 3 specification. It "
                 "may not be supported by other zarr implementations and may change in the future.",
                 category=UserWarning,
                 stacklevel=2,
