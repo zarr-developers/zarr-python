@@ -17,18 +17,29 @@ Zarr-Python
     license
     contributing
     roadmap
+    about
 
 **Version**: |version|
 
 **Download documentation**: `PDF/Zipped HTML <https://readthedocs.org/projects/zarr/downloads/>`_
 
 **Useful links**:
-`Installation <installation.html>`_ |
 `Source Repository <https://github.com/zarr-developers/zarr-python>`_ |
 `Issue Tracker <https://github.com/zarr-developers/zarr-python/issues>`_ |
 `Zulip Chat <https://ossci.zulipchat.com/>`_
 
 Zarr is a file storage format for chunked, compressed, N-dimensional arrays based on an open-source specification.
+
+Highlights
+----------
+
+* Create N-dimensional arrays with any NumPy dtype.
+* Chunk arrays along any dimension.
+* Compress and/or filter chunks using any NumCodecs_ codec.
+* Store arrays in memory, on disk, inside a Zip file, on S3, ...
+* Read an array concurrently from multiple threads or processes.
+* Write to an array concurrently from multiple threads or processes.
+* Organize arrays into hierarchies via groups.
 
 .. grid:: 2
 
