@@ -71,7 +71,7 @@ _CREATE_MODES: tuple[AccessModeLiteral, ...] = ("a", "w", "w-")
 _OVERWRITE_MODES: tuple[AccessModeLiteral, ...] = ("a", "r+", "w")
 
 
-def _infer_exists_ok(mode: AccessModeLiteral) -> bool:
+def _infer_overwrite(mode: AccessModeLiteral) -> bool:
     """
     Check that an ``AccessModeLiteral`` is compatible with overwriting an existing Zarr node.
     """
@@ -195,6 +195,14 @@ async def consolidate_metadata(
             v = dataclasses.replace(v, consolidated_metadata=ConsolidatedMetadata(metadata={}))
             members_metadata[k] = v
 
+    if any(m.zarr_format == 3 for m in members_metadata.values()):
+        warnings.warn(
+            "Consolidated metadata is currently not part in the Zarr version 3 specification. It "
+            "may not be supported by other zarr implementations and may change in the future.",
+            category=UserWarning,
+            stacklevel=1,
+        )
+
     ConsolidatedMetadata._flat_to_nested(members_metadata)
 
     consolidated_metadata = ConsolidatedMetadata(metadata=members_metadata)
@@ -203,6 +211,7 @@ async def consolidate_metadata(
         group,
         metadata=metadata,
     )
+
     await group._save_metadata()
     return group
 
@@ -414,14 +423,14 @@ async def save_array(
         arr = np.array(arr)
     shape = arr.shape
     chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
-    exists_ok = kwargs.pop("exists_ok", None) or _infer_exists_ok(mode)
+    overwrite = kwargs.pop("overwrite", None) or _infer_overwrite(mode)
     new = await AsyncArray.create(
         store_path,
         zarr_format=zarr_format,
         shape=shape,
         dtype=arr.dtype,
         chunks=chunks,
-        exists_ok=exists_ok,
+        overwrite=overwrite,
         **kwargs,
     )
     await new.setitem(slice(None), arr)
@@ -647,7 +656,7 @@ async def group(
         return await AsyncGroup.from_store(
             store=store_path,
             zarr_format=_zarr_format,
-            exists_ok=overwrite,
+            overwrite=overwrite,
             attributes=attributes,
         )
 
@@ -753,12 +762,12 @@ async def open_group(
     except (KeyError, FileNotFoundError):
         pass
     if mode in _CREATE_MODES:
-        exists_ok = _infer_exists_ok(mode)
+        overwrite = _infer_overwrite(mode)
         _zarr_format = zarr_format or _default_zarr_version()
         return await AsyncGroup.from_store(
             store_path,
             zarr_format=_zarr_format,
-            exists_ok=exists_ok,
+            overwrite=overwrite,
             attributes=attributes,
         )
     raise FileNotFoundError(f"Unable to find group: {store_path}")
@@ -933,7 +942,7 @@ async def create(
         dtype=dtype,
         compressor=compressor,
         fill_value=fill_value,
-        exists_ok=overwrite,
+        overwrite=overwrite,
         filters=filters,
         dimension_separator=dimension_separator,
         zarr_format=zarr_format,
@@ -1120,12 +1129,12 @@ async def open_array(
         return await AsyncArray.open(store_path, zarr_format=zarr_format)
     except FileNotFoundError:
         if not store_path.read_only and mode in _CREATE_MODES:
-            exists_ok = _infer_exists_ok(mode)
+            overwrite = _infer_overwrite(mode)
             _zarr_format = zarr_format or _default_zarr_version()
             return await create(
                 store=store_path,
                 zarr_format=_zarr_format,
-                overwrite=exists_ok,
+                overwrite=overwrite,
                 **kwargs,
             )
         raise

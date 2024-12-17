@@ -40,7 +40,7 @@ async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
 
 
 @pytest.fixture(params=[True, False])
-def exists_ok(request: pytest.FixtureRequest) -> bool:
+def overwrite(request: pytest.FixtureRequest) -> bool:
     result = request.param
     if not isinstance(result, bool):
         raise TypeError("Wrong type returned by test fixture.")
@@ -154,7 +154,7 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
     subsubsubgroup = subsubgroup.create_group("subsubsubgroup")
 
     members_expected["subarray"] = group.create_array(
-        "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
+        "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), overwrite=True
     )
 
     # add an extra object to the domain of the group.
@@ -227,7 +227,7 @@ def test_group(store: Store, zarr_format: ZarrFormat) -> None:
     # create an array from the "bar" group
     data = np.arange(0, 4 * 4, dtype="uint16").reshape((4, 4))
     arr = bar.create_array(
-        "baz", shape=data.shape, dtype=data.dtype, chunk_shape=(2, 2), exists_ok=True
+        "baz", shape=data.shape, dtype=data.dtype, chunk_shape=(2, 2), overwrite=True
     )
     arr[:] = data
 
@@ -252,23 +252,23 @@ def test_group(store: Store, zarr_format: ZarrFormat) -> None:
     assert dict(bar3.attrs) == {"baz": "qux", "name": "bar"}
 
 
-def test_group_create(store: Store, exists_ok: bool, zarr_format: ZarrFormat) -> None:
+def test_group_create(store: Store, overwrite: bool, zarr_format: ZarrFormat) -> None:
     """
     Test that `Group.from_store` works as expected.
     """
     attributes = {"foo": 100}
     group = Group.from_store(
-        store, attributes=attributes, zarr_format=zarr_format, exists_ok=exists_ok
+        store, attributes=attributes, zarr_format=zarr_format, overwrite=overwrite
     )
 
     assert group.attrs == attributes
 
-    if not exists_ok:
+    if not overwrite:
         with pytest.raises(ContainsGroupError):
-            _ = Group.from_store(store, exists_ok=exists_ok, zarr_format=zarr_format)
+            _ = Group.from_store(store, overwrite=overwrite, zarr_format=zarr_format)
 
 
-def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> None:
+def test_group_open(store: Store, zarr_format: ZarrFormat, overwrite: bool) -> None:
     """
     Test the `Group.open` method.
     """
@@ -280,24 +280,24 @@ def test_group_open(store: Store, zarr_format: ZarrFormat, exists_ok: bool) -> N
     # create the group
     attrs = {"path": "foo"}
     group_created = Group.from_store(
-        store, attributes=attrs, zarr_format=zarr_format, exists_ok=exists_ok
+        store, attributes=attrs, zarr_format=zarr_format, overwrite=overwrite
     )
     assert group_created.attrs == attrs
     assert group_created.metadata.zarr_format == zarr_format
     assert group_created.store_path == spath
 
-    # attempt to create a new group in place, to test exists_ok
+    # attempt to create a new group in place, to test overwrite
     new_attrs = {"path": "bar"}
-    if not exists_ok:
+    if not overwrite:
         with pytest.raises(ContainsGroupError):
-            Group.from_store(store, attributes=attrs, zarr_format=zarr_format, exists_ok=exists_ok)
+            Group.from_store(store, attributes=attrs, zarr_format=zarr_format, overwrite=overwrite)
     else:
         if not store.supports_deletes:
             pytest.skip(
-                "Store does not support deletes but `exists_ok` is True, requiring deletes to override a group"
+                "Store does not support deletes but `overwrite` is True, requiring deletes to override a group"
             )
         group_created_again = Group.from_store(
-            store, attributes=new_attrs, zarr_format=zarr_format, exists_ok=exists_ok
+            store, attributes=new_attrs, zarr_format=zarr_format, overwrite=overwrite
         )
         assert group_created_again.attrs == new_attrs
         assert group_created_again.metadata.zarr_format == zarr_format
@@ -597,7 +597,7 @@ async def test_group_update_attributes_async(store: Store, zarr_format: ZarrForm
 def test_group_create_array(
     store: Store,
     zarr_format: ZarrFormat,
-    exists_ok: bool,
+    overwrite: bool,
     method: Literal["create_array", "array"],
 ) -> None:
     """
@@ -616,7 +616,7 @@ def test_group_create_array(
     else:
         raise AssertionError
 
-    if not exists_ok:
+    if not overwrite:
         if method == "create_array":
             with pytest.raises(ContainsArrayError):
                 group.create_array(name="array", shape=shape, dtype=dtype, data=data)
@@ -698,12 +698,12 @@ def test_group_array_creation(
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 @pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize("exists_ok", [True, False])
+@pytest.mark.parametrize("overwrite", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
 def test_group_creation_existing_node(
     store: Store,
     zarr_format: ZarrFormat,
-    exists_ok: bool,
+    overwrite: bool,
     extant_node: Literal["array", "group"],
 ) -> None:
     """
@@ -725,14 +725,14 @@ def test_group_creation_existing_node(
 
     new_attributes = {"new": True}
 
-    if exists_ok:
+    if overwrite:
         if not store.supports_deletes:
-            pytest.skip("store does not support deletes but exists_ok is True")
+            pytest.skip("store does not support deletes but overwrite is True")
         node_new = Group.from_store(
             spath / "extant",
             attributes=new_attributes,
             zarr_format=zarr_format,
-            exists_ok=exists_ok,
+            overwrite=overwrite,
         )
         assert node_new.attrs == new_attributes
     else:
@@ -741,13 +741,13 @@ def test_group_creation_existing_node(
                 spath / "extant",
                 attributes=new_attributes,
                 zarr_format=zarr_format,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
             )
 
 
 async def test_asyncgroup_create(
     store: Store,
-    exists_ok: bool,
+    overwrite: bool,
     zarr_format: ZarrFormat,
 ) -> None:
     """
@@ -758,19 +758,19 @@ async def test_asyncgroup_create(
     agroup = await AsyncGroup.from_store(
         store,
         attributes=attributes,
-        exists_ok=exists_ok,
+        overwrite=overwrite,
         zarr_format=zarr_format,
     )
 
     assert agroup.metadata == GroupMetadata(zarr_format=zarr_format, attributes=attributes)
     assert agroup.store_path == await make_store_path(store)
 
-    if not exists_ok:
+    if not overwrite:
         with pytest.raises(ContainsGroupError):
             agroup = await AsyncGroup.from_store(
                 spath,
                 attributes=attributes,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
                 zarr_format=zarr_format,
             )
         # create an array at our target path
@@ -782,7 +782,7 @@ async def test_asyncgroup_create(
             _ = await AsyncGroup.from_store(
                 StorePath(store=store) / collision_name,
                 attributes=attributes,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
                 zarr_format=zarr_format,
             )
 
@@ -805,7 +805,7 @@ async def test_asyncgroup_open(
     group_w = await AsyncGroup.from_store(
         store=store,
         attributes=attributes,
-        exists_ok=False,
+        overwrite=False,
         zarr_format=zarr_format,
     )
 
@@ -819,7 +819,7 @@ async def test_asyncgroup_open_wrong_format(
     store: Store,
     zarr_format: ZarrFormat,
 ) -> None:
-    _ = await AsyncGroup.from_store(store=store, exists_ok=False, zarr_format=zarr_format)
+    _ = await AsyncGroup.from_store(store=store, overwrite=False, zarr_format=zarr_format)
     zarr_format_wrong: ZarrFormat
     # try opening with the wrong zarr format
     if zarr_format == 3:
@@ -932,7 +932,7 @@ async def test_asyncgroup_create_group(
 
 
 async def test_asyncgroup_create_array(
-    store: Store, zarr_format: ZarrFormat, exists_ok: bool
+    store: Store, zarr_format: ZarrFormat, overwrite: bool
 ) -> None:
     """
     Test that the AsyncGroup.create_array method works correctly. We ensure that array properties
@@ -941,7 +941,7 @@ async def test_asyncgroup_create_array(
 
     agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
 
-    if not exists_ok:
+    if not overwrite:
         with pytest.raises(ContainsGroupError):
             agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
 
