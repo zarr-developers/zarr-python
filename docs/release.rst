@@ -2191,7 +2191,7 @@ Other changes
 ~~~~~~~~~~~~~
 
 To accommodate support for hierarchies and filters, the Zarr metadata format
-has been modified. See the :ref:`spec_v2` for more information. To migrate an
+has been modified. See the ``spec_v2`` for more information. To migrate an
 array stored using Zarr version 1.x, use the :func:`zarr.storage.migrate_1to2`
 function.
 
@@ -2237,14 +2237,14 @@ abstraction layer between the core array logic and data storage (:issue:`21`).
 In this release, any
 object that implements the ``MutableMapping`` interface can be used as
 an array store. See the tutorial sections on :ref:`tutorial_persist`
-and :ref:`tutorial_storage`, the :ref:`spec_v1`, and the
+and :ref:`tutorial_storage`, the ``spec_v1``, and the
 :mod:`zarr.storage` module documentation for more information.
 
 Please note also that the file organization and file name conventions
 used when storing a Zarr array in a directory on the file system have
 changed. Persistent Zarr arrays created using previous versions of the
 software will not be compatible with this version. See the
-:mod:`zarr.storage` API docs and the :ref:`spec_v1` for more
+:mod:`zarr.storage` API docs and the ``spec_v1`` for more
 information.
 
 Compression
@@ -2257,7 +2257,7 @@ as the default compressor, however other compressors including zlib,
 BZ2 and LZMA are also now supported via the Python standard
 library. New compressors can also be dynamically registered for use
 with Zarr. See the tutorial sections on :ref:`tutorial_compress` and
-:ref:`tutorial_tips_blosc`, the :ref:`spec_v1`, and the
+:ref:`tutorial_tips_blosc`, the ``spec_v1``, and the
 :mod:`zarr.compressors` module documentation for more information.
 
 Synchronization

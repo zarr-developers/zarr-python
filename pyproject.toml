@@ -81,6 +81,7 @@ docs = [
     'sphinx_design',
     'sphinx-issues',
     'sphinx-copybutton',
+    'sphinx-reredirects',
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
