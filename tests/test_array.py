@@ -376,25 +376,25 @@ async def test_chunks_initialized() -> None:
 def test_nbytes_stored() -> None:
     arr = zarr.create(shape=(100,), chunks=(10,), dtype="i4")
     result = arr.nbytes_stored()
-    assert result == 366  # the size of the metadata document. This is a fragile test.
+    assert result == 502  # the size of the metadata document. This is a fragile test.
     arr[:50] = 1
     result = arr.nbytes_stored()
-    assert result == 566  # the size with 5 chunks filled.
+    assert result == 702  # the size with 5 chunks filled.
     arr[50:] = 2
     result = arr.nbytes_stored()
-    assert result == 766  # the size with all chunks filled.
+    assert result == 902  # the size with all chunks filled.
 
 
 async def test_nbytes_stored_async() -> None:
     arr = await zarr.api.asynchronous.create(shape=(100,), chunks=(10,), dtype="i4")
     result = await arr.nbytes_stored()
-    assert result == 366  # the size of the metadata document. This is a fragile test.
+    assert result == 502  # the size of the metadata document. This is a fragile test.
     await arr.setitem(slice(50), 1)
     result = await arr.nbytes_stored()
-    assert result == 566  # the size with 5 chunks filled.
+    assert result == 702  # the size with 5 chunks filled.
     await arr.setitem(slice(50, 100), 2)
     result = await arr.nbytes_stored()
-    assert result == 766  # the size with all chunks filled.
+    assert result == 902  # the size with all chunks filled.
 
 
 def test_default_fill_values() -> None:
@@ -489,14 +489,14 @@ class TestInfo:
             _codecs=[BytesCodec()],
             _count_bytes=128,
             _count_chunks_initialized=0,
-            _count_bytes_stored=373,  # the metadata?
+            _count_bytes_stored=521,  # the metadata?
         )
         assert result == expected
 
         arr[:2, :2] = 10
         result = arr.info_complete()
         expected = dataclasses.replace(
-            expected, _count_chunks_initialized=1, _count_bytes_stored=405
+            expected, _count_chunks_initialized=1, _count_bytes_stored=553
         )
         assert result == expected
 
@@ -545,14 +545,14 @@ class TestInfo:
             _codecs=[BytesCodec()],
             _count_bytes=128,
             _count_chunks_initialized=0,
-            _count_bytes_stored=373,  # the metadata?
+            _count_bytes_stored=521,  # the metadata?
         )
         assert result == expected
 
         await arr.setitem((slice(2), slice(2)), 10)
         result = await arr.info_complete()
         expected = dataclasses.replace(
-            expected, _count_chunks_initialized=1, _count_bytes_stored=405
+            expected, _count_chunks_initialized=1, _count_bytes_stored=553
         )
         assert result == expected
 
