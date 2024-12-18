@@ -685,6 +685,11 @@ def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
         Shape of the empty array.
     **kwargs
         Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        
+    Returns
+    -------
+    Array
+        The new array.
 
     Notes
     -----
