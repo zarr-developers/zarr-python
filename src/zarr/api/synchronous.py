@@ -403,7 +403,7 @@ def group(
 
     Returns
     -------
-    g : group
+    g : Group
         The new group.
     """
     return Group(
