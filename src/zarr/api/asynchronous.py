@@ -18,6 +18,7 @@ from zarr.core.common import (
     ChunkCoords,
     MemoryOrder,
     ZarrFormat,
+    parse_dtype,
 )
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
@@ -972,7 +973,7 @@ async def create_array(
 
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
     sub_codecs = (*filters, BytesCodec(), *compressors)
-
+    _dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
     if zarr_format == 2:
         if shard_shape is not None or shard_shape != "auto":
             msg = (
@@ -988,7 +989,7 @@ async def create_array(
         return await AsyncArray._create_v2(
             store_path=store_path,
             shape=shape,
-            dtype=dtype,
+            dtype=_dtype_parsed,
             chunks=chunk_shape,
             dimension_separator="/",
             fill_value=fill_value,
@@ -1018,7 +1019,7 @@ async def create_array(
         return await AsyncArray._create_v3(
             store_path=store_path,
             shape=shape,
-            dtype=dtype,
+            dtype=_dtype_parsed,
             fill_value=fill_value,
             attributes=attributes,
             chunk_shape=chunks_out,

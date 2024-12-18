@@ -25,7 +25,9 @@ from zarr.core.indexing import ceildiv
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from typing import Self
+
     import numpy.typing as npt
+
 
 def _guess_chunks(
     shape: ShapeLike,
@@ -144,7 +146,6 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
     return tuple(int(c) for c in chunks)
 
 
-
 def _auto_partition(
     shape: tuple[int, ...],
     dtype: npt.DTypeLike,
@@ -170,12 +171,13 @@ def _auto_partition(
     else:
         if chunk_shape == "auto":
             # aim for a 1MiB chunk
-            _chunks_out = _guess_chunks(shape, item_size, max_bytes=1024**2)
+            _chunks_out = _guess_chunks(shape, item_size, max_bytes=1024)
         else:
             _chunks_out = chunk_shape
+
         if shard_shape == "auto":
             # TODO: fix me! this should be capped at some sane shard shape
-            _shards_out = tuple(c * 8 for c in _chunks_out)
+            _shards_out = tuple(c * 2 for c in _chunks_out)
         else:
             _shards_out = shard_shape
 
