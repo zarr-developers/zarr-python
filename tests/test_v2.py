@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Literal
 
 import numcodecs.vlen
 import numpy as np
@@ -126,9 +126,54 @@ async def test_create_dtype_str(dtype: Any) -> None:
 
 
 @pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
-def test_v2_filters_codecs(filters: Any) -> None:
+@pytest.mark.parametrize("order", ["C", "F"])
+def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     array_fixture = [42]
-    arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
+    arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters, order=order)
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)
+
+
+@pytest.mark.parametrize("array_order", ["C", "F"])
+@pytest.mark.parametrize("data_order", ["C", "F"])
+def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["C", "F"]) -> None:
+    arr = zarr.Array.create(
+        MemoryStore({}),
+        shape=(10, 8),
+        chunks=(3, 3),
+        fill_value=np.nan,
+        dtype="float64",
+        zarr_format=2,
+        overwrite=True,
+        order=array_order,
+    )
+
+    # Non-contiguous write
+    a = np.arange(arr.shape[0] * arr.shape[1]).reshape(arr.shape, order=data_order)
+    arr[slice(6, 9, None), slice(3, 6, None)] = a[
+        slice(6, 9, None), slice(3, 6, None)
+    ]  # The slice on the RHS is important
+    np.testing.assert_array_equal(
+        arr[slice(6, 9, None), slice(3, 6, None)], a[slice(6, 9, None), slice(3, 6, None)]
+    )
+
+    arr = zarr.Array.create(
+        MemoryStore({}),
+        shape=(10, 8),
+        chunks=(3, 3),
+        fill_value=np.nan,
+        dtype="float64",
+        zarr_format=2,
+        overwrite=True,
+        order=array_order,
+    )
+
+    # Contiguous write
+    a = np.arange(9).reshape((3, 3), order=data_order)
+    if data_order == "F":
+        assert a.flags.f_contiguous
+    else:
+        assert a.flags.c_contiguous
+    arr[slice(6, 9, None), slice(3, 6, None)] = a
+    np.testing.assert_array_equal(arr[slice(6, 9, None), slice(3, 6, None)], a)

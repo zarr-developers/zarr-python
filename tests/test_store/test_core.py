@@ -3,14 +3,13 @@ from pathlib import Path
 
 import pytest
 from _pytest.compat import LEGACY_PATH
-from upath import UPath
 
 from zarr.core.common import AccessModeLiteral
 from zarr.storage._utils import normalize_path
 from zarr.storage.common import StoreLike, StorePath, make_store_path
+from zarr.storage.fsspec import FsspecStore
 from zarr.storage.local import LocalStore
 from zarr.storage.memory import MemoryStore
-from zarr.storage.remote import RemoteStore
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
@@ -72,8 +71,9 @@ async def test_make_store_path_invalid() -> None:
 
 
 async def test_make_store_path_fsspec(monkeypatch) -> None:
+    pytest.importorskip("fsspec")
     store_path = await make_store_path("http://foo.com/bar")
-    assert isinstance(store_path.store, RemoteStore)
+    assert isinstance(store_path.store, FsspecStore)
 
 
 @pytest.mark.parametrize(
@@ -106,11 +106,15 @@ async def test_unsupported() -> None:
         "foo/bar///",
         Path("foo/bar"),
         b"foo/bar",
-        UPath("foo/bar"),
     ],
 )
-def test_normalize_path_valid(path: str | bytes | Path | UPath) -> None:
+def test_normalize_path_valid(path: str | bytes | Path) -> None:
     assert normalize_path(path) == "foo/bar"
+
+
+def test_normalize_path_upath() -> None:
+    upath = pytest.importorskip("upath")
+    assert normalize_path(upath.UPath("foo/bar")) == "foo/bar"
 
 
 def test_normalize_path_none():

@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import math
 import pickle
@@ -26,12 +27,12 @@ from zarr.storage.common import StorePath
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 @pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize("exists_ok", [True, False])
+@pytest.mark.parametrize("overwrite", [True, False])
 @pytest.mark.parametrize("extant_node", ["array", "group"])
 def test_array_creation_existing_node(
     store: LocalStore | MemoryStore,
     zarr_format: ZarrFormat,
-    exists_ok: bool,
+    overwrite: bool,
     extant_node: Literal["array", "group"],
 ) -> None:
     """
@@ -52,14 +53,14 @@ def test_array_creation_existing_node(
     new_shape = (2, 2)
     new_dtype = "float32"
 
-    if exists_ok:
+    if overwrite:
         if not store.supports_deletes:
             pytest.skip("store does not support deletes")
         arr_new = Array.create(
             spath / "extant",
             shape=new_shape,
             dtype=new_dtype,
-            exists_ok=exists_ok,
+            overwrite=overwrite,
             zarr_format=zarr_format,
         )
         assert arr_new.shape == new_shape
@@ -70,7 +71,7 @@ def test_array_creation_existing_node(
                 spath / "extant",
                 shape=new_shape,
                 dtype=new_dtype,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
                 zarr_format=zarr_format,
             )
 
@@ -471,6 +472,87 @@ class TestInfo:
             _store_type="MemoryStore",
             _codecs=[BytesCodec()],
             _count_bytes=128,
+        )
+        assert result == expected
+
+    def test_info_complete(self) -> None:
+        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        result = arr.info_complete()
+        expected = ArrayInfo(
+            _zarr_format=3,
+            _data_type=DataType.parse("float64"),
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _codecs=[BytesCodec()],
+            _count_bytes=128,
+            _count_chunks_initialized=0,
+            _count_bytes_stored=373,  # the metadata?
+        )
+        assert result == expected
+
+        arr[:2, :2] = 10
+        result = arr.info_complete()
+        expected = dataclasses.replace(
+            expected, _count_chunks_initialized=1, _count_bytes_stored=405
+        )
+        assert result == expected
+
+    async def test_info_v2_async(self) -> None:
+        arr = await zarr.api.asynchronous.create(shape=(4, 4), chunks=(2, 2), zarr_format=2)
+        result = arr.info
+        expected = ArrayInfo(
+            _zarr_format=2,
+            _data_type=np.dtype("float64"),
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _count_bytes=128,
+        )
+        assert result == expected
+
+    async def test_info_v3_async(self) -> None:
+        arr = await zarr.api.asynchronous.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        result = arr.info
+        expected = ArrayInfo(
+            _zarr_format=3,
+            _data_type=DataType.parse("float64"),
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _codecs=[BytesCodec()],
+            _count_bytes=128,
+        )
+        assert result == expected
+
+    async def test_info_complete_async(self) -> None:
+        arr = await zarr.api.asynchronous.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        result = await arr.info_complete()
+        expected = ArrayInfo(
+            _zarr_format=3,
+            _data_type=DataType.parse("float64"),
+            _shape=(4, 4),
+            _chunk_shape=(2, 2),
+            _order="C",
+            _read_only=False,
+            _store_type="MemoryStore",
+            _codecs=[BytesCodec()],
+            _count_bytes=128,
+            _count_chunks_initialized=0,
+            _count_bytes_stored=373,  # the metadata?
+        )
+        assert result == expected
+
+        await arr.setitem((slice(2), slice(2)), 10)
+        result = await arr.info_complete()
+        expected = dataclasses.replace(
+            expected, _count_chunks_initialized=1, _count_bytes_stored=405
         )
         assert result == expected
 

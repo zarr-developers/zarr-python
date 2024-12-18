@@ -43,7 +43,7 @@ def test_metadata_to_dict(
     fill_value: Any,
     order: Literal["C", "F"],
     dimension_separator: Literal[".", "/"] | None,
-    attributes: None | dict[str, Any],
+    attributes: dict[str, Any] | None,
 ) -> None:
     shape = (1, 2, 3)
     chunks = (1,) * len(shape)

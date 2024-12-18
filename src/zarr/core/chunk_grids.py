@@ -138,6 +138,9 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
             s if c == -1 or c is None else int(c) for s, c in zip(shape, chunks, strict=False)
         )
 
+    if not all(isinstance(c, numbers.Integral) for c in chunks):
+        raise TypeError("non integer value in chunks")
+
     return tuple(int(c) for c in chunks)
 
 

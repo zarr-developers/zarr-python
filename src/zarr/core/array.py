@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from itertools import starmap
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload
+from warnings import warn
 
 import numpy as np
 import numpy.typing as npt
@@ -266,7 +267,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata]: ...
 
@@ -294,7 +295,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
 
@@ -322,7 +323,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
 
@@ -355,7 +356,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
@@ -387,7 +388,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
@@ -429,7 +430,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         compressor : dict[str, JSON], optional
             The compressor used to compress the data (default is None).
             V2 only. V3 arrays should not have 'compressor' parameter.
-        exists_ok : bool, optional
+        overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
         data : npt.ArrayLike, optional
             The data to be inserted into the array (default is None).
@@ -489,7 +490,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 codecs=codecs,
                 dimension_names=dimension_names,
                 attributes=attributes,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
                 order=order,
             )
         elif zarr_format == 2:
@@ -522,7 +523,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 filters=filters,
                 compressor=compressor,
                 attributes=attributes,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
             )
         else:
             raise ValueError(f"Insupported zarr_format. Got: {zarr_format}")
@@ -539,7 +540,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         *,
         shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        dtype: np.dtype[Any],
         chunk_shape: ChunkCoords,
         fill_value: Any | None = None,
         order: MemoryOrder | None = None,
@@ -552,9 +553,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         attributes: dict[str, JSON] | None = None,
-        exists_ok: bool = False,
+        overwrite: bool = False,
     ) -> AsyncArray[ArrayV3Metadata]:
-        if exists_ok:
+        if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
             else:
@@ -580,6 +581,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 else DefaultChunkKeyEncoding(separator=chunk_key_encoding[1])
             )
 
+        if dtype.kind in "UTS":
+            warn(
+                f"The dtype `{dtype}` is currently not part in the Zarr version 3 specification. It "
+                "may not be supported by other zarr implementations and may change in the future.",
+                category=UserWarning,
+                stacklevel=2,
+            )
+
         metadata = ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
@@ -601,17 +610,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         *,
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        dtype: np.dtype[Any],
         chunks: ChunkCoords,
         dimension_separator: Literal[".", "/"] | None = None,
-        fill_value: None | float = None,
+        fill_value: float | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         attributes: dict[str, JSON] | None = None,
-        exists_ok: bool = False,
+        overwrite: bool = False,
     ) -> AsyncArray[ArrayV2Metadata]:
-        if exists_ok:
+        if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
             else:
@@ -1346,18 +1355,53 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         AsyncArray.info_complete
             All information about a group, including dynamic information
             like the number of bytes and chunks written.
+
+        Examples
+        --------
+
+        >>> arr = await zarr.api.asynchronous.create(
+        ...     path="array", shape=(3, 4, 5), chunks=(2, 2, 2))
+        ... )
+        >>> arr.info
+        Type               : Array
+        Zarr format        : 3
+        Data type          : DataType.float64
+        Shape              : (3, 4, 5)
+        Chunk shape        : (2, 2, 2)
+        Order              : C
+        Read-only          : False
+        Store type         : MemoryStore
+        Codecs             : [{'endian': <Endian.little: 'little'>}]
+        No. bytes          : 480
         """
         return self._info()
 
     async def info_complete(self) -> Any:
-        # TODO: get the size of the object from the store.
-        extra = {
-            "count_chunks_initialized": await self.nchunks_initialized(),
-            # count_bytes_stored isn't yet implemented.
-        }
-        return self._info(extra=extra)
+        """
+        Return all the information for an array, including dynamic information like a storage size.
 
-    def _info(self, extra: dict[str, int] | None = None) -> Any:
+        In addition to the static information, this provides
+
+        - The count of chunks initialized
+        - The sum of the bytes written
+
+        Returns
+        -------
+        ArrayInfo
+
+        See Also
+        --------
+        AsyncArray.info
+            A property giving just the statically known information about an array.
+        """
+        return self._info(
+            await self.nchunks_initialized(),
+            await self.store_path.store.getsize_prefix(self.store_path.path),
+        )
+
+    def _info(
+        self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
+    ) -> Any:
         kwargs: dict[str, Any] = {}
         if self.metadata.zarr_format == 2:
             assert isinstance(self.metadata, ArrayV2Metadata)
@@ -1386,6 +1430,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _read_only=self.read_only,
             _store_type=type(self.store_path.store).__name__,
             _count_bytes=self.dtype.itemsize * self.size,
+            _count_bytes_stored=count_bytes_stored,
+            _count_chunks_initialized=count_chunks_initialized,
             **kwargs,
         )
 
@@ -1426,7 +1472,7 @@ class Array:
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
 
@@ -1456,7 +1502,7 @@ class Array:
             The filters used to compress the data (default is None).
         compressor : dict[str, JSON], optional
             The compressor used to compress the data (default is None).
-        exists_ok : bool, optional
+        overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
 
         Returns
@@ -1481,7 +1527,7 @@ class Array:
                 order=order,
                 filters=filters,
                 compressor=compressor,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
             ),
         )
         return cls(async_array)
@@ -2844,6 +2890,14 @@ class Array:
                 value = np.array(value)  # TODO replace with agnostic
         if hasattr(value, "shape") and len(value.shape) > 1:
             value = np.array(value).reshape(-1)
+
+        if not is_scalar(value, self.dtype) and (
+            isinstance(value, NDArrayLike) and indexer.shape != value.shape
+        ):
+            raise ValueError(
+                f"Attempting to set a selection of {indexer.sel_shape[0]} "
+                f"elements with an array of {value.shape[0]} elements."
+            )
 
         sync(self._async_array._set_selection(indexer, value, fields=fields, prototype=prototype))
 

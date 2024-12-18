@@ -410,12 +410,12 @@ class AsyncGroup:
         store: StoreLike,
         *,
         attributes: dict[str, Any] | None = None,
-        exists_ok: bool = False,
+        overwrite: bool = False,
         zarr_format: ZarrFormat = 3,
     ) -> AsyncGroup:
         store_path = await make_store_path(store)
 
-        if exists_ok:
+        if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
             else:
@@ -434,7 +434,7 @@ class AsyncGroup:
     async def open(
         cls,
         store: StoreLike,
-        zarr_format: Literal[2, 3, None] = 3,
+        zarr_format: Literal[2, 3] | None = 3,
         use_consolidated: bool | str | None = None,
     ) -> AsyncGroup:
         """Open a new AsyncGroup
@@ -629,7 +629,7 @@ class AsyncGroup:
         """
         path = self.store_path / key
         await async_api.save_array(
-            store=path, arr=value, zarr_format=self.metadata.zarr_format, exists_ok=True
+            store=path, arr=value, zarr_format=self.metadata.zarr_format, overwrite=True
         )
 
     async def getitem(
@@ -914,7 +914,7 @@ class AsyncGroup:
         self,
         name: str,
         *,
-        exists_ok: bool = False,
+        overwrite: bool = False,
         attributes: dict[str, Any] | None = None,
     ) -> AsyncGroup:
         """Create a sub-group.
@@ -923,7 +923,7 @@ class AsyncGroup:
         ----------
         name : str
             Group name.
-        exists_ok : bool, optional
+        overwrite : bool, optional
             If True, do not raise an error if the group already exists.
         attributes : dict, optional
             Group attributes.
@@ -936,7 +936,7 @@ class AsyncGroup:
         return await type(self).from_store(
             self.store_path / name,
             attributes=attributes,
-            exists_ok=exists_ok,
+            overwrite=overwrite,
             zarr_format=self.metadata.zarr_format,
         )
 
@@ -955,8 +955,8 @@ class AsyncGroup:
         g : AsyncGroup
         """
         if overwrite:
-            # TODO: check that exists_ok=True errors if an array exists where the group is being created
-            grp = await self.create_group(name, exists_ok=True)
+            # TODO: check that overwrite=True errors if an array exists where the group is being created
+            grp = await self.create_group(name, overwrite=True)
         else:
             try:
                 item: (
@@ -1013,7 +1013,7 @@ class AsyncGroup:
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
@@ -1047,7 +1047,7 @@ class AsyncGroup:
             Filters for the array.
         compressor : dict[str, JSON] | None = None
             The compressor for the array.
-        exists_ok : bool = False
+        overwrite : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
             an error.
@@ -1072,7 +1072,7 @@ class AsyncGroup:
             order=order,
             filters=filters,
             compressor=compressor,
-            exists_ok=exists_ok,
+            overwrite=overwrite,
             zarr_format=self.metadata.zarr_format,
             data=data,
         )
@@ -1422,7 +1422,7 @@ class AsyncGroup:
         from zarr.core._tree import group_tree_async
 
         if expand is not None:
-            raise NotImplementedError("'expanded' is not yet implemented.")
+            raise NotImplementedError("'expand' is not yet implemented.")
         return await group_tree_async(self, max_depth=level)
 
     async def empty(
@@ -1624,7 +1624,7 @@ class Group(SyncMixin):
         *,
         attributes: dict[str, Any] | None = None,
         zarr_format: ZarrFormat = 3,
-        exists_ok: bool = False,
+        overwrite: bool = False,
     ) -> Group:
         """Instantiate a group from an initialized store.
 
@@ -1636,7 +1636,7 @@ class Group(SyncMixin):
             A dictionary of JSON-serializable values with user-defined attributes.
         zarr_format : {2, 3}, optional
             Zarr storage format version.
-        exists_ok : bool, optional
+        overwrite : bool, optional
             If True, do not raise an error if the group already exists.
 
         Returns
@@ -1653,7 +1653,7 @@ class Group(SyncMixin):
             AsyncGroup.from_store(
                 store,
                 attributes=attributes,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
                 zarr_format=zarr_format,
             ),
         )
@@ -1664,7 +1664,7 @@ class Group(SyncMixin):
     def open(
         cls,
         store: StoreLike,
-        zarr_format: Literal[2, 3, None] = 3,
+        zarr_format: Literal[2, 3] | None = 3,
     ) -> Group:
         """Open a group from an initialized store.
 
@@ -1820,8 +1820,8 @@ class Group(SyncMixin):
     async def update_attributes_async(self, new_attributes: dict[str, Any]) -> Group:
         """Update the attributes of this group.
 
-        Example
-        -------
+        Examples
+        --------
         >>> import zarr
         >>> group = zarr.group()
         >>> await group.update_attributes_async({"foo": "bar"})
@@ -1920,8 +1920,9 @@ class Group(SyncMixin):
 
     def update_attributes(self, new_attributes: dict[str, Any]) -> Group:
         """Update the attributes of this group.
-        Example
-        -------
+
+        Examples
+        --------
         >>> import zarr
         >>> group = zarr.group()
         >>> group.update_attributes({"foo": "bar"})
@@ -2000,8 +2001,8 @@ class Group(SyncMixin):
     def groups(self) -> Generator[tuple[str, Group], None]:
         """Return the sub-groups of this group as a generator of (name, group) pairs.
 
-        Example
-        -------
+        Examples
+        --------
         >>> import zarr
         >>> group = zarr.group()
         >>> group.create_group("subgroup")
@@ -2189,7 +2190,7 @@ class Group(SyncMixin):
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> Array:
         """Create a zarr array within this AsyncGroup.
@@ -2223,7 +2224,7 @@ class Group(SyncMixin):
             Filters for the array.
         compressor : dict[str, JSON] | None = None
             The compressor for the array.
-        exists_ok : bool = False
+        overwrite : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
             an error.
@@ -2252,7 +2253,7 @@ class Group(SyncMixin):
                     order=order,
                     filters=filters,
                     compressor=compressor,
-                    exists_ok=exists_ok,
+                    overwrite=overwrite,
                     data=data,
                 )
             )
@@ -2530,7 +2531,7 @@ class Group(SyncMixin):
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> Array:
         """Create a zarr array within this AsyncGroup.
@@ -2564,7 +2565,7 @@ class Group(SyncMixin):
             Filters for the array.
         compressor : dict[str, JSON] | None = None
             The compressor for the array.
-        exists_ok : bool = False
+        overwrite : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
             an error.
@@ -2594,7 +2595,7 @@ class Group(SyncMixin):
                     order=order,
                     filters=filters,
                     compressor=compressor,
-                    exists_ok=exists_ok,
+                    overwrite=overwrite,
                     data=data,
                 )
             )
