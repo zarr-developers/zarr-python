@@ -350,7 +350,7 @@ def array(data: npt.ArrayLike, **kwargs: Any) -> Array:
 
     Returns
     -------
-    array : array
+    array : Array
         The new array.
     """
 
