@@ -232,3 +232,29 @@ def test_config_buffer_implementation() -> None:
     )
     arr_Crc32c[:] = data2d
     assert np.array_equal(arr_Crc32c[:], data2d)
+
+
+@pytest.mark.filterwarnings("error")
+def test_warning_on_missing_codec_config() -> None:
+    class NewCodec(BytesCodec):
+        pass
+
+    class NewCodec2(BytesCodec):
+        pass
+
+    # error if codec is not registered
+    with pytest.raises(KeyError):
+        get_codec_class("missing_codec")
+
+    # no warning if only one implementation is available
+    register_codec("new_codec", NewCodec)
+    get_codec_class("new_codec")
+
+    # warning because multiple implementations are available but none is selected in the config
+    register_codec("new_codec", NewCodec2)
+    with pytest.warns(UserWarning):
+        get_codec_class("new_codec")
+
+    # no warning if multiple implementations are available and one is selected in the config
+    with config.set({"codecs.new_codec": fully_qualified_name(NewCodec)}):
+        get_codec_class("new_codec")
