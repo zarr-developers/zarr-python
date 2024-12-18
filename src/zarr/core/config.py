@@ -8,6 +8,7 @@ Example:
     to be ``your.module.NewBytesCodec``.
 
 .. code-block:: python
+
     from your.module import NewBytesCodec
     from zarr.core.config import register_codec, config
 
@@ -18,6 +19,7 @@ Donfig can be configured programmatically, by environment variables, or from YAM
 For example, to set the bytes codec via an environment variable:
 
 .. code-block:: bash
+
     export ZARR_CODECS__BYTES="your.module.NewBytesCodec"
 
 For more information, see the Donfig documentation at https://github.com/pytroll/donfig.
