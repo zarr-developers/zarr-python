@@ -836,17 +836,17 @@ async def create(
         this collection specify the transformation from array values to stored bytes.
         V3 only. V2 arrays should use ``filters`` and ``compressor`` instead.
         If no codecs are provided, default codecs will be used:
-        - For numeric arrays, the default is `BytesCodec` and `ZstdCodec`.
-        - For Unicode strings, the default is `VLenUTF8Codec`.
-        - For bytes or objects, the default is `VLenBytesCodec`.
+        - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
+        - For Unicode strings, the default is ``VLenUTF8Codec``.
+        - For bytes or objects, the default is ``VLenBytesCodec``.
         These defaults can be changed using the `array.v3_default_codecs` variable in the Zarr config.
     compressor : Codec, optional
         Primary compressor to compress chunk data.
         V2 only. V3 arrays should use ``codecs`` instead.
         If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
-        - For numeric arrays, the default is `ZstdCodec`.
-        - For Unicode strings, the default is `VLenUTF8Codec`.
-        - For bytes or objects, the default is `VLenBytesCodec`.
+        - For numeric arrays, the default is ``ZstdCodec``.
+        - For Unicode strings, the default is ``VLenUTF8Codec``.
+        - For bytes or objects, the default is ``VLenBytesCodec``.
         These defaults can be changed using the `array.v2_default_compressor` variable in the Zarr config.
     fill_value : object
         Default value to use for uninitialized portions of the array.

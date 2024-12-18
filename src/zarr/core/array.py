@@ -421,16 +421,16 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             this collection specify the transformation from array values to stored bytes.
             V3 only. V2 arrays should use ``filters`` and ``compressor`` instead.
             If no codecs are provided, default codecs will be used:
-            - For numeric arrays, the default is `BytesCodec` and `ZstdCodec`.
-            - For Unicode strings, the default is `VLenUTF8Codec`.
-            - For bytes or objects, the default is `VLenBytesCodec`.
+            - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
             These defaults can be changed using the `array.v3_default_codecs` variable in the Zarr config.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
             V3 only. V2 arrays should not use this parameter.
         chunks : ShapeLike, optional
             The shape of the array's chunks.
-            V2 only. V3 arrays should use `chunk_shape` instead.
+            V2 only. V3 arrays should use :func:`chunk_shape` instead.
             If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"], optional
             The dimension separator (default is ".").
@@ -446,9 +446,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The compressor used to compress the data (default is None).
             V2 only. V3 arrays should use ``codecs`` instead.
             If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
-            - For numeric arrays, the default is `ZstdCodec`.
-            - For Unicode strings, the default is `VLenUTF8Codec`.
-            - For bytes or objects, the default is `VLenBytesCodec`.
+            - For numeric arrays, the default is ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
             These defaults can be changed using the `array.v2_default_compressor` variable in the Zarr config.
         overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
@@ -1513,16 +1513,16 @@ class Array:
             this collection specify the transformation from array values to stored bytes.
             V3 only. V2 arrays should use ``filters`` and ``compressor`` instead.
             If no codecs are provided, default codecs will be used:
-            - For numeric arrays, the default is `BytesCodec` and `ZstdCodec`.
-            - For Unicode strings, the default is `VLenUTF8Codec`.
-            - For bytes or objects, the default is `VLenBytesCodec`.
+            - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
             These defaults can be changed using the `array.v3_default_codecs` variable in the Zarr config.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
             V3 only. V2 arrays should not use this parameter.
         chunks : ChunkCoords, optional
             The shape of the array's chunks.
-            V2 only. V3 arrays should use `chunk_shape` instead.
+            V2 only. V3 arrays should use :func:`chunk_shape` instead.
             If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"], optional
             The dimension separator (default is ".").
@@ -1538,9 +1538,9 @@ class Array:
             Primary compressor to compress chunk data.
             V2 only. V3 arrays should use ``codecs`` instead.
             If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
-            - For numeric arrays, the default is `ZstdCodec`.
-            - For Unicode strings, the default is `VLenUTF8Codec`.
-            - For bytes or objects, the default is `VLenBytesCodec`.
+            - For numeric arrays, the default is ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
             These defaults can be changed using the `array.v2_default_compressor` variable in the Zarr config.
         overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
