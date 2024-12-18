@@ -1015,12 +1015,12 @@ class from ``fsspec``. The following example demonstrates how to access
 a ZIP-archived Zarr group on s3 using `s3fs <https://s3fs.readthedocs.io/en/latest/>`_ and ``ZipFileSystem``:
 
     >>> s3_path = "s3://path/to/my.zarr.zip"
-    >>> 
+    >>>
     >>> s3 = s3fs.S3FileSystem()
     >>> f = s3.open(s3_path)
     >>> fs = ZipFileSystem(f, mode="r")
     >>> store = FSMap("", fs, check=False)
-    >>> 
+    >>>
     >>> # caching may improve performance when repeatedly reading the same data
     >>> cache = zarr.storage.LRUStoreCache(store, max_size=2**28)
     >>> z = zarr.group(store=cache)

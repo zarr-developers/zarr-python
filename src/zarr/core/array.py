@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from itertools import starmap
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload
+from warnings import warn
 
 import numpy as np
 import numpy.typing as npt
@@ -551,7 +552,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         *,
         shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        dtype: np.dtype[Any],
         chunk_shape: ChunkCoords,
         fill_value: Any | None = None,
         order: MemoryOrder | None = None,
@@ -588,6 +589,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 else DefaultChunkKeyEncoding(separator=chunk_key_encoding[1])
             )
 
+        if dtype.kind in "UTS":
+            warn(
+                f"The dtype `{dtype}` is currently not part in the Zarr version 3 specification. It "
+                "may not be supported by other zarr implementations and may change in the future.",
+                category=UserWarning,
+                stacklevel=2,
+            )
+
         metadata = ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
@@ -609,7 +618,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         *,
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        dtype: np.dtype[Any],
         chunks: ChunkCoords,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: float | None = None,

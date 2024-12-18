@@ -7,9 +7,9 @@ from _pytest.compat import LEGACY_PATH
 from zarr.core.common import AccessModeLiteral
 from zarr.storage._utils import normalize_path
 from zarr.storage.common import StoreLike, StorePath, make_store_path
+from zarr.storage.fsspec import FsspecStore
 from zarr.storage.local import LocalStore
 from zarr.storage.memory import MemoryStore
-from zarr.storage.remote import RemoteStore
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
@@ -73,7 +73,7 @@ async def test_make_store_path_invalid() -> None:
 async def test_make_store_path_fsspec(monkeypatch) -> None:
     pytest.importorskip("fsspec")
     store_path = await make_store_path("http://foo.com/bar")
-    assert isinstance(store_path.store, RemoteStore)
+    assert isinstance(store_path.store, FsspecStore)
 
 
 @pytest.mark.parametrize(
