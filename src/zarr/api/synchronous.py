@@ -526,7 +526,7 @@ def open_group(
 def create(
     shape: ChunkCoords | int,
     *,  # Note: this is a change from v2
-    chunks: ChunkCoords | int | None = None,  # TODO: v2 allowed chunks=True
+    chunks: ChunkCoords | int | bool | None = None,
     dtype: npt.DTypeLike | None = None,
     compressor: dict[str, JSON] | None = None,  # TODO: default and type change
     fill_value: Any | None = 0,  # TODO: need type
@@ -685,7 +685,7 @@ def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
         Shape of the empty array.
     **kwargs
         Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
-        
+
     Returns
     -------
     Array
