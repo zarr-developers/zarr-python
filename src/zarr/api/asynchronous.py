@@ -403,7 +403,7 @@ async def save_array(
     arr : ndarray
         NumPy array with data to save.
     zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving (default is 3).
+        The zarr format to use when saving (default is 3 if not specified).
     path : str or None, optional
         The path within the store where the array will be saved.
     storage_options : dict
@@ -821,7 +821,7 @@ async def create(
     chunks : int or tuple of ints, optional
         The shape of the array's chunks.
         V2 only. V3 arrays should use `chunk_shape` instead.
-        Default values are guessed based on the shape and dtype.
+        If not specified, default values are guessed based on the shape and dtype.
     dtype : str or dtype, optional
         NumPy dtype.
     chunk_shape : int or tuple of ints, optional
@@ -830,9 +830,9 @@ async def create(
     chunk_key_encoding : ChunkKeyEncoding, optional
         A specification of how the chunk keys are represented in storage.
         V3 only. V2 arrays should use `dimension_separator` instead.
-        Default is ("default", "/").
+        Default is ``("default", "/")``.
     codecs : Sequence of Codecs or dicts, optional
-        An iterable of Codec or dict serializations thereof. The elements of
+        An iterable of Codec or dict serializations of Codecs. The elements of
         this collection specify the transformation from array values to stored bytes.
         V3 only. V2 arrays should use `filters` and `compressor` instead.
         If no codecs are provided, default codecs will be used:
@@ -842,8 +842,8 @@ async def create(
         These defaults can be changed using the `array.v3_default_codecs` variable in the Zarr config.
     compressor : Codec, optional
         Primary compressor to compress chunk data.
-        V2 only. V3 arrays should use `codecs` instead.
-        If neither `compressor` nor `filters` are provided, a default compressor will be used:
+        V2 only. V3 arrays should use ``codecs`` instead.
+        If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
         - For numeric arrays, the default is `ZstdCodec`.
         - For Unicode strings, the default is `VLenUTF8Codec`.
         - For bytes or objects, the default is `VLenBytesCodec`.
@@ -852,7 +852,7 @@ async def create(
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
-        Default is specified in the Zarr config `array.order`.
+        If not specified, default is taken from the Zarr config ``array.order``.
     store : Store or str
         Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
@@ -867,8 +867,8 @@ async def create(
         for storage of both chunks and metadata.
     filters : sequence of Codecs, optional
         Sequence of filters to use to encode chunk data prior to compression.
-        V2 only. If neither `compressor` nor `filters` are provided, a default
-        compressor will be used. (see `compressor` for details)
+        V2 only. If neither ``compressor`` nor ``filters`` are provided, a default
+        compressor will be used. (see ``compressor`` for details).
     cache_metadata : bool, optional
         If True, array configuration metadata will be cached for the
         lifetime of the object. If False, array metadata will be reloaded
@@ -884,7 +884,7 @@ async def create(
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
-        V2 only. V3 arrays should use `chunk_key_encoding` instead.
+        V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         Default is ".".
         .. versionadded:: 2.8
 

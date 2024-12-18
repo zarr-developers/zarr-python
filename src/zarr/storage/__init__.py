@@ -30,7 +30,7 @@ class VerboseModule(ModuleType):
             warnings.warn(
                 "setting zarr.storage.default_compressor is deprecated, use "
                 "zarr.config to configure array.v2_default_compressor "
-                "e.g. config.set({'codecs.zstd':'your.module.Zstd', 'array.v2_default_compressor.numeric': 'zstd'})",
+                "e.g. config.set({'codecs.zstd':'numcodecs.Zstd', 'array.v2_default_compressor.numeric': 'zstd'})",
                 DeprecationWarning,
                 stacklevel=1,
             )

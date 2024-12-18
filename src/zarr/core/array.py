@@ -642,7 +642,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if dimension_separator is None:
             dimension_separator = "."
 
-        dtype = parse_dtype(dtype, 2)
+        dtype = parse_dtype(dtype, zarr_format=2)
         if not filters and not compressor:
             filters, compressor = _default_filters_and_compressor(dtype)
         if np.issubdtype(dtype, np.str_):
