@@ -11,6 +11,7 @@ User Guide
     groups
     storage
     whatsnew_v3
+    todo
 
 Advanced Topics
 ---------------

@@ -1,3 +1,5 @@
+.. _tutorial_storage:
+
 Storage
 =======
 
