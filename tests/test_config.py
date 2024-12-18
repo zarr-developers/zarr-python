@@ -164,6 +164,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
         assert get_pipeline_class(reload_config=True) == MockEnvCodecPipeline
 
 
+@pytest.mark.filterwarnings("error")
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_config_codec_implementation(store: Store) -> None:
     # has default value
@@ -177,24 +178,29 @@ def test_config_codec_implementation(store: Store) -> None:
         ) -> CodecOutput | None:
             _mock.call()
 
-    config.set({"codecs.blosc": fully_qualified_name(MockBloscCodec)})
     register_codec("blosc", MockBloscCodec)
-    assert get_codec_class("blosc") == MockBloscCodec
+    with config.set({"codecs.blosc": fully_qualified_name(MockBloscCodec)}):
+        assert get_codec_class("blosc") == MockBloscCodec
 
-    # test if codec is used
-    arr = Array.create(
-        store=store,
-        shape=(100,),
-        chunks=(10,),
-        zarr_format=3,
-        dtype="i4",
-        codecs=[BytesCodec(), {"name": "blosc", "configuration": {}}],
-    )
-    arr[:] = range(100)
-    _mock.call.assert_called()
+        # test if codec is used
+        arr = Array.create(
+            store=store,
+            shape=(100,),
+            chunks=(10,),
+            zarr_format=3,
+            dtype="i4",
+            codecs=[BytesCodec(), {"name": "blosc", "configuration": {}}],
+        )
+        arr[:] = range(100)
+        _mock.call.assert_called()
 
-    with mock.patch.dict(os.environ, {"ZARR_CODECS__BLOSC": fully_qualified_name(BloscCodec)}):
-        assert get_codec_class("blosc", reload_config=True) == BloscCodec
+    # test set codec with environment variable
+    class NewBloscCodec(BloscCodec):
+        pass
+
+    register_codec("blosc", NewBloscCodec)
+    with mock.patch.dict(os.environ, {"ZARR_CODECS__BLOSC": fully_qualified_name(NewBloscCodec)}):
+        assert get_codec_class("blosc", reload_config=True) == NewBloscCodec
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -204,18 +210,17 @@ def test_config_ndbuffer_implementation(store: Store) -> None:
 
     # set custom ndbuffer with TestNDArrayLike implementation
     register_ndbuffer(NDBufferUsingTestNDArrayLike)
-    config.set({"ndbuffer": fully_qualified_name(NDBufferUsingTestNDArrayLike)})
-    assert get_ndbuffer_class() == NDBufferUsingTestNDArrayLike
-    arr = Array.create(
-        store=store,
-        shape=(100,),
-        chunks=(10,),
-        zarr_format=3,
-        dtype="i4",
-    )
-    got = arr[:]
-    print(type(got))
-    assert isinstance(got, TestNDArrayLike)
+    with config.set({"ndbuffer": fully_qualified_name(NDBufferUsingTestNDArrayLike)}):
+        assert get_ndbuffer_class() == NDBufferUsingTestNDArrayLike
+        arr = Array.create(
+            store=store,
+            shape=(100,),
+            chunks=(10,),
+            zarr_format=3,
+            dtype="i4",
+        )
+        got = arr[:]
+        assert isinstance(got, TestNDArrayLike)
 
 
 def test_config_buffer_implementation() -> None:
@@ -253,6 +258,32 @@ def test_config_buffer_implementation() -> None:
         )
         arr_Crc32c[:] = data2d
         assert np.array_equal(arr_Crc32c[:], data2d)
+
+
+@pytest.mark.filterwarnings("error")
+def test_warning_on_missing_codec_config() -> None:
+    class NewCodec(BytesCodec):
+        pass
+
+    class NewCodec2(BytesCodec):
+        pass
+
+    # error if codec is not registered
+    with pytest.raises(KeyError):
+        get_codec_class("missing_codec")
+
+    # no warning if only one implementation is available
+    register_codec("new_codec", NewCodec)
+    get_codec_class("new_codec")
+
+    # warning because multiple implementations are available but none is selected in the config
+    register_codec("new_codec", NewCodec2)
+    with pytest.warns(UserWarning):
+        get_codec_class("new_codec")
+
+    # no warning if multiple implementations are available and one is selected in the config
+    with config.set({"codecs.new_codec": fully_qualified_name(NewCodec)}):
+        get_codec_class("new_codec")
 
 
 @pytest.mark.parametrize(
