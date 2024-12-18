@@ -203,7 +203,7 @@ def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["
 
 
 def test_default_compressor_deprecation_warning():
-    with pytest.warns(DeprecationWarning):
+    with pytest.warns(DeprecationWarning, match="default_compressor is deprecated"):
         zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"
 
 

@@ -834,7 +834,7 @@ async def create(
     codecs : Sequence of Codecs or dicts, optional
         An iterable of Codec or dict serializations of Codecs. The elements of
         this collection specify the transformation from array values to stored bytes.
-        V3 only. V2 arrays should use `filters` and `compressor` instead.
+        V3 only. V2 arrays should use ``filters`` and ``compressor`` instead.
         If no codecs are provided, default codecs will be used:
         - For numeric arrays, the default is `BytesCodec` and `ZstdCodec`.
         - For Unicode strings, the default is `VLenUTF8Codec`.
