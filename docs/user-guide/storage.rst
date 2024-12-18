@@ -26,7 +26,11 @@ to Zarr's top level API will result in the store being created automatically.
    zarr.open_group("data/foo/bar", mode="w")
 
    # implicitly create a read-only FsspecStore
-   zarr.open_group("s3://noaa-nwm-retro-v2-zarr-pds", mode="r")
+   zarr.open_group(
+      "s3://noaa-nwm-retro-v2-zarr-pds",
+      mode="r",
+      storage_options={"anon": True}
+   )
 
    # implicitly creates a MemoryStore
    data = {}
@@ -68,11 +72,16 @@ The :class:`zarr.storage.FsspecStore` stores the contents of a Zarr hierarchy in
 logical layout as the ``LocalStore``, except the store is assumed to be on a remote storage system
 such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Store). The
 :class:`zarr.storage.FsspecStore` is backed by `Fsspec_` and can support any Fsspec backend
-that implements the `AbstractFileSystem` API,
+that implements the `AbstractFileSystem` API. ``storage_options`` can be used to configure
+the Fsspec backend.
 
 .. ipython:: python
 
-   store = zarr.storage.FsspecStore.from_url("s3://noaa-nwm-retro-v2-zarr-pds", read_only=True)
+   store = zarr.storage.FsspecStore.from_url(
+      "s3://noaa-nwm-retro-v2-zarr-pds",
+      read_only=True,
+      storage_options={"anon": True}
+   )
    zarr.open_group(store=store, mode='r')
 
 Memory Store
