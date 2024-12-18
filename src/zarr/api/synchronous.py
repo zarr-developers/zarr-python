@@ -78,7 +78,7 @@ def consolidate_metadata(
 
     Returns
     -------
-    group: AsyncGroup
+    group: Group
         The group, with the ``consolidated_metadata`` field set to include
         the metadata of each child node.
     """
