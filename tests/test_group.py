@@ -17,13 +17,13 @@ from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata
+from zarr.core.group import ConsolidatedMetadata, GroupMetadata, create_nodes
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage.common import make_store_path
 
-from .conftest import parse_store
+from .conftest import meta_from_array_v2, parse_store
 
 if TYPE_CHECKING:
     from _pytest.compat import LEGACY_PATH
@@ -1420,3 +1420,14 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
     del g1["0"]
     with pytest.raises(KeyError):
         g1["0/0"]
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_nodes(store: Store) -> None:
+    """
+    Ensure that create_nodes works.
+    """
+    arrays = {str(idx): meta_from_array_v2(np.arange(idx)) for idx in range(1, 5)}
+    spath = await make_store_path(store, path="foo")
+    results = [a async for a in create_nodes(store_path=spath, nodes=arrays)]
+    breakpoint()
