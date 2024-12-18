@@ -87,6 +87,7 @@ docs = [
     'numcodecs[msgpack]',
     'msgpack',
     'ipython',
+    'pickleshare',
     'rich',
 ]
 
