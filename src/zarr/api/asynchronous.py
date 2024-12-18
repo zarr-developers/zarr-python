@@ -11,12 +11,14 @@ from typing_extensions import deprecated
 
 from zarr.core.array import Array, AsyncArray, get_array_metadata
 from zarr.core.buffer import NDArrayLike
+from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
     ChunkCoords,
     MemoryOrder,
     ZarrFormat,
+    parse_dtype,
 )
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
@@ -295,8 +297,8 @@ async def open(
     path : str or None, optional
         The path within the store to open.
     storage_options : dict
-        If using an fsspec URL to create the store, these will be passed to
-        the backend implementation. Ignored otherwise.
+        If the store is backed by an fsspec-based implementation, then this dict will be passed to
+        the Store constructor for that implementation. Ignored otherwise.
     **kwargs
         Additional parameters are passed through to :func:`zarr.creation.open_array` or
         :func:`zarr.hierarchy.open_group`.
@@ -332,6 +334,47 @@ async def open(
         # NodeTypeValidationError for failing to parse node metadata as an array when it's
         # actually a group
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
+
+
+async def read(
+    *,
+    store: StoreLike | None = None,
+    zarr_format: ZarrFormat | None = None,
+    path: str | None = None,
+    storage_options: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
+    """Convenience function to open a group or array for reading. This function
+    wraps :func:`zarr.api.asynchronous.open` See the documentation of that function for details.
+
+    Parameters
+    ----------
+    store : Store or str, optional
+        Store or path to directory in file system or name of zip file.
+    zarr_format : {2, 3, None}, optional
+        The zarr format to require. The default value of None will first look for Zarr v3 data,
+        then Zarr v2 data, then fail if neither format is found.
+    path : str or None, optional
+        The path within the store to open.
+    storage_options : dict, optional
+        If using an fsspec URL to create the store, this will be passed to
+        the backend implementation. Ignored otherwise.
+    **kwargs
+        Additional parameters are passed through to :func:`zarr.creation.open`.
+
+    Returns
+    -------
+    z : array or group
+        Return type depends on what exists in the given store.
+    """
+    return await open(
+        store=store,
+        mode="r",
+        zarr_format=zarr_format,
+        path=path,
+        storage_options=storage_options,
+        **kwargs,
+    )
 
 
 async def open_consolidated(
@@ -661,6 +704,54 @@ async def group(
         )
 
 
+async def create_group(
+    *,
+    store: StoreLike,
+    path: str | None = None,
+    overwrite: bool = False,
+    zarr_format: ZarrFormat | None = None,
+    attributes: dict[str, Any] | None = None,
+    storage_options: dict[str, Any] | None = None,
+) -> AsyncGroup:
+    """Create a group.
+
+    Parameters
+    ----------
+    store : Store or str
+        Store or path to directory in file system.
+    path : str, optional
+        Group path within store.
+    overwrite : bool, optional
+        If True, pre-existing data at ``path`` will be deleted before
+        creating the group.
+    zarr_format : {2, 3, None}, optional
+        The zarr format to use when saving.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
+
+    Returns
+    -------
+    g : group
+        The new group.
+    """
+
+    if zarr_format is None:
+        zarr_format = _default_zarr_version()
+
+    # TODO: fix this when modes make sense. It should be `w` for overwriting, `w-` otherwise
+    mode: Literal["a"] = "a"
+
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+
+    return await AsyncGroup.from_store(
+        store=store_path,
+        zarr_format=zarr_format,
+        exists_ok=overwrite,
+        attributes=attributes,
+    )
+
+
 async def open_group(
     store: StoreLike | None = None,
     *,  # Note: this is a change from v2
@@ -771,6 +862,173 @@ async def open_group(
             attributes=attributes,
         )
     raise FileNotFoundError(f"Unable to find group: {store_path}")
+
+
+async def read_group(
+    store: StoreLike,
+    *,
+    path: str | None = None,
+    zarr_format: ZarrFormat | None = None,
+    storage_options: dict[str, Any] | None = None,
+    use_consolidated: bool | str | None = None,
+) -> AsyncGroup:
+    """Open a group for reading. This function wraps :func:`zarr.api.asynchronous.open_group` See
+    the documentation of that function for details.
+
+    Parameters
+    ----------
+    store : Store, str, or mapping, optional
+        Store or path to directory in file system or name of zip file.
+
+        Strings are interpreted as paths on the local file system
+        and used as the ``root`` argument to :class:`zarr.store.LocalStore`.
+
+        Dictionaries are used as the ``store_dict`` argument in
+        :class:`zarr.store.MemoryStore``.
+    path : str, optional
+        Group path within store.
+    zarr_format : {2, 3, None}, optional
+        The zarr format to require. The default value of None will first look for Zarr v3 data,
+        then Zarr v2 data, then fail if neither format is found.
+    storage_options : dict
+        If the store is backed by an fsspec-based implementation, then this dict will be passed to
+        the Store constructor for that implementation. Ignored otherwise.
+    use_consolidated : bool or str, default None
+        Whether to use consolidated metadata.
+
+        By default, consolidated metadata is used if it's present in the
+        store (in the ``zarr.json`` for Zarr v3 and in the ``.zmetadata`` file
+        for Zarr v2).
+
+        To explicitly require consolidated metadata, set ``use_consolidated=True``,
+        which will raise an exception if consolidated metadata is not found.
+
+        To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
+        which will fall back to using the regular, non consolidated metadata.
+
+        Zarr v2 allowed configuring the key storing the consolidated metadata
+        (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
+        to load consolidated metadata from a non-default key.
+
+    Returns
+    -------
+    g : group
+        The new group.
+    """
+    return await open_group(
+        store=store,
+        mode="r",
+        path=path,
+        storage_options=storage_options,
+        zarr_format=zarr_format,
+        use_consolidated=use_consolidated,
+    )
+
+
+async def create_array(
+    store: str | StoreLike,
+    *,
+    path: PathLike | None = None,
+    shape: ChunkCoords,
+    dtype: npt.DTypeLike,
+    shard_shape: ChunkCoords | None | Literal["auto"] = "auto",
+    chunk_shape: ChunkCoords | Literal["auto"] = "auto",
+    filters: Iterable[dict[str, JSON] | Codec] = (),
+    compressors: Iterable[dict[str, JSON] | Codec] = (),
+    fill_value: Any | None = 0,
+    order: MemoryOrder | None = "C",
+    zarr_format: ZarrFormat | None = 3,
+    attributes: dict[str, JSON] | None = None,
+    chunk_key_encoding: (
+        ChunkKeyEncoding
+        | tuple[Literal["default"], Literal[".", "/"]]
+        | tuple[Literal["v2"], Literal[".", "/"]]
+        | None
+    ) = ("default", "/"),
+    dimension_names: Iterable[str] | None = None,
+    storage_options: dict[str, Any] | None = None,
+    overwrite: bool = False,
+) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+    """Create an array.
+
+    Parameters
+    ----------
+
+
+    Returns
+    -------
+    z : array
+        The array.
+    """
+
+    if zarr_format is None:
+        zarr_format = _default_zarr_version()
+
+    # TODO: figure out why putting these imports at top-level causes circular imports
+    from zarr.codecs.bytes import BytesCodec
+    from zarr.codecs.sharding import ShardingCodec
+
+    # TODO: fix this when modes make sense. It should be `w` for overwriting, `w-` otherwise
+    mode: Literal["a"] = "a"
+
+    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
+    sub_codecs = (*filters, BytesCodec(), *compressors)
+    _dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
+    if zarr_format == 2:
+        if shard_shape is not None or shard_shape != "auto":
+            msg = (
+                'Zarr v2 arrays can only be created with `shard_shape` set to `None` or `"auto"`.'
+                f"Got `shard_shape={shard_shape}` instead."
+            )
+
+            raise ValueError(msg)
+        compressor, *rest = compressors
+        filters = (*filters, *rest)
+        if dimension_names is not None:
+            raise ValueError("Zarr v2 arrays do not support dimension names.")
+        return await AsyncArray._create_v2(
+            store_path=store_path,
+            shape=shape,
+            dtype=_dtype_parsed,
+            chunks=chunk_shape,
+            dimension_separator="/",
+            fill_value=fill_value,
+            order=order,
+            filters=filters,
+            compressor=compressor,
+            attributes=attributes,
+            overwrite=overwrite,
+        )
+    else:
+        shard_shape_parsed, chunk_shape_parsed = _auto_partition(
+            shape, dtype, shard_shape, chunk_shape
+        )
+        if shard_shape_parsed is not None:
+            sharding_codec = ShardingCodec(chunk_shape=chunk_shape_parsed, codecs=sub_codecs)
+            sharding_codec.validate(
+                shape=chunk_shape_parsed,
+                dtype=dtype,
+                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+            )
+            codecs = (sharding_codec,)
+            chunks_out = shard_shape_parsed
+        else:
+            chunks_out = chunk_shape_parsed
+            codecs = sub_codecs
+
+        return await AsyncArray._create_v3(
+            store_path=store_path,
+            shape=shape,
+            dtype=_dtype_parsed,
+            fill_value=fill_value,
+            attributes=attributes,
+            chunk_shape=chunks_out,
+            chunk_key_encoding=chunk_key_encoding,
+            codecs=codecs,
+            dimension_names=dimension_names,
+            order=order,
+            overwrite=overwrite,
+        )
 
 
 async def create(
@@ -953,6 +1211,41 @@ async def create(
         attributes=attributes,
         order=order,
         **kwargs,
+    )
+
+
+async def read_array(
+    store: StoreLike,
+    *,
+    path: str | None = None,
+    zarr_format: ZarrFormat | None = None,
+    storage_options: dict[str, Any] | None = None,
+) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
+    """Create an array for reading. Wraps `:func:zarr.api.asynchronous.create`.
+    See the documentation of that function for details.
+
+    Parameters
+    ----------
+    store : Store or str
+        Store or path to directory in file system or name of zip file.
+    path : str, optional
+        Path under which the array is stored.
+    zarr_format : {2, 3, None}, optional
+        The zarr format to require. The default value of ``None`` will first look for Zarr v3 data,
+        then Zarr v2 data, then fail if neither format is found.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
+
+    Returns
+    -------
+    z : array
+        The array.
+    """
+    store_path = await make_store_path(store, path=path, mode="r", storage_options=storage_options)
+    return await AsyncArray.open(
+        store=store_path,
+        zarr_format=zarr_format,
     )
 
 
