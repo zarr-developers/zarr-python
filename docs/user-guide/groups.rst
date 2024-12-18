@@ -73,8 +73,9 @@ sub-directories, e.g.:
    z = root.zeros(name='foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
    z
 
-Groups can be used as context managers (in a ``with`` statement).
-If the underlying store has a ``close`` method, it will be called on exit.
+.. TODO: uncomment after __enter__ and __exit__ are implemented
+.. Groups can be used as context managers (in a ``with`` statement).
+.. If the underlying store has a ``close`` method, it will be called on exit.
 
 For more information on groups see the :class:`zarr.Group` API docs.
 

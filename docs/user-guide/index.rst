@@ -10,7 +10,7 @@ User Guide
     arrays
     groups
     storage
-    whatsnew_v3
+    v3_migration
     todo
 
 Advanced Topics
