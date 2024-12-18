@@ -394,7 +394,7 @@ async def save_array(
     arr : ndarray
         NumPy array with data to save.
     zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving.
+        The zarr format to use when saving (default is 3).
     path : str or None, optional
         The path within the store where the array will be saved.
     storage_options : dict
@@ -810,24 +810,40 @@ async def create(
     shape : int or tuple of ints
         Array shape.
     chunks : int or tuple of ints, optional
-        Chunk shape. If True, will be guessed from `shape` and `dtype`. If
-        False, will be set to `shape`, i.e., single chunk for the whole array.
-        If an int, the chunk size in each dimension will be given by the value
-        of `chunks`. Default is True.
+        The shape of the array's chunks.
+        V2 only. V3 arrays should use `chunk_shape` instead.
+        Default values are guessed based on the shape and dtype.
     dtype : str or dtype, optional
         NumPy dtype.
+    chunk_shape : int or tuple of ints, optional
+        The shape of the Array's chunks (default is None).
+        V3 only. V2 arrays should use `chunks` instead.
+    chunk_key_encoding : ChunkKeyEncoding, optional
+        A specification of how the chunk keys are represented in storage.
+        V3 only. V2 arrays should use `dimension_separator` instead.
+        Default is ("default", "/").
+    codecs : Sequence of Codecs or dicts, optional
+        An iterable of Codec or dict serializations thereof. The elements of
+        this collection specify the transformation from array values to stored bytes.
+        V3 only. V2 arrays should use `filters` and `compressor` instead.
+        If no codecs are provided, default codecs will be used:
+        - For numeric arrays, the default is `BytesCodec` and `ZstdCodec`.
+        - For Unicode strings, the default is `VLenUTF8Codec`.
+        - For bytes or objects, the default is `VLenBytesCodec`.
+        These defaults can be changed using the `array.v3_default_codecs` variable in the Zarr config.
     compressor : Codec, optional
-        Primary compressor for `zarr_format=2`.
+        Primary compressor to compress chunk data.
+        V2 only. V3 arrays should use `codecs` instead.
         If neither `compressor` nor `filters` are provided, a default compressor will be used:
         - For numeric arrays, the default is `ZstdCodec`.
         - For Unicode strings, the default is `VLenUTF8Codec`.
         - For bytes or objects, the default is `VLenBytesCodec`.
-        These defaults can be changed using the `v2_default_compressor` variable in the Zarr config.
+        These defaults can be changed using the `array.v2_default_compressor` variable in the Zarr config.
     fill_value : object
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
-        Default is set in Zarr's config (`array.order`).
+        Default is specified in the Zarr config `array.order`.
     store : Store or str
         Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
@@ -842,6 +858,8 @@ async def create(
         for storage of both chunks and metadata.
     filters : sequence of Codecs, optional
         Sequence of filters to use to encode chunk data prior to compression.
+        V2 only. If neither `compressor` nor `filters` are provided, a default
+        compressor will be used. (see `compressor` for details)
     cache_metadata : bool, optional
         If True, array configuration metadata will be cached for the
         lifetime of the object. If False, array metadata will be reloaded
@@ -857,7 +875,8 @@ async def create(
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
-
+        V2 only. V3 arrays should use `chunk_key_encoding` instead.
+        Default is ".".
         .. versionadded:: 2.8
 
     write_empty_chunks : bool, optional
@@ -873,6 +892,7 @@ async def create(
 
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
+        Default is 3.
     meta_array : array-like, optional
         An array instance to use for determining arrays to create and return
         to users. Use `numpy.empty(())` by default.
