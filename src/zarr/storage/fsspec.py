@@ -22,7 +22,7 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 )
 
 
-class RemoteStore(Store):
+class FsspecStore(Store):
     """
     A remote Store based on FSSpec
 
@@ -61,8 +61,8 @@ class RemoteStore(Store):
 
     See Also
     --------
-    RemoteStore.from_upath
-    RemoteStore.from_url
+    FsspecStore.from_upath
+    FsspecStore.from_url
     """
 
     # based on FSSpec
@@ -96,7 +96,7 @@ class RemoteStore(Store):
         if "://" in path and not path.startswith("http"):
             # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
             scheme, _ = path.split("://", maxsplit=1)
-            raise ValueError(f"path argument to RemoteStore must not include scheme ({scheme}://)")
+            raise ValueError(f"path argument to FsspecStore must not include scheme ({scheme}://)")
 
     @classmethod
     def from_upath(
@@ -104,9 +104,9 @@ class RemoteStore(Store):
         upath: Any,
         read_only: bool = False,
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
-    ) -> RemoteStore:
+    ) -> FsspecStore:
         """
-        Create a RemoteStore from an upath object.
+        Create a FsspecStore from an upath object.
 
         Parameters
         ----------
@@ -120,7 +120,7 @@ class RemoteStore(Store):
 
         Returns
         -------
-        RemoteStore
+        FsspecStore
         """
         return cls(
             fs=upath.fs,
@@ -136,9 +136,9 @@ class RemoteStore(Store):
         storage_options: dict[str, Any] | None = None,
         read_only: bool = False,
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
-    ) -> RemoteStore:
+    ) -> FsspecStore:
         """
-        Create a RemoteStore from a URL.
+        Create a FsspecStore from a URL.
 
         Parameters
         ----------
@@ -154,7 +154,7 @@ class RemoteStore(Store):
 
         Returns
         -------
-        RemoteStore
+        FsspecStore
         """
         try:
             from fsspec import url_to_fs
@@ -185,7 +185,7 @@ class RemoteStore(Store):
             pass
 
     def __repr__(self) -> str:
-        return f"<RemoteStore({type(self.fs).__name__}, {self.path})>"
+        return f"<FsspecStore({type(self.fs).__name__}, {self.path})>"
 
     def __eq__(self, other: object) -> bool:
         return (

@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from itertools import starmap
 from logging import getLogger
 from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload
+from warnings import warn
 
 import numpy as np
 import numpy.typing as npt
@@ -266,7 +267,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata]: ...
 
@@ -294,7 +295,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
 
@@ -322,7 +323,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
 
@@ -355,7 +356,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
@@ -387,7 +388,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
         data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
@@ -429,7 +430,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         compressor : dict[str, JSON], optional
             The compressor used to compress the data (default is None).
             V2 only. V3 arrays should not have 'compressor' parameter.
-        exists_ok : bool, optional
+        overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
         data : npt.ArrayLike, optional
             The data to be inserted into the array (default is None).
@@ -489,7 +490,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 codecs=codecs,
                 dimension_names=dimension_names,
                 attributes=attributes,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
                 order=order,
             )
         elif zarr_format == 2:
@@ -522,7 +523,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 filters=filters,
                 compressor=compressor,
                 attributes=attributes,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
             )
         else:
             raise ValueError(f"Insupported zarr_format. Got: {zarr_format}")
@@ -539,7 +540,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         *,
         shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        dtype: np.dtype[Any],
         chunk_shape: ChunkCoords,
         fill_value: Any | None = None,
         order: MemoryOrder | None = None,
@@ -552,9 +553,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         codecs: Iterable[Codec | dict[str, JSON]] | None = None,
         dimension_names: Iterable[str] | None = None,
         attributes: dict[str, JSON] | None = None,
-        exists_ok: bool = False,
+        overwrite: bool = False,
     ) -> AsyncArray[ArrayV3Metadata]:
-        if exists_ok:
+        if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
             else:
@@ -580,6 +581,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 else DefaultChunkKeyEncoding(separator=chunk_key_encoding[1])
             )
 
+        if dtype.kind in "UTS":
+            warn(
+                f"The dtype `{dtype}` is currently not part in the Zarr version 3 specification. It "
+                "may not be supported by other zarr implementations and may change in the future.",
+                category=UserWarning,
+                stacklevel=2,
+            )
+
         metadata = ArrayV3Metadata(
             shape=shape,
             data_type=dtype,
@@ -601,17 +610,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         store_path: StorePath,
         *,
         shape: ChunkCoords,
-        dtype: npt.DTypeLike,
+        dtype: np.dtype[Any],
         chunks: ChunkCoords,
         dimension_separator: Literal[".", "/"] | None = None,
-        fill_value: None | float = None,
+        fill_value: float | None = None,
         order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         attributes: dict[str, JSON] | None = None,
-        exists_ok: bool = False,
+        overwrite: bool = False,
     ) -> AsyncArray[ArrayV2Metadata]:
-        if exists_ok:
+        if overwrite:
             if store_path.store.supports_deletes:
                 await store_path.delete_dir()
             else:
@@ -1463,7 +1472,7 @@ class Array:
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
-        exists_ok: bool = False,
+        overwrite: bool = False,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
 
@@ -1493,7 +1502,7 @@ class Array:
             The filters used to compress the data (default is None).
         compressor : dict[str, JSON], optional
             The compressor used to compress the data (default is None).
-        exists_ok : bool, optional
+        overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
 
         Returns
@@ -1518,7 +1527,7 @@ class Array:
                 order=order,
                 filters=filters,
                 compressor=compressor,
-                exists_ok=exists_ok,
+                overwrite=overwrite,
             ),
         )
         return cls(async_array)

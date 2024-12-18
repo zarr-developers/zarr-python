@@ -13,7 +13,7 @@ from zarr import AsyncGroup, config
 from zarr.abc.store import Store
 from zarr.core.sync import sync
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
-from zarr.storage.remote import RemoteStore
+from zarr.storage.fsspec import FsspecStore
 
 if TYPE_CHECKING:
     from collections.abc import Generator
@@ -25,14 +25,14 @@ if TYPE_CHECKING:
 
 
 async def parse_store(
-    store: Literal["local", "memory", "remote", "zip"], path: str
-) -> LocalStore | MemoryStore | RemoteStore | ZipStore:
+    store: Literal["local", "memory", "fsspec", "zip"], path: str
+) -> LocalStore | MemoryStore | FsspecStore | ZipStore:
     if store == "local":
         return await LocalStore.open(path)
     if store == "memory":
         return await MemoryStore.open()
-    if store == "remote":
-        return await RemoteStore.open(url=path)
+    if store == "fsspec":
+        return await FsspecStore.open(url=path)
     if store == "zip":
         return await ZipStore.open(path + "/zarr.zip", mode="w")
     raise AssertionError
@@ -56,8 +56,8 @@ async def local_store(tmpdir: LEGACY_PATH) -> LocalStore:
 
 
 @pytest.fixture
-async def remote_store(url: str) -> RemoteStore:
-    return await RemoteStore.open(url)
+async def remote_store(url: str) -> FsspecStore:
+    return await FsspecStore.open(url)
 
 
 @pytest.fixture
@@ -87,7 +87,7 @@ def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
 @dataclass
 class AsyncGroupRequest:
     zarr_format: ZarrFormat
-    store: Literal["local", "remote", "memory", "zip"]
+    store: Literal["local", "fsspec", "memory", "zip"]
     attributes: dict[str, Any] = field(default_factory=dict)
 
 
@@ -100,7 +100,7 @@ async def async_group(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> As
         store,
         attributes=param.attributes,
         zarr_format=param.zarr_format,
-        exists_ok=False,
+        overwrite=False,
     )
 
 
