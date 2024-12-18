@@ -636,7 +636,7 @@ def create(
 
     Returns
     -------
-    z : array
+    z : Array
         The array.
     """
     return Array(
