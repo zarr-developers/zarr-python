@@ -237,7 +237,7 @@ def test_group_members_2(store: Store, zarr_format: ZarrFormat) -> None:
     _ = subsubgroup.create_group("subsubsubgroup")
 
     members_expected["subarray"] = group.create_array(
-        "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), exists_ok=True
+        "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), overwrite=True
     )
 
     # add an extra object to the domain of the group.
