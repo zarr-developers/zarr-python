@@ -95,7 +95,7 @@ disk then load back into memory later, the functions
 :func:`zarr.convenience.save` and :func:`zarr.convenience.load` may be
 useful. E.g.:
 
-.. ipython:: python
+.. ipython::
    :suppress:
 
    In [144]: rm -r data/example.zarr

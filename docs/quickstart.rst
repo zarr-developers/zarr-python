@@ -1,5 +1,3 @@
-.. _quickstart:
-
 .. ipython::
    :suppress:
 

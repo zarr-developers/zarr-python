@@ -89,6 +89,7 @@ docs = [
     'ipython',
     'pickleshare',
     'rich',
+    's3fs',
 ]
 
 [project.urls]

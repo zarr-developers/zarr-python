@@ -19,6 +19,6 @@ Advanced Topics
 .. toctree::
     :maxdepth: 1
 
-    consolidated_metadata
     async
+    consolidated_metadata
     extending

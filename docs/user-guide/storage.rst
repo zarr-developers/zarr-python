@@ -18,16 +18,19 @@ Implicit Store Creation
 In most cases, it is not required to create a ``Store`` object explicitly. Passing a string
 to Zarr's top level API will result in the store being created automatically.
 
-.. code-block:: python
+.. ipython:: python
 
-   >>> import zarr
-   >>> zarr.open("data/foo/bar", mode="r")  # implicitly creates a read-only LocalStore
-   <Group file://data/foo/bar>
-   >>> zarr.open("s3://foo/bar", mode="r")  # implicitly creates a read-only FsspecStore
-   <Group s3://foo/bar>
-   >>> data = {}
-   >>> zarr.open(data, mode="w")  # implicitly creates a MemoryStore
-   <Group memory://4791444288>
+   import zarr
+
+   # implicitly create a writable LocalStore
+   zarr.open_group("data/foo/bar", mode="w")
+
+   # implicitly create a read-only FsspecStore
+   zarr.open_group("s3://noaa-nwm-retro-v2-zarr-pds", mode="r")
+
+   # implicitly creates a MemoryStore
+   data = {}
+   zarr.open_group(data, mode="w")
 
 Explicit Store Creation
 -----------------------
@@ -42,12 +45,10 @@ Local Store
 The :class:`zarr.storage.LocalStore` stores data in a nested set of directories on a local
 filesystem.
 
-.. code-block:: python
+.. ipython:: python
 
-   >>> import zarr
-   >>> store = zarr.storage.LocalStore("data/foo/bar", read_only=True)
-   >>> zarr.open(store=store)
-   <Group file://data/foo/bar>
+   store = zarr.storage.LocalStore("data/foo/bar", read_only=True)
+   zarr.open(store=store, mode='r')
 
 Zip Store
 ~~~~~~~~~
@@ -55,12 +56,10 @@ Zip Store
 The :class:`zarr.storage.ZipStore` stores the contents of a Zarr hierarchy in a single
 Zip file. The `Zip Store specification_` is currently in draft form.
 
-.. code-block:: python
+.. ipython:: python
 
-   >>> import zarr
-   >>> store = zarr.storage.ZipStore("data.zip", mode="w")
-   >>> zarr.open(store=store, shape=(2,))
-   <Array zip://data.zip shape=(2,) dtype=float64
+   store = zarr.storage.ZipStore("data.zip", mode="w")
+   zarr.open(store=store, shape=(2,))
 
 Remote Store
 ~~~~~~~~~~~~
@@ -71,12 +70,10 @@ such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Stor
 :class:`zarr.storage.FsspecStore` is backed by `Fsspec_` and can support any Fsspec backend
 that implements the `AbstractFileSystem` API,
 
-.. code-block:: python
+.. ipython:: python
 
-   >>> import zarr
-   >>> store = zarr.storage.FsspecStore.from_url("gs://foo/bar", read_only=True)
-   >>> zarr.open(store=store)
-   <Array <FsspecStore(GCSFileSystem, foo/bar)> shape=(10, 20) dtype=float32>
+   store = zarr.storage.FsspecStore.from_url("s3://noaa-nwm-retro-v2-zarr-pds", read_only=True)
+   zarr.open_group(store=store, mode='r')
 
 Memory Store
 ~~~~~~~~~~~~
@@ -84,13 +81,11 @@ Memory Store
 The :class:`zarr.storage.FsspecStore` a in-memory store that allows for serialization of
 Zarr data (metadata and chunks) to a dictionary.
 
-.. code-block:: python
+.. ipython:: python
 
-   >>> import zarr
-   >>> data = {}
-   >>> store = zarr.storage.MemoryStore(data)
-   >>> zarr.open(store=store, shape=(2, ))
-   <Array memory://4943638848 shape=(2,) dtype=float64>
+   data = {}
+   store = zarr.storage.MemoryStore(data)
+   zarr.open(store=store, shape=(2, ))
 
 Developing custom stores
 ------------------------

@@ -11,8 +11,7 @@ Zarr-Python
     quickstart
     user-guide/index
     api/index
-    developers/contributing
-    developers/release
+    developers/index
 
 **Version**: |version|
 
@@ -24,7 +23,7 @@ Zarr-Python
 `Zulip Chat <https://ossci.zulipchat.com/>`_ |
 `Zarr specifications <https://zarr-specs.readthedocs.io>`_
 
-Zarr is a file storage format for chunked, compressed, N-dimensional arrays based on an open-source specification. Highlights include:
+Zarr is a storage format for chunked, compressed, N-dimensional arrays based on an open-source specification. Highlights include:
 
 * Create N-dimensional arrays with any NumPy dtype.
 * Chunk arrays along any dimension.
@@ -45,7 +44,7 @@ Zarr-Python Documentation
         Quick Start
         ^^^^^^^^^^^
 
-        New to Zarr? Check out the quick start guide. It contains an
+        New to Zarr? Check out the quick start guide. It contains a brief
         introduction to Zarr's main concepts and links to additional tutorials.
 
         +++
@@ -101,7 +100,9 @@ Zarr-Python Documentation
         Contributor's Guide
         ^^^^^^^^^^^^^^^^^^^
 
-        Want to contribute to Zarr? We welcome contributions in the form of bug reports, bug fixes, documentation, enhancement proposals and more. The contributing guidelines will guide you through the process of improving Zarr.
+        Want to contribute to Zarr? We welcome contributions in the form of bug reports,
+        bug fixes, documentation, enhancement proposals and more. The contributing
+        guidelines will guide you through the process of improving Zarr.
 
         +++
 
