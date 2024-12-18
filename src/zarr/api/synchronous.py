@@ -163,8 +163,8 @@ def open(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Additional parameters are passed through to :func:`zarr.creation.open_array` or
-        :func:`zarr.hierarchy.open_group`.
+        Additional parameters are passed through to :func:`zarr.api.asynchronous.open_array` or
+        :func:`zarr.api.asynchronous.open_group`.
 
     Returns
     -------
