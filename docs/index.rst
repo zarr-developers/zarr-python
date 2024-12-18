@@ -115,3 +115,6 @@ Highlights
             :click-parent:
 
             To the contributor's guide
+
+
+.. _NumCodecs: https://numcodecs.readthedocs.io/
