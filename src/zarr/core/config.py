@@ -4,20 +4,20 @@ For selecting custom implementations of codecs, pipelines, buffers and ndbuffers
 in the registry and then select them in the config.
 
 Example:
-    An implementation of the bytes codec in a class `your.module.NewBytesCodec` requires the value of `codecs.bytes`
-    to be `your.module.NewBytesCodec`.
+    An implementation of the bytes codec in a class ``your.module.NewBytesCodec`` requires the value of ``codecs.bytes``
+    to be ``your.module.NewBytesCodec``.
 
-    ```python
+.. code-block:: python
     from your.module import NewBytesCodec
     from zarr.core.config import register_codec, config
 
     register_codec("bytes", NewBytesCodec)
     config.set({"codecs.bytes": "your.module.NewBytesCodec"})
-    ```
 
 Donfig can be configured programmatically, by environment variables, or from YAML files in standard locations.
 For example, to set the bytes codec via an environment variable:
 
+.. code-block:: bash
     export ZARR_CODECS__BYTES="your.module.NewBytesCodec"
 
 For more information, see the Donfig documentation at https://github.com/pytroll/donfig.
