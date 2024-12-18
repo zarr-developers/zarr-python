@@ -1054,7 +1054,7 @@ class AsyncGroup:
             The names of the dimensions of the array. V3 only.
         chunks : ChunkCoords | None = None
             The shape of the chunks of the array.
-            V2 only. V3 arrays should use :func:`chunk_shape` instead.
+            V2 only. V3 arrays should use :attr:`chunk_shape` instead.
             If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"] | None = None
             The delimiter used for the chunk keys. (default: ".")
@@ -2275,7 +2275,7 @@ class Group(SyncMixin):
             The names of the dimensions of the array. V3 only.
         chunks : ChunkCoords | None = None
             The shape of the chunks of the array.
-            V2 only. V3 arrays should use :func:`chunk_shape` instead.
+            V2 only. V3 arrays should use :attr:`chunk_shape` instead.
             If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"] | None = None
             The delimiter used for the chunk keys. (default: ".")
@@ -2639,7 +2639,7 @@ class Group(SyncMixin):
             The names of the dimensions of the array. V3 only.
         chunks : ChunkCoords | None = None
             The shape of the chunks of the array.
-            V2 only. V3 arrays should use :func:`chunk_shape` instead.
+            V2 only. V3 arrays should use :attr:`chunk_shape` instead.
             If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"] | None = None
             The delimiter used for the chunk keys. (default: ".")

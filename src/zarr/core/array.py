@@ -430,7 +430,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             V3 only. V2 arrays should not use this parameter.
         chunks : ShapeLike, optional
             The shape of the array's chunks.
-            V2 only. V3 arrays should use :func:`chunk_shape` instead.
+            V2 only. V3 arrays should use :attr:`chunk_shape` instead.
             If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"], optional
             The dimension separator (default is ".").
@@ -1522,7 +1522,7 @@ class Array:
             V3 only. V2 arrays should not use this parameter.
         chunks : ChunkCoords, optional
             The shape of the array's chunks.
-            V2 only. V3 arrays should use :func:`chunk_shape` instead.
+            V2 only. V3 arrays should use :attr:`chunk_shape` instead.
             If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"], optional
             The dimension separator (default is ".").
