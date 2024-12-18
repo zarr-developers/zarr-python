@@ -5,26 +5,26 @@ in the registry and then select them in the config.
 
 Example:
     An implementation of the bytes codec in a class ``your.module.NewBytesCodec`` requires the value of ``codecs.bytes``
-    to be ``your.module.NewBytesCodec``.
+    to be ``your.module.NewBytesCodec``. Donfig can be configured programmatically, by environment variables, or from
+    YAML files in standard locations.
 
-.. code-block:: python
+    .. code-block:: python
 
-    from your.module import NewBytesCodec
-    from zarr.core.config import register_codec, config
+        from your.module import NewBytesCodec
+        from zarr.core.config import register_codec, config
 
-    register_codec("bytes", NewBytesCodec)
-    config.set({"codecs.bytes": "your.module.NewBytesCodec"})
+        register_codec("bytes", NewBytesCodec)
+        config.set({"codecs.bytes": "your.module.NewBytesCodec"})
 
-Donfig can be configured programmatically, by environment variables, or from YAML files in standard locations.
-For example, to set the bytes codec via an environment variable:
+    Instead of setting the value programmatically with ``config.set``, you can also set the value with an environment
+    variable. The environment variable ``ZARR_CODECS__BYTES`` can be set to ``your.module.NewBytesCodec``. The double
+    underscore ``__`` is used to indicate nested access.
 
-.. code-block:: bash
+    .. code-block:: bash
 
-    export ZARR_CODECS__BYTES="your.module.NewBytesCodec"
+        export ZARR_CODECS__BYTES="your.module.NewBytesCodec"
 
 For more information, see the Donfig documentation at https://github.com/pytroll/donfig.
-
-Default values below point to the standard implementations of zarr-python.
 """
 
 from __future__ import annotations
@@ -57,6 +57,7 @@ class Config(DConfig):  # type: ignore[misc]
         self.refresh()
 
 
+# The default configuration for zarr
 config = Config(
     "zarr",
     defaults=[
