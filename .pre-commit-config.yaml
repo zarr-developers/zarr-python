@@ -28,6 +28,7 @@ repos:
         files: src|tests
         additional_dependencies:
           # Package dependencies
+          - packaging
           - donfig
           - numcodecs[crc32c]
           - numpy
