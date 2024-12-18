@@ -1049,18 +1049,18 @@ class AsyncGroup:
             - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
             - For Unicode strings, the default is ``VLenUTF8Codec``.
             - For bytes or objects, the default is ``VLenBytesCodec``.
-            These defaults can be changed using the `array.v3_default_codecs` variable in the Zarr config.
+            These defaults can be changed using the ``array.v3_default_codecs`` variable in :mod:`zarr.core.config`.
         dimension_names : Iterable[str] | None = None
             The names of the dimensions of the array. V3 only.
         chunks : ChunkCoords | None = None
             The shape of the chunks of the array.
-            V2 only. V3 arrays should use :attr:`chunk_shape` instead.
+            V2 only. V3 arrays should use ``chunk_shape`` instead.
             If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"] | None = None
             The delimiter used for the chunk keys. (default: ".")
             V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"] | None = None
-            The memory order of the array (default is specified in the Zarr config `array.order`).
+            The memory order of the array (default is specified by ``array.order`` in :mod:`zarr.core.config`).
         filters : list[dict[str, JSON]] | None = None
             Sequence of filters to use to encode chunk data prior to compression.
             V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
@@ -1073,7 +1073,7 @@ class AsyncGroup:
             - For numeric arrays, the default is ``ZstdCodec``.
             - For Unicode strings, the default is ``VLenUTF8Codec``.
             - For bytes or objects, the default is ``VLenBytesCodec``.
-            These defaults can be changed using the `array.v2_default_compressor` variable in the Zarr config.
+            These defaults can be changed using the ``array.v2_default_compressor`` variable in :mod:`zarr.core.config`.
         overwrite : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
@@ -2270,18 +2270,18 @@ class Group(SyncMixin):
             - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
             - For Unicode strings, the default is ``VLenUTF8Codec``.
             - For bytes or objects, the default is ``VLenBytesCodec``.
-            These defaults can be changed using the `array.v3_default_codecs` variable in the Zarr config.
+            These defaults can be changed using the ``array.v3_default_codecs`` variable in :mod:`zarr.core.config`.
         dimension_names : Iterable[str] | None = None
             The names of the dimensions of the array. V3 only.
         chunks : ChunkCoords | None = None
             The shape of the chunks of the array.
-            V2 only. V3 arrays should use :attr:`chunk_shape` instead.
+            V2 only. V3 arrays should use ``chunk_shape`` instead.
             If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"] | None = None
             The delimiter used for the chunk keys. (default: ".")
             V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"] | None = None
-            The memory order of the array (default is specified in the Zarr config `array.order`).
+            The memory order of the array (default is specified by ``array.order`` in :mod:`zarr.core.config`).
         filters : list[dict[str, JSON]] | None = None
             Sequence of filters to use to encode chunk data prior to compression.
             V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
@@ -2294,7 +2294,7 @@ class Group(SyncMixin):
             - For numeric arrays, the default is ``ZstdCodec``.
             - For Unicode strings, the default is ``VLenUTF8Codec``.
             - For bytes or objects, the default is ``VLenBytesCodec``.
-            These defaults can be changed using the `array.v2_default_compressor` variable in the Zarr config.
+            These defaults can be changed using the ``array.v2_default_compressor`` variable in :mod:`zarr.core.config`.
         overwrite : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
@@ -2634,18 +2634,18 @@ class Group(SyncMixin):
             - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
             - For Unicode strings, the default is ``VLenUTF8Codec``.
             - For bytes or objects, the default is ``VLenBytesCodec``.
-            These defaults can be changed using the `array.v3_default_codecs` variable in the Zarr config.
+            These defaults can be changed using the ``array.v3_default_codecs`` variable in :mod:`zarr.core.config`.
         dimension_names : Iterable[str] | None = None
             The names of the dimensions of the array. V3 only.
         chunks : ChunkCoords | None = None
             The shape of the chunks of the array.
-            V2 only. V3 arrays should use :attr:`chunk_shape` instead.
+            V2 only. V3 arrays should use ``chunk_shape`` instead.
             If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"] | None = None
             The delimiter used for the chunk keys. (default: ".")
             V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"] | None = None
-            The memory order of the array (default is specified in the Zarr config `array.order`).
+            The memory order of the array (default is specified by ``array.order`` in :mod:`zarr.core.config`).
         filters : list[dict[str, JSON]] | None = None
             Sequence of filters to use to encode chunk data prior to compression.
             V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
@@ -2658,7 +2658,7 @@ class Group(SyncMixin):
             - For numeric arrays, the default is ``ZstdCodec``.
             - For Unicode strings, the default is ``VLenUTF8Codec``.
             - For bytes or objects, the default is ``VLenBytesCodec``.
-            These defaults can be changed using the `array.v2_default_compressor` variable in the Zarr config.
+            These defaults can be changed using the ``array.v2_default_compressor`` variable in :mod:`zarr.core.config`.
         overwrite : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is

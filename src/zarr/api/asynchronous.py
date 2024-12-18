@@ -839,7 +839,7 @@ async def create(
         - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
         - For Unicode strings, the default is ``VLenUTF8Codec``.
         - For bytes or objects, the default is ``VLenBytesCodec``.
-        These defaults can be changed using the `array.v3_default_codecs` variable in the Zarr config.
+        These defaults can be changed using the ``array.v3_default_codecs`` variable in :mod:`zarr.core.config`.
     compressor : Codec, optional
         Primary compressor to compress chunk data.
         V2 only. V3 arrays should use ``codecs`` instead.
@@ -847,12 +847,12 @@ async def create(
         - For numeric arrays, the default is ``ZstdCodec``.
         - For Unicode strings, the default is ``VLenUTF8Codec``.
         - For bytes or objects, the default is ``VLenBytesCodec``.
-        These defaults can be changed using the `array.v2_default_compressor` variable in the Zarr config.
+        These defaults can be changed using the ``array.v2_default_compressor`` variable in :mod:`zarr.core.config`.
     fill_value : object
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Memory layout to be used within each chunk.
-        If not specified, default is taken from the Zarr config ``array.order``.
+        If not specified, default is taken from the Zarr config ```array.order```.
     store : Store or str
         Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
