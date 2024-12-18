@@ -78,7 +78,7 @@ def consolidate_metadata(
 
     Returns
     -------
-    group: AsyncGroup
+    group: Group
         The group, with the ``consolidated_metadata`` field set to include
         the metadata of each child node.
     """
@@ -163,8 +163,8 @@ def open(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Additional parameters are passed through to :func:`zarr.creation.open_array` or
-        :func:`zarr.hierarchy.open_group`.
+        Additional parameters are passed through to :func:`zarr.api.asynchronous.open_array` or
+        :func:`zarr.api.asynchronous.open_group`.
 
     Returns
     -------
@@ -350,7 +350,7 @@ def array(data: npt.ArrayLike, **kwargs: Any) -> Array:
 
     Returns
     -------
-    array : array
+    array : Array
         The new array.
     """
 
@@ -403,7 +403,7 @@ def group(
 
     Returns
     -------
-    g : group
+    g : Group
         The new group.
     """
     return Group(
@@ -499,7 +499,7 @@ def open_group(
 
     Returns
     -------
-    g : group
+    g : Group
         The new group.
     """
     return Group(
@@ -636,7 +636,7 @@ def create(
 
     Returns
     -------
-    z : array
+    z : Array
         The array.
     """
     return Array(
@@ -685,6 +685,11 @@ def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
         Shape of the empty array.
     **kwargs
         Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+        
+    Returns
+    -------
+    Array
+        The new array.
 
     Notes
     -----
