@@ -21,7 +21,7 @@ to Zarr's top level API will result in the store being created automatically.
    >>> import zarr
    >>> zarr.open("data/foo/bar", mode="r")  # implicitly creates a read-only LocalStore
    <Group file://data/foo/bar>
-   >>> zarr.open("s3://foo/bar", mode="r")  # implicitly creates a read-only RemoteStore
+   >>> zarr.open("s3://foo/bar", mode="r")  # implicitly creates a read-only FsspecStore
    <Group s3://foo/bar>
    >>> data = {}
    >>> zarr.open(data, mode="w")  # implicitly creates a MemoryStore
@@ -31,7 +31,7 @@ Explicit Store Creation
 -----------------------
 
 In some cases, it may be helpful to create a store instance directly. Zarr-Python offers four
-built-in store: :class:`zarr.storage.LocalStore`, :class:`zarr.storage.RemoteStore`,
+built-in store: :class:`zarr.storage.LocalStore`, :class:`zarr.storage.FsspecStore`,
 :class:`zarr.storage.ZipStore`, and :class:`zarr.storage.MemoryStore`.
 
 Local Store
@@ -63,23 +63,23 @@ Zip file. The `Zip Store specification_` is currently in draft form.
 Remote Store
 ~~~~~~~~~~~~
 
-The :class:`zarr.storage.RemoteStore` stores the contents of a Zarr hierarchy in following the same
+The :class:`zarr.storage.FsspecStore` stores the contents of a Zarr hierarchy in following the same
 logical layout as the ``LocalStore``, except the store is assumed to be on a remote storage system
 such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Store). The
-:class:`zarr.storage.RemoteStore` is backed by `Fsspec_` and can support any Fsspec backend
+:class:`zarr.storage.FsspecStore` is backed by `Fsspec_` and can support any Fsspec backend
 that implements the `AbstractFileSystem` API,
 
 .. code-block:: python
 
    >>> import zarr
-   >>> store = zarr.storage.RemoteStore.from_url("gs://foo/bar", read_only=True)
+   >>> store = zarr.storage.FsspecStore.from_url("gs://foo/bar", read_only=True)
    >>> zarr.open(store=store)
-   <Array <RemoteStore(GCSFileSystem, foo/bar)> shape=(10, 20) dtype=float32>
+   <Array <FsspecStore(GCSFileSystem, foo/bar)> shape=(10, 20) dtype=float32>
 
 Memory Store
 ~~~~~~~~~~~~
 
-The :class:`zarr.storage.RemoteStore` a in-memory store that allows for serialization of
+The :class:`zarr.storage.FsspecStore` a in-memory store that allows for serialization of
 Zarr data (metadata and chunks) to a dictionary.
 
 .. code-block:: python

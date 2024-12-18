@@ -8,65 +8,72 @@ Zarr-Python
     :maxdepth: 1
     :hidden:
 
-    getting_started
-    tutorial
-    guide/index
+    quickstart
+    user-guide/index
     api/index
-    release
-    license
-    contributing
-    roadmap
+    developers/contributing
+    developers/release
 
 **Version**: |version|
 
 **Download documentation**: `PDF/Zipped HTML <https://readthedocs.org/projects/zarr/downloads/>`_
 
 **Useful links**:
-`Installation <installation.html>`_ |
 `Source Repository <https://github.com/zarr-developers/zarr-python>`_ |
 `Issue Tracker <https://github.com/zarr-developers/zarr-python/issues>`_ |
 `Zulip Chat <https://ossci.zulipchat.com/>`_ |
 `Zarr specifications <https://zarr-specs.readthedocs.io>`_
 
-Zarr is a file storage format for chunked, compressed, N-dimensional arrays based on an open-source specification.
+Zarr is a file storage format for chunked, compressed, N-dimensional arrays based on an open-source specification. Highlights include:
+
+* Create N-dimensional arrays with any NumPy dtype.
+* Chunk arrays along any dimension.
+* Compress and/or filter chunks using any Numcodecs_ codec.
+* Store arrays in memory, on disk, inside a Zip file, on S3, ...
+* Read an array concurrently from multiple threads or processes.
+* Write to an array concurrently from multiple threads or processes.
+* Organize arrays into hierarchies via groups.
+
+Zarr-Python Documentation
+-------------------------
 
 .. grid:: 2
 
     .. grid-item-card::
         :img-top: _static/index_getting_started.svg
 
-        Getting Started
-        ^^^^^^^^^^^^^^^
+        Quick Start
+        ^^^^^^^^^^^
 
-        New to Zarr? Check out the getting started guide. It contains an
+        New to Zarr? Check out the quick start guide. It contains an
         introduction to Zarr's main concepts and links to additional tutorials.
 
         +++
 
-        .. button-ref:: getting_started
+        .. button-ref:: quickstart
             :expand:
             :color: dark
             :click-parent:
 
-            To the getting started guide
+            To the Quick Start
 
     .. grid-item-card::
         :img-top: _static/index_user_guide.svg
 
-        Tutorial
-        ^^^^^^^^
+        Guide
+        ^^^^^
 
-        The tutorial provides working examples of Zarr classes and functions.
+        The user guide provides a detailed guide for how to use Zarr-Python.
 
         +++
 
-        .. button-ref:: tutorial
+        .. button-ref:: user-guide
             :ref-type: ref
             :expand:
             :color: dark
             :click-parent:
 
-            To the Tutorial
+            To the User Guide
 
     .. grid-item-card::
         :img-top: _static/index_api.svg
@@ -98,9 +105,11 @@ Zarr is a file storage format for chunked, compressed, N-dimensional arrays base
 
         +++
 
-        .. button-ref:: contributing
+        .. button-ref:: developers/contributing
             :expand:
             :color: dark
             :click-parent:
 
             To the contributor's guide
+
+.. _Numcodecs: https://numcodecs.readthedocs.io

@@ -4,6 +4,8 @@ Installation
 pip
 ---
 
+Zarr is available on `PyPI <https://pypi.org/project/zarr/>`_. Install it using `pip`:
+
 .. code-block:: console
 
     $ pip install zarr
@@ -12,11 +14,14 @@ There are a number of optional dependency groups you can install for extra funct
 These can be installed using ``pip install "zarr[<extra>]"``, e.g. ``pip install "zarr[gpu]"``
 
 - ``gpu``: support for GPUs
-- ``fsspec``: support for reading/writing to remote data stores
-- ``tree``: support for pretty printing of directory trees
+- ``remote``: support for reading/writing to remote data stores
+
+Additional option dependencies include ``rich``, ``universal_pathlib``. These must be installed separately.
 
 conda
 -----
+
+Zarr is also published to `conda-forge <https://conda-forge.org>`_. Install it using `conda`:
 
 .. code-block:: console
 
@@ -34,4 +39,4 @@ Zarr has endorsed `Scientific-Python SPEC 0 <https://scientific-python.org/specs
 
 Development
 -----------
-To install the latest development version of Zarr, see `the contributing guide <contributing.html>`_.
+To install the latest development version of Zarr, see `the contributing guide <../developers/contributing.html>`_.
