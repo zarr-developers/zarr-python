@@ -977,9 +977,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @property
     def nbytes(self) -> int:
         """
-        The number of bytes that can be stored in this array.
+        The number of bytes that can be stored in the chunks of this array.
         """
-        return self.nchunks * self.dtype.itemsize
+        # TODO: how can this be meaningful for variable-length types?
+        return int(np.prod(self.shape) * self.dtype.itemsize)
 
     async def _get_selection(
         self,
