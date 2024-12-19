@@ -37,6 +37,7 @@ from zarr.core.common import (
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
+from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
@@ -606,6 +607,10 @@ class DataType(Enum):
             return DataType.string
         elif dtype.kind == "S":
             return DataType.bytes
+        elif not _NUMPY_SUPPORTS_VLEN_STRING and dtype.kind == "O":
+            # numpy < 2.0 does not support vlen string dtype
+            # so we fall back on object array of strings
+            return DataType.string
         dtype_to_data_type = {
             "|b1": "bool",
             "bool": "bool",

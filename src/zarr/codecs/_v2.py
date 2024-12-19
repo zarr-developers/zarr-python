@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numcodecs
+import numpy as np
 from numcodecs.compat import ensure_bytes, ensure_ndarray_like
 
 from zarr.abc.codec import ArrayBytesCodec
@@ -46,7 +47,17 @@ class V2Codec(ArrayBytesCodec):
         # special case object dtype, because incorrect handling can lead to
         # segfaults and other bad things happening
         if chunk_spec.dtype != object:
-            chunk = chunk.view(chunk_spec.dtype)
+            try:
+                chunk = chunk.view(chunk_spec.dtype)
+            except TypeError:
+                # this will happen if the dtype of the chunk
+                # does not match the dtype of the array spec i.g. if
+                # the dtype of the chunk_spec is a string dtype, but the chunk
+                # is an object array. In this case, we need to convert the object
+                # array to the correct dtype.
+
+                chunk = np.array(chunk).astype(chunk_spec.dtype)
+
         elif chunk.dtype != object:
             # If we end up here, someone must have hacked around with the filters.
             # We cannot deal with object arrays unless there is an object

@@ -1034,24 +1034,52 @@ class AsyncGroup:
         dtype : np.DtypeLike = float64
             The data type of the array.
         chunk_shape : tuple[int, ...] | None = None
-            The shape of the chunks of the array. V3 only.
+            The shape of the chunks of the array.
+            V3 only. V2 arrays should use `chunks` instead.
+            If not specified, default are guessed based on the shape and dtype.
         chunk_key_encoding : ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
             A specification of how the chunk keys are represented in storage.
+            V3 only. V2 arrays should use `dimension_separator` instead.
+            Default is ``("default", "/")``.
         codecs : Iterable[Codec | dict[str, JSON]] | None = None
-            An iterable of Codec or dict serializations thereof. The elements of
+            An iterable of Codec or dict serializations of Codecs. The elements of
             this collection specify the transformation from array values to stored bytes.
+            V3 only. V2 arrays should use ``filters`` and ``compressor`` instead.
+
+            If no codecs are provided, default codecs will be used:
+
+            - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
+
+            These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
         dimension_names : Iterable[str] | None = None
             The names of the dimensions of the array. V3 only.
         chunks : ChunkCoords | None = None
-            The shape of the chunks of the array. V2 only.
+            The shape of the chunks of the array.
+            V2 only. V3 arrays should use ``chunk_shape`` instead.
+            If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"] | None = None
-            The delimiter used for the chunk keys.
+            The delimiter used for the chunk keys. (default: ".")
+            V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"] | None = None
-            The memory order of the array.
+            The memory order of the array (default is specified by ``array.order`` in :mod:`zarr.core.config`).
         filters : list[dict[str, JSON]] | None = None
-            Filters for the array.
+            Sequence of filters to use to encode chunk data prior to compression.
+            V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
+            nor ``filters`` are provided, a default compressor will be used. (see
+            ``compressor`` for details)
         compressor : dict[str, JSON] | None = None
-            The compressor for the array.
+            The compressor used to compress the data (default is None).
+            V2 only. V3 arrays should use ``codecs`` instead.
+
+            If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
+
+            - For numeric arrays, the default is ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
+
+            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
         overwrite : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
@@ -2222,7 +2250,7 @@ class Group(SyncMixin):
     ) -> Array:
         """Create a zarr array within this AsyncGroup.
 
-        This method lightly wraps AsyncArray.create.
+        This method lightly wraps `AsyncArray.create`.
 
         Parameters
         ----------
@@ -2233,24 +2261,52 @@ class Group(SyncMixin):
         dtype : np.DtypeLike = float64
             The data type of the array.
         chunk_shape : tuple[int, ...] | None = None
-            The shape of the chunks of the array. V3 only.
+            The shape of the chunks of the array.
+            V3 only. V2 arrays should use `chunks` instead.
+            If not specified, default are guessed based on the shape and dtype.
         chunk_key_encoding : ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
             A specification of how the chunk keys are represented in storage.
+            V3 only. V2 arrays should use `dimension_separator` instead.
+            Default is ``("default", "/")``.
         codecs : Iterable[Codec | dict[str, JSON]] | None = None
-            An iterable of Codec or dict serializations thereof. The elements of this collection
-            specify the transformation from array values to stored bytes.
+            An iterable of Codec or dict serializations of Codecs. The elements of
+            this collection specify the transformation from array values to stored bytes.
+            V3 only. V2 arrays should use ``filters`` and ``compressor`` instead.
+
+            If no codecs are provided, default codecs will be used:
+
+            - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
+
+            These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
         dimension_names : Iterable[str] | None = None
             The names of the dimensions of the array. V3 only.
         chunks : ChunkCoords | None = None
-            The shape of the chunks of the array. V2 only.
+            The shape of the chunks of the array.
+            V2 only. V3 arrays should use ``chunk_shape`` instead.
+            If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"] | None = None
-            The delimiter used for the chunk keys.
+            The delimiter used for the chunk keys. (default: ".")
+            V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"] | None = None
-            The memory order of the array.
+            The memory order of the array (default is specified by ``array.order`` in :mod:`zarr.core.config`).
         filters : list[dict[str, JSON]] | None = None
-            Filters for the array.
+            Sequence of filters to use to encode chunk data prior to compression.
+            V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
+            nor ``filters`` are provided, a default compressor will be used. (see
+            ``compressor`` for details)
         compressor : dict[str, JSON] | None = None
-            The compressor for the array.
+            The compressor used to compress the data (default is None).
+            V2 only. V3 arrays should use ``codecs`` instead.
+
+            If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
+
+            - For numeric arrays, the default is ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
+
+            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
         overwrite : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is
@@ -2260,6 +2316,7 @@ class Group(SyncMixin):
 
         Returns
         -------
+
         Array
 
         """
@@ -2574,24 +2631,52 @@ class Group(SyncMixin):
         dtype : np.DtypeLike = float64
             The data type of the array.
         chunk_shape : tuple[int, ...] | None = None
-            The shape of the chunks of the array. V3 only.
+            The shape of the chunks of the array.
+            V3 only. V2 arrays should use `chunks` instead.
+            If not specified, default are guessed based on the shape and dtype.
         chunk_key_encoding : ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
             A specification of how the chunk keys are represented in storage.
+            V3 only. V2 arrays should use `dimension_separator` instead.
+            Default is ``("default", "/")``.
         codecs : Iterable[Codec | dict[str, JSON]] | None = None
-            An iterable of Codec or dict serializations thereof. The elements of
+            An iterable of Codec or dict serializations of Codecs. The elements of
             this collection specify the transformation from array values to stored bytes.
+            V3 only. V2 arrays should use ``filters`` and ``compressor`` instead.
+
+            If no codecs are provided, default codecs will be used:
+
+            - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
+
+            These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
         dimension_names : Iterable[str] | None = None
             The names of the dimensions of the array. V3 only.
         chunks : ChunkCoords | None = None
-            The shape of the chunks of the array. V2 only.
+            The shape of the chunks of the array.
+            V2 only. V3 arrays should use ``chunk_shape`` instead.
+            If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"] | None = None
-            The delimiter used for the chunk keys.
+            The delimiter used for the chunk keys. (default: ".")
+            V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"] | None = None
-            The memory order of the array.
+            The memory order of the array (default is specified by ``array.order`` in :mod:`zarr.core.config`).
         filters : list[dict[str, JSON]] | None = None
-            Filters for the array.
+            Sequence of filters to use to encode chunk data prior to compression.
+            V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
+            nor ``filters`` are provided, a default compressor will be used. (see
+            ``compressor`` for details)
         compressor : dict[str, JSON] | None = None
-            The compressor for the array.
+            The compressor used to compress the data (default is None).
+            V2 only. V3 arrays should use ``codecs`` instead.
+
+            If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
+
+            - For numeric arrays, the default is ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
+
+            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
         overwrite : bool = False
             If True, a pre-existing array or group at the path of this array will
             be overwritten. If False, the presence of a pre-existing array or group is

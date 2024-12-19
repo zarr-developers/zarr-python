@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+from numcodecs import Zstd
 
 import zarr.api.asynchronous
 import zarr.api.synchronous
@@ -71,7 +72,10 @@ class TestConsolidated:
                 "configuration": {"separator": "/"},
                 "name": "default",
             },
-            "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
+            "codecs": (
+                {"configuration": {"endian": "little"}, "name": "bytes"},
+                {"configuration": {}, "name": "zstd"},
+            ),
             "data_type": "float64",
             "fill_value": np.float64(0.0),
             "node_type": "array",
@@ -215,7 +219,10 @@ class TestConsolidated:
                 "configuration": {"separator": "/"},
                 "name": "default",
             },
-            "codecs": ({"configuration": {"endian": "little"}, "name": "bytes"},),
+            "codecs": (
+                {"configuration": {"endian": "little"}, "name": "bytes"},
+                {"configuration": {}, "name": "zstd"},
+            ),
             "data_type": "float64",
             "fill_value": np.float64(0.0),
             "node_type": "array",
@@ -486,6 +493,7 @@ class TestConsolidated:
                         attributes={"key": "a"},
                         chunks=(1,),
                         fill_value=None,
+                        filters=(Zstd(level=0),),
                         order="C",
                     ),
                     "g1": GroupMetadata(

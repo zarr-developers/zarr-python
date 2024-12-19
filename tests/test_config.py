@@ -8,10 +8,18 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr import Array, zeros
-from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
+from zarr import Array, AsyncArray, zeros
+from zarr.abc.codec import Codec, CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter, Store
-from zarr.codecs import BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
+from zarr.codecs import (
+    BloscCodec,
+    BytesCodec,
+    Crc32cCodec,
+    GzipCodec,
+    ShardingCodec,
+    VLenBytesCodec,
+    VLenUTF8Codec,
+)
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
@@ -28,6 +36,7 @@ from zarr.registry import (
     register_ndbuffer,
     register_pipeline,
 )
+from zarr.storage import MemoryStore
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,
     StoreExpectingTestBuffer,
@@ -41,7 +50,19 @@ def test_config_defaults_set() -> None:
     assert config.defaults == [
         {
             "default_zarr_version": 3,
-            "array": {"order": "C"},
+            "array": {
+                "order": "C",
+                "v2_default_compressor": {
+                    "numeric": "zstd",
+                    "string": "vlen-utf8",
+                    "bytes": "vlen-bytes",
+                },
+                "v3_default_codecs": {
+                    "bytes": ["vlen-bytes"],
+                    "numeric": ["bytes", "zstd"],
+                    "string": ["vlen-utf8"],
+                },
+            },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
@@ -263,3 +284,31 @@ def test_warning_on_missing_codec_config() -> None:
     # no warning if multiple implementations are available and one is selected in the config
     with config.set({"codecs.new_codec": fully_qualified_name(NewCodec)}):
         get_codec_class("new_codec")
+
+
+@pytest.mark.parametrize(
+    ("dtype", "expected_codecs"),
+    [
+        ("int", [BytesCodec(), GzipCodec()]),
+        ("bytes", [VLenBytesCodec()]),
+        ("str", [VLenUTF8Codec()]),
+    ],
+)
+async def test_default_codecs(dtype: str, expected_codecs: list[Codec]) -> None:
+    with config.set(
+        {
+            "array.v3_default_codecs": {
+                "numeric": ["bytes", "gzip"],  # test setting non-standard codecs
+                "string": ["vlen-utf8"],
+                "bytes": ["vlen-bytes"],
+            }
+        }
+    ):
+        arr = await AsyncArray.create(
+            shape=(100,),
+            chunk_shape=(100,),
+            dtype=np.dtype(dtype),
+            zarr_format=3,
+            store=MemoryStore(),
+        )
+        assert arr.metadata.codecs == expected_codecs
