@@ -542,7 +542,7 @@ def create(
     read_only: bool | None = None,
     object_codec: Codec | None = None,  # TODO: type has changed
     dimension_separator: Literal[".", "/"] | None = None,
-    write_empty_chunks: bool = False,  # TODO: default has changed
+    write_empty_chunks: bool | None = None,  # TODO: default has changed
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # TODO: need type
