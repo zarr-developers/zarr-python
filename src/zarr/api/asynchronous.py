@@ -931,8 +931,8 @@ async def create_array(
     path: PathLike | None = None,
     shape: ChunkCoords,
     dtype: npt.DTypeLike,
-    shard_shape: ChunkCoords | None | Literal["auto"] = "auto",
-    chunk_shape: ChunkCoords | Literal["auto"] = "auto",
+    chunk_shape: ChunkCoords,
+    shard_shape: ChunkCoords | None,
     filters: Iterable[dict[str, JSON] | Codec] = (),
     compressors: Iterable[dict[str, JSON] | Codec] = (),
     fill_value: Any | None = 0,
@@ -953,7 +953,39 @@ async def create_array(
 
     Parameters
     ----------
-
+    store: str or Store
+        Store or path to directory in file system or name of zip file.
+    path: str or None, optional
+        The path within the store to open.
+    shape: ChunkCoords
+        Shape of the array.
+    dtype: npt.DTypeLike
+        Data type of the array.
+    chunk_shape: ChunkCoords
+        Chunk shape of the array.
+    shard_shape: ChunkCoords | None
+        Shard shape of the array.
+    filters: Iterable[Codec], optional
+        List of filters to apply to the array.
+    compressors: Iterable[Codec], optional
+        List of compressors to apply to the array.
+    fill_value: Any, optional
+        Fill value for the array.
+    order: {"C", "F"}, optional
+        Memory layout of the array.
+    zarr_format: {2, 3}, optional
+        The zarr format to use when saving.
+    attributes: dict, optional
+        Attributes for the array.
+    chunk_key_encoding: ChunkKeyEncoding, optional
+        The chunk key encoding to use.
+    dimension_names: Iterable[str], optional
+        Dimension names for the array.
+    storage_options: dict, optional
+        If using an fsspec URL to create the store, these will be passed to the backend implementation.
+        Ignored otherwise.
+    overwrite: bool, default False
+        Whether to overwrite an array with the same name in the store, if one exists.
 
     Returns
     -------
