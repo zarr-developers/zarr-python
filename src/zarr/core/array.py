@@ -13,7 +13,6 @@ import numpy.typing as npt
 
 from zarr._compat import _deprecate_positional_args
 from zarr.abc.store import Store, set_or_delete
-from zarr.codecs import _get_default_array_bytes_codec
 from zarr.codecs._v2 import V2Codec
 from zarr.core._info import ArrayInfo
 from zarr.core.attributes import Attributes
@@ -78,7 +77,8 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
-from zarr.core.metadata.v3 import parse_node_type_array
+from zarr.core.metadata.v2 import _default_filters_and_compressor
+from zarr.core.metadata.v3 import DataType, parse_node_type_array
 from zarr.core.sync import sync
 from zarr.errors import MetadataValidationError
 from zarr.registry import get_pipeline_class
@@ -409,27 +409,53 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         attributes : dict[str, JSON], optional
             The attributes of the array (default is None).
         chunk_shape : ChunkCoords, optional
-            The shape of the array's chunks (default is None).
+            The shape of the array's chunks
+            V3 only. V2 arrays should use `chunks` instead.
+            If not specified, default are guessed based on the shape and dtype.
         chunk_key_encoding : ChunkKeyEncoding, optional
-            The chunk key encoding (default is None).
-        codecs : Iterable[Codec | dict[str, JSON]], optional
-            The codecs used to encode the data (default is None).
+            A specification of how the chunk keys are represented in storage.
+            V3 only. V2 arrays should use `dimension_separator` instead.
+            Default is ``("default", "/")``.
+        codecs : Sequence of Codecs or dicts, optional
+            An iterable of Codec or dict serializations of Codecs. The elements of
+            this collection specify the transformation from array values to stored bytes.
+            V3 only. V2 arrays should use ``filters`` and ``compressor`` instead.
+
+            If no codecs are provided, default codecs will be used:
+
+            - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
+
+            These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
+            V3 only. V2 arrays should not use this parameter.
         chunks : ShapeLike, optional
-            The shape of the array's chunks (default is None).
-            V2 only. V3 arrays should not have 'chunks' parameter.
+            The shape of the array's chunks.
+            V2 only. V3 arrays should use ``chunk_shape`` instead.
+            If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"], optional
-            The dimension separator (default is None).
-            V2 only. V3 arrays cannot have a dimension separator.
+            The dimension separator (default is ".").
+            V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"], optional
-            The order of the array (default is None).
+            The order of the array (default is specified by ``array.order`` in :mod:`zarr.core.config`).
         filters : list[dict[str, JSON]], optional
-            The filters used to compress the data (default is None).
-            V2 only. V3 arrays should not have 'filters' parameter.
+            Sequence of filters to use to encode chunk data prior to compression.
+            V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
+            nor ``filters`` are provided, a default compressor will be used. (see
+            ``compressor`` for details)
         compressor : dict[str, JSON], optional
             The compressor used to compress the data (default is None).
-            V2 only. V3 arrays should not have 'compressor' parameter.
+            V2 only. V3 arrays should use ``codecs`` instead.
+
+            If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
+
+            - For numeric arrays, the default is ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
+
+            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
         overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
         data : npt.ArrayLike, optional
@@ -494,14 +520,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 order=order,
             )
         elif zarr_format == 2:
-            if dtype is str or dtype == "str":
-                # another special case: zarr v2 added the vlen-utf8 codec
-                vlen_codec: dict[str, JSON] = {"id": "vlen-utf8"}
-                if filters and not any(x["id"] == "vlen-utf8" for x in filters):
-                    filters = list(filters) + [vlen_codec]
-                else:
-                    filters = [vlen_codec]
-
             if codecs is not None:
                 raise ValueError(
                     "codecs cannot be used for arrays with version 2. Use filters and compressor instead."
@@ -564,11 +582,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             await ensure_no_existing_node(store_path, zarr_format=3)
 
         shape = parse_shapelike(shape)
-        codecs = (
-            list(codecs)
-            if codecs is not None
-            else [_get_default_array_bytes_codec(np.dtype(dtype))]
-        )
+        codecs = list(codecs) if codecs is not None else _get_default_codecs(np.dtype(dtype))
 
         if chunk_key_encoding is None:
             chunk_key_encoding = ("default", "/")
@@ -633,6 +647,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         if dimension_separator is None:
             dimension_separator = "."
+
+        dtype = parse_dtype(dtype, zarr_format=2)
+        if not filters and not compressor:
+            filters, compressor = _default_filters_and_compressor(dtype)
+        if np.issubdtype(dtype, np.str_):
+            filters = filters or []
+            if not any(x["id"] == "vlen-utf8" for x in filters):
+                filters = list(filters) + [{"id": "vlen-utf8"}]
 
         metadata = ArrayV2Metadata(
             shape=shape,
@@ -1493,23 +1515,53 @@ class Array:
         dtype : npt.DTypeLike
             The data type of the array.
         chunk_shape : ChunkCoords, optional
-            The shape of the Array's chunks (default is None).
+            The shape of the Array's chunks.
+            V3 only. V2 arrays should use `chunks` instead.
+            If not specified, default are guessed based on the shape and dtype.
         chunk_key_encoding : ChunkKeyEncoding, optional
-            The chunk key encoding (default is None).
-        codecs : Iterable[Codec | dict[str, JSON]], optional
-            The codecs used to encode the data (default is None).
+            A specification of how the chunk keys are represented in storage.
+            V3 only. V2 arrays should use `dimension_separator` instead.
+            Default is ``("default", "/")``.
+        codecs : Sequence of Codecs or dicts, optional
+            An iterable of Codec or dict serializations of Codecs. The elements of
+            this collection specify the transformation from array values to stored bytes.
+            V3 only. V2 arrays should use ``filters`` and ``compressor`` instead.
+
+            If no codecs are provided, default codecs will be used:
+
+            - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
+
+            These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
+            V3 only. V2 arrays should not use this parameter.
         chunks : ChunkCoords, optional
-            The shape of the Array's chunks (default is None).
+            The shape of the array's chunks.
+            V2 only. V3 arrays should use ``chunk_shape`` instead.
+            If not specified, default are guessed based on the shape and dtype.
         dimension_separator : Literal[".", "/"], optional
-            The dimension separator (default is None).
+            The dimension separator (default is ".").
+            V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"], optional
-            The order of the array (default is None).
+            The order of the array (default is specified by ``array.order`` in :mod:`zarr.core.config`).
         filters : list[dict[str, JSON]], optional
-            The filters used to compress the data (default is None).
+            Sequence of filters to use to encode chunk data prior to compression.
+            V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
+            nor ``filters`` are provided, a default compressor will be used. (see
+            ``compressor`` for details)
         compressor : dict[str, JSON], optional
-            The compressor used to compress the data (default is None).
+            Primary compressor to compress chunk data.
+            V2 only. V3 arrays should use ``codecs`` instead.
+
+            If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
+
+            - For numeric arrays, the default is ``ZstdCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec``.
+            - For bytes or objects, the default is ``VLenBytesCodec``.
+
+            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
         overwrite : bool, optional
             Whether to raise an error if the store already exists (default is False).
 
@@ -3342,3 +3394,18 @@ def _build_parents(
         )
 
     return parents
+
+
+def _get_default_codecs(
+    np_dtype: np.dtype[Any],
+) -> list[dict[str, JSON]]:
+    default_codecs = config.get("array.v3_default_codecs")
+    dtype = DataType.from_numpy(np_dtype)
+    if dtype == DataType.string:
+        dtype_key = "string"
+    elif dtype == DataType.bytes:
+        dtype_key = "bytes"
+    else:
+        dtype_key = "numeric"
+
+    return [{"name": codec_id, "configuration": {}} for codec_id in default_codecs[dtype_key]]
