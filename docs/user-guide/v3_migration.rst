@@ -93,6 +93,9 @@ The Array class
 1. Disallow direct construction - use :func:`zarr.open_array` or :func:`zarr.create_array`
    instead of directly constructing the :class:`zarr.Array` class.
 
+2. Defaulting to ``zarr_format=3`` - newly created arrays will use the version 3 of the 
+   Zarr specification. To continue using version 2, set ``zarr_format=2`` when creating arrays.
+
 The Group class
 ~~~~~~~~~~~~~~~
 
@@ -130,6 +133,30 @@ Dependencies Changes
   ``cuda``, required for GPU functionality.
 - The ``jupyter`` optional dependency group has been removed, since v3 contains no
   jupyter specific functionality.
+
+Configuration
+~~~~~~~~~~~~~
+
+There is a new configuration system based on `donfig <https://github.com/pytroll/donfig>`_, 
+which can be accessed via :data:`zarr.config`. 
+Configuration values can be set using code like the following:
+
+.. code-block:: python
+
+   import zarr
+   zarr.config.set({"array.order": "F"})
+
+Alternatively, configuration values can be set using environment variables, 
+e.g. ``ZARR_ARRAY__ORDER=F``.
+
+Configuration options include the following:
+
+- Default Zarr format ``default_zarr_version``
+- Default array order in memory ``array.order``
+- Async and threading options, e.g. ``async.concurrency`` and ``threading.max_workers``
+- Selections of implementations of codecs, codec pipelines and buffers
+- TODO: write_empty_chunks PR 2429
+- TODO: default codecs PR 2470
 
 Miscellaneous
 ~~~~~~~~~~~~~
