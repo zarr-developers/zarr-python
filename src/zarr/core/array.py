@@ -977,9 +977,16 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @property
     def nbytes(self) -> int:
         """
-        The number of bytes that can be stored in the chunks of this array.
+        The total number of bytes that can be stored in the chunks of this array.
+
+        Notes
+        -----
+        This value is calculated by multiplying the number of elements in the array and the size
+        of each element, the latter of which is determined by the dtype of the array.
+        For this reason, ``nbytes`` will likely be inaccurate for arrays with variable-length
+        dtypes. It is not possible to determine the size of an array with variable-length elements
+        from the shape and dtype alone.
         """
-        # TODO: how can this be meaningful for variable-length types?
         return self.size * self.dtype.itemsize
 
     async def _get_selection(
@@ -1741,7 +1748,15 @@ class Array:
     @property
     def nbytes(self) -> int:
         """
-        The number of bytes that can be stored in this array.
+        The total number of bytes that can be stored in the chunks of this array.
+
+        Notes
+        -----
+        This value is calculated by multiplying the number of elements in the array and the size
+        of each element, the latter of which is determined by the dtype of the array.
+        For this reason, ``nbytes`` will likely be inaccurate for arrays with variable-length
+        dtypes. It is not possible to determine the size of an array with variable-length elements
+        from the shape and dtype alone.
         """
         return self._async_array.nbytes
 
