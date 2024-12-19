@@ -86,8 +86,12 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
+    'msgpack',
+    'ipython',
+    'pickleshare',
+    'rich',
+    's3fs',
 ]
-
 
 [project.urls]
 "Bug Tracker" = "https://github.com/zarr-developers/zarr-python/issues"

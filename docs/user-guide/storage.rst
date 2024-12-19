@@ -1,3 +1,5 @@
+.. _tutorial_storage:
+
 Storage
 =======
 
@@ -16,22 +18,29 @@ Implicit Store Creation
 In most cases, it is not required to create a ``Store`` object explicitly. Passing a string
 to Zarr's top level API will result in the store being created automatically.
 
-.. code-block:: python
+.. ipython:: python
 
-   >>> import zarr
-   >>> zarr.open("data/foo/bar", mode="r")  # implicitly creates a read-only LocalStore
-   <Group file://data/foo/bar>
-   >>> zarr.open("s3://foo/bar", mode="r")  # implicitly creates a read-only RemoteStore
-   <Group s3://foo/bar>
-   >>> data = {}
-   >>> zarr.open(data, mode="w")  # implicitly creates a MemoryStore
-   <Group memory://4791444288>
+   import zarr
+
+   # implicitly create a writable LocalStore
+   zarr.open_group("data/foo/bar", mode="w")
+
+   # implicitly create a read-only FsspecStore
+   zarr.open_group(
+      "s3://noaa-nwm-retro-v2-zarr-pds",
+      mode="r",
+      storage_options={"anon": True}
+   )
+
+   # implicitly creates a MemoryStore
+   data = {}
+   zarr.open_group(data, mode="w")
 
 Explicit Store Creation
 -----------------------
 
 In some cases, it may be helpful to create a store instance directly. Zarr-Python offers four
-built-in store: :class:`zarr.storage.LocalStore`, :class:`zarr.storage.RemoteStore`,
+built-in store: :class:`zarr.storage.LocalStore`, :class:`zarr.storage.FsspecStore`,
 :class:`zarr.storage.ZipStore`, and :class:`zarr.storage.MemoryStore`.
 
 Local Store
@@ -40,12 +49,10 @@ Local Store
 The :class:`zarr.storage.LocalStore` stores data in a nested set of directories on a local
 filesystem.
 
-.. code-block:: python
+.. ipython:: python
 
-   >>> import zarr
-   >>> store = zarr.storage.LocalStore("data/foo/bar", read_only=True)
-   >>> zarr.open(store=store)
-   <Group file://data/foo/bar>
+   store = zarr.storage.LocalStore("data/foo/bar", read_only=True)
+   zarr.open(store=store, mode='r')
 
 Zip Store
 ~~~~~~~~~
@@ -53,42 +60,41 @@ Zip Store
 The :class:`zarr.storage.ZipStore` stores the contents of a Zarr hierarchy in a single
 Zip file. The `Zip Store specification_` is currently in draft form.
 
-.. code-block:: python
+.. ipython:: python
 
-   >>> import zarr
-   >>> store = zarr.storage.ZipStore("data.zip", mode="w")
-   >>> zarr.open(store=store, shape=(2,))
-   <Array zip://data.zip shape=(2,) dtype=float64
+   store = zarr.storage.ZipStore("data.zip", mode="w")
+   zarr.open(store=store, shape=(2,))
 
 Remote Store
 ~~~~~~~~~~~~
 
-The :class:`zarr.storage.RemoteStore` stores the contents of a Zarr hierarchy in following the same
+The :class:`zarr.storage.FsspecStore` stores the contents of a Zarr hierarchy in following the same
 logical layout as the ``LocalStore``, except the store is assumed to be on a remote storage system
 such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Store). The
-:class:`zarr.storage.RemoteStore` is backed by `Fsspec_` and can support any Fsspec backend
-that implements the `AbstractFileSystem` API,
+:class:`zarr.storage.FsspecStore` is backed by `Fsspec_` and can support any Fsspec backend
+that implements the `AbstractFileSystem` API. ``storage_options`` can be used to configure
+the Fsspec backend.
 
-.. code-block:: python
+.. ipython:: python
 
-   >>> import zarr
-   >>> store = zarr.storage.RemoteStore.from_url("gs://foo/bar", read_only=True)
-   >>> zarr.open(store=store)
-   <Array <RemoteStore(GCSFileSystem, foo/bar)> shape=(10, 20) dtype=float32>
+   store = zarr.storage.FsspecStore.from_url(
+      "s3://noaa-nwm-retro-v2-zarr-pds",
+      read_only=True,
+      storage_options={"anon": True}
+   )
+   zarr.open_group(store=store, mode='r')
 
 Memory Store
 ~~~~~~~~~~~~
 
-The :class:`zarr.storage.RemoteStore` a in-memory store that allows for serialization of
+The :class:`zarr.storage.FsspecStore` a in-memory store that allows for serialization of
 Zarr data (metadata and chunks) to a dictionary.
 
-.. code-block:: python
+.. ipython:: python
 
-   >>> import zarr
-   >>> data = {}
-   >>> store = zarr.storage.MemoryStore(data)
-   >>> zarr.open(store=store, shape=(2, ))
-   <Array memory://4943638848 shape=(2,) dtype=float64>
+   data = {}
+   store = zarr.storage.MemoryStore(data)
+   zarr.open(store=store, shape=(2, ))
 
 Developing custom stores
 ------------------------
