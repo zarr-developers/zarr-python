@@ -1,46 +1,40 @@
 Getting Started
 ===============
 
-Zarr is a format for the storage of chunked, compressed, N-dimensional arrays
-inspired by `HDF5 <https://www.hdfgroup.org/HDF5/>`_, `h5py
-<https://www.h5py.org/>`_ and `bcolz <https://bcolz.readthedocs.io/>`_.
-
-The project is fiscally sponsored by `NumFOCUS <https://numfocus.org/>`_, a US
-501(c)(3) public charity, and development is supported by the
-`MRC Centre for Genomics and Global Health <https://www.cggh.org>`_
-and the `Chan Zuckerberg Initiative <https://chanzuckerberg.com/>`_.
-
-These documents describe the Zarr Python implementation. More information
-about the Zarr format can be found on the `main website <https://zarr.dev>`_.
-
-Highlights
-----------
-
-* Create N-dimensional arrays with any NumPy dtype.
-* Chunk arrays along any dimension.
-* Compress and/or filter chunks using any NumCodecs_ codec.
-* Store arrays in memory, on disk, inside a Zip file, on S3, ...
-* Read an array concurrently from multiple threads or processes.
-* Write to an array concurrently from multiple threads or processes.
-* Organize arrays into hierarchies via groups.
-
-Contributing
+Installation
 ------------
 
-Feedback and bug reports are very welcome, please get in touch via
-the `GitHub issue tracker <https://github.com/zarr-developers/zarr-python/issues>`_. See
-:doc:`contributing` for further information about contributing to Zarr.
+pip
+~~~
 
-Projects using Zarr
--------------------
+.. code-block:: console
 
-If you are using Zarr, we would `love to hear about it
-<https://github.com/zarr-developers/community/issues/19>`_.
+    $ pip install zarr
 
-.. toctree::
-    :caption: Getting Started
-    :hidden:
+There are a number of optional dependency groups you can install for extra functionality.
+These can be installed using ``pip install "zarr[<extra>]"``, e.g. ``pip install "zarr[gpu]"``
 
-    installation
+- ``gpu``: support for GPUs
+- ``fsspec``: support for reading/writing to remote data stores
+- ``tree``: support for pretty printing of directory trees
 
-.. _NumCodecs: https://numcodecs.readthedocs.io/
+conda
+~~~~~
+
+.. code-block:: console
+
+    $ conda install -c conda-forge zarr
+
+Conda does not support optional dependencies, so you will have to manually install any packages
+needed to enable extra functionality.
+
+Dependency support
+~~~~~~~~~~~~~~~~~~
+Zarr has endorsed `Scientific-Python SPEC 0 <https://scientific-python.org/specs/spec-0000/>`_ and now follows the version support window as outlined below:
+
+- Python: 36 months after initial release
+- Core package dependencies (e.g. NumPy): 24 months after initial release
+
+Development
+~~~~~~~~~~~
+To install the latest development version of Zarr, see `the contributing guide <contributing.html>`_.
