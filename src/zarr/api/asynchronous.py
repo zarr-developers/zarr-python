@@ -956,7 +956,8 @@ async def create_array(
     store: str or Store
         Store or path to directory in file system or name of zip file.
     path: str or None, optional
-        The path within the store to open.
+        The name of the array within the store. If ``path`` is ``None``, the array will be located 
+        at the root of the store.
     shape: ChunkCoords
         Shape of the array.
     dtype: npt.DTypeLike
