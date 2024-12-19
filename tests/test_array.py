@@ -766,7 +766,7 @@ def test_write_empty_chunks_config(write_empty_chunks: bool) -> None:
     """
     with zarr.config.set({"array.write_empty_chunks": write_empty_chunks}):
         arr = Array.create({}, shape=(2, 2), dtype="i4")
-        assert arr._async_array.config.write_empty_chunks == write_empty_chunks
+        assert arr._async_array._config.write_empty_chunks == write_empty_chunks
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -795,7 +795,7 @@ def test_write_empty_chunks_behavior(
         write_empty_chunks=write_empty_chunks,
     )
 
-    assert arr._async_array.config.write_empty_chunks == write_empty_chunks
+    assert arr._async_array._config.write_empty_chunks == write_empty_chunks
 
     # initialize the store with some non-fill value chunks
     arr[:] = fill_value + 1

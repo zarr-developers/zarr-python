@@ -199,14 +199,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         The path to the Zarr store.
     codec_pipeline : CodecPipeline
         The codec pipeline used for encoding and decoding chunks.
-    config : ArrayConfig
+    _config : ArrayConfig
         The runtime configuration of the array.
     """
 
     metadata: T_ArrayMetadata
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
-    config: ArrayConfig
+    _config: ArrayConfig
 
     @overload
     def __init__(
@@ -247,7 +247,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
-        object.__setattr__(self, "config", config)
+        object.__setattr__(self, "_config", config)
         object.__setattr__(self, "codec_pipeline", create_codec_pipeline(metadata=metadata_parsed))
 
     # this overload defines the function signature when zarr_format is 2
@@ -800,7 +800,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         bool
             Memory order of the array
         """
-        return self.config.order
+        return self._config.order
 
     @property
     def attrs(self) -> dict[str, JSON]:
@@ -1024,7 +1024,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             out_buffer = prototype.nd_buffer.create(
                 shape=indexer.shape,
                 dtype=out_dtype,
-                order=self.config.order,
+                order=self._config.order,
                 fill_value=self.metadata.fill_value,
             )
         if product(indexer.shape) > 0:
@@ -1034,7 +1034,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     (
                         self.store_path / self.metadata.encode_chunk_key(chunk_coords),
                         self.metadata.get_chunk_spec(
-                            chunk_coords, self.config, prototype=prototype
+                            chunk_coords, self._config, prototype=prototype
                         ),
                         chunk_selection,
                         out_selection,
@@ -1157,7 +1157,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                    self.metadata.get_chunk_spec(chunk_coords, self.config, prototype),
+                    self.metadata.get_chunk_spec(chunk_coords, self._config, prototype),
                     chunk_selection,
                     out_selection,
                 )
