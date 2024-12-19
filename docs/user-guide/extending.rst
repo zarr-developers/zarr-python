@@ -6,12 +6,12 @@ Zarr-Python 3 was designed to be extensible. This means that you can extend
 the library by writing custom classes and plugins. Currently, Zarr can be extended
 in the following ways:
 
-Writing custom stores
----------------------
+Custom stores
+-------------
 
 
-Writing custom codecs
----------------------
+Custom codecs
+-------------
 
 There are three types of codecs in Zarr: array-to-array, array-to-bytes, and bytes-to-bytes. 
 Array-to-array codecs are used to transform the n-dimensional array data before serializing 
@@ -23,15 +23,16 @@ of the array data. Examples include compression codecs, such as
 :class:`zarr.codecs.ZstdCodec`, and codecs that add a checksum to the bytestream, such as 
 :class:`zarr.codecs.Crc32cCodec`.
 
-Custom codecs for Zarr are implemented as classes that inherit from the relevant base class, 
-see :class:`zarr.abc.codecs.ArrayArrayCodec`, :class:`zarr.abc.codecs.ArrayBytesCodec` and 
-:class:`zarr.abc.codecs.BytesBytesCodec`. Most custom codecs should implemented the 
+Custom codecs for Zarr are implemented by subclassing the relevant base class, see 
+:class:`zarr.abc.codec.ArrayArrayCodec`, :class:`zarr.abc.codec.ArrayBytesCodec` and 
+:class:`zarr.abc.codec.BytesBytesCodec`. Most custom codecs should implemented the 
 ``_encode_single`` and ``_decode_single`` methods. These methods operate on single chunks 
-of the array data. Custom codecs can also implement the ``encode`` and ``decode`` methods, 
-which operate on batches of chunks, in case the codec is intended to implement its own 
-batch processing.
+of the array data. Alternatively, custom codecs can implement the ``encode`` and ``decode``
+methods, which operate on batches of chunks, in case the codec is intended to implement 
+its own batch processing.
 
-Custom codecs should also implement these methods:
+Custom codecs should also implement the following methods:
+
 - ``compute_encoded_size``, which returns the byte size of the encoded data given the byte 
   size of the original data. It should raise ``NotImplementedError`` for codecs with 
   variable-sized outputs, such as compression codecs.
@@ -43,10 +44,12 @@ Custom codecs should also implement these methods:
   codec configuration metadata from the array metadata.
 
 To use custom codecs in Zarr, they need to be registered using the 
-`entrypoint mechanism <https://packaging.python.org/en/latest/specifications/entry-points/>_`.
+`entrypoint mechanism <https://packaging.python.org/en/latest/specifications/entry-points/>`_.
 Commonly, entrypoints are declared in the ``pyproject.toml`` of your package under the 
-``[project.entry-points]`` section. Zarr will automatically discover and load all codecs 
-registered with the entrypoint mechanism from imported modules.
+``[project.entry-points."zarr.codecs"]`` section. Zarr will automatically discover and 
+load all codecs registered with the entrypoint mechanism from imported modules.
+
+.. code-block:: toml
 
     [project.entry-points."zarr.codecs"]
     "custompackage.fancy_codec" = "custompackage:FancyCodec"
@@ -56,9 +59,9 @@ strongly recommended to prefix the codec identifier with a unique name. For exam
 the codecs from ``numcodecs`` are prefixed with ``numcodecs.``, e.g. ``numcodecs.delta``.
 
 .. note::
-    Note that the extension mechanism for the Zarr specification version 3 is still 
-    under development. Requirements for custom codecs including the choice of codec 
-    identifiers might change in the future.
+    Note that the extension mechanism for the Zarr version 3 is still under development. 
+    Requirements for custom codecs including the choice of codec identifiers might 
+    change in the future.
 
 It is also possible to register codecs as replacements for existing codecs. This might be 
 useful for providing specialized implementations, such as GPU-based codecs. In case of 
@@ -69,10 +72,14 @@ TODO: Link to documentation of :mod:`zarr.core.config`
 
 .. note::
     This sections explains how custom codecs can be created for Zarr version 3. For Zarr
-    version 2, codecs should implement the 
-    ```numcodecs.abc.Codec`` <https://numcodecs.readthedocs.io/en/stable/abc.html>_` 
-    base class.
+    version 2, codecs should subclass the 
+    `numcodecs.abc.Codec <https://numcodecs.readthedocs.io/en/stable/abc.html#numcodecs.abc.Codec>`_ 
+    base class and register through 
+    `numcodecs.registry.register_codec <https://numcodecs.readthedocs.io/en/stable/registry.html#numcodecs.registry.register_codec>`_.
 
+
+Other extensions
+----------------
 
 In the future, Zarr will support writing custom custom data types and chunk grids.
 
