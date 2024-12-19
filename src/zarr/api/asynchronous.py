@@ -17,6 +17,8 @@ from zarr.core.common import (
     ChunkCoords,
     MemoryOrder,
     ZarrFormat,
+    _warn_order_kwarg,
+    _warn_write_empty_chunks_kwarg,
 )
 from zarr.core.config import config
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
@@ -792,7 +794,7 @@ async def create(
     read_only: bool | None = None,
     object_codec: Codec | None = None,  # TODO: type has changed
     dimension_separator: Literal[".", "/"] | None = None,
-    write_empty_chunks: bool = False,  # TODO: default has changed
+    write_empty_chunks: bool | None = None,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # TODO: need type
@@ -828,6 +830,7 @@ async def create(
     fill_value : object
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
+        Deprecated in favor of the `array.order` configuration variable.
         Memory layout to be used within each chunk.
         Default is set in Zarr's config (`array.order`).
     store : Store or str
@@ -863,6 +866,8 @@ async def create(
         .. versionadded:: 2.8
 
     write_empty_chunks : bool, optional
+        Deprecated in favor of the `array.write_empty_chunks` configuration variable.
+
         If True (default), all chunks will be stored regardless of their
         contents. If False, each chunk is compared to the array's fill value
         prior to storing. If a chunk is uniformly equal to the fill value, then
@@ -915,19 +920,16 @@ async def create(
         warnings.warn("object_codec is not yet implemented", RuntimeWarning, stacklevel=2)
     if read_only is not None:
         warnings.warn("read_only is not yet implemented", RuntimeWarning, stacklevel=2)
-    if dimension_separator is not None:
-        if zarr_format == 3:
-            raise ValueError(
-                "dimension_separator is not supported for zarr format 3, use chunk_key_encoding instead"
-            )
-        else:
-            warnings.warn(
-                "dimension_separator is not yet implemented",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-    if write_empty_chunks:
-        warnings.warn("write_empty_chunks is not yet implemented", RuntimeWarning, stacklevel=2)
+    if dimension_separator is not None and zarr_format == 3:
+        raise ValueError(
+            "dimension_separator is not supported for zarr format 3, use chunk_key_encoding instead"
+        )
+
+    if order is not None:
+        _warn_order_kwarg()
+    if write_empty_chunks is not None:
+        _warn_write_empty_chunks_kwarg()
+
     if meta_array is not None:
         warnings.warn("meta_array is not yet implemented", RuntimeWarning, stacklevel=2)
 
@@ -952,6 +954,7 @@ async def create(
         dimension_names=dimension_names,
         attributes=attributes,
         order=order,
+        write_empty_chunks=write_empty_chunks,
         **kwargs,
     )
 
@@ -1126,6 +1129,11 @@ async def open_array(
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
     zarr_format = _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
+
+    if "order" in kwargs:
+        _warn_order_kwarg()
+    if "write_empty_chunks" in kwargs:
+        _warn_write_empty_chunks_kwarg()
 
     try:
         return await AsyncArray.open(store_path, zarr_format=zarr_format)

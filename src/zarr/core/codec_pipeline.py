@@ -360,7 +360,7 @@ class BatchedCodecPipeline(CodecPipeline):
                 _read_key,
                 config.get("async.concurrency"),
             )
-            chunk_array_batch = await self.decode_batch(
+            chunk_array_decoded = await self.decode_batch(
                 [
                     (chunk_bytes, chunk_spec)
                     for chunk_bytes, (_, chunk_spec, _, _) in zip(
@@ -369,23 +369,27 @@ class BatchedCodecPipeline(CodecPipeline):
                 ],
             )
 
-            chunk_array_batch = [
+            chunk_array_merged = [
                 self._merge_chunk_array(
                     chunk_array, value, out_selection, chunk_spec, chunk_selection, drop_axes
                 )
                 for chunk_array, (_, chunk_spec, chunk_selection, out_selection) in zip(
-                    chunk_array_batch, batch_info, strict=False
+                    chunk_array_decoded, batch_info, strict=False
                 )
             ]
-
-            chunk_array_batch = [
-                None
-                if chunk_array is None or chunk_array.all_equal(chunk_spec.fill_value)
-                else chunk_array
-                for chunk_array, (_, chunk_spec, _, _) in zip(
-                    chunk_array_batch, batch_info, strict=False
-                )
-            ]
+            chunk_array_batch: list[NDBuffer | None] = []
+            for chunk_array, (_, chunk_spec, _, _) in zip(
+                chunk_array_merged, batch_info, strict=False
+            ):
+                if chunk_array is None:
+                    chunk_array_batch.append(None)  # type: ignore[unreachable]
+                else:
+                    if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
+                        chunk_spec.fill_value
+                    ):
+                        chunk_array_batch.append(None)
+                    else:
+                        chunk_array_batch.append(chunk_array)
 
             chunk_bytes_batch = await self.encode_batch(
                 [
