@@ -980,7 +980,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         The number of bytes that can be stored in the chunks of this array.
         """
         # TODO: how can this be meaningful for variable-length types?
-        return int(np.prod(self.shape) * self.dtype.itemsize)
+        return self.size * self.dtype.itemsize
 
     async def _get_selection(
         self,
@@ -1430,7 +1430,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _order=self.order,
             _read_only=self.read_only,
             _store_type=type(self.store_path.store).__name__,
-            _count_bytes=self.dtype.itemsize * self.size,
+            _count_bytes=self.nbytes,
             _count_bytes_stored=count_bytes_stored,
             _count_chunks_initialized=count_chunks_initialized,
             **kwargs,
