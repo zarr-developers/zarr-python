@@ -197,6 +197,14 @@ async def consolidate_metadata(
             v = dataclasses.replace(v, consolidated_metadata=ConsolidatedMetadata(metadata={}))
             members_metadata[k] = v
 
+    if any(m.zarr_format == 3 for m in members_metadata.values()):
+        warnings.warn(
+            "Consolidated metadata is currently not part in the Zarr version 3 specification. It "
+            "may not be supported by other zarr implementations and may change in the future.",
+            category=UserWarning,
+            stacklevel=1,
+        )
+
     ConsolidatedMetadata._flat_to_nested(members_metadata)
 
     consolidated_metadata = ConsolidatedMetadata(metadata=members_metadata)
@@ -205,6 +213,7 @@ async def consolidate_metadata(
         group,
         metadata=metadata,
     )
+
     await group._save_metadata()
     return group
 
@@ -767,9 +776,9 @@ async def open_group(
 
 
 async def create(
-    shape: ChunkCoords,
+    shape: ChunkCoords | int,
     *,  # Note: this is a change from v2
-    chunks: ChunkCoords | None = None,  # TODO: v2 allowed chunks=True
+    chunks: ChunkCoords | int | None = None,  # TODO: v2 allowed chunks=True
     dtype: npt.DTypeLike | None = None,
     compressor: dict[str, JSON] | None = None,  # TODO: default and type change
     fill_value: Any | None = 0,  # TODO: need type
@@ -791,7 +800,7 @@ async def create(
     meta_array: Any | None = None,  # TODO: need type
     attributes: dict[str, JSON] | None = None,
     # v3 only
-    chunk_shape: ChunkCoords | None = None,
+    chunk_shape: ChunkCoords | int | None = None,
     chunk_key_encoding: (
         ChunkKeyEncoding
         | tuple[Literal["default"], Literal[".", "/"]]
@@ -1098,6 +1107,8 @@ async def open_array(
     ----------
     store : Store or str
         Store or path to directory in file system or name of zip file.
+    zarr_version : {2, 3, None}, optional
+        The zarr format to use when saving. Deprecated in favor of zarr_format.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     path : str, optional

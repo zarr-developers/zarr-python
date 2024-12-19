@@ -49,11 +49,11 @@ def test_create_array(memory_store: Store) -> None:
 
     # create array with float shape
     with pytest.raises(TypeError):
-        z = create(shape=(400.5, 100), store=store, overwrite=True)
+        z = create(shape=(400.5, 100), store=store, overwrite=True)  # type: ignore [arg-type]
 
     # create array with float chunk shape
     with pytest.raises(TypeError):
-        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)
+        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore [arg-type]
 
 
 @pytest.mark.parametrize("write_empty_chunks", [True, False])

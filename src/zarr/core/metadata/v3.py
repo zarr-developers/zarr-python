@@ -94,14 +94,14 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
 
     # we need to have special codecs if we are decoding vlen strings or bytestrings
     # TODO: use codec ID instead of class name
-    codec_id = abc.__class__.__name__
-    if dtype == DataType.string and not codec_id == "VLenUTF8Codec":
+    codec_class_name = abc.__class__.__name__
+    if dtype == DataType.string and not codec_class_name == "VLenUTF8Codec":
         raise ValueError(
-            f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_id}`."
+            f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
         )
-    if dtype == DataType.bytes and not codec_id == "VLenBytesCodec":
+    if dtype == DataType.bytes and not codec_class_name == "VLenBytesCodec":
         raise ValueError(
-            f"For bytes dtype, ArrayBytesCodec must be `VLenBytesCodec`, got `{codec_id}`."
+            f"For bytes dtype, ArrayBytesCodec must be `VLenBytesCodec`, got `{codec_class_name}`."
         )
 
 
