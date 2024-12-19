@@ -566,8 +566,7 @@ class TestInfo:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_resize_1d(store: MemoryStore, zarr_format: int) -> None:
+def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     z = zarr.create(
         shape=105, chunks=10, dtype="i4", fill_value=0, store=store, zarr_format=zarr_format
     )
@@ -605,8 +604,7 @@ def test_resize_1d(store: MemoryStore, zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_resize_2d(store: MemoryStore, zarr_format: int) -> None:
+def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     z = zarr.create(
         shape=(105, 105),
         chunks=(10, 10),
@@ -667,8 +665,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_append_1d(store: MemoryStore, zarr_format: int) -> None:
+def test_append_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105)
     z = zarr.create(shape=a.shape, chunks=10, dtype=a.dtype, store=store, zarr_format=zarr_format)
     z[:] = a
@@ -697,8 +694,7 @@ def test_append_1d(store: MemoryStore, zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_append_2d(store: MemoryStore, zarr_format: int) -> None:
+def test_append_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
     z = zarr.create(
         shape=a.shape, chunks=(10, 10), dtype=a.dtype, store=store, zarr_format=zarr_format
@@ -721,8 +717,7 @@ def test_append_2d(store: MemoryStore, zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_append_2d_axis(store: MemoryStore, zarr_format: int) -> None:
+def test_append_2d_axis(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
     z = zarr.create(
         shape=a.shape, chunks=(10, 10), dtype=a.dtype, store=store, zarr_format=zarr_format
@@ -743,8 +738,7 @@ def test_append_2d_axis(store: MemoryStore, zarr_format: int) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
-def test_append_bad_shape(store: MemoryStore, zarr_format: int) -> None:
+def test_append_bad_shape(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(100)
     z = zarr.create(shape=a.shape, chunks=10, dtype=a.dtype, store=store, zarr_format=zarr_format)
     z[:] = a
