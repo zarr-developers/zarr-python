@@ -13,7 +13,6 @@ Zarr-Python
     guide/index
     api/index
     release
-    license
     contributing
     roadmap
 
