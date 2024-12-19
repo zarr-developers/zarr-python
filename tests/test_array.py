@@ -16,7 +16,6 @@ from zarr.core.array import chunks_initialized
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
-from zarr.core.config import config
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
 from zarr.core.metadata.v3 import DataType
@@ -759,10 +758,21 @@ def test_array_create_order(
         raise AssertionError
 
 
+@pytest.mark.parametrize("write_empty_chunks", [True, False])
+def test_write_empty_chunks_config(write_empty_chunks: bool) -> None:
+    """
+    Test that the value of write_empty_chunks is sensitive to the global config when not set
+    explicitly
+    """
+    with zarr.config.set({"array.write_empty_chunks": write_empty_chunks}):
+        arr = Array.create({}, shape=(2, 2), dtype="i4")
+        assert arr._async_array.config.write_empty_chunks == write_empty_chunks
+
+
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("write_empty_chunks", [True, False])
 @pytest.mark.parametrize("fill_value", [0, 5])
-def test_write_empty_chunks(
+def test_write_empty_chunks_behavior(
     zarr_format: ZarrFormat, store: MemoryStore, write_empty_chunks: bool, fill_value: int
 ) -> None:
     """
@@ -774,15 +784,18 @@ def test_write_empty_chunks(
     those chunks not being present in the store. In particular, they should be deleted if they were
     already present.
     """
-    with config.set({"array.write_empty_chunks": write_empty_chunks}):
-        arr = Array.create(
-            store=store,
-            shape=(2,),
-            zarr_format=zarr_format,
-            dtype="i4",
-            fill_value=fill_value,
-            chunk_shape=(1,),
-        )
+
+    arr = Array.create(
+        store=store,
+        shape=(2,),
+        zarr_format=zarr_format,
+        dtype="i4",
+        fill_value=fill_value,
+        chunk_shape=(1,),
+        write_empty_chunks=write_empty_chunks,
+    )
+
+    assert arr._async_array.config.write_empty_chunks == write_empty_chunks
 
     # initialize the store with some non-fill value chunks
     arr[:] = fill_value + 1
