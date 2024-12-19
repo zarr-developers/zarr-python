@@ -138,7 +138,7 @@ Configuration
 ~~~~~~~~~~~~~
 
 There is a new configuration system based on `donfig <https://github.com/pytroll/donfig>`_, 
-which can be accessed via :data:`zarr.config`. 
+which can be accessed via :mod:`zarr.core.config`. 
 Configuration values can be set using code like the following:
 
 .. code-block:: python

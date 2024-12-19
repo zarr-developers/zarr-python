@@ -68,8 +68,6 @@ useful for providing specialized implementations, such as GPU-based codecs. In c
 multiple codecs, the :mod:`zarr.core.config` mechanism can be used to select the preferred
 implementation. 
 
-TODO: Link to documentation of :mod:`zarr.core.config`
-
 .. note::
     This sections explains how custom codecs can be created for Zarr version 3. For Zarr
     version 2, codecs should subclass the 
