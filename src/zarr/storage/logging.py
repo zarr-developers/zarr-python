@@ -5,18 +5,21 @@ import logging
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any
 
-from zarr.abc.store import AccessMode, ByteRangeRequest, Store
+from zarr.abc.store import Store
+from zarr.storage.wrapper import WrapperStore
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Generator, Iterable
+    from collections.abc import AsyncIterator, Generator, Iterable
 
+    from zarr.abc.store import ByteRangeRequest
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import AccessModeLiteral
+
+    counter: defaultdict[str, int]
 
 
-class LoggingStore(Store):
+class LoggingStore(WrapperStore[Store]):
     """
     Store wrapper that logs all calls to the wrapped store.
 
@@ -35,7 +38,6 @@ class LoggingStore(Store):
         Counter of number of times each method has been called
     """
 
-    _store: Store
     counter: defaultdict[str, int]
 
     def __init__(
@@ -44,18 +46,17 @@ class LoggingStore(Store):
         log_level: str = "DEBUG",
         log_handler: logging.Handler | None = None,
     ) -> None:
-        self._store = store
+        super().__init__(store)
         self.counter = defaultdict(int)
         self.log_level = log_level
         self.log_handler = log_handler
-
         self._configure_logger(log_level, log_handler)
 
     def _configure_logger(
         self, log_level: str = "DEBUG", log_handler: logging.Handler | None = None
     ) -> None:
         self.log_level = log_level
-        self.logger = logging.getLogger(f"LoggingStore({self._store!s})")
+        self.logger = logging.getLogger(f"LoggingStore({self._store})")
         self.logger.setLevel(log_level)
 
         if not self.logger.hasHandlers():
@@ -114,9 +115,9 @@ class LoggingStore(Store):
             return self._store.supports_listing
 
     @property
-    def _mode(self) -> AccessMode:  # type: ignore[override]
+    def read_only(self) -> bool:
         with self.log():
-            return self._store._mode
+            return self._store.read_only
 
     @property
     def _is_open(self) -> bool:
@@ -136,10 +137,10 @@ class LoggingStore(Store):
         with self.log():
             return await self._store._ensure_open()
 
-    async def empty(self) -> bool:
+    async def is_empty(self, prefix: str = "") -> bool:
         # docstring inherited
         with self.log():
-            return await self._store.empty()
+            return await self._store.is_empty(prefix=prefix)
 
     async def clear(self) -> None:
         # docstring inherited
@@ -147,7 +148,7 @@ class LoggingStore(Store):
             return await self._store.clear()
 
     def __str__(self) -> str:
-        return f"logging-{self._store!s}"
+        return f"logging-{self._store}"
 
     def __repr__(self) -> str:
         return f"LoggingStore({repr(self._store)!r})"
@@ -204,29 +205,33 @@ class LoggingStore(Store):
         with self.log(keys):
             return await self._store.set_partial_values(key_start_values=key_start_values)
 
-    async def list(self) -> AsyncGenerator[str, None]:
+    async def list(self) -> AsyncIterator[str]:
         # docstring inherited
         with self.log():
             async for key in self._store.list():
                 yield key
 
-    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         with self.log(prefix):
             async for key in self._store.list_prefix(prefix=prefix):
                 yield key
 
-    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+    async def list_dir(self, prefix: str) -> AsyncIterator[str]:
         # docstring inherited
         with self.log(prefix):
             async for key in self._store.list_dir(prefix=prefix):
                 yield key
 
-    def with_mode(self, mode: AccessModeLiteral) -> Self:
+    async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
-        with self.log(mode):
-            return type(self)(
-                self._store.with_mode(mode),
-                log_level=self.log_level,
-                log_handler=self.log_handler,
-            )
+        with self.log(prefix):
+            await self._store.delete_dir(prefix=prefix)
+
+    async def getsize(self, key: str) -> int:
+        with self.log(key):
+            return await self._store.getsize(key)
+
+    async def getsize_prefix(self, prefix: str) -> int:
+        with self.log(prefix):
+            return await self._store.getsize_prefix(prefix)

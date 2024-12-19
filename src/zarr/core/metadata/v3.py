@@ -24,14 +24,13 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
-from zarr.core.array_spec import ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ChunkCoords,
-    MemoryOrder,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -42,6 +41,13 @@ from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
 
 DEFAULT_DTYPE = "float64"
+
+# Keep in sync with _replace_special_floats
+SPECIAL_FLOATS_ENCODED = {
+    "Infinity": np.inf,
+    "-Infinity": -np.inf,
+    "NaN": np.nan,
+}
 
 
 def parse_zarr_format(data: object) -> Literal[3]:
@@ -88,14 +94,14 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
 
     # we need to have special codecs if we are decoding vlen strings or bytestrings
     # TODO: use codec ID instead of class name
-    codec_id = abc.__class__.__name__
-    if dtype == DataType.string and not codec_id == "VLenUTF8Codec":
+    codec_class_name = abc.__class__.__name__
+    if dtype == DataType.string and not codec_class_name == "VLenUTF8Codec":
         raise ValueError(
-            f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_id}`."
+            f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
         )
-    if dtype == DataType.bytes and not codec_id == "VLenBytesCodec":
+    if dtype == DataType.bytes and not codec_class_name == "VLenBytesCodec":
         raise ValueError(
-            f"For bytes dtype, ArrayBytesCodec must be `VLenBytesCodec`, got `{codec_id}`."
+            f"For bytes dtype, ArrayBytesCodec must be `VLenBytesCodec`, got `{codec_class_name}`."
         )
 
 
@@ -149,7 +155,7 @@ class V3JsonEncoder(json.JSONEncoder):
                 if isinstance(out, complex):
                     # python complex types are not JSON serializable, so we use the
                     # serialization defined in the zarr v3 spec
-                    return [out.real, out.imag]
+                    return _replace_special_floats([out.real, out.imag])
                 elif np.isnan(out):
                     return "NaN"
                 elif np.isinf(out):
@@ -218,9 +224,9 @@ class ArrayV3Metadata(Metadata):
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
         codecs: Iterable[Codec | dict[str, JSON]],
-        attributes: None | dict[str, JSON],
-        dimension_names: None | Iterable[str],
-        storage_transformers: None | Iterable[dict[str, JSON]] = None,
+        attributes: dict[str, JSON] | None,
+        dimension_names: Iterable[str] | None,
+        storage_transformers: Iterable[dict[str, JSON]] | None = None,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
@@ -244,7 +250,7 @@ class ArrayV3Metadata(Metadata):
             shape=shape_parsed,
             dtype=data_type_parsed.to_numpy(),
             fill_value=fill_value_parsed,
-            order="C",  # TODO: order is not needed here.
+            config=ArrayConfig(),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
         codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]
@@ -290,7 +296,7 @@ class ArrayV3Metadata(Metadata):
         return len(self.shape)
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: MemoryOrder, prototype: BufferPrototype
+        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
@@ -299,7 +305,7 @@ class ArrayV3Metadata(Metadata):
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
-            order=order,
+            config=array_config,
             prototype=prototype,
         )
 
@@ -447,8 +453,11 @@ def parse_fill_value(
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if data_type in (DataType.complex64, DataType.complex128):
             if len(fill_value) == 2:
+                decoded_fill_value = tuple(
+                    SPECIAL_FLOATS_ENCODED.get(value, value) for value in fill_value
+                )
                 # complex datatypes serialize to JSON arrays with two elements
-                return np_dtype.type(complex(*fill_value))
+                return np_dtype.type(complex(*decoded_fill_value))
             else:
                 msg = (
                     f"Got an invalid fill value for complex data type {data_type.value}."
@@ -471,15 +480,23 @@ def parse_fill_value(
     except (ValueError, OverflowError, TypeError) as e:
         raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}") from e
     # Check if the value is still representable by the dtype
-    if fill_value == "NaN" and np.isnan(casted_value):
+    if (fill_value == "NaN" and np.isnan(casted_value)) or (
+        fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value)
+    ):
         pass
-    elif fill_value in ["Infinity", "-Infinity"] and not np.isfinite(casted_value):
-        pass
-    elif np_dtype.kind in "cf":
+    elif np_dtype.kind == "f":
         # float comparison is not exact, especially when dtype <float64
-        # so we us np.isclose for this comparison.
+        # so we use np.isclose for this comparison.
         # this also allows us to compare nan fill_values
         if not np.isclose(fill_value, casted_value, equal_nan=True):
+            raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
+    elif np_dtype.kind == "c":
+        # confusingly np.isclose(np.inf, np.inf + 0j) is False on numpy<2, so compare real and imag parts
+        # explicitly.
+        if not (
+            np.isclose(np.real(fill_value), np.real(casted_value), equal_nan=True)
+            and np.isclose(np.imag(fill_value), np.imag(casted_value), equal_nan=True)
+        ):
             raise ValueError(f"fill value {fill_value!r} is not valid for dtype {data_type}")
     else:
         if fill_value != casted_value:
@@ -522,7 +539,7 @@ class DataType(Enum):
     bytes = "bytes"
 
     @property
-    def byte_count(self) -> None | int:
+    def byte_count(self) -> int | None:
         data_type_byte_counts = {
             DataType.bool: 1,
             DataType.int8: 1,
@@ -608,7 +625,7 @@ class DataType(Enum):
         return DataType[dtype_to_data_type[dtype.str]]
 
     @classmethod
-    def parse(cls, dtype: None | DataType | Any) -> DataType:
+    def parse(cls, dtype: DataType | Any | None) -> DataType:
         if dtype is None:
             return DataType[DEFAULT_DTYPE]
         if isinstance(dtype, DataType):

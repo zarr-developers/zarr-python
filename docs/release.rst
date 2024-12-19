@@ -18,10 +18,34 @@ Release notes
    See `GH1777 <https://github.com/zarr-developers/zarr-python/issues/1777>`_ for more details on the upcoming
    3.0 release.
 
+.. release_3.0.0-beta:
+
+3.0.0-beta series
+-----------------
+
+.. warning::
+   Zarr-Python 3.0.0-beta is a pre-release of the upcoming 3.0 release. This release is not feature complete or
+   expected to be ready for production applications.
+
+.. note::
+   The complete release notes for 3.0 have not been added to this document yet. See the
+   `3.0.0-beta <https://github.com/zarr-developers/zarr-python/releases/tag/v3.0.0-beta>`_ release on GitHub
+   for a record of changes included in this release.
+
+Dependency Changes
+~~~~~~~~~~~~~~~~~~
+
+* fsspec was moved from a required dependency to an optional one. Users should install
+  fsspec and any relevant implementations (e.g. s3fs) before using the ``RemoteStore``.
+  By :user:`Joe Hamman <jhamman>` :issue:`2391`.
+
+* ``RemoteStore`` was renamed to ``FsspecStore``.
+  By :user:`Joe Hamman <jhamman>` :issue:`2557`.
+
 .. release_3.0.0-alpha:
 
-3.0.0-alpha
------------
+3.0.0-alpha series
+------------------
 
 .. warning::
    Zarr-Python 3.0.0-alpha is a pre-release of the upcoming 3.0 release. This release is not feature complete or
@@ -194,17 +218,17 @@ Typing
 Maintenance
 ~~~~~~~~~~~
 
-* Remedy a situation where ``zarr-python`` was importing ``DummyStorageTransformer`` from the test suite. 
+* Remedy a situation where ``zarr-python`` was importing ``DummyStorageTransformer`` from the test suite.
   The dependency relationship is now reversed: the test suite imports this class from ``zarr-python``.
   By :user:`Davis Bennett <d-v-b>` :issue:`1601`.
 
-* [V3] Update minimum supported Python and Numpy versions. 
+* [V3] Update minimum supported Python and Numpy versions.
   By :user:`Joe Hamman <jhamman>` :issue:`1638`
 
 * use src layout and use hatch for packaging.
   By :user:`Davis Bennett <d-v-b>` :issue:`1592`.
 
-* temporarily disable mypy in v3 directory. 
+* temporarily disable mypy in v3 directory.
   By :user:`Joe Hamman <jhamman>` :issue:`1649`.
 
 * create hatch test env.
@@ -291,10 +315,10 @@ Maintenance
 Documentation
 ~~~~~~~~~~~~~
 
-* Specify docs hatch env for v3 branch. 
+* Specify docs hatch env for v3 branch.
   By :user:`Max Jones <maxrjones>` :issue:`1655`.
 
-* Development installation/contributing docs updates. 
+* Development installation/contributing docs updates.
   By :user:`Alden Keefe Sampson <aldenks>` :issue:`1643`.
 
 * chore: update project settings per scientific python repo-review.
@@ -312,7 +336,7 @@ Enhancements
 ~~~~~~~~~~~~
 * Added support for creating a copy of data when converting a `zarr.Array`
   to a numpy array.
-  By :user:`David Stansby <dstansby>` (:issue:`2106`) and 
+  By :user:`David Stansby <dstansby>` (:issue:`2106`) and
   :user:`Joe Hamman <jhamman>` (:issue:`2123`).
 
 Maintenance
@@ -2167,7 +2191,7 @@ Other changes
 ~~~~~~~~~~~~~
 
 To accommodate support for hierarchies and filters, the Zarr metadata format
-has been modified. See the :ref:`spec_v2` for more information. To migrate an
+has been modified. See the ``spec_v2`` for more information. To migrate an
 array stored using Zarr version 1.x, use the :func:`zarr.storage.migrate_1to2`
 function.
 
@@ -2213,14 +2237,14 @@ abstraction layer between the core array logic and data storage (:issue:`21`).
 In this release, any
 object that implements the ``MutableMapping`` interface can be used as
 an array store. See the tutorial sections on :ref:`tutorial_persist`
-and :ref:`tutorial_storage`, the :ref:`spec_v1`, and the
+and :ref:`tutorial_storage`, the ``spec_v1``, and the
 :mod:`zarr.storage` module documentation for more information.
 
 Please note also that the file organization and file name conventions
 used when storing a Zarr array in a directory on the file system have
 changed. Persistent Zarr arrays created using previous versions of the
 software will not be compatible with this version. See the
-:mod:`zarr.storage` API docs and the :ref:`spec_v1` for more
+:mod:`zarr.storage` API docs and the ``spec_v1`` for more
 information.
 
 Compression
@@ -2233,7 +2257,7 @@ as the default compressor, however other compressors including zlib,
 BZ2 and LZMA are also now supported via the Python standard
 library. New compressors can also be dynamically registered for use
 with Zarr. See the tutorial sections on :ref:`tutorial_compress` and
-:ref:`tutorial_tips_blosc`, the :ref:`spec_v1`, and the
+:ref:`tutorial_tips_blosc`, the ``spec_v1``, and the
 :mod:`zarr.compressors` module documentation for more information.
 
 Synchronization

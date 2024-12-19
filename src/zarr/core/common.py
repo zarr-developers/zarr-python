@@ -37,7 +37,7 @@ ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
-JSON = None | str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...]
+JSON = str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 
@@ -51,7 +51,9 @@ V = TypeVar("V")
 
 
 async def concurrent_map(
-    items: Iterable[T], func: Callable[..., Awaitable[V]], limit: int | None = None
+    items: Iterable[T],
+    func: Callable[..., Awaitable[V]],
+    limit: int | None = None,
 ) -> list[V]:
     if limit is None:
         return await asyncio.gather(*list(starmap(func, items)))
@@ -159,6 +161,12 @@ def parse_order(data: Any) -> Literal["C", "F"]:
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
 
 
+def parse_write_empty_chunks(data: Any) -> bool:
+    if isinstance(data, bool):
+        return data
+    raise ValueError(f"Expected bool, got {data} instead.")
+
+
 def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
     if dtype is str or dtype == "str":
         if zarr_format == 2:
@@ -169,10 +177,17 @@ def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
     return np.dtype(dtype)
 
 
-def _warn_write_empty_chunks_kwarg(write_empty_chunks: bool) -> None:
+def _warn_write_empty_chunks_kwarg() -> None:
     msg = (
-        f"The `write_empty_chunks` keyword argument was provided to this function with a value of {write_empty_chunks}."
-        "This keyword argument has no effect. To control whether empty chunks are written to"
-        " storage, change the 'array.write_empty_chunks' configuration variable."
+        "The `write_empty_chunks` keyword argument is deprecated and will be removed in future versions. "
+        "To control whether empty chunks are written to storage, change the 'array.write_empty_chunks' configuration variable."
+    )
+    warnings.warn(msg, RuntimeWarning, stacklevel=2)
+
+
+def _warn_order_kwarg() -> None:
+    msg = (
+        "The `order` keyword argument is deprecated and will be removed in future versions. "
+        "To control whether empty chunks are written to storage, change the 'array.order' configuration variable."
     )
     warnings.warn(msg, RuntimeWarning, stacklevel=2)

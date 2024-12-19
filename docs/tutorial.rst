@@ -330,10 +330,10 @@ representation of the hierarchy, e.g.::
 
     >>> root.tree()
     /
-     └── foo
-         └── bar
-             ├── baz (10000, 10000) int32
-             └── quux (10000, 10000) int32
+    └── foo
+        └── bar
+            ├── baz (10000, 10000) int32
+            └── quux (10000, 10000) int32
 
 The :func:`zarr.convenience.open` function provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with sub-groups stored in
@@ -423,6 +423,12 @@ Groups also have the :func:`zarr.hierarchy.Group.tree` method, e.g.::
      └── foo
          ├── bar (1000000,) int64
          └── baz (1000, 1000) float32
+
+
+.. note::
+
+   :func:`zarr.Group.tree` requires the optional `rich <https://rich.readthedocs.io/en/stable/>`_
+   dependency. It can be installed with the ``[tree]`` extra.
 
 If you're using Zarr within a Jupyter notebook (requires
 `ipytree <https://github.com/QuantStack/ipytree>`_), calling ``tree()`` will generate an
@@ -1009,12 +1015,12 @@ class from ``fsspec``. The following example demonstrates how to access
 a ZIP-archived Zarr group on s3 using `s3fs <https://s3fs.readthedocs.io/en/latest/>`_ and ``ZipFileSystem``:
 
     >>> s3_path = "s3://path/to/my.zarr.zip"
-    >>> 
+    >>>
     >>> s3 = s3fs.S3FileSystem()
     >>> f = s3.open(s3_path)
     >>> fs = ZipFileSystem(f, mode="r")
     >>> store = FSMap("", fs, check=False)
-    >>> 
+    >>>
     >>> # caching may improve performance when repeatedly reading the same data
     >>> cache = zarr.storage.LRUStoreCache(store, max_size=2**28)
     >>> z = zarr.group(store=cache)

@@ -68,7 +68,7 @@ class VindexInvalidSelectionError(IndexError):
     _msg = (
         "unsupported selection type for vectorized indexing; only "
         "coordinate selection (tuple of integer arrays) and mask selection "
-        "(single Boolean array) are supported; got {0!r}"
+        "(single Boolean array) are supported; got {!r}"
     )
 
 
@@ -94,6 +94,8 @@ class Indexer(Protocol):
 
 
 def ceildiv(a: float, b: float) -> int:
+    if a == 0:
+        return 0
     return math.ceil(a / b)
 
 
@@ -239,12 +241,13 @@ def is_pure_fancy_indexing(selection: Any, ndim: int) -> bool:
         # is mask selection
         return True
 
-    if ndim == 1:
-        if is_integer_list(selection) or is_integer_array(selection) or is_bool_list(selection):
-            return True
+    if ndim == 1 and (
+        is_integer_list(selection) or is_integer_array(selection) or is_bool_list(selection)
+    ):
+        return True
 
-        # if not, we go through the normal path below, because a 1-tuple
-        # of integers is also allowed.
+    # if not, we go through the normal path below, because a 1-tuple
+    # of integers is also allowed.
     no_slicing = (
         isinstance(selection, tuple)
         and len(selection) == ndim
@@ -374,7 +377,7 @@ class SliceDimIndexer:
 
     def __iter__(self) -> Iterator[ChunkDimProjection]:
         # figure out the range of chunks we need to visit
-        dim_chunk_ix_from = self.start // self.dim_chunk_len
+        dim_chunk_ix_from = 0 if self.start == 0 else self.start // self.dim_chunk_len
         dim_chunk_ix_to = ceildiv(self.stop, self.dim_chunk_len)
 
         # iterate over chunks in range
@@ -673,7 +676,7 @@ class Order(Enum):
 def wraparound_indices(x: npt.NDArray[Any], dim_len: int) -> None:
     loc_neg = x < 0
     if np.any(loc_neg):
-        x[loc_neg] = x[loc_neg] + dim_len
+        x[loc_neg] += dim_len
 
 
 def boundscheck_indices(x: npt.NDArray[Any], dim_len: int) -> None:
@@ -998,8 +1001,8 @@ class BlockIndexer(Indexer):
                 if stop < 0:
                     stop = dim_numchunks + stop
 
-                start = start * dim_chunk_size
-                stop = stop * dim_chunk_size
+                start *= dim_chunk_size
+                stop *= dim_chunk_size
                 slice_ = slice(start, stop)
 
             else:
@@ -1343,8 +1346,15 @@ def decode_morton(z: int, chunk_shape: ChunkCoords) -> ChunkCoords:
 
 
 def morton_order_iter(chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
-    for i in range(product(chunk_shape)):
-        yield decode_morton(i, chunk_shape)
+    i = 0
+    order: list[ChunkCoords] = []
+    while len(order) < product(chunk_shape):
+        m = decode_morton(i, chunk_shape)
+        if m not in order and all(x < y for x, y in zip(m, chunk_shape, strict=False)):
+            order.append(m)
+        i += 1
+    for j in range(product(chunk_shape)):
+        yield order[j]
 
 
 def c_order_iter(chunks_per_shard: ChunkCoords) -> Iterator[ChunkCoords]:

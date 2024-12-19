@@ -1,11 +1,21 @@
+from __future__ import annotations
+
+import asyncio
 import pickle
-from typing import Any, Generic, TypeVar, cast
+from typing import TYPE_CHECKING, Generic, TypeVar
+
+from zarr.storage.wrapper import WrapperStore
+
+if TYPE_CHECKING:
+    from typing import Any
+
+    from zarr.abc.store import ByteRangeRequest
+    from zarr.core.buffer.core import BufferPrototype
 
 import pytest
 
-from zarr.abc.store import AccessMode, Store
+from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
-from zarr.core.common import AccessModeLiteral
 from zarr.core.sync import _collect_aiterator
 from zarr.storage._utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal
@@ -40,7 +50,7 @@ class StoreTests(Generic[S, B]):
 
     @pytest.fixture
     def store_kwargs(self) -> dict[str, Any]:
-        return {"mode": "r+"}
+        return {"read_only": False}
 
     @pytest.fixture
     async def store(self, store_kwargs: dict[str, Any]) -> Store:
@@ -63,27 +73,25 @@ class StoreTests(Generic[S, B]):
         foo = pickle.dumps(store)
         assert pickle.loads(foo) == store
 
-    def test_store_mode(self, store: S, store_kwargs: dict[str, Any]) -> None:
-        assert store.mode == AccessMode.from_literal("r+")
-        assert not store.mode.readonly
+    def test_store_read_only(self, store: S) -> None:
+        assert not store.read_only
 
         with pytest.raises(AttributeError):
-            store.mode = AccessMode.from_literal("w")  # type: ignore[misc]
+            store.read_only = False  # type: ignore[misc]
 
-    @pytest.mark.parametrize("mode", ["r", "r+", "a", "w", "w-"])
-    async def test_store_open_mode(
-        self, store_kwargs: dict[str, Any], mode: AccessModeLiteral
+    @pytest.mark.parametrize("read_only", [True, False])
+    async def test_store_open_read_only(
+        self, store_kwargs: dict[str, Any], read_only: bool
     ) -> None:
-        store_kwargs["mode"] = mode
+        store_kwargs["read_only"] = read_only
         store = await self.store_cls.open(**store_kwargs)
         assert store._is_open
-        assert store.mode == AccessMode.from_literal(mode)
+        assert store.read_only == read_only
 
-    async def test_not_writable_store_raises(self, store_kwargs: dict[str, Any]) -> None:
-        kwargs = {**store_kwargs, "mode": "r"}
+    async def test_read_only_store_raises(self, store_kwargs: dict[str, Any]) -> None:
+        kwargs = {**store_kwargs, "read_only": True}
         store = await self.store_cls.open(**kwargs)
-        assert store.mode == AccessMode.from_literal("r")
-        assert store.mode.readonly
+        assert store.read_only
 
         # set
         with pytest.raises(ValueError):
@@ -109,7 +117,7 @@ class StoreTests(Generic[S, B]):
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     @pytest.mark.parametrize("byte_range", [None, (0, None), (1, None), (1, 2), (None, 1)])
     async def test_get(
-        self, store: S, key: str, data: bytes, byte_range: None | tuple[int | None, int | None]
+        self, store: S, key: str, data: bytes, byte_range: tuple[int | None, int | None] | None
     ) -> None:
         """
         Ensure that data can be read from the store using the store.get method.
@@ -149,7 +157,7 @@ class StoreTests(Generic[S, B]):
         """
         Ensure that data can be written to the store using the store.set method.
         """
-        assert not store.mode.readonly
+        assert not store.read_only
         data_buf = self.buffer_cls.from_bytes(data)
         await store.set(key, data_buf)
         observed = await self.get(store, key)
@@ -213,24 +221,43 @@ class StoreTests(Generic[S, B]):
         assert await store.exists("foo/zarr.json")
 
     async def test_delete(self, store: S) -> None:
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
         await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
         assert await store.exists("foo/zarr.json")
         await store.delete("foo/zarr.json")
         assert not await store.exists("foo/zarr.json")
 
-    async def test_empty(self, store: S) -> None:
-        assert await store.empty()
+    async def test_delete_dir(self, store: S) -> None:
+        if not store.supports_deletes:
+            pytest.skip("store does not support deletes")
+        await store.set("zarr.json", self.buffer_cls.from_bytes(b"root"))
+        await store.set("foo-bar/zarr.json", self.buffer_cls.from_bytes(b"root"))
+        await store.set("foo/zarr.json", self.buffer_cls.from_bytes(b"bar"))
+        await store.set("foo/c/0", self.buffer_cls.from_bytes(b"chunk"))
+        await store.delete_dir("foo")
+        assert await store.exists("zarr.json")
+        assert await store.exists("foo-bar/zarr.json")
+        assert not await store.exists("foo/zarr.json")
+        assert not await store.exists("foo/c/0")
+
+    async def test_is_empty(self, store: S) -> None:
+        assert await store.is_empty("")
         await self.set(
-            store, "key", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8"))
+            store, "foo/bar", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8"))
         )
-        assert not await store.empty()
+        assert not await store.is_empty("")
+        assert await store.is_empty("fo")
+        assert not await store.is_empty("foo/")
+        assert not await store.is_empty("foo")
+        assert await store.is_empty("spam/")
 
     async def test_clear(self, store: S) -> None:
         await self.set(
             store, "key", self.buffer_cls.from_bytes(bytes("something", encoding="utf-8"))
         )
         await store.clear()
-        assert await store.empty()
+        assert await store.is_empty("")
 
     async def test_list(self, store: S) -> None:
         assert await _collect_aiterator(store.list()) == ()
@@ -249,8 +276,7 @@ class StoreTests(Generic[S, B]):
     async def test_list_prefix(self, store: S) -> None:
         """
         Test that the `list_prefix` method works as intended. Given a prefix, it should return
-        all the keys in storage that start with this prefix. Keys should be returned with the shared
-        prefix removed.
+        all the keys in storage that start with this prefix.
         """
         prefixes = ("", "a/", "a/b/", "a/b/c/")
         data = self.buffer_cls.from_bytes(b"")
@@ -264,7 +290,7 @@ class StoreTests(Generic[S, B]):
             expected: tuple[str, ...] = ()
             for key in store_dict:
                 if key.startswith(prefix):
-                    expected += (key.removeprefix(prefix),)
+                    expected += (key,)
             expected = tuple(sorted(expected))
             assert observed == expected
 
@@ -288,41 +314,6 @@ class StoreTests(Generic[S, B]):
         keys_observed = await _collect_aiterator(store.list_dir(root + "/"))
         assert sorted(keys_expected) == sorted(keys_observed)
 
-    async def test_with_mode(self, store: S) -> None:
-        data = b"0000"
-        await self.set(store, "key", self.buffer_cls.from_bytes(data))
-        assert (await self.get(store, "key")).to_bytes() == data
-
-        for mode in ["r", "a"]:
-            mode = cast(AccessModeLiteral, mode)
-            clone = store.with_mode(mode)
-            # await store.close()
-            await clone._ensure_open()
-            assert clone.mode == AccessMode.from_literal(mode)
-            assert isinstance(clone, type(store))
-
-            # earlier writes are visible
-            result = await clone.get("key", default_buffer_prototype())
-            assert result is not None
-            assert result.to_bytes() == data
-
-            # writes to original after with_mode is visible
-            await self.set(store, "key-2", self.buffer_cls.from_bytes(data))
-            result = await clone.get("key-2", default_buffer_prototype())
-            assert result is not None
-            assert result.to_bytes() == data
-
-            if mode == "a":
-                # writes to clone is visible in the original
-                await clone.set("key-3", self.buffer_cls.from_bytes(data))
-                result = await clone.get("key-3", default_buffer_prototype())
-                assert result is not None
-                assert result.to_bytes() == data
-
-            else:
-                with pytest.raises(ValueError, match="store mode"):
-                    await clone.set("key-3", self.buffer_cls.from_bytes(data))
-
     async def test_set_if_not_exists(self, store: S) -> None:
         key = "k"
         data_buf = self.buffer_cls.from_bytes(b"0000")
@@ -338,3 +329,63 @@ class StoreTests(Generic[S, B]):
 
         result = await store.get("k2", default_buffer_prototype())
         assert result == new
+
+
+class LatencyStore(WrapperStore[Store]):
+    """
+    A wrapper class that takes any store class in its constructor and
+    adds latency to the `set` and `get` methods. This can be used for
+    performance testing.
+    """
+
+    get_latency: float
+    set_latency: float
+
+    def __init__(self, cls: Store, *, get_latency: float = 0, set_latency: float = 0) -> None:
+        self.get_latency = float(get_latency)
+        self.set_latency = float(set_latency)
+        self._store = cls
+
+    async def set(self, key: str, value: Buffer) -> None:
+        """
+        Add latency to the ``set`` method.
+
+        Calls ``asyncio.sleep(self.set_latency)`` before invoking the wrapped ``set`` method.
+
+        Parameters
+        ----------
+        key : str
+            The key to set
+        value : Buffer
+            The value to set
+
+        Returns
+        -------
+        None
+        """
+        await asyncio.sleep(self.set_latency)
+        await self._store.set(key, value)
+
+    async def get(
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
+    ) -> Buffer | None:
+        """
+        Add latency to the ``get`` method.
+
+        Calls ``asyncio.sleep(self.get_latency)`` before invoking the wrapped ``get`` method.
+
+        Parameters
+        ----------
+        key : str
+            The key to get
+        prototype : BufferPrototype
+            The BufferPrototype to use.
+        byte_range : ByteRangeRequest, optional
+            An optional byte range.
+
+        Returns
+        -------
+        buffer : Buffer or None
+        """
+        await asyncio.sleep(self.get_latency)
+        return await self._store.get(key, prototype=prototype, byte_range=byte_range)

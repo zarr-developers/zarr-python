@@ -16,7 +16,7 @@ Roadmap
    -  Martin Durrant / @martindurant
 
 .. note::
-   
+
    This document was written in the early stages of the 3.0 refactor. Some
    aspects of the design have changed since this was originally written.
    Questions and discussion about the contents of this document should be directed to
@@ -227,7 +227,7 @@ expose the required methods as async methods.
 
        async def get_partial_values(self, key_ranges: List[Tuple[str, int, int]) -> bytes:
            ...
-           
+
        async def set(self, key: str, value: Union[bytes, bytearray, memoryview]) -> None:
            ...  # required for writable stores
 
@@ -246,10 +246,10 @@ expose the required methods as async methods.
        # additional (optional methods)
        async def getsize(self, prefix: str) -> int:
            ...
-           
+
        async def rename(self, src: str, dest: str) -> None
            ...
-           
+
 
 Recognizing that there are many Zarr applications today that rely on the
 ``MutableMapping`` interface supported by Zarr-Python 2, a wrapper store

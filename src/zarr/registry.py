@@ -138,6 +138,8 @@ def get_codec_class(key: str, reload_config: bool = False) -> type[Codec]:
 
     config_entry = config.get("codecs", {}).get(key)
     if config_entry is None:
+        if len(codec_classes) == 1:
+            return next(iter(codec_classes.values()))
         warnings.warn(
             f"Codec '{key}' not configured in config. Selecting any implementation.", stacklevel=2
         )

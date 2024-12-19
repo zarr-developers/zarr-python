@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Literal
 
 import numcodecs.vlen
 import numpy as np
@@ -9,14 +9,16 @@ from numcodecs import Delta
 from numcodecs.blosc import Blosc
 
 import zarr
+import zarr.core.buffer
 import zarr.storage
 from zarr import Array
+from zarr.core.config import config
 from zarr.storage import MemoryStore, StorePath
 
 
 @pytest.fixture
 async def store() -> Iterator[StorePath]:
-    return StorePath(await MemoryStore.open(mode="w"))
+    return StorePath(await MemoryStore.open())
 
 
 def test_simple(store: StorePath) -> None:
@@ -35,6 +37,7 @@ def test_simple(store: StorePath) -> None:
     assert np.array_equal(data, a[:, :])
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize(
     ("dtype", "fill_value"),
     [
@@ -47,8 +50,8 @@ def test_simple(store: StorePath) -> None:
         (str, ""),
     ],
 )
-def test_implicit_fill_value(store: StorePath, dtype: str, fill_value: Any) -> None:
-    arr = zarr.open_array(store=store, shape=(4,), fill_value=None, zarr_format=2, dtype=dtype)
+def test_implicit_fill_value(store: MemoryStore, dtype: str, fill_value: Any) -> None:
+    arr = zarr.create(store=store, shape=(4,), fill_value=None, zarr_format=2, dtype=dtype)
     assert arr.metadata.fill_value is None
     assert arr.metadata.to_dict()["fill_value"] is None
     result = arr[:]
@@ -63,7 +66,7 @@ def test_implicit_fill_value(store: StorePath, dtype: str, fill_value: Any) -> N
 
 def test_codec_pipeline() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2243
-    store = MemoryStore(mode="w")
+    store = MemoryStore()
     array = zarr.create(
         store=store,
         shape=(1,),
@@ -80,7 +83,7 @@ def test_codec_pipeline() -> None:
 
 @pytest.mark.parametrize("dtype", ["|S", "|V"])
 async def test_v2_encode_decode(dtype):
-    store = zarr.storage.MemoryStore(mode="w")
+    store = zarr.storage.MemoryStore()
     g = zarr.group(store=store, zarr_format=2)
     g.create_array(
         name="foo",
@@ -121,3 +124,58 @@ async def test_create_dtype_str(dtype: Any) -> None:
     arr[:] = ["a", "bb", "ccc"]
     result = arr[:]
     np.testing.assert_array_equal(result, np.array(["a", "bb", "ccc"], dtype="object"))
+
+
+@pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
+@pytest.mark.parametrize("order", ["C", "F"])
+def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
+    array_fixture = [42]
+    with config.set({"array.order": order}):
+        arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
+    arr[:] = array_fixture
+    result = arr[:]
+    np.testing.assert_array_equal(result, array_fixture)
+
+
+@pytest.mark.parametrize("array_order", ["C", "F"])
+@pytest.mark.parametrize("data_order", ["C", "F"])
+def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["C", "F"]) -> None:
+    arr = zarr.Array.create(
+        MemoryStore({}),
+        shape=(10, 8),
+        chunks=(3, 3),
+        fill_value=np.nan,
+        dtype="float64",
+        zarr_format=2,
+        overwrite=True,
+        order=array_order,
+    )
+
+    # Non-contiguous write
+    a = np.arange(arr.shape[0] * arr.shape[1]).reshape(arr.shape, order=data_order)
+    arr[slice(6, 9, None), slice(3, 6, None)] = a[
+        slice(6, 9, None), slice(3, 6, None)
+    ]  # The slice on the RHS is important
+    np.testing.assert_array_equal(
+        arr[slice(6, 9, None), slice(3, 6, None)], a[slice(6, 9, None), slice(3, 6, None)]
+    )
+
+    arr = zarr.Array.create(
+        MemoryStore({}),
+        shape=(10, 8),
+        chunks=(3, 3),
+        fill_value=np.nan,
+        dtype="float64",
+        zarr_format=2,
+        overwrite=True,
+        order=array_order,
+    )
+
+    # Contiguous write
+    a = np.arange(9).reshape((3, 3), order=data_order)
+    if data_order == "F":
+        assert a.flags.f_contiguous
+    else:
+        assert a.flags.c_contiguous
+    arr[slice(6, 9, None), slice(3, 6, None)] = a
+    np.testing.assert_array_equal(arr[slice(6, 9, None), slice(3, 6, None)], a)

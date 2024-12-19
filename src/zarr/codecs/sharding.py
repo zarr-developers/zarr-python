@@ -20,7 +20,7 @@ from zarr.abc.codec import (
 from zarr.abc.store import ByteGetter, ByteRangeRequest, ByteSetter
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
-from zarr.core.array_spec import ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.buffer import (
     Buffer,
     BufferPrototype,
@@ -252,7 +252,7 @@ class _ShardBuilder(_ShardReader, ShardMutableMapping):
     def __setitem__(self, chunk_coords: ChunkCoords, value: Buffer) -> None:
         chunk_start = len(self.buf)
         chunk_length = len(value)
-        self.buf = self.buf + value
+        self.buf += value
         self.index.set_chunk_slice(chunk_coords, slice(chunk_start, chunk_start + chunk_length))
 
     def __delitem__(self, chunk_coords: ChunkCoords) -> None:
@@ -665,7 +665,9 @@ class ShardingCodec(
             shape=chunks_per_shard + (2,),
             dtype=np.dtype("<u8"),
             fill_value=MAX_UINT_64,
-            order="C",  # Note: this is hard-coded for simplicity -- it is not surfaced into user code
+            config=ArrayConfig(
+                order="C", write_empty_chunks=False
+            ),  # Note: this is hard-coded for simplicity -- it is not surfaced into user code,
             prototype=numpy_buffer_prototype(),
         )
 
@@ -674,7 +676,7 @@ class ShardingCodec(
             shape=self.chunk_shape,
             dtype=shard_spec.dtype,
             fill_value=shard_spec.fill_value,
-            order=shard_spec.order,
+            config=shard_spec.config,
             prototype=shard_spec.prototype,
         )
 

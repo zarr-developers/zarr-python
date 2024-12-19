@@ -1,16 +1,15 @@
 import tempfile
 from pathlib import Path
-from typing import Literal
 
 import pytest
 from _pytest.compat import LEGACY_PATH
-from upath import UPath
 
+from zarr.core.common import AccessModeLiteral
 from zarr.storage._utils import normalize_path
 from zarr.storage.common import StoreLike, StorePath, make_store_path
+from zarr.storage.fsspec import FsspecStore
 from zarr.storage.local import LocalStore
 from zarr.storage.memory import MemoryStore
-from zarr.storage.remote import RemoteStore
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
@@ -24,13 +23,13 @@ async def test_make_store_path_none(path: str) -> None:
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
-@pytest.mark.parametrize("store_type", [str, Path, LocalStore])
-@pytest.mark.parametrize("mode", ["r", "w", "a"])
+@pytest.mark.parametrize("store_type", [str, Path])
+@pytest.mark.parametrize("mode", ["r", "w"])
 async def test_make_store_path_local(
     tmpdir: LEGACY_PATH,
     store_type: type[str] | type[Path] | type[LocalStore],
     path: str,
-    mode: Literal["r", "w", "a"],
+    mode: AccessModeLiteral,
 ) -> None:
     """
     Test the various ways of invoking make_store_path that create a LocalStore
@@ -40,26 +39,27 @@ async def test_make_store_path_local(
     assert isinstance(store_path.store, LocalStore)
     assert Path(store_path.store.root) == Path(tmpdir)
     assert store_path.path == normalize_path(path)
-    assert store_path.store.mode.str == mode
+    assert store_path.read_only == (mode == "r")
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
-@pytest.mark.parametrize("mode", ["r", "w", "a"])
+@pytest.mark.parametrize("mode", ["r", "w"])
 async def test_make_store_path_store_path(
-    tmpdir: LEGACY_PATH, path: str, mode: Literal["r", "w", "a"]
+    tmpdir: LEGACY_PATH, path: str, mode: AccessModeLiteral
 ) -> None:
     """
     Test invoking make_store_path when the input is another store_path. In particular we want to ensure
     that a new path is handled correctly.
     """
-    store_like = StorePath(LocalStore(str(tmpdir)), path="root")
+    ro = mode == "r"
+    store_like = await StorePath.open(LocalStore(str(tmpdir), read_only=ro), path="root", mode=mode)
     store_path = await make_store_path(store_like, path=path, mode=mode)
     assert isinstance(store_path.store, LocalStore)
     assert Path(store_path.store.root) == Path(tmpdir)
     path_normalized = normalize_path(path)
     assert store_path.path == (store_like / path_normalized).path
 
-    assert store_path.store.mode.str == mode
+    assert store_path.read_only == ro
 
 
 async def test_make_store_path_invalid() -> None:
@@ -71,21 +71,19 @@ async def test_make_store_path_invalid() -> None:
 
 
 async def test_make_store_path_fsspec(monkeypatch) -> None:
-    import fsspec.implementations.memory
-
-    monkeypatch.setattr(fsspec.implementations.memory.MemoryFileSystem, "async_impl", True)
-    store_path = await make_store_path("memory://")
-    assert isinstance(store_path.store, RemoteStore)
+    pytest.importorskip("fsspec")
+    store_path = await make_store_path("http://foo.com/bar")
+    assert isinstance(store_path.store, FsspecStore)
 
 
 @pytest.mark.parametrize(
     "store_like",
     [
         None,
-        str(tempfile.TemporaryDirectory()),
+        tempfile.TemporaryDirectory().name,
         Path(tempfile.TemporaryDirectory().name),
-        StorePath(store=MemoryStore(store_dict={}, mode="w"), path="/"),
-        MemoryStore(store_dict={}, mode="w"),
+        StorePath(store=MemoryStore(store_dict={}), path="/"),
+        MemoryStore(store_dict={}),
         {},
     ],
 )
@@ -108,11 +106,15 @@ async def test_unsupported() -> None:
         "foo/bar///",
         Path("foo/bar"),
         b"foo/bar",
-        UPath("foo/bar"),
     ],
 )
-def test_normalize_path_valid(path: str | bytes | Path | UPath) -> None:
+def test_normalize_path_valid(path: str | bytes | Path) -> None:
     assert normalize_path(path) == "foo/bar"
+
+
+def test_normalize_path_upath() -> None:
+    upath = pytest.importorskip("upath")
+    assert normalize_path(upath.UPath("foo/bar")) == "foo/bar"
 
 
 def test_normalize_path_none():

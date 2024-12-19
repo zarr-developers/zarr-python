@@ -43,7 +43,7 @@ def test_metadata_to_dict(
     fill_value: Any,
     order: Literal["C", "F"],
     dimension_separator: Literal[".", "/"] | None,
-    attributes: None | dict[str, Any],
+    attributes: dict[str, Any] | None,
 ) -> None:
     shape = (1, 2, 3)
     chunks = (1,) * len(shape)
@@ -141,7 +141,7 @@ class TestConsolidated:
             "zarr_consolidated_format": 1,
         }
         store_dict = {}
-        store = zarr.storage.MemoryStore(store_dict=store_dict, mode="a")
+        store = zarr.storage.MemoryStore(store_dict=store_dict)
         await store.set(
             ".zattrs", cpu.Buffer.from_bytes(json.dumps({"Conventions": "COARDS"}).encode())
         )
