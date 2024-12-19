@@ -999,9 +999,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @property
     def nbytes(self) -> int:
         """
-        The number of bytes that can be stored in this array.
+        The total number of bytes that can be stored in the chunks of this array.
+
+        Notes
+        -----
+        This value is calculated by multiplying the number of elements in the array and the size
+        of each element, the latter of which is determined by the dtype of the array.
+        For this reason, ``nbytes`` will likely be inaccurate for arrays with variable-length
+        dtypes. It is not possible to determine the size of an array with variable-length elements
+        from the shape and dtype alone.
         """
-        return self.nchunks * self.dtype.itemsize
+        return self.size * self.dtype.itemsize
 
     async def _get_selection(
         self,
@@ -1451,7 +1459,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _order=self.order,
             _read_only=self.read_only,
             _store_type=type(self.store_path.store).__name__,
-            _count_bytes=self.dtype.itemsize * self.size,
+            _count_bytes=self.nbytes,
             _count_bytes_stored=count_bytes_stored,
             _count_chunks_initialized=count_chunks_initialized,
             **kwargs,
@@ -1792,7 +1800,15 @@ class Array:
     @property
     def nbytes(self) -> int:
         """
-        The number of bytes that can be stored in this array.
+        The total number of bytes that can be stored in the chunks of this array.
+
+        Notes
+        -----
+        This value is calculated by multiplying the number of elements in the array and the size
+        of each element, the latter of which is determined by the dtype of the array.
+        For this reason, ``nbytes`` will likely be inaccurate for arrays with variable-length
+        dtypes. It is not possible to determine the size of an array with variable-length elements
+        from the shape and dtype alone.
         """
         return self._async_array.nbytes
 
