@@ -782,3 +782,10 @@ async def test_special_complex_fill_values_roundtrip(fill_value: Any, expected: 
     assert content is not None
     actual = json.loads(content.to_bytes())
     assert actual["fill_value"] == expected
+
+
+async def test_scalar_array():
+    arr = zarr.array(1.5)
+    assert arr[...] == 1.5
+    assert arr[()] == 1.5
+    assert arr.shape == ()
