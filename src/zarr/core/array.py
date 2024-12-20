@@ -15,7 +15,7 @@ from zarr._compat import _deprecate_positional_args
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
 from zarr.core._info import ArrayInfo
-from zarr.core.array_spec import ArrayConfig
+from zarr.core.array_spec import ArrayConfig, ArrayConfigParams, normalize_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
@@ -38,8 +38,10 @@ from zarr.core.common import (
     MemoryOrder,
     ShapeLike,
     ZarrFormat,
+    _warn_order_kwarg,
     concurrent_map,
     parse_dtype,
+    parse_order,
     parse_shapelike,
     product,
 )
@@ -243,7 +245,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         metadata_parsed = parse_array_metadata(metadata)
 
-        config = ArrayConfig() if config is None else config
+        config = ArrayConfig.from_dict({}) if config is None else config
 
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
@@ -271,6 +273,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV2Metadata]: ...
 
     # this overload defines the function signature when zarr_format is 3
@@ -299,34 +302,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-    ) -> AsyncArray[ArrayV3Metadata]: ...
-
-    # this overload is necessary to handle the case where the `zarr_format` kwarg is unspecified
-    @overload
-    @classmethod
-    async def create(
-        cls,
-        store: StoreLike,
-        *,
-        # v2 and v3
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
-        zarr_format: Literal[3] = 3,
-        fill_value: Any | None = None,
-        attributes: dict[str, JSON] | None = None,
-        # v3 only
-        chunk_shape: ShapeLike | None = None,
-        chunk_key_encoding: (
-            ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None
-        ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
-        dimension_names: Iterable[str] | None = None,
-        # runtime
-        overwrite: bool = False,
-        data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
 
     @overload
@@ -355,12 +331,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
-        write_empty_chunks: bool | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
@@ -388,12 +364,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         chunks: ShapeLike | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
-        write_empty_chunks: bool | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
         Method to create a new asynchronous array instance.
@@ -443,11 +419,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The dimension separator (default is ".").
             V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"], optional
-            Deprecated in favor of the ``array.order`` in :mod:`zarr.core.config`.
-            The order of the array (default is "C").
-        write_empty_chunks : bool, optional
-            Deprecated in favor of the ``array.write_empty_chunks`` in :mod:`zarr.core.config`.
-            If true, empty chunks will be written to the store.
+            The memory of the array (default is "C").
+            If ``zarr_format`` is 2, this parameter sets the memory order of the array.
+            If `zarr_format`` is 3, then this parameter is deprecated, because memory order
+            is a runtime parameter for zarr 3 arrays. The recommended way to specify the memory
+            order for zarr v3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
         filters : list[dict[str, JSON]], optional
             Sequence of filters to use to encode chunk data prior to compression.
             V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
@@ -499,8 +475,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _chunks = normalize_chunks(chunks, shape, dtype_parsed.itemsize)
         else:
             _chunks = normalize_chunks(chunk_shape, shape, dtype_parsed.itemsize)
-
-        config_parsed = ArrayConfig(order=order, write_empty_chunks=write_empty_chunks)
+        config_parsed = normalize_array_config(config)
 
         result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
         if zarr_format == 3:
@@ -516,6 +491,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError(
                     "compressor cannot be used for arrays with version 3. Use bytes-to-bytes codecs instead."
                 )
+
+            if order is not None:
+                _warn_order_kwarg()
+
             result = await cls._create_v3(
                 store_path,
                 shape=shape,
@@ -540,6 +519,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 )
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with version 2.")
+
+            if order is None:
+                order_parsed = parse_order(zarr_config.get("array.order"))
+            else:
+                order_parsed = order
+
             result = await cls._create_v2(
                 store_path,
                 shape=shape,
@@ -547,6 +532,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 chunks=_chunks,
                 dimension_separator=dimension_separator,
                 fill_value=fill_value,
+                order=order_parsed,
                 config=config_parsed,
                 filters=filters,
                 compressor=compressor,
@@ -636,6 +622,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         shape: ChunkCoords,
         dtype: np.dtype[Any],
         chunks: ChunkCoords,
+        order: MemoryOrder,
         config: ArrayConfig,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: float | None = None,
@@ -667,7 +654,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             shape=shape,
             dtype=np.dtype(dtype),
             chunks=chunks,
-            order=config.order,
+            order=order,
             dimension_separator=dimension_separator,
             fill_value=fill_value,
             compressor=compressor,
@@ -1519,11 +1506,11 @@ class Array:
         chunks: ChunkCoords | None = None,
         dimension_separator: Literal[".", "/"] | None = None,
         order: MemoryOrder | None = None,
-        write_empty_chunks: bool | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         # runtime
         overwrite: bool = False,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
 
@@ -1566,11 +1553,11 @@ class Array:
             The dimension separator (default is ".").
             V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"], optional
-            Deprecated in favor of the ``array.order`` in :mod:`zarr.core.config`.
-            The order of the array (default is "C").
-        write_empty_chunks : bool, optional
-            Deprecated in favor of the ``array.write_empty_chunks`` in :mod:`zarr.core.config`.
-            If true, empty chunks will be written to the store.
+            The memory of the array (default is "C").
+            If ``zarr_format`` is 2, this parameter sets the memory order of the array.
+            If `zarr_format`` is 3, then this parameter is deprecated, because memory order
+            is a runtime parameter for zarr 3 arrays. The recommended way to specify the memory
+            order for zarr v3 arrays is via the ``config`` parameter, e.g. ``{'order': 'C'}``.
         filters : list[dict[str, JSON]], optional
             Sequence of filters to use to encode chunk data prior to compression.
             V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
@@ -1610,10 +1597,10 @@ class Array:
                 chunks=chunks,
                 dimension_separator=dimension_separator,
                 order=order,
-                write_empty_chunks=write_empty_chunks,
                 filters=filters,
                 compressor=compressor,
                 overwrite=overwrite,
+                config=config,
             ),
         )
         return cls(async_array)

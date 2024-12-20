@@ -251,7 +251,7 @@ class ArrayV3Metadata(Metadata):
             shape=shape_parsed,
             dtype=data_type_parsed.to_numpy(),
             fill_value=fill_value_parsed,
-            config=ArrayConfig(),  # TODO: config is not needed here.
+            config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
         codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]

@@ -1,40 +1,87 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from dataclasses import dataclass, fields
+from typing import TYPE_CHECKING, Any, Literal, Self, TypedDict, cast
 
 import numpy as np
 
 from zarr.core.common import (
     MemoryOrder,
+    parse_bool,
     parse_fill_value,
     parse_order,
     parse_shapelike,
-    parse_write_empty_chunks,
 )
 from zarr.core.config import config as zarr_config
 
 if TYPE_CHECKING:
+    from typing import NotRequired
+
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import ChunkCoords
 
 
+class ArrayConfigParams(TypedDict):
+    """
+    A TypedDict model of the attributes of an ArrayConfig class, but with no required fields.
+    This allows for partial construction of an ArrayConfig, with the assumption that the unset
+    keys will be taken from a global configuration.
+    """
+
+    order: NotRequired[MemoryOrder]
+    write_empty_chunks: NotRequired[bool]
+
+
 @dataclass(frozen=True)
 class ArrayConfig:
+    """
+    A model of the runtime configuration of an array.
+
+    Parameters
+    ----------
+    order : MemoryOrder
+        The memory layout of the arrays returned when reading data from the store.
+    write_empty_chunks : bool
+        If True, empty chunks will be written to the store.
+    """
+
     order: MemoryOrder
     write_empty_chunks: bool
 
-    def __init__(
-        self, *, order: MemoryOrder | None = None, write_empty_chunks: bool | None = None
-    ) -> None:
-        order_parsed = parse_order(order) if order is not None else zarr_config.get("array.order")
-        write_empty_chunks_parsed = (
-            parse_write_empty_chunks(write_empty_chunks)
-            if write_empty_chunks is not None
-            else zarr_config.get("array.write_empty_chunks")
-        )
+    def __init__(self, order: MemoryOrder, write_empty_chunks: bool) -> None:
+        order_parsed = parse_order(order)
+        write_empty_chunks_parsed = parse_bool(write_empty_chunks)
+
         object.__setattr__(self, "order", order_parsed)
         object.__setattr__(self, "write_empty_chunks", write_empty_chunks_parsed)
+
+    @classmethod
+    def from_dict(cls, data: ArrayConfigParams) -> Self:
+        """
+        Create an ArrayConfig from a dict. The keys of that dict are a subset of the
+        attributes of the ArrayConfig class. Any keys missing from that dict will be set to the
+        the values in the ``array`` namespace of ``zarr.config``.
+        """
+        kwargs_out: ArrayConfigParams = {}
+        for f in fields(ArrayConfig):
+            field_name = cast(Literal["order", "write_empty_chunks"], f.name)
+            if field_name not in data:
+                kwargs_out[field_name] = zarr_config.get(f"array.{field_name}")
+            else:
+                kwargs_out[field_name] = data[field_name]
+        return cls(**kwargs_out)
+
+
+def normalize_array_config(data: ArrayConfig | ArrayConfigParams | None) -> ArrayConfig:
+    """
+    Convert various types of data to an ArrayConfig.
+    """
+    if data is None:
+        return ArrayConfig.from_dict({})
+    elif isinstance(data, ArrayConfig):
+        return data
+    else:
+        return ArrayConfig.from_dict(data)
 
 
 @dataclass(frozen=True)

@@ -161,7 +161,7 @@ def parse_order(data: Any) -> Literal["C", "F"]:
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
 
 
-def parse_write_empty_chunks(data: Any) -> bool:
+def parse_bool(data: Any) -> bool:
     if isinstance(data, bool):
         return data
     raise ValueError(f"Expected bool, got {data} instead.")
@@ -178,16 +178,22 @@ def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
 
 
 def _warn_write_empty_chunks_kwarg() -> None:
+    # TODO: link to docs page on array configuration in this message
     msg = (
         "The `write_empty_chunks` keyword argument is deprecated and will be removed in future versions. "
-        "To control whether empty chunks are written to storage, change the 'array.write_empty_chunks' configuration variable."
+        "To control whether empty chunks are written to storage, either use the `config` keyword "
+        "argument, as in `config={'write_empty_chunks: True}`,"
+        "or change the global 'array.write_empty_chunks' configuration variable."
     )
     warnings.warn(msg, RuntimeWarning, stacklevel=2)
 
 
 def _warn_order_kwarg() -> None:
+    # TODO: link to docs page on array configuration in this message
     msg = (
-        "The `order` keyword argument is deprecated and will be removed in future versions. "
-        "To control whether empty chunks are written to storage, change the 'array.order' configuration variable."
+        "The `order` keyword argument has no effect for zarr v3 arrays. "
+        "To control the memory layout of the array, either use the `config` keyword "
+        "argument, as in `config={'order: 'C'}`,"
+        "or change the global 'array.order' configuration variable."
     )
     warnings.warn(msg, RuntimeWarning, stacklevel=2)
