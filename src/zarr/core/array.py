@@ -15,7 +15,7 @@ import numpy.typing as npt
 
 from zarr._compat import _deprecate_positional_args
 from zarr.abc.store import Store, set_or_delete
-from zarr.api.asynchronous import PathLike, _default_zarr_version
+from zarr.core.common import _default_zarr_version
 from zarr.codecs._v2 import V2Codec
 from zarr.core._info import ArrayInfo
 from zarr.core.array_spec import ArrayConfig, ArrayConfigParams, parse_array_config
@@ -3457,7 +3457,7 @@ def _get_default_codecs(
 async def create_array(
     store: str | StoreLike,
     *,
-    path: PathLike | None = None,
+    path: str | None = None,
     shape: ShapeLike,
     dtype: npt.DTypeLike,
     chunk_shape: ChunkCoords,

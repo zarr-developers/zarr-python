@@ -22,7 +22,7 @@ from zarr.core.common import (
     _warn_write_empty_chunks_kwarg,
     parse_dtype,
 )
-from zarr.core.config import config as zarr_config
+from zarr.core.common import _default_zarr_version
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_filters_and_compressor
@@ -148,11 +148,6 @@ def _handle_zarr_version_or_format(
         )
         return zarr_version
     return zarr_format
-
-
-def _default_zarr_version() -> ZarrFormat:
-    """Return the default zarr_version"""
-    return cast(ZarrFormat, int(zarr_config.get("default_zarr_version", 3)))
 
 
 async def consolidate_metadata(
