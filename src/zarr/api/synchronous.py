@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
+import zarr.core.array
 from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
 from zarr.core.group import Group
@@ -523,6 +524,29 @@ def open_group(
     )
 
 
+def create_group(
+    store: StoreLike,
+    *,
+    path: str | None = None,
+    zarr_format: ZarrFormat | None = None,
+    overwrite: bool = False,
+    attributes: dict[str, Any] | None = None,
+    storage_options: dict[str, Any] | None = None,
+) -> Group:
+    return Group(
+        sync(
+            async_api.create_group(
+                store=store,
+                path=path,
+                overwrite=overwrite,
+                storage_options=storage_options,
+                zarr_format=zarr_format,
+                attributes=attributes,
+            )
+        )
+    )
+
+
 # TODO: add type annotations for kwargs
 def create(
     shape: ChunkCoords | int,
@@ -673,6 +697,10 @@ def create(
             )
         )
     )
+
+
+def create_array(*args: Any, **kwargs: Any) -> Array:
+    return Array(sync(zarr.core.array.create_array(*args, **kwargs)))
 
 
 # TODO: add type annotations for kwargs

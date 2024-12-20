@@ -72,7 +72,7 @@ class ArrayConfig:
         return cls(**kwargs_out)
 
 
-def normalize_array_config(data: ArrayConfig | ArrayConfigParams | None) -> ArrayConfig:
+def parse_array_config(data: ArrayConfig | ArrayConfigParams | None) -> ArrayConfig:
     """
     Convert various types of data to an ArrayConfig.
     """

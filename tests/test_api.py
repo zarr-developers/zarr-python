@@ -13,6 +13,8 @@ from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.api.synchronous import (
     create,
+    create_array,
+    create_group,
     group,
     load,
     open,
@@ -21,13 +23,15 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
+from zarr.codecs.transpose import TransposeCodec
+from zarr.codecs.zstd import ZstdCodec
 from zarr.core.common import MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
 from zarr.storage._utils import normalize_path
 from zarr.storage.memory import MemoryStore
 
 
-def test_create_array(memory_store: Store) -> None:
+def test_create(memory_store: Store) -> None:
     store = memory_store
 
     # create array
@@ -54,6 +58,22 @@ def test_create_array(memory_store: Store) -> None:
     # create array with float chunk shape
     with pytest.raises(TypeError):
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore [arg-type]
+
+
+# TODO: parametrize over everything this function takes
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_create_array(store: Store) -> None:
+    attrs = {"foo": 100}
+    shape = (10, 10)
+    path = "foo"
+    data_val = 1
+    array_w = create_array(
+        store, path=path, shape=shape, attributes=attrs, chunk_shape=shape, dtype="uint8"
+    )
+    array_w[:] = data_val
+    assert array_w.shape == shape
+    assert array_w.attrs == attrs
+    assert np.array_equal(array_w[:], np.zeros(shape, dtype=array_w.dtype) + data_val)
 
 
 @pytest.mark.parametrize("write_empty_chunks", [True, False])
@@ -111,6 +131,16 @@ async def test_open_array(memory_store: MemoryStore) -> None:
     # path not found
     with pytest.raises(FileNotFoundError):
         open(store="doesnotexist", mode="r")
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_group(store: Store, zarr_format: ZarrFormat) -> None:
+    attrs = {"foo": 100}
+    path = "node"
+    node = create_group(store, path=path, attributes=attrs, zarr_format=zarr_format)
+    assert isinstance(node, Group)
+    assert node.attrs == attrs
+    assert node.metadata.zarr_format == zarr_format
 
 
 async def test_open_group(memory_store: MemoryStore) -> None:
@@ -1086,3 +1116,36 @@ def test_open_array_with_mode_r_plus(store: Store) -> None:
     assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_v3(store: MemoryStore) -> None:
+    # TODO: fill in
+    _ = zarr.create_array(
+        store=store,
+        dtype="uint8",
+        shape=(10,),
+        shard_shape=(4,),
+        chunk_shape=(4,),
+        zarr_format=3,
+        filters=(TransposeCodec(order=(0,)),),
+        compressors=(ZstdCodec(level=3),),
+    )
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_v2(store: MemoryStore) -> None:
+    from numcodecs import Delta, Zstd
+
+    # TODO: fill in
+    dtype = "uint8"
+    _ = zarr.create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        shard_shape=None,
+        chunk_shape=(4,),
+        zarr_format=2,
+        filters=(Delta(dtype=dtype),),
+        compressors=(Zstd(level=3),),
+    )

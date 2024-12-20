@@ -18,6 +18,7 @@ from typing import (
 
 import numpy as np
 
+from zarr.core.config import config as zarr_config
 from zarr.core.strings import _STRING_DTYPE
 
 if TYPE_CHECKING:
@@ -167,7 +168,7 @@ def parse_bool(data: Any) -> bool:
     raise ValueError(f"Expected bool, got {data} instead.")
 
 
-def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
+def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[np.generic]:
     if dtype is str or dtype == "str":
         if zarr_format == 2:
             # special case as object
@@ -197,3 +198,8 @@ def _warn_order_kwarg() -> None:
         "or change the global 'array.order' configuration variable."
     )
     warnings.warn(msg, RuntimeWarning, stacklevel=2)
+
+
+def _default_zarr_version() -> ZarrFormat:
+    """Return the default zarr_version"""
+    return cast(ZarrFormat, int(zarr_config.get("default_zarr_version", 3)))
