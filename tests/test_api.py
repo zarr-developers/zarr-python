@@ -70,7 +70,14 @@ def test_read(store: Store) -> None:
     """
     # create an array and a group
     _ = create_group(store=store, path="group", attributes={"node_type": "group"})
-    _ = create_array(store=store, path="array", shape=(10, 10), attributes={"node_type": "array"})
+    _ = create_array(
+        store=store,
+        path="array",
+        shape=(10, 10),
+        chunk_shape=(1, 1),
+        dtype="uint8",
+        attributes={"node_type": "array"},
+    )
 
     group_r = read(store, path="group")
     assert isinstance(group_r, Group)
@@ -89,7 +96,9 @@ def test_create_array(store: Store) -> None:
     shape = (10, 10)
     path = "foo"
     data_val = 1
-    array_w = create_array(store, path=path, shape=shape, attributes=attrs)
+    array_w = create_array(
+        store, path=path, shape=shape, attributes=attrs, chunk_shape=shape, dtype="uint8"
+    )
     array_w[:] = data_val
     assert array_w.shape == shape
     assert array_w.attrs == attrs
@@ -107,7 +116,13 @@ def test_read_array(store: Store) -> None:
     for zarr_format in (2, 3):
         attrs = {"zarr_format": zarr_format}
         node_w = create_array(
-            store, path=path, shape=shape, attributes=attrs, zarr_format=zarr_format
+            store,
+            path=path,
+            shape=shape,
+            attributes=attrs,
+            zarr_format=zarr_format,
+            chunk_shape=shape,
+            dtype="uint8",
         )
         node_w[:] = data_val
 
@@ -1214,9 +1229,9 @@ async def test_create_array_v2(store: MemoryStore) -> None:
         store=store,
         dtype=dtype,
         shape=(10,),
-        shard_shape=(4,),
+        shard_shape=None,
         chunk_shape=(4,),
-        zarr_format=3,
+        zarr_format=2,
         filters=(Delta(dtype=dtype),),
         compressors=(Zstd(level=3),),
     )

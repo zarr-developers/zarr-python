@@ -936,7 +936,7 @@ async def create_array(
     shape: ChunkCoords,
     dtype: npt.DTypeLike,
     chunk_shape: ChunkCoords,
-    shard_shape: ChunkCoords | None,
+    shard_shape: ChunkCoords | None = None,
     filters: Iterable[dict[str, JSON] | Codec] = (),
     compressors: Iterable[dict[str, JSON] | Codec] = (),
     fill_value: Any | None = 0,
@@ -1016,14 +1016,18 @@ async def create_array(
     _dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
     config_parsed = parse_array_config(config)
     if zarr_format == 2:
-        if shard_shape is not None or shard_shape != "auto":
+        if shard_shape is not None:
             msg = (
                 'Zarr v2 arrays can only be created with `shard_shape` set to `None` or `"auto"`.'
                 f"Got `shard_shape={shard_shape}` instead."
             )
 
             raise ValueError(msg)
-        compressor, *rest = compressors
+        if len(tuple(compressors)) > 1:
+            compressor, *rest = compressors
+        else:
+            compressor = None
+            rest = ()
         filters = (*filters, *rest)
         if dimension_names is not None:
             raise ValueError("Zarr v2 arrays do not support dimension names.")
