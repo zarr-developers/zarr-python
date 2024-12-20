@@ -10,6 +10,7 @@ User Guide
     arrays
     groups
     storage
+    config
     v3_migration
     todo
 
