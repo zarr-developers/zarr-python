@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
+import zarr.core.array
 from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
 from zarr.core.group import Group
@@ -727,7 +728,7 @@ def create(
 
 
 def create_array(*args: Any, **kwargs: Any) -> Array:
-    return Array(sync(async_api.create_array(*args, **kwargs)))
+    return Array(sync(zarr.core.array.create_array(*args, **kwargs)))
 
 
 def read_array(*args: Any, **kwargs: Any) -> Array:

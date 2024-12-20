@@ -18,7 +18,8 @@ from zarr._compat import _deprecate_positional_args
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
-from zarr.core.array import Array, AsyncArray, _build_parents
+from zarr.core.array import Array, AsyncArray, _build_parents, create_array
+from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
@@ -995,119 +996,93 @@ class AsyncGroup:
 
     async def create_array(
         self,
-        name: str,
+        path: str,
         *,
-        shape: ShapeLike,
-        dtype: npt.DTypeLike = "float64",
-        fill_value: Any | None = None,
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike,
+        chunk_shape: ChunkCoords,
+        shard_shape: ChunkCoords | None = None,
+        filters: Iterable[dict[str, JSON] | Codec] = (),
+        compressors: Iterable[dict[str, JSON] | Codec] = (),
+        fill_value: Any | None = 0,
+        order: MemoryOrder | None = "C",
+        zarr_format: ZarrFormat | None = 3,
         attributes: dict[str, JSON] | None = None,
-        # v3 only
-        chunk_shape: ChunkCoords | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
             | tuple[Literal["v2"], Literal[".", "/"]]
             | None
-        ) = None,
-        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        ) = ("default", "/"),
         dimension_names: Iterable[str] | None = None,
-        # v2 only
-        chunks: ShapeLike | None = None,
-        dimension_separator: Literal[".", "/"] | None = None,
-        order: Literal["C", "F"] | None = None,
-        filters: list[dict[str, JSON]] | None = None,
-        compressor: dict[str, JSON] | None = None,
-        # runtime
+        storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
-        data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
         Create a Zarr array within this AsyncGroup.
-        This method lightly wraps AsyncArray.create.
+        This method lightly wraps ``zarr.core.array.create_array``.
 
         Parameters
         ----------
-        name : str
-            The name of the array.
-        shape : tuple[int, ...]
-            The shape of the array.
-        dtype : np.DtypeLike = float64
-            The data type of the array.
-        chunk_shape : tuple[int, ...] | None = None
-            The shape of the chunks of the array.
-            V3 only. V2 arrays should use `chunks` instead.
-            If not specified, default are guessed based on the shape and dtype.
-        chunk_key_encoding : ChunkKeyEncoding | tuple[Literal["default"], Literal[".", "/"]] | tuple[Literal["v2"], Literal[".", "/"]] | None = None
-            A specification of how the chunk keys are represented in storage.
-            V3 only. V2 arrays should use `dimension_separator` instead.
-            Default is ``("default", "/")``.
-        codecs : Iterable[Codec | dict[str, JSON]] | None = None
-            An iterable of Codec or dict serializations of Codecs. The elements of
-            this collection specify the transformation from array values to stored bytes.
-            V3 only. V2 arrays should use ``filters`` and ``compressor`` instead.
-
-            If no codecs are provided, default codecs will be used:
-
-            - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
-            - For Unicode strings, the default is ``VLenUTF8Codec``.
-            - For bytes or objects, the default is ``VLenBytesCodec``.
-
-            These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
-        dimension_names : Iterable[str] | None = None
-            The names of the dimensions of the array. V3 only.
-        chunks : ChunkCoords | None = None
-            The shape of the chunks of the array.
-            V2 only. V3 arrays should use ``chunk_shape`` instead.
-            If not specified, default are guessed based on the shape and dtype.
-        dimension_separator : Literal[".", "/"] | None = None
-            The delimiter used for the chunk keys. (default: ".")
-            V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
-        order : Literal["C", "F"] | None = None
-            The memory order of the array (default is specified by ``array.order`` in :mod:`zarr.core.config`).
-        filters : list[dict[str, JSON]] | None = None
-            Sequence of filters to use to encode chunk data prior to compression.
-            V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
-            nor ``filters`` are provided, a default compressor will be used. (see
-            ``compressor`` for details)
-        compressor : dict[str, JSON] | None = None
-            The compressor used to compress the data (default is None).
-            V2 only. V3 arrays should use ``codecs`` instead.
-
-            If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
-
-            - For numeric arrays, the default is ``ZstdCodec``.
-            - For Unicode strings, the default is ``VLenUTF8Codec``.
-            - For bytes or objects, the default is ``VLenBytesCodec``.
-
-            These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
-        overwrite : bool = False
-            If True, a pre-existing array or group at the path of this array will
-            be overwritten. If False, the presence of a pre-existing array or group is
-            an error.
+        path : str
+            The name of the array relative to the group. If ``path`` is ``None``, the array will be located
+            at the root of the store.
+        shape : ChunkCoords
+            Shape of the array.
+        dtype : npt.DTypeLike
+            Data type of the array.
+        chunk_shape : ChunkCoords
+            Chunk shape of the array.
+        shard_shape : ChunkCoords, optional
+            Shard shape of the array. The default value of ``None`` results in no sharding at all.
+        filters : Iterable[Codec], optional
+            List of filters to apply to the array.
+        compressors : Iterable[Codec], optional
+            List of compressors to apply to the array.
+        fill_value : Any, optional
+            Fill value for the array.
+        order : {"C", "F"}, optional
+            Memory layout of the array.
+        zarr_format : {2, 3}, optional
+            The zarr format to use when saving.
+        attributes : dict, optional
+            Attributes for the array.
+        chunk_key_encoding : ChunkKeyEncoding, optional
+            The chunk key encoding to use.
+        dimension_names : Iterable[str], optional
+            Dimension names for the array.
+        storage_options : dict, optional
+            If using an fsspec URL to create the store, these will be passed to the backend implementation.
+            Ignored otherwise.
+        overwrite : bool, default False
+            Whether to overwrite an array with the same name in the store, if one exists.
+        config : ArrayConfig or ArrayConfigParams, optional
+            Runtime configuration for the array.
 
         Returns
         -------
         AsyncArray
 
         """
-        return await AsyncArray.create(
-            self.store_path / name,
+        return await create_array(
+            store=self.store_path,
+            path=path,
             shape=shape,
             dtype=dtype,
             chunk_shape=chunk_shape,
-            fill_value=fill_value,
-            chunk_key_encoding=chunk_key_encoding,
-            codecs=codecs,
-            dimension_names=dimension_names,
-            attributes=attributes,
-            chunks=chunks,
-            dimension_separator=dimension_separator,
-            order=order,
+            shard_shape=shard_shape,
             filters=filters,
-            compressor=compressor,
+            compressors=compressors,
+            fill_value=fill_value,
+            order=order,
+            zarr_format=zarr_format,
+            attributes=attributes,
+            chunk_key_encoding=chunk_key_encoding,
+            dimension_names=dimension_names,
+            storage_options=storage_options,
             overwrite=overwrite,
-            zarr_format=self.metadata.zarr_format,
-            data=data,
+            config=config,
         )
 
     @deprecated("Use AsyncGroup.create_array instead.")
