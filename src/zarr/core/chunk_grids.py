@@ -146,44 +146,6 @@ def normalize_chunks(chunks: Any, shape: tuple[int, ...], typesize: int) -> tupl
     return tuple(int(c) for c in chunks)
 
 
-def _auto_partition(
-    shape: tuple[int, ...],
-    dtype: npt.DTypeLike,
-    shard_shape: tuple[int, ...] | Literal["auto"] | None,
-    chunk_shape: tuple[int, ...] | Literal["auto"],
-) -> tuple[tuple[int, ...] | None, tuple[int, ...]]:
-    """
-    Automatically determine the shard shape and chunk shape for an array, given the shape and dtype of the array.
-    If `shard_shape` is `None` and the chunk_shape is "auto", the chunks will be set heuristically based
-    on the dtype and shape of the array.
-    If `shard_shape` is "auto", then the shard shape will be set heuristically from the dtype and shape
-    of the array; if the `chunk_shape` is also "auto", then the chunks will be set heuristically as well,
-    given the dtype and shard shape. Otherwise, the chunks will be returned as-is.
-    """
-    # no sharding
-    item_size = np.dtype(dtype).itemsize
-    if shard_shape is None:
-        _shards_out = None
-        if chunk_shape == "auto":
-            _chunks_out = _guess_chunks(shape, item_size)
-        else:
-            _chunks_out = chunk_shape
-    else:
-        if chunk_shape == "auto":
-            # aim for a 1MiB chunk
-            _chunks_out = _guess_chunks(shape, item_size, max_bytes=1024)
-        else:
-            _chunks_out = chunk_shape
-
-        if shard_shape == "auto":
-            # TODO: fix me! this should be capped at some sane shard shape
-            _shards_out = tuple(c * 2 for c in _chunks_out)
-        else:
-            _shards_out = shard_shape
-
-    return _shards_out, _chunks_out
-
-
 @dataclass(frozen=True)
 class ChunkGrid(Metadata):
     @classmethod
