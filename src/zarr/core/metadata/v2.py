@@ -4,7 +4,7 @@ import base64
 from collections.abc import Iterable
 from enum import Enum
 from functools import cached_property
-from typing import TYPE_CHECKING, Any, TypedDict, cast
+from typing import TYPE_CHECKING, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 
