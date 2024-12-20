@@ -1027,7 +1027,7 @@ async def create_array(
             compressor, *rest = compressors
         else:
             compressor = None
-            rest = ()
+            rest = []
         filters = (*filters, *rest)
         if dimension_names is not None:
             raise ValueError("Zarr v2 arrays do not support dimension names.")
