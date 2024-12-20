@@ -6,7 +6,7 @@ Required dependencies
 
 Required dependencies include:
 
-- Python (3.11 or later)
+- `Python <https://docs.python.org/3/>`_ (3.11 or later)
 - `packaging <https://packaging.pypa.io>`_ (22.0 or later)
 - `numpy <https://numpy.org>`_ (1.25 or later)
 - `numcodecs[crc32c] <https://numcodecs.readthedocs.io>`_ (0.14 or later)

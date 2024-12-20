@@ -12,6 +12,7 @@ Zarr-Python
     user-guide/index
     api/index
     developers/index
+    about
 
 **Version**: |version|
 
@@ -27,7 +28,7 @@ Zarr is a storage format for chunked, compressed, N-dimensional arrays based on 
 
 * Create N-dimensional arrays with any NumPy dtype.
 * Chunk arrays along any dimension.
-* Compress and/or filter chunks using any Numcodecs_ codec.
+* Compress and/or filter chunks using any NumCodecs_ codec.
 * Store arrays in memory, on disk, inside a Zip file, on S3, ...
 * Read an array concurrently from multiple threads or processes.
 * Write to an array concurrently from multiple threads or processes.
@@ -112,5 +113,3 @@ Zarr-Python Documentation
             :click-parent:
 
             To the contributor's guide
-
-.. _Numcodecs: https://numcodecs.readthedocs.io
