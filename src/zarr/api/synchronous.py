@@ -190,16 +190,6 @@ def open(
         return Group(obj)
 
 
-def read(
-    store: StoreLike,
-    *,
-    zarr_format: ZarrFormat | None = None,
-    path: str | None = None,
-    **kwargs: Any,
-) -> Array | Group:
-    return open(store=store, mode="r", zarr_format=zarr_format, path=path, **kwargs)
-
-
 def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwargs: Any) -> Group:
     """
     Alias for :func:`open_group` with ``use_consolidated=True``.
@@ -557,24 +547,6 @@ def create_group(
     )
 
 
-def read_group(
-    store: StoreLike,
-    *,
-    path: str | None = None,
-    storage_options: dict[str, Any] | None = None,
-    zarr_format: ZarrFormat | None = None,
-    use_consolidated: bool | str | None = None,
-) -> Group:
-    return open_group(
-        store=store,
-        path=path,
-        mode="r",
-        zarr_format=zarr_format,
-        use_consolidated=use_consolidated,
-        storage_options=storage_options,
-    )
-
-
 # TODO: add type annotations for kwargs
 def create(
     shape: ChunkCoords | int,
@@ -729,10 +701,6 @@ def create(
 
 def create_array(*args: Any, **kwargs: Any) -> Array:
     return Array(sync(zarr.core.array.create_array(*args, **kwargs)))
-
-
-def read_array(*args: Any, **kwargs: Any) -> Array:
-    return Array(sync(async_api.read_array(*args, **kwargs)))
 
 
 # TODO: add type annotations for kwargs

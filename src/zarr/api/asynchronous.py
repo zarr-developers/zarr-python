@@ -339,47 +339,6 @@ async def open(
         return await open_group(store=store_path, zarr_format=zarr_format, mode=mode, **kwargs)
 
 
-async def read(
-    *,
-    store: StoreLike | None = None,
-    zarr_format: ZarrFormat | None = None,
-    path: str | None = None,
-    storage_options: dict[str, Any] | None = None,
-    **kwargs: Any,
-) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
-    """Convenience function to open a group or array for reading. This function
-    wraps :func:`zarr.api.asynchronous.open` See the documentation of that function for details.
-
-    Parameters
-    ----------
-    store : Store or str, optional
-        Store or path to directory in file system or name of zip file.
-    zarr_format : {2, 3, None}, optional
-        The zarr format to require. The default value of None will first look for Zarr v3 data,
-        then Zarr v2 data, then fail if neither format is found.
-    path : str or None, optional
-        The path within the store to open.
-    storage_options : dict, optional
-        If using an fsspec URL to create the store, this will be passed to
-        the backend implementation. Ignored otherwise.
-    **kwargs
-        Additional parameters are passed through to :func:`zarr.creation.open`.
-
-    Returns
-    -------
-    z : array or group
-        Return type depends on what exists in the given store.
-    """
-    return await open(
-        store=store,
-        mode="r",
-        zarr_format=zarr_format,
-        path=path,
-        storage_options=storage_options,
-        **kwargs,
-    )
-
-
 async def open_consolidated(
     *args: Any, use_consolidated: Literal[True] = True, **kwargs: Any
 ) -> AsyncGroup:
@@ -865,67 +824,6 @@ async def open_group(
             attributes=attributes,
         )
     raise FileNotFoundError(f"Unable to find group: {store_path}")
-
-
-async def read_group(
-    store: StoreLike,
-    *,
-    path: str | None = None,
-    zarr_format: ZarrFormat | None = None,
-    storage_options: dict[str, Any] | None = None,
-    use_consolidated: bool | str | None = None,
-) -> AsyncGroup:
-    """Open a group for reading. This function wraps :func:`zarr.api.asynchronous.open_group` See
-    the documentation of that function for details.
-
-    Parameters
-    ----------
-    store : Store, str, or mapping, optional
-        Store or path to directory in file system or name of zip file.
-
-        Strings are interpreted as paths on the local file system
-        and used as the ``root`` argument to :class:`zarr.store.LocalStore`.
-
-        Dictionaries are used as the ``store_dict`` argument in
-        :class:`zarr.store.MemoryStore``.
-    path : str, optional
-        Group path within store.
-    zarr_format : {2, 3, None}, optional
-        The zarr format to require. The default value of None will first look for Zarr v3 data,
-        then Zarr v2 data, then fail if neither format is found.
-    storage_options : dict
-        If the store is backed by an fsspec-based implementation, then this dict will be passed to
-        the Store constructor for that implementation. Ignored otherwise.
-    use_consolidated : bool or str, default None
-        Whether to use consolidated metadata.
-
-        By default, consolidated metadata is used if it's present in the
-        store (in the ``zarr.json`` for Zarr v3 and in the ``.zmetadata`` file
-        for Zarr v2).
-
-        To explicitly require consolidated metadata, set ``use_consolidated=True``,
-        which will raise an exception if consolidated metadata is not found.
-
-        To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
-        which will fall back to using the regular, non consolidated metadata.
-
-        Zarr v2 allowed configuring the key storing the consolidated metadata
-        (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
-        to load consolidated metadata from a non-default key.
-
-    Returns
-    -------
-    g : group
-        The new group.
-    """
-    return await open_group(
-        store=store,
-        mode="r",
-        path=path,
-        storage_options=storage_options,
-        zarr_format=zarr_format,
-        use_consolidated=use_consolidated,
-    )
 
 
 async def create(
