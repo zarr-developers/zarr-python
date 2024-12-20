@@ -153,10 +153,10 @@ Configuration options include the following:
 
 - Default Zarr format ``default_zarr_version``
 - Default array order in memory ``array.order``
+- Default codecs ``array.v3_default_codecs`` and ``array.v2_default_compressor``
+- Whether empty chunks are written to storage ``array.write_empty_chunks``
 - Async and threading options, e.g. ``async.concurrency`` and ``threading.max_workers``
 - Selections of implementations of codecs, codec pipelines and buffers
-- TODO: write_empty_chunks PR 2429
-- TODO: default codecs PR 2470
 
 Miscellaneous
 ~~~~~~~~~~~~~
