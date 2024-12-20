@@ -93,7 +93,7 @@ The Array class
 1. Disallow direct construction - use :func:`zarr.open_array` or :func:`zarr.create_array`
    instead of directly constructing the :class:`zarr.Array` class.
 
-2. Defaulting to ``zarr_format=3`` - newly created arrays will use the version 3 of the 
+2. Defaulting to ``zarr_format=3`` - newly created arrays will use the version 3 of the
    Zarr specification. To continue using version 2, set ``zarr_format=2`` when creating arrays.
 
 The Group class
@@ -137,8 +137,8 @@ Dependencies Changes
 Configuration
 ~~~~~~~~~~~~~
 
-There is a new configuration system based on `donfig <https://github.com/pytroll/donfig>`_, 
-which can be accessed via :mod:`zarr.core.config`. 
+There is a new configuration system based on `donfig <https://github.com/pytroll/donfig>`_,
+which can be accessed via :mod:`zarr.core.config`.
 Configuration values can be set using code like the following:
 
 .. code-block:: python
@@ -146,7 +146,7 @@ Configuration values can be set using code like the following:
    import zarr
    zarr.config.set({"array.order": "F"})
 
-Alternatively, configuration values can be set using environment variables, 
+Alternatively, configuration values can be set using environment variables,
 e.g. ``ZARR_ARRAY__ORDER=F``.
 
 Configuration options include the following:
