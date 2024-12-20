@@ -7,7 +7,7 @@ import operator
 from abc import abstractmethod
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -25,8 +25,6 @@ from zarr.core.indexing import ceildiv
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from typing import Self
-
-    import numpy.typing as npt
 
 
 def _guess_chunks(

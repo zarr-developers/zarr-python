@@ -26,7 +26,7 @@ from zarr.core.buffer import (
     NDBuffer,
     default_buffer_prototype,
 )
-from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
+from zarr.core.chunk_grids import RegularChunkGrid, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
     DefaultChunkKeyEncoding,
@@ -3478,7 +3478,7 @@ async def create_array(
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfig | ArrayConfigParams | None = None,
-    data: np.ndarray | None = None,
+    data: npt.ArrayLike | None = None,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array.
 
@@ -3580,20 +3580,17 @@ async def create_array(
             config=config_parsed,
         )
     else:
-        shard_shape_parsed, chunk_shape_parsed = _auto_partition(
-            shape, dtype, shard_shape, chunk_shape
-        )
-        if shard_shape_parsed is not None:
-            sharding_codec = ShardingCodec(chunk_shape=chunk_shape_parsed, codecs=sub_codecs)
+        if shard_shape is not None:
+            sharding_codec = ShardingCodec(chunk_shape=chunk_shape, codecs=sub_codecs)
             sharding_codec.validate(
-                shape=chunk_shape_parsed,
+                shape=chunk_shape,
                 dtype=dtype,
-                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape),
             )
             codecs = (sharding_codec,)
-            chunks_out = shard_shape_parsed
+            chunks_out = shard_shape
         else:
-            chunks_out = chunk_shape_parsed
+            chunks_out = chunk_shape
             codecs = sub_codecs
 
         result = await AsyncArray._create_v3(
