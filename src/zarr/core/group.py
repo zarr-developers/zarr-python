@@ -46,10 +46,11 @@ from zarr.storage.common import StorePath, ensure_no_existing_node
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
     from typing import Any
-    from zarr.core.common import MemoryOrder
+
     from zarr.abc.codec import Codec
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+    from zarr.core.common import MemoryOrder
 
 logger = logging.getLogger("zarr.group")
 

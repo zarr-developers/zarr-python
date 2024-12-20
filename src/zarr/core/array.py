@@ -3458,7 +3458,7 @@ async def create_array(
     store: str | StoreLike,
     *,
     path: PathLike | None = None,
-    shape: ChunkCoords,
+    shape: ShapeLike,
     dtype: npt.DTypeLike,
     chunk_shape: ChunkCoords,
     shard_shape: ChunkCoords | None = None,
@@ -3543,6 +3543,7 @@ async def create_array(
     sub_codecs = (*filters, BytesCodec(), *compressors)
     _dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
     config_parsed = parse_array_config(config)
+    shape_parsed = parse_shapelike(shape)
     result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
     if zarr_format == 2:
         if shard_shape is not None:
@@ -3566,7 +3567,7 @@ async def create_array(
             order_parsed = order
         result = await AsyncArray._create_v2(
             store_path=store_path,
-            shape=shape,
+            shape=shape_parsed,
             dtype=_dtype_parsed,
             chunks=chunk_shape,
             dimension_separator="/",
@@ -3597,7 +3598,7 @@ async def create_array(
 
         result = await AsyncArray._create_v3(
             store_path=store_path,
-            shape=shape,
+            shape=shape_parsed,
             dtype=_dtype_parsed,
             fill_value=fill_value,
             attributes=attributes,
