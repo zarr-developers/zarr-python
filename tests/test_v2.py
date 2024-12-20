@@ -152,7 +152,8 @@ async def test_create_dtype_str(dtype: Any) -> None:
 @pytest.mark.parametrize("order", ["C", "F"])
 def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     array_fixture = [42]
-    arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters, order=order)
+    with config.set({"array.order": order}):
+        arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)

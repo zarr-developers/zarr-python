@@ -52,6 +52,7 @@ def test_config_defaults_set() -> None:
             "default_zarr_version": 3,
             "array": {
                 "order": "C",
+                "write_empty_chunks": False,
                 "v2_default_compressor": {
                     "numeric": "zstd",
                     "string": "vlen-utf8",

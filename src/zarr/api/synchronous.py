@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import Codec
     from zarr.api.asynchronous import ArrayLike, PathLike
+    from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
     from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
@@ -542,7 +543,7 @@ def create(
     read_only: bool | None = None,
     object_codec: Codec | None = None,  # TODO: type has changed
     dimension_separator: Literal[".", "/"] | None = None,
-    write_empty_chunks: bool = False,  # TODO: default has changed
+    write_empty_chunks: bool | None = None,  # TODO: default has changed
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     meta_array: Any | None = None,  # TODO: need type
@@ -558,6 +559,7 @@ def create(
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
+    config: ArrayConfig | ArrayConfigParams | None = None,
     **kwargs: Any,
 ) -> Array:
     """Create an array.
@@ -578,8 +580,10 @@ def create(
     fill_value : object
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
+        Deprecated in favor of the ``config`` keyword argument.
+        Pass ``{'order': <value>}`` to ``create`` instead of using this parameter.
         Memory layout to be used within each chunk.
-        Default is set in Zarr's config (`array.order`).
+        If not specified, the ``array.order`` parameter in the global config will be used.
     store : Store or str
         Store or path to directory in file system or name of zip file.
     synchronizer : object, optional
@@ -609,30 +613,25 @@ def create(
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
-
-        .. versionadded:: 2.8
-
     write_empty_chunks : bool, optional
-        If True (default), all chunks will be stored regardless of their
+        Deprecated in favor of the ``config`` keyword argument.
+        Pass ``{'write_empty_chunks': <value>}`` to ``create`` instead of using this parameter.
+        If True, all chunks will be stored regardless of their
         contents. If False, each chunk is compared to the array's fill value
         prior to storing. If a chunk is uniformly equal to the fill value, then
         that chunk is not be stored, and the store entry for that chunk's key
-        is deleted. This setting enables sparser storage, as only chunks with
-        non-fill-value data are stored, at the expense of overhead associated
-        with checking the data of each chunk.
-
-        .. versionadded:: 2.11
-
+        is deleted.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
     meta_array : array-like, optional
         An array instance to use for determining arrays to create and return
         to users. Use `numpy.empty(())` by default.
-
-        .. versionadded:: 2.13
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
+    config : ArrayConfig or ArrayConfigParams, optional
+        Runtime configuration of the array. If provided, will override the
+        default values from `zarr.config.array`.
 
     Returns
     -------
@@ -669,6 +668,7 @@ def create(
                 codecs=codecs,
                 dimension_names=dimension_names,
                 storage_options=storage_options,
+                config=config,
                 **kwargs,
             )
         )
