@@ -1,3 +1,32 @@
+"""
+The config module is responsible for managing the configuration of zarr and is based on the Donfig python library.
+For selecting custom implementations of codecs, pipelines, buffers and ndbuffers, first register the implementations
+in the registry and then select them in the config.
+
+Example:
+    An implementation of the bytes codec in a class ``your.module.NewBytesCodec`` requires the value of ``codecs.bytes``
+    to be ``your.module.NewBytesCodec``. Donfig can be configured programmatically, by environment variables, or from
+    YAML files in standard locations.
+
+    .. code-block:: python
+
+        from your.module import NewBytesCodec
+        from zarr.core.config import register_codec, config
+
+        register_codec("bytes", NewBytesCodec)
+        config.set({"codecs.bytes": "your.module.NewBytesCodec"})
+
+    Instead of setting the value programmatically with ``config.set``, you can also set the value with an environment
+    variable. The environment variable ``ZARR_CODECS__BYTES`` can be set to ``your.module.NewBytesCodec``. The double
+    underscore ``__`` is used to indicate nested access.
+
+    .. code-block:: bash
+
+        export ZARR_CODECS__BYTES="your.module.NewBytesCodec"
+
+For more information, see the Donfig documentation at https://github.com/pytroll/donfig.
+"""
+
 from __future__ import annotations
 
 from typing import Any, Literal, cast
@@ -10,7 +39,7 @@ class BadConfigError(ValueError):
 
 
 class Config(DConfig):  # type: ignore[misc]
-    """Will collect configuration from config files and environment variables
+    """The Config will collect configuration from config files and environment variables
 
     Example environment variables:
     Grabs environment variables of the form "ZARR_FOO__BAR_BAZ=123" and
@@ -28,21 +57,26 @@ class Config(DConfig):  # type: ignore[misc]
         self.refresh()
 
 
-# The config module is responsible for managing the configuration of zarr and  is based on the Donfig python library.
-# For selecting custom implementations of codecs, pipelines, buffers and ndbuffers, first register the implementations
-# in the registry and then select them in the config.
-# e.g. an implementation of the bytes codec in a class "NewBytesCodec", requires the value of codecs.bytes.name to be
-# "NewBytesCodec".
-# Donfig can be configured programmatically, by environment variables, or from YAML files in standard locations
-# e.g. export ZARR_CODECS__BYTES__NAME="NewBytesCodec"
-# (for more information see github.com/pytroll/donfig)
-# Default values below point to the standard implementations of zarr-python
+# The default configuration for zarr
 config = Config(
     "zarr",
     defaults=[
         {
             "default_zarr_version": 3,
-            "array": {"order": "C"},
+            "array": {
+                "order": "C",
+                "write_empty_chunks": False,
+                "v2_default_compressor": {
+                    "numeric": "zstd",
+                    "string": "vlen-utf8",
+                    "bytes": "vlen-bytes",
+                },
+                "v3_default_codecs": {
+                    "numeric": ["bytes", "zstd"],
+                    "string": ["vlen-utf8"],
+                    "bytes": ["vlen-bytes"],
+                },
+            },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,

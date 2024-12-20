@@ -26,6 +26,7 @@ maintainers = [
 requires-python = ">=3.11"
 # If you add a new dependency here, please also add it to .pre-commit-config.yml
 dependencies = [
+    'packaging>=22.0',
     'numpy>=1.25',
     'numcodecs[crc32c]>=0.14',
     'typing_extensions>=4.9',
@@ -177,6 +178,7 @@ serve = "sphinx-autobuild docs docs/_build --host 0.0.0.0"
 [tool.hatch.envs.upstream]
 python = "3.13"
 dependencies = [
+    'packaging @ git+https://github.com/pypa/packaging',
     'numpy',  # from scientific-python-nightly-wheels
     'numcodecs @ git+https://github.com/zarr-developers/numcodecs',
     'fsspec @ git+https://github.com/fsspec/filesystem_spec',
@@ -210,6 +212,7 @@ See Spec 0000 for details and drop schedule: https://scientific-python.org/specs
 """
 python = "3.11"
 dependencies = [
+    'packaging==22.*',
     'numpy==1.25.*',
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
     'fsspec==2022.10.0',

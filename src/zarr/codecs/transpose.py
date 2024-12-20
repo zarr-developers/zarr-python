@@ -84,7 +84,7 @@ class TransposeCodec(ArrayArrayCodec):
             shape=tuple(chunk_spec.shape[self.order[i]] for i in range(chunk_spec.ndim)),
             dtype=chunk_spec.dtype,
             fill_value=chunk_spec.fill_value,
-            order=chunk_spec.order,
+            config=chunk_spec.config,
             prototype=chunk_spec.prototype,
         )
 
