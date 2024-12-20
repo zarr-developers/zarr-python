@@ -16,7 +16,7 @@ Required dependencies include:
 pip
 ---
 
-Zarr is available on `PyPI <https://pypi.org/project/zarr/>`_. Install it using `pip`:
+Zarr is available on `PyPI <https://pypi.org/project/zarr/>`_. Install it using ``pip``:
 
 .. code-block:: console
 
@@ -33,7 +33,7 @@ Additional option dependencies include ``rich``, ``universal_pathlib``. These mu
 conda
 -----
 
-Zarr is also published to `conda-forge <https://conda-forge.org>`_. Install it using `conda`:
+Zarr is also published to `conda-forge <https://conda-forge.org>`_. Install it using ``conda``:
 
 .. code-block:: console
 

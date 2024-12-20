@@ -1,6 +1,11 @@
 
-Working With Arrays
+Working with Arrays
 ===================
+
+.. ipython::
+   :suppress:
+
+   In [144]: rm -r data/
 
 Creating an array
 -----------------
@@ -11,12 +16,21 @@ Zarr has several functions for creating arrays. For example:
 
    import zarr
 
-   z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
+   store = {}
+   z = zarr.create(  # TODO: change this to `create_array`
+       store=store,
+       mode="w",
+       shape=(10000, 10000),
+       chunks=(1000, 1000),
+       dtype="i4"
+   )
    z
 
 The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
-columns (and so there will be 100 chunks in total).
+columns (and so there will be 100 chunks in total). The data is written to a
+:class:`zarr.storage.MemoryStore` (e.g. an in-memory dict). See
+:ref:`tutorial_persist` for details on storing arrays in other stores.
 
 For a complete list of array creation routines see the :mod:`zarr.api.synchronous`
 module documentation.
@@ -26,8 +40,9 @@ module documentation.
 Reading and writing data
 ------------------------
 
-Zarr arrays support a similar interface to NumPy arrays for reading and writing
-data. For example, the entire array can be filled with a scalar value:
+Zarr arrays support a similar interface to `NumPy <https://numpy.org/doc/stable/>`
+arrays for reading and writing data. For example, the entire array can be filled
+with a scalar value:
 
 .. ipython:: python
 
@@ -64,11 +79,17 @@ persistence of data between sessions. For example:
 
 .. ipython:: python
 
-   z1 = zarr.open('data/example.zarr', mode='w', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+   z1 = zarr.open(
+       store='data/example-2.zarr',
+       mode='w',
+       shape=(10000, 10000),
+       chunks=(1000, 1000),
+       dtype='i4'
+   )
 
 The array above will store its configuration metadata and all compressed chunk
-data in a directory called 'data/example.zarr' relative to the current working
-directory. The :func:`zarr.api.synchronous.open` function provides a convenient way
+data in a directory called ``'data/example.zarr'`` relative to the current working
+directory. The :func:`zarr.open` function provides a convenient way
 to create a new persistent array or continue working with an existing
 array. Note that although the function is called "open", there is no need to
 close an array: data are automatically flushed to disk, and files are
@@ -87,24 +108,19 @@ Check that the data have been written and can be read again:
 
 .. ipython:: python
 
-   z2 = zarr.open('data/example.zarr', mode='r')
+   z2 = zarr.open('data/example-2.zarr', mode='r')
    np.all(z1[:] == z2[:])
 
 If you are just looking for a fast and convenient way to save NumPy arrays to
 disk then load back into memory later, the functions
-:func:`zarr.convenience.save` and :func:`zarr.convenience.load` may be
+:func:`zarr.save` and :func:`zarr.load` may be
 useful. E.g.:
-
-.. ipython::
-   :suppress:
-
-   In [144]: rm -r data/example.zarr
 
 .. ipython:: python
 
    a = np.arange(10)
-   zarr.save('data/example.zarr', a)
-   zarr.load('data/example.zarr')
+   zarr.save('data/example-3.zarr', a)
+   zarr.load('data/example-3.zarr')
 
 Please note that there are a number of other options for persistent array
 storage, see the section on :ref:`tutorial_storage` below.
@@ -119,8 +135,13 @@ increased or decreased in length. For example:
 
 .. ipython:: python
 
-   z = zarr.zeros(shape=(10000, 10000), chunks=(1000, 1000))
+   z = zarr.zeros(
+      store="data/example-4.zarr",
+      shape=(10000, 10000),
+      chunks=(1000, 1000)
+   )
    z[:] = 42
+   z.shape
    z.resize((20000, 10000))
    z.shape
 
@@ -128,13 +149,13 @@ Note that when an array is resized, the underlying data are not rearranged in
 any way. If one or more dimensions are shrunk, any chunks falling outside the
 new array shape will be deleted from the underlying store.
 
-For convenience, Zarr arrays also provide an ``append()`` method, which can be
+:func:`zarr.Array.append` is provided as a convenience function, which can be
 used to append data to any axis. E.g.:
 
 .. ipython:: python
 
    a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
-   z = zarr.array(a, chunks=(1000, 100))
+   z = zarr.array(store="data/example-5", data=a, chunks=(1000, 100))
    z.shape
    z.append(a)
    z.append(np.vstack([a, a]), axis=1)
@@ -158,7 +179,7 @@ argument accepted by all array creation functions. For example:
    compressor = None  # TODO: Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
    data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
    # TODO: remove zarr_format
-   z = zarr.array(data, chunks=(1000, 1000), compressor=compressor, zarr_format=2)
+   z = zarr.array(store="data/example-6.zarr", data=data, chunks=(1000, 1000), compressor=compressor, zarr_format=2)
    None  # TODO: z.compressor
 
 This array above will use Blosc as the primary compressor, using the Zstandard
@@ -166,12 +187,19 @@ algorithm (compression level 3) internally within Blosc, and with the
 bit-shuffle filter applied.
 
 When using a compressor, it can be useful to get some diagnostics on the
-compression ratio. Zarr arrays provide a ``info`` property which can be used to
-print some diagnostics, e.g.:
+compression ratio. Zarr arrays provide the :func:`zarr.Array.info` property
+which can be used to print useful diagnostics, e.g.:
 
 .. ipython:: python
 
    z.info
+
+The :func:`zarr.Array.info_complete` method inspects the underlying store and
+prints additional diagnostics, e.g.:
+
+.. ipython:: python
+
+   z.info_complete()
 
 If you don't specify a compressor, by default Zarr uses the Blosc
 compressor. Blosc is generally very fast and can be configured in a variety of
@@ -195,8 +223,13 @@ here is an array using Zstandard compression, level 1:
 
    from numcodecs import Zstd
 
-   # TODO: remove zarr_format
-   z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000), chunks=(1000, 1000), compressor=Zstd(level=1), zarr_format=2)
+   z = zarr.array(
+       store="data/example-7.zarr",
+       data=np.arange(100000000, dtype='i4').reshape(10000, 10000),
+       chunks=(1000, 1000),
+       compressor=Zstd(level=1),
+       zarr_format=2  # TODO: remove zarr_format
+   )
    None  # TODO: z.compressor
 
 Here is an example using LZMA with a custom filter pipeline including LZMA's
@@ -210,27 +243,24 @@ built-in delta filter:
    lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
    compressor = LZMA(filters=lzma_filters)
    # TODO: remove zarr_format
-   z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000), chunks=(1000, 1000), compressor=compressor, zarr_format=2)
+   z = zarr.array(
+       np.arange(100000000, dtype='i4').reshape(10000, 10000),
+       chunks=(1000, 1000),
+       compressor=compressor,
+       zarr_format=2
+   )
    None  # TODO: z.compressor
 
-The default compressor can be changed by setting the value of the
-``zarr.storage.default_compressor`` variable, e.g.:
+The default compressor can be changed by setting the value of the using Zarr's
+:ref:`config`, e.g.:
 
 .. ipython:: python
 
-   import zarr.storage
+   with zarr.config.set({'array.v2_default_compressor.numeric': 'blosc'}):
+       z = zarr.zeros(100000000, chunks=1000000, zarr_format=2)
+   z.metadata.filters
+   z.metadata.compressor
 
-   None # TODO: set default compressor via config
-
-.. TODO
-..     >>> from numcodecs import Zstd, Blosc
-..     >>> # switch to using Zstandard
-..     ... zarr.storage.default_compressor = Zstd(level=1)
-..     >>> z = zarr.zeros(100000000, chunks=1000000)
-..     >>> z.compressor
-..     Zstd(level=1)
-..     >>> # switch back to Blosc defaults
-..     ... zarr.storage.default_compressor = Blosc()
 
 To disable compression, set ``compressor=None`` when creating an array, e.g.:
 
@@ -238,8 +268,7 @@ To disable compression, set ``compressor=None`` when creating an array, e.g.:
 
    # TODO: remove zarr_format
    z = zarr.zeros(100000000, chunks=1000000, compressor=None, zarr_format=2)
-   None  # TODO: z.compressor is None
-
+   z
 .. _tutorial_filters:
 
 Filters
@@ -485,3 +514,15 @@ Any combination of integer and slice can be used for block indexing:
 .. ipython:: python
 
    z.blocks[2, 1:3]
+
+   root = zarr.group('data/example-12.zarr')
+   foo = root.create_array(name='foo', shape=(1000, 100), chunks=(10, 10), dtype='f4')
+   bar = root.create_array(name='foo/bar', shape=(100,), dtype='i4')
+   foo[:, :] = np.random.random((1000, 100))
+   bar[:] = np.arange(100)
+   root.tree()
+
+Sharding
+--------
+
+Coming soon.

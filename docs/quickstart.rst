@@ -10,9 +10,12 @@
 Quickstart
 ==========
 
-Welcome to the Zarr-Python Quickstart guide! This page will help you get up and running with the Zarr library in Python to efficiently manage and analyze multi-dimensional arrays.
+Welcome to the Zarr-Python Quickstart guide! This page will help you get up and running with
+the Zarr library in Python to efficiently manage and analyze multi-dimensional arrays.
 
-Zarr is a powerful library for storage of n-dimensional arrays, supporting chunking, compression, and various backends, making it a versatile choice for scientific and large-scale data.
+Zarr is a powerful library for storage of n-dimensional arrays, supporting chunking,
+compression, and various backends, making it a versatile choice for scientific and
+large-scale data.
 
 Installation
 ------------
@@ -32,7 +35,7 @@ or `conda`:
 Creating an Array
 -----------------
 
-To get started, you can create a simple Zarr array using the in-memory store:
+To get started, you can create a simple Zarr array:
 
 .. ipython:: python
 
@@ -40,78 +43,111 @@ To get started, you can create a simple Zarr array using the in-memory store:
     import numpy as np
 
     # Create a 2D Zarr array
-    z = zarr.zeros((100, 100), chunks=(10, 10), dtype='f4')
+    z = zarr.zeros(
+        store="data/example-1.zarr",
+        shape=(100, 100),
+        chunks=(10, 10),
+        dtype="f4"
+    )
 
     # Assign data to the array
     z[:, :] = np.random.random((100, 100))
+    z.info
 
-    print(z.info)
+Here, we created a 2D array of shape ``(100, 100)``, chunked into blocks of
+``(10, 10)``, and filled it with random floating-point data. This array was
+written to a ``LocalStore`` in the ``data/example-1.zarr`` directory.
 
-Here, we created a 2D array of shape ``(100, 100)``, chunked into blocks of ``(10, 10)``, and filled it with random floating-point data.
+Compression and Filters
+~~~~~~~~~~~~~~~~~~~~~~~
+
+Zarr supports data compression and filters. For example, to use Blosc compression:
+
+.. ipython:: python
+
+    from numcodecs import Blosc
+
+    z = zarr.open(
+        "data/example-3.zarr",
+        mode="w", shape=(100, 100),
+        chunks=(10, 10), dtype="f4",
+        compressor=Blosc(cname="zstd", clevel=3, shuffle=Blosc.SHUFFLE),
+        zarr_format=2
+    )
+    z[:, :] = np.random.random((100, 100))
+
+    z.info
+
+This compresses the data using the Zstandard codec with shuffle enabled for better compression.
+
+Hierarchical Groups
+-------------------
+
+Zarr allows you to create hierarchical groups, similar to directories:
+
+.. ipython:: python
+
+    # Create nested groups and add arrays
+    root = zarr.group("data/example-2.zarr")
+    foo = root.create_group(name="foo")
+    bar = root.create_array(
+        name="bar", shape=(100, 10), chunks=(10, 10)
+    )
+    spam = foo.create_array(name="spam", shape=(10,), dtype="i4")
+
+    # Assign values
+    bar[:, :] = np.random.random((100, 10))
+    spam[:] = np.arange(10)
+
+    # print the hierarchy
+    root.tree()
+
+This creates a group with two datasets: ``foo`` and ``bar``.
 
 Persistent Storage
 ------------------
 
-Zarr supports persistent storage to disk or cloud-compatible backends. To store arrays on the filesystem:
+Zarr supports persistent storage to disk or cloud-compatible backends. While examples above
+utilized a :class:`zarr.storage.LocalStore`, a number of other storage options are available,
+including the :class:`zarr.storage.ZipStore` and :class:`zarr.storage.FsspecStore`.
 
 .. ipython:: python
 
-    # Store the array in a directory on disk
+    # Store the array in a ZIP file
+    store = zarr.storage.ZipStore("data/example-3.zip", mode='w')
+
     z = zarr.open(
-        'data/example-1.zarr',
-        mode='w', shape=(100, 100), chunks=(10, 10), dtype='f4'
+        store=store,
+        mode="w",
+        shape=(100, 100),
+        chunks=(10, 10),
+        dtype="f4"
     )
+
+    # write to the array
     z[:, :] = np.random.random((100, 100))
 
-    print("Array stored at 'data/example-1.zarr'")
+    # the ZipStore must be explicitly closed
+    store.close()
 
 To open an existing array:
 
 .. ipython:: python
 
-    z = zarr.open('data/example-1.zarr', mode='r')
-    print(z[:])
+    # Open the ZipStore in read-only mode
+    store = zarr.storage.ZipStore("data/example-3.zip", read_only=True)
 
-Hierarchical Groups
--------------------
+    z = zarr.open(store, mode='r')
 
-Zarr allows creating hierarchical groups, similar to directories:
-
-.. ipython:: python
-
-    # Create a group and add arrays
-    root = zarr.group('data/example-2.zarr')
-    foo = root.create_array(name='foo', shape=(1000, 100), chunks=(10, 10), dtype='f4')
-    bar = root.create_array(name='bar', shape=(100,), dtype='i4')
-
-    # Assign values
-    foo[:, :] = np.random.random((1000, 100))
-    bar[:] = np.arange(100)
-
-    root.tree()
-
-This creates a group with two datasets: ``foo`` and ``bar``.
-
-.. Compression and Filters
-.. -----------------------
-
-.. Zarr supports data compression and filters. For example, to use Blosc compression:
-
-.. .. ipython:: python
-..    :verbatim:
-
-..     z = zarr.open('data/example-3.zarr', mode='w', shape=(100, 100), chunks=(10, 10), dtype='f4',
-..                   compressor=zarr.Blosc(cname='zstd', clevel=3, shuffle=zarr.Blosc.SHUFFLE))
-..     z[:, :] = np.random.random((100, 100))
-
-..     print(z.info)
-
-.. This compresses the data using the Zstandard codec with shuffle enabled for better compression.
+    # read the data as a NumPy Array
+    z[:]
 
 Cloud Storage Backends
-----------------------
+~~~~~~~~~~~~~~~~~~~~~~
 
-Zarr integrates seamlessly with cloud storage such as Amazon S3 and Google Cloud Storage using external libraries like `s3fs` or `gcsfs`.
+Zarr integrates seamlessly with cloud storage such as Amazon S3 and Google Cloud Storage
+using external libraries like `s3fs <https://s3fs.readthedocs.io>`_ or
+`gcsfs <https://gcsfs.readthedocs.io>`_.
 
 For example, to use S3:
 
@@ -119,15 +155,16 @@ For example, to use S3:
    :verbatim:
 
     import s3fs
-    import zarr
 
-    z = zarr.open("s3://example-bucket/foo", mode='w', shape=(100, 100), chunks=(10, 10))
+    z = zarr.open("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10))
     z[:, :] = np.random.random((100, 100))
+
+Read more about Zarr's storage options in the `User Guide <user-guide/storage.html>`_.
 
 Next Steps
 ----------
 
 Now that you're familiar with the basics, explore the following resources:
 
-- `User Guide <guide>`_
+- `User Guide <user-guide>`_
 - `API Reference <api>`_

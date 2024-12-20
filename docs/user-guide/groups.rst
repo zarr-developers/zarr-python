@@ -1,5 +1,5 @@
 
-Working With Groups
+Working with groups
 ===================
 
 .. _tutorial_groups:

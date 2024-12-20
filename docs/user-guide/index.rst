@@ -12,7 +12,6 @@ User Guide
     storage
     config
     v3_migration
-    todo
 
 Advanced Topics
 ---------------
@@ -20,6 +19,7 @@ Advanced Topics
 .. toctree::
     :maxdepth: 1
 
+    performance
     async
     consolidated_metadata
     extending

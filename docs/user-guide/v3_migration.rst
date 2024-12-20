@@ -94,7 +94,8 @@ The Array class
    instead of directly constructing the :class:`zarr.Array` class.
 
 2. Defaulting to ``zarr_format=3`` - newly created arrays will use the version 3 of the
-   Zarr specification. To continue using version 2, set ``zarr_format=2`` when creating arrays.
+   Zarr specification. To continue using version 2, set ``zarr_format=2`` when creating arrays
+   or set ``default_zarr_version=2`` in :ref:`config`.
 
 The Group class
 ~~~~~~~~~~~~~~~
@@ -199,3 +200,5 @@ after the 3.0 release:
   * Datetimes and timedeltas
   * Groups and Arrays do not implement ``__enter__`` and ``__exit__`` protocols
 
+The, currently outdated, documentation for some of these features has been maintained
+from Zarr-Python 2 in `V3 TO DOs <v3_todos.html>`_.
