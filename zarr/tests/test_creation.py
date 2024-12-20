@@ -2,6 +2,7 @@ import atexit
 import os.path
 import shutil
 import warnings
+import numbers
 
 import numpy as np
 import pytest
@@ -762,7 +763,13 @@ def test_create_with_storage_transformers(at_root):
 )
 def test_shape_chunk_ints(init_shape, init_chunks, shape, chunks):
     g = open_group()
-    array = g.create_dataset("ds", shape=init_shape, chunks=init_chunks, dtype=np.uint8)
+    if not isinstance(init_shape[0], numbers.Integral) or not isinstance(
+        init_chunks[0], numbers.Integral
+    ):
+        with pytest.warns(UserWarning):
+            array = g.create_dataset("ds", shape=init_shape, chunks=init_chunks, dtype=np.uint8)
+    else:
+        array = g.create_dataset("ds", shape=init_shape, chunks=init_chunks, dtype=np.uint8)
 
     assert all(
         isinstance(s, int) for s in array.shape
