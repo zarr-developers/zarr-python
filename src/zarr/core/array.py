@@ -3522,7 +3522,7 @@ async def create_array(
         Runtime configuration for the array.
     data : np.ndarray, optional
         Initial data for the array.
-    
+
     Returns
     -------
     z : array
