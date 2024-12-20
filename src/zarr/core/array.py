@@ -314,6 +314,33 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # v2 and v3
         shape: ShapeLike,
         dtype: npt.DTypeLike,
+        zarr_format: Literal[3] = 3,
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ShapeLike | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # runtime
+        overwrite: bool = False,
+        data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
+    ) -> AsyncArray[ArrayV3Metadata]: ...
+    @overload
+    @classmethod
+    async def create(
+        cls,
+        store: StoreLike,
+        *,
+        # v2 and v3
+        shape: ShapeLike,
+        dtype: npt.DTypeLike,
         zarr_format: ZarrFormat,
         fill_value: Any | None = None,
         attributes: dict[str, JSON] | None = None,
