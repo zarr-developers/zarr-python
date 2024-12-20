@@ -1583,8 +1583,8 @@ class Array:
             The memory of the array (default is "C").
             If ``zarr_format`` is 2, this parameter sets the memory order of the array.
             If `zarr_format`` is 3, then this parameter is deprecated, because memory order
-            is a runtime parameter for zarr 3 arrays. The recommended way to specify the memory
-            order for zarr v3 arrays is via the ``config`` parameter, e.g. ``{'order': 'C'}``.
+            is a runtime parameter for Zarr 3 arrays. The recommended way to specify the memory
+            order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'order': 'C'}``.
         filters : list[dict[str, JSON]], optional
             Sequence of filters to use to encode chunk data prior to compression.
             V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
