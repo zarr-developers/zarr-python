@@ -952,46 +952,48 @@ async def create_array(
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
-    config: ArrayConfig | ArrayConfigParams | None = None
+    config: ArrayConfig | ArrayConfigParams | None = None,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array.
 
     Parameters
     ----------
-    store: str or Store
+    store : str or Store
         Store or path to directory in file system or name of zip file.
-    path: str or None, optional
+    path : str or None, optional
         The name of the array within the store. If ``path`` is ``None``, the array will be located
         at the root of the store.
-    shape: ChunkCoords
+    shape : ChunkCoords
         Shape of the array.
-    dtype: npt.DTypeLike
+    dtype : npt.DTypeLike
         Data type of the array.
-    chunk_shape: ChunkCoords
+    chunk_shape : ChunkCoords
         Chunk shape of the array.
-    shard_shape: ChunkCoords | None
-        Shard shape of the array.
-    filters: Iterable[Codec], optional
+    shard_shape : ChunkCoords, optional
+        Shard shape of the array. The default value of ``None`` results in no sharding at all.
+    filters : Iterable[Codec], optional
         List of filters to apply to the array.
-    compressors: Iterable[Codec], optional
+    compressors : Iterable[Codec], optional
         List of compressors to apply to the array.
-    fill_value: Any, optional
+    fill_value : Any, optional
         Fill value for the array.
-    order: {"C", "F"}, optional
+    order : {"C", "F"}, optional
         Memory layout of the array.
-    zarr_format: {2, 3}, optional
+    zarr_format : {2, 3}, optional
         The zarr format to use when saving.
-    attributes: dict, optional
+    attributes : dict, optional
         Attributes for the array.
-    chunk_key_encoding: ChunkKeyEncoding, optional
+    chunk_key_encoding : ChunkKeyEncoding, optional
         The chunk key encoding to use.
-    dimension_names: Iterable[str], optional
+    dimension_names : Iterable[str], optional
         Dimension names for the array.
-    storage_options: dict, optional
+    storage_options : dict, optional
         If using an fsspec URL to create the store, these will be passed to the backend implementation.
         Ignored otherwise.
-    overwrite: bool, default False
+    overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
+    config : ArrayConfig or ArrayConfigParams, optional
+        Runtime configuration for the array.
 
     Returns
     -------
@@ -1026,7 +1028,7 @@ async def create_array(
         if dimension_names is not None:
             raise ValueError("Zarr v2 arrays do not support dimension names.")
         if order is None:
-            order_parsed = zarr_config.get('array.order')
+            order_parsed = zarr_config.get("array.order")
         else:
             order_parsed = order
         return await AsyncArray._create_v2(
@@ -1071,7 +1073,7 @@ async def create_array(
             codecs=codecs,
             dimension_names=dimension_names,
             overwrite=overwrite,
-            config=config_parsed
+            config=config_parsed,
         )
 
 

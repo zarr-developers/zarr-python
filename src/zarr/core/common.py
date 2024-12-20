@@ -167,7 +167,7 @@ def parse_bool(data: Any) -> bool:
     raise ValueError(f"Expected bool, got {data} instead.")
 
 
-def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
+def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[np.generic]:
     if dtype is str or dtype == "str":
         if zarr_format == 2:
             # special case as object
