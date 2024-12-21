@@ -234,7 +234,7 @@ def _auto_partition(
                 if a_shape // c_shape > 16:
                     _shards_out += (c_shape * 2,)
                 else:
-                    _shards_out += (1,)
+                    _shards_out += (c_shape,)
         else:
             _shards_out = shard_shape
 
