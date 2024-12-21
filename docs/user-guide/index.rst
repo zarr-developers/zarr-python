@@ -9,6 +9,7 @@ User Guide
     installation
     arrays
     groups
+    attributes
     storage
     config
     v3_migration

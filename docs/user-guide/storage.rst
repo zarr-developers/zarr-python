@@ -4,7 +4,7 @@ Storage
 =======
 
 Zarr-Python supports multiple storage backends, including: local file systems,
-Zip files, remote stores via ``fsspec`` (S3, HTTP, etc.), and in-memory stores. In
+Zip files, remote stores via fsspec_ (S3, HTTP, etc.), and in-memory stores. In
 Zarr-Python 3, stores must implement the abstract store API from
 :class:`zarr.abc.store.Store`.
 
@@ -58,7 +58,7 @@ Zip Store
 ~~~~~~~~~
 
 The :class:`zarr.storage.ZipStore` stores the contents of a Zarr hierarchy in a single
-Zip file. The `Zip Store specification_` is currently in draft form.
+Zip file. The `Zip Store specification`_ is currently in draft form.
 
 .. ipython:: python
 
@@ -71,9 +71,9 @@ Remote Store
 The :class:`zarr.storage.FsspecStore` stores the contents of a Zarr hierarchy in following the same
 logical layout as the ``LocalStore``, except the store is assumed to be on a remote storage system
 such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Store). The
-:class:`zarr.storage.FsspecStore` is backed by `Fsspec_` and can support any Fsspec backend
+:class:`zarr.storage.FsspecStore` is backed by `fsspec`_ and can support any backend
 that implements the `AbstractFileSystem` API. ``storage_options`` can be used to configure
-the Fsspec backend.
+the fsspec backend.
 
 .. ipython:: python
 
@@ -87,7 +87,7 @@ the Fsspec backend.
 Memory Store
 ~~~~~~~~~~~~
 
-The :class:`zarr.storage.FsspecStore` a in-memory store that allows for serialization of
+The :class:`zarr.storage.MemoryStore` a in-memory store that allows for serialization of
 Zarr data (metadata and chunks) to a dictionary.
 
 .. ipython:: python
@@ -104,4 +104,4 @@ Class includes all of the methods needed to be a fully operational store in Zarr
 Zarr also provides a test harness for custom stores: :class:`zarr.testing.store.StoreTests`.
 
 .. _Zip Store Specification: https://github.com/zarr-developers/zarr-specs/pull/311
-.. _Fsspec: https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html#consolidated-metadata
+.. _fsspec: https://filesystem-spec.readthedocs.io

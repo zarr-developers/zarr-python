@@ -180,7 +180,7 @@ after the 3.0 release:
 
 - The following options in the top-level API have not been ported to Zarr-Python 3 yet.
   If these options are important to you, please open a
-  `GitHub issue <https://github.com/zarr-developers/zarr-python/issues/new>` describing
+  `GitHub issue <https://github.com/zarr-developers/zarr-python/issues/new>`_ describing
   your use case.
 
   * ``cache_attrs``

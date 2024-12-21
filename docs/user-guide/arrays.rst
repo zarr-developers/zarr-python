@@ -123,7 +123,7 @@ useful. E.g.:
    zarr.load('data/example-3.zarr')
 
 Please note that there are a number of other options for persistent array
-storage, see the section on :ref:`tutorial_storage` below.
+storage, see the :ref:`tutorial_storage` guide for more details.
 
 .. _tutorial_resize:
 
@@ -367,7 +367,7 @@ That is, the following two calls are equivalent:
 Indexing with a mask array
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. Items can also be extracted by providing a Boolean mask. E.g.:
+Items can also be extracted by providing a Boolean mask. E.g.:
 
 .. ipython:: python
 
