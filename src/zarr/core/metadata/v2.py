@@ -6,6 +6,8 @@ from enum import Enum
 from functools import cached_property
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
+import numcodecs.abc
+
 from zarr.abc.metadata import Metadata
 
 if TYPE_CHECKING:

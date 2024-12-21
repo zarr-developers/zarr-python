@@ -49,7 +49,7 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingParams
     from zarr.core.common import MemoryOrder
 
 logger = logging.getLogger("zarr.group")
@@ -997,24 +997,18 @@ class AsyncGroup:
 
     async def create_array(
         self,
-        path: str,
+        name: str,
         *,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
-        chunk_shape: ChunkCoords,
-        shard_shape: ChunkCoords | None = None,
+        chunk_shape: ChunkCoords | Literal["auto"] = "auto",
+        shard_shape: ChunkCoords | Literal["auto"] | None = None,
         filters: Iterable[dict[str, JSON] | Codec] = (),
-        compressors: Iterable[dict[str, JSON] | Codec] = (),
+        compression: Iterable[dict[str, JSON] | Codec] = (),
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
-        zarr_format: ZarrFormat | None = 3,
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: (
-            ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None
-        ) = ("default", "/"),
+        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
         dimension_names: Iterable[str] | None = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
@@ -1027,14 +1021,14 @@ class AsyncGroup:
 
         Parameters
         ----------
-        path : str
+        name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
         shape : ChunkCoords
             Shape of the array.
         dtype : npt.DTypeLike
             Data type of the array.
-        chunk_shape : ChunkCoords
+        chunk_shape : ChunkCoords | Literal["auto"], default is "auto".
             Chunk shape of the array.
         shard_shape : ChunkCoords, optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
@@ -1046,8 +1040,6 @@ class AsyncGroup:
             Fill value for the array.
         order : {"C", "F"}, optional
             Memory layout of the array.
-        zarr_format : {2, 3}, optional
-            The zarr format to use when saving.
         attributes : dict, optional
             Attributes for the array.
         chunk_key_encoding : ChunkKeyEncoding, optional
@@ -1069,16 +1061,16 @@ class AsyncGroup:
         """
         return await create_array(
             store=self.store_path,
-            path=path,
+            name=name,
             shape=shape,
             dtype=dtype,
             chunk_shape=chunk_shape,
             shard_shape=shard_shape,
             filters=filters,
-            compressors=compressors,
+            compression=compression,
             fill_value=fill_value,
             order=order,
-            zarr_format=zarr_format,
+            zarr_format=self.metadata.zarr_format,
             attributes=attributes,
             chunk_key_encoding=chunk_key_encoding,
             dimension_names=dimension_names,
@@ -2200,24 +2192,18 @@ class Group(SyncMixin):
     @_deprecate_positional_args
     def create_array(
         self,
-        path: str,
+        name: str,
         *,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
-        chunk_shape: ChunkCoords,
+        chunk_shape: ChunkCoords | Literal["auto"] = "auto",
         shard_shape: ChunkCoords | None = None,
-        filters: Iterable[dict[str, JSON] | Codec] = (),
-        compressors: Iterable[dict[str, JSON] | Codec] = (),
+        filters: Iterable[dict[str, JSON] | Codec] | Literal["auto"] = "auto",
+        compression: Iterable[dict[str, JSON] | Codec] | Codec | Literal["auto"] = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
-        zarr_format: ZarrFormat | None = 3,
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: (
-            ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None
-        ) = ("default", "/"),
+        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
         dimension_names: Iterable[str] | None = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
@@ -2237,7 +2223,7 @@ class Group(SyncMixin):
             Shape of the array.
         dtype : npt.DTypeLike
             Data type of the array.
-        chunk_shape : ChunkCoords
+        chunk_shape : ChunkCoords | Literal["auto"], default is "auto"
             Chunk shape of the array.
         shard_shape : ChunkCoords, optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
@@ -2249,8 +2235,6 @@ class Group(SyncMixin):
             Fill value for the array.
         order : {"C", "F"}, optional
             Memory layout of the array.
-        zarr_format : {2, 3}, optional
-            The zarr format to use when saving.
         attributes : dict, optional
             Attributes for the array.
         chunk_key_encoding : ChunkKeyEncoding, optional
@@ -2273,7 +2257,7 @@ class Group(SyncMixin):
         return Array(
             self._sync(
                 self._async_group.create_array(
-                    path=path,
+                    name=name,
                     shape=shape,
                     dtype=dtype,
                     chunk_shape=chunk_shape,
@@ -2281,10 +2265,9 @@ class Group(SyncMixin):
                     fill_value=fill_value,
                     attributes=attributes,
                     chunk_key_encoding=chunk_key_encoding,
-                    compressors=compressors,
+                    compression=compression,
                     dimension_names=dimension_names,
                     order=order,
-                    zarr_format=zarr_format,
                     filters=filters,
                     overwrite=overwrite,
                     storage_options=storage_options,
@@ -2543,24 +2526,18 @@ class Group(SyncMixin):
     @_deprecate_positional_args
     def array(
         self,
-        path: str,
+        name: str,
         *,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
-        chunk_shape: ChunkCoords,
-        shard_shape: ChunkCoords | None = None,
+        chunk_shape: ChunkCoords | Literal["auto"] = "auto",
+        shard_shape: ChunkCoords | Literal["auto"] | None = None,
         filters: Iterable[dict[str, JSON] | Codec] = (),
-        compressors: Iterable[dict[str, JSON] | Codec] = (),
+        compression: Iterable[dict[str, JSON] | Codec] = (),
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
-        zarr_format: ZarrFormat | None = 3,
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: (
-            ChunkKeyEncoding
-            | tuple[Literal["default"], Literal[".", "/"]]
-            | tuple[Literal["v2"], Literal[".", "/"]]
-            | None
-        ) = ("default", "/"),
+        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
         dimension_names: Iterable[str] | None = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
@@ -2592,8 +2569,6 @@ class Group(SyncMixin):
             Fill value for the array.
         order : {"C", "F"}, optional
             Memory layout of the array.
-        zarr_format : {2, 3}, optional
-            The zarr format to use when saving.
         attributes : dict, optional
             Attributes for the array.
         chunk_key_encoding : ChunkKeyEncoding, optional
@@ -2616,7 +2591,7 @@ class Group(SyncMixin):
         return Array(
             self._sync(
                 self._async_group.create_array(
-                    path=path,
+                    name=name,
                     shape=shape,
                     dtype=dtype,
                     chunk_shape=chunk_shape,
@@ -2624,10 +2599,9 @@ class Group(SyncMixin):
                     fill_value=fill_value,
                     attributes=attributes,
                     chunk_key_encoding=chunk_key_encoding,
-                    compressors=compressors,
+                    compression=compression,
                     dimension_names=dimension_names,
                     order=order,
-                    zarr_format=zarr_format,
                     filters=filters,
                     overwrite=overwrite,
                     storage_options=storage_options,

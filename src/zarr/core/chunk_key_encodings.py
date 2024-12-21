@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
@@ -18,6 +18,11 @@ def parse_separator(data: JSON) -> SeparatorLiteral:
     if data not in (".", "/"):
         raise ValueError(f"Expected an '.' or '/' separator. Got {data} instead.")
     return cast(SeparatorLiteral, data)
+
+
+class ChunkKeyEncodingParams(TypedDict):
+    name: Literal["v2", "default"]
+    separator: SeparatorLiteral
 
 
 @dataclass(frozen=True)

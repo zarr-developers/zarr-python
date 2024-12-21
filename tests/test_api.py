@@ -68,7 +68,7 @@ def test_create_array(store: Store) -> None:
     path = "foo"
     data_val = 1
     array_w = create_array(
-        store, path=path, shape=shape, attributes=attrs, chunk_shape=shape, dtype="uint8"
+        store, name=path, shape=shape, attributes=attrs, chunk_shape=shape, dtype="uint8"
     )
     array_w[:] = data_val
     assert array_w.shape == shape
@@ -1129,7 +1129,7 @@ async def test_create_array_v3(store: MemoryStore) -> None:
         chunk_shape=(4,),
         zarr_format=3,
         filters=(TransposeCodec(order=(0,)),),
-        compressors=(ZstdCodec(level=3),),
+        compression=ZstdCodec(level=3),
     )
 
 
@@ -1147,5 +1147,5 @@ async def test_create_array_v2(store: MemoryStore) -> None:
         chunk_shape=(4,),
         zarr_format=2,
         filters=(Delta(dtype=dtype),),
-        compressors=(Zstd(level=3),),
+        compression=Zstd(level=3),
     )

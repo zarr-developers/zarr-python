@@ -7,7 +7,7 @@ import operator
 from abc import abstractmethod
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
@@ -194,3 +194,48 @@ class RegularChunkGrid(ChunkGrid):
             itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
             1,
         )
+
+
+def _auto_partition(
+    array_shape: tuple[int, ...],
+    shard_shape: tuple[int, ...] | Literal["auto"] | None,
+    chunk_shape: tuple[int, ...] | Literal["auto"],
+    dtype: np.dtype[np.generic],
+) -> tuple[tuple[int, ...] | None, tuple[int, ...]]:
+    """
+    Automatically determine the shard shape and chunk shape for an array, given the shape and dtype of the array.
+    If `shard_shape` is `None` and the chunk_shape is "auto", the chunks will be set heuristically based
+    on the dtype and shape of the array.
+    If `shard_shape` is "auto", then the shard shape will be set heuristically from the dtype and shape
+    of the array; if the `chunk_shape` is also "auto", then the chunks will be set heuristically as well,
+    given the dtype and shard shape. Otherwise, the chunks will be returned as-is.
+    """
+
+    item_size = dtype.itemsize
+    if shard_shape is None:
+        _shards_out: None | tuple[int, ...] = None
+        if chunk_shape == "auto":
+            _chunks_out = _guess_chunks(array_shape, item_size)
+        else:
+            _chunks_out = chunk_shape
+    else:
+        if chunk_shape == "auto":
+            # aim for a 1MiB chunk
+            _chunks_out = _guess_chunks(array_shape, item_size, max_bytes=1024)
+        else:
+            _chunks_out = chunk_shape
+
+        if shard_shape == "auto":
+            _shards_out = ()
+            for a_shape, c_shape in zip(array_shape, _chunks_out, strict=True):
+                # TODO: make a better heuristic than this.
+                # for each axis, if there are more than 16 chunks along that axis, then make put
+                # 2 chunks in each shard for that axis.
+                if a_shape // c_shape > 16:
+                    _shards_out += (c_shape * 2,)
+                else:
+                    _shards_out += (1,)
+        else:
+            _shards_out = shard_shape
+
+    return _shards_out, _chunks_out

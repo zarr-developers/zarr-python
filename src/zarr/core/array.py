@@ -7,16 +7,18 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from itertools import starmap
 from logging import getLogger
-from typing import TYPE_CHECKING, Any, Generic, Literal, cast, overload
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeAlias, cast, overload
 from warnings import warn
 
+import numcodecs
 import numpy as np
 import numpy.typing as npt
 
 from zarr._compat import _deprecate_positional_args
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.store import Store, set_or_delete
-from zarr.core.common import _default_zarr_version
 from zarr.codecs._v2 import V2Codec
+from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array_spec import ArrayConfig, ArrayConfigParams, parse_array_config
 from zarr.core.attributes import Attributes
@@ -26,9 +28,10 @@ from zarr.core.buffer import (
     NDBuffer,
     default_buffer_prototype,
 )
-from zarr.core.chunk_grids import RegularChunkGrid, normalize_chunks
+from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
+    ChunkKeyEncodingParams,
     DefaultChunkKeyEncoding,
     V2ChunkKeyEncoding,
 )
@@ -41,6 +44,7 @@ from zarr.core.common import (
     MemoryOrder,
     ShapeLike,
     ZarrFormat,
+    _default_zarr_version,
     _warn_order_kwarg,
     concurrent_map,
     parse_dtype,
@@ -87,15 +91,15 @@ from zarr.core.metadata.v2 import _default_filters_and_compressor
 from zarr.core.metadata.v3 import DataType, parse_node_type_array
 from zarr.core.sync import sync
 from zarr.errors import MetadataValidationError
-from zarr.registry import get_pipeline_class
+from zarr.registry import get_codec_class, get_pipeline_class
 from zarr.storage import StoreLike, make_store_path
 from zarr.storage.common import StorePath, ensure_no_existing_node
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator, Sequence
+    from collections.abc import Iterator, Sequence
     from typing import Self
 
-    from zarr.abc.codec import Codec, CodecPipeline
+    from zarr.abc.codec import CodecPipeline
     from zarr.core.group import AsyncGroup
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
@@ -3454,26 +3458,29 @@ def _get_default_codecs(
     return [{"name": codec_id, "configuration": {}} for codec_id in default_codecs[dtype_key]]
 
 
+FiltersParam: TypeAlias = (
+    Iterable[dict[str, JSON] | Codec] | Iterable[numcodecs.abc.Codec] | Literal["auto"]
+)
+CompressionParam: TypeAlias = (
+    Iterable[dict[str, JSON] | Codec] | Codec | numcodecs.abc.Codec | Literal["auto"]
+)
+
+
 async def create_array(
     store: str | StoreLike,
     *,
-    path: str | None = None,
+    name: str | None = None,
     shape: ShapeLike,
     dtype: npt.DTypeLike,
-    chunk_shape: ChunkCoords,
+    chunk_shape: ChunkCoords | Literal["auto"] = "auto",
     shard_shape: ChunkCoords | None = None,
-    filters: Iterable[dict[str, JSON] | Codec] = (),
-    compressors: Iterable[dict[str, JSON] | Codec] = (),
+    filters: FiltersParam = "auto",
+    compression: CompressionParam = "auto",
     fill_value: Any | None = 0,
     order: MemoryOrder | None = "C",
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
-    chunk_key_encoding: (
-        ChunkKeyEncoding
-        | tuple[Literal["default"], Literal[".", "/"]]
-        | tuple[Literal["v2"], Literal[".", "/"]]
-        | None
-    ) = ("default", "/"),
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
@@ -3486,8 +3493,8 @@ async def create_array(
     ----------
     store : str or Store
         Store or path to directory in file system or name of zip file.
-    path : str or None, optional
-        The name of the array within the store. If ``path`` is ``None``, the array will be located
+    name : str or None, optional
+        The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
     shape : ChunkCoords
         Shape of the array.
@@ -3499,7 +3506,7 @@ async def create_array(
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec], optional
         List of filters to apply to the array.
-    compressors : Iterable[Codec], optional
+    compression : Iterable[Codec], optional
         List of compressors to apply to the array.
     fill_value : Any, optional
         Fill value for the array.
@@ -3533,75 +3540,85 @@ async def create_array(
         zarr_format = _default_zarr_version()
 
     # TODO: figure out why putting these imports at top-level causes circular imports
-    from zarr.codecs.bytes import BytesCodec
     from zarr.codecs.sharding import ShardingCodec
 
     # TODO: fix this when modes make sense. It should be `w` for overwriting, `w-` otherwise
     mode: Literal["a"] = "a"
-
-    store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
-    sub_codecs = (*filters, BytesCodec(), *compressors)
-    _dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
+    dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
     config_parsed = parse_array_config(config)
     shape_parsed = parse_shapelike(shape)
+    chunk_key_encoding_parsed = _parse_chunk_key_encoding(
+        chunk_key_encoding, zarr_format=zarr_format
+    )
+    store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
+    shard_shape_parsed, chunk_shape_parsed = _auto_partition(
+        shape_parsed, shard_shape, chunk_shape, dtype_parsed
+    )
     result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
+
     if zarr_format == 2:
-        if shard_shape is not None:
+        if shard_shape_parsed is not None:
             msg = (
                 'Zarr v2 arrays can only be created with `shard_shape` set to `None` or `"auto"`.'
                 f"Got `shard_shape={shard_shape}` instead."
             )
 
             raise ValueError(msg)
-        if len(tuple(compressors)) > 1:
-            compressor, *rest = compressors
-        else:
-            compressor = None
-            rest = []
-        filters = (*filters, *rest)
+        if filters != "auto" and not all(isinstance(f, numcodecs.abc.Codec) for f in filters):
+            raise TypeError(
+                "For Zarr v2 arrays, all elements of `filters` must be numcodecs codecs."
+            )
+        filters = cast(Iterable[numcodecs.abc.Codec] | Literal["auto"], filters)
+        filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
+            compression=compression, filters=filters, dtype=dtype_parsed
+        )
         if dimension_names is not None:
             raise ValueError("Zarr v2 arrays do not support dimension names.")
         if order is None:
             order_parsed = zarr_config.get("array.order")
         else:
             order_parsed = order
+
         result = await AsyncArray._create_v2(
             store_path=store_path,
             shape=shape_parsed,
-            dtype=_dtype_parsed,
-            chunks=chunk_shape,
-            dimension_separator="/",
+            dtype=dtype_parsed,
+            chunks=chunk_shape_parsed,
+            dimension_separator=chunk_key_encoding_parsed.separator,
             fill_value=fill_value,
             order=order_parsed,
-            filters=filters,
-            compressor=compressor,
+            filters=filters_parsed,
+            compressor=compressor_parsed,
             attributes=attributes,
             overwrite=overwrite,
             config=config_parsed,
         )
     else:
-        if shard_shape is not None:
-            sharding_codec = ShardingCodec(chunk_shape=chunk_shape, codecs=sub_codecs)
+        array_array, array_bytes, bytes_bytes = _get_default_encoding_v3(dtype_parsed)
+        sub_codecs = (*array_array, array_bytes, *bytes_bytes)
+        codecs_out: tuple[Codec, ...]
+        if shard_shape_parsed is not None:
+            sharding_codec = ShardingCodec(chunk_shape=chunk_shape_parsed, codecs=sub_codecs)
             sharding_codec.validate(
-                shape=chunk_shape,
-                dtype=dtype,
+                shape=chunk_shape_parsed,
+                dtype=dtype_parsed,
                 chunk_grid=RegularChunkGrid(chunk_shape=shard_shape),
             )
-            codecs = (sharding_codec,)
+            codecs_out = (sharding_codec,)
             chunks_out = shard_shape
         else:
-            chunks_out = chunk_shape
-            codecs = sub_codecs
+            chunks_out = chunk_shape_parsed
+            codecs_out = sub_codecs
 
         result = await AsyncArray._create_v3(
             store_path=store_path,
             shape=shape_parsed,
-            dtype=_dtype_parsed,
+            dtype=dtype_parsed,
             fill_value=fill_value,
             attributes=attributes,
             chunk_shape=chunks_out,
-            chunk_key_encoding=chunk_key_encoding,
-            codecs=codecs,
+            chunk_key_encoding=chunk_key_encoding_parsed,
+            codecs=codecs_out,
             dimension_names=dimension_names,
             overwrite=overwrite,
             config=config_parsed,
@@ -3612,3 +3629,132 @@ async def create_array(
             selection=slice(None), value=data, prototype=default_buffer_prototype()
         )
     return result
+
+
+def _parse_chunk_key_encoding(
+    data: ChunkKeyEncoding | ChunkKeyEncodingParams | None, zarr_format: ZarrFormat
+) -> ChunkKeyEncoding:
+    """
+    Take an implicit specification of a chunk key encoding and parse it into a ChunkKeyEncoding object.
+    """
+    if data is None:
+        if zarr_format == 2:
+            result = ChunkKeyEncoding.from_dict({"name": "v2", "separator": "/"})
+        else:
+            result = ChunkKeyEncoding.from_dict({"name": "default", "separator": "/"})
+    elif isinstance(data, ChunkKeyEncoding):
+        result = data
+    else:
+        result = ChunkKeyEncoding.from_dict(data)
+    if zarr_format == 2 and result.name != "v2":
+        msg = (
+            "Invalid chunk key encoding. For Zarr v2 arrays, the `name` field of the "
+            f"chunk key encoding must be 'v2'. Got `name` = {result.name} instead."
+        )
+        raise ValueError(msg)
+    return result
+
+
+def _get_default_encoding_v3(
+    np_dtype: np.dtype[Any],
+) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
+    """
+    Get the default ArrayArrayCodecs, ArrayBytesCodec, and BytesBytesCodec for a given dtype.
+    """
+    default_codecs = zarr_config.get("array.v3_default_codecs")
+    dtype = DataType.from_numpy(np_dtype)
+    if dtype == DataType.string:
+        dtype_key = "string"
+    elif dtype == DataType.bytes:
+        dtype_key = "bytes"
+    else:
+        dtype_key = "numeric"
+
+    codec_names = default_codecs[dtype_key]
+    array_bytes_cls, *rest = tuple(get_codec_class(codec_name) for codec_name in codec_names)
+    array_bytes: ArrayBytesCodec = cast(ArrayBytesCodec, array_bytes_cls())
+    # TODO: we should compress bytes and strings by default!
+    # The current default codecs only lists names, and strings / bytes are not compressed at all,
+    # so we insert the ZstdCodec at the end of the list as a default
+    bytes_bytes: tuple[BytesBytesCodec, ...]
+    array_array: tuple[ArrayArrayCodec, ...] = ()
+    if len(rest) == 0:
+        bytes_bytes = (ZstdCodec(),)
+    else:
+        bytes_bytes = cast(tuple[BytesBytesCodec, ...], tuple(r() for r in rest))
+
+    return array_array, array_bytes, bytes_bytes
+
+
+def _get_default_chunk_encoding_v2(
+    dtype: np.dtype[np.generic],
+) -> tuple[tuple[numcodecs.abc.Codec, ...], numcodecs.abc.Codec]:
+    """
+    Get the default chunk encoding for zarr v2 arrays, given a dtype
+    """
+    codec_id_dict = zarr_config.get("array.v2_default_compressor")
+
+    if dtype.kind in "biufcmM":
+        dtype_key = "numeric"
+        codec_type = "compressor"
+    elif dtype.kind in "U":
+        dtype_key = "string"
+        codec_type = "filter"
+    elif dtype.kind in "OSV":
+        dtype_key = "bytes"
+        codec_type = "filter"
+    else:
+        raise ValueError(f"Unsupported dtype kind {dtype.kind}")
+    codec_id = codec_id_dict[dtype_key]
+    codec_instance = numcodecs.get_codec({"id": codec_id})
+    if codec_type == "compressor":
+        return (), codec_instance
+    elif codec_type == "filter":
+        return codec_instance, numcodecs.Zstd()
+    else:
+        raise ValueError(f"Unsupported codec type {codec_type}")
+
+
+def _parse_chunk_encoding_v2(
+    *,
+    compression: numcodecs.abc.Codec | Literal["auto"],
+    filters: tuple[numcodecs.abc.Codec, ...] | Literal["auto"],
+    dtype: np.dtype[np.generic],
+) -> tuple[tuple[numcodecs.abc.Codec, ...], numcodecs.abc.Codec]:
+    """
+    Generate chunk encoding classes for v2 arrays with optional defaults.
+    """
+    default_filters, default_compressor = _get_default_chunk_encoding_v2(dtype)
+    _filters: tuple[numcodecs.abc.Codec, ...] = ()
+    if compression == "auto":
+        _compressor = default_compressor
+    else:
+        _compressor = compression
+    if filters == "auto":
+        _filters = default_filters
+    else:
+        _filters = filters
+    return _filters, _compressor
+
+
+def _parse_chunk_encoding_v3(
+    *,
+    compression: Iterable[BytesBytesCodec] | Literal["auto"],
+    filters: Iterable[ArrayArrayCodec] | Literal["auto"],
+    dtype: np.dtype[np.generic],
+) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
+    """
+    Generate chunk encoding classes for v3 arrays with optional defaults.
+    """
+    default_array_array, default_array_bytes, default_bytes_bytes = _get_default_encoding_v3(dtype)
+
+    if compression == "auto":
+        out_bytes_bytes = default_bytes_bytes
+    else:
+        out_bytes_bytes = tuple(compression)
+    if filters == "auto":
+        out_array_array = default_array_array
+    else:
+        out_array_array = tuple(filters)
+
+    return out_array_array, default_array_bytes, out_bytes_bytes
