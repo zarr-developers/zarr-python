@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import warnings
 from asyncio import gather
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from itertools import starmap
 from logging import getLogger
@@ -3594,7 +3594,10 @@ async def create_array(
             config=config_parsed,
         )
     else:
-        sub_codecs = _parse_chunk_encoding_v3(compression=compression, filters=filters, dtype=dtype)
+        array_array, array_bytes, bytes_bytes = _parse_chunk_encoding_v3(
+            compression=compression, filters=filters, dtype=dtype_parsed
+        )
+        sub_codecs = (*array_array, array_bytes, *bytes_bytes)
         codecs_out: tuple[Codec, ...]
         if shard_shape_parsed is not None:
             sharding_codec = ShardingCodec(chunk_shape=chunk_shape_parsed, codecs=sub_codecs)
@@ -3750,10 +3753,16 @@ def _parse_chunk_encoding_v3(
     if compression == "auto":
         out_bytes_bytes = default_bytes_bytes
     else:
-        out_bytes_bytes = tuple(compression)
+        if isinstance(compression, Mapping | Codec):
+            out_bytes_bytes = (compression,)
+        else:
+            out_bytes_bytes = tuple(compression)
     if filters == "auto":
         out_array_array = default_array_array
     else:
-        out_array_array = tuple(filters)
+        if isinstance(filters, Mapping | Codec):
+            out_array_array = (filters,)
+        else:
+            out_array_array = tuple(filters)
 
     return out_array_array, default_array_bytes, out_bytes_bytes

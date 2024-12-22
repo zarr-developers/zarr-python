@@ -69,7 +69,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
 
         data = np.arange(10000, dtype=np.uint16).reshape(100, 100)
         z = root.create_array(
-            shape=data.shape, chunks=(10, 10), name="foo", dtype=np.uint16, fill_value=99
+            shape=data.shape, chunk_shape=(10, 10), name="foo", dtype=np.uint16, fill_value=99
         )
         z[:] = data
 
