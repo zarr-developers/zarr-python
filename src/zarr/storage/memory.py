@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Self
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.common import concurrent_map
-from zarr.storage._utils import _normalize_interval_index
+from zarr.storage._utils import _normalize_byte_range_index
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, MutableMapping
@@ -75,7 +75,7 @@ class MemoryStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest = None,
     ) -> Buffer | None:
         # docstring inherited
         if not self._is_open:
@@ -83,7 +83,7 @@ class MemoryStore(Store):
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
-            start, length = _normalize_interval_index(value, byte_range)
+            start, length = _normalize_byte_range_index(value, byte_range)
             return prototype.buffer.from_buffer(value[start : start + length])
         except KeyError:
             return None

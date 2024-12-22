@@ -192,12 +192,12 @@ def key_ranges(
     Function to generate key_ranges strategy for get_partial_values()
     returns list strategy w/ form::
 
-        [(key, (range_start, range_step)),
-         (key, (range_start, range_step)),...]
+        [(key, (range_start, range_end)),
+         (key, (range_start, range_end)),...]
     """
     byte_ranges = st.tuples(
-        st.none() | st.integers(min_value=0, max_value=max_size),
-        st.none() | st.integers(min_value=0, max_value=max_size),
+        st.integers(min_value=0, max_value=max_size),
+        st.integers(min_value=0, max_value=max_size),
     )
     key_tuple = st.tuples(keys, byte_ranges)
     return st.lists(key_tuple, min_size=1, max_size=10)

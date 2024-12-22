@@ -18,30 +18,25 @@ if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
 
 
-def _get(
-    path: Path, prototype: BufferPrototype, byte_range: tuple[int | None, int | None] | None
-) -> Buffer:
-    if byte_range is not None:
-        if byte_range[0] is None:
-            start = 0
-        else:
-            start = byte_range[0]
-
-        end = (start + byte_range[1]) if byte_range[1] is not None else None
-    else:
+def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest | None) -> Buffer:
+    if byte_range is None:
         return prototype.buffer.from_bytes(path.read_bytes())
     with path.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
-        if start is not None:
-            if start >= 0:
-                f.seek(start)
-            else:
-                f.seek(max(0, size + start))
-        if end is not None:
-            if end < 0:
-                end = size + end
+        if isinstance(byte_range, tuple):
+            start, end = byte_range
+            f.seek(start)
             return prototype.buffer.from_bytes(f.read(end - f.tell()))
-        return prototype.buffer.from_bytes(f.read())
+        elif isinstance(byte_range, dict):
+            if "offset" in byte_range:
+                f.seek(byte_range["offset"])
+            elif "suffix" in byte_range:
+                f.seek(max(0, size - byte_range["suffix"]))
+            else:
+                raise TypeError("Invalid format for ByteRangeRequest")
+            return prototype.buffer.from_bytes(f.read())
+        else:
+            raise TypeError("Invalid format for ByteRangeRequest")
 
 
 def _put(
@@ -127,7 +122,7 @@ class LocalStore(Store):
         self,
         key: str,
         prototype: BufferPrototype | None = None,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest = None,
     ) -> Buffer | None:
         # docstring inherited
         if prototype is None:
