@@ -3594,8 +3594,7 @@ async def create_array(
             config=config_parsed,
         )
     else:
-        array_array, array_bytes, bytes_bytes = _get_default_encoding_v3(dtype_parsed)
-        sub_codecs = (*array_array, array_bytes, *bytes_bytes)
+        sub_codecs = _parse_chunk_encoding_v3(compression=compression, filters=filters, dtype=dtype)
         codecs_out: tuple[Codec, ...]
         if shard_shape_parsed is not None:
             sharding_codec = ShardingCodec(chunk_shape=chunk_shape_parsed, codecs=sub_codecs)
