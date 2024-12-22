@@ -22,7 +22,7 @@ from dataclasses import dataclass, field, fields, replace
 import numcodecs
 import numpy as np
 
-from zarr.core.array_spec import ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, MemoryOrder, parse_shapelike
@@ -71,6 +71,7 @@ class ArrayV2Metadata(Metadata):
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
         chunks_parsed = parse_shapelike(chunks)
+
         compressor_parsed = parse_compressor(compressor)
         order_parsed = parse_indexing_order(order)
         dimension_separator_parsed = parse_separator(dimension_separator)
@@ -185,13 +186,13 @@ class ArrayV2Metadata(Metadata):
         return zarray_dict
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: MemoryOrder, prototype: BufferPrototype
+        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
         return ArraySpec(
             shape=self.chunks,
             dtype=self.dtype,
             fill_value=self.fill_value,
-            order=order,
+            config=array_config,
             prototype=prototype,
         )
 
@@ -326,3 +327,23 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
         return ""
     else:
         return dtype.type(0)
+
+
+def _default_filters_and_compressor(
+    dtype: np.dtype[Any],
+) -> tuple[list[dict[str, JSON]], dict[str, JSON] | None]:
+    """Get the default filters and compressor for a dtype.
+
+    https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
+    """
+    default_compressor = config.get("array.v2_default_compressor")
+    if dtype.kind in "biufcmM":
+        dtype_key = "numeric"
+    elif dtype.kind in "U":
+        dtype_key = "string"
+    elif dtype.kind in "OSV":
+        dtype_key = "bytes"
+    else:
+        raise ValueError(f"Unsupported dtype kind {dtype.kind}")
+
+    return [{"id": default_compressor[dtype_key]}], None

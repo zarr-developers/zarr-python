@@ -28,9 +28,10 @@ repos:
         files: src|tests
         additional_dependencies:
           # Package dependencies
+          - packaging
           - donfig
           - numcodecs[crc32c]
-          - numpy
+          - numpy==2.1  # until https://github.com/numpy/numpy/issues/28034 is resolved
           - typing_extensions
           - universal-pathlib
           # Tests
