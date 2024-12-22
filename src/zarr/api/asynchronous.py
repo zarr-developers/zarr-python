@@ -18,14 +18,14 @@ from zarr.core.common import (
     ChunkCoords,
     MemoryOrder,
     ZarrFormat,
+    _default_zarr_version,
     _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
     parse_dtype,
 )
-from zarr.core.common import _default_zarr_version
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v2 import _default_filters_and_compressor
+from zarr.core.metadata.v2 import _default_compressor, _default_filters
 from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
     StoreLike,
@@ -886,8 +886,8 @@ async def create(
         If no codecs are provided, default codecs will be used:
 
         - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
-        - For Unicode strings, the default is ``VLenUTF8Codec``.
-        - For bytes or objects, the default is ``VLenBytesCodec``.
+        - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
+        - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
 
         These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
     compressor : Codec, optional
@@ -900,7 +900,8 @@ async def create(
         - For Unicode strings, the default is ``VLenUTF8Codec``.
         - For bytes or objects, the default is ``VLenBytesCodec``.
 
-        These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.    fill_value : object
+        These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
+    fill_value : object
         Default value to use for uninitialized portions of the array.
     order : {'C', 'F'}, optional
         Deprecated in favor of the ``config`` keyword argument.
@@ -921,8 +922,8 @@ async def create(
         for storage of both chunks and metadata.
     filters : sequence of Codecs, optional
         Sequence of filters to use to encode chunk data prior to compression.
-        V2 only. If neither ``compressor`` nor ``filters`` are provided, a default
-        compressor will be used. (see ``compressor`` for details).
+        V2 only. If no ``filters`` are provided, a default set of filters will be used.
+        These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
     cache_metadata : bool, optional
         If True, array configuration metadata will be cached for the
         lifetime of the object. If False, array metadata will be reloaded
@@ -975,8 +976,10 @@ async def create(
         if chunks is None:
             chunks = shape
         dtype = parse_dtype(dtype, zarr_format)
-        if not filters and not compressor:
-            filters, compressor = _default_filters_and_compressor(dtype)
+        if not filters:
+            filters = _default_filters(dtype)
+        if not compressor:
+            compressor = _default_compressor(dtype)
     elif zarr_format == 3 and chunk_shape is None:  # type: ignore[redundant-expr]
         if chunks is not None:
             chunk_shape = chunks

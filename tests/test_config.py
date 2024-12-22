@@ -54,14 +54,28 @@ def test_config_defaults_set() -> None:
                 "order": "C",
                 "write_empty_chunks": False,
                 "v2_default_compressor": {
-                    "numeric": "zstd",
-                    "string": "vlen-utf8",
-                    "bytes": "vlen-bytes",
+                    "numeric": {"id": "zstd", "level": 0, "checksum": True},
+                    "string": {"id": "zstd", "level": 0, "checksum": True},
+                    "bytes": {"id": "zstd", "level": 0, "checksum": True},
+                },
+                "v2_default_filters": {
+                    "numeric": [],
+                    "string": [{"id": "vlen-utf8"}],
+                    "bytes": [{"id": "vlen-bytes"}],
                 },
                 "v3_default_codecs": {
-                    "bytes": ["vlen-bytes"],
-                    "numeric": ["bytes", "zstd"],
-                    "string": ["vlen-utf8"],
+                    "bytes": [
+                        {"name": "vlen-bytes"},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": True}},
+                    ],
+                    "numeric": [
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": True}},
+                    ],
+                    "string": [
+                        {"name": "vlen-utf8"},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": True}},
+                    ],
                 },
             },
             "async": {"concurrency": 10, "timeout": None},
@@ -291,17 +305,26 @@ def test_warning_on_missing_codec_config() -> None:
     ("dtype", "expected_codecs"),
     [
         ("int", [BytesCodec(), GzipCodec()]),
-        ("bytes", [VLenBytesCodec()]),
-        ("str", [VLenUTF8Codec()]),
+        ("bytes", [VLenBytesCodec(), GzipCodec()]),
+        ("str", [VLenUTF8Codec(), GzipCodec()]),
     ],
 )
 async def test_default_codecs(dtype: str, expected_codecs: list[Codec]) -> None:
     with config.set(
         {
-            "array.v3_default_codecs": {
-                "numeric": ["bytes", "gzip"],  # test setting non-standard codecs
-                "string": ["vlen-utf8"],
-                "bytes": ["vlen-bytes"],
+            "array.v3_default_codecs": {  # test setting non-standard codecs
+                "numeric": [
+                    {"name": "bytes", "configuration": {"endian": "little"}},
+                    {"name": "gzip", "configuration": {"level": 5}},
+                ],
+                "string": [
+                    {"name": "vlen-utf8"},
+                    {"name": "gzip", "configuration": {"level": 5}},
+                ],
+                "bytes": [
+                    {"name": "vlen-bytes"},
+                    {"name": "gzip", "configuration": {"level": 5}},
+                ],
             }
         }
     ):
