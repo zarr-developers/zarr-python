@@ -3686,7 +3686,7 @@ def _get_default_encoding_v3(
 
 
 def _get_default_chunk_encoding_v2(
-    dtype: np.dtype[np.generic],
+    dtype: np.dtype[Any],
 ) -> tuple[tuple[numcodecs.abc.Codec, ...], numcodecs.abc.Codec]:
     """
     Get the default chunk encoding for zarr v2 arrays, given a dtype
@@ -3718,7 +3718,7 @@ def _parse_chunk_encoding_v2(
     *,
     compression: numcodecs.abc.Codec | Literal["auto"],
     filters: tuple[numcodecs.abc.Codec, ...] | Literal["auto"],
-    dtype: np.dtype[np.generic],
+    dtype: np.dtype[Any],
 ) -> tuple[tuple[numcodecs.abc.Codec, ...], numcodecs.abc.Codec]:
     """
     Generate chunk encoding classes for v2 arrays with optional defaults.
@@ -3740,7 +3740,7 @@ def _parse_chunk_encoding_v3(
     *,
     compression: Iterable[BytesBytesCodec] | Literal["auto"],
     filters: Iterable[ArrayArrayCodec] | Literal["auto"],
-    dtype: np.dtype[np.generic],
+    dtype: np.dtype[Any],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """
     Generate chunk encoding classes for v3 arrays with optional defaults.

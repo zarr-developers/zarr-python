@@ -396,9 +396,7 @@ class ShardingCodec(
             return replace(self, codecs=evolved_codecs)
         return self
 
-    def validate(
-        self, *, shape: ChunkCoords, dtype: np.dtype[np.generic], chunk_grid: ChunkGrid
-    ) -> None:
+    def validate(self, *, shape: ChunkCoords, dtype: np.dtype[Any], chunk_grid: ChunkGrid) -> None:
         if len(self.chunk_shape) != len(shape):
             raise ValueError(
                 "The shard's `chunk_shape` and array's `shape` need to have the same number of dimensions."

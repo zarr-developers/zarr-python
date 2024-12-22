@@ -200,7 +200,7 @@ def _auto_partition(
     array_shape: tuple[int, ...],
     shard_shape: tuple[int, ...] | Literal["auto"] | None,
     chunk_shape: tuple[int, ...] | Literal["auto"],
-    dtype: np.dtype[np.generic],
+    dtype: np.dtype[Any],
 ) -> tuple[tuple[int, ...] | None, tuple[int, ...]]:
     """
     Automatically determine the shard shape and chunk shape for an array, given the shape and dtype of the array.

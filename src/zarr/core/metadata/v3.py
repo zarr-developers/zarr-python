@@ -449,7 +449,7 @@ def parse_fill_value(
         return np.bytes_(fill_value)
 
     # the rest are numeric types
-    np_dtype = cast(np.dtype[np.generic], data_type.to_numpy())
+    np_dtype = cast(np.dtype[Any], data_type.to_numpy())
 
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if data_type in (DataType.complex64, DataType.complex128):
@@ -513,7 +513,7 @@ def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
         return b""
     else:
         np_dtype = dtype.to_numpy()
-        np_dtype = cast(np.dtype[np.generic], np_dtype)
+        np_dtype = cast(np.dtype[Any], np_dtype)
         return np_dtype.type(0)
 
 
@@ -586,7 +586,7 @@ class DataType(Enum):
         }
         return data_type_to_numpy[self]
 
-    def to_numpy(self) -> np.dtypes.StringDType | np.dtypes.ObjectDType | np.dtype[np.generic]:
+    def to_numpy(self) -> np.dtypes.StringDType | np.dtypes.ObjectDType | np.dtype[Any]:
         # note: it is not possible to round trip DataType <-> np.dtype
         # due to the fact that DataType.string and DataType.bytes both
         # generally return np.dtype("O") from this function, even though
