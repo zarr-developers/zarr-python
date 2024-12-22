@@ -55,9 +55,9 @@ def _normalize_byte_range_index(data: Buffer, byte_range: ByteRangeRequest) -> t
     elif isinstance(byte_range, tuple):
         start = byte_range[0]
         length = byte_range[1] - start
-    elif start := byte_range.get("offset"):
-        length = len(data) - start
-    elif suffix := byte_range.get("suffix"):
-        start = len(data) - suffix
+    elif "offset" in byte_range:
+        length = len(data) - byte_range["offset"]
+    elif "suffix" in byte_range:
+        start = len(data) - byte_range["suffix"]
         length = len(data) - start
     return (start, length)
