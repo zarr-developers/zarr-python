@@ -197,9 +197,10 @@ class RegularChunkGrid(ChunkGrid):
 
 
 def _auto_partition(
+    *,
     array_shape: tuple[int, ...],
-    shard_shape: tuple[int, ...] | Literal["auto"] | None,
     chunk_shape: tuple[int, ...] | Literal["auto"],
+    shard_shape: tuple[int, ...] | Literal["auto"] | None,
     dtype: np.dtype[Any],
 ) -> tuple[tuple[int, ...] | None, tuple[int, ...]]:
     """
@@ -210,7 +211,6 @@ def _auto_partition(
     of the array; if the `chunk_shape` is also "auto", then the chunks will be set heuristically as well,
     given the dtype and shard shape. Otherwise, the chunks will be returned as-is.
     """
-
     item_size = dtype.itemsize
     if shard_shape is None:
         _shards_out: None | tuple[int, ...] = None
@@ -229,9 +229,9 @@ def _auto_partition(
             _shards_out = ()
             for a_shape, c_shape in zip(array_shape, _chunks_out, strict=True):
                 # TODO: make a better heuristic than this.
-                # for each axis, if there are more than 16 chunks along that axis, then make put
+                # for each axis, if there are more than 8 chunks along that axis, then put
                 # 2 chunks in each shard for that axis.
-                if a_shape // c_shape > 16:
+                if a_shape // c_shape > 8:
                     _shards_out += (c_shape * 2,)
                 else:
                     _shards_out += (c_shape,)

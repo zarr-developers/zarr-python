@@ -13,10 +13,13 @@ from numcodecs import Zstd
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
 from zarr.codecs import BytesCodec, VLenBytesCodec, ZstdCodec
+from zarr.codecs.sharding import ShardingCodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array import chunks_initialized
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
+from zarr.core.chunk_grids import _auto_partition
+from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
@@ -881,3 +884,47 @@ async def test_nbytes(
         assert arr._async_array.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
     else:
         assert arr.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
+
+
+def _get_partitioning(data: AsyncArray) -> tuple[tuple[int, ...], tuple[int, ...] | None]:
+    """
+    Get the shard shape and chunk shape of an array. If the array is not sharded, the shard shape
+    will be None.
+    """
+
+    shard_shape: tuple[int, ...] | None
+    chunk_shape: tuple[int, ...]
+    codecs = data.codec_pipeline
+    if isinstance(codecs, BatchedCodecPipeline):
+        if isinstance(codecs.array_bytes_codec, ShardingCodec):
+            chunk_shape = codecs.array_bytes_codec.chunk_shape
+            shard_shape = data.chunks
+        else:
+            chunk_shape = data.chunks
+            shard_shape = None
+    return chunk_shape, shard_shape
+
+
+@pytest.mark.parametrize(
+    ("array_shape", "chunk_shape"),
+    [((256,), (2,))],
+)
+def test_auto_partition_auto_shards(
+    array_shape: tuple[int, ...], chunk_shape: tuple[int, ...]
+) -> None:
+    """
+    Test that automatically picking a shard size returns a tuple of 2 * the chunk shape for any axis
+    where there are 8 or more chunks.
+    """
+    dtype = np.dtype("uint8")
+    expected_shards: tuple[int, ...] = ()
+    for cs, a_len in zip(chunk_shape, array_shape, strict=False):
+        if a_len // cs >= 8:
+            expected_shards += (2 * cs,)
+        else:
+            expected_shards += (cs,)
+
+    auto_shards, _ = _auto_partition(
+        array_shape=array_shape, chunk_shape=chunk_shape, shard_shape="auto", dtype=dtype
+    )
+    assert auto_shards == expected_shards

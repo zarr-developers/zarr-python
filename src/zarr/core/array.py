@@ -3472,8 +3472,8 @@ async def create_array(
     name: str | None = None,
     shape: ShapeLike,
     dtype: npt.DTypeLike,
-    chunk_shape: ChunkCoords | Literal["auto"] = "auto",
-    shard_shape: ChunkCoords | None = None,
+    chunks: ChunkCoords | Literal["auto"] = "auto",
+    shards: ChunkCoords | Literal["auto"] | None = None,
     filters: FiltersParam = "auto",
     compression: CompressionParam = "auto",
     fill_value: Any | None = 0,
@@ -3500,9 +3500,9 @@ async def create_array(
         Shape of the array.
     dtype : npt.DTypeLike
         Data type of the array.
-    chunk_shape : ChunkCoords
+    chunks : ChunkCoords
         Chunk shape of the array.
-    shard_shape : ChunkCoords, optional
+    shards : ChunkCoords, optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec], optional
         List of filters to apply to the array.
@@ -3552,15 +3552,16 @@ async def create_array(
     )
     store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
     shard_shape_parsed, chunk_shape_parsed = _auto_partition(
-        shape_parsed, shard_shape, chunk_shape, dtype_parsed
+        array_shape=shape_parsed, shard_shape=shards, chunk_shape=chunks, dtype=dtype_parsed
     )
+    chunks_out: tuple[int, ...]
     result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
 
     if zarr_format == 2:
         if shard_shape_parsed is not None:
             msg = (
-                'Zarr v2 arrays can only be created with `shard_shape` set to `None` or `"auto"`.'
-                f"Got `shard_shape={shard_shape}` instead."
+                "Zarr v2 arrays can only be created with `shard_shape` set to `None`."
+                f"Got `shard_shape={shards}` instead."
             )
 
             raise ValueError(msg)
@@ -3604,10 +3605,10 @@ async def create_array(
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
                 dtype=dtype_parsed,
-                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape),
+                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
             )
             codecs_out = (sharding_codec,)
-            chunks_out = shard_shape
+            chunks_out = shard_shape_parsed
         else:
             chunks_out = chunk_shape_parsed
             codecs_out = sub_codecs
