@@ -67,14 +67,28 @@ config = Config(
                 "order": "C",
                 "write_empty_chunks": False,
                 "v2_default_compressor": {
-                    "numeric": "zstd",
-                    "string": "vlen-utf8",
-                    "bytes": "vlen-bytes",
+                    "numeric": {"id": "zstd", "level": 0, "checksum": True},
+                    "string": {"id": "zstd", "level": 0, "checksum": True},
+                    "bytes": {"id": "zstd", "level": 0, "checksum": True},
+                },
+                "v2_default_filters": {
+                    "numeric": [],
+                    "string": [{"id": "vlen-utf8"}],
+                    "bytes": [{"id": "vlen-bytes"}],
                 },
                 "v3_default_codecs": {
-                    "numeric": ["bytes", "zstd"],
-                    "string": ["vlen-utf8"],
-                    "bytes": ["vlen-bytes"],
+                    "numeric": [
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": True}},
+                    ],
+                    "string": [
+                        {"name": "vlen-utf8"},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": True}},
+                    ],
+                    "bytes": [
+                        {"name": "vlen-bytes"},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": True}},
+                    ],
                 },
             },
             "async": {"concurrency": 10, "timeout": None},

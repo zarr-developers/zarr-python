@@ -331,9 +331,9 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
         return dtype.type(0)
 
 
-def _default_filters_and_compressor(
+def _default_compressor(
     dtype: np.dtype[Any],
-) -> tuple[list[dict[str, JSON]], dict[str, JSON] | None]:
+) -> dict[str, JSON] | None:
     """Get the default filters and compressor for a dtype.
 
     https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
@@ -348,4 +348,24 @@ def _default_filters_and_compressor(
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
-    return [{"id": default_compressor[dtype_key]}], None
+    return default_compressor.get(dtype_key, None)
+
+
+def _default_filters(
+    dtype: np.dtype[Any],
+) -> list[dict[str, JSON]]:
+    """Get the default filters and compressor for a dtype.
+
+    https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
+    """
+    default_filters = config.get("array.v2_default_filters")
+    if dtype.kind in "biufcmM":
+        dtype_key = "numeric"
+    elif dtype.kind in "U":
+        dtype_key = "string"
+    elif dtype.kind in "OSV":
+        dtype_key = "bytes"
+    else:
+        raise ValueError(f"Unsupported dtype kind {dtype.kind}")
+
+    return default_filters.get(dtype_key, [])

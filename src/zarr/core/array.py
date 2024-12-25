@@ -18,7 +18,6 @@ from zarr._compat import _deprecate_positional_args
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
-from zarr.codecs.zstd import ZstdCodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array_spec import ArrayConfig, ArrayConfigParams, parse_array_config
 from zarr.core.attributes import Attributes
@@ -87,7 +86,10 @@ from zarr.core.metadata import (
     ArrayV3MetadataDict,
     T_ArrayMetadata,
 )
-from zarr.core.metadata.v2 import _default_filters_and_compressor
+from zarr.core.metadata.v2 import (
+    _default_compressor,
+    _default_filters,
+)
 from zarr.core.metadata.v3 import DataType, parse_node_type_array
 from zarr.core.sync import sync
 from zarr.errors import MetadataValidationError
@@ -438,8 +440,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             If no codecs are provided, default codecs will be used:
 
             - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
-            - For Unicode strings, the default is ``VLenUTF8Codec``.
-            - For bytes or objects, the default is ``VLenBytesCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
+            - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
 
             These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
         dimension_names : Iterable[str], optional
@@ -460,14 +462,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
         filters : list[dict[str, JSON]], optional
             Sequence of filters to use to encode chunk data prior to compression.
-            V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
-            nor ``filters`` are provided, a default compressor will be used. (see
-            ``compressor`` for details)
+            V2 only. V3 arrays should use ``codecs`` instead. If no ``filters``
+            are provided, a default set of filters will be used.
+            These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
         compressor : dict[str, JSON], optional
             The compressor used to compress the data (default is None).
             V2 only. V3 arrays should use ``codecs`` instead.
 
-            If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
+            If no ``compressor`` is provided, a default compressor will be used:
 
             - For numeric arrays, the default is ``ZstdCodec``.
             - For Unicode strings, the default is ``VLenUTF8Codec``.
@@ -677,8 +679,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             dimension_separator = "."
 
         dtype = parse_dtype(dtype, zarr_format=2)
-        if not filters and not compressor:
-            filters, compressor = _default_filters_and_compressor(dtype)
+        if not filters:
+            filters = _default_filters(dtype)
+        if not compressor:
+            compressor = _default_compressor(dtype)
         if np.issubdtype(dtype, np.str_):
             filters = filters or []
             if not any(x["id"] == "vlen-utf8" for x in filters):
@@ -1572,8 +1576,8 @@ class Array:
             If no codecs are provided, default codecs will be used:
 
             - For numeric arrays, the default is ``BytesCodec`` and ``ZstdCodec``.
-            - For Unicode strings, the default is ``VLenUTF8Codec``.
-            - For bytes or objects, the default is ``VLenBytesCodec``.
+            - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
+            - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
 
             These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
         dimension_names : Iterable[str], optional
@@ -1594,14 +1598,14 @@ class Array:
             order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'order': 'C'}``.
         filters : list[dict[str, JSON]], optional
             Sequence of filters to use to encode chunk data prior to compression.
-            V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
-            nor ``filters`` are provided, a default compressor will be used. (see
-            ``compressor`` for details)
+            V2 only. V3 arrays should use ``codecs`` instead. If no ``filters``
+            are provided, a default set of filters will be used.
+            These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
         compressor : dict[str, JSON], optional
             Primary compressor to compress chunk data.
             V2 only. V3 arrays should use ``codecs`` instead.
 
-            If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
+            If no ``compressor`` is provided, a default compressor will be used:
 
             - For numeric arrays, the default is ``ZstdCodec``.
             - For Unicode strings, the default is ``VLenUTF8Codec``.
@@ -3455,7 +3459,7 @@ def _get_default_codecs(
     else:
         dtype_key = "numeric"
 
-    return [{"name": codec_id, "configuration": {}} for codec_id in default_codecs[dtype_key]]
+    return default_codecs[dtype_key]
 
 
 FiltersParam: TypeAlias = (
@@ -3673,49 +3677,56 @@ def _get_default_encoding_v3(
     else:
         dtype_key = "numeric"
 
-    codec_names = default_codecs[dtype_key]
-    array_bytes_cls, *rest = tuple(get_codec_class(codec_name) for codec_name in codec_names)
-    array_bytes: ArrayBytesCodec = cast(ArrayBytesCodec, array_bytes_cls())
-    # TODO: we should compress bytes and strings by default!
-    # The current default codecs only lists names, and strings / bytes are not compressed at all,
-    # so we insert the ZstdCodec at the end of the list as a default
-    bytes_bytes: tuple[BytesBytesCodec, ...]
-    array_array: tuple[ArrayArrayCodec, ...] = ()
-    if len(rest) == 0:
-        bytes_bytes = (ZstdCodec(),)
-    else:
-        bytes_bytes = cast(tuple[BytesBytesCodec, ...], tuple(r() for r in rest))
+    codec_dicts = default_codecs[dtype_key]
+    codecs = tuple(get_codec_class(c["name"]).from_dict(c) for c in codec_dicts)
+    array_bytes_maybe = None
+    array_array: list[ArrayArrayCodec] = []
+    bytes_bytes: list[BytesBytesCodec] = []
 
-    return array_array, array_bytes, bytes_bytes
+    for codec in codecs:
+        if isinstance(codec, ArrayBytesCodec):
+            if array_bytes_maybe is not None:
+                raise ValueError(
+                    f"Got two instances of ArrayBytesCodec: {array_bytes_maybe} and {codec}. "
+                    "Only one array-to-bytes codec is allowed."
+                )
+            array_bytes_maybe = codec
+        elif isinstance(codec, ArrayArrayCodec):
+            array_array.append(codec)
+        elif isinstance(codec, BytesBytesCodec):
+            bytes_bytes.append(codec)
+        else:
+            raise TypeError(f"Unexpected codec type: {type(codec)}")
+
+    if array_bytes_maybe is None:
+        raise ValueError("Required ArrayBytesCodec was not found.")
+
+    return tuple(array_array), array_bytes_maybe, tuple(bytes_bytes)
 
 
 def _get_default_chunk_encoding_v2(
     dtype: np.dtype[Any],
-) -> tuple[tuple[numcodecs.abc.Codec, ...], numcodecs.abc.Codec]:
+) -> tuple[tuple[numcodecs.abc.Codec, ...], numcodecs.abc.Codec | None]:
     """
     Get the default chunk encoding for zarr v2 arrays, given a dtype
     """
-    codec_id_dict = zarr_config.get("array.v2_default_compressor")
-
     if dtype.kind in "biufcmM":
         dtype_key = "numeric"
-        codec_type = "compressor"
     elif dtype.kind in "U":
         dtype_key = "string"
-        codec_type = "filter"
     elif dtype.kind in "OSV":
         dtype_key = "bytes"
-        codec_type = "filter"
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
-    codec_id = codec_id_dict[dtype_key]
-    codec_instance = numcodecs.get_codec({"id": codec_id})
-    if codec_type == "compressor":
-        return (), codec_instance
-    elif codec_type == "filter":
-        return codec_instance, numcodecs.Zstd()
-    else:
-        raise ValueError(f"Unsupported codec type {codec_type}")
+
+    compressor_dict = zarr_config.get("array.v2_default_compressor").get(dtype_key, None)
+    filter_dicts = zarr_config.get("array.v2_default_filters").get(dtype_key, [])
+
+    compressor = None
+    if compressor_dict is not None:
+        compressor = numcodecs.get_codec(compressor_dict)
+    filters = tuple(numcodecs.get_codec(f) for f in filter_dicts)
+    return filters, compressor
 
 
 def _parse_chunk_encoding_v2(
