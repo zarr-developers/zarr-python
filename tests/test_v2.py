@@ -82,7 +82,12 @@ def test_codec_pipeline() -> None:
 
 @pytest.mark.parametrize("dtype", ["|S", "|V"])
 async def test_v2_encode_decode(dtype):
-    with config.set({"array.v2_default_compressor.bytes": {"id": "vlen-bytes"}}):
+    with config.set(
+        {
+            "array.v2_default_filters.bytes": [{"id": "vlen-bytes"}],
+            "array.v2_default_compressor.bytes": None,
+        }
+    ):
         store = zarr.storage.MemoryStore()
         g = zarr.group(store=store, zarr_format=2)
         g.create_array(
