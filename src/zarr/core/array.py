@@ -798,6 +798,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     @property
     def chunks(self) -> ChunkCoords:
         """Returns the chunk shape of the Array.
+        If sharding is used the inner chunk shape is returned.
 
         Only defined for arrays using using `RegularChunkGrid`.
         If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
@@ -807,14 +808,22 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         ChunkCoords:
             The chunk shape of the Array.
         """
-        if isinstance(self.metadata.chunk_grid, RegularChunkGrid):
-            return self.metadata.chunk_grid.chunk_shape
+        return self.metadata.chunks
 
-        msg = (
-            f"The `chunks` attribute is only defined for arrays using `RegularChunkGrid`."
-            f"This array has a {self.metadata.chunk_grid} instead."
-        )
-        raise NotImplementedError(msg)
+    @property
+    def shards(self) -> ChunkCoords | None:
+        """Returns the shard shape of the Array.
+        Returns None if sharding is not used.
+
+        Only defined for arrays using using `RegularChunkGrid`.
+        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+
+        Returns
+        -------
+        ChunkCoords:
+            The shard shape of the Array.
+        """
+        return self.metadata.shards
 
     @property
     def size(self) -> int:
@@ -1728,6 +1737,10 @@ class Array:
     @property
     def chunks(self) -> ChunkCoords:
         """Returns a tuple of integers describing the length of each dimension of a chunk of the array.
+        If sharding is used the inner chunk shape is returned.
+
+        Only defined for arrays using using `RegularChunkGrid`.
+        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
 
         Returns
         -------
@@ -1735,6 +1748,21 @@ class Array:
             A tuple of integers representing the length of each dimension of a chunk.
         """
         return self._async_array.chunks
+
+    @property
+    def shards(self) -> ChunkCoords | None:
+        """Returns a tuple of integers describing the length of each dimension of a shard of the array.
+        Returns None if sharding is not used.
+
+        Only defined for arrays using using `RegularChunkGrid`.
+        If array doesn't use `RegularChunkGrid`, `NotImplementedError` is raised.
+
+        Returns
+        -------
+        tuple | None
+            A tuple of integers representing the length of each dimension of a shard or None if sharding is not used.
+        """
+        return self._async_array.shards
 
     @property
     def size(self) -> int:

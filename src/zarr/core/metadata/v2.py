@@ -44,7 +44,7 @@ class ArrayV2MetadataDict(TypedDict):
 @dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
-    chunks: tuple[int, ...]
+    chunks: ChunkCoords
     dtype: np.dtype[Any]
     fill_value: int | float | str | bytes | None = 0
     order: MemoryOrder = "C"
@@ -101,6 +101,10 @@ class ArrayV2Metadata(Metadata):
     @cached_property
     def chunk_grid(self) -> RegularChunkGrid:
         return RegularChunkGrid(chunk_shape=self.chunks)
+
+    @property
+    def shards(self) -> ChunkCoords | None:
+        return None
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         def _json_convert(
