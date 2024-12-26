@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import warnings
 from asyncio import gather
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from itertools import starmap
 from logging import getLogger
@@ -93,7 +93,12 @@ from zarr.core.metadata.v2 import (
 from zarr.core.metadata.v3 import DataType, parse_node_type_array
 from zarr.core.sync import sync
 from zarr.errors import MetadataValidationError
-from zarr.registry import get_codec_class, get_pipeline_class
+from zarr.registry import (
+    _parse_array_array_codec,
+    _parse_bytes_bytes_codec,
+    _resolve_codec,
+    get_pipeline_class,
+)
 from zarr.storage import StoreLike, make_store_path
 from zarr.storage.common import StorePath, ensure_no_existing_node
 
@@ -3546,7 +3551,6 @@ async def create_array(
     # TODO: figure out why putting these imports at top-level causes circular imports
     from zarr.codecs.sharding import ShardingCodec
 
-    # TODO: fix this when modes make sense. It should be `w` for overwriting, `w-` otherwise
     mode: Literal["a"] = "a"
     dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
     config_parsed = parse_array_config(config)
@@ -3678,7 +3682,7 @@ def _get_default_encoding_v3(
         dtype_key = "numeric"
 
     codec_dicts = default_codecs[dtype_key]
-    codecs = tuple(get_codec_class(c["name"]).from_dict(c) for c in codec_dicts)
+    codecs = tuple(_resolve_codec(c) for c in codec_dicts)
     array_bytes_maybe = None
     array_array: list[ArrayArrayCodec] = []
     bytes_bytes: list[BytesBytesCodec] = []
@@ -3710,21 +3714,11 @@ def _get_default_chunk_encoding_v2(
     """
     Get the default chunk encoding for zarr v2 arrays, given a dtype
     """
-    if dtype.kind in "biufcmM":
-        dtype_key = "numeric"
-    elif dtype.kind in "U":
-        dtype_key = "string"
-    elif dtype.kind in "OSV":
-        dtype_key = "bytes"
-    else:
-        raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
-    compressor_dict = zarr_config.get("array.v2_default_compressor").get(dtype_key, None)
-    filter_dicts = zarr_config.get("array.v2_default_filters").get(dtype_key, [])
+    compressor_dict = _default_compressor(dtype)
+    filter_dicts = _default_filters(dtype)
 
-    compressor = None
-    if compressor_dict is not None:
-        compressor = numcodecs.get_codec(compressor_dict)
+    compressor = numcodecs.get_codec(compressor_dict)
     filters = tuple(numcodecs.get_codec(f) for f in filter_dicts)
     return filters, compressor
 
@@ -3753,28 +3747,34 @@ def _parse_chunk_encoding_v2(
 
 def _parse_chunk_encoding_v3(
     *,
-    compression: Iterable[BytesBytesCodec] | Literal["auto"],
-    filters: Iterable[ArrayArrayCodec] | Literal["auto"],
+    compression: Iterable[BytesBytesCodec | dict[str, JSON]] | Literal["auto"],
+    filters: Iterable[ArrayArrayCodec | dict[str, JSON]] | Literal["auto"],
     dtype: np.dtype[Any],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """
     Generate chunk encoding classes for v3 arrays with optional defaults.
     """
     default_array_array, default_array_bytes, default_bytes_bytes = _get_default_encoding_v3(dtype)
+    maybe_bytes_bytes: Iterable[BytesBytesCodec | dict[str, JSON]]
+    maybe_array_array: Iterable[ArrayArrayCodec | dict[str, JSON]]
 
     if compression == "auto":
         out_bytes_bytes = default_bytes_bytes
     else:
-        if isinstance(compression, Mapping | Codec):
-            out_bytes_bytes = (compression,)
+        if isinstance(compression, dict | Codec):
+            maybe_bytes_bytes = (compression,)
         else:
-            out_bytes_bytes = tuple(compression)
+            maybe_bytes_bytes = compression
+
+        out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
+
     if filters == "auto":
         out_array_array = default_array_array
     else:
-        if isinstance(filters, Mapping | Codec):
-            out_array_array = (filters,)
+        if isinstance(filters, dict | Codec):
+            maybe_array_array = (filters,)
         else:
-            out_array_array = tuple(filters)
+            maybe_array_array = filters
+        out_array_array = tuple(_parse_array_array_codec(c) for c in maybe_array_array)
 
     return out_array_array, default_array_bytes, out_bytes_bytes
