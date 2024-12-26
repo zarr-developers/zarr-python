@@ -4,6 +4,7 @@ import itertools
 import math
 import numbers
 import operator
+import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
 from functools import reduce
@@ -226,6 +227,11 @@ def _auto_partition(
             _chunks_out = chunk_shape
 
         if shard_shape == "auto":
+            warnings.warn(
+                "Automatic shard shape inference is experimental and may change without notice.",
+                UserWarning,
+                stacklevel=2,
+            )
             _shards_out = ()
             for a_shape, c_shape in zip(array_shape, _chunks_out, strict=True):
                 # TODO: make a better heuristic than this.
