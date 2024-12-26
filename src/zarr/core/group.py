@@ -1001,10 +1001,10 @@ class AsyncGroup:
         *,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
-        chunk_shape: ChunkCoords | Literal["auto"] = "auto",
-        shard_shape: ChunkCoords | Literal["auto"] | None = None,
+        chunks: ChunkCoords | Literal["auto"] = "auto",
+        shards: ChunkCoords | Literal["auto"] | None = None,
         filters: Iterable[dict[str, JSON] | Codec] = (),
-        compression: Iterable[dict[str, JSON] | Codec] = (),
+        compressors: Iterable[dict[str, JSON] | Codec] = (),
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
@@ -1028,9 +1028,9 @@ class AsyncGroup:
             Shape of the array.
         dtype : npt.DTypeLike
             Data type of the array.
-        chunk_shape : ChunkCoords | Literal["auto"], default is "auto".
+        chunks : ChunkCoords | Literal["auto"], default is "auto".
             Chunk shape of the array.
-        shard_shape : ChunkCoords, optional
+        shards : ChunkCoords, optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
         filters : Iterable[Codec], optional
             List of filters to apply to the array.
@@ -1064,10 +1064,10 @@ class AsyncGroup:
             name=name,
             shape=shape,
             dtype=dtype,
-            chunks=chunk_shape,
-            shards=shard_shape,
+            chunks=chunks,
+            shards=shards,
             filters=filters,
-            compressors=compression,
+            compressors=compressors,
             fill_value=fill_value,
             order=order,
             zarr_format=self.metadata.zarr_format,
@@ -1725,8 +1725,8 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = Group.from_store(zarr.storage.MemoryStore()
-        >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
-        >>> group.create_group(name="subgroup").create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+        >>> group.create_array(name="subarray", shape=(10,), chunks=(10,))
+        >>> group.create_group(name="subgroup").create_array(name="subarray", shape=(10,), chunks=(10,))
         >>> group["subarray"]
         <Array memory://132270269438272/subarray shape=(10,) dtype=float64>
         >>> group["subgroup"]
@@ -1760,7 +1760,7 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = Group.from_store(zarr.storage.MemoryStore()
-        >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+        >>> group.create_array(name="subarray", shape=(10,), chunks=(10,))
         >>> group.create_group(name="subgroup")
         >>> group.get("subarray")
         <Array memory://132270269438272/subarray shape=(10,) dtype=float64>
@@ -1786,7 +1786,7 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = Group.from_store(zarr.storage.MemoryStore()
-        >>> group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+        >>> group.create_array(name="subarray", shape=(10,), chunks=(10,))
         >>> del group["subarray"]
         >>> "subarray" in group
         False
@@ -1801,8 +1801,8 @@ class Group(SyncMixin):
         >>> g1 = zarr.group()
         >>> g2 = g1.create_group('foo')
         >>> g3 = g1.create_group('bar')
-        >>> d1 = g1.create_array('baz', shape=(10,), chunk_shape=(10,))
-        >>> d2 = g1.create_array('quux', shape=(10,), chunk_shape=(10,))
+        >>> d1 = g1.create_array('baz', shape=(10,), chunks=(10,))
+        >>> d2 = g1.create_array('quux', shape=(10,), chunks=(10,))
         >>> for name in g1:
         ...     print(name)
         baz
@@ -1993,8 +1993,8 @@ class Group(SyncMixin):
         >>> g1 = zarr.group()
         >>> g2 = g1.create_group('foo')
         >>> g3 = g1.create_group('bar')
-        >>> d1 = g1.create_array('baz', shape=(10,), chunk_shape=(10,))
-        >>> d2 = g1.create_array('quux', shape=(10,), chunk_shape=(10,))
+        >>> d1 = g1.create_array('baz', shape=(10,), chunks=(10,))
+        >>> d2 = g1.create_array('quux', shape=(10,), chunks=(10,))
         >>> for name in g1.keys():
         ...     print(name)
         baz
@@ -2012,7 +2012,7 @@ class Group(SyncMixin):
         >>> import zarr
         >>> g1 = zarr.group()
         >>> g2 = g1.create_group('foo')
-        >>> d1 = g1.create_array('bar', shape=(10,), chunk_shape=(10,))
+        >>> d1 = g1.create_array('bar', shape=(10,), chunks=(10,))
         >>> 'foo' in g1
         True
         >>> 'bar' in g1
@@ -2075,7 +2075,7 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_array("subarray", shape=(10,), chunk_shape=(10,))
+        >>> group.create_array("subarray", shape=(10,), chunks=(10,))
         >>> for name, subarray in group.arrays():
         ...     print(name, subarray)
         subarray <Array memory://140198565357056/subarray shape=(10,) dtype=float64>
@@ -2090,7 +2090,7 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_array("subarray", shape=(10,), chunk_shape=(10,))
+        >>> group.create_array("subarray", shape=(10,), chunks=(10,))
         >>> for name in group.array_keys():
         ...     print(name)
         subarray
@@ -2106,7 +2106,7 @@ class Group(SyncMixin):
         --------
         >>> import zarr
         >>> group = zarr.group()
-        >>> group.create_array("subarray", shape=(10,), chunk_shape=(10,))
+        >>> group.create_array("subarray", shape=(10,), chunks=(10,))
         >>> for subarray in group.array_values():
         ...     print(subarray)
         <Array memory://140198565357056/subarray shape=(10,) dtype=float64>
@@ -2196,10 +2196,10 @@ class Group(SyncMixin):
         *,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
-        chunk_shape: ChunkCoords | Literal["auto"] = "auto",
-        shard_shape: ChunkCoords | None = None,
+        chunks: ChunkCoords | Literal["auto"] = "auto",
+        shards: ChunkCoords | None = None,
         filters: Iterable[dict[str, JSON] | Codec] | Literal["auto"] = "auto",
-        compression: Iterable[dict[str, JSON] | Codec] | Codec | Literal["auto"] = "auto",
+        compressors: Iterable[dict[str, JSON] | Codec] | Codec | Literal["auto"] = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
@@ -2216,16 +2216,16 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        path : str
+        name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
         shape : ChunkCoords
             Shape of the array.
         dtype : npt.DTypeLike
             Data type of the array.
-        chunk_shape : ChunkCoords | Literal["auto"], default is "auto"
+        chunks : ChunkCoords | Literal["auto"], default is "auto"
             Chunk shape of the array.
-        shard_shape : ChunkCoords, optional
+        shards : ChunkCoords, optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
         filters : Iterable[Codec], optional
             List of filters to apply to the array.
@@ -2260,12 +2260,12 @@ class Group(SyncMixin):
                     name=name,
                     shape=shape,
                     dtype=dtype,
-                    chunk_shape=chunk_shape,
-                    shard_shape=shard_shape,
+                    chunks=chunks,
+                    shards=shards,
                     fill_value=fill_value,
                     attributes=attributes,
                     chunk_key_encoding=chunk_key_encoding,
-                    compression=compression,
+                    compressors=compressors,
                     dimension_names=dimension_names,
                     order=order,
                     filters=filters,
@@ -2530,10 +2530,10 @@ class Group(SyncMixin):
         *,
         shape: ShapeLike,
         dtype: npt.DTypeLike,
-        chunk_shape: ChunkCoords | Literal["auto"] = "auto",
-        shard_shape: ChunkCoords | Literal["auto"] | None = None,
+        chunks: ChunkCoords | Literal["auto"] = "auto",
+        shards: ChunkCoords | Literal["auto"] | None = None,
         filters: Iterable[dict[str, JSON] | Codec] = (),
-        compression: Iterable[dict[str, JSON] | Codec] = (),
+        compressors: Iterable[dict[str, JSON] | Codec] = (),
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
@@ -2550,16 +2550,16 @@ class Group(SyncMixin):
 
         Parameters
         ----------
-        path : str
+        name : str
             The name of the array relative to the group. If ``path`` is ``None``, the array will be located
             at the root of the store.
         shape : ChunkCoords
             Shape of the array.
         dtype : npt.DTypeLike
             Data type of the array.
-        chunk_shape : ChunkCoords
+        chunks : ChunkCoords
             Chunk shape of the array.
-        shard_shape : ChunkCoords, optional
+        shards : ChunkCoords, optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.
         filters : Iterable[Codec], optional
             List of filters to apply to the array.
@@ -2594,12 +2594,12 @@ class Group(SyncMixin):
                     name=name,
                     shape=shape,
                     dtype=dtype,
-                    chunk_shape=chunk_shape,
-                    shard_shape=shard_shape,
+                    chunks=chunks,
+                    shards=shards,
                     fill_value=fill_value,
                     attributes=attributes,
                     chunk_key_encoding=chunk_key_encoding,
-                    compression=compression,
+                    compressors=compressors,
                     dimension_names=dimension_names,
                     order=order,
                     filters=filters,

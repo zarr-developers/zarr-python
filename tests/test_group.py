@@ -874,9 +874,7 @@ async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None
     agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
 
     array_name = "sub_array"
-    sub_array = await agroup.create_array(
-        name=array_name, shape=(10,), dtype="uint8", chunk_shape=(2,)
-    )
+    sub_array = await agroup.create_array(name=array_name, shape=(10,), dtype="uint8", chunks=(2,))
     assert await agroup.getitem(array_name) == sub_array
 
     sub_group_path = "sub_group"
@@ -898,7 +896,7 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
         name=array_name,
         shape=(10,),
         dtype="uint8",
-        chunk_shape=(2,),
+        chunks=(2,),
         attributes={"foo": 100},
     )
     await agroup.delitem(array_name)
@@ -964,7 +962,7 @@ async def test_asyncgroup_create_array(
         name=sub_node_path,
         shape=shape,
         dtype=dtype,
-        chunk_shape=chunk_shape,
+        chunks=chunk_shape,
         attributes=attributes,
     )
     assert isinstance(subnode, AsyncArray)
@@ -1105,7 +1103,7 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
         assert foo_group.attrs == {}
 
     _ = await foo_group.create_array(
-        "bar", shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
+        "bar", shape=(10,), dtype="uint8", chunks=(2,), attributes={"foo": 100}
     )
 
     # test that overwriting a group w/ children fails

@@ -925,6 +925,6 @@ def test_auto_partition_auto_shards(
             expected_shards += (cs,)
 
     auto_shards, _ = _auto_partition(
-        array_shape=array_shape, chunk_shape=chunk_shape, shard_shape="auto", dtype=dtype
+        array_shape=array_shape, chunks=chunk_shape, shards="auto", dtype=dtype
     )
     assert auto_shards == expected_shards

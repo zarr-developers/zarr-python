@@ -1125,11 +1125,11 @@ async def test_create_array_v3(store: MemoryStore) -> None:
         store=store,
         dtype="uint8",
         shape=(10,),
-        shard_shape=(4,),
-        chunk_shape=(4,),
+        shards=(4,),
+        chunks=(4,),
         zarr_format=3,
         filters=(TransposeCodec(order=(0,)),),
-        compression=ZstdCodec(level=3),
+        compressors=ZstdCodec(level=3),
     )
 
 
@@ -1143,9 +1143,9 @@ async def test_create_array_v2(store: MemoryStore) -> None:
         store=store,
         dtype=dtype,
         shape=(10,),
-        shard_shape=None,
-        chunk_shape=(4,),
+        shards=None,
+        chunks=(4,),
         zarr_format=2,
         filters=(Delta(dtype=dtype),),
-        compression=Zstd(level=3),
+        compressors=Zstd(level=3),
     )
