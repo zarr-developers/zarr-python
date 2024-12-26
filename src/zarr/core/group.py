@@ -1067,7 +1067,7 @@ class AsyncGroup:
             chunks=chunk_shape,
             shards=shard_shape,
             filters=filters,
-            compression=compression,
+            compressors=compression,
             fill_value=fill_value,
             order=order,
             zarr_format=self.metadata.zarr_format,

@@ -3484,7 +3484,7 @@ async def create_array(
     chunks: ChunkCoords | Literal["auto"] = "auto",
     shards: ChunkCoords | Literal["auto"] | None = None,
     filters: FiltersParam = "auto",
-    compression: CompressionParam = "auto",
+    compressors: CompressionParam = "auto",
     fill_value: Any | None = 0,
     order: MemoryOrder | None = "C",
     zarr_format: ZarrFormat | None = 3,
@@ -3514,9 +3514,19 @@ async def create_array(
     shards : ChunkCoords, optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec], optional
-        List of filters to apply to the array.
-    compression : Iterable[Codec], optional
-        List of compressors to apply to the array.
+        Iterable of filters to apply to each chunk of the array, in order, before serializing that
+        chunk to bytes.
+        For Zarr v3, a "filter" is a transformation that takes an array and returns an array,
+        and these values must be instances of ``ArrayArrayCodec``, or dict representations
+        of ``ArrayArrayCodec``.
+        For Zarr v2, a "filter" can be any numcodecs codec; you should ensure that the
+        the order if your filters is consistent with the behavior of each filter.
+    compressors : Iterable[Codec], optional
+        List of compressors to apply to the array. Compressors are applied in order, and after any
+        filters are applied (if any are specified).
+        For Zarr v3, a "compressor" is a transformation that takes a string of bytes and
+        returns another string of bytes.
+        For Zarr v2, a "compressor" can be any numcodecs codec.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -3579,7 +3589,7 @@ async def create_array(
             )
         filters = cast(Iterable[numcodecs.abc.Codec] | Literal["auto"], filters)
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
-            compression=compression, filters=filters, dtype=dtype_parsed
+            compression=compressors, filters=filters, dtype=dtype_parsed
         )
         if dimension_names is not None:
             raise ValueError("Zarr v2 arrays do not support dimension names.")
@@ -3604,7 +3614,7 @@ async def create_array(
         )
     else:
         array_array, array_bytes, bytes_bytes = _parse_chunk_encoding_v3(
-            compression=compression, filters=filters, dtype=dtype_parsed
+            compression=compressors, filters=filters, dtype=dtype_parsed
         )
         sub_codecs = (*array_array, array_bytes, *bytes_bytes)
         codecs_out: tuple[Codec, ...]
