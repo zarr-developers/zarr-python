@@ -1061,41 +1061,6 @@ async def create(
     )
 
 
-async def read_array(
-    store: StoreLike,
-    *,
-    path: str | None = None,
-    zarr_format: ZarrFormat | None = None,
-    storage_options: dict[str, Any] | None = None,
-) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]:
-    """Create an array for reading. Wraps `:func:zarr.api.asynchronous.create`.
-    See the documentation of that function for details.
-
-    Parameters
-    ----------
-    store : Store or str
-        Store or path to directory in file system or name of zip file.
-    path : str, optional
-        Path under which the array is stored.
-    zarr_format : {2, 3, None}, optional
-        The zarr format to require. The default value of ``None`` will first look for Zarr v3 data,
-        then Zarr v2 data, then fail if neither format is found.
-    storage_options : dict
-        If using an fsspec URL to create the store, these will be passed to
-        the backend implementation. Ignored otherwise.
-
-    Returns
-    -------
-    z : array
-        The array.
-    """
-    store_path = await make_store_path(store, path=path, mode="r", storage_options=storage_options)
-    return await AsyncArray.open(
-        store=store_path,
-        zarr_format=zarr_format,
-    )
-
-
 async def empty(
     shape: ChunkCoords, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
