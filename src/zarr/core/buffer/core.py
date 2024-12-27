@@ -16,7 +16,6 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from typing import Self
