@@ -3748,7 +3748,7 @@ def _get_default_encoding_v3(
 
 def _get_default_chunk_encoding_v2(
     dtype: np.dtype[Any],
-) -> tuple[tuple[numcodecs.abc.Codec, ...], numcodecs.abc.Codec | None]:
+) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
     """
     Get the default chunk encoding for zarr v2 arrays, given a dtype
     """
@@ -3756,8 +3756,14 @@ def _get_default_chunk_encoding_v2(
     compressor_dict = _default_compressor(dtype)
     filter_dicts = _default_filters(dtype)
 
-    compressor = numcodecs.get_codec(compressor_dict)
-    filters = tuple(numcodecs.get_codec(f) for f in filter_dicts)
+    compressor = None
+    if compressor_dict is not None:
+        compressor = numcodecs.get_codec(compressor_dict)
+
+    filters = None
+    if filter_dicts is not None:
+        filters = tuple(numcodecs.get_codec(f) for f in filter_dicts)
+
     return filters, compressor
 
 
@@ -3766,7 +3772,7 @@ def _parse_chunk_encoding_v2(
     compression: numcodecs.abc.Codec | Literal["auto"],
     filters: tuple[numcodecs.abc.Codec, ...] | Literal["auto"],
     dtype: np.dtype[Any],
-) -> tuple[tuple[numcodecs.abc.Codec, ...], numcodecs.abc.Codec]:
+) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
     """
     Generate chunk encoding classes for v2 arrays with optional defaults.
     """

@@ -93,7 +93,7 @@ async def test_v2_encode_decode(dtype):
         g.create_array(
             name="foo",
             shape=(3,),
-            chunk_shape=(3,),
+            chunks=(3,),
             dtype=dtype,
             fill_value=b"X",
         )

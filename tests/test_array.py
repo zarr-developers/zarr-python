@@ -8,7 +8,6 @@ from typing import Any, Literal
 import numcodecs
 import numpy as np
 import pytest
-from numcodecs import Zstd
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
@@ -138,13 +137,13 @@ def test_array_name_properties_with_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
     root = Group.from_store(store=store, zarr_format=zarr_format)
-    foo = root.create_array("foo", shape=(100,), chunk_shape=(10,), dtype="i4")
+    foo = root.create_array("foo", shape=(100,), chunks=(10,), dtype="i4")
     assert foo.path == "foo"
     assert foo.name == "/foo"
     assert foo.basename == "foo"
 
     bar = root.create_group("bar")
-    spam = bar.create_array("spam", shape=(100,), chunk_shape=(10,), dtype="i4")
+    spam = bar.create_array("spam", shape=(100,), chunks=(10,), dtype="i4")
 
     assert spam.path == "bar/spam"
     assert spam.name == "/bar/spam"
@@ -463,7 +462,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=128,
-            _filters=(numcodecs.Zstd(),),
+            _compressor=numcodecs.Zstd(),
         )
         assert result == expected
 
@@ -519,8 +518,8 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _filters=(Zstd(level=0),),
             _count_bytes=128,
+            _compressor=numcodecs.Zstd(),
         )
         assert result == expected
 
@@ -925,7 +924,7 @@ def test_auto_partition_auto_shards(
             expected_shards += (cs,)
 
     auto_shards, _ = _auto_partition(
-        array_shape=array_shape, chunks=chunk_shape, shards="auto", dtype=dtype
+        array_shape=array_shape, chunk_shape=chunk_shape, shard_shape="auto", dtype=dtype
     )
     assert auto_shards == expected_shards
 

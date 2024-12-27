@@ -357,7 +357,7 @@ def _default_compressor(
 
 def _default_filters(
     dtype: np.dtype[Any],
-) -> list[dict[str, JSON]]:
+) -> list[dict[str, JSON]] | None:
     """Get the default filters and compressor for a dtype.
 
     https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
@@ -372,4 +372,4 @@ def _default_filters(
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
-    return default_filters.get(dtype_key, [])
+    return default_filters.get(dtype_key, None)

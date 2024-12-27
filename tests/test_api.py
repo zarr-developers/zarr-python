@@ -68,7 +68,7 @@ def test_create_array(store: Store) -> None:
     path = "foo"
     data_val = 1
     array_w = create_array(
-        store, name=path, shape=shape, attributes=attrs, chunk_shape=shape, dtype="uint8"
+        store, name=path, shape=shape, attributes=attrs, chunks=shape, dtype="uint8"
     )
     array_w[:] = data_val
     assert array_w.shape == shape

@@ -77,7 +77,7 @@ class TestConsolidated:
             },
             "codecs": (
                 {"configuration": {"endian": "little"}, "name": "bytes"},
-                {"configuration": {}, "name": "zstd"},
+                {"configuration": {"level": 0, "checksum": False}, "name": "zstd"},
             ),
             "data_type": "uint8",
             "fill_value": 0,
@@ -225,7 +225,7 @@ class TestConsolidated:
             },
             "codecs": (
                 {"configuration": {"endian": "little"}, "name": "bytes"},
-                {"configuration": {}, "name": "zstd"},
+                {"configuration": {"level": 0, "checksum": False}, "name": "zstd"},
             ),
             "data_type": dtype,
             "fill_value": 0,
@@ -498,7 +498,7 @@ class TestConsolidated:
                         attributes={"key": "a"},
                         chunks=(1,),
                         fill_value=0,
-                        filters=(Zstd(level=0),),
+                        compressor=Zstd(level=0),
                         order="C",
                     ),
                     "g1": GroupMetadata(
