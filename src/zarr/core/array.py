@@ -3486,7 +3486,7 @@ async def create_array(
     filters: FiltersParam = "auto",
     compressors: CompressionParam = "auto",
     fill_value: Any | None = 0,
-    order: MemoryOrder | None = "C",
+    order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
