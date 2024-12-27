@@ -296,6 +296,40 @@ class ArrayV3Metadata(Metadata):
     def ndim(self) -> int:
         return len(self.shape)
 
+    @property
+    def chunks(self) -> ChunkCoords:
+        if isinstance(self.chunk_grid, RegularChunkGrid):
+            from zarr.codecs.sharding import ShardingCodec
+
+            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+                sharding_codec = self.codecs[0]
+                assert isinstance(sharding_codec, ShardingCodec)  # for mypy
+                return sharding_codec.chunk_shape
+            else:
+                return self.chunk_grid.chunk_shape
+
+        msg = (
+            f"The `chunks` attribute is only defined for arrays using `RegularChunkGrid`."
+            f"This array has a {self.chunk_grid} instead."
+        )
+        raise NotImplementedError(msg)
+
+    @property
+    def shards(self) -> ChunkCoords | None:
+        if isinstance(self.chunk_grid, RegularChunkGrid):
+            from zarr.codecs.sharding import ShardingCodec
+
+            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+                return self.chunk_grid.chunk_shape
+            else:
+                return None
+
+        msg = (
+            f"The `shards` attribute is only defined for arrays using `RegularChunkGrid`."
+            f"This array has a {self.chunk_grid} instead."
+        )
+        raise NotImplementedError(msg)
+
     def get_chunk_spec(
         self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
