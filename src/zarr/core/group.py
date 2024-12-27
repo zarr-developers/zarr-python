@@ -1028,7 +1028,7 @@ class AsyncGroup:
             Shape of the array.
         dtype : npt.DTypeLike
             Data type of the array.
-        chunks : ChunkCoords | Literal["auto"], default is "auto".
+        chunks : ChunkCoords | Literal["auto"], default is "auto"
             Chunk shape of the array.
         shards : ChunkCoords, optional
             Shard shape of the array. The default value of ``None`` results in no sharding at all.

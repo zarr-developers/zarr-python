@@ -6,7 +6,6 @@ from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
-from zarr.core.common import JSON
 from zarr.core.config import BadConfigError, config
 
 if TYPE_CHECKING:
@@ -14,6 +13,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import Codec, CodecPipeline
     from zarr.core.buffer import Buffer, NDBuffer
+    from zarr.core.common import JSON
 
 __all__ = [
     "Registry",
@@ -171,7 +171,7 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | BytesBytesCodec) -> BytesBy
         result = _resolve_codec(data)
         if not isinstance(result, BytesBytesCodec):
             msg = f"Expected a dict representation of a BytesBytesCodec; got a dict representation of a {type(result)} instead."
-            raise ValueError(msg)
+            raise TypeError(msg)
     else:
         result = data
     return result
@@ -187,7 +187,7 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | ArrayBytesCodec) -> ArrayBy
         result = _resolve_codec(data)
         if not isinstance(result, ArrayBytesCodec):
             msg = f"Expected a dict representation of a ArrayBytesCodec; got a dict representation of a {type(result)} instead."
-            raise ValueError(msg)
+            raise TypeError(msg)
     else:
         result = data
     return result
@@ -203,7 +203,7 @@ def _parse_array_array_codec(data: dict[str, JSON] | ArrayArrayCodec) -> ArrayAr
         result = _resolve_codec(data)
         if not isinstance(result, ArrayArrayCodec):
             msg = f"Expected a dict representation of a ArrayArrayCodec; got a dict representation of a {type(result)} instead."
-            raise ValueError(msg)
+            raise TypeError(msg)
     else:
         result = data
     return result
