@@ -881,3 +881,10 @@ async def test_nbytes(
         assert arr._async_array.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
     else:
         assert arr.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
+
+
+async def test_scalar_array() -> None:
+    arr = zarr.array(1.5)
+    assert arr[...] == 1.5
+    assert arr[()] == 1.5
+    assert arr.shape == ()
