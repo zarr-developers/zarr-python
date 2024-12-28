@@ -3615,7 +3615,7 @@ async def create_array(
     if zarr_format == 2:
         if shard_shape_parsed is not None:
             msg = (
-                "Zarr v2 arrays can only be created with `shard_shape` set to `None`."
+                "Zarr v2 arrays can only be created with `shard_shape` set to `None`. "
                 f"Got `shard_shape={shards}` instead."
             )
 

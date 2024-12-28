@@ -2,6 +2,7 @@ import dataclasses
 import json
 import math
 import pickle
+import re
 from itertools import accumulate
 from typing import Any, Literal
 
@@ -1096,18 +1097,18 @@ async def test_create_array_v2_default_filters_compressors(store: MemoryStore, d
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-async def test_create_array_v2(store: MemoryStore) -> None:
-    from numcodecs import Delta, Zstd
-
-    # TODO: fill in
-    dtype = "uint8"
-    _ = zarr.create_array(
-        store=store,
-        dtype=dtype,
-        shape=(10,),
-        shards=None,
-        chunks=(4,),
-        zarr_format=2,
-        filters=(Delta(dtype=dtype),),
-        compressors=Zstd(level=3),
+async def test_create_array_v2_no_shards(store: MemoryStore) -> None:
+    """
+    Test that creating a Zarr v2 array with ``shard_shape`` set to a non-None value raises an error.
+    """
+    msg = re.escape(
+        "Zarr v2 arrays can only be created with `shard_shape` set to `None`. Got `shard_shape=(5,)` instead."
     )
+    with pytest.raises(ValueError, match=msg):
+        _ = await create_array(
+            store=store,
+            dtype="uint8",
+            shape=(10,),
+            shards=(5,),
+            zarr_format=2,
+        )
