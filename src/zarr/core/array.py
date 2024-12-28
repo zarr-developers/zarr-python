@@ -3780,8 +3780,9 @@ def _parse_chunk_encoding_v2(
     if compressor == "auto":
         _compressor = default_compressor
     else:
-        if isinstance(compressor, Iterable):
-            raise TypeError("For Zarr v2 arrays, the `compressor` must be a single codec.")
+        if isinstance(compressor, Iterable) and not isinstance(compressor, dict):
+            msg = f"For Zarr v2 arrays, the `compressor` must be a single codec. Got an iterable with type {type(compressor)} instead."
+            raise TypeError(msg)
         _compressor = parse_compressor(compressor)
     if filters == "auto":
         _filters = default_filters
