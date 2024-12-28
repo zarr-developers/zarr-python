@@ -12,9 +12,16 @@ import pytest
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
 from zarr.codecs import BytesCodec, VLenBytesCodec, ZstdCodec
+from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.sharding import ShardingCodec
+from zarr.codecs.transpose import TransposeCodec
 from zarr.core._info import ArrayInfo
-from zarr.core.array import chunks_initialized
+from zarr.core.array import (
+    CompressorsParam,
+    FiltersParam,
+    _parse_chunk_encoding_v3,
+    chunks_initialized,
+)
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
@@ -957,3 +964,106 @@ def test_chunks_and_shards() -> None:
     )
     assert arr_v2.chunks == chunks
     assert arr_v2.shards is None
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize(
+    "compressors",
+    [
+        "auto",
+        (ZstdCodec(level=3),),
+        (ZstdCodec(level=3), GzipCodec(level=0)),
+        ZstdCodec(level=3),
+        {"name": "zstd", "configuration": {"level": 3}},
+        ({"name": "zstd", "configuration": {"level": 3}},),
+    ],
+)
+async def test_create_array_v3_compressors(
+    store: MemoryStore, compressors: CompressorsParam
+) -> None:
+    """
+    Test various possibilities for the compressors parameter to create_array
+    """
+    dtype = "uint8"
+    arr = zarr.create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        zarr_format=3,
+        compressors=compressors,
+    )
+    _, _, bb_codecs_expected = _parse_chunk_encoding_v3(
+        filters=(), compressors=compressors, dtype=np.dtype(dtype)
+    )
+    # TODO: find a better way to get the compressors from the array.
+    assert tuple(arr._async_array.metadata.codecs[-len(bb_codecs_expected) :]) == bb_codecs_expected  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize(
+    "filters",
+    [
+        "auto",
+        (
+            TransposeCodec(
+                order=[
+                    0,
+                ]
+            ),
+        ),
+        (
+            TransposeCodec(
+                order=[
+                    0,
+                ]
+            ),
+            TransposeCodec(
+                order=[
+                    0,
+                ]
+            ),
+        ),
+        TransposeCodec(
+            order=[
+                0,
+            ]
+        ),
+        {"name": "transpose", "configuration": {"order": [0]}},
+        ({"name": "transpose", "configuration": {"order": [0]}},),
+    ],
+)
+async def test_create_array_v3_filters(store: MemoryStore, filters: FiltersParam) -> None:
+    """
+    Test various possibilities for the filters parameter to create_array
+    """
+    dtype = "uint8"
+    arr = zarr.create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        zarr_format=3,
+        filters=filters,
+    )
+    aa_codecs_expected, _, _ = _parse_chunk_encoding_v3(
+        filters=filters, compressors=(), dtype=np.dtype(dtype)
+    )
+    # TODO: find a better way to get the filters from the array.
+    assert tuple(arr._async_array.metadata.codecs[: len(aa_codecs_expected)]) == aa_codecs_expected  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_v2(store: MemoryStore) -> None:
+    from numcodecs import Delta, Zstd
+
+    # TODO: fill in
+    dtype = "uint8"
+    _ = zarr.create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        shards=None,
+        chunks=(4,),
+        zarr_format=2,
+        filters=(Delta(dtype=dtype),),
+        compressors=Zstd(level=3),
+    )
