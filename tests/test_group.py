@@ -614,20 +614,24 @@ def test_group_create_array(
     data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
 
     if method == "create_array":
-        array = group.create_array(name="array", shape=shape, dtype=dtype, data=data)
+        array = group.create_array(name="array", shape=shape, dtype=dtype)
+        array[:] = data
     elif method == "array":
         with pytest.warns(DeprecationWarning):
-            array = group.array(name="array", shape=shape, dtype=dtype, data=data)
+            array = group.array(name="array", shape=shape, dtype=dtype)
+            array[:] = data
     else:
         raise AssertionError
 
     if not overwrite:
         if method == "create_array":
             with pytest.raises(ContainsArrayError):
-                group.create_array(name="array", shape=shape, dtype=dtype, data=data)
+                a = group.create_array(name="array", shape=shape, dtype=dtype)
+                a[:] = data
         elif method == "array":
             with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
-                group.array(name="array", shape=shape, dtype=dtype, data=data)
+                a = group.array(name="array", shape=shape, dtype=dtype)
+                a[:] = data
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)
