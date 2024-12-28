@@ -161,7 +161,7 @@ def _resolve_codec(data: dict[str, JSON]) -> Codec:
     return get_codec_class(data["name"]).from_dict(data)  # type: ignore[arg-type]
 
 
-def _parse_bytes_bytes_codec(data: dict[str, JSON] | BytesBytesCodec) -> BytesBytesCodec:
+def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
     """
     Normalize the input to a ``BytesBytesCodec`` instance.
     If the input is already a ``BytesBytesCodec``, it is returned as is. If the input is a dict, it
@@ -173,6 +173,8 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | BytesBytesCodec) -> BytesBy
             msg = f"Expected a dict representation of a BytesBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     else:
+        if not isinstance(data, BytesBytesCodec):
+            raise TypeError(f"Expected a BytesBytesCodec. Got {type(data)} instead.")
         result = data
     return result
 
@@ -193,7 +195,7 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | ArrayBytesCodec) -> ArrayBy
     return result
 
 
-def _parse_array_array_codec(data: dict[str, JSON] | ArrayArrayCodec) -> ArrayArrayCodec:
+def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
     """
     Normalize the input to a ``ArrayArrayCodec`` instance.
     If the input is already a ``ArrayArrayCodec``, it is returned as is. If the input is a dict, it
@@ -205,6 +207,8 @@ def _parse_array_array_codec(data: dict[str, JSON] | ArrayArrayCodec) -> ArrayAr
             msg = f"Expected a dict representation of a ArrayArrayCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     else:
+        if not isinstance(data, ArrayArrayCodec):
+            raise TypeError(f"Expected a ArrayArrayCodec. Got {type(data)} instead.")
         result = data
     return result
 

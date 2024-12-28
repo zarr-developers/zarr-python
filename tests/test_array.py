@@ -22,7 +22,8 @@ from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
-from zarr.core.metadata.v3 import DataType
+from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore
@@ -885,7 +886,9 @@ async def test_nbytes(
         assert arr.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
 
 
-def _get_partitioning(data: AsyncArray) -> tuple[tuple[int, ...], tuple[int, ...] | None]:
+def _get_partitioning(
+    data: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+) -> tuple[tuple[int, ...], tuple[int, ...] | None]:
     """
     Get the shard shape and chunk shape of an array. If the array is not sharded, the shard shape
     will be None.

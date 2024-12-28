@@ -548,7 +548,7 @@ def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
     else:
         np_dtype = dtype.to_numpy()
         np_dtype = cast(np.dtype[Any], np_dtype)
-        return np_dtype.type(0)
+        return np_dtype.type(0)  # type: ignore[misc]
 
 
 # For type checking

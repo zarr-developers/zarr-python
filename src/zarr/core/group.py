@@ -21,7 +21,7 @@ from zarr.core._info import GroupInfo
 from zarr.core.array import (
     Array,
     AsyncArray,
-    CompressionParam,
+    CompressorsParam,
     FiltersParam,
     _build_parents,
     create_array,
@@ -511,7 +511,7 @@ class AsyncGroup:
             )
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # warn and favor v3
-                msg = f"Both zarr.json (zarr v3) and .zgroup (zarr v2) metadata objects exist at {store_path}."
+                msg = f"Both zarr.json (Zarr v3) and .zgroup (Zarr v2) metadata objects exist at {store_path}. Zarr v3 will be used."
                 warnings.warn(msg, stacklevel=1)
             if zarr_json_bytes is None and zgroup_bytes is None:
                 raise FileNotFoundError(
@@ -1011,7 +1011,7 @@ class AsyncGroup:
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ChunkCoords | Literal["auto"] | None = None,
         filters: FiltersParam = "auto",
-        compressors: CompressionParam = "auto",
+        compressors: CompressorsParam = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
@@ -2539,8 +2539,8 @@ class Group(SyncMixin):
         dtype: npt.DTypeLike,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ChunkCoords | Literal["auto"] | None = None,
-        filters: Iterable[dict[str, JSON] | Codec] = "auto",
-        compressors: Iterable[dict[str, JSON] | Codec] = "auto",
+        filters: FiltersParam = "auto",
+        compressors: CompressorsParam = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
