@@ -3704,7 +3704,7 @@ def _parse_chunk_key_encoding(
     return result
 
 
-def _get_default_encoding_v3(
+def _get_default_chunk_encoding_v3(
     np_dtype: np.dtype[Any],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """
@@ -3747,14 +3747,14 @@ def _get_default_encoding_v3(
 
 
 def _get_default_chunk_encoding_v2(
-    dtype: np.dtype[Any],
+    np_dtype: np.dtype[Any],
 ) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
     """
     Get the default chunk encoding for zarr v2 arrays, given a dtype
     """
 
-    compressor_dict = _default_compressor(dtype)
-    filter_dicts = _default_filters(dtype)
+    compressor_dict = _default_compressor(np_dtype)
+    filter_dicts = _default_filters(np_dtype)
 
     compressor = None
     if compressor_dict is not None:
@@ -3811,7 +3811,9 @@ def _parse_chunk_encoding_v3(
     """
     Generate chunk encoding classes for v3 arrays with optional defaults.
     """
-    default_array_array, default_array_bytes, default_bytes_bytes = _get_default_encoding_v3(dtype)
+    default_array_array, default_array_bytes, default_bytes_bytes = _get_default_chunk_encoding_v3(
+        dtype
+    )
     maybe_bytes_bytes: Iterable[Codec | dict[str, JSON]]
     maybe_array_array: Iterable[Codec | dict[str, JSON]]
 

@@ -19,8 +19,11 @@ from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     CompressorsParam,
     FiltersParam,
+    _get_default_chunk_encoding_v2,
+    _get_default_chunk_encoding_v3,
     _parse_chunk_encoding_v3,
     chunks_initialized,
+    create_array,
 )
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
@@ -985,7 +988,7 @@ async def test_create_array_v3_compressors(
     Test various possibilities for the compressors parameter to create_array
     """
     dtype = "uint8"
-    arr = zarr.create_array(
+    arr = await create_array(
         store=store,
         dtype=dtype,
         shape=(10,),
@@ -996,7 +999,7 @@ async def test_create_array_v3_compressors(
         filters=(), compressors=compressors, dtype=np.dtype(dtype)
     )
     # TODO: find a better way to get the compressors from the array.
-    assert tuple(arr._async_array.metadata.codecs[-len(bb_codecs_expected) :]) == bb_codecs_expected  # type: ignore[union-attr]
+    assert arr.codec_pipeline.bytes_bytes_codecs == bb_codecs_expected  # type: ignore[union-attr, attr-defined]
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1037,7 +1040,7 @@ async def test_create_array_v3_filters(store: MemoryStore, filters: FiltersParam
     Test various possibilities for the filters parameter to create_array
     """
     dtype = "uint8"
-    arr = zarr.create_array(
+    arr = await create_array(
         store=store,
         dtype=dtype,
         shape=(10,),
@@ -1048,7 +1051,48 @@ async def test_create_array_v3_filters(store: MemoryStore, filters: FiltersParam
         filters=filters, compressors=(), dtype=np.dtype(dtype)
     )
     # TODO: find a better way to get the filters from the array.
-    assert tuple(arr._async_array.metadata.codecs[: len(aa_codecs_expected)]) == aa_codecs_expected  # type: ignore[union-attr]
+    assert arr.codec_pipeline.array_array_codecs == aa_codecs_expected  # type: ignore[union-attr, attr-defined]
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
+async def test_create_array_v3_default_filters_compressors(store: MemoryStore, dtype: str) -> None:
+    """
+    Test that the default ``filters`` and ``compressors`` are used when ``create_array`` is invoked with
+    ``zarr_format`` = 3 and ``filters`` and ``compressors`` are not specified.
+    """
+    arr = await create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        zarr_format=3,
+    )
+    expected_aa, expected_ab, expected_bb = _get_default_chunk_encoding_v3(np_dtype=np.dtype(dtype))
+    # TODO: define the codec pipeline class such that these fields are required, which will obviate the
+    # type ignore statements
+    assert arr.codec_pipeline.array_array_codecs == expected_aa  # type: ignore[attr-defined]
+    assert arr.codec_pipeline.bytes_bytes_codecs == expected_bb  # type: ignore[attr-defined]
+    assert arr.codec_pipeline.array_bytes_codec == expected_ab  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
+async def test_create_array_v2_default_filters_compressors(store: MemoryStore, dtype: str) -> None:
+    """
+    Test that the default ``filters`` and ``compressors`` are used when ``create_array`` is invoked with
+    ``zarr_format`` = 2 and ``filters`` and ``compressors`` are not specified.
+    """
+    arr = await create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        zarr_format=2,
+    )
+    expected_filters, expected_compressors = _get_default_chunk_encoding_v2(
+        np_dtype=np.dtype(dtype)
+    )
+    assert arr.metadata.filters == expected_filters  # type: ignore[union-attr]
+    assert arr.metadata.compressor == expected_compressors  # type: ignore[union-attr]
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
