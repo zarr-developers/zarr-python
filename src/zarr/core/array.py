@@ -690,10 +690,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             filters = _default_filters(dtype)
         if not compressor:
             compressor = _default_compressor(dtype)
+
+        # inject VLenUTF8 for str dtype if not already present
         if np.issubdtype(dtype, np.str_):
             filters = filters or []
-            if not any(x["id"] == "vlen-utf8" for x in filters):
-                filters = list(filters) + [{"id": "vlen-utf8"}]
+            from numcodecs.vlen import VLenUTF8
+
+            if not any(isinstance(x, VLenUTF8) or x["id"] == "vlen-utf8" for x in filters):
+                filters = list(filters) + [VLenUTF8()]
 
         metadata = ArrayV2Metadata(
             shape=shape,
