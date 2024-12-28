@@ -1020,7 +1020,6 @@ class AsyncGroup:
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigParams | None = None,
-        data: npt.ArrayLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
         Create a Zarr array within this AsyncGroup.
@@ -1084,7 +1083,6 @@ class AsyncGroup:
             storage_options=storage_options,
             overwrite=overwrite,
             config=config,
-            data=data,
         )
 
     @deprecated("Use AsyncGroup.create_array instead.")
@@ -2215,7 +2213,6 @@ class Group(SyncMixin):
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigParams | None = None,
-        data: npt.ArrayLike | None = None,
     ) -> Array:
         """
         Create a Zarr array within this AsyncGroup.
@@ -2279,7 +2276,6 @@ class Group(SyncMixin):
                     overwrite=overwrite,
                     storage_options=storage_options,
                     config=config,
-                    data=data,
                 )
             )
         )
@@ -2613,7 +2609,6 @@ class Group(SyncMixin):
                     overwrite=overwrite,
                     storage_options=storage_options,
                     config=config,
-                    data=data,
                 )
             )
         )

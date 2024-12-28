@@ -3530,7 +3530,6 @@ async def create_array(
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfig | ArrayConfigParams | None = None,
-    data: npt.ArrayLike | None = None,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array.
 
@@ -3582,8 +3581,6 @@ async def create_array(
         Whether to overwrite an array with the same name in the store, if one exists.
     config : ArrayConfig or ArrayConfigParams, optional
         Runtime configuration for the array.
-    data : np.ndarray, optional
-        Initial data for the array.
 
     Returns
     -------
@@ -3676,10 +3673,6 @@ async def create_array(
             config=config_parsed,
         )
 
-    if data is not None:
-        await result.setitem(
-            selection=slice(None), value=data, prototype=default_buffer_prototype()
-        )
     return result
 
 
