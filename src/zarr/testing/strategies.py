@@ -143,7 +143,7 @@ def arrays(
     a = root.create_array(
         array_path,
         shape=nparray.shape,
-        chunk_shape=chunks,
+        chunks=chunks,
         dtype=nparray.dtype,
         attributes=attributes,
         # compressor=compressor,  # FIXME

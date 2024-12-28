@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import JSON, ChunkCoords
+    from zarr.core.common import ChunkCoords
 
 import json
 from dataclasses import dataclass, field, fields, replace
@@ -27,7 +27,7 @@ import numpy as np
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
-from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, MemoryOrder, parse_shapelike
+from zarr.core.common import JSON, ZARRAY_JSON, ZATTRS_JSON, MemoryOrder, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import parse_attributes
 
@@ -44,7 +44,7 @@ class ArrayV2MetadataDict(TypedDict):
 @dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
-    chunks: tuple[int, ...]
+    chunks: ChunkCoords
     dtype: np.dtype[Any]
     fill_value: int | float | str | bytes | None = 0
     order: MemoryOrder = "C"
@@ -101,6 +101,10 @@ class ArrayV2Metadata(Metadata):
     @cached_property
     def chunk_grid(self) -> RegularChunkGrid:
         return RegularChunkGrid(chunk_shape=self.chunks)
+
+    @property
+    def shards(self) -> ChunkCoords | None:
+        return None
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         def _json_convert(
@@ -348,12 +352,12 @@ def _default_compressor(
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
-    return default_compressor.get(dtype_key, None)
+    return cast(dict[str, JSON] | None, default_compressor.get(dtype_key, None))
 
 
 def _default_filters(
     dtype: np.dtype[Any],
-) -> list[dict[str, JSON]]:
+) -> list[dict[str, JSON]] | None:
     """Get the default filters and compressor for a dtype.
 
     https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
@@ -368,4 +372,4 @@ def _default_filters(
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
-    return default_filters.get(dtype_key, [])
+    return cast(list[dict[str, JSON]] | None, default_filters.get(dtype_key, None))

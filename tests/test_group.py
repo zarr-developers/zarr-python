@@ -155,7 +155,7 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
     subsubsubgroup = subsubgroup.create_group("subsubsubgroup")
 
     members_expected["subarray"] = group.create_array(
-        "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), overwrite=True
+        "subarray", shape=(100,), dtype="uint8", chunks=(10,), overwrite=True
     )
     # add an extra object to the domain of the group.
     # the list of children should ignore this object.
@@ -226,9 +226,7 @@ def test_group(store: Store, zarr_format: ZarrFormat) -> None:
 
     # create an array from the "bar" group
     data = np.arange(0, 4 * 4, dtype="uint16").reshape((4, 4))
-    arr = bar.create_array(
-        "baz", shape=data.shape, dtype=data.dtype, chunk_shape=(2, 2), overwrite=True
-    )
+    arr = bar.create_array("baz", shape=data.shape, dtype=data.dtype, chunks=(2, 2), overwrite=True)
     arr[:] = data
 
     # check the array
@@ -312,10 +310,8 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
 
     group = Group.from_store(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
-    subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,), dtype="uint8")
-    subsubarray = subgroup.create_array(
-        name="subarray", shape=(10,), chunk_shape=(10,), dtype="uint8"
-    )
+    subarray = group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
+    subsubarray = subgroup.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
 
     if consolidated:
         group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
@@ -392,7 +388,7 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
 
     group = Group.from_store(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
-    subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,), dtype="uint8")
+    subarray = group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
 
     if consolidated:
         group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
@@ -500,7 +496,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                     "shape": (1,),
                     "chunks": (1,),
                     "order": "C",
-                    "filters": (),
+                    "filters": None,
                     "compressor": Zstd(level=0),
                     "zarr_format": zarr_format,
                 },

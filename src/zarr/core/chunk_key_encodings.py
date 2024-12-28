@@ -36,9 +36,15 @@ class ChunkKeyEncoding(Metadata):
         object.__setattr__(self, "separator", separator_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkKeyEncoding) -> ChunkKeyEncoding:
+    def from_dict(
+        cls, data: dict[str, JSON] | ChunkKeyEncoding | ChunkKeyEncodingParams
+    ) -> ChunkKeyEncoding:
         if isinstance(data, ChunkKeyEncoding):
             return data
+
+        # handle ChunkKeyEncodingParams
+        if "name" in data and "separator" in data:
+            data = {"name": data["name"], "configuration": {"separator": data["separator"]}}
 
         # configuration is optional for chunk key encodings
         name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)

@@ -8,7 +8,6 @@ from typing import Any, Literal
 import numcodecs
 import numpy as np
 import pytest
-from numcodecs import Zstd
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
@@ -23,7 +22,8 @@ from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import ceildiv
-from zarr.core.metadata.v3 import DataType
+from zarr.core.metadata.v2 import ArrayV2Metadata
+from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore
@@ -138,13 +138,13 @@ def test_array_name_properties_with_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
     root = Group.from_store(store=store, zarr_format=zarr_format)
-    foo = root.create_array("foo", shape=(100,), chunk_shape=(10,), dtype="i4")
+    foo = root.create_array("foo", shape=(100,), chunks=(10,), dtype="i4")
     assert foo.path == "foo"
     assert foo.name == "/foo"
     assert foo.basename == "foo"
 
     bar = root.create_group("bar")
-    spam = bar.create_array("spam", shape=(100,), chunk_shape=(10,), dtype="i4")
+    spam = bar.create_array("spam", shape=(100,), chunks=(10,), dtype="i4")
 
     assert spam.path == "bar/spam"
     assert spam.name == "/bar/spam"
@@ -463,7 +463,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=128,
-            _filters=(numcodecs.Zstd(),),
+            _compressor=numcodecs.Zstd(),
         )
         assert result == expected
 
@@ -519,8 +519,8 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _filters=(Zstd(level=0),),
             _count_bytes=128,
+            _compressor=numcodecs.Zstd(),
         )
         assert result == expected
 
@@ -886,7 +886,9 @@ async def test_nbytes(
         assert arr.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
 
 
-def _get_partitioning(data: AsyncArray) -> tuple[tuple[int, ...], tuple[int, ...] | None]:
+def _get_partitioning(
+    data: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata],
+) -> tuple[tuple[int, ...], tuple[int, ...] | None]:
     """
     Get the shard shape and chunk shape of an array. If the array is not sharded, the shard shape
     will be None.
@@ -925,6 +927,33 @@ def test_auto_partition_auto_shards(
             expected_shards += (cs,)
 
     auto_shards, _ = _auto_partition(
-        array_shape=array_shape, chunks=chunk_shape, shards="auto", dtype=dtype
+        array_shape=array_shape, chunk_shape=chunk_shape, shard_shape="auto", dtype=dtype
     )
     assert auto_shards == expected_shards
+
+
+def test_chunks_and_shards() -> None:
+    store = StorePath(MemoryStore())
+    shape = (100, 100)
+    chunks = (5, 5)
+    shards = (10, 10)
+
+    arr_v3 = zarr.create_array(store=store / "v3", shape=shape, chunks=chunks, dtype="i4")
+    assert arr_v3.chunks == chunks
+    assert arr_v3.shards is None
+
+    arr_v3_sharding = zarr.create_array(
+        store=store / "v3_sharding",
+        shape=shape,
+        chunks=chunks,
+        shards=shards,
+        dtype="i4",
+    )
+    assert arr_v3_sharding.chunks == chunks
+    assert arr_v3_sharding.shards == shards
+
+    arr_v2 = zarr.create_array(
+        store=store / "v2", shape=shape, chunks=chunks, zarr_format=2, dtype="i4"
+    )
+    assert arr_v2.chunks == chunks
+    assert arr_v2.shards is None

@@ -18,7 +18,14 @@ from zarr._compat import _deprecate_positional_args
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
 from zarr.core._info import GroupInfo
-from zarr.core.array import Array, AsyncArray, _build_parents, create_array
+from zarr.core.array import (
+    Array,
+    AsyncArray,
+    CompressorsParam,
+    FiltersParam,
+    _build_parents,
+    create_array,
+)
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
@@ -504,7 +511,7 @@ class AsyncGroup:
             )
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # warn and favor v3
-                msg = f"Both zarr.json (zarr v3) and .zgroup (zarr v2) metadata objects exist at {store_path}."
+                msg = f"Both zarr.json (Zarr v3) and .zgroup (Zarr v2) metadata objects exist at {store_path}. Zarr v3 will be used."
                 warnings.warn(msg, stacklevel=1)
             if zarr_json_bytes is None and zgroup_bytes is None:
                 raise FileNotFoundError(
@@ -1003,8 +1010,8 @@ class AsyncGroup:
         dtype: npt.DTypeLike,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ChunkCoords | Literal["auto"] | None = None,
-        filters: Iterable[dict[str, JSON] | Codec] | Literal["auto"] = "auto",
-        compressors: Iterable[dict[str, JSON] | Codec] | Literal['auto'] = "auto",
+        filters: FiltersParam = "auto",
+        compressors: CompressorsParam = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -2532,8 +2539,8 @@ class Group(SyncMixin):
         dtype: npt.DTypeLike,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ChunkCoords | Literal["auto"] | None = None,
-        filters: Iterable[dict[str, JSON] | Codec] = (),
-        compressors: Iterable[dict[str, JSON] | Codec] = (),
+        filters: FiltersParam = "auto",
+        compressors: CompressorsParam = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
