@@ -3468,10 +3468,16 @@ def _get_default_codecs(
 
 
 FiltersParam: TypeAlias = (
-    Iterable[dict[str, JSON] | Codec] | Iterable[numcodecs.abc.Codec] | Literal["auto"]
+    Iterable[dict[str, JSON] | ArrayArrayCodec]
+    | ArrayArrayCodec
+    | Iterable[numcodecs.abc.Codec]
+    | Literal["auto"]
 )
 CompressionParam: TypeAlias = (
-    Iterable[dict[str, JSON] | Codec] | Codec | numcodecs.abc.Codec | Literal["auto"]
+    Iterable[dict[str, JSON] | BytesBytesCodec]
+    | BytesBytesCodec
+    | numcodecs.abc.Codec
+    | Literal["auto"]
 )
 
 
@@ -3614,7 +3620,7 @@ async def create_array(
         )
     else:
         array_array, array_bytes, bytes_bytes = _parse_chunk_encoding_v3(
-            compression=compressors, filters=filters, dtype=dtype_parsed
+            compressors=compressors, filters=filters, dtype=dtype_parsed
         )
         sub_codecs = (*array_array, array_bytes, *bytes_bytes)
         codecs_out: tuple[Codec, ...]
@@ -3757,7 +3763,7 @@ def _parse_chunk_encoding_v2(
 
 def _parse_chunk_encoding_v3(
     *,
-    compression: Iterable[BytesBytesCodec | dict[str, JSON]] | Literal["auto"],
+    compressors: Iterable[BytesBytesCodec | dict[str, JSON]] | Literal["auto"],
     filters: Iterable[ArrayArrayCodec | dict[str, JSON]] | Literal["auto"],
     dtype: np.dtype[Any],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
@@ -3768,13 +3774,13 @@ def _parse_chunk_encoding_v3(
     maybe_bytes_bytes: Iterable[BytesBytesCodec | dict[str, JSON]]
     maybe_array_array: Iterable[ArrayArrayCodec | dict[str, JSON]]
 
-    if compression == "auto":
+    if compressors == "auto":
         out_bytes_bytes = default_bytes_bytes
     else:
-        if isinstance(compression, dict | Codec):
-            maybe_bytes_bytes = (compression,)
+        if isinstance(compressors, dict | Codec):
+            maybe_bytes_bytes = (compressors,)
         else:
-            maybe_bytes_bytes = compression
+            maybe_bytes_bytes = compressors
 
         out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
 
