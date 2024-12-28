@@ -3787,7 +3787,9 @@ def _parse_chunk_encoding_v2(
     if filters == "auto":
         _filters = default_filters
     else:
-        if not all(isinstance(f, numcodecs.abc.Codec) for f in filters):
+        if isinstance(filters, Iterable) and not all(
+            isinstance(f, numcodecs.abc.Codec) for f in filters
+        ):
             raise TypeError(
                 "For Zarr v2 arrays, all elements of `filters` must be numcodecs codecs."
             )

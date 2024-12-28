@@ -10,6 +10,7 @@ import zarr
 from zarr.core.array import Array
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
+from zarr.storage.common import _dereference_path
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)
@@ -137,7 +138,7 @@ def arrays(
 
     expected_attrs = {} if attributes is None else attributes
 
-    array_path = path + ("/" if not path.endswith("/") else "") + name
+    array_path = _dereference_path(path, name)
     root = zarr.open_group(store, mode="w", zarr_format=zarr_format)
 
     a = root.create_array(
