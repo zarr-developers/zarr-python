@@ -23,11 +23,11 @@ Advanced Topics
     :maxdepth: 1
 
     performance
+    async
     consolidated_metadata
     whatsnew_v3
     v3_todos
 
 
 .. Coming soon
-    async
     extending
