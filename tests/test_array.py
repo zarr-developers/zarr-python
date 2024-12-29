@@ -976,7 +976,7 @@ async def test_create_array_v3_compressors(
         filters=(), compressors=compressors, dtype=np.dtype(dtype)
     )
     # TODO: find a better way to get the compressors from the array.
-    assert arr.codec_pipeline.bytes_bytes_codecs == bb_codecs_expected  # type: ignore[union-attr, attr-defined]
+    assert arr.codec_pipeline.bytes_bytes_codecs == bb_codecs_expected  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1028,7 +1028,7 @@ async def test_create_array_v3_filters(store: MemoryStore, filters: FiltersParam
         filters=filters, compressors=(), dtype=np.dtype(dtype)
     )
     # TODO: find a better way to get the filters from the array.
-    assert arr.codec_pipeline.array_array_codecs == aa_codecs_expected  # type: ignore[union-attr, attr-defined]
+    assert arr.codec_pipeline.array_array_codecs == aa_codecs_expected  # type: ignore[attr-defined]
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
