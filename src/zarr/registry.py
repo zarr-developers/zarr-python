@@ -5,13 +5,18 @@ from collections import defaultdict
 from importlib.metadata import entry_points as get_entry_points
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
 from zarr.core.config import BadConfigError, config
 
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
 
-    from zarr.abc.codec import Codec, CodecPipeline
+    from zarr.abc.codec import (
+        ArrayArrayCodec,
+        ArrayBytesCodec,
+        BytesBytesCodec,
+        Codec,
+        CodecPipeline,
+    )
     from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.common import JSON
 
@@ -167,6 +172,8 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
     If the input is already a ``BytesBytesCodec``, it is returned as is. If the input is a dict, it
     is converted to a ``BytesBytesCodec`` instance via the ``_resolve_codec`` function.
     """
+    from zarr.abc.codec import BytesBytesCodec
+
     if isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, BytesBytesCodec):
@@ -185,6 +192,8 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | ArrayBytesCodec) -> ArrayBy
     If the input is already a ``ArrayBytesCodec``, it is returned as is. If the input is a dict, it
     is converted to a ``ArrayBytesCodec`` instance via the ``_resolve_codec`` function.
     """
+    from zarr.abc.codec import ArrayBytesCodec
+
     if isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, ArrayBytesCodec):
@@ -201,6 +210,8 @@ def _parse_array_array_codec(data: dict[str, JSON] | Codec) -> ArrayArrayCodec:
     If the input is already a ``ArrayArrayCodec``, it is returned as is. If the input is a dict, it
     is converted to a ``ArrayArrayCodec`` instance via the ``_resolve_codec`` function.
     """
+    from zarr.abc.codec import ArrayArrayCodec
+
     if isinstance(data, dict):
         result = _resolve_codec(data)
         if not isinstance(result, ArrayArrayCodec):
