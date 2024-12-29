@@ -14,7 +14,6 @@ Zarr-Python
     release
     contributing
     roadmap
-    installation
 
 **Version**: |version|
 
