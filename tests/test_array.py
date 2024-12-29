@@ -1088,3 +1088,10 @@ async def test_create_array_v2_no_shards(store: MemoryStore) -> None:
             shards=(5,),
             zarr_format=2,
         )
+
+
+async def test_scalar_array() -> None:
+    arr = zarr.array(1.5)
+    assert arr[...] == 1.5
+    assert arr[()] == 1.5
+    assert arr.shape == ()
