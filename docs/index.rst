@@ -12,9 +12,8 @@ Zarr-Python
     about
     user-guide/index
     api/index
-    release
-    contributing
-    roadmap
+    developers/index
+    developers/release
 
 **Version**: |version|
 
