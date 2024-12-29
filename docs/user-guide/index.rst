@@ -24,10 +24,10 @@ Advanced Topics
 
     performance
     consolidated_metadata
+    extending
     whatsnew_v3
     v3_todos
 
 
 .. Coming soon
     async
-    extending
