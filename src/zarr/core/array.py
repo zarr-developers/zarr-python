@@ -3623,7 +3623,6 @@ async def create_array(
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
             compressor=compressors, filters=filters, dtype=np.dtype(dtype)
         )
-        print(dtype_parsed)
         if dimension_names is not None:
             raise ValueError("Zarr v2 arrays do not support dimension names.")
         if order is None:
