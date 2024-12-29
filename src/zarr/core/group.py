@@ -53,7 +53,6 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
     from typing import Any
 
-    from zarr.abc.codec import Codec
     from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingParams
@@ -2203,8 +2202,8 @@ class Group(SyncMixin):
         dtype: npt.DTypeLike,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ChunkCoords | None = None,
-        filters: Iterable[dict[str, JSON] | Codec] | Literal["auto"] = "auto",
-        compressors: Iterable[dict[str, JSON] | Codec] | Codec | Literal["auto"] = "auto",
+        filters: FiltersParam = "auto",
+        compressors: CompressorsParam = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
