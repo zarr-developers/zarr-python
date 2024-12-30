@@ -487,6 +487,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             Whether to raise an error if the store already exists (default is False).
         data : npt.ArrayLike, optional
             The data to be inserted into the array (default is None).
+        config : ArrayConfig or ArrayConfigParams, optional
+            Runtime configuration for the array.
 
         Returns
         -------
@@ -3548,36 +3550,60 @@ async def create_array(
         Shape of the array.
     dtype : npt.DTypeLike
         Data type of the array.
-    chunks : ChunkCoords
+    chunks : ChunkCoords, optional
         Chunk shape of the array.
+        If not specified, default are guessed based on the shape and dtype.
     shards : ChunkCoords, optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec], optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
+
         For Zarr v3, a "filter" is a codec that takes an array and returns an array,
         and these values must be instances of ``ArrayArrayCodec``, or dict representations
         of ``ArrayArrayCodec``.
+        If ``filters`` and ``compressors`` are not specified, then the default codecs for
+        Zarr v3 will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
+
         For Zarr v2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
+        If no ``filters`` are provided, a default set of filters will be used.
+        These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
     compressors : Iterable[Codec], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified).
+
         For Zarr v3, a "compressor" is a codec that takes a bytestrea, and
-        returns another bytestream.
-        For Zarr v2, a "compressor" can be any numcodecs codec.
+        returns another bytestream. Multiple compressors my be provided for Zarr v3.
+        If ``filters`` and ``compressors`` are not specified, then the default codecs for
+        Zarr v3 will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
+
+        For Zarr v2, a "compressor" can be any numcodecs codec. Only a single compressor may be provided for Zarr v2.
+        If no ``compressors`` are provided, a default compressor will be used.
+        These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
-        Memory layout of the array.
+        The memory of the array (default is "C").
+        For Zarr v2, this parameter sets the memory order of the array.
+        For Zarr v3, this parameter is deprecated, because memory order
+        is a runtime parameter for Zarr v3 arrays. The recommended way to specify the memory
+        order for Zarr v3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
+        If no ``order`` is provided, a default order will be used.
+        This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
     zarr_format : {2, 3}, optional
         The zarr format to use when saving.
     attributes : dict, optional
         Attributes for the array.
     chunk_key_encoding : ChunkKeyEncoding, optional
-        The chunk key encoding to use.
+        A specification of how the chunk keys are represented in storage.
+        For Zarr v3, the default is ``{"name": "default", "separator": "/"}}``.
+        For Zarr v2, the default is ``{"name": "v2", "separator": "."}}``.
     dimension_names : Iterable[str], optional
-        Dimension names for the array.
+        The names of the dimensions (default is None).
+        Zarr v3 only. Zarr v2 arrays should not use this parameter.
     storage_options : dict, optional
         If using an fsspec URL to create the store, these will be passed to the backend implementation.
         Ignored otherwise.
