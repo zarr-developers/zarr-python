@@ -579,7 +579,7 @@ async def array(
     z = await create(**kwargs)
 
     # fill with data
-    await z.setitem(slice(None), data)
+    await z.setitem(Ellipsis, data)
 
     return z
 
