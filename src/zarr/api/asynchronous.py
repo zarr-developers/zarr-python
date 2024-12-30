@@ -9,7 +9,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr.core.array import Array, AsyncArray, get_array_metadata
+from zarr.core.array import Array, AsyncArray, create_array, get_array_metadata
 from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
@@ -49,6 +49,7 @@ __all__ = [
     "copy_all",
     "copy_store",
     "create",
+    "create_array",
     "empty",
     "empty_like",
     "full",

@@ -31,6 +31,7 @@ __all__ = [
     "copy_all",
     "copy_store",
     "create",
+    "create_array",
     "empty",
     "empty_like",
     "full",
