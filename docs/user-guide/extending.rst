@@ -9,8 +9,11 @@ in the following ways:
 Custom codecs
 -------------
 
-There are three types of codecs in Zarr: array-to-array, array-to-bytes, and bytes-to-bytes.
-Array-to-array codecs are used to transform the n-dimensional array data before serializing
+There are three types of codecs in Zarr:
+- array-to-array
+- array-to-bytes
+- bytes-to-bytes.
+Array-to-array codecs are used to transform the array data before serializing
 to bytes. Examples include delta encoding or scaling codecs. Array-to-bytes codecs are used
 for serializing the array data to bytes. In Zarr, the main codec to use for numeric arrays
 is the :class:`zarr.codecs.BytesCodec`. Bytes-to-bytes transform the serialized bytestreams
@@ -32,7 +35,7 @@ Custom codecs should also implement the following methods:
 - ``compute_encoded_size``, which returns the byte size of the encoded data given the byte
   size of the original data. It should raise ``NotImplementedError`` for codecs with
   variable-sized outputs, such as compression codecs.
-- ``validate``, which can be used to check that the codec metadata is compatible with the
+- ``validate`` (optional), which can be used to check that the codec metadata is compatible with the
   array metadata. It should raise errors if not.
 - ``resolve_metadata`` (optional), which is important for codecs that change the shape,
   dtype or fill value of a chunk.
@@ -65,7 +68,7 @@ multiple codecs, the :mod:`zarr.core.config` mechanism can be used to select the
 implementation.
 
 .. note::
-    This sections explains how custom codecs can be created for Zarr version 3. For Zarr
+    This section explains how custom codecs can be created for Zarr version 3 data. For Zarr
     version 2, codecs should subclass the
     `numcodecs.abc.Codec <https://numcodecs.readthedocs.io/en/stable/abc.html#numcodecs.abc.Codec>`_
     base class and register through
