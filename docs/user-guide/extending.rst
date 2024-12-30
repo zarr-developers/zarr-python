@@ -9,10 +9,18 @@ in the following ways:
 Custom codecs
 -------------
 
+.. note::
+    This section explains how custom codecs can be created for Zarr version 3 data. For Zarr
+    version 2, codecs should subclass the
+    `numcodecs.abc.Codec <https://numcodecs.readthedocs.io/en/stable/abc.html#numcodecs.abc.Codec>`_
+    base class and register through
+    `numcodecs.registry.register_codec <https://numcodecs.readthedocs.io/en/stable/registry.html#numcodecs.registry.register_codec>`_.
+
 There are three types of codecs in Zarr:
 - array-to-array
 - array-to-bytes
-- bytes-to-bytes.
+- bytes-to-bytes
+
 Array-to-array codecs are used to transform the array data before serializing
 to bytes. Examples include delta encoding or scaling codecs. Array-to-bytes codecs are used
 for serializing the array data to bytes. In Zarr, the main codec to use for numeric arrays
@@ -66,13 +74,6 @@ It is also possible to register codecs as replacements for existing codecs. This
 useful for providing specialized implementations, such as GPU-based codecs. In case of
 multiple codecs, the :mod:`zarr.core.config` mechanism can be used to select the preferred
 implementation.
-
-.. note::
-    This section explains how custom codecs can be created for Zarr version 3 data. For Zarr
-    version 2, codecs should subclass the
-    `numcodecs.abc.Codec <https://numcodecs.readthedocs.io/en/stable/abc.html#numcodecs.abc.Codec>`_
-    base class and register through
-    `numcodecs.registry.register_codec <https://numcodecs.readthedocs.io/en/stable/registry.html#numcodecs.registry.register_codec>`_.
 
 Custom stores
 -------------
