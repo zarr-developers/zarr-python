@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from zarr.core.buffer import Buffer, cpu, gpu
-from zarr.storage.memory import GpuMemoryStore, MemoryStore
+from zarr.storage import GpuMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
 

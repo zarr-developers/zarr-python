@@ -25,8 +25,8 @@ from zarr.api.synchronous import (
 )
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
+from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
-from zarr.storage.memory import MemoryStore
 
 
 def test_create(memory_store: Store) -> None:
