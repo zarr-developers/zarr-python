@@ -295,7 +295,7 @@ async def test_delete_empty_shards(store: Store) -> None:
         spath,
         shape=(16, 16),
         chunks=(8, 8),
-        shards=(16, 8),
+        shards=(8, 16),
         dtype="uint16",
         fill_value=1,
     )

@@ -186,7 +186,7 @@ def _parse_bytes_bytes_codec(data: dict[str, JSON] | Codec) -> BytesBytesCodec:
     return result
 
 
-def _parse_array_bytes_codec(data: dict[str, JSON] | ArrayBytesCodec) -> ArrayBytesCodec:
+def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
     """
     Normalize the input to a ``ArrayBytesCodec`` instance.
     If the input is already a ``ArrayBytesCodec``, it is returned as is. If the input is a dict, it

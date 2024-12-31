@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from zarr import AsyncArray
+import zarr
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec
 from zarr.storage.common import StorePath
@@ -17,14 +18,14 @@ async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
     path = "endian"
     spath = StorePath(store, path)
-    a = await AsyncArray._create(
+    a = await zarr.api.asynchronous.create_array(
         spath,
         shape=data.shape,
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype=data.dtype,
         fill_value=0,
-        chunk_key_encoding=("v2", "."),
-        codecs=[BytesCodec(endian=endian)],
+        chunk_key_encoding={"name": "v2", "separator": "."},
+        array_bytes_codec=BytesCodec(endian=endian),
     )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
@@ -43,14 +44,14 @@ async def test_endian_write(
     data = np.arange(0, 256, dtype=dtype_input_endian).reshape((16, 16))
     path = "endian"
     spath = StorePath(store, path)
-    a = await AsyncArray._create(
+    a = await zarr.api.asynchronous.create_array(
         spath,
         shape=data.shape,
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype="uint16",
         fill_value=0,
-        chunk_key_encoding=("v2", "."),
-        codecs=[BytesCodec(endian=dtype_store_endian)],
+        chunk_key_encoding={"name": "v2", "separator": "."},
+        array_bytes_codec=BytesCodec(endian=dtype_store_endian),
     )
 
     await _AsyncArrayProxy(a)[:, :].set(data)

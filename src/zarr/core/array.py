@@ -97,6 +97,7 @@ from zarr.core.sync import sync
 from zarr.errors import MetadataValidationError
 from zarr.registry import (
     _parse_array_array_codec,
+    _parse_array_bytes_codec,
     _parse_bytes_bytes_codec,
     _resolve_codec,
     get_pipeline_class,
@@ -385,6 +386,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
+    # @deprecated("Use `zarr.api.asynchronous.create_array` instead.")
     async def _create(
         cls,
         store: StoreLike,
@@ -417,6 +419,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
+        Deprecated in favor of `zarr.api.asynchronous.create_array`.
         Method to create a new asynchronous array instance.
 
         Parameters
@@ -677,10 +680,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             dimension_separator = "."
 
         dtype = parse_dtype(dtype, zarr_format=2)
-        if not filters:
-            filters = _default_filters(dtype)
-        if not compressor:
-            compressor = _default_compressor(dtype)
+        # if not filters:
+        #     filters = _default_filters(dtype)
+        # if not compressor:
+        #     compressor = _default_compressor(dtype)
 
         # inject VLenUTF8 for str dtype if not already present
         if np.issubdtype(dtype, np.str_):
@@ -1530,6 +1533,7 @@ class Array:
     _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
 
     @classmethod
+    # @deprecated("Use `zarr.create_array` instead.")
     @_deprecate_positional_args
     def _create(
         cls,
@@ -1561,7 +1565,8 @@ class Array:
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> Array:
-        """Creates a new Array instance from an initialized store.
+        """Deprecated in favor of `zarr.create_array`.
+        Creates a new Array instance from an initialized store.
 
         Parameters
         ----------
@@ -3504,6 +3509,7 @@ CompressorsParam: TypeAlias = (
     | numcodecs.abc.Codec
     | Literal["auto"]
 )
+ArrayBytesCodecParam: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 
 class ShardsConfigParam(TypedDict):
@@ -3524,6 +3530,7 @@ async def create_array(
     shards: ShardsParam | None = None,
     filters: FiltersParam = "auto",
     compressors: CompressorsParam = "auto",
+    array_bytes_codec: ArrayBytesCodecParam | None = "auto",
     fill_value: Any | None = 0,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
@@ -3580,6 +3587,10 @@ async def create_array(
         For Zarr v2, a "compressor" can be any numcodecs codec. Only a single compressor may be provided for Zarr v2.
         If no ``compressors`` are provided, a default compressor will be used.
         These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
+    array_bytes_codec : dict[str, JSON] | ArrayBytesCodec, optional
+        Array-to-bytes codec to use for encoding the array data.
+        Zarr v3 only. Zarr v2 arrays use implicit array-to-bytes conversion.
+        If no ``array_bytes_codec`` is provided, the `zarr.codecs.BytesCodec` codec will be used.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -3680,7 +3691,10 @@ async def create_array(
         )
     else:
         array_array, array_bytes, bytes_bytes = _parse_chunk_encoding_v3(
-            compressors=compressors, filters=filters, dtype=dtype_parsed
+            compressors=compressors,
+            filters=filters,
+            array_bytes_codec=array_bytes_codec,
+            dtype=dtype_parsed,
         )
         sub_codecs = cast(tuple[Codec, ...], (*array_array, array_bytes, *bytes_bytes))
         codecs_out: tuple[Codec, ...]
@@ -3825,7 +3839,11 @@ def _parse_chunk_encoding_v2(
     if compressor == "auto":
         _compressor = default_compressor
     else:
-        if isinstance(compressor, Iterable) and not isinstance(compressor, dict):
+        if (
+            isinstance(compressor, Iterable)
+            and not isinstance(compressor, dict)
+            and len(compressor) > 1
+        ):
             msg = f"For Zarr v2 arrays, the `compressor` must be a single codec. Got an iterable with type {type(compressor)} instead."
             raise TypeError(msg)
         _compressor = parse_compressor(compressor)
@@ -3846,8 +3864,9 @@ def _parse_chunk_encoding_v2(
 
 def _parse_chunk_encoding_v3(
     *,
-    compressors: CompressorsParam,
-    filters: FiltersParam,
+    compressors: CompressorsParam | None,
+    filters: FiltersParam | None,
+    array_bytes_codec: ArrayBytesCodecParam | None,
     dtype: np.dtype[Any],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """
@@ -3864,6 +3883,8 @@ def _parse_chunk_encoding_v3(
     else:
         if isinstance(compressors, dict | Codec):
             maybe_bytes_bytes = (compressors,)
+        elif compressors is None:
+            maybe_bytes_bytes = ()
         else:
             maybe_bytes_bytes = cast(Iterable[Codec | dict[str, JSON]], compressors)
 
@@ -3874,8 +3895,15 @@ def _parse_chunk_encoding_v3(
     else:
         if isinstance(filters, dict | Codec):
             maybe_array_array = (filters,)
+        elif filters is None:
+            maybe_array_array = ()
         else:
             maybe_array_array = cast(Iterable[Codec | dict[str, JSON]], filters)
         out_array_array = tuple(_parse_array_array_codec(c) for c in maybe_array_array)
 
-    return out_array_array, default_array_bytes, out_bytes_bytes
+    if array_bytes_codec == "auto":
+        out_array_bytes = default_array_bytes
+    else:
+        out_array_bytes = _parse_array_bytes_codec(array_bytes_codec)
+
+    return out_array_array, out_array_bytes, out_bytes_bytes

@@ -12,9 +12,14 @@ import pytest
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
-from zarr.codecs import BytesCodec, VLenBytesCodec, ZstdCodec
-from zarr.codecs.gzip import GzipCodec
-from zarr.codecs.transpose import TransposeCodec
+from zarr.codecs import (
+    BytesCodec,
+    GzipCodec,
+    TransposeCodec,
+    VLenBytesCodec,
+    VLenUTF8Codec,
+    ZstdCodec,
+)
 from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     CompressorsParam,
@@ -975,10 +980,43 @@ async def test_create_array_v3_compressors(
         compressors=compressors,
     )
     _, _, bb_codecs_expected = _parse_chunk_encoding_v3(
-        filters=(), compressors=compressors, dtype=np.dtype(dtype)
+        filters=(), compressors=compressors, array_bytes_codec="auto", dtype=np.dtype(dtype)
     )
     # TODO: find a better way to get the compressors from the array.
     assert arr.codec_pipeline.bytes_bytes_codecs == bb_codecs_expected  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
+async def test_create_array_no_filters_compressors(store: MemoryStore, dtype: str) -> None:
+    """
+    Test that the default ``filters`` and ``compressors`` are removed when ``create_array`` is invoked.
+    """
+
+    # v2
+    arr = await create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        zarr_format=2,
+        compressors=(),
+        filters=(),
+    )
+    assert arr.metadata.filters == None  # type: ignore[union-attr]
+    assert arr.metadata.compressor == None  # type: ignore[union-attr]
+
+    # v3
+    arr = await create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        compressors=(),
+        filters=(),
+    )
+    if dtype == "str":
+        assert arr.metadata.codecs == [VLenUTF8Codec()]  # type: ignore[union-attr]
+    else:
+        assert arr.metadata.codecs == [BytesCodec()]  # type: ignore[union-attr]
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1027,7 +1065,7 @@ async def test_create_array_v3_filters(store: MemoryStore, filters: FiltersParam
         filters=filters,
     )
     aa_codecs_expected, _, _ = _parse_chunk_encoding_v3(
-        filters=filters, compressors=(), dtype=np.dtype(dtype)
+        filters=filters, compressors=(), array_bytes_codec="auto", dtype=np.dtype(dtype)
     )
     # TODO: find a better way to get the filters from the array.
     assert arr.codec_pipeline.array_array_codecs == aa_codecs_expected  # type: ignore[attr-defined]
