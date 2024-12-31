@@ -680,10 +680,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             dimension_separator = "."
 
         dtype = parse_dtype(dtype, zarr_format=2)
-        # if not filters:
-        #     filters = _default_filters(dtype)
-        # if not compressor:
-        #     compressor = _default_compressor(dtype)
+        if not filters:
+            filters = _default_filters(dtype)
+        if not compressor:
+            compressor = _default_compressor(dtype)
 
         # inject VLenUTF8 for str dtype if not already present
         if np.issubdtype(dtype, np.str_):
@@ -3528,10 +3528,10 @@ async def create_array(
     dtype: npt.DTypeLike,
     chunks: ChunkCoords | Literal["auto"] = "auto",
     shards: ShardsParam | None = None,
-    filters: FiltersParam = "auto",
+    filters: FiltersParam | None = "auto",
     compressors: CompressorsParam = "auto",
-    array_bytes_codec: ArrayBytesCodecParam | None = "auto",
-    fill_value: Any | None = 0,
+    array_bytes_codec: ArrayBytesCodecParam = "auto",
+    fill_value: Any | None = None,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
@@ -3665,6 +3665,9 @@ async def create_array(
             )
 
             raise ValueError(msg)
+        if array_bytes_codec != "auto":
+            raise ValueError("Zarr v2 arrays do not support `array_bytes_codec`.")
+
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
             compressor=compressors, filters=filters, dtype=np.dtype(dtype)
         )
@@ -3825,7 +3828,7 @@ def _get_default_chunk_encoding_v2(
 def _parse_chunk_encoding_v2(
     *,
     compressor: CompressorsParam,
-    filters: FiltersParam,
+    filters: FiltersParam | None,
     dtype: np.dtype[Any],
 ) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
     """
@@ -3839,11 +3842,7 @@ def _parse_chunk_encoding_v2(
     if compressor == "auto":
         _compressor = default_compressor
     else:
-        if (
-            isinstance(compressor, Iterable)
-            and not isinstance(compressor, dict)
-            and len(compressor) > 1
-        ):
+        if isinstance(compressor, Iterable) and not isinstance(compressor, dict):
             msg = f"For Zarr v2 arrays, the `compressor` must be a single codec. Got an iterable with type {type(compressor)} instead."
             raise TypeError(msg)
         _compressor = parse_compressor(compressor)
@@ -3866,7 +3865,7 @@ def _parse_chunk_encoding_v3(
     *,
     compressors: CompressorsParam | None,
     filters: FiltersParam | None,
-    array_bytes_codec: ArrayBytesCodecParam | None,
+    array_bytes_codec: ArrayBytesCodecParam,
     dtype: np.dtype[Any],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """

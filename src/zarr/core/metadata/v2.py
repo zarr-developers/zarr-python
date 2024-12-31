@@ -232,8 +232,6 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
     if data is None:
         return data
     if isinstance(data, Iterable):
-        if len(data) == 0:
-            return None
         for idx, val in enumerate(data):
             if isinstance(val, numcodecs.abc.Codec):
                 out.append(val)
@@ -251,11 +249,6 @@ def parse_compressor(data: object) -> numcodecs.abc.Codec | None:
     """
     Parse a potential compressor.
     """
-    if isinstance(data, Iterable) and not isinstance(data, dict):
-        if len(data) == 0:
-            data = None
-        else:
-            data = data[0]
     if data is None or isinstance(data, numcodecs.abc.Codec):
         return data
     if isinstance(data, dict):

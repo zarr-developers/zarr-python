@@ -200,6 +200,8 @@ def _parse_array_bytes_codec(data: dict[str, JSON] | Codec) -> ArrayBytesCodec:
             msg = f"Expected a dict representation of a ArrayBytesCodec; got a dict representation of a {type(result)} instead."
             raise TypeError(msg)
     else:
+        if not isinstance(data, ArrayBytesCodec):
+            raise TypeError(f"Expected a ArrayBytesCodec. Got {type(data)} instead.")
         result = data
     return result
 

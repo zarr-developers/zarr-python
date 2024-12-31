@@ -297,8 +297,10 @@ async def test_delete_empty_shards(store: Store) -> None:
         chunks=(8, 8),
         shards=(8, 16),
         dtype="uint16",
+        compressors=None,
         fill_value=1,
     )
+    print(a.metadata.to_dict())
     await _AsyncArrayProxy(a)[:, :].set(np.zeros((16, 16)))
     await _AsyncArrayProxy(a)[8:, :].set(np.ones((8, 16)))
     await _AsyncArrayProxy(a)[:, 8:].set(np.ones((16, 8)))

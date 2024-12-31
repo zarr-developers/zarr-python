@@ -219,7 +219,7 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 def test_create_positional_args_deprecated() -> None:
     store = MemoryStore()
     with pytest.warns(FutureWarning, match="Pass"):
-        zarr.create_array(store, (2, 2), dtype="f8")
+        zarr.Array._create(store, (2, 2), dtype="f8")
 
 
 def test_selection_positional_args_deprecated() -> None:
@@ -999,11 +999,22 @@ async def test_create_array_no_filters_compressors(store: MemoryStore, dtype: st
         dtype=dtype,
         shape=(10,),
         zarr_format=2,
+        compressors=None,
+        filters=None,
+    )
+    assert arr.metadata.filters is None  # type: ignore[union-attr]
+    assert arr.metadata.compressor is None  # type: ignore[union-attr]
+
+    arr = await create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        zarr_format=2,
         compressors=(),
         filters=(),
     )
-    assert arr.metadata.filters == None  # type: ignore[union-attr]
-    assert arr.metadata.compressor == None  # type: ignore[union-attr]
+    assert arr.metadata.filters == ()  # type: ignore[union-attr]
+    assert arr.metadata.compressor is None  # type: ignore[union-attr]
 
     # v3
     arr = await create_array(

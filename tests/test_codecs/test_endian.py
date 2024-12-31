@@ -3,7 +3,6 @@ from typing import Literal
 import numpy as np
 import pytest
 
-from zarr import AsyncArray
 import zarr
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec
