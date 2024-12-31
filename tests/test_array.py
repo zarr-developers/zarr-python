@@ -69,7 +69,7 @@ def test_array_creation_existing_node(
     if overwrite:
         if not store.supports_deletes:
             pytest.skip("store does not support deletes")
-        arr_new = Array.create(
+        arr_new = zarr.create_array(
             spath / "extant",
             shape=new_shape,
             dtype=new_dtype,
@@ -80,7 +80,7 @@ def test_array_creation_existing_node(
         assert arr_new.dtype == new_dtype
     else:
         with pytest.raises(expected_exception):
-            arr_new = Array.create(
+            arr_new = zarr.create_array(
                 spath / "extant",
                 shape=new_shape,
                 dtype=new_dtype,
@@ -134,7 +134,9 @@ async def test_create_creates_parents(
 def test_array_name_properties_no_group(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
-    arr = Array.create(store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4")
+    arr = zarr.create_array(
+        store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
+    )
     assert arr.path == ""
     assert arr.name == "/"
     assert arr.basename == ""
@@ -172,17 +174,17 @@ def test_array_v3_fill_value_default(
     shape = (10,)
     default_fill_value = 0
     if specifiy_fill_value:
-        arr = Array.create(
+        arr = zarr.create_array(
             store=store,
             shape=shape,
             dtype=dtype_str,
             zarr_format=3,
-            chunk_shape=shape,
+            chunks=shape,
             fill_value=None,
         )
     else:
-        arr = Array.create(
-            store=store, shape=shape, dtype=dtype_str, zarr_format=3, chunk_shape=shape
+        arr = zarr.create_array(
+            store=store, shape=shape, dtype=dtype_str, zarr_format=3, chunks=shape
         )
 
     assert arr.fill_value == np.dtype(dtype_str).type(default_fill_value)
@@ -196,12 +198,12 @@ def test_array_v3_fill_value_default(
 )
 def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str) -> None:
     shape = (10,)
-    arr = Array.create(
+    arr = zarr.create_array(
         store=store,
         shape=shape,
         dtype=dtype_str,
         zarr_format=3,
-        chunk_shape=shape,
+        chunks=shape,
         fill_value=fill_value,
     )
 
@@ -212,12 +214,12 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 def test_create_positional_args_deprecated() -> None:
     store = MemoryStore()
     with pytest.warns(FutureWarning, match="Pass"):
-        Array.create(store, (2, 2), dtype="f8")
+        zarr.create_array(store, (2, 2), dtype="f8")
 
 
 def test_selection_positional_args_deprecated() -> None:
     store = MemoryStore()
-    arr = Array.create(store, shape=(2, 2), dtype="f8")
+    arr = zarr.create_array(store, shape=(2, 2), dtype="f8")
 
     with pytest.warns(FutureWarning, match="Pass out"):
         arr.get_basic_selection(..., NDBuffer(array=np.empty((2, 2))))
@@ -253,12 +255,12 @@ def test_selection_positional_args_deprecated() -> None:
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 async def test_array_v3_nan_fill_value(store: MemoryStore) -> None:
     shape = (10,)
-    arr = Array.create(
+    arr = zarr.create_array(
         store=store,
         shape=shape,
         dtype=np.float64,
         zarr_format=3,
-        chunk_shape=shape,
+        chunks=shape,
         fill_value=np.nan,
     )
     arr[:] = np.nan
@@ -274,7 +276,7 @@ async def test_array_v3_nan_fill_value(store: MemoryStore) -> None:
 async def test_serializable_async_array(
     store: LocalStore | MemoryStore, zarr_format: ZarrFormat
 ) -> None:
-    expected = await AsyncArray.create(
+    expected = await zarr.api.asynchronous.create_array(
         store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
     )
     # await expected.setitems(list(range(100)))
@@ -290,7 +292,7 @@ async def test_serializable_async_array(
 @pytest.mark.parametrize("store", ["local"], indirect=["store"])
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_serializable_sync_array(store: LocalStore, zarr_format: ZarrFormat) -> None:
-    expected = Array.create(
+    expected = zarr.create_array(
         store=store, shape=(100,), chunks=(10,), zarr_format=zarr_format, dtype="i4"
     )
     expected[:] = list(range(100))
@@ -331,7 +333,7 @@ def test_nchunks(test_cls: type[Array] | type[AsyncArray[Any]], nchunks: int) ->
     """
     store = MemoryStore()
     shape = 100
-    arr = Array.create(store, shape=(shape,), chunks=(ceildiv(shape, nchunks),), dtype="i4")
+    arr = zarr.create_array(store, shape=(shape,), chunks=(ceildiv(shape, nchunks),), dtype="i4")
     expected = nchunks
     if test_cls == Array:
         observed = arr.nchunks
@@ -346,7 +348,7 @@ async def test_nchunks_initialized(test_cls: type[Array] | type[AsyncArray[Any]]
     Test that nchunks_initialized accurately returns the number of stored chunks.
     """
     store = MemoryStore()
-    arr = Array.create(store, shape=(100,), chunks=(10,), dtype="i4")
+    arr = zarr.create_array(store, shape=(100,), chunks=(10,), dtype="i4")
 
     # write chunks one at a time
     for idx, region in enumerate(arr._iter_chunk_regions()):
@@ -374,7 +376,7 @@ async def test_chunks_initialized() -> None:
     Test that chunks_initialized accurately returns the keys of stored chunks.
     """
     store = MemoryStore()
-    arr = Array.create(store, shape=(100,), chunks=(10,), dtype="i4")
+    arr = zarr.create_array(store, shape=(100,), chunks=(10,), dtype="i4")
 
     chunks_accumulated = tuple(
         accumulate(tuple(tuple(v.split(" ")) for v in arr._iter_chunk_keys()))
@@ -413,34 +415,34 @@ async def test_nbytes_stored_async() -> None:
 
 
 def test_default_fill_values() -> None:
-    a = Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<U4")
+    a = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="<U4")
     assert a.fill_value == ""
 
-    b = Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<S4")
+    b = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="<S4")
     assert b.fill_value == b""
 
-    c = Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="i")
+    c = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="i")
     assert c.fill_value == 0
 
-    d = Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="f")
+    d = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="f")
     assert d.fill_value == 0.0
 
 
 def test_vlen_errors() -> None:
     with pytest.raises(ValueError, match="At least one ArrayBytesCodec is required."):
-        Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<U4", codecs=[])
+        Array._create(MemoryStore(), shape=5, chunks=5, dtype="<U4", codecs=[])
 
     with pytest.raises(
         ValueError,
         match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
     ):
-        Array.create(MemoryStore(), shape=5, chunk_shape=5, dtype="<U4", codecs=[BytesCodec()])
+        Array._create(MemoryStore(), shape=5, chunks=5, dtype="<U4", codecs=[BytesCodec()])
 
     with pytest.raises(ValueError, match="Only one ArrayBytesCodec is allowed."):
-        Array.create(
+        Array._create(
             MemoryStore(),
             shape=5,
-            chunk_shape=5,
+            chunks=5,
             dtype="<U4",
             codecs=[BytesCodec(), VLenBytesCodec()],
         )
@@ -450,7 +452,7 @@ def test_vlen_errors() -> None:
 def test_update_attrs(zarr_format: int) -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
     store = MemoryStore()
-    arr = Array.create(store=store, shape=5, chunk_shape=5, dtype="f8", zarr_format=zarr_format)
+    arr = zarr.create_array(store=store, shape=5, chunks=5, dtype="f8", zarr_format=zarr_format)
     arr.attrs["foo"] = "bar"
     assert arr.attrs["foo"] == "bar"
 
@@ -768,7 +770,7 @@ def test_array_create_metadata_order_v2(
     keyword argument to ``Array.create``. When ``order`` is ``None``, the value of the
     ``array.order`` config is used.
     """
-    arr = Array.create(store=store, shape=(2, 2), order=order, zarr_format=2, dtype="i4")
+    arr = zarr.create_array(store=store, shape=(2, 2), order=order, zarr_format=2, dtype="i4")
 
     expected = order or zarr.config.get("array.order")
     assert arr.metadata.order == expected  # type: ignore[union-attr]
@@ -792,7 +794,7 @@ def test_array_create_order(
         config = {"order": order_config}
         expected = order_config
 
-    arr = Array.create(
+    arr = zarr.create_array(
         store=store, shape=(2, 2), zarr_format=zarr_format, dtype="i4", config=config
     )
 
@@ -812,7 +814,7 @@ def test_write_empty_chunks_config(write_empty_chunks: bool) -> None:
     explicitly
     """
     with zarr.config.set({"array.write_empty_chunks": write_empty_chunks}):
-        arr = Array.create({}, shape=(2, 2), dtype="i4")
+        arr = zarr.create_array({}, shape=(2, 2), dtype="i4")
         assert arr._async_array._config.write_empty_chunks == write_empty_chunks
 
 
@@ -832,13 +834,13 @@ def test_write_empty_chunks_behavior(
     already present.
     """
 
-    arr = Array.create(
+    arr = zarr.create_array(
         store=store,
         shape=(2,),
         zarr_format=zarr_format,
         dtype="i4",
         fill_value=fill_value,
-        chunk_shape=(1,),
+        chunks=(1,),
         config={"write_empty_chunks": write_empty_chunks},
     )
 
@@ -869,7 +871,7 @@ def test_write_empty_chunks_behavior(
 )
 async def test_special_complex_fill_values_roundtrip(fill_value: Any, expected: list[Any]) -> None:
     store = MemoryStore()
-    Array.create(store=store, shape=(1,), dtype=np.complex64, fill_value=fill_value)
+    zarr.create_array(store=store, shape=(1,), dtype=np.complex64, fill_value=fill_value)
     content = await store.get("zarr.json", prototype=default_buffer_prototype())
     assert content is not None
     actual = json.loads(content.to_bytes())
@@ -887,7 +889,7 @@ async def test_nbytes(
     the chunks of that array.
     """
     store = MemoryStore()
-    arr = Array.create(store=store, shape=shape, dtype=dtype, fill_value=0)
+    arr = zarr.create_array(store=store, shape=shape, dtype=dtype, fill_value=0)
     if array_type == "async":
         assert arr._async_array.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
     else:

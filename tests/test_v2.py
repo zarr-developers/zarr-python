@@ -11,7 +11,7 @@ from numcodecs.blosc import Blosc
 import zarr
 import zarr.core.buffer
 import zarr.storage
-from zarr import Array, config
+from zarr import config
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -23,7 +23,7 @@ async def store() -> Iterator[StorePath]:
 def test_simple(store: StorePath) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
-    a = Array.create(
+    a = zarr.create_array(
         store / "simple_v2",
         zarr_format=2,
         shape=data.shape,
@@ -167,7 +167,7 @@ def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
 @pytest.mark.parametrize("array_order", ["C", "F"])
 @pytest.mark.parametrize("data_order", ["C", "F"])
 def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["C", "F"]) -> None:
-    arr = zarr.Array.create(
+    arr = zarr.create_array(
         MemoryStore({}),
         shape=(10, 8),
         chunks=(3, 3),
@@ -187,7 +187,7 @@ def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["
         arr[slice(6, 9, None), slice(3, 6, None)], a[slice(6, 9, None), slice(3, 6, None)]
     )
 
-    arr = zarr.Array.create(
+    arr = zarr.create_array(
         MemoryStore({}),
         shape=(10, 8),
         chunks=(3, 3),

@@ -784,7 +784,7 @@ async def test_asyncgroup_create(
             )
         # create an array at our target path
         collision_name = "foo"
-        _ = await AsyncArray.create(
+        _ = await zarr.api.asynchronous.create_array(
             spath / collision_name, shape=(10,), dtype="uint8", zarr_format=zarr_format
         )
         with pytest.raises(ContainsArrayError):

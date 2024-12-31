@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from typing import Self
 
+    from zarr.core.array import ShardsParam
+
 
 def _guess_chunks(
     shape: ShapeLike,
@@ -201,7 +203,7 @@ def _auto_partition(
     *,
     array_shape: tuple[int, ...],
     chunk_shape: tuple[int, ...] | Literal["auto"],
-    shard_shape: tuple[int, ...] | Literal["auto"] | None,
+    shard_shape: ShardsParam | None,
     dtype: np.dtype[Any],
 ) -> tuple[tuple[int, ...] | None, tuple[int, ...]]:
     """
@@ -241,6 +243,8 @@ def _auto_partition(
                     _shards_out += (c_shape * 2,)
                 else:
                     _shards_out += (c_shape,)
+        elif isinstance(shard_shape, dict):
+            _shards_out = tuple(shard_shape["shape"])
         else:
             _shards_out = shard_shape
 

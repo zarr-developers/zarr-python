@@ -5,11 +5,13 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from zarr import Array, AsyncArray
+import zarr
+import zarr.api
+import zarr.api.asynchronous
+from zarr import Array
 from zarr.abc.store import Store
 from zarr.codecs import (
     BloscCodec,
-    BytesCodec,
     ShardingCodec,
     ShardingCodecIndexLocation,
     TransposeCodec,
@@ -45,23 +47,16 @@ def test_sharding(
     """
     data = array_fixture
     spath = StorePath(store)
-    arr = Array.create(
+
+    arr = zarr.create_array(
         spath,
         shape=tuple(s + offset for s in data.shape),
-        chunk_shape=(64,) * data.ndim,
+        chunks=(32,) * data.ndim,
+        shards={"shape": (64,) * data.ndim, "index_location": index_location},
         dtype=data.dtype,
         fill_value=6,
-        codecs=[
-            ShardingCodec(
-                chunk_shape=(32,) * data.ndim,
-                codecs=[
-                    TransposeCodec(order=order_from_dim("F", data.ndim)),
-                    BytesCodec(),
-                    BloscCodec(cname="lz4"),
-                ],
-                index_location=index_location,
-            )
-        ],
+        filters=[TransposeCodec(order=order_from_dim("F", data.ndim))],
+        compressors=BloscCodec(cname="lz4"),
     )
     write_region = tuple(slice(offset, None) for dim in range(data.ndim))
     arr[write_region] = data
@@ -89,23 +84,15 @@ def test_sharding_partial(
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
-    a = Array.create(
+    a = zarr.create_array(
         spath,
         shape=tuple(a + 10 for a in data.shape),
-        chunk_shape=(64, 64, 64),
+        chunks=(32, 32, 32),
+        shards={"shape": (64, 64, 64), "index_location": index_location},
+        compressors=BloscCodec(cname="lz4"),
+        filters=[TransposeCodec(order=order_from_dim("F", data.ndim))],
         dtype=data.dtype,
         fill_value=0,
-        codecs=[
-            ShardingCodec(
-                chunk_shape=(32, 32, 32),
-                codecs=[
-                    TransposeCodec(order=order_from_dim("F", data.ndim)),
-                    BytesCodec(),
-                    BloscCodec(cname="lz4"),
-                ],
-                index_location=index_location,
-            )
-        ],
     )
 
     a[10:, 10:, 10:] = data
@@ -132,19 +119,15 @@ def test_sharding_partial_readwrite(
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
-    a = Array.create(
+    a = zarr.create_array(
         spath,
         shape=data.shape,
-        chunk_shape=data.shape,
+        chunks=(1, data.shape[1], data.shape[2]),
+        shards={"shape": data.shape, "index_location": index_location},
         dtype=data.dtype,
         fill_value=0,
-        codecs=[
-            ShardingCodec(
-                chunk_shape=(1, data.shape[1], data.shape[2]),
-                codecs=[BytesCodec()],
-                index_location=index_location,
-            )
-        ],
+        filters=None,
+        compressors=None,
     )
 
     a[:] = data
@@ -168,23 +151,15 @@ def test_sharding_partial_read(
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
-    a = Array.create(
+    a = zarr.create_array(
         spath,
         shape=tuple(a + 10 for a in data.shape),
-        chunk_shape=(64, 64, 64),
+        chunks=(32, 32, 32),
+        shards={"shape": (64, 64, 64), "index_location": index_location},
+        compressors=BloscCodec(cname="lz4"),
+        filters=[TransposeCodec(order=order_from_dim("F", data.ndim))],
         dtype=data.dtype,
         fill_value=1,
-        codecs=[
-            ShardingCodec(
-                chunk_shape=(32, 32, 32),
-                codecs=[
-                    TransposeCodec(order=order_from_dim("F", data.ndim)),
-                    BytesCodec(),
-                    BloscCodec(cname="lz4"),
-                ],
-                index_location=index_location,
-            )
-        ],
     )
 
     read_data = a[0:10, 0:10, 0:10]
@@ -205,23 +180,15 @@ def test_sharding_partial_overwrite(
 ) -> None:
     data = array_fixture[:10, :10, :10]
     spath = StorePath(store)
-    a = Array.create(
+    a = zarr.create_array(
         spath,
         shape=tuple(a + 10 for a in data.shape),
-        chunk_shape=(64, 64, 64),
+        chunks=(32, 32, 32),
+        shards={"shape": (64, 64, 64), "index_location": index_location},
+        compressors=BloscCodec(cname="lz4"),
+        filters=[TransposeCodec(order=order_from_dim("F", data.ndim))],
         dtype=data.dtype,
         fill_value=1,
-        codecs=[
-            ShardingCodec(
-                chunk_shape=(32, 32, 32),
-                codecs=[
-                    TransposeCodec(order=order_from_dim("F", data.ndim)),
-                    BytesCodec(),
-                    BloscCodec(cname="lz4"),
-                ],
-                index_location=index_location,
-            )
-        ],
     )
 
     a[:10, :10, :10] = data
@@ -259,7 +226,7 @@ def test_nested_sharding(
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
-    a = Array.create(
+    a = Array._create(
         spath,
         shape=data.shape,
         chunk_shape=(64, 64, 64),
@@ -287,22 +254,15 @@ def test_nested_sharding(
 def test_open_sharding(store: Store) -> None:
     path = "open_sharding"
     spath = StorePath(store, path)
-    a = Array.create(
+    a = zarr.create_array(
         spath,
         shape=(16, 16),
-        chunk_shape=(16, 16),
+        chunks=(8, 8),
+        shards=(16, 16),
+        filters=[TransposeCodec(order=order_from_dim("F", 2))],
+        compressors=BloscCodec(),
         dtype="int32",
         fill_value=0,
-        codecs=[
-            ShardingCodec(
-                chunk_shape=(8, 8),
-                codecs=[
-                    TransposeCodec(order=order_from_dim("F", 2)),
-                    BytesCodec(),
-                    BloscCodec(),
-                ],
-            )
-        ],
     )
     b = Array.open(spath)
     assert a.metadata == b.metadata
@@ -312,21 +272,14 @@ def test_open_sharding(store: Store) -> None:
 def test_write_partial_sharded_chunks(store: Store) -> None:
     data = np.arange(0, 16 * 16, dtype="uint16").reshape((16, 16))
     spath = StorePath(store)
-    a = Array.create(
+    a = zarr.create_array(
         spath,
         shape=(40, 40),
-        chunk_shape=(20, 20),
+        chunks=(10, 10),
+        shards=(20, 20),
         dtype=data.dtype,
+        compressors=BloscCodec(),
         fill_value=1,
-        codecs=[
-            ShardingCodec(
-                chunk_shape=(10, 10),
-                codecs=[
-                    BytesCodec(),
-                    BloscCodec(),
-                ],
-            )
-        ],
     )
     a[0:16, 0:16] = data
     assert np.array_equal(a[0:16, 0:16], data)
@@ -338,13 +291,13 @@ async def test_delete_empty_shards(store: Store) -> None:
         pytest.skip("store does not support deletes")
     path = "delete_empty_shards"
     spath = StorePath(store, path)
-    a = await AsyncArray.create(
+    a = await zarr.api.asynchronous.create_array(
         spath,
         shape=(16, 16),
-        chunk_shape=(8, 16),
+        chunks=(8, 8),
+        shards=(16, 8),
         dtype="uint16",
         fill_value=1,
-        codecs=[ShardingCodec(chunk_shape=(8, 8))],
     )
     await _AsyncArrayProxy(a)[:, :].set(np.zeros((16, 16)))
     await _AsyncArrayProxy(a)[8:, :].set(np.ones((8, 16)))
@@ -380,13 +333,13 @@ async def test_sharding_with_empty_inner_chunk(
 
     path = f"sharding_with_empty_inner_chunk_{index_location}"
     spath = StorePath(store, path)
-    a = await AsyncArray.create(
+    a = await zarr.api.asynchronous.create_array(
         spath,
         shape=(16, 16),
-        chunk_shape=(8, 8),
+        chunks=(4, 4),
+        shards={"shape": (8, 8), "index_location": index_location},
         dtype="uint32",
         fill_value=fill_value,
-        codecs=[ShardingCodec(chunk_shape=(4, 4), index_location=index_location)],
     )
     data[:4, :4] = fill_value
     await a.setitem(..., data)
@@ -411,13 +364,13 @@ async def test_sharding_with_chunks_per_shard(
 
     path = f"test_sharding_with_chunks_per_shard_{index_location}"
     spath = StorePath(store, path)
-    a = Array.create(
+    a = zarr.create_array(
         spath,
         shape=shape,
-        chunk_shape=shape,
+        chunks=chunk_shape,
+        shards={"shape": shape, "index_location": index_location},
         dtype="int32",
         fill_value=fill_value,
-        codecs=[ShardingCodec(chunk_shape=chunk_shape, index_location=index_location)],
     )
     a[...] = data
     data_read = a[...]

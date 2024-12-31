@@ -17,7 +17,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
     path = "endian"
     spath = StorePath(store, path)
-    a = await AsyncArray.create(
+    a = await AsyncArray._create(
         spath,
         shape=data.shape,
         chunk_shape=(16, 16),
@@ -43,7 +43,7 @@ async def test_endian_write(
     data = np.arange(0, 256, dtype=dtype_input_endian).reshape((16, 16))
     path = "endian"
     spath = StorePath(store, path)
-    a = await AsyncArray.create(
+    a = await AsyncArray._create(
         spath,
         shape=data.shape,
         chunk_shape=(16, 16),

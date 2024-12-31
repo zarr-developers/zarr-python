@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from itertools import starmap
 from logging import getLogger
-from typing import TYPE_CHECKING, Any, Generic, Literal, TypeAlias, cast, overload
+from typing import TYPE_CHECKING, Any, Generic, Literal, TypeAlias, TypedDict, cast, overload
 from warnings import warn
 
 import numcodecs
@@ -109,7 +109,9 @@ if TYPE_CHECKING:
     from typing import Self
 
     from zarr.abc.codec import CodecPipeline
+    from zarr.codecs.sharding import ShardingCodecIndexLocation
     from zarr.core.group import AsyncGroup
+
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
 __all__ = ["create_codec_pipeline", "parse_array_metadata"]
@@ -271,7 +273,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     # this overload defines the function signature when zarr_format is 2
     @overload
     @classmethod
-    async def create(
+    async def _create(
         cls,
         store: StoreLike,
         *,
@@ -295,7 +297,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     # this overload defines the function signature when zarr_format is 3
     @overload
     @classmethod
-    async def create(
+    async def _create(
         cls,
         store: StoreLike,
         *,
@@ -323,7 +325,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @overload
     @classmethod
-    async def create(
+    async def _create(
         cls,
         store: StoreLike,
         *,
@@ -350,7 +352,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV3Metadata]: ...
     @overload
     @classmethod
-    async def create(
+    async def _create(
         cls,
         store: StoreLike,
         *,
@@ -383,7 +385,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
-    async def create(
+    async def _create(
         cls,
         store: StoreLike,
         *,
@@ -494,19 +496,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         AsyncArray
             The created asynchronous array instance.
-
-        Examples
-        --------
-        >>> import zarr
-        >>> store = zarr.storage.MemoryStore(mode='w')
-        >>> async_arr = await zarr.core.array.AsyncArray.create(
-        >>>     store=store,
-        >>>     shape=(100,100),
-        >>>     chunks=(10,10),
-        >>>     dtype='i4',
-        >>>     fill_value=0)
-        <AsyncArray memory://140349042942400 shape=(100, 100) dtype=int32>
-
         """
         store_path = await make_store_path(store)
 
@@ -1148,7 +1137,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         --------
         >>> import zarr
         >>>  store = zarr.storage.MemoryStore(mode='w')
-        >>>  async_arr = await zarr.core.array.AsyncArray.create(
+        >>>  async_arr = await zarr.api.asynchronous.create_array(
         ...      store=store,
         ...      shape=(100,100),
         ...      chunks=(10,10),
@@ -1542,7 +1531,7 @@ class Array:
 
     @classmethod
     @_deprecate_positional_args
-    def create(
+    def _create(
         cls,
         store: StoreLike,
         *,
@@ -1643,7 +1632,7 @@ class Array:
             Array created from the store.
         """
         async_array = sync(
-            AsyncArray.create(
+            AsyncArray._create(
                 store=store,
                 shape=shape,
                 dtype=dtype,
@@ -2025,10 +2014,10 @@ class Array:
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(100, dtype="uint16")
-            >>> z = Array.create(
+            >>> z = zarr.create_array(
             >>>        StorePath(MemoryStore(mode="w")),
             >>>        shape=data.shape,
-            >>>        chunk_shape=(10,),
+            >>>        chunks=(10,),
             >>>        dtype=data.dtype,
             >>>        )
             >>> z[:] = data
@@ -2059,10 +2048,10 @@ class Array:
         Setup a 2-dimensional array::
 
             >>> data = np.arange(100, dtype="uint16").reshape(10, 10)
-            >>> z = Array.create(
+            >>> z = zarr.create_array(
             >>>        StorePath(MemoryStore(mode="w")),
             >>>        shape=data.shape,
-            >>>        chunk_shape=(10, 10),
+            >>>        chunks=(10, 10),
             >>>        dtype=data.dtype,
             >>>        )
             >>> z[:] = data
@@ -2290,10 +2279,10 @@ class Array:
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(100, dtype="uint16")
-            >>> z = Array.create(
+            >>> z = zarr.create_array(
             >>>        StorePath(MemoryStore(mode="w")),
             >>>        shape=data.shape,
-            >>>        chunk_shape=(3,),
+            >>>        chunks=(3,),
             >>>        dtype=data.dtype,
             >>>        )
             >>> z[:] = data
@@ -2319,10 +2308,10 @@ class Array:
         Setup a 3-dimensional array::
 
             >>> data = np.arange(1000).reshape(10, 10, 10)
-            >>> z = Array.create(
+            >>> z = zarr.create_array(
             >>>        StorePath(MemoryStore(mode="w")),
             >>>        shape=data.shape,
-            >>>        chunk_shape=(5, 5, 5),
+            >>>        chunks=(5, 5, 5),
             >>>        dtype=data.dtype,
             >>>        )
             >>> z[:] = data
@@ -2514,10 +2503,10 @@ class Array:
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(100).reshape(10, 10)
-            >>> z = Array.create(
+            >>> z = zarr.create_array(
             >>>        StorePath(MemoryStore(mode="w")),
             >>>        shape=data.shape,
-            >>>        chunk_shape=data.shape,
+            >>>        chunks=data.shape,
             >>>        dtype=data.dtype,
             >>>        )
             >>> z[:] = data
@@ -2748,10 +2737,10 @@ class Array:
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(100).reshape(10, 10)
-            >>> z = Array.create(
+            >>> z = zarr.create_array(
             >>>        StorePath(MemoryStore(mode="w")),
             >>>        shape=data.shape,
-            >>>        chunk_shape=data.shape,
+            >>>        chunks=data.shape,
             >>>        dtype=data.dtype,
             >>>        )
             >>> z[:] = data
@@ -2908,10 +2897,10 @@ class Array:
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(0, 100, dtype="uint16").reshape((10, 10))
-            >>> z = Array.create(
+            >>> z = zarr.create_array(
             >>>        StorePath(MemoryStore(mode="w")),
             >>>        shape=data.shape,
-            >>>        chunk_shape=(3, 3),
+            >>>        chunks=(3, 3),
             >>>        dtype=data.dtype,
             >>>        )
             >>> z[:] = data
@@ -3096,10 +3085,10 @@ class Array:
             >>> import zarr
             >>> import numpy as np
             >>> data = np.arange(0, 100, dtype="uint16").reshape((10, 10))
-            >>> z = Array.create(
+            >>> z = zarr.create_array(
             >>>        StorePath(MemoryStore(mode="w")),
             >>>        shape=data.shape,
-            >>>        chunk_shape=(3, 3),
+            >>>        chunks=(3, 3),
             >>>        dtype=data.dtype,
             >>>        )
             >>> z[:] = data
@@ -3517,6 +3506,14 @@ CompressorsParam: TypeAlias = (
 )
 
 
+class ShardsConfigParam(TypedDict):
+    shape: ChunkCoords
+    index_location: ShardingCodecIndexLocation | None
+
+
+ShardsParam: TypeAlias = ChunkCoords | ShardsConfigParam | Literal["auto"]
+
+
 async def create_array(
     store: str | StoreLike,
     *,
@@ -3524,7 +3521,7 @@ async def create_array(
     shape: ShapeLike,
     dtype: npt.DTypeLike,
     chunks: ChunkCoords | Literal["auto"] = "auto",
-    shards: ChunkCoords | Literal["auto"] | None = None,
+    shards: ShardsParam | None = None,
     filters: FiltersParam = "auto",
     compressors: CompressorsParam = "auto",
     fill_value: Any | None = 0,
@@ -3616,13 +3613,24 @@ async def create_array(
     -------
     z : array
         The array.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> store = zarr.storage.MemoryStore(mode='w')
+    >>> async_arr = await zarr.api.asynchronous.create_array(
+    >>>     store=store,
+    >>>     shape=(100,100),
+    >>>     chunks=(10,10),
+    >>>     dtype='i4',
+    >>>     fill_value=0)
+    <AsyncArray memory://140349042942400 shape=(100, 100) dtype=int32>
     """
 
     if zarr_format is None:
         zarr_format = _default_zarr_version()
 
-    # TODO: figure out why putting these imports at top-level causes circular imports
-    from zarr.codecs.sharding import ShardingCodec
+    from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
     mode: Literal["a"] = "a"
     dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
@@ -3677,7 +3685,14 @@ async def create_array(
         sub_codecs = cast(tuple[Codec, ...], (*array_array, array_bytes, *bytes_bytes))
         codecs_out: tuple[Codec, ...]
         if shard_shape_parsed is not None:
-            sharding_codec = ShardingCodec(chunk_shape=chunk_shape_parsed, codecs=sub_codecs)
+            index_location = None
+            if isinstance(shards, dict):
+                index_location = ShardingCodecIndexLocation(shards.get("index_location", None))
+            if index_location is None:
+                index_location = ShardingCodecIndexLocation.end
+            sharding_codec = ShardingCodec(
+                chunk_shape=chunk_shape_parsed, codecs=sub_codecs, index_location=index_location
+            )
             sharding_codec.validate(
                 shape=chunk_shape_parsed,
                 dtype=dtype_parsed,

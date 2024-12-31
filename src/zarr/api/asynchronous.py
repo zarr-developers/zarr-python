@@ -425,7 +425,7 @@ async def save_array(
     shape = arr.shape
     chunks = getattr(arr, "chunks", None)  # for array-likes with chunks attribute
     overwrite = kwargs.pop("overwrite", None) or _infer_overwrite(mode)
-    new = await AsyncArray.create(
+    new = await AsyncArray._create(
         store_path,
         zarr_format=zarr_format,
         shape=shape,
@@ -1041,7 +1041,7 @@ async def create(
 
     config_parsed = ArrayConfig.from_dict(config_dict)
 
-    return await AsyncArray.create(
+    return await AsyncArray._create(
         store_path,
         shape=shape,
         chunks=chunks,

@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr import Array, AsyncArray, zeros
+import zarr.api
+from zarr import zeros
 from zarr.abc.codec import Codec, CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter, Store
 from zarr.codecs import (
@@ -153,7 +154,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     assert get_pipeline_class() == MockCodecPipeline
 
     # test if codec is used
-    arr = Array.create(
+    arr = zarr.create_array(
         store=store,
         shape=(100,),
         chunks=(10,),
@@ -198,13 +199,13 @@ def test_config_codec_implementation(store: Store) -> None:
         assert get_codec_class("blosc") == MockBloscCodec
 
         # test if codec is used
-        arr = Array.create(
+        arr = zarr.create_array(
             store=store,
             shape=(100,),
             chunks=(10,),
             zarr_format=3,
             dtype="i4",
-            codecs=[BytesCodec(), {"name": "blosc", "configuration": {}}],
+            compressors=[{"name": "blosc", "configuration": {}}],
         )
         arr[:] = range(100)
         _mock.call.assert_called()
@@ -227,7 +228,7 @@ def test_config_ndbuffer_implementation(store: Store) -> None:
     register_ndbuffer(NDBufferUsingTestNDArrayLike)
     with config.set({"ndbuffer": fully_qualified_name(NDBufferUsingTestNDArrayLike)}):
         assert get_ndbuffer_class() == NDBufferUsingTestNDArrayLike
-        arr = Array.create(
+        arr = zarr.create_array(
             store=store,
             shape=(100,),
             chunks=(10,),
@@ -328,9 +329,9 @@ async def test_default_codecs(dtype: str, expected_codecs: list[Codec]) -> None:
             }
         }
     ):
-        arr = await AsyncArray.create(
+        arr = await zarr.api.asynchronous.create_array(
             shape=(100,),
-            chunk_shape=(100,),
+            chunks=(100,),
             dtype=np.dtype(dtype),
             zarr_format=3,
             store=MemoryStore(),
