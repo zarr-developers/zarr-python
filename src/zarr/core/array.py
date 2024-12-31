@@ -3527,7 +3527,7 @@ async def create_array(
     shards: ChunkCoords | Literal["auto"] | None = None,
     filters: FiltersParam = "auto",
     compressors: CompressorsParam = "auto",
-    fill_value: Any | None = 0,
+    fill_value: Any | None = None,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,

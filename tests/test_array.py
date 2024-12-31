@@ -12,9 +12,14 @@ import pytest
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
-from zarr.codecs import BytesCodec, VLenBytesCodec, ZstdCodec
-from zarr.codecs.gzip import GzipCodec
-from zarr.codecs.transpose import TransposeCodec
+from zarr.codecs import (
+    BytesCodec,
+    GzipCodec,
+    TransposeCodec,
+    VLenBytesCodec,
+    VLenUTF8Codec,
+    ZstdCodec,
+)
 from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     CompressorsParam,
@@ -944,6 +949,56 @@ def test_chunks_and_shards() -> None:
     )
     assert arr_v2.chunks == chunks
     assert arr_v2.shards is None
+
+
+def test_create_array_default_fill_values() -> None:
+    a = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="<U4")
+    assert a.fill_value == ""
+
+    b = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="<S4")
+    assert b.fill_value == b""
+
+    c = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="i")
+    assert c.fill_value == 0
+
+    d = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="f")
+    assert d.fill_value == 0.0
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
+@pytest.mark.parametrize("empty_value", [None, ()])
+async def test_create_array_no_filters_compressors(
+    store: MemoryStore, dtype: str, empty_value: Any
+) -> None:
+    """
+    Test that the default ``filters`` and ``compressors`` are removed when ``create_array`` is invoked.
+    """
+
+    # v2
+    arr = await create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        zarr_format=2,
+        compressors=empty_value,
+        filters=empty_value,
+    )
+    assert arr.metadata.filters == empty_value  # type: ignore[union-attr]
+    assert arr.metadata.compressor is None  # type: ignore[union-attr]
+
+    # v3
+    arr = await create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        compressors=empty_value,
+        filters=empty_value,
+    )
+    if dtype == "str":
+        assert arr.metadata.codecs == [VLenUTF8Codec()]  # type: ignore[union-attr]
+    else:
+        assert arr.metadata.codecs == [BytesCodec()]  # type: ignore[union-attr]
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
