@@ -31,7 +31,8 @@ __all__ = [
 ]
 
 warnings.warn(
-    "zarr.creation is deprecated, use zarr.api.synchronous",
+    "zarr.creation is deprecated. "
+    "Import these functions from the top level zarr. namespace instead.",
     DeprecationWarning,
     stacklevel=2,
 )
