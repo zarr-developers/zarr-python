@@ -3507,6 +3507,7 @@ FiltersParam: TypeAlias = (
     Iterable[dict[str, JSON] | ArrayArrayCodec]
     | ArrayArrayCodec
     | Iterable[numcodecs.abc.Codec]
+    | numcodecs.abc.Codec
     | Literal["auto"]
 )
 CompressorsParam: TypeAlias = (
