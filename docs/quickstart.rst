@@ -1,11 +1,13 @@
-.. ipython::
+.. ipython:: python
    :suppress:
 
-   In [999]: rm -r data/
+   rm -r data/
 
-   In [999]: import numpy as np
+.. ipython:: python
+   :suppress:
 
-   In [999]: np.random.seed(0)
+   import numpy as np
+   np.random.seed(0)
 
 Quickstart
 ==========
