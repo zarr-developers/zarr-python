@@ -51,4 +51,4 @@ Zarr has endorsed `Scientific-Python SPEC 0 <https://scientific-python.org/specs
 
 Development
 -----------
-To install the latest development version of Zarr, see the :ref:`contributing guide <contributing>`.
+To install the latest development version of Zarr, see the :ref:`contributing guide <dev-guide-contributing>`.
