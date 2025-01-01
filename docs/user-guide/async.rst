@@ -1,5 +1,5 @@
 
-Async Zarr
+Asynchronous API
 ==========
 
 Zarr-Python 3 added a new asynchronous API for reading and writing data using `asyncio`.
@@ -13,10 +13,10 @@ The usage of the async API mirrors the synchronous API.
    import zarr.api.asynchronous as async_zarr
 
    # create a new group using the asynchronous API
-   root = await async_zarr.group(attributes={'foo': 'bar'})
+   root = await async_zarr.create_group(attributes={'foo': 'bar'})
    root
    # create an array using the AsyncGroup
-   z = await root.create_array(name='foo', shape=(100, ), chunks=(5, ), dtype='i4')
+   z = await root.create_array(name='foo', shape=(100, ), chunks=(5, ), dtype=np.uint32)
    z
    # set and get items
    await z.setitem((slice(None), ), np.arange(0, 100, dtype=z.dtype))
