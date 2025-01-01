@@ -33,7 +33,7 @@ a bug report:
     # etc.
     ```
 
-2. An explanation of why the current behavior is wrong/not desired, and what you
+2. An explanation of why the current behaviour is wrong/not desired, and what you
    expect instead.
 
 3. Information about the version of Zarr, along with versions of dependencies and the
@@ -72,7 +72,8 @@ The Zarr source code is hosted on GitHub at the following location:
 * `https://github.com/zarr-developers/zarr-python <https://github.com/zarr-developers/zarr-python>`_
 
 You will need your own fork to work on the code. Go to the link above and hit
-the "Fork" button. Then clone your fork to your local machine::
+the `"Fork" <https://github.com/zarr-developers/zarr-python/fork>`_ button.
+Then clone your fork to your local machine::
 
     $ git clone git@github.com:your-user-name/zarr-python.git
     $ cd zarr-python
@@ -81,13 +82,13 @@ the "Fork" button. Then clone your fork to your local machine::
 Creating a development environment
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To work with the Zarr source code, it is recommended to use `hatch
-<https://hatch.pypa.io/latest/index.html>`_ to create a virtual environment and
-install all Zarr dependencies using the same versions as are used by
-the core developers and continuous integration services. Assuming you have a Python
-3 interpreter already installed, and you have cloned the Zarr source code and your
-current working directory is the root of the repository, you can do something like
-the following::
+To work with the Zarr source code, it is recommended to use
+`hatch <https://hatch.pypa.io/latest/index.html>`_ to create and manage development
+environments. Hatch will automatically install all Zarr dependencies using the same
+versions as are used by the core developers and continuous integration services.
+Assuming you have a Python 3 interpreter already installed, and you have cloned the
+Zarr source code and your current working directory is the root of the repository,
+you can do something like the following::
 
     $ pip install hatch
     $ hatch env show  # list all available environments
@@ -108,9 +109,7 @@ new, separate branch for each piece of work you want to do. E.g.::
 
     git checkout main
     git fetch upstream
-    git rebase upstream/main
-    git push
-    git checkout -b shiny-new-feature
+    git checkout -b shiny-new-feature upstream/main
     git push -u origin shiny-new-feature
 
 This changes your working directory to the 'shiny-new-feature' branch. Keep any changes in
@@ -128,25 +127,26 @@ merge conflicts, these need to be resolved before submitting a pull request.
 Alternatively, you can merge the changes in from upstream/main instead of rebasing,
 which can be simpler::
 
-    git fetch upstream
-    git merge upstream/main
+    git pull upstream main
 
 Again, any conflicts need to be resolved before submitting a pull request.
 
 Running the test suite
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Zarr includes a suite of unit tests, as well as doctests included in
-function and class docstrings and in the tutorial and storage
-spec. The simplest way to run the unit tests is to activate your
-development environment (see `creating a development environment`_ above)
-and invoke::
+Zarr includes a suite of unit tests. The simplest way to run the unit tests
+is to activate your development environment
+(see `creating a development environment`_ above) and invoke::
 
     $ hatch env run --env test.py3.12-2.1-optional run
 
 All tests are automatically run via GitHub Actions for every pull
 request and must pass before code can be accepted. Test coverage is
 also collected automatically via the Codecov service.
+
+.. note::
+    Previous versions of Zarr-Python made extensive use of doctests. These tests were
+    not maintained during the 3.0 refactor but may be brought back in the future.
 
 Code standards - using pre-commit
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -175,13 +175,15 @@ If you would like to skip the failing checks and push the code for further discu
 the ``--no-verify`` option with ``git commit``.
 
 
-
 Test coverage
 ~~~~~~~~~~~~~
 
+.. note::
+    Test coverage for Zarr-Python 3 is currently not at 100%. This is a known issue and help
+    is welcome to bring test coverage back to 100%.
+
 Zarr strives to maintain 100% test coverage under the latest Python stable release
-(currently Python 3.12). Both unit tests and docstring doctests are included when computing
-coverage. Running::
+Both unit tests and docstring doctests are included when computing coverage. Running::
 
     $ hatch env run --env test.py3.12-2.1-optional run-coverage
 
@@ -199,21 +201,27 @@ Docstrings for user-facing classes and functions should follow the
 `numpydoc
 <https://numpydoc.readthedocs.io/en/stable/format.html#docstring-standard>`_
 standard, including sections for Parameters and Examples. All examples
-should run and pass as doctests under Python 3.10.
+should run and pass as doctests under Python 3.11.
 
 Zarr uses Sphinx for documentation, hosted on readthedocs.org. Documentation is
 written in the RestructuredText markup language (.rst files) in the ``docs`` folder.
 The documentation consists both of prose and API documentation. All user-facing classes
-and functions should be included in the API documentation, under the ``docs/api``
-folder. Any new features or important usage information should be included in the
-tutorial (``docs/tutorial.rst``). Any changes should also be included in the release
-notes (``docs/release.rst``).
+and functions are included in the API documentation, under the ``docs/api`` folder
+using the `autodoc <https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html>`_
+extension to sphinx. Any new features or important usage information should be included in the
+user-guide (``docs/user-guide``). Any changes should also be included in the release
+notes (``docs/developers/release.rst``).
 
 The documentation can be built locally by running::
 
     $ hatch --env docs run build
 
 The resulting built documentation will be available in the ``docs/_build/html`` folder.
+
+Hatch can also be used to serve continuously updating version of the documentation
+during development at `http://0.0.0.0:8000/ <http://0.0.0.0:8000/>`_. This can be done by running::
+
+    $ hatch --env docs run serve
 
 Development best practices, policies and procedures
 ---------------------------------------------------
@@ -293,14 +301,7 @@ implements storage spec version 3, then the next library release should have ver
 number 3.0.0. Note however that the major version number of the Zarr library may not
 always correspond to the spec version number. For example, Zarr versions 2.x, 3.x, and
 4.x might all implement the same version of the storage spec and thus maintain data
-format compatibility, although they will not maintain API compatibility. The version number
-of the storage specification that is currently implemented is stored under the
-``zarr.meta.ZARR_FORMAT`` variable.
-
-Note that the Zarr test suite includes a data fixture and tests to try and ensure that
-data format compatibility is not accidentally broken. See the
-:func:`test_format_compatibility` function in the :mod:`tests.test_storage` module
-for details.
+format compatibility, although they will not maintain API compatibility.
 
 When to make a release
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -322,7 +323,7 @@ Release procedure
 
 .. note::
 
-   Most of the release process is now handled by github workflow which should
+   Most of the release process is now handled by GitHub workflow which should
    automatically push a release to PyPI if a tag is pushed.
 
 Before releasing, make sure that all pull requests which will be
