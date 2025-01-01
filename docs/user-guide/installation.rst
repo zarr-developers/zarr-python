@@ -28,7 +28,7 @@ These can be installed using ``pip install "zarr[<extra>]"``, e.g. ``pip install
 - ``gpu``: support for GPUs
 - ``remote``: support for reading/writing to remote data stores
 
-Additional option dependencies include ``rich``, ``universal_pathlib``. These must be installed separately.
+Additional optional dependencies include ``rich``, ``universal_pathlib``. These must be installed separately.
 
 conda
 -----
@@ -51,4 +51,4 @@ Zarr has endorsed `Scientific-Python SPEC 0 <https://scientific-python.org/specs
 
 Development
 -----------
-To install the latest development version of Zarr, see `the contributing guide <../developers/contributing.html>`_.
+To install the latest development version of Zarr, see the :ref:`contributing guide <contributing>`.
