@@ -19,12 +19,6 @@ Feedback and bug reports are very welcome, please get in touch via
 the `GitHub issue tracker <https://github.com/zarr-developers/zarr-python/issues>`_. See
 :doc:`contributing` for further information about contributing to Zarr.
 
-Projects using Zarr
--------------------
-
-If you are using Zarr, we would `love to hear about it
-<https://github.com/zarr-developers/community/issues/19>`_.
-
 .. toctree::
     :caption: Getting Started
     :hidden:
