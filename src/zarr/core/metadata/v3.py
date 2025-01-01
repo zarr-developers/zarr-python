@@ -24,19 +24,19 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
-from zarr.core.array_spec import ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ChunkCoords,
-    MemoryOrder,
     parse_named_configuration,
     parse_shapelike,
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
+from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
@@ -95,14 +95,14 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
 
     # we need to have special codecs if we are decoding vlen strings or bytestrings
     # TODO: use codec ID instead of class name
-    codec_id = abc.__class__.__name__
-    if dtype == DataType.string and not codec_id == "VLenUTF8Codec":
+    codec_class_name = abc.__class__.__name__
+    if dtype == DataType.string and not codec_class_name == "VLenUTF8Codec":
         raise ValueError(
-            f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_id}`."
+            f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
         )
-    if dtype == DataType.bytes and not codec_id == "VLenBytesCodec":
+    if dtype == DataType.bytes and not codec_class_name == "VLenBytesCodec":
         raise ValueError(
-            f"For bytes dtype, ArrayBytesCodec must be `VLenBytesCodec`, got `{codec_id}`."
+            f"For bytes dtype, ArrayBytesCodec must be `VLenBytesCodec`, got `{codec_class_name}`."
         )
 
 
@@ -225,9 +225,9 @@ class ArrayV3Metadata(Metadata):
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
         codecs: Iterable[Codec | dict[str, JSON]],
-        attributes: None | dict[str, JSON],
-        dimension_names: None | Iterable[str],
-        storage_transformers: None | Iterable[dict[str, JSON]] = None,
+        attributes: dict[str, JSON] | None,
+        dimension_names: Iterable[str] | None,
+        storage_transformers: Iterable[dict[str, JSON]] | None = None,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
@@ -251,7 +251,7 @@ class ArrayV3Metadata(Metadata):
             shape=shape_parsed,
             dtype=data_type_parsed.to_numpy(),
             fill_value=fill_value_parsed,
-            order="C",  # TODO: order is not needed here.
+            config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
         codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]
@@ -297,7 +297,7 @@ class ArrayV3Metadata(Metadata):
         return len(self.shape)
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: MemoryOrder, prototype: BufferPrototype
+        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
@@ -306,7 +306,7 @@ class ArrayV3Metadata(Metadata):
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
-            order=order,
+            config=array_config,
             prototype=prototype,
         )
 
@@ -540,7 +540,7 @@ class DataType(Enum):
     bytes = "bytes"
 
     @property
-    def byte_count(self) -> None | int:
+    def byte_count(self) -> int | None:
         data_type_byte_counts = {
             DataType.bool: 1,
             DataType.int8: 1,
@@ -606,6 +606,10 @@ class DataType(Enum):
             return DataType.string
         elif dtype.kind == "S":
             return DataType.bytes
+        elif not _NUMPY_SUPPORTS_VLEN_STRING and dtype.kind == "O":
+            # numpy < 2.0 does not support vlen string dtype
+            # so we fall back on object array of strings
+            return DataType.string
         dtype_to_data_type = {
             "|b1": "bool",
             "bool": "bool",
@@ -626,7 +630,7 @@ class DataType(Enum):
         return DataType[dtype_to_data_type[dtype.str]]
 
     @classmethod
-    def parse(cls, dtype: None | DataType | Any) -> DataType:
+    def parse(cls, dtype: DataType | Any | None) -> DataType:
         if dtype is None:
             return DataType[DEFAULT_DTYPE]
         if isinstance(dtype, DataType):
