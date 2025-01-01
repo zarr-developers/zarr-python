@@ -5,7 +5,7 @@ Zarr is a format for the storage of chunked, compressed, N-dimensional arrays
 inspired by `HDF5 <https://www.hdfgroup.org/HDF5/>`_, `h5py
 <https://www.h5py.org/>`_ and `bcolz <https://bcolz.readthedocs.io/>`_.
 
-These documents describe the Zarr Python implementation. More information
+These documents describe the Zarr-Python implementation. More information
 about the Zarr format can be found on the `main website <https://zarr.dev>`_.
 
 Projects using Zarr
