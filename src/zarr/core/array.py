@@ -688,10 +688,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             dimension_separator = "."
 
         dtype = parse_dtype(dtype, zarr_format=2)
-        if not filters:
-            filters = _default_filters(dtype)
-        if not compressor:
-            compressor = _default_compressor(dtype)
 
         # inject VLenUTF8 for str dtype if not already present
         if np.issubdtype(dtype, np.str_):
