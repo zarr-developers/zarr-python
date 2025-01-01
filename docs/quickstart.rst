@@ -20,7 +20,7 @@ large-scale data.
 Installation
 ------------
 
-Zarr requires Python 3.10 or higher. You can install it via `pip`:
+Zarr requires Python 3.11 or higher. You can install it via `pip`:
 
 .. code-block:: bash
 
@@ -43,7 +43,7 @@ To get started, you can create a simple Zarr array:
     import numpy as np
 
     # Create a 2D Zarr array
-    z = zarr.zeros(
+    z = zarr.create_array(
         store="data/example-1.zarr",
         shape=(100, 100),
         chunks=(10, 10),
@@ -65,14 +65,11 @@ Zarr supports data compression and filters. For example, to use Blosc compressio
 
 .. ipython:: python
 
-    from numcodecs import Blosc
-
-    z = zarr.open(
+    z = zarr.create_array(
         "data/example-3.zarr",
         mode="w", shape=(100, 100),
         chunks=(10, 10), dtype="f4",
-        compressor=Blosc(cname="zstd", clevel=3, shuffle=Blosc.SHUFFLE),
-        zarr_format=2
+        compressor=zarr.codecs.BloscCodec(cname="zstd", clevel=3, shuffle=zarr.codecs.BloscShuffle.SHUFFLE)
     )
     z[:, :] = np.random.random((100, 100))
 
@@ -116,7 +113,7 @@ including the :class:`zarr.storage.ZipStore` and :class:`zarr.storage.FsspecStor
     # Store the array in a ZIP file
     store = zarr.storage.ZipStore("data/example-3.zip", mode='w')
 
-    z = zarr.open(
+    z = zarr.create_array(
         store=store,
         mode="w",
         shape=(100, 100),
@@ -137,7 +134,7 @@ To open an existing array:
     # Open the ZipStore in read-only mode
     store = zarr.storage.ZipStore("data/example-3.zip", read_only=True)
 
-    z = zarr.open(store, mode='r')
+    z = zarr.open_array(store, mode='r')
 
     # read the data as a NumPy Array
     z[:]
@@ -156,7 +153,7 @@ For example, to use S3:
 
     import s3fs
 
-    z = zarr.open("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10))
+    z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10))
     z[:, :] = np.random.random((100, 100))
 
 Read more about Zarr's :ref:`tutorial_storage` options in the User Guide.
