@@ -241,6 +241,9 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
                 msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
                 raise TypeError(msg)
         return tuple(out)
+    # take a single codec instance and wrap it in a tuple
+    if isinstance(data, numcodecs.abc.Codec):
+        return (data,)
     msg = f"Invalid filters. Expected None, an iterable of numcodecs.abc.Codec or dict representations of numcodecs.abc.Codec. Got {type(data)} instead."
     raise TypeError(msg)
 
