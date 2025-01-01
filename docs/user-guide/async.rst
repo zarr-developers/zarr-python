@@ -1,8 +1,13 @@
+.. _user-guide-async:
 
 Asynchronous API
-==========
+================
 
-Zarr-Python 3 added a new asynchronous API for reading and writing data using `asyncio`.
+Zarr-Python 3 added a new asynchronous API for reading and writing data using
+`asyncio <https://docs.python.org/3/library/asyncio.html>`_. The asynchronous
+API enables concurrent I/O and parallel processing using a managed thread pool.
+When operating in an async context, it can be used to provide asynchronous
+access to Zarr data.
 
 The usage of the async API mirrors the synchronous API.
 
