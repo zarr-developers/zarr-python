@@ -1,18 +1,19 @@
+user-guide-performance
 
-Optimizing Performance
+Optimizing performance
 ======================
 
-.. ipython::
+.. ipython:: python
    :suppress:
 
    rm -r data/
 
-.. _tutorial_chunks:
+.. _user-guide-chunks:
 
 Chunk optimizations
 -------------------
 
-.. _tutorial_chunks_shape:
+.. _user-guide-chunks-shape:
 
 Chunk size and shape
 ~~~~~~~~~~~~~~~~~~~~
@@ -67,7 +68,7 @@ one single chunk for the array:
    z5 = zarr.zeros((10000, 10000), chunks=False, dtype='i4')
    z5.chunks
 
-.. _tutorial_chunks_order:
+.. _user-guide-chunks-order:
 
 Chunk memory layout
 ~~~~~~~~~~~~~~~~~~~
@@ -92,7 +93,7 @@ bytes within chunks of an array may improve the compression ratio, depending on
 the structure of the data, the compression algorithm used, and which compression
 filters (e.g., byte-shuffle) have been applied.
 
-.. _tutorial_chunks_empty_chunks:
+.. _user-guide-chunks-empty-chunks:
 
 Empty chunks
 ~~~~~~~~~~~~
@@ -153,7 +154,7 @@ the time required to write an array with different values.:
 In this example, writing random data is slightly slower with ``write_empty_chunks=True``,
 but writing empty data is substantially faster and generates far fewer objects in storage.
 
-.. _tutorial_rechunking:
+.. _user-guide-rechunking:
 
 Changing chunk shapes (rechunking)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -201,7 +202,7 @@ more sophisticated approach to rechunking, such as offered by the
 `here <https://medium.com/pangeo/rechunker-the-missing-link-for-chunked-array-analytics-5b2359e9dc11>`_
 may offer a substantial improvement in performance.
 
-.. _tutorial_sync:
+.. _user-guide-sync:
 
 Parallel computing and synchronization
 --------------------------------------
@@ -265,14 +266,14 @@ This array is safe to read or write from multiple processes.
 When using multiple processes to parallelize reads or writes on arrays using the Blosc
 compression library, it may be necessary to set ``numcodecs.blosc.use_threads = False``,
 as otherwise Blosc may share incorrect global state amongst processes causing programs
-to hang. See also the section on :ref:`tutorial_tips_blosc` below.
+to hang. See also the section on :ref:`user-guide-tips-blosc` below.
 
 Please note that support for parallel computing is an area of ongoing research
 and development. If you are using Zarr for parallel computing, we welcome
 feedback, experience, discussion, ideas and advice, particularly about issues
 related to data integrity and performance.
 
-.. _tutorial_pickle:
+.. _user-guide-pickle:
 
 Pickle support
 --------------
@@ -298,10 +299,10 @@ E.g., pickle/unpickle an local store array:
    z1 == z2
    np.all(z1[:] == z2[:])
 
-.. _tutorial_tips_blosc:
+.. _user-guide-tips-blosc:
 
 Configuring Blosc
-~~~~~~~~~~~~~~~~~
+-----------------
 
 Coming soon.
 

@@ -1,4 +1,4 @@
-.. _tutorial_attrs:
+.. _user-guide-attrs:
 
 Working with attributes
 =======================

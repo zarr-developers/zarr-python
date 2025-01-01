@@ -1,7 +1,7 @@
-.. _guide_storage:
+.. _user-guide-storage:
 
-Storage
-=======
+Storage guide
+=============
 
 Zarr-Python supports multiple storage backends, including: local file systems,
 Zip files, remote stores via fsspec_ (S3, HTTP, etc.), and in-memory stores. In
@@ -72,8 +72,8 @@ The :class:`zarr.storage.FsspecStore` stores the contents of a Zarr hierarchy in
 logical layout as the ``LocalStore``, except the store is assumed to be on a remote storage system
 such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Store). The
 :class:`zarr.storage.FsspecStore` is backed by `fsspec`_ and can support any backend
-that implements the `AbstractFileSystem` API. ``storage_options`` can be used to configure
-the fsspec backend.
+that implements the `AbstractFileSystem <https://filesystem-spec.readthedocs.io/en/stable/api.html#fsspec.spec.AbstractFileSystem>`_
+API. ``storage_options`` can be used to configure the fsspec backend.
 
 .. ipython:: python
 

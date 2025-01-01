@@ -1,4 +1,4 @@
-.. _config:
+.. _user-guide-config:
 
 Runtime configuration
 =====================
@@ -8,10 +8,16 @@ and is based on the `donfig <https://github.com/pytroll/donfig>`_ Python library
 
 Configuration values can be set using code like the following:
 
-.. code-block:: python
+.. ipython:: python
 
     import zarr
     zarr.config.set({"array.order": "F"})
+
+.. ipython:: python
+   :suppress:
+
+    # revert this change so it doesn't impact the rest of the docs
+    zarr.config.set({"array.order": "C"})
 
 Alternatively, configuration values can be set using environment variables, e.g.
 ``ZARR_ARRAY__ORDER=F``.

@@ -1,7 +1,14 @@
-Consolidated Metadata
+.. _user-guide-consolidated-metadata:
+
+Consolidated metadata
 =====================
 
-Zarr-Python implements the `Consolidated Metadata`_ extension to the Zarr Spec.
+.. warning::
+   The Consolidated Metadata feature in Zarr-Python is considered experimental for v3
+   stores. `zarr-specs#309 <https://github.com/zarr-developers/zarr-specs/pull/309>`_
+   has proposed a formal extension to the v3 specification to support consolidated metadata.
+
+Zarr-Python implements the `Consolidated Metadata`_ for v2 and v3 stores.
 Consolidated metadata can reduce the time needed to load the metadata for an
 entire hierarchy, especially when the metadata is being served over a network.
 Consolidated metadata essentially stores all the metadata for a hierarchy in the
@@ -70,4 +77,4 @@ removed, or modified, consolidated metadata may not be desirable.
    of the metadata, at the time they read the root node with its consolidated
    metadata.
 
-.. _Consolidated Metadata: https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html#consolidated-metadata
+.. _Consolidated Metadata: https://github.com/zarr-developers/zarr-specs/pull/309

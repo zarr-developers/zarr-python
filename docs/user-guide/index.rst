@@ -1,6 +1,6 @@
 .. _user-guide:
 
-User Guide
+User guide
 ==========
 
 .. toctree::
@@ -24,9 +24,6 @@ Advanced Topics
 
     performance
     consolidated_metadata
-    whatsnew_v3
-    v3_todos
-
 
 .. Coming soon
     async
