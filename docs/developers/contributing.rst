@@ -147,6 +147,7 @@ also collected automatically via the Codecov service.
 .. note::
     Previous versions of Zarr-Python made extensive use of doctests. These tests were
     not maintained during the 3.0 refactor but may be brought back in the future.
+    See :issue:`2614` for more details.
 
 Code standards - using pre-commit
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -180,7 +181,7 @@ Test coverage
 
 .. note::
     Test coverage for Zarr-Python 3 is currently not at 100%. This is a known issue and help
-    is welcome to bring test coverage back to 100%.
+    is welcome to bring test coverage back to 100%. See :issue:`2613` for more details.
 
 Zarr strives to maintain 100% test coverage under the latest Python stable release
 Both unit tests and docstring doctests are included when computing coverage. Running::
