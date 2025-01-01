@@ -19,7 +19,7 @@ logger = getLogger(__name__)
 
 class MemoryStore(Store):
     """
-    In-memory store for testing purposes.
+    In-memory store.
 
     Parameters
     ----------

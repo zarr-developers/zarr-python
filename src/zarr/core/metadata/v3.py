@@ -24,14 +24,13 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
-from zarr.core.array_spec import ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ChunkCoords,
-    MemoryOrder,
     parse_named_configuration,
     parse_shapelike,
 )
@@ -252,7 +251,7 @@ class ArrayV3Metadata(Metadata):
             shape=shape_parsed,
             dtype=data_type_parsed.to_numpy(),
             fill_value=fill_value_parsed,
-            order="C",  # TODO: order is not needed here.
+            config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
         codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]
@@ -298,7 +297,7 @@ class ArrayV3Metadata(Metadata):
         return len(self.shape)
 
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: MemoryOrder, prototype: BufferPrototype
+        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
@@ -307,7 +306,7 @@ class ArrayV3Metadata(Metadata):
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
-            order=order,
+            config=array_config,
             prototype=prototype,
         )
 

@@ -15,6 +15,7 @@ from zarr._compat import _deprecate_positional_args
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
 from zarr.core._info import ArrayInfo
+from zarr.core.array_spec import ArrayConfig, ArrayConfigParams, normalize_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
@@ -37,12 +38,14 @@ from zarr.core.common import (
     MemoryOrder,
     ShapeLike,
     ZarrFormat,
+    _warn_order_kwarg,
     concurrent_map,
     parse_dtype,
+    parse_order,
     parse_shapelike,
     product,
 )
-from zarr.core.config import config, parse_indexing_order
+from zarr.core.config import config as zarr_config
 from zarr.core.indexing import (
     BasicIndexer,
     BasicSelection,
@@ -187,8 +190,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         The metadata of the array.
     store_path : StorePath
         The path to the Zarr store.
-    order : {'C', 'F'}, optional
-        The order of the array data in memory, by default None.
+    config : ArrayConfig, optional
+        The runtime configuration of the array, by default None.
 
     Attributes
     ----------
@@ -198,21 +201,21 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         The path to the Zarr store.
     codec_pipeline : CodecPipeline
         The codec pipeline used for encoding and decoding chunks.
-    order : {'C', 'F'}
-        The order of the array data in memory.
+    _config : ArrayConfig
+        The runtime configuration of the array.
     """
 
     metadata: T_ArrayMetadata
     store_path: StorePath
     codec_pipeline: CodecPipeline = field(init=False)
-    order: MemoryOrder
+    _config: ArrayConfig
 
     @overload
     def __init__(
         self: AsyncArray[ArrayV2Metadata],
         metadata: ArrayV2Metadata | ArrayV2MetadataDict,
         store_path: StorePath,
-        order: MemoryOrder | None = None,
+        config: ArrayConfig | None = None,
     ) -> None: ...
 
     @overload
@@ -220,14 +223,14 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         self: AsyncArray[ArrayV3Metadata],
         metadata: ArrayV3Metadata | ArrayV3MetadataDict,
         store_path: StorePath,
-        order: MemoryOrder | None = None,
+        config: ArrayConfig | None = None,
     ) -> None: ...
 
     def __init__(
         self,
         metadata: ArrayMetadata | ArrayMetadataDict,
         store_path: StorePath,
-        order: MemoryOrder | None = None,
+        config: ArrayConfig | None = None,
     ) -> None:
         if isinstance(metadata, dict):
             zarr_format = metadata["zarr_format"]
@@ -241,11 +244,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError(f"Invalid zarr_format: {zarr_format}. Expected 2 or 3")
 
         metadata_parsed = parse_array_metadata(metadata)
-        order_parsed = parse_indexing_order(order or config.get("array.order"))
+
+        config = ArrayConfig.from_dict({}) if config is None else config
 
         object.__setattr__(self, "metadata", metadata_parsed)
         object.__setattr__(self, "store_path", store_path)
-        object.__setattr__(self, "order", order_parsed)
+        object.__setattr__(self, "_config", config)
         object.__setattr__(self, "codec_pipeline", create_codec_pipeline(metadata=metadata_parsed))
 
     # this overload defines the function signature when zarr_format is 2
@@ -269,6 +273,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV2Metadata]: ...
 
     # this overload defines the function signature when zarr_format is 3
@@ -297,9 +302,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
 
-    # this overload is necessary to handle the case where the `zarr_format` kwarg is unspecified
     @overload
     @classmethod
     async def create(
@@ -325,8 +330,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
-
     @overload
     @classmethod
     async def create(
@@ -358,6 +363,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
@@ -390,6 +396,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
         Method to create a new asynchronous array instance.
@@ -439,7 +446,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The dimension separator (default is ".").
             V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"], optional
-            The order of the array (default is specified by ``array.order`` in :mod:`zarr.core.config`).
+            The memory of the array (default is "C").
+            If ``zarr_format`` is 2, this parameter sets the memory order of the array.
+            If `zarr_format`` is 3, then this parameter is deprecated, because memory order
+            is a runtime parameter for Zarr 3 arrays. The recommended way to specify the memory
+            order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
         filters : list[dict[str, JSON]], optional
             Sequence of filters to use to encode chunk data prior to compression.
             V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
@@ -491,6 +502,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _chunks = normalize_chunks(chunks, shape, dtype_parsed.itemsize)
         else:
             _chunks = normalize_chunks(chunk_shape, shape, dtype_parsed.itemsize)
+        config_parsed = normalize_array_config(config)
 
         result: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
         if zarr_format == 3:
@@ -506,6 +518,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 raise ValueError(
                     "compressor cannot be used for arrays with version 3. Use bytes-to-bytes codecs instead."
                 )
+
+            if order is not None:
+                _warn_order_kwarg()
+
             result = await cls._create_v3(
                 store_path,
                 shape=shape,
@@ -517,7 +533,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 dimension_names=dimension_names,
                 attributes=attributes,
                 overwrite=overwrite,
-                order=order,
+                config=config_parsed,
             )
         elif zarr_format == 2:
             if codecs is not None:
@@ -530,6 +546,12 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 )
             if dimension_names is not None:
                 raise ValueError("dimension_names cannot be used for arrays with version 2.")
+
+            if order is None:
+                order_parsed = parse_order(zarr_config.get("array.order"))
+            else:
+                order_parsed = order
+
             result = await cls._create_v2(
                 store_path,
                 shape=shape,
@@ -537,7 +559,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 chunks=_chunks,
                 dimension_separator=dimension_separator,
                 fill_value=fill_value,
-                order=order,
+                order=order_parsed,
+                config=config_parsed,
                 filters=filters,
                 compressor=compressor,
                 attributes=attributes,
@@ -560,8 +583,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         shape: ShapeLike,
         dtype: np.dtype[Any],
         chunk_shape: ChunkCoords,
+        config: ArrayConfig,
         fill_value: Any | None = None,
-        order: MemoryOrder | None = None,
         chunk_key_encoding: (
             ChunkKeyEncoding
             | tuple[Literal["default"], Literal[".", "/"]]
@@ -614,7 +637,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             attributes=attributes or {},
         )
 
-        array = cls(metadata=metadata, store_path=store_path, order=order)
+        array = cls(metadata=metadata, store_path=store_path, config=config)
         await array._save_metadata(metadata, ensure_parents=True)
         return array
 
@@ -626,9 +649,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         shape: ChunkCoords,
         dtype: np.dtype[Any],
         chunks: ChunkCoords,
+        order: MemoryOrder,
+        config: ArrayConfig,
         dimension_separator: Literal[".", "/"] | None = None,
         fill_value: float | None = None,
-        order: MemoryOrder | None = None,
         filters: list[dict[str, JSON]] | None = None,
         compressor: dict[str, JSON] | None = None,
         attributes: dict[str, JSON] | None = None,
@@ -641,9 +665,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 await ensure_no_existing_node(store_path, zarr_format=2)
         else:
             await ensure_no_existing_node(store_path, zarr_format=2)
-
-        if order is None:
-            order = parse_indexing_order(config.get("array.order"))
 
         if dimension_separator is None:
             dimension_separator = "."
@@ -667,7 +688,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             filters=filters,
             attributes=attributes,
         )
-        array = cls(metadata=metadata, store_path=store_path, order=order)
+        array = cls(metadata=metadata, store_path=store_path, config=config)
         await array._save_metadata(metadata, ensure_parents=True)
         return array
 
@@ -805,6 +826,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             Data type of the array
         """
         return self.metadata.dtype
+
+    @property
+    def order(self) -> MemoryOrder:
+        """Returns the memory order of the array.
+
+        Returns
+        -------
+        bool
+            Memory order of the array
+        """
+        return self._config.order
 
     @property
     def attrs(self) -> dict[str, JSON]:
@@ -1036,7 +1068,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             out_buffer = prototype.nd_buffer.create(
                 shape=indexer.shape,
                 dtype=out_dtype,
-                order=self.order,
+                order=self._config.order,
                 fill_value=self.metadata.fill_value,
             )
         if product(indexer.shape) > 0:
@@ -1045,7 +1077,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 [
                     (
                         self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                        self.metadata.get_chunk_spec(chunk_coords, self.order, prototype=prototype),
+                        self.metadata.get_chunk_spec(
+                            chunk_coords, self._config, prototype=prototype
+                        ),
                         chunk_selection,
                         out_selection,
                     )
@@ -1167,7 +1201,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                    self.metadata.get_chunk_spec(chunk_coords, self.order, prototype),
+                    self.metadata.get_chunk_spec(chunk_coords, self._config, prototype),
                     chunk_selection,
                     out_selection,
                 )
@@ -1270,7 +1304,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     for chunk_coords in old_chunk_coords.difference(new_chunk_coords)
                 ],
                 _delete_key,
-                config.get("async.concurrency"),
+                zarr_config.get("async.concurrency"),
             )
 
         # Write new metadata
@@ -1503,6 +1537,7 @@ class Array:
         compressor: dict[str, JSON] | None = None,
         # runtime
         overwrite: bool = False,
+        config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
 
@@ -1545,7 +1580,11 @@ class Array:
             The dimension separator (default is ".").
             V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
         order : Literal["C", "F"], optional
-            The order of the array (default is specified by ``array.order`` in :mod:`zarr.core.config`).
+            The memory of the array (default is "C").
+            If ``zarr_format`` is 2, this parameter sets the memory order of the array.
+            If `zarr_format`` is 3, then this parameter is deprecated, because memory order
+            is a runtime parameter for Zarr 3 arrays. The recommended way to specify the memory
+            order for Zarr 3 arrays is via the ``config`` parameter, e.g. ``{'order': 'C'}``.
         filters : list[dict[str, JSON]], optional
             Sequence of filters to use to encode chunk data prior to compression.
             V2 only. V3 arrays should use ``codecs`` instead. If neither ``compressor``
@@ -1588,6 +1627,7 @@ class Array:
                 filters=filters,
                 compressor=compressor,
                 overwrite=overwrite,
+                config=config,
             ),
         )
         return cls(async_array)
@@ -3400,7 +3440,7 @@ def _build_parents(
 def _get_default_codecs(
     np_dtype: np.dtype[Any],
 ) -> list[dict[str, JSON]]:
-    default_codecs = config.get("array.v3_default_codecs")
+    default_codecs = zarr_config.get("array.v3_default_codecs")
     dtype = DataType.from_numpy(np_dtype)
     if dtype == DataType.string:
         dtype_key = "string"
