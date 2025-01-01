@@ -5,7 +5,7 @@ Optimizing Performance
 .. ipython::
    :suppress:
 
-   In [144]: rm -r data/
+   rm -r data/
 
 .. _tutorial_chunks:
 
