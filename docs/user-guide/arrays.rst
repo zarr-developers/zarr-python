@@ -188,7 +188,7 @@ which can be used to print useful diagnostics, e.g.::
    Order              : C
    Read-only          : False
    Store type         : LocalStore
-   Filters            : (Zstd(level=0),)
+   Compressor         : Zstd(level=0)
    No. bytes          : 400000000 (381.5M)
 
 The :func:`zarr.Array.info_complete` method inspects the underlying store and
@@ -203,9 +203,9 @@ prints additional diagnostics, e.g.::
    Order              : C
    Read-only          : False
    Store type         : LocalStore
-   Filters            : (Zstd(level=0),)
+   Compressor         : Zstd(level=0)
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 299348462
+   No. bytes stored   : 299348444
    Storage ratio      : 1.3
    Chunks Initialized : 100
 
@@ -254,8 +254,8 @@ The default compressor can be changed by setting the value of the using Zarr's
    >>> with zarr.config.set({'array.v2_default_compressor.numeric': 'blosc'}):
    ...     z = zarr.zeros(100000000, chunks=1000000, zarr_format=2)
    >>> z.metadata.filters
-   (Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0),)
    >>> z.metadata.compressor
+   LZMA(format=1, check=-1, preset=None, filters=[{'id': 3, 'dist': 4}, {'id': 33, 'preset': 1}])
    >>>
 
 To disable compression, set ``compressor=None`` when creating an array, e.g.::

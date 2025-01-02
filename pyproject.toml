@@ -68,6 +68,7 @@ test = [
     "pytest-cov",
     "s3fs",
     "pytest-asyncio",
+    "pytest-accept",
     "moto[s3]",
     "requests",
     "mypy",
@@ -152,6 +153,7 @@ description = "Test environment for doctests"
 
 [tool.hatch.envs.doctest.scripts]
 run = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst'"
+fix = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst' --accept"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
