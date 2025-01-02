@@ -86,7 +86,6 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
-    'ipython',
     'rich',
     's3fs',
 ]
@@ -139,7 +138,7 @@ numpy = ["1.25", "2.1"]
 features = ["gpu"]
 
 [tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=src"
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=src --doctest-glob='*.rst'"
 run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=src"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
@@ -352,7 +351,7 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "7"
-testpaths = ["tests"]
+testpaths = ["tests", "docs"]
 log_cli_level = "INFO"
 xfail_strict = true
 asyncio_mode = "auto"
