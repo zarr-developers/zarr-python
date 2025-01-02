@@ -407,7 +407,7 @@ async def test_sharding_with_chunks_per_shard(
     store: Store, index_location: ShardingCodecIndexLocation, chunks_per_shard: tuple[int]
 ) -> None:
     chunk_shape = (2, 1)
-    shape = [x * y for x, y in zip(chunks_per_shard, chunk_shape, strict=False)]
+    shape = tuple(x * y for x, y in zip(chunks_per_shard, chunk_shape, strict=False))
     data = np.ones(np.prod(shape), dtype="int32").reshape(shape)
     fill_value = 42
 

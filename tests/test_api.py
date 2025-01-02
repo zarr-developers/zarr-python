@@ -23,7 +23,7 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.common import MemoryOrder, ZarrFormat
+from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
 from zarr.storage._utils import normalize_path
 from zarr.storage.memory import MemoryStore
@@ -61,7 +61,7 @@ def test_create(memory_store: Store) -> None:
 # TODO: parametrize over everything this function takes
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_create_array(store: Store) -> None:
-    attrs = {"foo": 100}
+    attrs: dict[str, JSON] = {"foo": 100}  # explicit type annotation to avoid mypy error
     shape = (10, 10)
     path = "foo"
     data_val = 1
