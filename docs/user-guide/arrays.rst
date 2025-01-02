@@ -18,7 +18,8 @@ Zarr has several functions for creating arrays. For example:
    import zarr
 
    store = {}
-   z = zarr.create(  # TODO: change this to `create_array`
+   # TODO: replace with `create_array` after #2463
+   z = zarr.create(
        store=store,
        mode="w",
        shape=(10000, 10000),
@@ -84,6 +85,7 @@ argument to point to a filesystem path:
 
 .. ipython:: python
 
+   # TODO: replace with `open_array` after #2463
    z1 = zarr.open(
        store='data/example-2.zarr',
        mode='w',
@@ -113,6 +115,7 @@ Check that the data have been written and can be read again:
 
 .. ipython:: python
 
+   # TODO: replace with `open_array` after #2463
    z2 = zarr.open('data/example-2.zarr', mode='r')
    np.all(z1[:] == z2[:])
 
@@ -160,6 +163,7 @@ used to append data to any axis. E.g.:
 .. ipython:: python
 
    a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
+   # TODO: replace with create_array after #2463
    z = zarr.array(store="data/example-5", data=a, chunks=(1000, 100))
    z.shape
    z.append(a)
@@ -183,7 +187,7 @@ argument accepted by all array creation functions. For example:
 
    compressor = None  # TODO: Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
    data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
-   # TODO: remove zarr_format
+   # TODO: remove zarr_format and replace with create_array after #2463
    z = zarr.array(store="data/example-6.zarr", data=data, chunks=(1000, 1000), compressor=compressor, zarr_format=2)
    None  # TODO: z.compressor
 
@@ -232,7 +236,7 @@ here is an array using Zstandard compression, level 1:
 .. ipython:: python
 
    from numcodecs import Zstd
-
+   # TODO: remove zarr_format and replace with create_array after #2463
    z = zarr.array(
        store="data/example-7.zarr",
        data=np.arange(100000000, dtype='i4').reshape(10000, 10000),
@@ -252,7 +256,7 @@ built-in delta filter:
 
    lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
    compressor = LZMA(filters=lzma_filters)
-   # TODO: remove zarr_format
+   # TODO: remove zarr_format and replace with create_array after #2463
    z = zarr.array(
        np.arange(100000000, dtype='i4').reshape(10000, 10000),
        chunks=(1000, 1000),
@@ -304,7 +308,7 @@ Here is an example using a delta filter with the Blosc compressor:
    filters = [Delta(dtype='i4')]
    compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.SHUFFLE)
    data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
-   # TODO: remove zarr_format
+   # TODO: remove zarr_format and replace with create_array after #2463
    z = zarr.array(data, chunks=(1000, 1000), filters=filters, compressor=compressor, zarr_format=2)
    z.info
 
@@ -334,6 +338,7 @@ coordinates. E.g.:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(10) ** 2)
    z[:]
    z.get_coordinate_selection([2, 5])
@@ -350,6 +355,7 @@ e.g.:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(15).reshape(3, 5))
    z[:]
    z.get_coordinate_selection(([0, 2], [1, 3]))
@@ -381,6 +387,7 @@ Items can also be extracted by providing a Boolean mask. E.g.:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(10) ** 2)
    z[:]
    sel = np.zeros_like(z, dtype=bool)
@@ -394,6 +401,7 @@ Here's a multidimensional example:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(15).reshape(3, 5))
    z[:]
    sel = np.zeros_like(z, dtype=bool)
@@ -426,6 +434,7 @@ example, this allows selecting a subset of rows and/or columns from a
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(15).reshape(3, 5))
    z[:]
    z.get_orthogonal_selection(([0, 2], slice(None)))  # select first and third rows
@@ -443,6 +452,7 @@ For convenience, the orthogonal indexing functionality is also available via the
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(15).reshape(3, 5))
    z.oindex[[0, 2], :]  # select first and third rows
    z.oindex[:, [1, 3]]  # select second and fourth columns
@@ -458,6 +468,7 @@ orthogonal indexing is also available directly on the array:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(15).reshape(3, 5))
    np.all(z.oindex[[0, 2], :] == z[[0, 2], :])
 
@@ -470,6 +481,7 @@ a subset of chunk aligned rows and/or columns from a 2-dimensional array. E.g.:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(100).reshape(10, 10), chunks=(3, 3))
 
 Retrieve items by specifying their block coordinates:
@@ -525,6 +537,7 @@ Any combination of integer and slice can be used for block indexing:
 
    z.blocks[2, 1:3]
 
+   # TODO: replace with create_group after #2463
    root = zarr.group('data/example-12.zarr')
    foo = root.create_array(name='foo', shape=(1000, 100), chunks=(10, 10), dtype='f4')
    bar = root.create_array(name='foo/bar', shape=(100,), dtype='i4')

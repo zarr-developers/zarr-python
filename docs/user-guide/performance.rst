@@ -81,6 +81,7 @@ ratios, depending on the correlation structure within the data. E.g.:
 .. ipython:: python
 
    a = np.arange(100000000, dtype='i4').reshape(10000, 10000).T
+   # TODO: replace with create_array after #2463
    c = zarr.array(a, chunks=(1000, 1000))
    c.info_complete()
    with zarr.config.set({'array.order': 'F'}):
@@ -159,119 +160,14 @@ but writing empty data is substantially faster and generates far fewer objects i
 Changing chunk shapes (rechunking)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Sometimes you are not free to choose the initial chunking of your input data, or
-you might have data saved with chunking which is not optimal for the analysis you
-have planned. In such cases it can be advantageous to re-chunk the data. For small
-datasets, or when the mismatch between input and output chunks is small
-such that only a few chunks of the input dataset need to be read to create each
-chunk in the output array, it is sufficient to simply copy the data to a new array
-with the desired chunking, e.g.:
-
-.. .. ipython:: python
-..    :verbatim:
-
-..    a = zarr.zeros((10000, 10000), chunks=(100,100), dtype='uint16', store='a.zarr')
-..    b = zarr.array(a, chunks=(100, 200), store='b.zarr')
-
-If the chunk shapes mismatch, however, a simple copy can lead to non-optimal data
-access patterns and incur a substantial performance hit when using
-file based stores. One of the most pathological examples is
-switching from column-based chunking to row-based chunking e.g.:
-
-.. .. ipython:: python
-..    :verbatim:
-
-..    a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16', store='a.zarr')
-..    b = zarr.array(a, chunks=(1,10000), store='b.zarr')
-
-which will require every chunk in the input data set to be repeatedly read when creating
-each output chunk. If the entire array will fit within memory, this is simply resolved
-by forcing the entire input array into memory as a numpy array before converting
-back to zarr with the desired chunking.
-
-.. .. ipython:: python
-..    :verbatim:
-
-..    a = zarr.zeros((10000,10000), chunks=(10000, 1), dtype='uint16', store='a.zarr')
-..    b = a[...]
-..    c = zarr.array(b, chunks=(1,10000), store='c.zarr')
-
-For data sets which have mismatched chunks and which do not fit in memory, a
-more sophisticated approach to rechunking, such as offered by the
-`rechunker <https://github.com/pangeo-data/rechunker>`_ package and discussed
-`here <https://medium.com/pangeo/rechunker-the-missing-link-for-chunked-array-analytics-5b2359e9dc11>`_
-may offer a substantial improvement in performance.
+Coming soon.
 
 .. _user-guide-sync:
 
 Parallel computing and synchronization
 --------------------------------------
 
-Zarr arrays have been designed for use as the source or sink for data in
-parallel computations. By data source we mean that multiple concurrent read
-operations may occur. By data sink we mean that multiple concurrent write
-operations may occur, with each writer updating a different region of the
-array. Zarr arrays have **not** been designed for situations where multiple
-readers and writers are concurrently operating on the same array.
-
-Both multi-threaded and multi-process parallelism are possible. The bottleneck
-for most storage and retrieval operations is compression/decompression, and the
-Python global interpreter lock (GIL) is released wherever possible during these
-operations, so Zarr will generally not block other Python threads from running.
-
-When using a Zarr array as a data sink, some synchronization (locking) may be
-required to avoid data loss, depending on how data are being updated. If each
-worker in a parallel computation is writing to a separate region of the array,
-and if region boundaries are perfectly aligned with chunk boundaries, then no
-synchronization is required. However, if region and chunk boundaries are not
-perfectly aligned, then synchronization is required to avoid two workers
-attempting to modify the same chunk at the same time, which could result in data
-loss.
-
-To give a simple example, consider a 1-dimensional array of length 60, ``z``,
-divided into three chunks of 20 elements each. If three workers are running and
-each attempts to write to a 20 element region (i.e., ``z[0:20]``, ``z[20:40]``
-and ``z[40:60]``) then each worker will be writing to a separate chunk and no
-synchronization is required. However, if two workers are running and each
-attempts to write to a 30 element region (i.e., ``z[0:30]`` and ``z[30:60]``)
-then it is possible both workers will attempt to modify the middle chunk at the
-same time, and synchronization is required to prevent data loss.
-
-Zarr provides support for chunk-level synchronization. E.g., create an array
-with thread synchronization:
-
-.. .. ipython:: python
-..    :verbatim:
-
-..    z = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4', synchronizer=zarr.ThreadSynchronizer())
-..    z
-
-This array is safe to read or write within a multi-threaded program.
-
-Zarr also provides support for process synchronization via file locking,
-provided that all processes have access to a shared file system, and provided
-that the underlying file system supports file locking (which is not the case for
-some networked file systems). E.g.:
-
-.. .. ipython:: python
-..    :verbatim:
-
-..    synchronizer = zarr.ProcessSynchronizer('data/example.sync')
-
-..    z = zarr.open_array('data/example', mode='w', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4', synchronizer=synchronizer)
-..    z
-
-This array is safe to read or write from multiple processes.
-
-When using multiple processes to parallelize reads or writes on arrays using the Blosc
-compression library, it may be necessary to set ``numcodecs.blosc.use_threads = False``,
-as otherwise Blosc may share incorrect global state amongst processes causing programs
-to hang. See also the section on :ref:`user-guide-tips-blosc` below.
-
-Please note that support for parallel computing is an area of ongoing research
-and development. If you are using Zarr for parallel computing, we welcome
-feedback, experience, discussion, ideas and advice, particularly about issues
-related to data integrity and performance.
+Coming soon.
 
 .. _user-guide-pickle:
 
@@ -293,6 +189,7 @@ E.g., pickle/unpickle an local store array:
 
    import pickle
 
+   # TODO: replace with create_array after #2463
    z1 = zarr.array(store="data/example-2", data=np.arange(100000))
    s = pickle.dumps(z1)
    z2 = pickle.loads(s)
@@ -305,29 +202,3 @@ Configuring Blosc
 -----------------
 
 Coming soon.
-
-.. The Blosc compressor is able to use multiple threads internally to accelerate
-.. compression and decompression. By default, Blosc uses up to 8
-.. internal threads. The number of Blosc threads can be changed to increase or
-.. decrease this number, e.g.:
-
-.. .. ipython:: python
-..    :verbatim:
-
-..    from numcodecs import blosc
-
-..    blosc.set_nthreads(2)  # doctest: +SKIP
-
-.. When a Zarr array is being used within a multi-threaded program, Zarr
-.. automatically switches to using Blosc in a single-threaded
-.. "contextual" mode. This is generally better as it allows multiple
-.. program threads to use Blosc simultaneously and prevents CPU thrashing
-.. from too many active threads. If you want to manually override this
-.. behaviour, set the value of the ``blosc.use_threads`` variable to
-.. ``True`` (Blosc always uses multiple internal threads) or ``False``
-.. (Blosc always runs in single-threaded contextual mode). To re-enable
-.. automatic switching, set ``blosc.use_threads`` to ``None``.
-
-.. Please note that if Zarr is being used within a multi-process program, Blosc may not
-.. be safe to use in multi-threaded mode and may cause the program to hang. If using Blosc
-.. in a multi-process program then it is recommended to set ``blosc.use_threads = False``.

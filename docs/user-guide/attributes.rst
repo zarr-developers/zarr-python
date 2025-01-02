@@ -8,6 +8,7 @@ storing application-specific metadata. For example:
 
 .. ipython:: python
 
+   # TODO: replace with create_group after #2463
    root = zarr.group()
    root.attrs['foo'] = 'bar'
    z = root.zeros(name='zzz', shape=(10000, 10000))

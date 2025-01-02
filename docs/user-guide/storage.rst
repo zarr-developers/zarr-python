@@ -52,6 +52,7 @@ filesystem.
 .. ipython:: python
 
    store = zarr.storage.LocalStore("data/foo/bar", read_only=True)
+   # TODO: replace with create_group after #2463
    zarr.open(store=store, mode='r')
 
 Zip Store
@@ -63,6 +64,7 @@ Zip file. The `Zip Store specification`_ is currently in draft form.
 .. ipython:: python
 
    store = zarr.storage.ZipStore("data.zip", mode="w")
+   # TODO: replace with create_array after #2463
    zarr.open(store=store, shape=(2,))
 
 Remote Store
@@ -94,6 +96,7 @@ Zarr data (metadata and chunks) to a dictionary.
 
    data = {}
    store = zarr.storage.MemoryStore(data)
+   # TODO: replace with create_array after #2463
    zarr.open(store=store, shape=(2, ))
 
 Developing custom stores

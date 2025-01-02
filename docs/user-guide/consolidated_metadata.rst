@@ -33,6 +33,7 @@ attribute of the ``GroupMetadata`` object.
 
    import zarr
    store = zarr.storage.MemoryStore()
+   # TODO: replace with create_group after #2463
    group = zarr.open_group(store=store)
    group.create_array(shape=(1,), name="a")
    group.create_array(shape=(2, 2), name="b")

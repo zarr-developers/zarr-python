@@ -18,6 +18,7 @@ To create a group, use the :func:`zarr.group` function:
 
    import zarr
 
+   # TODO: replace with create_group after #2463
    root = zarr.group()
    root
 
@@ -57,7 +58,7 @@ representation of the hierarchy, e.g.:
 
    root.tree()
 
-The :func:`zarr.open` function provides a convenient way to create or
+The :func:`zarr.open_group` function provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with sub-groups stored in
 sub-directories, e.g.:
 
@@ -85,6 +86,7 @@ property. E.g.:
 
 .. ipython:: python
 
+   # TODO: replace with create_group after #2463
    root = zarr.group()
    foo = root.create_group('foo')
    bar = foo.zeros(name='bar', shape=1000000, chunks=100000, dtype='i8')
