@@ -21,8 +21,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
-from zarr.storage.common import make_store_path
+from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore, make_store_path
 
 from .conftest import parse_store
 

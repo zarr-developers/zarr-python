@@ -9,7 +9,7 @@ from zarr.abc.store import Store
 from zarr.codecs import VLenBytesCodec, VLenUTF8Codec, ZstdCodec
 from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
-from zarr.storage.common import StorePath
+from zarr.storage import StorePath
 
 numpy_str_dtypes: list[type | str | None] = [None, str, "str", np.dtypes.StrDType]
 expected_zarr_string_dtype: np.dtype[Any]

@@ -13,8 +13,7 @@ from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
 from zarr.core.buffer import ArrayLike, BufferPrototype, NDArrayLike, cpu, gpu
-from zarr.storage.common import StorePath
-from zarr.storage.memory import MemoryStore
+from zarr.storage import MemoryStore, StorePath
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,
     StoreExpectingTestBuffer,

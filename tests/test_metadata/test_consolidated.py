@@ -21,7 +21,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.storage.common import StorePath
+from zarr.storage import StorePath
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store

@@ -10,7 +10,7 @@ import pytest
 
 import zarr
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
-from zarr.storage.zip import ZipStore
+from zarr.storage import ZipStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:

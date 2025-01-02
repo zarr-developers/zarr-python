@@ -6,7 +6,7 @@ import pytest
 from zarr import AsyncArray
 from zarr.abc.store import Store
 from zarr.codecs import BytesCodec
-from zarr.storage.common import StorePath
+from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
 

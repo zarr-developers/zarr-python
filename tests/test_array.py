@@ -23,8 +23,7 @@ from zarr.core.indexing import ceildiv
 from zarr.core.metadata.v3 import DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.storage import LocalStore, MemoryStore
-from zarr.storage.common import StorePath
+from zarr.storage import LocalStore, MemoryStore, StorePath
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
