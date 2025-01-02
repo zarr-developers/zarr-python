@@ -18,15 +18,10 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import Codec
     from zarr.api.asynchronous import ArrayLike, PathLike
-    from zarr.core.array import (
-        CompressorsParam,
-        FiltersParam,
-        SerializerParam,
-        ShardsParam,
-    )
-    from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
+    from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike, ShardsLike
+    from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
     from zarr.core.buffer import NDArrayLike
-    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingParams
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
         JSON,
         AccessModeLiteral,
@@ -622,7 +617,7 @@ def create(
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
-    config: ArrayConfig | ArrayConfigParams | None = None,
+    config: ArrayConfig | ArrayConfigLike | None = None,
     **kwargs: Any,
 ) -> Array:
     """Create an array.
@@ -692,7 +687,7 @@ def create(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    config : ArrayConfig or ArrayConfigParams, optional
+    config : ArrayConfig or ArrayConfigLike, optional
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
 
@@ -745,21 +740,21 @@ def create_array(
     shape: ShapeLike,
     dtype: npt.DTypeLike,
     chunks: ChunkCoords | Literal["auto"] = "auto",
-    shards: ShardsParam | None = None,
-    filters: FiltersParam | None = "auto",
-    compressors: CompressorsParam = "auto",
-    serializer: SerializerParam = "auto",
+    shards: ShardsLike | None = None,
+    filters: FiltersLike = "auto",
+    compressors: CompressorsLike = "auto",
+    serializer: SerializerLike = "auto",
     fill_value: Any | None = None,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
-    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
-    config: ArrayConfig | ArrayConfigParams | None = None,
+    config: ArrayConfig | ArrayConfigLike | None = None,
 ) -> Array:
-    """Create an array.
+    """Create an ``Array``. This function wraps :mod:`zarr.core.array.create_array`.
 
     Parameters
     ----------
@@ -844,7 +839,7 @@ def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-    config : ArrayConfig or ArrayConfigParams, optional
+    config : ArrayConfig or ArrayConfigLike, optional
         Runtime configuration for the array.
 
     Returns
@@ -867,7 +862,7 @@ def create_array(
     return Array(
         sync(
             zarr.core.array.create_array(
-                store=store,
+                store,
                 name=name,
                 shape=shape,
                 dtype=dtype,

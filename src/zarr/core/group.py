@@ -21,8 +21,8 @@ from zarr.core._info import GroupInfo
 from zarr.core.array import (
     Array,
     AsyncArray,
-    CompressorsParam,
-    FiltersParam,
+    CompressorsLike,
+    FiltersLike,
     _build_parents,
     create_array,
 )
@@ -53,9 +53,9 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
     from typing import Any
 
-    from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
+    from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingParams
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
 
 logger = logging.getLogger("zarr.group")
@@ -1009,16 +1009,16 @@ class AsyncGroup:
         dtype: npt.DTypeLike,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ChunkCoords | Literal["auto"] | None = None,
-        filters: FiltersParam = "auto",
-        compressors: CompressorsParam = "auto",
+        filters: FiltersLike = "auto",
+        compressors: CompressorsLike = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
+        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
         dimension_names: Iterable[str] | None = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
         Create a Zarr array within this AsyncGroup.
@@ -1056,7 +1056,7 @@ class AsyncGroup:
             Ignored otherwise.
         overwrite : bool, default False
             Whether to overwrite an array with the same name in the store, if one exists.
-        config : ArrayConfig or ArrayConfigParams, optional
+        config : ArrayConfig or ArrayConfigLike, optional
             Runtime configuration for the array.
 
         Returns
@@ -2202,16 +2202,16 @@ class Group(SyncMixin):
         dtype: npt.DTypeLike,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ChunkCoords | None = None,
-        filters: FiltersParam = "auto",
-        compressors: CompressorsParam = "auto",
+        filters: FiltersLike = "auto",
+        compressors: CompressorsLike = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
+        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
         dimension_names: Iterable[str] | None = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> Array:
         """
         Create a Zarr array within this AsyncGroup.
@@ -2249,7 +2249,7 @@ class Group(SyncMixin):
             Ignored otherwise.
         overwrite : bool, default False
             Whether to overwrite an array with the same name in the store, if one exists.
-        config : ArrayConfig or ArrayConfigParams, optional
+        config : ArrayConfig or ArrayConfigLike, optional
             Runtime configuration for the array.
 
         Returns
@@ -2534,16 +2534,16 @@ class Group(SyncMixin):
         dtype: npt.DTypeLike,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ChunkCoords | Literal["auto"] | None = None,
-        filters: FiltersParam = "auto",
-        compressors: CompressorsParam = "auto",
+        filters: FiltersLike = "auto",
+        compressors: CompressorsLike = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
+        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
         dimension_names: Iterable[str] | None = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
         data: npt.ArrayLike | None = None,
     ) -> Array:
         """
@@ -2582,7 +2582,7 @@ class Group(SyncMixin):
             Ignored otherwise.
         overwrite : bool, default False
             Whether to overwrite an array with the same name in the store, if one exists.
-        config : ArrayConfig or ArrayConfigParams, optional
+        config : ArrayConfig or ArrayConfigLike, optional
             Runtime configuration for the array.
 
         Returns

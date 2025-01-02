@@ -29,7 +29,7 @@ from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Co
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
 from zarr.core._info import ArrayInfo
-from zarr.core.array_spec import ArrayConfig, ArrayConfigParams, parse_array_config
+from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, parse_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
@@ -40,7 +40,7 @@ from zarr.core.buffer import (
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
-    ChunkKeyEncodingParams,
+    ChunkKeyEncodingLike,
     DefaultChunkKeyEncoding,
     V2ChunkKeyEncoding,
 )
@@ -302,7 +302,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata]: ...
 
     # this overload defines the function signature when zarr_format is 3
@@ -331,7 +331,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
 
     @overload
@@ -359,7 +359,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
 
     @overload
@@ -393,7 +393,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
@@ -428,7 +428,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Method to create a new asynchronous array instance.
 
@@ -502,7 +502,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             Whether to raise an error if the store already exists (default is False).
         data : npt.ArrayLike, optional
             The data to be inserted into the array (default is None).
-        config : ArrayConfig or ArrayConfigParams, optional
+        config : ArrayConfig or ArrayConfigLike, optional
             Runtime configuration for the array.
 
         Returns
@@ -568,7 +568,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Method to create a new asynchronous array instance.
         See :func:`AsyncArray.create` for more details.
@@ -1633,7 +1633,7 @@ class Array:
         compressor: dict[str, JSON] | None = None,
         # runtime
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
 
@@ -1761,7 +1761,7 @@ class Array:
         compressor: dict[str, JSON] | None = None,
         # runtime
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
         See :func:`Array.create` for more details.
@@ -3628,22 +3628,22 @@ def _get_default_codecs(
     return cast(list[dict[str, JSON]], default_codecs[dtype_key])
 
 
-FiltersParam: TypeAlias = (
-    Iterable[dict[str, JSON] | ArrayArrayCodec]
+FiltersLike: TypeAlias = (
+    Iterable[dict[str, JSON] | ArrayArrayCodec | numcodecs.abc.Codec]
     | ArrayArrayCodec
     | Iterable[numcodecs.abc.Codec]
     | numcodecs.abc.Codec
     | Literal["auto"]
     | None
 )
-CompressorsParam: TypeAlias = (
+CompressorsLike: TypeAlias = (
     Iterable[dict[str, JSON] | BytesBytesCodec]
     | BytesBytesCodec
     | numcodecs.abc.Codec
     | Literal["auto"]
     | None
 )
-SerializerParam: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
+SerializerLike: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 
 class ShardsConfigParam(TypedDict):
@@ -3651,7 +3651,7 @@ class ShardsConfigParam(TypedDict):
     index_location: ShardingCodecIndexLocation | None
 
 
-ShardsParam: TypeAlias = ChunkCoords | ShardsConfigParam | Literal["auto"]
+ShardsLike: TypeAlias = ChunkCoords | ShardsConfigParam | Literal["auto"]
 
 
 async def create_array(
@@ -3661,21 +3661,21 @@ async def create_array(
     shape: ShapeLike,
     dtype: npt.DTypeLike,
     chunks: ChunkCoords | Literal["auto"] = "auto",
-    shards: ShardsParam | None = None,
-    filters: FiltersParam | None = "auto",
-    compressors: CompressorsParam = "auto",
-    serializer: SerializerParam = "auto",
+    shards: ShardsLike | None = None,
+    filters: FiltersLike = "auto",
+    compressors: CompressorsLike = "auto",
+    serializer: SerializerLike = "auto",
     fill_value: Any | None = None,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
-    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
-    config: ArrayConfig | ArrayConfigParams | None = None,
+    config: ArrayConfig | ArrayConfigLike | None = None,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-    """Create an array.
+    """Create an ``AsyncArray``.
 
     Parameters
     ----------
@@ -3760,7 +3760,7 @@ async def create_array(
         Ignored otherwise.
     overwrite : bool, default False
         Whether to overwrite an array with the same name in the store, if one exists.
-    config : ArrayConfig or ArrayConfigParams, optional
+    config : ArrayConfig or ArrayConfigLike, optional
         Runtime configuration for the array.
 
     Returns
@@ -3883,7 +3883,7 @@ async def create_array(
 
 
 def _parse_chunk_key_encoding(
-    data: ChunkKeyEncoding | ChunkKeyEncodingParams | None, zarr_format: ZarrFormat
+    data: ChunkKeyEncoding | ChunkKeyEncodingLike | None, zarr_format: ZarrFormat
 ) -> ChunkKeyEncoding:
     """
     Take an implicit specification of a chunk key encoding and parse it into a ChunkKeyEncoding object.
@@ -3971,8 +3971,8 @@ def _get_default_chunk_encoding_v2(
 
 def _parse_chunk_encoding_v2(
     *,
-    compressor: CompressorsParam,
-    filters: FiltersParam | None,
+    compressor: CompressorsLike,
+    filters: FiltersLike,
     dtype: np.dtype[Any],
 ) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
     """
@@ -4015,9 +4015,9 @@ def _parse_chunk_encoding_v2(
 
 def _parse_chunk_encoding_v3(
     *,
-    compressors: CompressorsParam | None,
-    filters: FiltersParam | None,
-    serializer: SerializerParam,
+    compressors: CompressorsLike,
+    filters: FiltersLike,
+    serializer: SerializerLike,
     dtype: np.dtype[Any],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """

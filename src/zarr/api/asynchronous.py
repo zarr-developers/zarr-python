@@ -10,7 +10,7 @@ import numpy.typing as npt
 from typing_extensions import deprecated
 
 from zarr.core.array import Array, AsyncArray, create_array, get_array_metadata
-from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
+from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
 from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
@@ -859,7 +859,7 @@ async def create(
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
-    config: ArrayConfig | ArrayConfigParams | None = None,
+    config: ArrayConfig | ArrayConfigLike | None = None,
     **kwargs: Any,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array.
@@ -961,7 +961,7 @@ async def create(
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
-    config : ArrayConfig or ArrayConfigParams, optional
+    config : ArrayConfig or ArrayConfigLike, optional
         Runtime configuration of the array. If provided, will override the
         default values from `zarr.config.array`.
 
@@ -1020,7 +1020,7 @@ async def create(
         mode = "a"
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
 
-    config_dict: ArrayConfigParams = {}
+    config_dict: ArrayConfigLike = {}
 
     if write_empty_chunks is not None:
         if config is not None:
