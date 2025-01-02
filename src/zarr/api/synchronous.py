@@ -759,7 +759,9 @@ def create_array(
     overwrite: bool = False,
     config: ArrayConfig | ArrayConfigLike | None = None,
 ) -> Array:
-    """Create an ``Array``. This function wraps :mod:`zarr.core.array.create_array`.
+    """Create an array.
+
+    This function wraps :func:`zarr.core.array.create_array`.
 
     Parameters
     ----------

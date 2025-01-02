@@ -1026,9 +1026,9 @@ class AsyncGroup:
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-        """
-        Create a Zarr array within this AsyncGroup.
-        This method lightly wraps ``zarr.core.array.create_array``.
+        """Create an array within this group.
+
+        This method lightly wraps :func:`zarr.core.array.create_array`.
 
         Parameters
         ----------
@@ -2273,9 +2273,9 @@ class Group(SyncMixin):
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> Array:
-        """
-        Create a Zarr array within this AsyncGroup.
-        This method lightly wraps ``zarr.core.array.create_array``.
+        """Create an array within this group.
+
+        This method lightly wraps :func:`zarr.core.array.create_array`.
 
         Parameters
         ----------
@@ -2658,9 +2658,9 @@ class Group(SyncMixin):
         config: ArrayConfig | ArrayConfigLike | None = None,
         data: npt.ArrayLike | None = None,
     ) -> Array:
-        """
-        Create a Zarr array within this AsyncGroup.
-        This method lightly wraps ``zarr.core.array.create_array``.
+        """Create an array within this group.
+
+        This method lightly wraps :func:`zarr.core.array.create_array`.
 
         Parameters
         ----------

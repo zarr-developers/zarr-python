@@ -3677,7 +3677,7 @@ async def create_array(
     overwrite: bool = False,
     config: ArrayConfig | ArrayConfigLike | None = None,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-    """Create an ``AsyncArray``.
+    """Create an array.
 
     Parameters
     ----------
