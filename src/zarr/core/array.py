@@ -3500,7 +3500,7 @@ def _get_default_codecs(
 
 
 FiltersParam: TypeAlias = (
-    Iterable[dict[str, JSON] | ArrayArrayCodec]
+    Iterable[dict[str, JSON] | ArrayArrayCodec | numcodecs.abc.Codec]
     | ArrayArrayCodec
     | Iterable[numcodecs.abc.Codec]
     | numcodecs.abc.Codec
