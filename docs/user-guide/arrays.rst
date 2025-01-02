@@ -3,10 +3,6 @@
 Working with arrays
 ===================
 
-   >>> import shutil
-   >>>
-   >>> shutil.rmtree("./data")
-
 Creating an array
 -----------------
 

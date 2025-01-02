@@ -1,10 +1,7 @@
 user-guide-performance
 
 Optimizing performance
-======================:
-
-   >>> import shutil
-   >>> shutil.rmtree("./data", ignore_errors=True)
+======================
 
 .. _user-guide-chunks:
 

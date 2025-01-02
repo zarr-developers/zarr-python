@@ -3,9 +3,6 @@
 Working with groups
 ===================
 
-   >>> import shutil
-   >>> shutil.rmtree("./data")
-
 Zarr supports hierarchical organization of arrays via groups. As with arrays,
 groups can be stored in memory, on disk, or via other storage systems that
 support a similar interface.
