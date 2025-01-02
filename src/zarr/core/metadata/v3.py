@@ -296,6 +296,40 @@ class ArrayV3Metadata(Metadata):
     def ndim(self) -> int:
         return len(self.shape)
 
+    @property
+    def chunks(self) -> ChunkCoords:
+        if isinstance(self.chunk_grid, RegularChunkGrid):
+            from zarr.codecs.sharding import ShardingCodec
+
+            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+                sharding_codec = self.codecs[0]
+                assert isinstance(sharding_codec, ShardingCodec)  # for mypy
+                return sharding_codec.chunk_shape
+            else:
+                return self.chunk_grid.chunk_shape
+
+        msg = (
+            f"The `chunks` attribute is only defined for arrays using `RegularChunkGrid`."
+            f"This array has a {self.chunk_grid} instead."
+        )
+        raise NotImplementedError(msg)
+
+    @property
+    def shards(self) -> ChunkCoords | None:
+        if isinstance(self.chunk_grid, RegularChunkGrid):
+            from zarr.codecs.sharding import ShardingCodec
+
+            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+                return self.chunk_grid.chunk_shape
+            else:
+                return None
+
+        msg = (
+            f"The `shards` attribute is only defined for arrays using `RegularChunkGrid`."
+            f"This array has a {self.chunk_grid} instead."
+        )
+        raise NotImplementedError(msg)
+
     def get_chunk_spec(
         self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
@@ -449,7 +483,7 @@ def parse_fill_value(
         return np.bytes_(fill_value)
 
     # the rest are numeric types
-    np_dtype = cast(np.dtype[np.generic], data_type.to_numpy())
+    np_dtype = cast(np.dtype[Any], data_type.to_numpy())
 
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if data_type in (DataType.complex64, DataType.complex128):
@@ -513,8 +547,8 @@ def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
         return b""
     else:
         np_dtype = dtype.to_numpy()
-        np_dtype = cast(np.dtype[np.generic], np_dtype)
-        return np_dtype.type(0)
+        np_dtype = cast(np.dtype[Any], np_dtype)
+        return np_dtype.type(0)  # type: ignore[misc]
 
 
 # For type checking
@@ -586,7 +620,7 @@ class DataType(Enum):
         }
         return data_type_to_numpy[self]
 
-    def to_numpy(self) -> np.dtypes.StringDType | np.dtypes.ObjectDType | np.dtype[np.generic]:
+    def to_numpy(self) -> np.dtypes.StringDType | np.dtypes.ObjectDType | np.dtype[Any]:
         # note: it is not possible to round trip DataType <-> np.dtype
         # due to the fact that DataType.string and DataType.bytes both
         # generally return np.dtype("O") from this function, even though
