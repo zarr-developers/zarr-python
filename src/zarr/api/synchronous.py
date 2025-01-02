@@ -18,10 +18,10 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import Codec
     from zarr.api.asynchronous import ArrayLike, PathLike
-    from zarr.core.array import CompressorsParam, FiltersParam
-    from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
+    from zarr.core.array import CompressorsLike, FiltersLike
+    from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
     from zarr.core.buffer import NDArrayLike
-    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingParams
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
         JSON,
         AccessModeLiteral,
@@ -592,7 +592,7 @@ def create(
     codecs: Iterable[Codec | dict[str, JSON]] | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
-    config: ArrayConfig | ArrayConfigParams | None = None,
+    config: ArrayConfig | ArrayConfigLike | None = None,
     **kwargs: Any,
 ) -> Array:
     """Create an array.
@@ -716,17 +716,17 @@ def create_array(
     dtype: npt.DTypeLike,
     chunks: ChunkCoords | Literal["auto"] = "auto",
     shards: ChunkCoords | Literal["auto"] | None = None,
-    filters: FiltersParam = "auto",
-    compressors: CompressorsParam = "auto",
+    filters: FiltersLike = "auto",
+    compressors: CompressorsLike = "auto",
     fill_value: Any | None = None,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
-    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
-    config: ArrayConfig | ArrayConfigParams | None = None,
+    config: ArrayConfig | ArrayConfigLike | None = None,
 ) -> Array:
     """Create an ``Array``. This function wraps :mod:`zarr.core.array.create_array`.
 

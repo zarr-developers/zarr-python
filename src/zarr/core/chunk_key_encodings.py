@@ -20,7 +20,7 @@ def parse_separator(data: JSON) -> SeparatorLiteral:
     return cast(SeparatorLiteral, data)
 
 
-class ChunkKeyEncodingParams(TypedDict):
+class ChunkKeyEncodingLike(TypedDict):
     name: Literal["v2", "default"]
     separator: SeparatorLiteral
 
@@ -37,7 +37,7 @@ class ChunkKeyEncoding(Metadata):
 
     @classmethod
     def from_dict(
-        cls, data: dict[str, JSON] | ChunkKeyEncoding | ChunkKeyEncodingParams
+        cls, data: dict[str, JSON] | ChunkKeyEncoding | ChunkKeyEncodingLike
     ) -> ChunkKeyEncoding:
         if isinstance(data, ChunkKeyEncoding):
             return data

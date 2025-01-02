@@ -19,7 +19,7 @@ from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Co
 from zarr.abc.store import Store, set_or_delete
 from zarr.codecs._v2 import V2Codec
 from zarr.core._info import ArrayInfo
-from zarr.core.array_spec import ArrayConfig, ArrayConfigParams, parse_array_config
+from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, parse_array_config
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
@@ -30,7 +30,7 @@ from zarr.core.buffer import (
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
-    ChunkKeyEncodingParams,
+    ChunkKeyEncodingLike,
     DefaultChunkKeyEncoding,
     V2ChunkKeyEncoding,
 )
@@ -289,7 +289,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata]: ...
 
     # this overload defines the function signature when zarr_format is 3
@@ -318,7 +318,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
 
     @overload
@@ -346,7 +346,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
     @overload
     @classmethod
@@ -379,7 +379,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
@@ -412,7 +412,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # runtime
         overwrite: bool = False,
         data: npt.ArrayLike | None = None,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """
         Method to create a new asynchronous array instance.
@@ -1566,7 +1566,7 @@ class Array:
         compressor: dict[str, JSON] | None = None,
         # runtime
         overwrite: bool = False,
-        config: ArrayConfig | ArrayConfigParams | None = None,
+        config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
 
@@ -3499,7 +3499,7 @@ def _get_default_codecs(
     return cast(list[dict[str, JSON]], default_codecs[dtype_key])
 
 
-FiltersParam: TypeAlias = (
+FiltersLike: TypeAlias = (
     Iterable[dict[str, JSON] | ArrayArrayCodec | numcodecs.abc.Codec]
     | ArrayArrayCodec
     | Iterable[numcodecs.abc.Codec]
@@ -3507,7 +3507,7 @@ FiltersParam: TypeAlias = (
     | Literal["auto"]
     | None
 )
-CompressorsParam: TypeAlias = (
+CompressorsLike: TypeAlias = (
     Iterable[dict[str, JSON] | BytesBytesCodec]
     | BytesBytesCodec
     | numcodecs.abc.Codec
@@ -3524,17 +3524,17 @@ async def create_array(
     dtype: npt.DTypeLike,
     chunks: ChunkCoords | Literal["auto"] = "auto",
     shards: ChunkCoords | Literal["auto"] | None = None,
-    filters: FiltersParam = "auto",
-    compressors: CompressorsParam = "auto",
+    filters: FiltersLike = "auto",
+    compressors: CompressorsLike = "auto",
     fill_value: Any | None = None,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
-    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
-    config: ArrayConfig | ArrayConfigParams | None = None,
+    config: ArrayConfig | ArrayConfigLike | None = None,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an ``AsyncArray``.
 
@@ -3716,7 +3716,7 @@ async def create_array(
 
 
 def _parse_chunk_key_encoding(
-    data: ChunkKeyEncoding | ChunkKeyEncodingParams | None, zarr_format: ZarrFormat
+    data: ChunkKeyEncoding | ChunkKeyEncodingLike | None, zarr_format: ZarrFormat
 ) -> ChunkKeyEncoding:
     """
     Take an implicit specification of a chunk key encoding and parse it into a ChunkKeyEncoding object.
@@ -3804,8 +3804,8 @@ def _get_default_chunk_encoding_v2(
 
 def _parse_chunk_encoding_v2(
     *,
-    compressor: CompressorsParam,
-    filters: FiltersParam,
+    compressor: CompressorsLike,
+    filters: FiltersLike,
     dtype: np.dtype[Any],
 ) -> tuple[tuple[numcodecs.abc.Codec, ...] | None, numcodecs.abc.Codec | None]:
     """
@@ -3848,8 +3848,8 @@ def _parse_chunk_encoding_v2(
 
 def _parse_chunk_encoding_v3(
     *,
-    compressors: CompressorsParam,
-    filters: FiltersParam,
+    compressors: CompressorsLike,
+    filters: FiltersLike,
     dtype: np.dtype[Any],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """
