@@ -18,10 +18,23 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import Codec
     from zarr.api.asynchronous import ArrayLike, PathLike
+    from zarr.core.array import (
+        ArrayBytesCodecParam,
+        CompressorsParam,
+        FiltersParam,
+        ShardsParam,
+    )
     from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
     from zarr.core.buffer import NDArrayLike
-    from zarr.core.chunk_key_encodings import ChunkKeyEncoding
-    from zarr.core.common import JSON, AccessModeLiteral, ChunkCoords, MemoryOrder, ZarrFormat
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingParams
+    from zarr.core.common import (
+        JSON,
+        AccessModeLiteral,
+        ChunkCoords,
+        MemoryOrder,
+        ShapeLike,
+        ZarrFormat,
+    )
     from zarr.storage import StoreLike
 
 __all__ = [
@@ -534,6 +547,31 @@ def create_group(
     attributes: dict[str, Any] | None = None,
     storage_options: dict[str, Any] | None = None,
 ) -> Group:
+    """Create a group.
+
+    Parameters
+    ----------
+    store : Store or str
+        Store or path to directory in file system.
+    path : str, optional
+        Group path within store.
+    overwrite : bool, optional
+        If True, pre-existing data at ``path`` will be deleted before
+        creating the group.
+    zarr_format : {2, 3, None}, optional
+        The zarr format to use when saving.
+        If no ``zarr_format`` is provided, the default format will be used.
+        This default can be changed by modifying the value of ``default_zarr_format``
+        in :mod:`zarr.core.config`.
+    storage_options : dict
+        If using an fsspec URL to create the store, these will be passed to
+        the backend implementation. Ignored otherwise.
+
+    Returns
+    -------
+    Group
+        The new group.
+    """
     return Group(
         sync(
             async_api.create_group(
@@ -700,8 +738,156 @@ def create(
     )
 
 
-def create_array(*args: Any, **kwargs: Any) -> Array:
-    return Array(sync(zarr.core.array.create_array(*args, **kwargs)))
+def create_array(
+    store: str | StoreLike,
+    *,
+    name: str | None = None,
+    shape: ShapeLike,
+    dtype: npt.DTypeLike,
+    chunks: ChunkCoords | Literal["auto"] = "auto",
+    shards: ShardsParam | None = None,
+    filters: FiltersParam | None = "auto",
+    compressors: CompressorsParam = "auto",
+    array_bytes_codec: ArrayBytesCodecParam = "auto",
+    fill_value: Any | None = None,
+    order: MemoryOrder | None = None,
+    zarr_format: ZarrFormat | None = 3,
+    attributes: dict[str, JSON] | None = None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingParams | None = None,
+    dimension_names: Iterable[str] | None = None,
+    storage_options: dict[str, Any] | None = None,
+    overwrite: bool = False,
+    config: ArrayConfig | ArrayConfigParams | None = None,
+) -> Array:
+    """Create an array.
+
+    Parameters
+    ----------
+    store : str or Store
+        Store or path to directory in file system or name of zip file.
+    name : str or None, optional
+        The name of the array within the store. If ``name`` is ``None``, the array will be located
+        at the root of the store.
+    shape : ChunkCoords
+        Shape of the array.
+    dtype : npt.DTypeLike
+        Data type of the array.
+    chunks : ChunkCoords, optional
+        Chunk shape of the array.
+        If not specified, default are guessed based on the shape and dtype.
+    shards : ChunkCoords, optional
+        Shard shape of the array. The default value of ``None`` results in no sharding at all.
+    filters : Iterable[Codec], optional
+        Iterable of filters to apply to each chunk of the array, in order, before serializing that
+        chunk to bytes.
+
+        For Zarr v3, a "filter" is a codec that takes an array and returns an array,
+        and these values must be instances of ``ArrayArrayCodec``, or dict representations
+        of ``ArrayArrayCodec``.
+        If ``filters`` and ``compressors`` are not specified, then the default codecs for
+        Zarr v3 will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_codecs``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit default filters.
+
+        For Zarr v2, a "filter" can be any numcodecs codec; you should ensure that the
+        the order if your filters is consistent with the behavior of each filter.
+        If no ``filters`` are provided, a default set of filters will be used.
+        These defaults can be changed by modifying the value of ``array.v2_default_filters``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit default filters.
+    compressors : Iterable[Codec], optional
+        List of compressors to apply to the array. Compressors are applied in order, and after any
+        filters are applied (if any are specified).
+
+        For Zarr v3, a "compressor" is a codec that takes a bytestrea, and
+        returns another bytestream. Multiple compressors my be provided for Zarr v3.
+        If ``filters`` and ``compressors`` are not specified, then the default codecs for
+        Zarr v3 will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_codecs``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit default compressors.
+
+        For Zarr v2, a "compressor" can be any numcodecs codec. Only a single compressor may
+        be provided for Zarr v2.
+        If no ``compressors`` are provided, a default compressor will be used.
+        These defaults can be changed by modifying the value of ``array.v2_default_compressor``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit the default compressor.
+    array_bytes_codec : dict[str, JSON] | ArrayBytesCodec, optional
+        Array-to-bytes codec to use for encoding the array data.
+        Zarr v3 only. Zarr v2 arrays use implicit array-to-bytes conversion.
+        If no ``array_bytes_codec`` is provided, the `zarr.codecs.BytesCodec` codec will be used.
+    fill_value : Any, optional
+        Fill value for the array.
+    order : {"C", "F"}, optional
+        The memory of the array (default is "C").
+        For Zarr v2, this parameter sets the memory order of the array.
+        For Zarr v3, this parameter is deprecated, because memory order
+        is a runtime parameter for Zarr v3 arrays. The recommended way to specify the memory
+        order for Zarr v3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
+        If no ``order`` is provided, a default order will be used.
+        This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
+    zarr_format : {2, 3}, optional
+        The zarr format to use when saving.
+    attributes : dict, optional
+        Attributes for the array.
+    chunk_key_encoding : ChunkKeyEncoding, optional
+        A specification of how the chunk keys are represented in storage.
+        For Zarr v3, the default is ``{"name": "default", "separator": "/"}}``.
+        For Zarr v2, the default is ``{"name": "v2", "separator": "."}}``.
+    dimension_names : Iterable[str], optional
+        The names of the dimensions (default is None).
+        Zarr v3 only. Zarr v2 arrays should not use this parameter.
+    storage_options : dict, optional
+        If using an fsspec URL to create the store, these will be passed to the backend implementation.
+        Ignored otherwise.
+    overwrite : bool, default False
+        Whether to overwrite an array with the same name in the store, if one exists.
+    config : ArrayConfig or ArrayConfigParams, optional
+        Runtime configuration for the array.
+
+    Returns
+    -------
+    Array
+        The array.
+
+    Examples
+    --------
+    >>> import zarr
+    >>> store = zarr.storage.MemoryStore(mode='w')
+    >>> arr = await zarr.create_array(
+    >>>     store=store,
+    >>>     shape=(100,100),
+    >>>     chunks=(10,10),
+    >>>     dtype='i4',
+    >>>     fill_value=0)
+    <Array memory://140349042942400 shape=(100, 100) dtype=int32>
+    """
+    return Array(
+        sync(
+            zarr.core.array.create_array(
+                store=store,
+                name=name,
+                shape=shape,
+                dtype=dtype,
+                chunks=chunks,
+                shards=shards,
+                filters=filters,
+                compressors=compressors,
+                array_bytes_codec=array_bytes_codec,
+                fill_value=fill_value,
+                order=order,
+                zarr_format=zarr_format,
+                attributes=attributes,
+                chunk_key_encoding=chunk_key_encoding,
+                dimension_names=dimension_names,
+                storage_options=storage_options,
+                overwrite=overwrite,
+                config=config,
+            )
+        )
+    )
 
 
 # TODO: add type annotations for kwargs

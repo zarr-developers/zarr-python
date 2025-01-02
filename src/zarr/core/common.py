@@ -200,6 +200,6 @@ def _warn_order_kwarg() -> None:
     warnings.warn(msg, RuntimeWarning, stacklevel=2)
 
 
-def _default_zarr_version() -> ZarrFormat:
+def _default_zarr_format() -> ZarrFormat:
     """Return the default zarr_version"""
-    return cast(ZarrFormat, int(zarr_config.get("default_zarr_version", 3)))
+    return cast(ZarrFormat, int(zarr_config.get("default_zarr_format", 3)))

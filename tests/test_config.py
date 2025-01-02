@@ -50,7 +50,7 @@ def test_config_defaults_set() -> None:
     # regression test for available defaults
     assert config.defaults == [
         {
-            "default_zarr_version": 3,
+            "default_zarr_format": 3,
             "array": {
                 "order": "C",
                 "write_empty_chunks": False,

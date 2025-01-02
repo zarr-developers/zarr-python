@@ -18,7 +18,7 @@ from zarr.core.common import (
     ChunkCoords,
     MemoryOrder,
     ZarrFormat,
-    _default_zarr_version,
+    _default_zarr_format,
     _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
     parse_dtype,
@@ -413,7 +413,7 @@ async def save_array(
     """
     zarr_format = (
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-        or _default_zarr_version()
+        or _default_zarr_format()
     )
     if not isinstance(arr, NDArrayLike):
         raise TypeError("arr argument must be numpy or other NDArrayLike array")
@@ -473,7 +473,7 @@ async def save_group(
             zarr_version=zarr_version,
             zarr_format=zarr_format,
         )
-        or _default_zarr_version()
+        or _default_zarr_format()
     )
 
     for arg in args:
@@ -653,7 +653,7 @@ async def group(
     try:
         return await AsyncGroup.open(store=store_path, zarr_format=zarr_format)
     except (KeyError, FileNotFoundError):
-        _zarr_format = zarr_format or _default_zarr_version()
+        _zarr_format = zarr_format or _default_zarr_format()
         return await AsyncGroup.from_store(
             store=store_path,
             zarr_format=_zarr_format,
@@ -684,20 +684,22 @@ async def create_group(
         creating the group.
     zarr_format : {2, 3, None}, optional
         The zarr format to use when saving.
+        If no ``zarr_format`` is provided, the default format will be used.
+        This default can be changed by modifying the value of ``default_zarr_format``
+        in :mod:`zarr.core.config`.
     storage_options : dict
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
 
     Returns
     -------
-    g : group
+    AsyncGroup
         The new group.
     """
 
     if zarr_format is None:
-        zarr_format = _default_zarr_version()
+        zarr_format = _default_zarr_format()
 
-    # TODO: fix this when modes make sense. It should be `w` for overwriting, `w-` otherwise
     mode: Literal["a"] = "a"
 
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
@@ -812,7 +814,7 @@ async def open_group(
         pass
     if mode in _CREATE_MODES:
         overwrite = _infer_overwrite(mode)
-        _zarr_format = zarr_format or _default_zarr_version()
+        _zarr_format = zarr_format or _default_zarr_format()
         return await AsyncGroup.from_store(
             store_path,
             zarr_format=_zarr_format,
@@ -970,7 +972,7 @@ async def create(
     """
     zarr_format = (
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
-        or _default_zarr_version()
+        or _default_zarr_format()
     )
 
     if zarr_format == 2:
@@ -1243,7 +1245,7 @@ async def open_array(
     except FileNotFoundError:
         if not store_path.read_only and mode in _CREATE_MODES:
             overwrite = _infer_overwrite(mode)
-            _zarr_format = zarr_format or _default_zarr_version()
+            _zarr_format = zarr_format or _default_zarr_format()
             return await create(
                 store=store_path,
                 zarr_format=_zarr_format,

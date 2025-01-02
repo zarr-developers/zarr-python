@@ -53,7 +53,7 @@ from zarr.core.common import (
     MemoryOrder,
     ShapeLike,
     ZarrFormat,
-    _default_zarr_version,
+    _default_zarr_format,
     _warn_order_kwarg,
     concurrent_map,
     parse_dtype,
@@ -3765,7 +3765,7 @@ async def create_array(
 
     Returns
     -------
-    z : array
+    AsyncArray
         The array.
 
     Examples
@@ -3782,7 +3782,7 @@ async def create_array(
     """
 
     if zarr_format is None:
-        zarr_format = _default_zarr_version()
+        zarr_format = _default_zarr_format()
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 

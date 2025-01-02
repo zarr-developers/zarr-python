@@ -523,7 +523,7 @@ class TestConsolidated:
     async def test_use_consolidated_false(
         self, memory_store: zarr.storage.MemoryStore, zarr_format: ZarrFormat
     ) -> None:
-        with zarr.config.set(default_zarr_version=zarr_format):
+        with zarr.config.set(default_zarr_format=zarr_format):
             g = await group(store=memory_store, attributes={"foo": "bar"})
             await g.create_group(name="a")
 
