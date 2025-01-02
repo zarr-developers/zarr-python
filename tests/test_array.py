@@ -22,8 +22,8 @@ from zarr.codecs import (
 )
 from zarr.core._info import ArrayInfo
 from zarr.core.array import (
-    CompressorsParam,
-    FiltersParam,
+    CompressorsLike,
+    FiltersLike,
     _get_default_chunk_encoding_v2,
     _get_default_chunk_encoding_v3,
     _parse_chunk_encoding_v2,
@@ -1054,7 +1054,7 @@ async def test_create_array_no_filters_compressors(
     ],
 )
 async def test_create_array_v3_chunk_encoding(
-    store: MemoryStore, compressors: CompressorsParam, filters: FiltersParam, dtype: str
+    store: MemoryStore, compressors: CompressorsLike, filters: FiltersLike, dtype: str
 ) -> None:
     """
     Test various possibilities for the compressors and filters parameter to create_array
@@ -1091,7 +1091,7 @@ async def test_create_array_v3_chunk_encoding(
     "filters", ["auto", None, numcodecs.GZip(level=1), (numcodecs.GZip(level=1),)]
 )
 async def test_create_array_v2_chunk_encoding(
-    store: MemoryStore, compressors: CompressorsParam, filters: FiltersParam, dtype: str
+    store: MemoryStore, compressors: CompressorsLike, filters: FiltersLike, dtype: str
 ) -> None:
     arr = await create_array(
         store=store,
