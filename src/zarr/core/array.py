@@ -3563,12 +3563,16 @@ async def create_array(
         of ``ArrayArrayCodec``.
         If ``filters`` and ``compressors`` are not specified, then the default codecs for
         Zarr v3 will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v3_default_codecs``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit default filters.
 
         For Zarr v2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
         If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v2_default_filters``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit default filters.
     compressors : Iterable[Codec], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified).
@@ -3577,11 +3581,16 @@ async def create_array(
         returns another bytestream. Multiple compressors my be provided for Zarr v3.
         If ``filters`` and ``compressors`` are not specified, then the default codecs for
         Zarr v3 will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v3_default_codecs``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit default compressors.
 
-        For Zarr v2, a "compressor" can be any numcodecs codec. Only a single compressor may be provided for Zarr v2.
+        For Zarr v2, a "compressor" can be any numcodecs codec. Only a single compressor may
+        be provided for Zarr v2.
         If no ``compressors`` are provided, a default compressor will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v2_default_compressor``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit the default compressor.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
