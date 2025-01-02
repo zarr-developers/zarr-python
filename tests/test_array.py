@@ -10,6 +10,8 @@ import numcodecs
 import numpy as np
 import pytest
 from numcodecs import Zstd
+from numpy import dtype
+from numpy.ma.testutils import assert_array_equal
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
@@ -892,21 +894,30 @@ async def test_scalar_array() -> None:
 
 
 async def test_creation_from_other_zarr(tmpdir):
-    src = zarr.zeros(
-        (2000, 20000), chunks=(1000, 1000), dtype="uint8", store=LocalStore(str(tmpdir))
-    )
-    src[:] = 1
-    for _i in range(10):
-        start_time = time.time()
-        c = zarr.array(src, store=MemoryStore())
-        end_time = time.time()
-        print(f"Time fast: {end_time - start_time} seconds")
+    src_fill_value = 2
+    src_dtype = np.dtype("uint8")
+    src_attributes = {}
+    src_chunks = (2, 2)
 
-        start_time = time.time()
-        b = zarr.zeros(src.shape, chunks=src.chunks, store=MemoryStore())
-        b[:] = src[:]
-        end_time = time.time()
-        print(f"Time slow: {end_time - start_time} seconds")
+    src = zarr.create((10, 10), chunks=src_chunks, dtype=src_dtype, store=LocalStore(str(tmpdir)), fill_value = src_fill_value, attributes=src_attributes)
+    src[:] = np.arange(100).reshape((10,10))
 
-    assert b[123, 123] == 1
-    assert c[123, 123] == 1
+    result = zarr.array(src, store=MemoryStore())
+    assert_array_equal(result[:], src[:])
+    assert result.fill_value == src_fill_value
+    assert result.dtype==src_dtype
+    assert result.attrs.asdict() == src_attributes
+    assert result.chunks == src_chunks
+
+    new_fill_value = 3
+    new_dtype = np.dtype("uint16")
+    new_attributes = {"foo":"bar"}
+    new_chunks = (5, 10)
+
+    result2 = zarr.array(src, store=MemoryStore(), chunks=new_chunks, dtype=new_dtype, fill_value = new_fill_value, attributes=new_attributes)
+
+    assert_array_equal(result2[:], src[:])
+    assert result2.fill_value == new_fill_value
+    assert result2.dtype == new_dtype
+    assert result2.attrs == new_attributes
+    assert result2.chunks == new_chunks

@@ -27,6 +27,7 @@ from zarr.core.config import config
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_filters_and_compressor
+from zarr.core.sync import sync
 from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
     StoreLike,
@@ -535,7 +536,7 @@ async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = 
 
 
 async def array(
-    data: npt.ArrayLike, **kwargs: Any
+    data: npt.ArrayLike | Array, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """Create an array filled with `data`.
 
@@ -553,11 +554,17 @@ async def array(
     """
 
     if isinstance(data, Array):
-        chunks = kwargs.pop("chunks", None) or data.chunks
-        new_array = await create(shape=data.shape, chunks=chunks, dtype=data.dtype, **kwargs)
+        # fill missing arguments with metadata of data Array
+        kwargs.setdefault("dtype", data.dtype)
+        kwargs.setdefault("attributes", data.attrs)
+        kwargs.setdefault("chunks", data.chunks)
+        kwargs.setdefault("fill_value", data.fill_value)
+
+        new_array = await create(data.shape, **kwargs)
 
         async def _copy_chunk(chunk_coords: ChunkCoords) -> None:
-            await new_array.setitem(chunk_coords, await data._async_array.getitem(chunk_coords))
+            arr = await data._async_array.getitem(chunk_coords)
+            await new_array.setitem(chunk_coords, arr)
 
         # Stream data from the source array to the new array
         await concurrent_map(
