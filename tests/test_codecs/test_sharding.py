@@ -226,7 +226,7 @@ def test_nested_sharding(
 ) -> None:
     data = array_fixture
     spath = StorePath(store)
-    a = Array._create(
+    a = Array.create(
         spath,
         shape=data.shape,
         chunk_shape=(64, 64, 64),
@@ -242,6 +242,53 @@ def test_nested_sharding(
             )
         ],
     )
+
+    a[:, :, :] = data
+
+    read_data = a[0 : data.shape[0], 0 : data.shape[1], 0 : data.shape[2]]
+    assert data.shape == read_data.shape
+    assert np.array_equal(data, read_data)
+
+
+@pytest.mark.parametrize(
+    "array_fixture",
+    [
+        ArrayRequest(shape=(128,) * 3, dtype="uint16", order="F"),
+    ],
+    indirect=["array_fixture"],
+)
+@pytest.mark.parametrize(
+    "outer_index_location",
+    ["start", "end"],
+)
+@pytest.mark.parametrize(
+    "inner_index_location",
+    ["start", "end"],
+)
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+def test_nested_sharding_create_array(
+    store: Store,
+    array_fixture: npt.NDArray[Any],
+    outer_index_location: ShardingCodecIndexLocation,
+    inner_index_location: ShardingCodecIndexLocation,
+) -> None:
+    data = array_fixture
+    spath = StorePath(store)
+    a = zarr.create_array(
+        spath,
+        shape=data.shape,
+        chunks=(32, 32, 32),
+        dtype=data.dtype,
+        fill_value=0,
+        array_bytes_codec=ShardingCodec(
+            chunk_shape=(32, 32, 32),
+            codecs=[ShardingCodec(chunk_shape=(16, 16, 16), index_location=inner_index_location)],
+            index_location=outer_index_location,
+        ),
+        filters=None,
+        compressors=None,
+    )
+    print(a.metadata.to_dict())
 
     a[:, :, :] = data
 

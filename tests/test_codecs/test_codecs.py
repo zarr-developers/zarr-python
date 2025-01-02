@@ -285,35 +285,35 @@ async def test_dimension_names(store: Store) -> None:
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_invalid_metadata(store: Store) -> None:
-    spath2 = StorePath(store, "invalid_endian")
+    spath2 = StorePath(store, "invalid_codec_order")
     with pytest.raises(TypeError):
-        Array._create(
+        Array.create(
             spath2,
             shape=(16, 16),
             chunk_shape=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
-                BytesCodec(endian="big"),
+                BytesCodec(),
                 TransposeCodec(order=order_from_dim("F", 2)),
             ],
         )
     spath3 = StorePath(store, "invalid_order")
     with pytest.raises(TypeError):
-        Array._create(
+        Array.create(
             spath3,
             shape=(16, 16),
             chunk_shape=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
-                BytesCodec(),
                 TransposeCodec(order="F"),  # type: ignore[arg-type]
+                BytesCodec(),
             ],
         )
     spath4 = StorePath(store, "invalid_missing_bytes_codec")
     with pytest.raises(ValueError):
-        Array._create(
+        Array.create(
             spath4,
             shape=(16, 16),
             chunk_shape=(16, 16),
@@ -325,7 +325,7 @@ def test_invalid_metadata(store: Store) -> None:
         )
     spath5 = StorePath(store, "invalid_inner_chunk_shape")
     with pytest.raises(ValueError):
-        Array._create(
+        Array.create(
             spath5,
             shape=(16, 16),
             chunk_shape=(16, 16),
@@ -337,7 +337,7 @@ def test_invalid_metadata(store: Store) -> None:
         )
     spath6 = StorePath(store, "invalid_inner_chunk_shape")
     with pytest.raises(ValueError):
-        Array._create(
+        Array.create(
             spath6,
             shape=(16, 16),
             chunk_shape=(16, 16),
@@ -349,7 +349,7 @@ def test_invalid_metadata(store: Store) -> None:
         )
     spath7 = StorePath(store, "warning_inefficient_codecs")
     with pytest.warns(UserWarning):
-        Array._create(
+        Array.create(
             spath7,
             shape=(16, 16),
             chunk_shape=(16, 16),
@@ -357,6 +357,55 @@ def test_invalid_metadata(store: Store) -> None:
             fill_value=0,
             codecs=[
                 ShardingCodec(chunk_shape=(8, 8)),
+                GzipCodec(),
+            ],
+        )
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_invalid_metadata_create_array(store: Store) -> None:
+    spath3 = StorePath(store, "invalid_order")
+    with pytest.raises(TypeError):
+        zarr.create_array(
+            spath3,
+            shape=(16, 16),
+            chunks=(16, 16),
+            dtype=np.dtype("uint8"),
+            fill_value=0,
+            filters=[
+                TransposeCodec(order="F"),  # type: ignore[arg-type]
+            ],
+        )
+    spath5 = StorePath(store, "invalid_inner_chunk_shape")
+    with pytest.raises(ValueError):
+        zarr.create_array(
+            spath5,
+            shape=(16, 16),
+            shards=(16, 16),
+            chunks=(8,),
+            dtype=np.dtype("uint8"),
+            fill_value=0,
+        )
+    spath6 = StorePath(store, "invalid_inner_chunk_shape")
+    with pytest.raises(ValueError):
+        zarr.create_array(
+            spath6,
+            shape=(16, 16),
+            shards=(16, 16),
+            chunks=(8, 7),
+            dtype=np.dtype("uint8"),
+            fill_value=0,
+        )
+    spath7 = StorePath(store, "warning_inefficient_codecs")
+    with pytest.warns(UserWarning):
+        zarr.create_array(
+            spath7,
+            shape=(16, 16),
+            chunks=(16, 16),
+            dtype=np.dtype("uint8"),
+            fill_value=0,
+            array_bytes_codec=ShardingCodec(chunk_shape=(8, 8)),
+            compressors=[
                 GzipCodec(),
             ],
         )

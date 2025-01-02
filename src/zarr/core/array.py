@@ -7,12 +7,22 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from itertools import starmap
 from logging import getLogger
-from typing import TYPE_CHECKING, Any, Generic, Literal, TypeAlias, TypedDict, cast, overload
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Generic,
+    Literal,
+    TypeAlias,
+    TypedDict,
+    cast,
+    overload,
+)
 from warnings import warn
 
 import numcodecs
 import numpy as np
 import numpy.typing as npt
+from typing_extensions import deprecated
 
 from zarr._compat import _deprecate_positional_args
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
@@ -274,7 +284,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     # this overload defines the function signature when zarr_format is 2
     @overload
     @classmethod
-    async def _create(
+    async def create(
         cls,
         store: StoreLike,
         *,
@@ -298,7 +308,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     # this overload defines the function signature when zarr_format is 3
     @overload
     @classmethod
-    async def _create(
+    async def create(
         cls,
         store: StoreLike,
         *,
@@ -326,7 +336,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
     @overload
     @classmethod
-    async def _create(
+    async def create(
         cls,
         store: StoreLike,
         *,
@@ -351,9 +361,10 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         data: npt.ArrayLike | None = None,
         config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV3Metadata]: ...
+
     @overload
     @classmethod
-    async def _create(
+    async def create(
         cls,
         store: StoreLike,
         *,
@@ -386,8 +397,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]: ...
 
     @classmethod
-    # @deprecated("Use `zarr.api.asynchronous.create_array` instead.")
-    async def _create(
+    @deprecated("Use zarr.api.asynchronous.create_array instead.")
+    @_deprecate_positional_args
+    async def create(
         cls,
         store: StoreLike,
         *,
@@ -418,9 +430,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         data: npt.ArrayLike | None = None,
         config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-        """
-        Deprecated in favor of `zarr.api.asynchronous.create_array`.
-        Method to create a new asynchronous array instance.
+        """Method to create a new asynchronous array instance.
 
         Parameters
         ----------
@@ -499,6 +509,70 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         AsyncArray
             The created asynchronous array instance.
+
+        .. deprecated:: 3.0.0
+            Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
+        """
+        return await cls._create(
+            store,
+            # v2 and v3
+            shape=shape,
+            dtype=dtype,
+            zarr_format=zarr_format,
+            fill_value=fill_value,
+            attributes=attributes,
+            # v3 only
+            chunk_shape=chunk_shape,
+            chunk_key_encoding=chunk_key_encoding,
+            codecs=codecs,
+            dimension_names=dimension_names,
+            # v2 only
+            chunks=chunks,
+            dimension_separator=dimension_separator,
+            order=order,
+            filters=filters,
+            compressor=compressor,
+            # runtime
+            overwrite=overwrite,
+            data=data,
+            config=config,
+        )
+
+    @classmethod
+    async def _create(
+        cls,
+        store: StoreLike,
+        *,
+        # v2 and v3
+        shape: ShapeLike,
+        dtype: npt.DTypeLike,
+        zarr_format: ZarrFormat = 3,
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ShapeLike | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ShapeLike | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: MemoryOrder | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        overwrite: bool = False,
+        data: npt.ArrayLike | None = None,
+        config: ArrayConfig | ArrayConfigParams | None = None,
+    ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
+        """Method to create a new asynchronous array instance.
+        See :func:`AsyncArray.create` for more details.
+        Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
         """
         store_path = await make_store_path(store)
 
@@ -1529,9 +1603,9 @@ class Array:
     _async_array: AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata]
 
     @classmethod
-    # @deprecated("Use `zarr.create_array` instead.")
+    @deprecated("Use zarr.create_array instead.")
     @_deprecate_positional_args
-    def _create(
+    def create(
         cls,
         store: StoreLike,
         *,
@@ -1561,8 +1635,7 @@ class Array:
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigParams | None = None,
     ) -> Array:
-        """Deprecated in favor of `zarr.create_array`.
-        Creates a new Array instance from an initialized store.
+        """Creates a new Array instance from an initialized store.
 
         Parameters
         ----------
@@ -1631,6 +1704,68 @@ class Array:
         -------
         Array
             Array created from the store.
+
+        .. deprecated:: 3.0.0
+            Deprecated in favor of :func:`zarr.create_array`.
+        """
+        return cls._create(
+            store,
+            # v2 and v3
+            shape=shape,
+            dtype=dtype,
+            zarr_format=zarr_format,
+            attributes=attributes,
+            fill_value=fill_value,
+            # v3 only
+            chunk_shape=chunk_shape,
+            chunk_key_encoding=chunk_key_encoding,
+            codecs=codecs,
+            dimension_names=dimension_names,
+            # v2 only
+            chunks=chunks,
+            dimension_separator=dimension_separator,
+            order=order,
+            filters=filters,
+            compressor=compressor,
+            # runtime
+            overwrite=overwrite,
+            config=config,
+        )
+
+    @classmethod
+    def _create(
+        cls,
+        store: StoreLike,
+        *,
+        # v2 and v3
+        shape: ChunkCoords,
+        dtype: npt.DTypeLike,
+        zarr_format: ZarrFormat = 3,
+        fill_value: Any | None = None,
+        attributes: dict[str, JSON] | None = None,
+        # v3 only
+        chunk_shape: ChunkCoords | None = None,
+        chunk_key_encoding: (
+            ChunkKeyEncoding
+            | tuple[Literal["default"], Literal[".", "/"]]
+            | tuple[Literal["v2"], Literal[".", "/"]]
+            | None
+        ) = None,
+        codecs: Iterable[Codec | dict[str, JSON]] | None = None,
+        dimension_names: Iterable[str] | None = None,
+        # v2 only
+        chunks: ChunkCoords | None = None,
+        dimension_separator: Literal[".", "/"] | None = None,
+        order: MemoryOrder | None = None,
+        filters: list[dict[str, JSON]] | None = None,
+        compressor: dict[str, JSON] | None = None,
+        # runtime
+        overwrite: bool = False,
+        config: ArrayConfig | ArrayConfigParams | None = None,
+    ) -> Array:
+        """Creates a new Array instance from an initialized store.
+        See :func:`Array.create` for more details.
+        Deprecated in favor of :func:`zarr.create_array`.
         """
         async_array = sync(
             AsyncArray._create(

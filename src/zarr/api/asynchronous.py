@@ -1220,7 +1220,7 @@ async def open_array(
         If using an fsspec URL to create the store, these will be passed to
         the backend implementation. Ignored otherwise.
     **kwargs
-        Any keyword arguments to pass to ``create``.
+        Any keyword arguments to pass to :func:`create`.
 
     Returns
     -------

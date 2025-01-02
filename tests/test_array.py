@@ -220,7 +220,7 @@ def test_array_v3_fill_value(store: MemoryStore, fill_value: int, dtype_str: str
 def test_create_positional_args_deprecated() -> None:
     store = MemoryStore()
     with pytest.warns(FutureWarning, match="Pass"):
-        zarr.Array._create(store, (2, 2), dtype="f8")
+        zarr.Array.create(store, (2, 2), dtype="f8")
 
 
 def test_selection_positional_args_deprecated() -> None:
@@ -436,21 +436,29 @@ def test_default_fill_values() -> None:
 
 def test_vlen_errors() -> None:
     with pytest.raises(ValueError, match="At least one ArrayBytesCodec is required."):
-        Array._create(MemoryStore(), shape=5, chunks=5, dtype="<U4", codecs=[])
+        Array.create(MemoryStore(), shape=5, chunks=5, dtype="<U4", codecs=[])
 
     with pytest.raises(
         ValueError,
         match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
     ):
-        Array._create(MemoryStore(), shape=5, chunks=5, dtype="<U4", codecs=[BytesCodec()])
+        Array.create(MemoryStore(), shape=5, chunks=5, dtype="<U4", codecs=[BytesCodec()])
 
     with pytest.raises(ValueError, match="Only one ArrayBytesCodec is allowed."):
-        Array._create(
+        Array.create(
             MemoryStore(),
             shape=5,
             chunks=5,
             dtype="<U4",
             codecs=[BytesCodec(), VLenBytesCodec()],
+        )
+
+    with pytest.raises(
+        ValueError,
+        match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
+    ):
+        zarr.create_array(
+            MemoryStore(), shape=5, chunks=5, dtype="<U4", array_bytes_codec=BytesCodec()
         )
 
 
