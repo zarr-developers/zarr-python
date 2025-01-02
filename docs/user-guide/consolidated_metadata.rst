@@ -26,44 +26,41 @@ metadata reads get child Group or Array nodes will *not* require reads from the 
 In Python, the consolidated metadata is available on the ``.consolidated_metadata``
 attribute of the ``GroupMetadata`` object.
 
-.. TODO: remove :okwarning: after warnings are removed
-
-.. ipython:: python
-   :okwarning:
-
-   import zarr
-   store = zarr.storage.MemoryStore()
-   # TODO: replace with create_group after #2463
-   group = zarr.open_group(store=store)
-   group.create_array(shape=(1,), name="a")
-   group.create_array(shape=(2, 2), name="b")
-   group.create_array(shape=(3, 3, 3), name="c")
-   zarr.consolidate_metadata(store)
+   >>> import zarr
+   >>>
+   >>> store = zarr.storage.MemoryStore()
+   >>> # TODO: replace with create_group after #2463
+   >>> group = zarr.open_group(store=store)
+   >>> group.create_array(shape=(1,), name="a")
+   <Array memory://.../a shape=(1,) dtype=float64>
+   >>> group.create_array(shape=(2, 2), name="b")
+   <Array memory://.../b shape=(2, 2) dtype=float64>
+   >>> group.create_array(shape=(3, 3, 3), name="c")
+   <Array memory://.../c shape=(3, 3, 3) dtype=float64>
+   >>> zarr.consolidate_metadata(store)
+   <Group memory://...>
 
 If we open that group, the Group's metadata has a :class:`zarr.core.group.ConsolidatedMetadata`
-that can be used.
+that can be used.:
 
-.. ipython:: python
+   >>> consolidated = zarr.open_group(store=store)
+   >>> consolidated_metadata = consolidated.metadata.consolidated_metadata.metadata
+   >>> dict(sorted(consolidated_metadata.items()))
+   {'a': ArrayV3Metadata(shape=(1,), data_type=<DataType.float64: 'float64'>, chunk_grid=RegularChunkGrid(chunk_shape=(1,)), chunk_key_encoding=DefaultChunkKeyEncoding(name='default', separator='/'), fill_value=np.float64(0.0), codecs=[BytesCodec(endian=<Endian.little: 'little'>), ZstdCodec(level=0, checksum=False)], attributes={}, dimension_names=None, zarr_format=3, node_type='array', storage_transformers=()), 'b': ArrayV3Metadata(shape=(2, 2), data_type=<DataType.float64: 'float64'>, chunk_grid=RegularChunkGrid(chunk_shape=(2, 2)), chunk_key_encoding=DefaultChunkKeyEncoding(name='default', separator='/'), fill_value=np.float64(0.0), codecs=[BytesCodec(endian=<Endian.little: 'little'>), ZstdCodec(level=0, checksum=False)], attributes={}, dimension_names=None, zarr_format=3, node_type='array', storage_transformers=()), 'c': ArrayV3Metadata(shape=(3, 3, 3), data_type=<DataType.float64: 'float64'>, chunk_grid=RegularChunkGrid(chunk_shape=(3, 3, 3)), chunk_key_encoding=DefaultChunkKeyEncoding(name='default', separator='/'), fill_value=np.float64(0.0), codecs=[BytesCodec(endian=<Endian.little: 'little'>), ZstdCodec(level=0, checksum=False)], attributes={}, dimension_names=None, zarr_format=3, node_type='array', storage_transformers=())}
 
-   consolidated = zarr.open_group(store=store)
-   consolidated.metadata.consolidated_metadata.metadata
+Operations on the group to get children automatically use the consolidated metadata.:
 
-Operations on the group to get children automatically use the consolidated metadata.
+   >>> consolidated["a"]  # no read / HTTP request to the Store is required
+   <Array memory://.../a shape=(1,) dtype=float64>
 
-.. ipython:: python
+With nested groups, the consolidated metadata is available on the children, recursively.:
 
-   consolidated["a"]  # no read / HTTP request to the Store is required
-
-With nested groups, the consolidated metadata is available on the children, recursively.
-
-.. ipython:: python
-   :okwarning:
-
-    child = group.create_group("child", attributes={"kind": "child"})
-    grandchild = child.create_group("child", attributes={"kind": "grandchild"})
-    consolidated = zarr.consolidate_metadata(store)
-
-    consolidated["child"].metadata.consolidated_metadata
+   >>> child = group.create_group("child", attributes={"kind": "child"})
+   >>> grandchild = child.create_group("child", attributes={"kind": "grandchild"})
+   >>> consolidated = zarr.consolidate_metadata(store)
+   >>>
+   >>> consolidated["child"].metadata.consolidated_metadata
+   ConsolidatedMetadata(metadata={'child': GroupMetadata(attributes={'kind': 'grandchild'}, zarr_format=3, consolidated_metadata=ConsolidatedMetadata(metadata={}, kind='inline', must_understand=False), node_type='group')}, kind='inline', must_understand=False)
 
 Synchronization and Concurrency
 -------------------------------
