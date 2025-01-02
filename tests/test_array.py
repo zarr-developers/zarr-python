@@ -985,7 +985,9 @@ async def test_create_array_no_filters_compressors(
         compressors=empty_value,
         filters=empty_value,
     )
+    # The v2 metadata stores None and () separately
     assert arr.metadata.filters == empty_value  # type: ignore[union-attr]
+    # The v2 metadata does not allow tuple for compressor, therefore it is turned into None
     assert arr.metadata.compressor is None  # type: ignore[union-attr]
 
     # v3
@@ -1081,6 +1083,8 @@ async def test_create_array_v3_chunk_encoding(
         "auto",
         None,
         numcodecs.Zstd(level=3),
+        (),
+        (numcodecs.Zstd(level=3),),
     ],
 )
 @pytest.mark.parametrize(

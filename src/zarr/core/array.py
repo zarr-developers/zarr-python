@@ -3816,10 +3816,12 @@ def _parse_chunk_encoding_v2(
     _filters: tuple[numcodecs.abc.Codec, ...] | None
     _compressor: numcodecs.abc.Codec | None
 
-    if compressor is None:
+    if compressor is None or compressor == ():
         _compressor = None
     elif compressor == "auto":
         _compressor = default_compressor
+    elif isinstance(compressor, tuple | list) and len(compressor) == 1:
+        _compressor = parse_compressor(compressor[0])
     else:
         if isinstance(compressor, Iterable) and not isinstance(compressor, dict):
             msg = f"For Zarr v2 arrays, the `compressor` must be a single codec. Got an iterable with type {type(compressor)} instead."
