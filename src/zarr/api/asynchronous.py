@@ -18,6 +18,8 @@ from zarr.core.common import (
     ChunkCoords,
     MemoryOrder,
     ZarrFormat,
+    parse_dtype,
+    concurrent_map,
     _warn_order_kwarg,
     _warn_write_empty_chunks_kwarg,
     parse_dtype,
@@ -550,6 +552,21 @@ async def array(
     array : array
         The new array.
     """
+
+    if isinstance(data, Array):
+        chunks = kwargs.pop("chunks", None) or data.chunks
+        new_array = await create(shape=data.shape, chunks=chunks, dtype=data.dtype, **kwargs)
+
+        async def _copy_chunk(chunk_coords: ChunkCoords) -> None:
+            await new_array.setitem(chunk_coords, await data._async_array.getitem(chunk_coords))
+
+        # Stream data from the source array to the new array
+        await concurrent_map(
+            [(region,) for region in data._iter_chunk_regions()],
+            _copy_chunk,
+            config.get("async.concurrency"),
+        )
+        return new_array
 
     # ensure data is array-like
     if not hasattr(data, "shape") or not hasattr(data, "dtype"):
