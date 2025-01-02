@@ -1,11 +1,12 @@
+.. _user-guide-arrays:
 
-Working with Arrays
+Working with arrays
 ===================
 
-.. ipython::
+.. ipython:: python
    :suppress:
 
-   In [144]: rm -r data/
+   rm -r data/
 
 Creating an array
 -----------------
@@ -17,7 +18,8 @@ Zarr has several functions for creating arrays. For example:
    import zarr
 
    store = {}
-   z = zarr.create(  # TODO: change this to `create_array`
+   # TODO: replace with `create_array` after #2463
+   z = zarr.create(
        store=store,
        mode="w",
        shape=(10000, 10000),
@@ -30,17 +32,17 @@ The code above creates a 2-dimensional array of 32-bit integers with 10000 rows
 and 10000 columns, divided into chunks where each chunk has 1000 rows and 1000
 columns (and so there will be 100 chunks in total). The data is written to a
 :class:`zarr.storage.MemoryStore` (e.g. an in-memory dict). See
-:ref:`tutorial_persist` for details on storing arrays in other stores.
+:ref:`user-guide-persist` for details on storing arrays in other stores.
 
-For a complete list of array creation routines see the :mod:`zarr.api.synchronous`
+For a complete list of array creation routines see the :mod:`zarr`
 module documentation.
 
-.. _tutorial_array:
+.. _user-guide-array:
 
 Reading and writing data
 ------------------------
 
-Zarr arrays support a similar interface to `NumPy <https://numpy.org/doc/stable/>`
+Zarr arrays support a similar interface to `NumPy <https://numpy.org/doc/stable/>`_
 arrays for reading and writing data. For example, the entire array can be filled
 with a scalar value:
 
@@ -68,17 +70,22 @@ requested region into memory as a NumPy array, e.g.:
    z[:, 0]
    z[:]
 
-.. _tutorial_persist:
+Read more about NumPy-style indexing can be found in the
+`NumPy documentation <https://numpy.org/doc/stable/user/basics.indexing.html>`_.
+
+.. _user-guide-persist:
 
 Persistent arrays
 -----------------
 
 In the examples above, compressed data for each chunk of the array was stored in
 main memory. Zarr arrays can also be stored on a file system, enabling
-persistence of data between sessions. For example:
+persistence of data between sessions. To do this, we can change the store
+argument to point to a filesystem path:
 
 .. ipython:: python
 
+   # TODO: replace with `open_array` after #2463
    z1 = zarr.open(
        store='data/example-2.zarr',
        mode='w',
@@ -88,7 +95,7 @@ persistence of data between sessions. For example:
    )
 
 The array above will store its configuration metadata and all compressed chunk
-data in a directory called ``'data/example.zarr'`` relative to the current working
+data in a directory called ``'data/example-2.zarr'`` relative to the current working
 directory. The :func:`zarr.open` function provides a convenient way
 to create a new persistent array or continue working with an existing
 array. Note that although the function is called "open", there is no need to
@@ -108,6 +115,7 @@ Check that the data have been written and can be read again:
 
 .. ipython:: python
 
+   # TODO: replace with `open_array` after #2463
    z2 = zarr.open('data/example-2.zarr', mode='r')
    np.all(z1[:] == z2[:])
 
@@ -123,9 +131,9 @@ useful. E.g.:
    zarr.load('data/example-3.zarr')
 
 Please note that there are a number of other options for persistent array
-storage, see the :ref:`tutorial_storage` guide for more details.
+storage, see the :ref:`Storage Guide <user-guide-storage>` guide for more details.
 
-.. _tutorial_resize:
+.. _user-guide-resize:
 
 Resizing and appending
 ----------------------
@@ -155,13 +163,14 @@ used to append data to any axis. E.g.:
 .. ipython:: python
 
    a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
+   # TODO: replace with create_array after #2463
    z = zarr.array(store="data/example-5", data=a, chunks=(1000, 100))
    z.shape
    z.append(a)
    z.append(np.vstack([a, a]), axis=1)
    z.shape
 
-.. _tutorial_compress:
+.. _user-guide-compress:
 
 Compressors
 -----------
@@ -178,7 +187,7 @@ argument accepted by all array creation functions. For example:
 
    compressor = None  # TODO: Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
    data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
-   # TODO: remove zarr_format
+   # TODO: remove zarr_format and replace with create_array after #2463
    z = zarr.array(store="data/example-6.zarr", data=data, chunks=(1000, 1000), compressor=compressor, zarr_format=2)
    None  # TODO: z.compressor
 
@@ -187,7 +196,7 @@ algorithm (compression level 3) internally within Blosc, and with the
 bit-shuffle filter applied.
 
 When using a compressor, it can be useful to get some diagnostics on the
-compression ratio. Zarr arrays provide the :func:`zarr.Array.info` property
+compression ratio. Zarr arrays provide the :property:`zarr.Array.info` property
 which can be used to print useful diagnostics, e.g.:
 
 .. ipython:: python
@@ -200,6 +209,11 @@ prints additional diagnostics, e.g.:
 .. ipython:: python
 
    z.info_complete()
+
+.. note::
+   :func:`zarr.Array.info_complete` will inspect the underlying store and may
+   be slow for large arrays. Use :property:`zarr.Array.info` if detailed storage
+   statistics are not needed.
 
 If you don't specify a compressor, by default Zarr uses the Blosc
 compressor. Blosc is generally very fast and can be configured in a variety of
@@ -222,7 +236,7 @@ here is an array using Zstandard compression, level 1:
 .. ipython:: python
 
    from numcodecs import Zstd
-
+   # TODO: remove zarr_format and replace with create_array after #2463
    z = zarr.array(
        store="data/example-7.zarr",
        data=np.arange(100000000, dtype='i4').reshape(10000, 10000),
@@ -242,7 +256,7 @@ built-in delta filter:
 
    lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
    compressor = LZMA(filters=lzma_filters)
-   # TODO: remove zarr_format
+   # TODO: remove zarr_format and replace with create_array after #2463
    z = zarr.array(
        np.arange(100000000, dtype='i4').reshape(10000, 10000),
        chunks=(1000, 1000),
@@ -252,7 +266,7 @@ built-in delta filter:
    None  # TODO: z.compressor
 
 The default compressor can be changed by setting the value of the using Zarr's
-:ref:`config`, e.g.:
+:ref:`user-guide-config`, e.g.:
 
 .. ipython:: python
 
@@ -269,7 +283,7 @@ To disable compression, set ``compressor=None`` when creating an array, e.g.:
    # TODO: remove zarr_format
    z = zarr.zeros(100000000, chunks=1000000, compressor=None, zarr_format=2)
    z
-.. _tutorial_filters:
+.. _user-guide-filters:
 
 Filters
 -------
@@ -294,14 +308,14 @@ Here is an example using a delta filter with the Blosc compressor:
    filters = [Delta(dtype='i4')]
    compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.SHUFFLE)
    data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
-   # TODO: remove zarr_format
+   # TODO: remove zarr_format and replace with create_array after #2463
    z = zarr.array(data, chunks=(1000, 1000), filters=filters, compressor=compressor, zarr_format=2)
    z.info
 
 For more information about available filter codecs, see the `Numcodecs
 <https://numcodecs.readthedocs.io/>`_ documentation.
 
-.. _tutorial_indexing:
+.. _user-guide-indexing:
 
 Advanced indexing
 -----------------
@@ -324,6 +338,7 @@ coordinates. E.g.:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(10) ** 2)
    z[:]
    z.get_coordinate_selection([2, 5])
@@ -340,6 +355,7 @@ e.g.:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(15).reshape(3, 5))
    z[:]
    z.get_coordinate_selection(([0, 2], [1, 3]))
@@ -371,6 +387,7 @@ Items can also be extracted by providing a Boolean mask. E.g.:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(10) ** 2)
    z[:]
    sel = np.zeros_like(z, dtype=bool)
@@ -384,6 +401,7 @@ Here's a multidimensional example:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(15).reshape(3, 5))
    z[:]
    sel = np.zeros_like(z, dtype=bool)
@@ -416,6 +434,7 @@ example, this allows selecting a subset of rows and/or columns from a
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(15).reshape(3, 5))
    z[:]
    z.get_orthogonal_selection(([0, 2], slice(None)))  # select first and third rows
@@ -433,6 +452,7 @@ For convenience, the orthogonal indexing functionality is also available via the
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(15).reshape(3, 5))
    z.oindex[[0, 2], :]  # select first and third rows
    z.oindex[:, [1, 3]]  # select second and fourth columns
@@ -448,6 +468,7 @@ orthogonal indexing is also available directly on the array:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(15).reshape(3, 5))
    np.all(z.oindex[[0, 2], :] == z[[0, 2], :])
 
@@ -460,6 +481,7 @@ a subset of chunk aligned rows and/or columns from a 2-dimensional array. E.g.:
 
 .. ipython:: python
 
+   # TODO: replace with create_array after #2463
    z = zarr.array(np.arange(100).reshape(10, 10), chunks=(3, 3))
 
 Retrieve items by specifying their block coordinates:
@@ -515,6 +537,7 @@ Any combination of integer and slice can be used for block indexing:
 
    z.blocks[2, 1:3]
 
+   # TODO: replace with create_group after #2463
    root = zarr.group('data/example-12.zarr')
    foo = root.create_array(name='foo', shape=(1000, 100), chunks=(10, 10), dtype='f4')
    bar = root.create_array(name='foo/bar', shape=(100,), dtype='i4')
@@ -522,7 +545,44 @@ Any combination of integer and slice can be used for block indexing:
    bar[:] = np.arange(100)
    root.tree()
 
+.. _user-guide-sharding:
+
 Sharding
 --------
 
 Coming soon.
+
+
+Missing features in 3.0
+-----------------------
+
+
+The following features have not been ported to 3.0 yet.
+
+.. _user-guide-objects:
+
+Object arrays
+~~~~~~~~~~~~~
+
+See the Zarr-Python 2 documentation on `Object arrays <https://zarr.readthedocs.io/en/support-v2/tutorial.html#object-arrays>`_ for more details.
+
+.. _user-guide-strings:
+
+Fixed-length string arrays
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+See the Zarr-Python 2 documentation on `Fixed-length string arrays <https://zarr.readthedocs.io/en/support-v2/tutorial.html#string-arrays>`_ for more details.
+
+.. _user-guide-datetime:
+
+Datetime and Timedelta arrays
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+See the Zarr-Python 2 documentation on `Datetime and Timedelta <https://zarr.readthedocs.io/en/support-v2/tutorial.html#datetimes-and-timedeltas>`_ for more details.
+
+.. _user-guide-copy:
+
+Copying and migrating data
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+See the Zarr-Python 2 documentation on `Copying and migrating data <https://zarr.readthedocs.io/en/support-v2/tutorial.html#copying-migrating-data>`_ for more details.

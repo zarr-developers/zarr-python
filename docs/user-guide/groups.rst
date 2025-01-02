@@ -1,11 +1,12 @@
+.. _user-guide-groups:
 
 Working with groups
 ===================
 
-.. _tutorial_groups:
+.. ipython:: python
+   :suppress:
 
-Groups
-------
+   rm -r data/
 
 Zarr supports hierarchical organization of arrays via groups. As with arrays,
 groups can be stored in memory, on disk, or via other storage systems that
@@ -17,6 +18,7 @@ To create a group, use the :func:`zarr.group` function:
 
    import zarr
 
+   # TODO: replace with create_group after #2463
    root = zarr.group()
    root
 
@@ -56,14 +58,9 @@ representation of the hierarchy, e.g.:
 
    root.tree()
 
-The :func:`zarr.open` function provides a convenient way to create or
+The :func:`zarr.open_group` function provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with sub-groups stored in
 sub-directories, e.g.:
-
-.. ipython:: python
-   :suppress:
-
-   rm -r data/group.zarr
 
 .. ipython:: python
 
@@ -79,7 +76,7 @@ sub-directories, e.g.:
 
 For more information on groups see the :class:`zarr.Group` API docs.
 
-.. _tutorial_diagnostics:
+.. _user-guide-diagnostics:
 
 Array and group diagnostics
 ---------------------------
@@ -89,24 +86,16 @@ property. E.g.:
 
 .. ipython:: python
 
+   # TODO: replace with create_group after #2463
    root = zarr.group()
-
    foo = root.create_group('foo')
-
    bar = foo.zeros(name='bar', shape=1000000, chunks=100000, dtype='i8')
-
    bar[:] = 42
-
    baz = foo.zeros(name='baz', shape=(1000, 1000), chunks=(100, 100), dtype='f4')
-
    baz[:] = 4.2
-
    root.info
-
    foo.info
-
    bar.info_complete()
-
    baz.info
 
 Groups also have the :func:`zarr.Group.tree` method, e.g.:

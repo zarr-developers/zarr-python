@@ -1,7 +1,7 @@
-.. _tutorial_storage:
+.. _user-guide-storage:
 
-Storage
-=======
+Storage guide
+=============
 
 Zarr-Python supports multiple storage backends, including: local file systems,
 Zip files, remote stores via fsspec_ (S3, HTTP, etc.), and in-memory stores. In
@@ -22,17 +22,17 @@ to Zarr's top level API will result in the store being created automatically.
 
    import zarr
 
-   # implicitly create a writable LocalStore
+   # Implicitly create a writable LocalStore
    zarr.open_group("data/foo/bar", mode="w")
 
-   # implicitly create a read-only FsspecStore
+   # Implicitly create a read-only FsspecStore
    zarr.open_group(
       "s3://noaa-nwm-retro-v2-zarr-pds",
       mode="r",
       storage_options={"anon": True}
    )
 
-   # implicitly creates a MemoryStore
+   # Implicitly creates a MemoryStore
    data = {}
    zarr.open_group(data, mode="w")
 
@@ -52,6 +52,7 @@ filesystem.
 .. ipython:: python
 
    store = zarr.storage.LocalStore("data/foo/bar", read_only=True)
+   # TODO: replace with create_group after #2463
    zarr.open(store=store, mode='r')
 
 Zip Store
@@ -63,6 +64,7 @@ Zip file. The `Zip Store specification`_ is currently in draft form.
 .. ipython:: python
 
    store = zarr.storage.ZipStore("data.zip", mode="w")
+   # TODO: replace with create_array after #2463
    zarr.open(store=store, shape=(2,))
 
 Remote Store
@@ -72,8 +74,8 @@ The :class:`zarr.storage.FsspecStore` stores the contents of a Zarr hierarchy in
 logical layout as the ``LocalStore``, except the store is assumed to be on a remote storage system
 such as cloud object storage (e.g. AWS S3, Google Cloud Storage, Azure Blob Store). The
 :class:`zarr.storage.FsspecStore` is backed by `fsspec`_ and can support any backend
-that implements the `AbstractFileSystem` API. ``storage_options`` can be used to configure
-the fsspec backend.
+that implements the `AbstractFileSystem <https://filesystem-spec.readthedocs.io/en/stable/api.html#fsspec.spec.AbstractFileSystem>`_
+API. ``storage_options`` can be used to configure the fsspec backend.
 
 .. ipython:: python
 
@@ -94,6 +96,7 @@ Zarr data (metadata and chunks) to a dictionary.
 
    data = {}
    store = zarr.storage.MemoryStore(data)
+   # TODO: replace with create_array after #2463
    zarr.open(store=store, shape=(2, ))
 
 Developing custom stores
