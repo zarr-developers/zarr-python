@@ -196,7 +196,7 @@ algorithm (compression level 3) internally within Blosc, and with the
 bit-shuffle filter applied.
 
 When using a compressor, it can be useful to get some diagnostics on the
-compression ratio. Zarr arrays provide the :property:`zarr.Array.info` property
+compression ratio. Zarr arrays provide the :attr:`zarr.Array.info` property
 which can be used to print useful diagnostics, e.g.:
 
 .. ipython:: python
@@ -212,7 +212,7 @@ prints additional diagnostics, e.g.:
 
 .. note::
    :func:`zarr.Array.info_complete` will inspect the underlying store and may
-   be slow for large arrays. Use :property:`zarr.Array.info` if detailed storage
+   be slow for large arrays. Use :attr:`zarr.Array.info` if detailed storage
    statistics are not needed.
 
 If you don't specify a compressor, by default Zarr uses the Blosc
