@@ -26,6 +26,7 @@ from zarr.core.array import (
     FiltersParam,
     _get_default_chunk_encoding_v2,
     _get_default_chunk_encoding_v3,
+    _parse_chunk_encoding_v2,
     _parse_chunk_encoding_v3,
     chunks_initialized,
     create_array,
@@ -953,42 +954,26 @@ def test_chunks_and_shards() -> None:
     assert arr_v2.shards is None
 
 
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize(
-    "compressors",
-    [
-        "auto",
-        (ZstdCodec(level=3),),
-        (ZstdCodec(level=3), GzipCodec(level=0)),
-        ZstdCodec(level=3),
-        {"name": "zstd", "configuration": {"level": 3}},
-        ({"name": "zstd", "configuration": {"level": 3}},),
-    ],
-)
-async def test_create_array_v3_compressors(
-    store: MemoryStore, compressors: CompressorsParam
-) -> None:
-    """
-    Test various possibilities for the compressors parameter to create_array
-    """
-    dtype = "uint8"
-    arr = await create_array(
-        store=store,
-        dtype=dtype,
-        shape=(10,),
-        zarr_format=3,
-        compressors=compressors,
-    )
-    _, _, bb_codecs_expected = _parse_chunk_encoding_v3(
-        filters=(), compressors=compressors, array_bytes_codec="auto", dtype=np.dtype(dtype)
-    )
-    # TODO: find a better way to get the compressors from the array.
-    assert arr.codec_pipeline.bytes_bytes_codecs == bb_codecs_expected  # type: ignore[attr-defined]
+def test_create_array_default_fill_values() -> None:
+    a = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="<U4")
+    assert a.fill_value == ""
+
+    b = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="<S4")
+    assert b.fill_value == b""
+
+    c = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="i")
+    assert c.fill_value == 0
+
+    d = zarr.create_array(MemoryStore(), shape=5, chunks=5, dtype="f")
+    assert d.fill_value == 0.0
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
-async def test_create_array_no_filters_compressors(store: MemoryStore, dtype: str) -> None:
+@pytest.mark.parametrize("empty_value", [None, ()])
+async def test_create_array_no_filters_compressors(
+    store: MemoryStore, dtype: str, empty_value: Any
+) -> None:
     """
     Test that the default ``filters`` and ``compressors`` are removed when ``create_array`` is invoked.
     """
@@ -999,21 +984,12 @@ async def test_create_array_no_filters_compressors(store: MemoryStore, dtype: st
         dtype=dtype,
         shape=(10,),
         zarr_format=2,
-        compressors=None,
-        filters=None,
+        compressors=empty_value,
+        filters=empty_value,
     )
-    assert arr.metadata.filters is None  # type: ignore[union-attr]
-    assert arr.metadata.compressor is None  # type: ignore[union-attr]
-
-    arr = await create_array(
-        store=store,
-        dtype=dtype,
-        shape=(10,),
-        zarr_format=2,
-        compressors=(),
-        filters=(),
-    )
-    assert arr.metadata.filters == ()  # type: ignore[union-attr]
+    # The v2 metadata stores None and () separately
+    assert arr.metadata.filters == empty_value  # type: ignore[union-attr]
+    # The v2 metadata does not allow tuple for compressor, therefore it is turned into None
     assert arr.metadata.compressor is None  # type: ignore[union-attr]
 
     # v3
@@ -1021,8 +997,8 @@ async def test_create_array_no_filters_compressors(store: MemoryStore, dtype: st
         store=store,
         dtype=dtype,
         shape=(10,),
-        compressors=(),
-        filters=(),
+        compressors=empty_value,
+        filters=empty_value,
     )
     if dtype == "str":
         assert arr.metadata.codecs == [VLenUTF8Codec()]  # type: ignore[union-attr]
@@ -1031,10 +1007,26 @@ async def test_create_array_no_filters_compressors(store: MemoryStore, dtype: st
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
+@pytest.mark.parametrize(
+    "compressors",
+    [
+        "auto",
+        None,
+        (),
+        (ZstdCodec(level=3),),
+        (ZstdCodec(level=3), GzipCodec(level=0)),
+        ZstdCodec(level=3),
+        {"name": "zstd", "configuration": {"level": 3}},
+        ({"name": "zstd", "configuration": {"level": 3}},),
+    ],
+)
 @pytest.mark.parametrize(
     "filters",
     [
         "auto",
+        None,
+        (),
         (
             TransposeCodec(
                 order=[
@@ -1063,23 +1055,60 @@ async def test_create_array_no_filters_compressors(store: MemoryStore, dtype: st
         ({"name": "transpose", "configuration": {"order": [0]}},),
     ],
 )
-async def test_create_array_v3_filters(store: MemoryStore, filters: FiltersParam) -> None:
+async def test_create_array_v3_chunk_encoding(
+    store: MemoryStore, compressors: CompressorsParam, filters: FiltersParam, dtype: str
+) -> None:
     """
-    Test various possibilities for the filters parameter to create_array
+    Test various possibilities for the compressors and filters parameter to create_array
     """
-    dtype = "uint8"
     arr = await create_array(
         store=store,
         dtype=dtype,
         shape=(10,),
         zarr_format=3,
         filters=filters,
+        compressors=compressors,
     )
-    aa_codecs_expected, _, _ = _parse_chunk_encoding_v3(
-        filters=filters, compressors=(), array_bytes_codec="auto", dtype=np.dtype(dtype)
+    aa_codecs_expected, _, bb_codecs_expected = _parse_chunk_encoding_v3(
+        filters=filters, compressors=compressors, array_bytes_codec="auto", dtype=np.dtype(dtype)
     )
-    # TODO: find a better way to get the filters from the array.
+    # TODO: find a better way to get the filters / compressors from the array.
     assert arr.codec_pipeline.array_array_codecs == aa_codecs_expected  # type: ignore[attr-defined]
+    assert arr.codec_pipeline.bytes_bytes_codecs == bb_codecs_expected  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
+@pytest.mark.parametrize(
+    "compressors",
+    [
+        "auto",
+        None,
+        numcodecs.Zstd(level=3),
+        (),
+        (numcodecs.Zstd(level=3),),
+    ],
+)
+@pytest.mark.parametrize(
+    "filters", ["auto", None, numcodecs.GZip(level=1), (numcodecs.GZip(level=1),)]
+)
+async def test_create_array_v2_chunk_encoding(
+    store: MemoryStore, compressors: CompressorsParam, filters: FiltersParam, dtype: str
+) -> None:
+    arr = await create_array(
+        store=store,
+        dtype=dtype,
+        shape=(10,),
+        zarr_format=2,
+        compressors=compressors,
+        filters=filters,
+    )
+    filters_expected, compressor_expected = _parse_chunk_encoding_v2(
+        filters=filters, compressor=compressors, dtype=np.dtype(dtype)
+    )
+    # TODO: find a better way to get the filters/compressor from the array.
+    assert arr.metadata.compressor == compressor_expected  # type: ignore[union-attr]
+    assert arr.metadata.filters == filters_expected  # type: ignore[union-attr]
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)

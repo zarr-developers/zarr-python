@@ -680,10 +680,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             dimension_separator = "."
 
         dtype = parse_dtype(dtype, zarr_format=2)
-        if not filters:
-            filters = _default_filters(dtype)
-        if not compressor:
-            compressor = _default_compressor(dtype)
 
         # inject VLenUTF8 for str dtype if not already present
         if np.issubdtype(dtype, np.str_):
@@ -3501,13 +3497,16 @@ FiltersParam: TypeAlias = (
     Iterable[dict[str, JSON] | ArrayArrayCodec]
     | ArrayArrayCodec
     | Iterable[numcodecs.abc.Codec]
+    | numcodecs.abc.Codec
     | Literal["auto"]
+    | None
 )
 CompressorsParam: TypeAlias = (
     Iterable[dict[str, JSON] | BytesBytesCodec]
     | BytesBytesCodec
     | numcodecs.abc.Codec
     | Literal["auto"]
+    | None
 )
 ArrayBytesCodecParam: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
@@ -3568,12 +3567,16 @@ async def create_array(
         of ``ArrayArrayCodec``.
         If ``filters`` and ``compressors`` are not specified, then the default codecs for
         Zarr v3 will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v3_default_codecs``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit default filters.
 
         For Zarr v2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
         If no ``filters`` are provided, a default set of filters will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v2_default_filters``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit default filters.
     compressors : Iterable[Codec], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified).
@@ -3582,11 +3585,16 @@ async def create_array(
         returns another bytestream. Multiple compressors my be provided for Zarr v3.
         If ``filters`` and ``compressors`` are not specified, then the default codecs for
         Zarr v3 will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v3_default_codecs``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit default compressors.
 
-        For Zarr v2, a "compressor" can be any numcodecs codec. Only a single compressor may be provided for Zarr v2.
+        For Zarr v2, a "compressor" can be any numcodecs codec. Only a single compressor may
+        be provided for Zarr v2.
         If no ``compressors`` are provided, a default compressor will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_compressor`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v2_default_compressor``
+        in :mod:`zarr.core.config`.
+        Use ``None`` to omit the default compressor.
     array_bytes_codec : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr v3 only. Zarr v2 arrays use implicit array-to-bytes conversion.
@@ -3671,6 +3679,7 @@ async def create_array(
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
             compressor=compressors, filters=filters, dtype=np.dtype(dtype)
         )
+
         if dimension_names is not None:
             raise ValueError("Zarr v2 arrays do not support dimension names.")
         if order is None:
@@ -3836,26 +3845,34 @@ def _parse_chunk_encoding_v2(
     """
     default_filters, default_compressor = _get_default_chunk_encoding_v2(dtype)
 
-    _filters: tuple[numcodecs.abc.Codec, ...] | None = None
-    _compressor: numcodecs.abc.Codec | None = None
+    _filters: tuple[numcodecs.abc.Codec, ...] | None
+    _compressor: numcodecs.abc.Codec | None
 
-    if compressor == "auto":
+    if compressor is None or compressor == ():
+        _compressor = None
+    elif compressor == "auto":
         _compressor = default_compressor
+    elif isinstance(compressor, tuple | list) and len(compressor) == 1:
+        _compressor = parse_compressor(compressor[0])
     else:
         if isinstance(compressor, Iterable) and not isinstance(compressor, dict):
             msg = f"For Zarr v2 arrays, the `compressor` must be a single codec. Got an iterable with type {type(compressor)} instead."
             raise TypeError(msg)
         _compressor = parse_compressor(compressor)
 
-    if filters == "auto":
+    if filters is None:
+        _filters = None
+    elif filters == "auto":
         _filters = default_filters
     else:
-        if isinstance(filters, Iterable) and not all(
-            isinstance(f, numcodecs.abc.Codec) for f in filters
-        ):
-            raise TypeError(
-                "For Zarr v2 arrays, all elements of `filters` must be numcodecs codecs."
-            )
+        if isinstance(filters, Iterable):
+            for idx, f in enumerate(filters):
+                if not isinstance(f, numcodecs.abc.Codec):
+                    msg = (
+                        "For Zarr v2 arrays, all elements of `filters` must be numcodecs codecs. "
+                        f"Element at index {idx} has type {type(f)}, which is not a numcodecs codec."
+                    )
+                    raise TypeError(msg)
         _filters = parse_filters(filters)
 
     return _filters, _compressor
@@ -3876,9 +3893,13 @@ def _parse_chunk_encoding_v3(
     )
     maybe_bytes_bytes: Iterable[Codec | dict[str, JSON]]
     maybe_array_array: Iterable[Codec | dict[str, JSON]]
+    out_bytes_bytes: tuple[BytesBytesCodec, ...]
+    if compressors is None:
+        out_bytes_bytes = ()
 
-    if compressors == "auto":
+    elif compressors == "auto":
         out_bytes_bytes = default_bytes_bytes
+
     else:
         if isinstance(compressors, dict | Codec):
             maybe_bytes_bytes = (compressors,)
@@ -3888,8 +3909,10 @@ def _parse_chunk_encoding_v3(
             maybe_bytes_bytes = cast(Iterable[Codec | dict[str, JSON]], compressors)
 
         out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
-
-    if filters == "auto":
+    out_array_array: tuple[ArrayArrayCodec, ...]
+    if filters is None:
+        out_array_array = ()
+    elif filters == "auto":
         out_array_array = default_array_array
     else:
         if isinstance(filters, dict | Codec):
