@@ -280,7 +280,7 @@ def test_nested_sharding_create_array(
         chunks=(32, 32, 32),
         dtype=data.dtype,
         fill_value=0,
-        array_bytes_codec=ShardingCodec(
+        serializer=ShardingCodec(
             chunk_shape=(32, 32, 32),
             codecs=[ShardingCodec(chunk_shape=(16, 16, 16), index_location=inner_index_location)],
             index_location=outer_index_location,

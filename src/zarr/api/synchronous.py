@@ -19,9 +19,9 @@ if TYPE_CHECKING:
     from zarr.abc.codec import Codec
     from zarr.api.asynchronous import ArrayLike, PathLike
     from zarr.core.array import (
-        ArrayBytesCodecParam,
         CompressorsParam,
         FiltersParam,
+        SerializerParam,
         ShardsParam,
     )
     from zarr.core.array_spec import ArrayConfig, ArrayConfigParams
@@ -748,7 +748,7 @@ def create_array(
     shards: ShardsParam | None = None,
     filters: FiltersParam | None = "auto",
     compressors: CompressorsParam = "auto",
-    array_bytes_codec: ArrayBytesCodecParam = "auto",
+    serializer: SerializerParam = "auto",
     fill_value: Any | None = None,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
@@ -814,10 +814,10 @@ def create_array(
         These defaults can be changed by modifying the value of ``array.v2_default_compressor``
         in :mod:`zarr.core.config`.
         Use ``None`` to omit the default compressor.
-    array_bytes_codec : dict[str, JSON] | ArrayBytesCodec, optional
+    serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr v3 only. Zarr v2 arrays use implicit array-to-bytes conversion.
-        If no ``array_bytes_codec`` is provided, the `zarr.codecs.BytesCodec` codec will be used.
+        If no ``serializer`` is provided, the `zarr.codecs.BytesCodec` codec will be used.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -875,7 +875,7 @@ def create_array(
                 shards=shards,
                 filters=filters,
                 compressors=compressors,
-                array_bytes_codec=array_bytes_codec,
+                serializer=serializer,
                 fill_value=fill_value,
                 order=order,
                 zarr_format=zarr_format,

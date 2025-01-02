@@ -372,7 +372,7 @@ def test_invalid_metadata_create_array(store: Store) -> None:
             chunks=(16, 16),
             dtype=np.dtype("uint8"),
             fill_value=0,
-            array_bytes_codec=ShardingCodec(chunk_shape=(8, 8)),
+            serializer=ShardingCodec(chunk_shape=(8, 8)),
             compressors=[
                 GzipCodec(),
             ],

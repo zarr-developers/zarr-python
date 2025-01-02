@@ -3643,7 +3643,7 @@ CompressorsParam: TypeAlias = (
     | Literal["auto"]
     | None
 )
-ArrayBytesCodecParam: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
+SerializerParam: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"]
 
 
 class ShardsConfigParam(TypedDict):
@@ -3664,7 +3664,7 @@ async def create_array(
     shards: ShardsParam | None = None,
     filters: FiltersParam | None = "auto",
     compressors: CompressorsParam = "auto",
-    array_bytes_codec: ArrayBytesCodecParam = "auto",
+    serializer: SerializerParam = "auto",
     fill_value: Any | None = None,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
@@ -3730,10 +3730,10 @@ async def create_array(
         These defaults can be changed by modifying the value of ``array.v2_default_compressor``
         in :mod:`zarr.core.config`.
         Use ``None`` to omit the default compressor.
-    array_bytes_codec : dict[str, JSON] | ArrayBytesCodec, optional
+    serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr v3 only. Zarr v2 arrays use implicit array-to-bytes conversion.
-        If no ``array_bytes_codec`` is provided, the `zarr.codecs.BytesCodec` codec will be used.
+        If no ``serializer`` is provided, the `zarr.codecs.BytesCodec` codec will be used.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -3808,8 +3808,8 @@ async def create_array(
             )
 
             raise ValueError(msg)
-        if array_bytes_codec != "auto":
-            raise ValueError("Zarr v2 arrays do not support `array_bytes_codec`.")
+        if serializer != "auto":
+            raise ValueError("Zarr v2 arrays do not support `serializer`.")
 
         filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
             compressor=compressors, filters=filters, dtype=np.dtype(dtype)
@@ -3840,7 +3840,7 @@ async def create_array(
         array_array, array_bytes, bytes_bytes = _parse_chunk_encoding_v3(
             compressors=compressors,
             filters=filters,
-            array_bytes_codec=array_bytes_codec,
+            serializer=serializer,
             dtype=dtype_parsed,
         )
         sub_codecs = cast(tuple[Codec, ...], (*array_array, array_bytes, *bytes_bytes))
@@ -4017,7 +4017,7 @@ def _parse_chunk_encoding_v3(
     *,
     compressors: CompressorsParam | None,
     filters: FiltersParam | None,
-    array_bytes_codec: ArrayBytesCodecParam,
+    serializer: SerializerParam,
     dtype: np.dtype[Any],
 ) -> tuple[tuple[ArrayArrayCodec, ...], ArrayBytesCodec, tuple[BytesBytesCodec, ...]]:
     """
@@ -4058,9 +4058,9 @@ def _parse_chunk_encoding_v3(
             maybe_array_array = cast(Iterable[Codec | dict[str, JSON]], filters)
         out_array_array = tuple(_parse_array_array_codec(c) for c in maybe_array_array)
 
-    if array_bytes_codec == "auto":
+    if serializer == "auto":
         out_array_bytes = default_array_bytes
     else:
-        out_array_bytes = _parse_array_bytes_codec(array_bytes_codec)
+        out_array_bytes = _parse_array_bytes_codec(serializer)
 
     return out_array_array, out_array_bytes, out_bytes_bytes

@@ -461,7 +461,7 @@ def test_vlen_errors() -> None:
         match="For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `BytesCodec`.",
     ):
         zarr.create_array(
-            MemoryStore(), shape=(5,), chunks=(5,), dtype="<U4", array_bytes_codec=BytesCodec()
+            MemoryStore(), shape=(5,), chunks=(5,), dtype="<U4", serializer=BytesCodec()
         )
 
 
@@ -1084,7 +1084,7 @@ async def test_create_array_v3_chunk_encoding(
         compressors=compressors,
     )
     aa_codecs_expected, _, bb_codecs_expected = _parse_chunk_encoding_v3(
-        filters=filters, compressors=compressors, array_bytes_codec="auto", dtype=np.dtype(dtype)
+        filters=filters, compressors=compressors, serializer="auto", dtype=np.dtype(dtype)
     )
     # TODO: find a better way to get the filters / compressors from the array.
     assert arr.codec_pipeline.array_array_codecs == aa_codecs_expected  # type: ignore[attr-defined]

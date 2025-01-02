@@ -24,7 +24,7 @@ async def test_endian(store: Store, endian: Literal["big", "little"]) -> None:
         dtype=data.dtype,
         fill_value=0,
         chunk_key_encoding={"name": "v2", "separator": "."},
-        array_bytes_codec=BytesCodec(endian=endian),
+        serializer=BytesCodec(endian=endian),
     )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
@@ -50,7 +50,7 @@ async def test_endian_write(
         dtype="uint16",
         fill_value=0,
         chunk_key_encoding={"name": "v2", "separator": "."},
-        array_bytes_codec=BytesCodec(endian=dtype_store_endian),
+        serializer=BytesCodec(endian=dtype_store_endian),
     )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
