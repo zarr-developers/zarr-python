@@ -17,6 +17,7 @@ import os
 import sys
 from typing import Any
 
+import sphinx
 import sphinx.application
 
 from importlib.metadata import version as get_version
@@ -59,6 +60,20 @@ autoapi_member_order = "groupwise"
 autoapi_root = "_autoapi"
 autoapi_keep_files = True
 autoapi_options = [ 'members', 'undoc-members', 'show-inheritance', 'show-module-summary', 'imported-members', ]
+
+def skip_submodules(
+        app: sphinx.application.Sphinx,
+        what: str,
+        name: str,
+        obj: object,
+        skip: bool,
+        options: dict[str, Any]
+      ) -> bool:
+    # Skip documenting zarr.codecs submodules
+    # codecs are documented in the main zarr.codecs namespace
+    if what == "module" and name.startswith("zarr.codecs."):
+        skip = True
+    return skip
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ["_templates"]
@@ -179,6 +194,7 @@ html_logo = "_static/logo_horizontal.svg"
 
 def setup(app: sphinx.application.Sphinx) -> None:
     app.add_css_file("custom.css")
+    app.connect("autoapi-skip-member", skip_submodules)
 
 
 # The name of an image file (relative to this directory) to use as a favicon of
