@@ -193,19 +193,19 @@ Miscellaneous
 
 Zarr-Python 3 is still under active development, and is not yet fully complete.
 The following list summarizes areas of the codebase that we expect to build out
-after the 3.0 release:
+after the 3.0 release. If features listed below are important to your use case of
+Zarr-Python, please open (or comment on) a
+`GitHub issue <https://github.com/zarr-developers/zarr-python/issues/new>`_.
 
 - The following functions / methods have not been ported to Zarr-Python 3 yet:
 
   * :func:`zarr.copy` (:issue:`2407`)
   * :func:`zarr.copy_all` (:issue:`2407`)
   * :func:`zarr.copy_store` (:issue:`2407`)
-  * :func:`zarr.Group.move`
+  * :func:`zarr.Group.move` (:issue:`2108`)
 
 - The following options in the top-level API (i.e. creation and convenience functions in
-  :mod:`zarr`) have not been ported to Zarr-Python 3 yet. If these options are important
-  to your use case, please open (or comment on) a
-  `GitHub issue <https://github.com/zarr-developers/zarr-python/issues/new>`_.
+  :mod:`zarr`) have not been ported to Zarr-Python 3 yet.
 
   * ``cache_attrs``
   * ``cache_metadata``
