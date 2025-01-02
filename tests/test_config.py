@@ -8,7 +8,8 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr import Array, AsyncArray, zeros
+import zarr.api
+from zarr import zeros
 from zarr.abc.codec import Codec, CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter, Store
 from zarr.codecs import (
@@ -49,19 +50,33 @@ def test_config_defaults_set() -> None:
     # regression test for available defaults
     assert config.defaults == [
         {
-            "default_zarr_version": 3,
+            "default_zarr_format": 3,
             "array": {
                 "order": "C",
                 "write_empty_chunks": False,
                 "v2_default_compressor": {
-                    "numeric": "zstd",
-                    "string": "vlen-utf8",
-                    "bytes": "vlen-bytes",
+                    "numeric": {"id": "zstd", "level": 0, "checksum": False},
+                    "string": {"id": "zstd", "level": 0, "checksum": False},
+                    "bytes": {"id": "zstd", "level": 0, "checksum": False},
+                },
+                "v2_default_filters": {
+                    "numeric": None,
+                    "string": [{"id": "vlen-utf8"}],
+                    "bytes": [{"id": "vlen-bytes"}],
                 },
                 "v3_default_codecs": {
-                    "bytes": ["vlen-bytes"],
-                    "numeric": ["bytes", "zstd"],
-                    "string": ["vlen-utf8"],
+                    "bytes": [
+                        {"name": "vlen-bytes"},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
+                    "numeric": [
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
+                    "string": [
+                        {"name": "vlen-utf8"},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
                 },
             },
             "async": {"concurrency": 10, "timeout": None},
@@ -139,7 +154,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     assert get_pipeline_class() == MockCodecPipeline
 
     # test if codec is used
-    arr = Array.create(
+    arr = zarr.create_array(
         store=store,
         shape=(100,),
         chunks=(10,),
@@ -184,13 +199,13 @@ def test_config_codec_implementation(store: Store) -> None:
         assert get_codec_class("blosc") == MockBloscCodec
 
         # test if codec is used
-        arr = Array.create(
+        arr = zarr.create_array(
             store=store,
             shape=(100,),
             chunks=(10,),
             zarr_format=3,
             dtype="i4",
-            codecs=[BytesCodec(), {"name": "blosc", "configuration": {}}],
+            compressors=[{"name": "blosc", "configuration": {}}],
         )
         arr[:] = range(100)
         _mock.call.assert_called()
@@ -213,7 +228,7 @@ def test_config_ndbuffer_implementation(store: Store) -> None:
     register_ndbuffer(NDBufferUsingTestNDArrayLike)
     with config.set({"ndbuffer": fully_qualified_name(NDBufferUsingTestNDArrayLike)}):
         assert get_ndbuffer_class() == NDBufferUsingTestNDArrayLike
-        arr = Array.create(
+        arr = zarr.create_array(
             store=store,
             shape=(100,),
             chunks=(10,),
@@ -291,23 +306,32 @@ def test_warning_on_missing_codec_config() -> None:
     ("dtype", "expected_codecs"),
     [
         ("int", [BytesCodec(), GzipCodec()]),
-        ("bytes", [VLenBytesCodec()]),
-        ("str", [VLenUTF8Codec()]),
+        ("bytes", [VLenBytesCodec(), GzipCodec()]),
+        ("str", [VLenUTF8Codec(), GzipCodec()]),
     ],
 )
 async def test_default_codecs(dtype: str, expected_codecs: list[Codec]) -> None:
     with config.set(
         {
-            "array.v3_default_codecs": {
-                "numeric": ["bytes", "gzip"],  # test setting non-standard codecs
-                "string": ["vlen-utf8"],
-                "bytes": ["vlen-bytes"],
+            "array.v3_default_codecs": {  # test setting non-standard codecs
+                "numeric": [
+                    {"name": "bytes", "configuration": {"endian": "little"}},
+                    {"name": "gzip", "configuration": {"level": 5}},
+                ],
+                "string": [
+                    {"name": "vlen-utf8"},
+                    {"name": "gzip", "configuration": {"level": 5}},
+                ],
+                "bytes": [
+                    {"name": "vlen-bytes"},
+                    {"name": "gzip", "configuration": {"level": 5}},
+                ],
             }
         }
     ):
-        arr = await AsyncArray.create(
+        arr = await zarr.api.asynchronous.create_array(
             shape=(100,),
-            chunk_shape=(100,),
+            chunks=(100,),
             dtype=np.dtype(dtype),
             zarr_format=3,
             store=MemoryStore(),

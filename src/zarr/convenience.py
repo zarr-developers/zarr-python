@@ -1,3 +1,12 @@
+"""
+Convenience helpers.
+
+.. warning::
+
+    This sub-module is deprecated. All functions here are defined
+    in the top level zarr namespace instead.
+"""
+
 import warnings
 
 from zarr.api.synchronous import (
@@ -29,7 +38,8 @@ __all__ = [
 ]
 
 warnings.warn(
-    "zarr.convenience is deprecated, use zarr.api.synchronous",
+    "zarr.convenience is deprecated. "
+    "Import these functions from the top level zarr. namespace instead.",
     DeprecationWarning,
     stacklevel=2,
 )
