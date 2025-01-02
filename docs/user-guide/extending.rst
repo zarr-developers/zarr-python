@@ -24,7 +24,7 @@ There are three types of codecs in Zarr:
 Array-to-array codecs are used to transform the array data before serializing
 to bytes. Examples include delta encoding or scaling codecs. Array-to-bytes codecs are used
 for serializing the array data to bytes. In Zarr, the main codec to use for numeric arrays
-is the :class:`zarr.codecs.BytesCodec`. Bytes-to-bytes transform the serialized bytestreams
+is the :class:`zarr.codecs.BytesCodec`. Bytes-to-bytes codecs transform the serialized bytestreams
 of the array data. Examples include compression codecs, such as
 :class:`zarr.codecs.GzipCodec`, :class:`zarr.codecs.BloscCodec` or
 :class:`zarr.codecs.ZstdCodec`, and codecs that add a checksum to the bytestream, such as
