@@ -138,12 +138,20 @@ numpy = ["1.25", "2.1"]
 features = ["gpu"]
 
 [tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=src --doctest-glob='*.rst'"
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=src"
 run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=src"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+list-env = "pip list"
+
+[tool.hatch.envs.doctest]
+features = ["test", "optional"]
+description = "Test environment for doctests"
+
+[tool.hatch.envs.doctest.scripts]
+run = "pytest docs/user-guide --doctest-glob='*.rst'"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
@@ -351,7 +359,7 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "7"
-testpaths = ["tests", "docs"]
+testpaths = ["tests", "docs/user-guide"]
 log_cli_level = "INFO"
 xfail_strict = true
 asyncio_mode = "auto"
