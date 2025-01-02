@@ -697,7 +697,6 @@ async def create_group(
     if zarr_format is None:
         zarr_format = _default_zarr_version()
 
-    # TODO: fix this when modes make sense. It should be `w` for overwriting, `w-` otherwise
     mode: Literal["a"] = "a"
 
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
