@@ -85,8 +85,7 @@ from zarr.core.metadata.v3 import DataType, parse_node_type_array
 from zarr.core.sync import sync
 from zarr.errors import MetadataValidationError
 from zarr.registry import get_pipeline_class
-from zarr.storage import StoreLike, make_store_path
-from zarr.storage._common import StorePath, ensure_no_existing_node
+from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator, Sequence
@@ -94,6 +93,7 @@ if TYPE_CHECKING:
 
     from zarr.abc.codec import Codec, CodecPipeline
     from zarr.core.group import AsyncGroup
+    from zarr.storage import StoreLike
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
 __all__ = ["create_codec_pipeline", "parse_array_metadata"]

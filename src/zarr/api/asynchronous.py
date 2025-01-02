@@ -27,16 +27,14 @@ from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_filters_and_compressor
 from zarr.errors import NodeTypeValidationError
-from zarr.storage import (
-    StoreLike,
-    make_store_path,
-)
+from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+    from zarr.storage import StoreLike
 
     # TODO: this type could use some more thought
     ArrayLike = AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any]
