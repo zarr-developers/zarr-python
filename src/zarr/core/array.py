@@ -3636,8 +3636,10 @@ FiltersLike: TypeAlias = (
     | Literal["auto"]
     | None
 )
+CompressorLike: TypeAlias = dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec | None
 CompressorsLike: TypeAlias = (
-    Iterable[dict[str, JSON] | BytesBytesCodec]
+    Iterable[dict[str, JSON] | BytesBytesCodec | numcodecs.abc.Codec]
+    | dict[str, JSON]
     | BytesBytesCodec
     | numcodecs.abc.Codec
     | Literal["auto"]
@@ -4064,3 +4066,18 @@ def _parse_chunk_encoding_v3(
         out_array_bytes = _parse_array_bytes_codec(serializer)
 
     return out_array_array, out_array_bytes, out_bytes_bytes
+
+
+def _parse_deprecated_compressor(
+    compressor: CompressorLike | None, compressors: CompressorsLike
+) -> CompressorsLike | None:
+    if compressor:
+        if compressors != "auto":
+            raise ValueError("Cannot specify both `compressor` and `compressors`.")
+        warn(
+            "The `compressor` argument is deprecated. Use `compressors` instead.",
+            category=UserWarning,
+            stacklevel=2,
+        )
+        compressors = (compressor,)
+    return compressors

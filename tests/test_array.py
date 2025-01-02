@@ -466,7 +466,7 @@ def test_vlen_errors() -> None:
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
-def test_update_attrs(zarr_format: Literal[2, 3]) -> None:
+def test_update_attrs(zarr_format: ZarrFormat) -> None:
     # regression test for https://github.com/zarr-developers/zarr-python/issues/2328
     store = MemoryStore()
     arr = zarr.create_array(
@@ -799,7 +799,7 @@ def test_array_create_metadata_order_v2(
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_array_create_order(
     order_config: MemoryOrder | None,
-    zarr_format: Literal[2, 3],
+    zarr_format: ZarrFormat,
     store: MemoryStore,
 ) -> None:
     """

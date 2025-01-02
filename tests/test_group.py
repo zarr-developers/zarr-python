@@ -1427,3 +1427,13 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
     del g1["0"]
     with pytest.raises(KeyError):
         g1["0/0"]
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_deprecated_compressor(store: Store) -> None:
+    g = zarr.group(store=store, zarr_format=2)
+    with pytest.warns(UserWarning, match="The `compressor` argument is deprecated.*"):
+        a = g.create_array(
+            "foo", shape=(100,), chunks=(10,), dtype="i4", compressor={"id": "blosc"}
+        )
+        assert a.metadata.compressor.codec_id == "blosc"

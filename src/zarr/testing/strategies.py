@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Any
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
@@ -8,6 +8,7 @@ from hypothesis.strategies import SearchStrategy
 
 import zarr
 from zarr.core.array import Array
+from zarr.core.common import ZarrFormat
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 from zarr.storage.common import _dereference_path
@@ -69,7 +70,7 @@ paths = st.just("/") | keys
 # So we map a clear to reset the store.
 stores = st.builds(MemoryStore, st.just({})).map(lambda x: sync(x.clear()))
 compressors = st.sampled_from([None, "default"])
-zarr_formats: st.SearchStrategy[Literal[2, 3]] = st.sampled_from([2, 3])
+zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([2, 3])
 array_shapes = npst.array_shapes(max_dims=4, min_side=0)
 
 
@@ -78,7 +79,7 @@ def numpy_arrays(
     draw: st.DrawFn,
     *,
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
-    zarr_formats: st.SearchStrategy[Literal[2, 3]] = zarr_formats,
+    zarr_formats: st.SearchStrategy[ZarrFormat] = zarr_formats,
 ) -> Any:
     """
     Generate numpy arrays that can be saved in the provided Zarr format.
