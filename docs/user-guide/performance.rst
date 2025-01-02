@@ -168,15 +168,13 @@ the time required to write an array with different values.::
    >>> for write_empty_chunks in (True, False):
    ...     full, empty = timed_write(write_empty_chunks)
    ...     print(f'\nwrite_empty_chunks={write_empty_chunks}:\n\tRandom Data: {full[0]:.4f}s, {full[1]} objects stored\n\t Empty Data: {empty[0]:.4f}s, {empty[1]} objects stored\n')
-
    write_empty_chunks=True:
-   	Random Data: 0.2044s, 1024 objects stored
-   	 Empty Data: 0.2036s, 1024 objects stored
+   	Random Data: ..., 1024 objects stored
+   	 Empty Data: ...s, 1024 objects stored
    <BLANKLINE>
-
    write_empty_chunks=False:
-   	Random Data: 0.2279s, 1024 objects stored
-   	 Empty Data: 0.1767s, 0 objects stored
+   	Random Data: ...s, 1024 objects stored
+   	 Empty Data: ...s, 0 objects stored
    <BLANKLINE>
 
 In this example, writing random data is slightly slower with ``write_empty_chunks=True``,
