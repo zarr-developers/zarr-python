@@ -151,7 +151,7 @@ features = ["test", "optional"]
 description = "Test environment for doctests"
 
 [tool.hatch.envs.doctest.scripts]
-run = "pytest docs/user-guide --doctest-glob='*.rst'"
+run = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst'"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
