@@ -3,72 +3,68 @@
 Working with groups
 ===================
 
-.. ipython:: python
-   :suppress:
-
-   rm -r data/
+   >>> import shutil
+   >>> shutil.rmtree("./data")
 
 Zarr supports hierarchical organization of arrays via groups. As with arrays,
 groups can be stored in memory, on disk, or via other storage systems that
 support a similar interface.
 
-To create a group, use the :func:`zarr.group` function:
+To create a group, use the :func:`zarr.group` function::
 
-.. ipython:: python
-
-   import zarr
-
-   # TODO: replace with create_group after #2463
-   root = zarr.group()
-   root
+   >>> import zarr
+   >>>
+   >>> # TODO: replace with create_group after #2463
+   >>> root = zarr.group()
+   >>> root
+   <Group memory://...>
 
 Groups have a similar API to the Group class from `h5py
-<https://www.h5py.org/>`_.  For example, groups can contain other groups:
+<https://www.h5py.org/>`_.  For example, groups can contain other groups::
 
-.. ipython:: python
+   >>> foo = root.create_group('foo')
+   >>> bar = foo.create_group('bar')
 
-   foo = root.create_group('foo')
-   bar = foo.create_group('bar')
+Groups can also contain arrays, e.g.::
 
-Groups can also contain arrays, e.g.:
+   >>> z1 = bar.zeros(name='baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+   >>> z1
+   <Array memory://.../foo/bar/baz shape=(10000, 10000) dtype=int32>
 
-.. ipython:: python
+Members of a group can be accessed via the suffix notation, e.g.::
 
-   z1 = bar.zeros(name='baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
-   z1
-
-Members of a group can be accessed via the suffix notation, e.g.:
-
-.. ipython:: python
-
-   root['foo']
+   >>> root['foo']
+   <Group memory://.../foo>
 
 The '/' character can be used to access multiple levels of the hierarchy in one
-call, e.g.:
+call, e.g.::
 
-.. ipython:: python
-
-   root['foo/bar']
-   root['foo/bar/baz']
+   >>> root['foo/bar']
+   <Group memory://.../foo/bar>
+   >>> root['foo/bar/baz']
+   <Array memory://.../foo/bar/baz shape=(10000, 10000) dtype=int32>
 
 The :func:`zarr.Group.tree` method can be used to print a tree
-representation of the hierarchy, e.g.:
+representation of the hierarchy, e.g.::
 
-.. ipython:: python
-
-   root.tree()
+   >>> root.tree()
+   /
+   └── foo
+       └── bar
+           └── baz (10000, 10000) int32
+   <BLANKLINE>
 
 The :func:`zarr.open_group` function provides a convenient way to create or
 re-open a group stored in a directory on the file-system, with sub-groups stored in
-sub-directories, e.g.:
+sub-directories, e.g.::
 
-.. ipython:: python
-
-   root = zarr.open_group('data/group.zarr', mode='w')
-   root
-
-   z = root.zeros(name='foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
-   z
+   >>> root = zarr.open_group('data/group.zarr', mode='w')
+   >>> root
+   <Group file://data/group.zarr>
+   >>>
+   >>> z = root.zeros(name='foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+   >>> z
+   <Array file://data/group.zarr/foo/bar/baz shape=(10000, 10000) dtype=int32>
 
 .. TODO: uncomment after __enter__ and __exit__ are implemented
 .. Groups can be used as context managers (in a ``with`` statement).
@@ -82,27 +78,61 @@ Array and group diagnostics
 ---------------------------
 
 Diagnostic information about arrays and groups is available via the ``info``
-property. E.g.:
+property. E.g.::
 
-.. ipython:: python
+   >>> # TODO: replace with create_group after #2463
+   >>> root = zarr.group()
+   >>> foo = root.create_group('foo')
+   >>> bar = foo.zeros(name='bar', shape=1000000, chunks=100000, dtype='i8')
+   >>> bar[:] = 42
+   >>> baz = foo.zeros(name='baz', shape=(1000, 1000), chunks=(100, 100), dtype='f4')
+   >>> baz[:] = 4.2
+   >>> root.info
+   Name        :
+   Type        : Group
+   Zarr format : 3
+   Read-only   : False
+   Store type  : MemoryStore
+   >>> foo.info
+   Name        : foo
+   Type        : Group
+   Zarr format : 3
+   Read-only   : False
+   Store type  : MemoryStore
+   >>> bar.info_complete()
+   Type               : Array
+   Zarr format        : 3
+   Data type          : DataType.int64
+   Shape              : (1000000,)
+   Chunk shape        : (100000,)
+   Order              : C
+   Read-only          : False
+   Store type         : MemoryStore
+   Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+   No. bytes          : 8000000 (7.6M)
+   No. bytes stored   : 1432
+   Storage ratio      : 5586.6
+   Chunks Initialized : 0
+   >>> baz.info
+   Type               : Array
+   Zarr format        : 3
+   Data type          : DataType.float32
+   Shape              : (1000, 1000)
+   Chunk shape        : (100, 100)
+   Order              : C
+   Read-only          : False
+   Store type         : MemoryStore
+   Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+   No. bytes          : 4000000 (3.8M)
 
-   # TODO: replace with create_group after #2463
-   root = zarr.group()
-   foo = root.create_group('foo')
-   bar = foo.zeros(name='bar', shape=1000000, chunks=100000, dtype='i8')
-   bar[:] = 42
-   baz = foo.zeros(name='baz', shape=(1000, 1000), chunks=(100, 100), dtype='f4')
-   baz[:] = 4.2
-   root.info
-   foo.info
-   bar.info_complete()
-   baz.info
+Groups also have the :func:`zarr.Group.tree` method, e.g.::
 
-Groups also have the :func:`zarr.Group.tree` method, e.g.:
-
-.. ipython:: python
-
-   root.tree()
+   >>> root.tree()
+   /
+   └── foo
+       ├── bar (1000000,) int64
+       └── baz (1000, 1000) float32
+   <BLANKLINE>
 
 .. note::
 
