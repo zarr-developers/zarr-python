@@ -96,6 +96,8 @@ Zarr data (metadata and chunks) to a dictionary.
    store = zarr.storage.MemoryStore(data)
    zarr.open(store=store, shape=(2, ))
 
+.. _user-guide-custom-stores:
+
 Developing custom stores
 ------------------------
 
