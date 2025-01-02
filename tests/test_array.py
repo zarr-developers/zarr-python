@@ -2,6 +2,7 @@ import dataclasses
 import json
 import math
 import pickle
+import time
 from itertools import accumulate
 from typing import Any, Literal
 
@@ -9,6 +10,8 @@ import numcodecs
 import numpy as np
 import pytest
 from numcodecs import Zstd
+from numpy import dtype
+from numpy.ma.testutils import assert_array_equal
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
@@ -888,3 +891,33 @@ async def test_scalar_array() -> None:
     assert arr[...] == 1.5
     assert arr[()] == 1.5
     assert arr.shape == ()
+
+
+async def test_creation_from_other_zarr(tmpdir):
+    src_fill_value = 2
+    src_dtype = np.dtype("uint8")
+    src_attributes = {}
+    src_chunks = (2, 2)
+
+    src = zarr.create((10, 10), chunks=src_chunks, dtype=src_dtype, store=LocalStore(str(tmpdir)), fill_value = src_fill_value, attributes=src_attributes)
+    src[:] = np.arange(100).reshape((10,10))
+
+    result = zarr.array(src, store=MemoryStore())
+    assert_array_equal(result[:], src[:])
+    assert result.fill_value == src_fill_value
+    assert result.dtype==src_dtype
+    assert result.attrs.asdict() == src_attributes
+    assert result.chunks == src_chunks
+
+    new_fill_value = 3
+    new_dtype = np.dtype("uint16")
+    new_attributes = {"foo":"bar"}
+    new_chunks = (5, 10)
+
+    result2 = zarr.array(src, store=MemoryStore(), chunks=new_chunks, dtype=new_dtype, fill_value = new_fill_value, attributes=new_attributes)
+
+    assert_array_equal(result2[:], src[:])
+    assert result2.fill_value == new_fill_value
+    assert result2.dtype == new_dtype
+    assert result2.attrs == new_attributes
+    assert result2.chunks == new_chunks

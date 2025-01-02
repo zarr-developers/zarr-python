@@ -339,7 +339,7 @@ def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> An
 
 
 # TODO: add type annotations for kwargs
-def array(data: npt.ArrayLike, **kwargs: Any) -> Array:
+def array(data: npt.ArrayLike | Array, **kwargs: Any) -> Array:
     """Create an array filled with `data`.
 
     Parameters
