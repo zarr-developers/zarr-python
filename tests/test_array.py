@@ -866,6 +866,31 @@ async def test_special_complex_fill_values_roundtrip(fill_value: Any, expected: 
     assert actual["fill_value"] == expected
 
 
+@pytest.mark.parametrize("shape", [(1,), (2, 3), (4, 5, 6)])
+@pytest.mark.parametrize("dtype", ["uint8", "float32"])
+@pytest.mark.parametrize("array_type", ["async", "sync"])
+async def test_nbytes(
+    shape: tuple[int, ...], dtype: str, array_type: Literal["async", "sync"]
+) -> None:
+    """
+    Test that the ``nbytes`` attribute of an Array or AsyncArray correctly reports the capacity of
+    the chunks of that array.
+    """
+    store = MemoryStore()
+    arr = Array.create(store=store, shape=shape, dtype=dtype, fill_value=0)
+    if array_type == "async":
+        assert arr._async_array.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
+    else:
+        assert arr.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
+
+
+async def test_scalar_array() -> None:
+    arr = zarr.array(1.5)
+    assert arr[...] == 1.5
+    assert arr[()] == 1.5
+    assert arr.shape == ()
+
+
 async def test_creation_from_other_zarr(tmpdir):
     src = zarr.zeros(
         (2000, 20000), chunks=(1000, 1000), dtype="uint8", store=LocalStore(str(tmpdir))
@@ -885,53 +910,3 @@ async def test_creation_from_other_zarr(tmpdir):
 
     assert b[123, 123] == 1
     assert c[123, 123] == 1
-
-
-@pytest.mark.parametrize("shape", [(1,), (2, 3), (4, 5, 6)])
-@pytest.mark.parametrize("dtype", ["uint8", "float32"])
-@pytest.mark.parametrize("array_type", ["async", "sync"])
-async def test_nbytes(
-    shape: tuple[int, ...], dtype: str, array_type: Literal["async", "sync"]
-) -> None:
-    """
-    Test that the ``nbytes`` attribute of an Array or AsyncArray correctly reports the capacity of
-    the chunks of that array.
-    """
-    store = MemoryStore()
-    arr = Array.create(store=store, shape=shape, dtype=dtype, fill_value=0)
-    if array_type == "async":
-        assert arr._async_array.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
-    else:
-        assert arr.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
-
-
-async def test_scalar_array() -> None:
-    arr = zarr.array(1.5)
-    assert arr[...] == 1.5
-    assert arr[()] == 1.5
-    assert arr.shape == ()
-
-
-@pytest.mark.parametrize("shape", [(1,), (2, 3), (4, 5, 6)])
-@pytest.mark.parametrize("dtype", ["uint8", "float32"])
-@pytest.mark.parametrize("array_type", ["async", "sync"])
-async def test_nbytes(
-    shape: tuple[int, ...], dtype: str, array_type: Literal["async", "sync"]
-) -> None:
-    """
-    Test that the ``nbytes`` attribute of an Array or AsyncArray correctly reports the capacity of
-    the chunks of that array.
-    """
-    store = MemoryStore()
-    arr = Array.create(store=store, shape=shape, dtype=dtype, fill_value=0)
-    if array_type == "async":
-        assert arr._async_array.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
-    else:
-        assert arr.nbytes == np.prod(arr.shape) * arr.dtype.itemsize
-
-
-async def test_scalar_array() -> None:
-    arr = zarr.array(1.5)
-    assert arr[...] == 1.5
-    assert arr[()] == 1.5
-    assert arr.shape == ()
