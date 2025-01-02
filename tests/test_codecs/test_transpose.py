@@ -81,8 +81,8 @@ def test_transpose_invalid(
 ) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((1, 32, 8))
     spath = StorePath(store, "transpose_invalid")
-    for order in [(1, 0), (3, 2, 1), (3, 3, 1)]:
-        with pytest.raises(ValueError):
+    for order in [(1, 0), (3, 2, 1), (3, 3, 1), "F", "C"]:
+        with pytest.raises((ValueError, TypeError)):
             zarr.create_array(
                 spath,
                 shape=data.shape,

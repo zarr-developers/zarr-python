@@ -424,3 +424,27 @@ async def test_sharding_with_chunks_per_shard(
     a[...] = data
     data_read = a[...]
     assert np.array_equal(data_read, data)
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_invalid_metadata(store: Store) -> None:
+    spath1 = StorePath(store, "invalid_inner_chunk_shape")
+    with pytest.raises(ValueError):
+        zarr.create_array(
+            spath1,
+            shape=(16, 16),
+            shards=(16, 16),
+            chunks=(8,),
+            dtype=np.dtype("uint8"),
+            fill_value=0,
+        )
+    spath2 = StorePath(store, "invalid_inner_chunk_shape")
+    with pytest.raises(ValueError):
+        zarr.create_array(
+            spath2,
+            shape=(16, 16),
+            shards=(16, 16),
+            chunks=(8, 7),
+            dtype=np.dtype("uint8"),
+            fill_value=0,
+        )

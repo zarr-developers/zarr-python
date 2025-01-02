@@ -78,17 +78,17 @@ async def test_order(
     path = "order"
     spath = StorePath(store, path=path)
 
-    with config.set({"array.order": runtime_write_order}):
-        a = await zarr.api.asynchronous.create_array(
-            spath,
-            shape=data.shape,
-            chunks=(16, 8) if with_sharding else (32, 8),
-            shards=(32, 8) if with_sharding else None,
-            dtype=data.dtype,
-            fill_value=0,
-            chunk_key_encoding={"name": "v2", "separator": "."},
-            filters=[TransposeCodec(order=order_from_dim(store_order, data.ndim))],
-        )
+    a = await zarr.api.asynchronous.create_array(
+        spath,
+        shape=data.shape,
+        chunks=(16, 8) if with_sharding else (32, 8),
+        shards=(32, 8) if with_sharding else None,
+        dtype=data.dtype,
+        fill_value=0,
+        chunk_key_encoding={"name": "v2", "separator": "."},
+        filters=[TransposeCodec(order=order_from_dim(store_order, data.ndim))],
+        config={"order": runtime_write_order},
+    )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
     read_data = await _AsyncArrayProxy(a)[:, :].get()
@@ -364,42 +364,10 @@ def test_invalid_metadata(store: Store) -> None:
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_invalid_metadata_create_array(store: Store) -> None:
-    spath3 = StorePath(store, "invalid_order")
-    with pytest.raises(TypeError):
-        zarr.create_array(
-            spath3,
-            shape=(16, 16),
-            chunks=(16, 16),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-            filters=[
-                TransposeCodec(order="F"),  # type: ignore[arg-type]
-            ],
-        )
-    spath5 = StorePath(store, "invalid_inner_chunk_shape")
-    with pytest.raises(ValueError):
-        zarr.create_array(
-            spath5,
-            shape=(16, 16),
-            shards=(16, 16),
-            chunks=(8,),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-        )
-    spath6 = StorePath(store, "invalid_inner_chunk_shape")
-    with pytest.raises(ValueError):
-        zarr.create_array(
-            spath6,
-            shape=(16, 16),
-            shards=(16, 16),
-            chunks=(8, 7),
-            dtype=np.dtype("uint8"),
-            fill_value=0,
-        )
-    spath7 = StorePath(store, "warning_inefficient_codecs")
+    spath = StorePath(store, "warning_inefficient_codecs")
     with pytest.warns(UserWarning):
         zarr.create_array(
-            spath7,
+            spath,
             shape=(16, 16),
             chunks=(16, 16),
             dtype=np.dtype("uint8"),
