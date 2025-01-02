@@ -86,7 +86,6 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
-    'ipython',
     'rich',
     's3fs',
 ]
