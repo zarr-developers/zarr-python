@@ -112,6 +112,8 @@ jobs:
       run: |
         hatch env create doctest
         hatch env run -e doctest list-env
+    - name: Print version
+      run: hatch version
     - name: Run Tests
       env:
         VERSION: "3.0.0" # mock version for numcodecs import
