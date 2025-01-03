@@ -11,10 +11,10 @@ User guide
     attributes
     storage
     config
+    v3_migration
 
 .. Coming soon
     installation
-    v3_migration
 
 Advanced Topics
 ---------------
