@@ -9,13 +9,13 @@ Zarr-Python
     :hidden:
 
     quickstart
-    about
+    installation
     user-guide/index
     api/index
     release
     contributing
     roadmap
-    installation
+    about
 
 **Version**: |version|
 
