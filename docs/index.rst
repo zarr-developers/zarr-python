@@ -52,15 +52,14 @@ Zarr is a file storage format for chunked, compressed, N-dimensional arrays base
     .. grid-item-card::
         :img-top: _static/index_user_guide.svg
 
-       Guide
-       ^^^^^
+        Guide
+        ^^^^^
 
-       A detailed guide for how to use Zarr-Python.
+        A detailed guide for how to use Zarr-Python.
 
         +++
 
-        .. button-ref:: user-guide
-            :ref-type: ref
+        .. button-ref:: user-guide/index
             :expand:
             :color: dark
             :click-parent:
