@@ -6,7 +6,7 @@ from zarr import AsyncArray, config
 from zarr.abc.store import Store
 from zarr.codecs import TransposeCodec
 from zarr.core.common import MemoryOrder
-from zarr.storage.common import StorePath
+from zarr.storage import StorePath
 
 from .test_codecs import _AsyncArrayProxy
 

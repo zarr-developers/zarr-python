@@ -40,8 +40,7 @@ from zarr.core.indexing import ceildiv
 from zarr.core.metadata.v3 import DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.storage import LocalStore, MemoryStore
-from zarr.storage.common import StorePath
+from zarr.storage import LocalStore, MemoryStore, StorePath
 
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike

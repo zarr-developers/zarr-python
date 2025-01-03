@@ -113,7 +113,7 @@ from zarr.registry import (
     get_pipeline_class,
 )
 from zarr.storage import StoreLike, make_store_path
-from zarr.storage.common import StorePath, ensure_no_existing_node
+from zarr.storage._common import StorePath, ensure_no_existing_node
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
