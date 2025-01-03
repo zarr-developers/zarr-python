@@ -1,5 +1,8 @@
 .. _user-guide-consolidated-metadata:
 
+.. only:: doctest
+   >>> from pprint import pprint
+
 Consolidated metadata
 =====================
 
@@ -29,13 +32,12 @@ attribute of the ``GroupMetadata`` object.
    >>> import zarr
    >>>
    >>> store = zarr.storage.MemoryStore()
-   >>> # TODO: replace with create_group after #2463
-   >>> group = zarr.open_group(store=store)
-   >>> group.create_array(shape=(1,), name="a")
+   >>> group = zarr.create_group(store=store)
+   >>> group.create_array(shape=(1,), name="a", dtype="float64")
    <Array memory://.../a shape=(1,) dtype=float64>
-   >>> group.create_array(shape=(2, 2), name="b")
+   >>> group.create_array(shape=(2, 2), name="b", dtype="float64")
    <Array memory://.../b shape=(2, 2) dtype=float64>
-   >>> group.create_array(shape=(3, 3, 3), name="c")
+   >>> group.create_array(shape=(3, 3, 3), name="c", dtype="float64")
    <Array memory://.../c shape=(3, 3, 3) dtype=float64>
    >>> zarr.consolidate_metadata(store)
    <Group memory://...>
@@ -45,8 +47,46 @@ that can be used.:
 
    >>> consolidated = zarr.open_group(store=store)
    >>> consolidated_metadata = consolidated.metadata.consolidated_metadata.metadata
-   >>> dict(sorted(consolidated_metadata.items()))
-   {}
+   >>> pprint(dict(sorted(consolidated_metadata.items())))
+   {'a': ArrayV3Metadata(shape=(1,),
+                          data_type=<DataType.float64: 'float64'>,
+                          chunk_grid=RegularChunkGrid(chunk_shape=(1,)),
+                          chunk_key_encoding=DefaultChunkKeyEncoding(name='default',
+                                                                     separator='/'),
+                          fill_value=np.float64(0.0),
+                          codecs=[BytesCodec(endian=<Endian.little: 'little'>),
+                                  ZstdCodec(level=0, checksum=False)],
+                          attributes={},
+                          dimension_names=None,
+                          zarr_format=3,
+                          node_type='array',
+                          storage_transformers=()),
+     'b': ArrayV3Metadata(shape=(2, 2),
+                          data_type=<DataType.float64: 'float64'>,
+                          chunk_grid=RegularChunkGrid(chunk_shape=(2, 2)),
+                          chunk_key_encoding=DefaultChunkKeyEncoding(name='default',
+                                                                     separator='/'),
+                          fill_value=np.float64(0.0),
+                          codecs=[BytesCodec(endian=<Endian.little: 'little'>),
+                                  ZstdCodec(level=0, checksum=False)],
+                          attributes={},
+                          dimension_names=None,
+                          zarr_format=3,
+                          node_type='array',
+                          storage_transformers=()),
+     'c': ArrayV3Metadata(shape=(3, 3, 3),
+                          data_type=<DataType.float64: 'float64'>,
+                          chunk_grid=RegularChunkGrid(chunk_shape=(3, 3, 3)),
+                          chunk_key_encoding=DefaultChunkKeyEncoding(name='default',
+                                                                     separator='/'),
+                          fill_value=np.float64(0.0),
+                          codecs=[BytesCodec(endian=<Endian.little: 'little'>),
+                                  ZstdCodec(level=0, checksum=False)],
+                          attributes={},
+                          dimension_names=None,
+                          zarr_format=3,
+                          node_type='array',
+                          storage_transformers=())}
 
 Operations on the group to get children automatically use the consolidated metadata.:
 
