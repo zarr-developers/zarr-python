@@ -1,3 +1,8 @@
+.. only:: doctest
+
+   >>> import shutil
+   >>> shutil.rmtree('data', ignore_errors=True)
+
 .. _user-guide-arrays:
 
 Working with arrays
@@ -9,10 +14,8 @@ Creating an array
 Zarr has several functions for creating arrays. For example::
 
    >>> import zarr
-   >>>
-   >>> store = {}
-   >>> # TODO: replace with `create_array` after #2463
-   >>> z = zarr.create(store=store, mode="w", shape=(10000, 10000), chunks=(1000, 1000), dtype="i4")
+   >>> store = zarr.storage.MemoryStore()
+   >>> z = zarr.create_array(store=store, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
    >>> z
    <Array memory://... shape=(10000, 10000) dtype=int32>
 
@@ -79,16 +82,14 @@ main memory. Zarr arrays can also be stored on a file system, enabling
 persistence of data between sessions. To do this, we can change the store
 argument to point to a filesystem path::
 
-   >>> # TODO: replace with `open_array` after #2463
-   >>> z1 = zarr.open(store='data/example-2.zarr', mode='w', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+   >>> z1 = zarr.create_array(store='data/example-1.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
 
 The array above will store its configuration metadata and all compressed chunk
-data in a directory called ``'data/example-2.zarr'`` relative to the current working
-directory. The :func:`zarr.open` function provides a convenient way
+data in a directory called ``'data/example-1.zarr'`` relative to the current working
+directory. The :func:`zarr.create_array` function provides a convenient way
 to create a new persistent array or continue working with an existing
-array. Note that although the function is called "open", there is no need to
-close an array: data are automatically flushed to disk, and files are
-automatically closed whenever an array is modified.
+array. Note, there is no need to close an array: data are automatically
+flushed to disk, and files are automatically closed whenever an array is modified.
 
 Persistent arrays support the same interface for reading and writing data,
 e.g.::
@@ -99,8 +100,7 @@ e.g.::
 
 Check that the data have been written and can be read again::
 
-   >>> # TODO: replace with `open_array` after #2463
-   >>> z2 = zarr.open('data/example-2.zarr', mode='r')
+   >>> z2 = zarr.open_array('data/example-1.zarr', mode='r')
    >>> np.all(z1[:] == z2[:])
    np.True_
 
@@ -110,8 +110,8 @@ disk then load back into memory later, the functions
 useful. E.g.::
 
    >>> a = np.arange(10)
-   >>> zarr.save('data/example-3.zarr', a)
-   >>> zarr.load('data/example-3.zarr')
+   >>> zarr.save('data/example-2.zarr', a)
+   >>> zarr.load('data/example-2.zarr')
    array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 
 Please note that there are a number of other options for persistent array
@@ -125,7 +125,7 @@ Resizing and appending
 A Zarr array can be resized, which means that any of its dimensions can be
 increased or decreased in length. For example::
 
-   >>> z = zarr.zeros(store="data/example-4.zarr", shape=(10000, 10000), chunks=(1000, 1000))
+   >>> z = zarr.create_array(store='data/example-3.zarr', shape=(10000, 10000), dtype='int32',chunks=(1000, 1000))
    >>> z[:] = 42
    >>> z.shape
    (10000, 10000)
@@ -140,9 +140,9 @@ new array shape will be deleted from the underlying store.
 :func:`zarr.Array.append` is provided as a convenience function, which can be
 used to append data to any axis. E.g.::
 
-   >>> a = np.arange(10000000, dtype='i4').reshape(10000, 1000)
-   >>> # TODO: replace with create_array after #2463
-   >>> z = zarr.array(store="data/example-5", data=a, chunks=(1000, 100))
+   >>> a = np.arange(10000000, dtype='int32').reshape(10000, 1000)
+   >>> z = zarr.create_array(store='data/example-4.zarr', shape=a.shape, dtype=a.dtype, chunks=(1000, 100))
+   >>> z[:] = a
    >>> z.shape
    (10000, 1000)
    >>> z.append(a)
@@ -157,19 +157,19 @@ used to append data to any axis. E.g.::
 Compressors
 -----------
 
-A number of different compressors can be used with Zarr. A separate package
-called NumCodecs_ is available which provides a common interface to various
-compressor libraries including Blosc, Zstandard, LZ4, Zlib, BZ2 and
-LZMA. Different compressors can be provided via the ``compressor`` keyword
+A number of different compressors can be used with Zarr. Zarr includes Blosc,
+Zstandard and Gzip compressors. Additional compressors are available through
+a separate package called NumCodecs_ which provides various
+compressor libraries including LZ4, Zlib, BZ2 and LZMA.
+Different compressors can be provided via the ``compressors`` keyword
 argument accepted by all array creation functions. For example::
 
-   >>> from numcodecs import Blosc
-   >>>
-   >>> compressor = None  # TODO: Blosc(cname='zstd', clevel=3, shuffle=Blosc.BITSHUFFLE)
-   >>> data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
-   >>> # TODO: remove zarr_format and replace with create_array after #2463
-   >>> z = zarr.array(store="data/example-6.zarr", data=data, chunks=(1000, 1000), compressor=compressor, zarr_format=2)
-   >>> None  # TODO: z.compressor
+   >>> compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=3, shuffle=zarr.codecs.BloscShuffle.bitshuffle)
+   >>> data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
+   >>> z = zarr.create_array(store='data/example-5.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
+   >>> z[:] = data
+   >>> z.metadata.codecs
+   [BytesCodec(endian=<Endian.little: 'little'>), BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0)]
 
 This array above will use Blosc as the primary compressor, using the Zstandard
 algorithm (compression level 3) internally within Blosc, and with the
@@ -181,14 +181,14 @@ which can be used to print useful diagnostics, e.g.::
 
    >>> z.info
    Type               : Array
-   Zarr format        : 2
-   Data type          : int32
+   Zarr format        : 3
+   Data type          : DataType.int32
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
    Read-only          : False
    Store type         : LocalStore
-   Compressor         : Zstd(level=0)
+   Codecs             : [{'endian': <Endian.little: 'little'>}, {'typesize': 4, 'cname': <BloscCname.zstd: 'zstd'>, 'clevel': 3, 'shuffle': <BloscShuffle.bitshuffle: 'bitshuffle'>, 'blocksize': 0}]
    No. bytes          : 400000000 (381.5M)
 
 The :func:`zarr.Array.info_complete` method inspects the underlying store and
@@ -196,17 +196,17 @@ prints additional diagnostics, e.g.::
 
    >>> z.info_complete()
    Type               : Array
-   Zarr format        : 2
-   Data type          : int32
+   Zarr format        : 3
+   Data type          : DataType.int32
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
    Read-only          : False
    Store type         : LocalStore
-   Compressor         : Zstd(level=0)
+   Codecs             : [{'endian': <Endian.little: 'little'>}, {'typesize': 4, 'cname': <BloscCname.zstd: 'zstd'>, 'clevel': 3, 'shuffle': <BloscShuffle.bitshuffle: 'bitshuffle'>, 'blocksize': 0}]
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 299348444
-   Storage ratio      : 1.3
+   No. bytes stored   : 9696302
+   Storage ratio      : 41.3
    Chunks Initialized : 100
 
 .. note::
@@ -214,54 +214,45 @@ prints additional diagnostics, e.g.::
    be slow for large arrays. Use :attr:`zarr.Array.info` if detailed storage
    statistics are not needed.
 
-If you don't specify a compressor, by default Zarr uses the Blosc
-compressor. Blosc is generally very fast and can be configured in a variety of
-ways to improve the compression ratio for different types of data. Blosc is in
-fact a "meta-compressor", which means that it can use a number of different
-compression algorithms internally to compress the data. Blosc also provides
-highly optimized implementations of byte- and bit-shuffle filters, which can
-improve compression ratios for some data. A list of the internal compression
-libraries available within Blosc can be obtained via::
+If you don't specify a compressor, by default Zarr uses the Zstandard
+compressor.
 
-   >>> from numcodecs import blosc
-   >>>
-   >>> blosc.list_compressors()
-   ['blosclz', 'lz4', 'lz4hc', 'zlib', 'zstd']
+In addition to Blosc and Zstandard, other compression libraries can also be used. For example,
+here is an array using Gzip compression, level 1::
 
-In addition to Blosc, other compression libraries can also be used. For example,
-here is an array using Zstandard compression, level 1::
+   >>> data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
+   >>> z = zarr.create_array(store='data/example-6.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=zarr.codecs.GzipCodec(level=1))
+   >>> z[:] = data
+   >>> z.metadata.codecs
+   [BytesCodec(endian=<Endian.little: 'little'>), GzipCodec(level=1)]
 
-   >>> from numcodecs import Zstd
-   >>> # TODO: remove zarr_format and replace with create_array after #2463
-   >>> z = zarr.array(store="data/example-7.zarr", data=np.arange(100000000, dtype='i4').reshape(10000, 10000), chunks=(1000, 1000), compressor=Zstd(level=1), zarr_format=2)
-   >>> None  # TODO: z.compressor
-
-Here is an example using LZMA with a custom filter pipeline including LZMA's
+Here is an example using LZMA from NumCodecs_ with a custom filter pipeline including LZMA's
 built-in delta filter::
 
    >>> import lzma
-   >>> from numcodecs import LZMA
+   >>> from numcodecs.zarr3 import LZMA
    >>>
    >>> lzma_filters = [dict(id=lzma.FILTER_DELTA, dist=4), dict(id=lzma.FILTER_LZMA2, preset=1)]
-   >>> compressor = LZMA(filters=lzma_filters)
-   >>> # TODO: remove zarr_format and replace with create_array after #2463
-   >>> z = zarr.array(np.arange(100000000, dtype='i4').reshape(10000, 10000), chunks=(1000, 1000), compressor=compressor, zarr_format=2)
-   >>> None  # TODO: z.compressor
+   >>> compressors = LZMA(filters=lzma_filters)
+   >>> data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
+   >>> z = zarr.create_array(store='data/example-7.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
+   >>> z.metadata.codecs
+   [BytesCodec(endian=<Endian.little: 'little'>), _make_bytes_bytes_codec.<locals>._Codec(codec_name='numcodecs.lzma', codec_config={'id': 'lzma', 'filters': [{'id': 3, 'dist': 4}, {'id': 33, 'preset': 1}]})]
 
 The default compressor can be changed by setting the value of the using Zarr's
 :ref:`user-guide-config`, e.g.::
 
-   >>> with zarr.config.set({'array.v2_default_compressor.numeric': 'blosc'}):
-   ...     z = zarr.zeros(100000000, chunks=1000000, zarr_format=2)
+   >>> with zarr.config.set({'array.v2_default_compressor.numeric': {'id': 'blosc'}}):
+   ...     z = zarr.create_array(store={}, shape=(100000000,), chunks=(1000000,), dtype='int32', zarr_format=2)
    >>> z.metadata.filters
    >>> z.metadata.compressor
-   LZMA(format=1, check=-1, preset=None, filters=[{'id': 3, 'dist': 4}, {'id': 33, 'preset': 1}])
-   >>>
+   Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
 
-To disable compression, set ``compressor=None`` when creating an array, e.g.::
+To disable compression, set ``compressors=None`` when creating an array, e.g.::
 
-   >>> # TODO: remove zarr_format
-   >>> z = zarr.zeros(100000000, chunks=1000000, compressor=None, zarr_format=2)
+   >>> z = zarr.create_array(store='data/example-8.zarr', shape=(100000000,), chunks=(1000000,), dtype='int32', compressors=None)
+   >>> z.metadata.codecs
+   [BytesCodec(endian=<Endian.little: 'little'>)]
 
 .. _user-guide-filters:
 
@@ -281,24 +272,22 @@ mechanism for configuring filters outside of the primary compressor.
 
 Here is an example using a delta filter with the Blosc compressor::
 
-   >>> from numcodecs import Blosc, Delta
+   >>> from numcodecs.zarr3 import Delta
    >>>
-   >>> filters = [Delta(dtype='i4')]
-   >>> compressor = Blosc(cname='zstd', clevel=1, shuffle=Blosc.SHUFFLE)
-   >>> data = np.arange(100000000, dtype='i4').reshape(10000, 10000)
-   >>> # TODO: remove zarr_format and replace with create_array after #2463
-   >>> z = zarr.array(data, chunks=(1000, 1000), filters=filters, compressor=compressor, zarr_format=2)
+   >>> filters = [Delta(dtype='int32')]
+   >>> compressors = zarr.codecs.BloscCodec(cname='zstd', clevel=1, shuffle=zarr.codecs.BloscShuffle.shuffle)
+   >>> data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
+   >>> z = zarr.create_array(store='data/example-9.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), filters=filters, compressors=compressors)
    >>> z.info
    Type               : Array
-   Zarr format        : 2
-   Data type          : int32
+   Zarr format        : 3
+   Data type          : DataType.int32
    Shape              : (10000, 10000)
    Chunk shape        : (1000, 1000)
    Order              : C
    Read-only          : False
-   Store type         : MemoryStore
-   Compressor         : Blosc(cname='zstd', clevel=1, shuffle=SHUFFLE, blocksize=0)
-   Filters            : (Delta(dtype='<i4'),)
+   Store type         : LocalStore
+   Codecs             : [{'codec_name': 'numcodecs.delta', 'codec_config': {'id': 'delta', 'dtype': 'int32'}}, {'endian': <Endian.little: 'little'>}, {'typesize': 4, 'cname': <BloscCname.zstd: 'zstd'>, 'clevel': 1, 'shuffle': <BloscShuffle.shuffle: 'shuffle'>, 'blocksize': 0}]
    No. bytes          : 400000000 (381.5M)
 
 For more information about available filter codecs, see the `Numcodecs
@@ -325,8 +314,9 @@ Indexing with coordinate arrays
 Items from a Zarr array can be extracted by providing an integer array of
 coordinates. E.g.::
 
-   >>> # TODO: replace with create_array after #2463
-   >>> z = zarr.array(np.arange(10) ** 2)
+   >>> data = np.arange(10) ** 2
+   >>> z = zarr.create_array(store='data/example-10.zarr', shape=data.shape, dtype=data.dtype)
+   >>> z[:] = data
    >>> z[:]
    array([ 0,  1,  4,  9, 16, 25, 36, 49, 64, 81])
    >>> z.get_coordinate_selection([2, 5])
@@ -341,8 +331,9 @@ Coordinate arrays can also be used to update data, e.g.::
 For multidimensional arrays, coordinates must be provided for each dimension,
 e.g.::
 
-   >>> # TODO: replace with create_array after #2463
-   >>> z = zarr.array(np.arange(15).reshape(3, 5))
+   >>> data = np.arange(15).reshape(3, 5)
+   >>> z = zarr.create_array(store='data/example-11.zarr', shape=data.shape, dtype=data.dtype)
+   >>> z[:] = data
    >>> z[:]
    array([[ 0,  1,  2,  3,  4],
           [ 5,  6,  7,  8,  9],
@@ -381,8 +372,9 @@ Indexing with a mask array
 
 Items can also be extracted by providing a Boolean mask. E.g.::
 
-   >>> # TODO: replace with create_array after #2463
-   >>> z = zarr.array(np.arange(10) ** 2)
+   >>> data = np.arange(10) ** 2
+   >>> z = zarr.create_array(store='data/example-12.zarr', shape=data.shape, dtype=data.dtype)
+   >>> z[:] = data
    >>> z[:]
    array([ 0,  1,  4,  9, 16, 25, 36, 49, 64, 81])
    >>> sel = np.zeros_like(z, dtype=bool)
@@ -396,8 +388,9 @@ Items can also be extracted by providing a Boolean mask. E.g.::
 
 Here's a multidimensional example::
 
-   >>> # TODO: replace with create_array after #2463
-   >>> z = zarr.array(np.arange(15).reshape(3, 5))
+   >>> data = np.arange(15).reshape(3, 5)
+   >>> z = zarr.create_array(store='data/example-13.zarr', shape=data.shape, dtype=data.dtype)
+   >>> z[:] = data
    >>> z[:]
    array([[ 0,  1,  2,  3,  4],
           [ 5,  6,  7,  8,  9],
@@ -436,8 +429,9 @@ selections to be made along each dimension of an array independently. For
 example, this allows selecting a subset of rows and/or columns from a
 2-dimensional array. E.g.::
 
-   >>> # TODO: replace with create_array after #2463
-   >>> z = zarr.array(np.arange(15).reshape(3, 5))
+   >>> data = np.arange(15).reshape(3, 5)
+   >>> z = zarr.create_array(store='data/example-14.zarr', shape=data.shape, dtype=data.dtype)
+   >>> z[:] = data
    >>> z[:]
    array([[ 0,  1,  2,  3,  4],
           [ 5,  6,  7,  8,  9],
@@ -460,8 +454,9 @@ Data can also be modified, e.g.::
 For convenience, the orthogonal indexing functionality is also available via the
 ``oindex`` property, e.g.::
 
-   >>> # TODO: replace with create_array after #2463
-   >>> z = zarr.array(np.arange(15).reshape(3, 5))
+   >>> data = np.arange(15).reshape(3, 5)
+   >>> z = zarr.create_array(store='data/example-15.zarr', shape=data.shape, dtype=data.dtype)
+   >>> z[:] = data
    >>> z.oindex[[0, 2], :]  # select first and third rows
    array([[ 0,  1,  2,  3,  4],
           [10, 11, 12, 13, 14]])
@@ -484,8 +479,9 @@ be used for orthogonal indexing.
 If the index contains at most one iterable, and otherwise contains only slices and integers,
 orthogonal indexing is also available directly on the array::
 
-   >>> # TODO: replace with create_array after #2463
-   >>> z = zarr.array(np.arange(15).reshape(3, 5))
+   >>> data = np.arange(15).reshape(3, 5)
+   >>> z = zarr.create_array(store='data/example-16.zarr', shape=data.shape, dtype=data.dtype)
+   >>> z[:] = data
    >>> np.all(z.oindex[[0, 2], :] == z[[0, 2], :])
    np.True_
 
@@ -496,8 +492,9 @@ Zarr also support block indexing, which allows selections of whole chunks based 
 logical indices along each dimension of an array. For example, this allows selecting
 a subset of chunk aligned rows and/or columns from a 2-dimensional array. E.g.::
 
-   >>> # TODO: replace with create_array after #2463
-   >>> z = zarr.array(np.arange(100).reshape(10, 10), chunks=(3, 3))
+   >>> data = np.arange(100).reshape(10, 10)
+   >>> z = zarr.create_array(store='data/example-17.zarr', shape=data.shape, dtype=data.dtype, chunks=(3, 3))
+   >>> z[:] = data
 
 Retrieve items by specifying their block coordinates::
 
@@ -531,7 +528,7 @@ For example::
 
 Data can also be modified. Let's start by a simple 2D array::
 
-   >>> z = zarr.zeros((6, 6), dtype=int, chunks=2)
+   >>> z = zarr.create_array(store='data/example-18.zarr', shape=(6, 6), dtype=int, chunks=(2, 2))
 
 Set data for a selection of items::
 
@@ -562,10 +559,9 @@ Any combination of integer and slice can be used for block indexing::
    array([[0, 0, 7, 7],
           [0, 0, 7, 7]])
    >>>
-   >>> # TODO: replace with create_group after #2463
-   >>> root = zarr.group('data/example-12.zarr')
-   >>> foo = root.create_array(name='foo', shape=(1000, 100), chunks=(10, 10), dtype='f4')
-   >>> bar = root.create_array(name='foo/bar', shape=(100,), dtype='i4')
+   >>> root = zarr.create_group('data/example-19.zarr')
+   >>> foo = root.create_array(name='foo', shape=(1000, 100), chunks=(10, 10), dtype='float32')
+   >>> bar = root.create_array(name='foo/bar', shape=(100,), dtype='int32')
    >>> foo[:, :] = np.random.random((1000, 100))
    >>> bar[:] = np.arange(100)
    >>> root.tree()

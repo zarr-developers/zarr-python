@@ -7,10 +7,10 @@ Zarr arrays and groups support custom key/value attributes, which can be useful 
 storing application-specific metadata. For example::
 
    >>> import zarr
-   >>> # TODO: replace with create_group after #2463
-   >>> root = zarr.group()
+   >>> store = zarr.storage.MemoryStore()
+   >>> root = zarr.create_group(store=store)
    >>> root.attrs['foo'] = 'bar'
-   >>> z = root.zeros(name='zzz', shape=(10000, 10000))
+   >>> z = root.create_array(name='zzz', shape=(10000, 10000), dtype='int32')
    >>> z.attrs['baz'] = 42
    >>> z.attrs['qux'] = [1, 4, 7, 12]
    >>> sorted(root.attrs)

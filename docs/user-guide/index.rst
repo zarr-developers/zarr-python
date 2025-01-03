@@ -23,6 +23,6 @@ Advanced Topics
     :maxdepth: 1
 
     performance
-    async
     consolidated_metadata
+    async
     extending

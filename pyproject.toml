@@ -71,6 +71,7 @@ test = [
     "pytest-accept",
     "moto[s3]",
     "requests",
+    "rich",
     "mypy",
     "hypothesis",
     "universal-pathlib",
