@@ -11,7 +11,7 @@ Zarr-Python
     getting_started
     about
     user-guide/index
-    api/index
+    API Reference <api/zarr/index>
     release
     contributing
     roadmap
@@ -80,12 +80,12 @@ Zarr is a file storage format for chunked, compressed, N-dimensional arrays base
 
         +++
 
-        .. button-ref:: api/index
+        .. button-ref:: api/zarr/index
             :expand:
             :color: dark
             :click-parent:
 
-            To the api reference guide
+            To the API reference
 
     .. grid-item-card::
         :img-top: _static/index_contribute.svg
