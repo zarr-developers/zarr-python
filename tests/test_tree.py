@@ -1,3 +1,4 @@
+import os
 import textwrap
 from typing import Any
 
@@ -10,6 +11,8 @@ pytest.importorskip("rich")
 
 @pytest.mark.parametrize("root_name", [None, "root"])
 def test_tree(root_name: Any) -> None:
+    os.environ["OVERRIDE_COLOR_SYSTEM"] = "truecolor"
+
     g = zarr.group(path=root_name)
     A = g.create_group("A")
     B = g.create_group("B")

@@ -25,9 +25,7 @@ class TreeRepr:
         self._tree = tree
 
     def __repr__(self) -> str:
-        terminal = rich.get_console()
-        # Mocking 'truecolor' color system for tests
-        color_system = "truecolor" if "PYTEST_VERSION" in os.environ else terminal.color_system
+        color_system = os.environ.get("OVERRIDE_COLOR_SYSTEM", rich.get_console().color_system)
         console = rich.console.Console(file=io.StringIO(), color_system=color_system)
         console.print(self._tree)
         return str(console.file.getvalue())

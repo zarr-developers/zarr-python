@@ -14,7 +14,6 @@ Creating an array
 Zarr has several functions for creating arrays. For example::
 
    >>> import zarr
-   >>> raise Exception(f"Zarr version {zarr.__version__}") # debugging
    >>> store = zarr.storage.MemoryStore()
    >>> z = zarr.create_array(store=store, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
    >>> z
