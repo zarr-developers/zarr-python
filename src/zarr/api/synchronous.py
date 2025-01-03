@@ -334,6 +334,10 @@ def save_group(
 def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
 
+    .. deprecated:: 3.0.0
+        `zarr.tree()` is deprecated and will be removed in a future release.
+        Use `group.tree()` instead.
+
     Parameters
     ----------
     grp : Group
@@ -347,10 +351,6 @@ def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> An
     -------
     TreeRepr
         A pretty-printable object displaying the hierarchy.
-
-    .. deprecated:: 3.0.0
-        `zarr.tree()` is deprecated and will be removed in a future release.
-        Use `group.tree()` instead.
     """
     return sync(async_api.tree(grp._async_group, expand=expand, level=level))
 

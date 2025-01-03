@@ -432,6 +432,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Method to create a new asynchronous array instance.
 
+        .. deprecated:: 3.0.0
+            Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
+
         Parameters
         ----------
         store : StoreLike
@@ -509,9 +512,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         AsyncArray
             The created asynchronous array instance.
-
-        .. deprecated:: 3.0.0
-            Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
         """
         return await cls._create(
             store,
@@ -1637,6 +1637,9 @@ class Array:
     ) -> Array:
         """Creates a new Array instance from an initialized store.
 
+        .. deprecated:: 3.0.0
+            Deprecated in favor of :func:`zarr.create_array`.
+
         Parameters
         ----------
         store : StoreLike
@@ -1704,9 +1707,6 @@ class Array:
         -------
         Array
             Array created from the store.
-
-        .. deprecated:: 3.0.0
-            Deprecated in favor of :func:`zarr.create_array`.
         """
         return cls._create(
             store,
