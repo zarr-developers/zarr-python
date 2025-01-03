@@ -161,7 +161,7 @@ class LoggingStore(WrapperStore[Store]):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRangeRequest = None,
     ) -> Buffer | None:
         # docstring inherited
         with self.log(key):

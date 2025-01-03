@@ -199,7 +199,7 @@ class FsspecStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRangeRequest = None,
     ) -> Buffer | None:
         # docstring inherited
         if not self._is_open:
@@ -207,23 +207,25 @@ class FsspecStore(Store):
         path = _dereference_path(self.path, key)
 
         try:
-            if byte_range:
-                # fsspec uses start/end, not start/length
-                start, length = byte_range
-                if start is not None and length is not None:
-                    end = start + length
-                elif length is not None:
-                    end = length
-                else:
-                    end = None
-            value = prototype.buffer.from_bytes(
-                await (
-                    self.fs._cat_file(path, start=byte_range[0], end=end)
-                    if byte_range
-                    else self.fs._cat_file(path)
+            if byte_range is None:
+                value = prototype.buffer.from_bytes(await self.fs._cat_file(path))
+            elif isinstance(byte_range, tuple):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(path, start=byte_range[0], end=byte_range[1])
                 )
-            )
-
+            elif isinstance(byte_range, dict):
+                if "offset" in byte_range:
+                    value = prototype.buffer.from_bytes(
+                        await self.fs._cat_file(path, start=byte_range["offset"], end=None)
+                    )
+                elif "suffix" in byte_range:
+                    value = prototype.buffer.from_bytes(
+                        await self.fs._cat_file(path, start=-byte_range["suffix"], end=None)
+                    )
+                else:
+                    raise ValueError("Invalid format for ByteRangeRequest")
+            else:
+                raise ValueError("Invalid format for ByteRangeRequest")
         except self.allowed_exceptions:
             return None
         except OSError as e:

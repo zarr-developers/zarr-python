@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from asyncio import gather
 from itertools import starmap
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, TypedDict, runtime_checkable
 
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
@@ -19,7 +19,22 @@ if TYPE_CHECKING:
 
 __all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
-ByteRangeRequest: TypeAlias = tuple[int | None, int | None]
+
+class OffsetRange(TypedDict):
+    """Request all bytes starting from a given byte offset"""
+
+    offset: int
+    """The byte offset for the offset range request."""
+
+
+class SuffixRange(TypedDict):
+    """Request up to the last `n` bytes"""
+
+    suffix: int
+    """The number of bytes from the suffix to request."""
+
+
+ByteRangeRequest: TypeAlias = None | tuple[int, int] | OffsetRange | SuffixRange
 
 
 class Store(ABC):
@@ -148,7 +163,13 @@ class Store(ABC):
         Parameters
         ----------
         key : str
-        byte_range : tuple[int | None, int | None], optional
+        byte_range : ByteRangeRequest, optional
+
+            The semantics of this argument are:
+
+            - tuple (int, int): Request a specific range of bytes (start, end). The end offset is exclusive. If the given range is zero-length or starts after the end of the object, an error will be returned. Additionally, if the range ends after the end of the object, the entire remainder of the object will be returned. Otherwise, the exact requested range will be returned.
+            - {"offset": int}: Request all bytes starting from a given byte offset. This is equivalent to bytes={int}- as an HTTP header.
+            - {"suffix": int}: Request the last int bytes. Note that here, int is the size of the request, not the byte offset. This is equivalent to bytes=-{int} as an HTTP header.
 
         Returns
         -------

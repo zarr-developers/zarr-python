@@ -17,7 +17,7 @@ import pytest
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator
-from zarr.storage._utils import _normalize_interval_index
+from zarr.storage._utils import _normalize_byte_range_index
 from zarr.testing.utils import assert_bytes_equal
 
 __all__ = ["StoreTests"]
@@ -115,17 +115,15 @@ class StoreTests(Generic[S, B]):
 
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
-    @pytest.mark.parametrize("byte_range", [None, (0, None), (1, None), (1, 2), (None, 1)])
-    async def test_get(
-        self, store: S, key: str, data: bytes, byte_range: tuple[int | None, int | None] | None
-    ) -> None:
+    @pytest.mark.parametrize("byte_range", [None, (1, 3), {"offset": 1}, {"suffix": 1}])
+    async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRangeRequest) -> None:
         """
         Ensure that data can be read from the store using the store.get method.
         """
         data_buf = self.buffer_cls.from_bytes(data)
         await self.set(store, key, data_buf)
         observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
-        start, length = _normalize_interval_index(data_buf, interval=byte_range)
+        start, length = _normalize_byte_range_index(data_buf, byte_range=byte_range)
         expected = data_buf[start : start + length]
         assert_bytes_equal(observed, expected)
 
@@ -180,12 +178,12 @@ class StoreTests(Generic[S, B]):
         [
             [],
             [("zarr.json", (0, 1))],
-            [("c/0", (0, 1)), ("zarr.json", (0, None))],
-            [("c/0/0", (0, 1)), ("c/0/1", (None, 2)), ("c/0/2", (0, 3))],
+            [("c/0", (0, 1)), ("zarr.json", None)],
+            [("c/0/0", (0, 1)), ("c/0/1", {"suffix": 2}), ("c/0/2", {"offset": 2})],
         ],
     )
     async def test_get_partial_values(
-        self, store: S, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
+        self, store: S, key_ranges: list[tuple[str, ByteRangeRequest]]
     ) -> None:
         # put all of the data
         for key, _ in key_ranges:

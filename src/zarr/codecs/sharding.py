@@ -129,7 +129,7 @@ class _ShardIndex(NamedTuple):
         if (chunk_start, chunk_len) == (MAX_UINT_64, MAX_UINT_64):
             return None
         else:
-            return (int(chunk_start), int(chunk_len))
+            return (int(chunk_start), int(chunk_start + chunk_len))
 
     def set_chunk_slice(self, chunk_coords: ChunkCoords, chunk_slice: slice | None) -> None:
         localized_chunk = self._localize_chunk(chunk_coords)
@@ -203,7 +203,7 @@ class _ShardReader(ShardMapping):
     def __getitem__(self, chunk_coords: ChunkCoords) -> Buffer:
         chunk_byte_slice = self.index.get_chunk_slice(chunk_coords)
         if chunk_byte_slice:
-            return self.buf[chunk_byte_slice[0] : (chunk_byte_slice[0] + chunk_byte_slice[1])]
+            return self.buf[chunk_byte_slice[0] : chunk_byte_slice[1]]
         raise KeyError
 
     def __len__(self) -> int:
@@ -700,7 +700,7 @@ class ShardingCodec(
             )
         else:
             index_bytes = await byte_getter.get(
-                prototype=numpy_buffer_prototype(), byte_range=(-shard_index_size, None)
+                prototype=numpy_buffer_prototype(), byte_range={"suffix": shard_index_size}
             )
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes, chunks_per_shard)
