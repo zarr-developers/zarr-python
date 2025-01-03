@@ -179,7 +179,7 @@ For example, to use S3::
     >>> z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10)) # doctest: +SKIP
     >>> z[:, :] = np.random.random((100, 100)) # doctest: +SKIP
 
-Read more about Zarr's :ref:`tutorial_storage` options in the User Guide.
+Read more about Zarr's storage options  in the :ref:`User Guide <user-guide-storage>`.
 
 Next Steps
 ----------
