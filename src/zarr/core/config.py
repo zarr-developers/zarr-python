@@ -62,19 +62,33 @@ config = Config(
     "zarr",
     defaults=[
         {
-            "default_zarr_version": 3,
+            "default_zarr_format": 3,
             "array": {
                 "order": "C",
                 "write_empty_chunks": False,
                 "v2_default_compressor": {
-                    "numeric": "zstd",
-                    "string": "vlen-utf8",
-                    "bytes": "vlen-bytes",
+                    "numeric": {"id": "zstd", "level": 0, "checksum": False},
+                    "string": {"id": "zstd", "level": 0, "checksum": False},
+                    "bytes": {"id": "zstd", "level": 0, "checksum": False},
+                },
+                "v2_default_filters": {
+                    "numeric": None,
+                    "string": [{"id": "vlen-utf8"}],
+                    "bytes": [{"id": "vlen-bytes"}],
                 },
                 "v3_default_codecs": {
-                    "numeric": ["bytes", "zstd"],
-                    "string": ["vlen-utf8"],
-                    "bytes": ["vlen-bytes"],
+                    "numeric": [
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
+                    "string": [
+                        {"name": "vlen-utf8"},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
+                    "bytes": [
+                        {"name": "vlen-bytes"},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
                 },
             },
             "async": {"concurrency": 10, "timeout": None},

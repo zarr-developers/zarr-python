@@ -1,3 +1,12 @@
+"""
+Helpers for creating arrays.
+
+.. warning::
+
+    This sub-module is deprecated. All functions here are defined
+    in the top level zarr namespace instead.
+"""
+
 import warnings
 
 from zarr.api.synchronous import (
@@ -31,7 +40,8 @@ __all__ = [
 ]
 
 warnings.warn(
-    "zarr.creation is deprecated, use zarr.api.synchronous",
+    "zarr.creation is deprecated. "
+    "Import these functions from the top level zarr. namespace instead.",
     DeprecationWarning,
     stacklevel=2,
 )

@@ -1,7 +1,14 @@
-Consolidated Metadata
+.. _user-guide-consolidated-metadata:
+
+Consolidated metadata
 =====================
 
-Zarr-Python implements the `Consolidated Metadata`_ extension to the Zarr Spec.
+.. warning::
+   The Consolidated Metadata feature in Zarr-Python is considered experimental for v3
+   stores. `zarr-specs#309 <https://github.com/zarr-developers/zarr-specs/pull/309>`_
+   has proposed a formal extension to the v3 specification to support consolidated metadata.
+
+Zarr-Python implements the `Consolidated Metadata`_ for v2 and v3 stores.
 Consolidated metadata can reduce the time needed to load the metadata for an
 entire hierarchy, especially when the metadata is being served over a network.
 Consolidated metadata essentially stores all the metadata for a hierarchy in the
@@ -19,43 +26,41 @@ metadata reads get child Group or Array nodes will *not* require reads from the 
 In Python, the consolidated metadata is available on the ``.consolidated_metadata``
 attribute of the ``GroupMetadata`` object.
 
-.. TODO: remove :okwarning: after warnings are removed
-
-.. ipython:: python
-   :okwarning:
-
-   import zarr
-   store = zarr.storage.MemoryStore()
-   group = zarr.open_group(store=store)
-   group.create_array(shape=(1,), name="a")
-   group.create_array(shape=(2, 2), name="b")
-   group.create_array(shape=(3, 3, 3), name="c")
-   zarr.consolidate_metadata(store)
+   >>> import zarr
+   >>>
+   >>> store = zarr.storage.MemoryStore()
+   >>> # TODO: replace with create_group after #2463
+   >>> group = zarr.open_group(store=store)
+   >>> group.create_array(shape=(1,), name="a")
+   <Array memory://.../a shape=(1,) dtype=float64>
+   >>> group.create_array(shape=(2, 2), name="b")
+   <Array memory://.../b shape=(2, 2) dtype=float64>
+   >>> group.create_array(shape=(3, 3, 3), name="c")
+   <Array memory://.../c shape=(3, 3, 3) dtype=float64>
+   >>> zarr.consolidate_metadata(store)
+   <Group memory://...>
 
 If we open that group, the Group's metadata has a :class:`zarr.core.group.ConsolidatedMetadata`
-that can be used.
+that can be used.:
 
-.. ipython:: python
+   >>> consolidated = zarr.open_group(store=store)
+   >>> consolidated_metadata = consolidated.metadata.consolidated_metadata.metadata
+   >>> dict(sorted(consolidated_metadata.items()))
+   {}
 
-   consolidated = zarr.open_group(store=store)
-   consolidated.metadata.consolidated_metadata.metadata
+Operations on the group to get children automatically use the consolidated metadata.:
 
-Operations on the group to get children automatically use the consolidated metadata.
+   >>> consolidated["a"]  # no read / HTTP request to the Store is required
+   <Array memory://.../a shape=(1,) dtype=float64>
 
-.. ipython:: python
+With nested groups, the consolidated metadata is available on the children, recursively.:
 
-   consolidated["a"]  # no read / HTTP request to the Store is required
-
-With nested groups, the consolidated metadata is available on the children, recursively.
-
-.. ipython:: python
-   :okwarning:
-
-    child = group.create_group("child", attributes={"kind": "child"})
-    grandchild = child.create_group("child", attributes={"kind": "grandchild"})
-    consolidated = zarr.consolidate_metadata(store)
-
-    consolidated["child"].metadata.consolidated_metadata
+   >>> child = group.create_group("child", attributes={"kind": "child"})
+   >>> grandchild = child.create_group("child", attributes={"kind": "grandchild"})
+   >>> consolidated = zarr.consolidate_metadata(store)
+   >>>
+   >>> consolidated["child"].metadata.consolidated_metadata
+   ConsolidatedMetadata(metadata={'child': GroupMetadata(attributes={'kind': 'grandchild'}, zarr_format=3, consolidated_metadata=ConsolidatedMetadata(metadata={}, kind='inline', must_understand=False), node_type='group')}, kind='inline', must_understand=False)
 
 Synchronization and Concurrency
 -------------------------------
@@ -70,4 +75,4 @@ removed, or modified, consolidated metadata may not be desirable.
    of the metadata, at the time they read the root node with its consolidated
    metadata.
 
-.. _Consolidated Metadata: https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html#consolidated-metadata
+.. _Consolidated Metadata: https://github.com/zarr-developers/zarr-specs/pull/309

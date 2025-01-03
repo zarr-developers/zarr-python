@@ -6,6 +6,7 @@ import numcodecs.abc
 import numpy as np
 
 from zarr.abc.codec import Codec
+from zarr.core.common import ZarrFormat
 from zarr.core.metadata.v3 import DataType
 
 
@@ -20,7 +21,7 @@ class GroupInfo:
 
     _name: str
     _type: Literal["Group"] = "Group"
-    _zarr_format: Literal[2, 3]
+    _zarr_format: ZarrFormat
     _read_only: bool
     _store_type: str
     _count_members: int | None = None
@@ -76,7 +77,7 @@ class ArrayInfo:
     """
 
     _type: Literal["Array"] = "Array"
-    _zarr_format: Literal[2, 3]
+    _zarr_format: ZarrFormat
     _data_type: np.dtype[Any] | DataType
     _shape: tuple[int, ...]
     _chunk_shape: tuple[int, ...] | None = None
