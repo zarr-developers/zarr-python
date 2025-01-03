@@ -112,7 +112,7 @@ The Group class
 1. Disallow direct construction - use :func:`zarr.open_group` or :func:`zarr.create_group`
    instead of directly constructing the :class:`zarr.Group` class.
 2. Most of the h5py compatibility methods are deprecated and will issue warnings if used.
-   The following migration is suggested:
+   The following functions are drop in replacements that have the same signature and functionality:
 
    - Use :func:`zarr.Group.create_array` in place of :func:`zarr.Group.create_dataset`
    - Use :func:`zarr.Group.require_array` in place of :func:`zarr.Group.require_dataset`
@@ -134,6 +134,9 @@ See :issue:`1274` for more details on the removal of these stores.
 
 - ``N5Store`` - see https://github.com/zarr-developers/n5py for an alternative interface to N5 formatted data.
 - ``ABSStore`` - use the :class:`zarr.storage.FsspecStore` instead along with fsspec's `adlfs backend <https://github.com/fsspec/adlfs>`_.
+The following stores have been removed altogether. Users who need these stores
+will have to implement their own version in zarr-python v3.
+
 - ``DBMStore``
 - ``LMDBStore``
 - ``SQLiteStore``
@@ -204,7 +207,7 @@ Zarr-Python, please open (or comment on) a
   * :func:`zarr.copy_store` (:issue:`2407`)
   * :func:`zarr.Group.move` (:issue:`2108`)
 
-- The following options in the top-level API (i.e. creation and convenience functions in
+- The following features (corresponding to function arguments to functions in
   :mod:`zarr`) have not been ported to Zarr-Python 3 yet.
 
   * ``cache_attrs``
