@@ -1086,6 +1086,13 @@ async def test_open_falls_back_to_open_group_async() -> None:
     assert group.attrs == {"key": "value"}
 
 
+def test_open_mode_write_creates_group(tmp_path: pathlib.Path) -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2490
+    zarr_dir = tmp_path / "test.zarr"
+    group = zarr.open(zarr_dir, mode="w")
+    assert isinstance(group, Group)
+
+
 async def test_metadata_validation_error() -> None:
     with pytest.raises(
         MetadataValidationError,
