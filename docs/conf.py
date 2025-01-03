@@ -49,8 +49,6 @@ extensions = [
     "sphinx_copybutton",
     "sphinx_design",
     'sphinx_reredirects',
-    "IPython.sphinxext.ipython_directive",
-    "IPython.sphinxext.ipython_console_highlighting",
 ]
 
 issues_github_path = "zarr-developers/zarr-python"
