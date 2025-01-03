@@ -4,10 +4,11 @@ import itertools
 import math
 import numbers
 import operator
+import warnings
 from abc import abstractmethod
 from dataclasses import dataclass
 from functools import reduce
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 
@@ -25,6 +26,8 @@ from zarr.core.indexing import ceildiv
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from typing import Self
+
+    from zarr.core.array import ShardsLike
 
 
 def _guess_chunks(
@@ -194,3 +197,55 @@ class RegularChunkGrid(ChunkGrid):
             itertools.starmap(ceildiv, zip(array_shape, self.chunk_shape, strict=True)),
             1,
         )
+
+
+def _auto_partition(
+    *,
+    array_shape: tuple[int, ...],
+    chunk_shape: tuple[int, ...] | Literal["auto"],
+    shard_shape: ShardsLike | None,
+    dtype: np.dtype[Any],
+) -> tuple[tuple[int, ...] | None, tuple[int, ...]]:
+    """
+    Automatically determine the shard shape and chunk shape for an array, given the shape and dtype of the array.
+    If `shard_shape` is `None` and the chunk_shape is "auto", the chunks will be set heuristically based
+    on the dtype and shape of the array.
+    If `shard_shape` is "auto", then the shard shape will be set heuristically from the dtype and shape
+    of the array; if the `chunk_shape` is also "auto", then the chunks will be set heuristically as well,
+    given the dtype and shard shape. Otherwise, the chunks will be returned as-is.
+    """
+    item_size = dtype.itemsize
+    if shard_shape is None:
+        _shards_out: None | tuple[int, ...] = None
+        if chunk_shape == "auto":
+            _chunks_out = _guess_chunks(array_shape, item_size)
+        else:
+            _chunks_out = chunk_shape
+    else:
+        if chunk_shape == "auto":
+            # aim for a 1MiB chunk
+            _chunks_out = _guess_chunks(array_shape, item_size, max_bytes=1024)
+        else:
+            _chunks_out = chunk_shape
+
+        if shard_shape == "auto":
+            warnings.warn(
+                "Automatic shard shape inference is experimental and may change without notice.",
+                UserWarning,
+                stacklevel=2,
+            )
+            _shards_out = ()
+            for a_shape, c_shape in zip(array_shape, _chunks_out, strict=True):
+                # TODO: make a better heuristic than this.
+                # for each axis, if there are more than 8 chunks along that axis, then put
+                # 2 chunks in each shard for that axis.
+                if a_shape // c_shape > 8:
+                    _shards_out += (c_shape * 2,)
+                else:
+                    _shards_out += (c_shape,)
+        elif isinstance(shard_shape, dict):
+            _shards_out = tuple(shard_shape["shape"])
+        else:
+            _shards_out = shard_shape
+
+    return _shards_out, _chunks_out

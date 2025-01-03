@@ -9,8 +9,8 @@ Zarr-Python
     :hidden:
 
     getting_started
-    tutorial
-    guide/index
+    about
+    user-guide/index
     api/index
     release
     contributing
@@ -52,20 +52,20 @@ Zarr is a file storage format for chunked, compressed, N-dimensional arrays base
     .. grid-item-card::
         :img-top: _static/index_user_guide.svg
 
-        Tutorial
-        ^^^^^^^^
+       Guide
+       ^^^^^
 
-        The tutorial provides working examples of Zarr classes and functions.
+       A detailed guide for how to use Zarr-Python.
 
         +++
 
-        .. button-ref:: tutorial
+        .. button-ref:: user-guide
             :ref-type: ref
             :expand:
             :color: dark
             :click-parent:
 
-            To the Tutorial
+            To the user guide
 
     .. grid-item-card::
         :img-top: _static/index_api.svg

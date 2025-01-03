@@ -11,7 +11,7 @@ from numcodecs.blosc import Blosc
 import zarr
 import zarr.core.buffer
 import zarr.storage
-from zarr import Array, config
+from zarr import config
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -23,7 +23,7 @@ async def store() -> Iterator[StorePath]:
 def test_simple(store: StorePath) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
-    a = Array.create(
+    a = zarr.create_array(
         store / "simple_v2",
         zarr_format=2,
         shape=data.shape,
@@ -82,7 +82,12 @@ def test_codec_pipeline() -> None:
 
 @pytest.mark.parametrize("dtype", ["|S", "|V"])
 async def test_v2_encode_decode(dtype):
-    with config.set({"array.v2_default_compressor.bytes": "vlen-bytes"}):
+    with config.set(
+        {
+            "array.v2_default_filters.bytes": [{"id": "vlen-bytes"}],
+            "array.v2_default_compressor.bytes": None,
+        }
+    ):
         store = zarr.storage.MemoryStore()
         g = zarr.group(store=store, zarr_format=2)
         g.create_array(
@@ -120,9 +125,9 @@ def test_v2_encode_decode_with_data(dtype_value):
     dtype, value = dtype_value
     with config.set(
         {
-            "array.v2_default_compressor": {
-                "string": "vlen-utf8",
-                "bytes": "vlen-bytes",
+            "array.v2_default_filters": {
+                "string": [{"id": "vlen-utf8"}],
+                "bytes": [{"id": "vlen-bytes"}],
             },
         }
     ):
@@ -162,7 +167,7 @@ def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
 @pytest.mark.parametrize("array_order", ["C", "F"])
 @pytest.mark.parametrize("data_order", ["C", "F"])
 def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["C", "F"]) -> None:
-    arr = zarr.Array.create(
+    arr = zarr.create_array(
         MemoryStore({}),
         shape=(10, 8),
         chunks=(3, 3),
@@ -182,7 +187,7 @@ def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["
         arr[slice(6, 9, None), slice(3, 6, None)], a[slice(6, 9, None), slice(3, 6, None)]
     )
 
-    arr = zarr.Array.create(
+    arr = zarr.create_array(
         MemoryStore({}),
         shape=(10, 8),
         chunks=(3, 3),
@@ -210,18 +215,31 @@ def test_default_compressor_deprecation_warning():
 
 @pytest.mark.parametrize(
     "dtype_expected",
-    [["b", "zstd"], ["i", "zstd"], ["f", "zstd"], ["|S1", "vlen-bytes"], ["|U1", "vlen-utf8"]],
+    [
+        ["b", "zstd", None],
+        ["i", "zstd", None],
+        ["f", "zstd", None],
+        ["|S1", "zstd", "vlen-bytes"],
+        ["|U1", "zstd", "vlen-utf8"],
+    ],
 )
 def test_default_filters_and_compressor(dtype_expected: Any) -> None:
     with config.set(
         {
             "array.v2_default_compressor": {
-                "numeric": "zstd",
-                "string": "vlen-utf8",
-                "bytes": "vlen-bytes",
+                "numeric": {"id": "zstd", "level": "0"},
+                "string": {"id": "zstd", "level": "0"},
+                "bytes": {"id": "zstd", "level": "0"},
+            },
+            "array.v2_default_filters": {
+                "numeric": [],
+                "string": [{"id": "vlen-utf8"}],
+                "bytes": [{"id": "vlen-bytes"}],
             },
         }
     ):
-        dtype, expected = dtype_expected
+        dtype, expected_compressor, expected_filter = dtype_expected
         arr = zarr.create(shape=(3,), path="foo", store={}, zarr_format=2, dtype=dtype)
-        assert arr.metadata.filters[0].codec_id == expected
+        assert arr.metadata.compressor.codec_id == expected_compressor
+        if expected_filter is not None:
+            assert arr.metadata.filters[0].codec_id == expected_filter

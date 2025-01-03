@@ -20,8 +20,7 @@ from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
-from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
-from zarr.storage.fsspec import FsspecStore
+from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
 
 if TYPE_CHECKING:
     from collections.abc import Generator
