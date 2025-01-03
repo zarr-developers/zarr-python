@@ -122,8 +122,18 @@ Persistent Storage
 ------------------
 
 Zarr supports persistent storage to disk or cloud-compatible backends. While examples above
-utilized a :class:`zarr.storage.LocalStore`, a number of other storage options are available,
-including the :class:`zarr.storage.ZipStore` and :class:`zarr.storage.FsspecStore`::
+utilized a :class:`zarr.storage.LocalStore`, a number of other storage options are available.
+
+Zarr integrates seamlessly with cloud object storage such as Amazon S3 and Google Cloud Storage
+using external libraries like `s3fs <https://s3fs.readthedocs.io>`_ or
+`gcsfs <https://gcsfs.readthedocs.io>`_::
+
+    >>> import s3fs # doctest: +SKIP
+    >>>
+    >>> z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10)) # doctest: +SKIP
+    >>> z[:, :] = np.random.random((100, 100)) # doctest: +SKIP
+
+A single-file store can also be created using the the :class:`zarr.storage.ZipStore`::
 
     >>> # Store the array in a ZIP file
     >>> store = zarr.storage.ZipStore("data/example-3.zip", mode='w')
@@ -142,7 +152,7 @@ including the :class:`zarr.storage.ZipStore` and :class:`zarr.storage.FsspecStor
     >>> # the ZipStore must be explicitly closed
     >>> store.close()
 
-To open an existing array::
+To open an existing array from a ZIP file::
 
     >>> # Open the ZipStore in read-only mode
     >>> store = zarr.storage.ZipStore("data/example-3.zip", read_only=True)
@@ -164,20 +174,6 @@ To open an existing array::
             0.95929915],
         [0.4335856 , 0.7565437 , 0.7828931 , ..., 0.48119593, 0.66220033,
             0.6652362 ]], shape=(100, 100), dtype=float32)
-
-Cloud Storage Backends
-~~~~~~~~~~~~~~~~~~~~~~
-
-Zarr integrates seamlessly with cloud storage such as Amazon S3 and Google Cloud Storage
-using external libraries like `s3fs <https://s3fs.readthedocs.io>`_ or
-`gcsfs <https://gcsfs.readthedocs.io>`_.
-
-For example, to use S3::
-
-    >>> import s3fs # doctest: +SKIP
-    >>>
-    >>> z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10)) # doctest: +SKIP
-    >>> z[:, :] = np.random.random((100, 100)) # doctest: +SKIP
 
 Read more about Zarr's storage options  in the :ref:`User Guide <user-guide-storage>`.
 
