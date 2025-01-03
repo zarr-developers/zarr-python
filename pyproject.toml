@@ -68,8 +68,10 @@ test = [
     "pytest-cov",
     "s3fs",
     "pytest-asyncio",
+    "pytest-accept",
     "moto[s3]",
     "requests",
+    "rich",
     "mypy",
     "hypothesis",
     "universal-pathlib",
@@ -86,6 +88,8 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
+    'rich',
+    's3fs',
 ]
 
 
@@ -142,6 +146,15 @@ run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+list-env = "pip list"
+
+[tool.hatch.envs.doctest]
+features = ["test", "optional"]
+description = "Test environment for doctests"
+
+[tool.hatch.envs.doctest.scripts]
+run = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst'"
+fix = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst' --accept"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
@@ -349,7 +362,7 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "7"
-testpaths = ["tests"]
+testpaths = ["tests", "docs/user-guide"]
 log_cli_level = "INFO"
 xfail_strict = true
 asyncio_mode = "auto"

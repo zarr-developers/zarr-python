@@ -359,7 +359,7 @@ def test_tree() -> None:
     g3 = g1.create_group("bar")
     g3.create_group("baz")
     g5 = g3.create_group("qux")
-    g5.create_array("baz", shape=100, chunks=10)
+    g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
     with pytest.warns(DeprecationWarning):
         assert repr(zarr.tree(g1)) == repr(g1.tree())
         assert str(zarr.tree(g1)) == str(g1.tree())
@@ -1084,6 +1084,13 @@ async def test_open_falls_back_to_open_group_async() -> None:
     group = await zarr.api.asynchronous.open(store=store)
     assert isinstance(group, zarr.core.group.AsyncGroup)
     assert group.attrs == {"key": "value"}
+
+
+def test_open_mode_write_creates_group(tmp_path: pathlib.Path) -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2490
+    zarr_dir = tmp_path / "test.zarr"
+    group = zarr.open(zarr_dir, mode="w")
+    assert isinstance(group, Group)
 
 
 async def test_metadata_validation_error() -> None:
