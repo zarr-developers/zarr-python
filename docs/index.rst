@@ -9,12 +9,12 @@ Zarr-Python
     :hidden:
 
     getting_started
-    about
     user-guide/index
     api/index
     release
     contributing
     roadmap
+    about
 
 **Version**: |version|
 
