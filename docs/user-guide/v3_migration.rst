@@ -103,7 +103,7 @@ The Array class
 
 2. Defaulting to ``zarr_format=3`` - newly created arrays will use the version 3 of the
    Zarr specification. To continue using version 2, set ``zarr_format=2`` when creating arrays
-   or set ``default_zarr_version=2`` in Zarr's :ref:`runtime configuration <config>`.
+   or set ``default_zarr_version=2`` in Zarr's :ref:`runtime configuration <user-guide-config>`.
 
 The Group class
 ~~~~~~~~~~~~~~~
@@ -119,7 +119,8 @@ The Group class
 The Store class
 ~~~~~~~~~~~~~~~
 
-The Store API has changed significant in Zarr-Python 3. The most notable changes to the Store API are:
+The Store API has changed significant in Zarr-Python 3. The most notable changes to the
+Store API are:
 
 1. Replaced the ``MutableMapping`` base class in favor of a custom abstract base class
    (:class:`zarr.abc.store.Store`).
@@ -127,13 +128,16 @@ The Store API has changed significant in Zarr-Python 3. The most notable changes
    change ensures that all store methods are non-blocking and are as performant as
    possible.
 
-Beyond the changes store interface, a number of deprecated stores were also removed in Zarr-Python 3.
-See :issue:`1274` for more details on the removal of these stores.
+Beyond the changes store interface, a number of deprecated stores were also removed in
+Zarr-Python 3. See :issue:`1274` for more details on the removal of these stores.
 
-- ``N5Store`` - see https://github.com/zarr-developers/n5py for an alternative interface to N5 formatted data.
-- ``ABSStore`` - use the :class:`zarr.storage.FsspecStore` instead along with fsspec's `adlfs backend <https://github.com/fsspec/adlfs>`_.
-The following stores have been removed altogether. Users who need these stores
-will have to implement their own version in zarr-python v3.
+- ``N5Store`` - see https://github.com/zarr-developers/n5py for an alternative interface to
+  N5 formatted data.
+- ``ABSStore`` - use the :class:`zarr.storage.FsspecStore` instead along with fsspec's
+  `adlfs backend <https://github.com/fsspec/adlfs>`_.
+
+The following stores have been removed altogether. Users who need these stores will have to
+implement their own version in zarr-python v3.
 
 - ``DBMStore``
 - ``LMDBStore``
@@ -162,7 +166,7 @@ Configuration
 ~~~~~~~~~~~~~
 
 There is a new configuration system based on `donfig <https://github.com/pytroll/donfig>`_,
-which can be accessed via :mod:`zarr.config`.
+which can be accessed via ``zarr.config`` (see :ref:`user-guide-config` for more information)
 Configuration values can be set using code like the following:
 
 .. code-block:: python
@@ -190,7 +194,7 @@ Miscellaneous
   been deprecated in favor of ``zarr_format``.
 
 🚧 Work in Progress 🚧
-~~~~~~~~~~~~~~~~~~~~~~
+----------------------
 
 Zarr-Python 3 is still under active development, and is not yet fully complete.
 The following list summarizes areas of the codebase that we expect to build out
