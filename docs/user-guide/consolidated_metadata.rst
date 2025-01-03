@@ -1,7 +1,3 @@
-.. only:: doctest
-
-   >>> from pprint import pprint
-
 .. _user-guide-consolidated-metadata:
 
 Consolidated metadata
@@ -48,6 +44,7 @@ that can be used.:
 
    >>> consolidated = zarr.open_group(store=store)
    >>> consolidated_metadata = consolidated.metadata.consolidated_metadata.metadata
+   >>> from pprint import pprint
    >>> pprint(dict(sorted(consolidated_metadata.items())))
    {'a': ArrayV3Metadata(shape=(1,),
                           data_type=<DataType.float64: 'float64'>,
