@@ -1,7 +1,8 @@
-.. _user-guide-consolidated-metadata:
-
 .. only:: doctest
+
    >>> from pprint import pprint
+
+.. _user-guide-consolidated-metadata:
 
 Consolidated metadata
 =====================
@@ -33,11 +34,11 @@ attribute of the ``GroupMetadata`` object.
    >>>
    >>> store = zarr.storage.MemoryStore()
    >>> group = zarr.create_group(store=store)
-   >>> group.create_array(shape=(1,), name="a", dtype="float64")
+   >>> group.create_array(shape=(1,), name='a', dtype='float64')
    <Array memory://.../a shape=(1,) dtype=float64>
-   >>> group.create_array(shape=(2, 2), name="b", dtype="float64")
+   >>> group.create_array(shape=(2, 2), name='b', dtype='float64')
    <Array memory://.../b shape=(2, 2) dtype=float64>
-   >>> group.create_array(shape=(3, 3, 3), name="c", dtype="float64")
+   >>> group.create_array(shape=(3, 3, 3), name='c', dtype='float64')
    <Array memory://.../c shape=(3, 3, 3) dtype=float64>
    >>> zarr.consolidate_metadata(store)
    <Group memory://...>
@@ -90,16 +91,16 @@ that can be used.:
 
 Operations on the group to get children automatically use the consolidated metadata.:
 
-   >>> consolidated["a"]  # no read / HTTP request to the Store is required
+   >>> consolidated['a']  # no read / HTTP request to the Store is required
    <Array memory://.../a shape=(1,) dtype=float64>
 
 With nested groups, the consolidated metadata is available on the children, recursively.:
 
-   >>> child = group.create_group("child", attributes={"kind": "child"})
-   >>> grandchild = child.create_group("child", attributes={"kind": "grandchild"})
+   >>> child = group.create_group('child', attributes={'kind': 'child'})
+   >>> grandchild = child.create_group('child', attributes={'kind': 'grandchild'})
    >>> consolidated = zarr.consolidate_metadata(store)
    >>>
-   >>> consolidated["child"].metadata.consolidated_metadata
+   >>> consolidated['child'].metadata.consolidated_metadata
    ConsolidatedMetadata(metadata={'child': GroupMetadata(attributes={'kind': 'grandchild'}, zarr_format=3, consolidated_metadata=ConsolidatedMetadata(metadata={}, kind='inline', must_understand=False), node_type='group')}, kind='inline', must_understand=False)
 
 Synchronization and Concurrency

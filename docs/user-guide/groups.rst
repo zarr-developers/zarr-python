@@ -1,3 +1,8 @@
+.. only:: doctest
+
+   >>> import shutil
+   >>> shutil.rmtree('data', ignore_errors=True)
+
 .. _user-guide-groups:
 
 Working with groups
@@ -10,9 +15,8 @@ support a similar interface.
 To create a group, use the :func:`zarr.group` function::
 
    >>> import zarr
-   >>>
-   >>> # TODO: replace with create_group after #2463
-   >>> root = zarr.group()
+   >>> store = zarr.storage.MemoryStore()
+   >>> root = zarr.create_group(store=store)
    >>> root
    <Group memory://...>
 
@@ -24,7 +28,7 @@ Groups have a similar API to the Group class from `h5py
 
 Groups can also contain arrays, e.g.::
 
-   >>> z1 = bar.zeros(name='baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+   >>> z1 = bar.create_array(name='baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
    >>> z1
    <Array memory://.../foo/bar/baz shape=(10000, 10000) dtype=int32>
 
@@ -59,7 +63,7 @@ sub-directories, e.g.::
    >>> root
    <Group file://data/group.zarr>
    >>>
-   >>> z = root.zeros(name='foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='i4')
+   >>> z = root.create_array(name='foo/bar/baz', shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
    >>> z
    <Array file://data/group.zarr/foo/bar/baz shape=(10000, 10000) dtype=int32>
 
@@ -77,12 +81,12 @@ Array and group diagnostics
 Diagnostic information about arrays and groups is available via the ``info``
 property. E.g.::
 
-   >>> # TODO: replace with create_group after #2463
-   >>> root = zarr.group()
+   >>> store = zarr.storage.MemoryStore()
+   >>> root = zarr.group(store=store)
    >>> foo = root.create_group('foo')
-   >>> bar = foo.zeros(name='bar', shape=1000000, chunks=100000, dtype='i8')
+   >>> bar = foo.create_array(name='bar', shape=1000000, chunks=100000, dtype='int64')
    >>> bar[:] = 42
-   >>> baz = foo.zeros(name='baz', shape=(1000, 1000), chunks=(100, 100), dtype='f4')
+   >>> baz = foo.create_array(name='baz', shape=(1000, 1000), chunks=(100, 100), dtype='float32')
    >>> baz[:] = 4.2
    >>> root.info
    Name        :

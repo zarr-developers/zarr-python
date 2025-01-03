@@ -1,4 +1,9 @@
-user-guide-performance
+.. only:: doctest
+
+   >>> import shutil
+   >>> shutil.rmtree('data', ignore_errors=True)
+
+.. _user-guide-performance:
 
 Optimizing performance
 ======================
@@ -19,42 +24,41 @@ better performance, at least when using the Blosc compression library.
 The optimal chunk shape will depend on how you want to access the data. E.g.,
 for a 2-dimensional array, if you only ever take slices along the first
 dimension, then chunk across the second dimension. If you know you want to chunk
-across an entire dimension you can use ``None`` or ``-1`` within the ``chunks``
-argument, e.g.::
+across an entire dimension you can use the full size of that dimension within the
+``chunks`` argument, e.g.::
 
    >>> import zarr
-   >>>
-   >>> z1 = zarr.zeros((10000, 10000), chunks=(100, None), dtype='i4')
+   >>> z1 = zarr.create_array(store={}, shape=(10000, 10000), chunks=(100, 10000), dtype='int32')
    >>> z1.chunks
    (100, 10000)
 
 Alternatively, if you only ever take slices along the second dimension, then
 chunk across the first dimension, e.g.::
 
-   >>> z2 = zarr.zeros((10000, 10000), chunks=(None, 100), dtype='i4')
+   >>> z2 = zarr.create_array(store={}, shape=(10000, 10000), chunks=(10000, 100), dtype='int32')
    >>> z2.chunks
    (10000, 100)
 
 If you require reasonable performance for both access patterns then you need to
 find a compromise, e.g.::
 
-   >>> z3 = zarr.zeros((10000, 10000), chunks=(1000, 1000), dtype='i4')
+   >>> z3 = zarr.create_array(store={}, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
    >>> z3.chunks
    (1000, 1000)
 
 If you are feeling lazy, you can let Zarr guess a chunk shape for your data by
-providing ``chunks=True``, although please note that the algorithm for guessing
+providing ``chunks='auto'``, although please note that the algorithm for guessing
 a chunk shape is based on simple heuristics and may be far from optimal. E.g.::
 
-   >>> z4 = zarr.zeros((10000, 10000), chunks=True, dtype='i4')
+   >>> z4 = zarr.create_array(store={}, shape=(10000, 10000), chunks='auto', dtype='int32')
    >>> z4.chunks
    (625, 625)
 
 If you know you are always going to be loading the entire array into memory, you
-can turn off chunks by providing ``chunks=False``, in which case there will be
-one single chunk for the array::
+can turn off chunks by providing ``chunks`` equal to ``shape``, in which case there
+will be one single chunk for the array::
 
-   >>> z5 = zarr.zeros((10000, 10000), chunks=False, dtype='i4')
+   >>> z5 = zarr.create_array(store={}, shape=(10000, 10000), chunks=(10000, 10000), dtype='int32')
    >>> z5.chunks
    (10000, 10000)
 
@@ -70,9 +74,9 @@ ratios, depending on the correlation structure within the data. E.g.::
 
    >>> import numpy as np
    >>>
-   >>> a = np.arange(100000000, dtype='i4').reshape(10000, 10000).T
-   >>> # TODO: replace with create_array after #2463
-   >>> c = zarr.array(a, chunks=(1000, 1000))
+   >>> a = np.arange(100000000, dtype='int32').reshape(10000, 10000).T
+   >>> c = zarr.create_array(store={}, shape=a.shape, chunks=(1000, 1000), dtype=a.dtype, config={'order': 'C'})
+   >>> c[:] = a
    >>> c.info_complete()
    Type               : Array
    Zarr format        : 3
@@ -88,7 +92,8 @@ ratios, depending on the correlation structure within the data. E.g.::
    Storage ratio      : 1.2
    Chunks Initialized : 100
    >>> with zarr.config.set({'array.order': 'F'}):
-   ...     f = zarr.array(a, chunks=(1000, 1000))
+   ...     f = zarr.create_array(store={}, shape=a.shape, chunks=(1000, 1000), dtype=a.dtype)
+   ...     f[:] = a
    >>> f.info_complete()
    Type               : Array
    Zarr format        : 3
@@ -143,15 +148,14 @@ the time required to write an array with different values.::
    ...     shape = (chunks[0] * 1024,)
    ...     data = np.random.randint(0, 255, shape)
    ...     dtype = 'uint8'
-   ...     with zarr.config.set({"array.write_empty_chunks": write_empty_chunks}):
-   ...         arr = zarr.open(
-   ...             f"data/example-{write_empty_chunks}.zarr",
-   ...             shape=shape,
-   ...             chunks=chunks,
-   ...             dtype=dtype,
-   ...             fill_value=0,
-   ...             mode='w'
-   ...          )
+   ...     arr = zarr.create_array(
+   ...         f'data/example-{write_empty_chunks}.zarr',
+   ...         shape=shape,
+   ...         chunks=chunks,
+   ...         dtype=dtype,
+   ...         fill_value=0,
+   ...         config={'write_empty_chunks': write_empty_chunks}
+   ...      )
    ...     # initialize all chunks
    ...     arr[:] = 100
    ...     result = []
@@ -208,9 +212,9 @@ to re-open any underlying files or databases upon being unpickled.
 E.g., pickle/unpickle an local store array::
 
    >>> import pickle
-   >>>
-   >>> # TODO: replace with create_array after #2463
-   >>> z1 = zarr.array(store="data/example-2", data=np.arange(100000))
+   >>> data = np.arange(100000)
+   >>> z1 = zarr.create_array(store='data/example-2.zarr', shape=data.shape, chunks=data.shape, dtype=data.dtype)
+   >>> z1[:] = data
    >>> s = pickle.dumps(z1)
    >>> z2 = pickle.loads(s)
    >>> z1 == z2

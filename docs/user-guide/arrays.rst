@@ -1,9 +1,9 @@
-.. _user-guide-arrays:
-
-
 .. only:: doctest
+
    >>> import shutil
    >>> shutil.rmtree('data', ignore_errors=True)
+
+.. _user-guide-arrays:
 
 Working with arrays
 ===================
@@ -244,7 +244,7 @@ The default compressor can be changed by setting the value of the using Zarr's
 :ref:`user-guide-config`, e.g.::
 
    >>> with zarr.config.set({'array.v2_default_compressor.numeric': {'id': 'blosc'}}):
-   ...     z = zarr.zeros(100000000, chunks=1000000, zarr_format=2)
+   ...     z = zarr.create_array(store={}, shape=(100000000,), chunks=(1000000,), dtype='int32', zarr_format=2)
    >>> z.metadata.filters
    >>> z.metadata.compressor
    Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)

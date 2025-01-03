@@ -10,11 +10,11 @@ Configuration values can be set using code like the following::
 
    >>> import zarr
    >>>
-   >>> zarr.config.set({"array.order": "F"})
+   >>> zarr.config.set({'array.order': 'F'})
    <donfig.config_obj.ConfigSet object at ...>
    >>>
    >>> # revert this change so it doesn't impact the rest of the docs
-   >>> zarr.config.set({"array.order": "C"})
+   >>> zarr.config.set({'array.order': 'C'})
    <donfig.config_obj.ConfigSet object at ...>
 
 Alternatively, configuration values can be set using environment variables, e.g.
@@ -35,8 +35,8 @@ Configuration options include the following:
 
 For selecting custom implementations of codecs, pipelines, buffers and ndbuffers,
 first register the implementations in the registry and then select them in the config.
-For example, an implementation of the bytes codec in a class "custompackage.NewBytesCodec",
-requires the value of ``codecs.bytes.name`` to be "custompackage.NewBytesCodec".
+For example, an implementation of the bytes codec in a class ``'custompackage.NewBytesCodec'``,
+requires the value of ``codecs.bytes.name`` to be ``'custompackage.NewBytesCodec'``.
 
 This is the current default configuration::
 
