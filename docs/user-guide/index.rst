@@ -24,8 +24,5 @@ Advanced Topics
 
     performance
     consolidated_metadata
-    extending
-
-
-.. Coming soon
     async
+    extending
