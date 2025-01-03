@@ -160,7 +160,7 @@ def open(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.open
 ) -> Array | Group:
-    """Convenience function to open a group or array using file-mode-like semantics.
+    """Open a group or array using file-mode-like semantics.
 
     Parameters
     ----------
@@ -221,7 +221,7 @@ def save(
     path: str | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save
 ) -> None:
-    """Convenience function to save an array or group of arrays to the local file system.
+    """Save an array or group of arrays to the local file system.
 
     Parameters
     ----------
@@ -254,8 +254,9 @@ def save_array(
     storage_options: dict[str, Any] | None = None,
     **kwargs: Any,  # TODO: type kwargs as valid args to async_api.save_array
 ) -> None:
-    """Convenience function to save a NumPy array to the local file system, following a
-    similar API to the NumPy save() function.
+    """Save a NumPy array to the local file system.
+
+    Follows a similar API to the NumPy save() function.
 
     Parameters
     ----------
@@ -295,8 +296,9 @@ def save_group(
     storage_options: dict[str, Any] | None = None,
     **kwargs: NDArrayLike,
 ) -> None:
-    """Convenience function to save several NumPy arrays to the local file system, following a
-    similar API to the NumPy savez()/savez_compressed() functions.
+    """Save several NumPy arrays to the local file system.
+
+    Follows a similar API to the NumPy savez()/savez_compressed() functions.
 
     Parameters
     ----------
@@ -920,7 +922,7 @@ def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
 # TODO: move ArrayLike to common module
 # TODO: add type annotations for kwargs
 def empty_like(a: ArrayLike, **kwargs: Any) -> Array:
-    """Create an empty array like `a`.
+    """Create an empty array like another array.
 
     Parameters
     ----------
@@ -939,8 +941,7 @@ def empty_like(a: ArrayLike, **kwargs: Any) -> Array:
 
 # TODO: add type annotations for kwargs and fill_value
 def full(shape: ChunkCoords, fill_value: Any, **kwargs: Any) -> Array:
-    """Create an array, with `fill_value` being used as the default value for
-    uninitialized portions of the array.
+    """Create an array with a default fill value.
 
     Parameters
     ----------
@@ -962,7 +963,7 @@ def full(shape: ChunkCoords, fill_value: Any, **kwargs: Any) -> Array:
 # TODO: move ArrayLike to common module
 # TODO: add type annotations for kwargs
 def full_like(a: ArrayLike, **kwargs: Any) -> Array:
-    """Create a filled array like `a`.
+    """Create a filled array like another array.
 
     Parameters
     ----------
@@ -981,8 +982,7 @@ def full_like(a: ArrayLike, **kwargs: Any) -> Array:
 
 # TODO: add type annotations for kwargs
 def ones(shape: ChunkCoords, **kwargs: Any) -> Array:
-    """Create an array, with one being used as the default value for
-    uninitialized portions of the array.
+    """Create an array with a fill value of one.
 
     Parameters
     ----------
@@ -1001,7 +1001,7 @@ def ones(shape: ChunkCoords, **kwargs: Any) -> Array:
 
 # TODO: add type annotations for kwargs
 def ones_like(a: ArrayLike, **kwargs: Any) -> Array:
-    """Create an array of ones like `a`.
+    """Create an array of ones like another array.
 
     Parameters
     ----------
@@ -1063,7 +1063,7 @@ def open_array(
 
 # TODO: add type annotations for kwargs
 def open_like(a: ArrayLike, path: str, **kwargs: Any) -> Array:
-    """Open a persistent array like `a`.
+    """Open a persistent array like another array.
 
     Parameters
     ----------
@@ -1084,8 +1084,7 @@ def open_like(a: ArrayLike, path: str, **kwargs: Any) -> Array:
 
 # TODO: add type annotations for kwargs
 def zeros(shape: ChunkCoords, **kwargs: Any) -> Array:
-    """Create an array, with zero being used as the default value for
-    uninitialized portions of the array.
+    """Create an array with a fill value of zero.
 
     Parameters
     ----------
@@ -1104,7 +1103,7 @@ def zeros(shape: ChunkCoords, **kwargs: Any) -> Array:
 
 # TODO: add type annotations for kwargs
 def zeros_like(a: ArrayLike, **kwargs: Any) -> Array:
-    """Create an array of zeros like `a`.
+    """Create an array of zeros like another array.
 
     Parameters
     ----------
