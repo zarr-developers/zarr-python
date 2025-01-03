@@ -7,12 +7,12 @@ goals motivating this refactor included:
 * adding support for the Zarr V3 specification (along with the Zarr V2 specification)
 * cleaning up internal and user facing APIs
 * improving performance (particularly in high latency storage environments like
-  cloud object store)
+  cloud object stores)
 
-To accommodate this, Zarr-Python 3.0 introduces a number of changes to the API, including a number
-of significant breaking changes and pending deprecations.
+To accommodate this, Zarr-Python 3 introduces a number of changes to the API, including a number
+of significant breaking changes and deprecations.
 
-This page provides a guide highlighting the most notable changes to help you
+This page provides a guide explaining breaking changes and deprecations to help you
 migrate your code from version 2 to version 3. If we have missed anything, please
 open a `GitHub issue <https://github.com/zarr-developers/zarr-python/issues/new>`_
 so we can improve this guide.
@@ -30,13 +30,14 @@ Getting ready for 3.0
 ---------------------
 
 Before migrating to Zarr-Python 3, we suggest projects that depend on Zarr-Python take
-the following actions:
+the following actions in order:
 
 1. Pin the supported Zarr-Python version to ``zarr>=2,<3``. This is a best practice
    and will protect your users from any incompatibilities that may arise during the
-   release of Zarr-Python 3.0. This pin can be removed after migrating to Zarr-Python 3.
+   release of Zarr-Python 3. This pin can be removed after migrating to Zarr-Python 3.
 2. Limit your imports from the Zarr-Python package. Most of the primary API ``zarr.*``
-   will be compatible in 3.0. However, the following breaking API changes are planned:
+   will be compatible in Zarr-Python 3. However, the following breaking API changes are
+   planned:
 
    - ``numcodecs.*`` will no longer be available in ``zarr.*``. To migrate, import codecs
      directly from ``numcodecs``:
@@ -47,29 +48,27 @@ the following actions:
         # instead of:
         # from zarr import Blosc
 
-   - The ``zarr.v3_api_available`` feature flag is being removed. In Zarr-Python 3.0
+   - The ``zarr.v3_api_available`` feature flag is being removed. In Zarr-Python 3
      the v3 API is always available, so you shouldn't need to use this flag.
    - The following internal modules are being removed or significantly changed. If
      your application relies on imports from any of the below modules, you will need
      to either a) modify your application to no longer rely on these imports or b)
      vendor the parts of the specific modules that you need.
 
-     * ``zarr.attrs``
-     * ``zarr.codecs``
-     * ``zarr.context``
-     * ``zarr.core``
-     * ``zarr.hierarchy``
-     * ``zarr.indexing``
-     * ``zarr.meta``
-     * ``zarr.meta_v1``
-     * ``zarr.storage``
-     * ``zarr.sync``
-     * ``zarr.types``
-     * ``zarr.util``
-     * ``zarr.n5``
+     * ``zarr.attrs`` has gone, with no replacement
+     * ``zarr.codecs`` has gone, use ``numcodecs`` instead
+     * ``zarr.context`` has gone, with no replacement
+     * ``zarr.core`` remains but should be considered private API
+     * ``zarr.hierarchy`` has gone, with no replacement (use ``zarr.Group`` inplace of ``zarr.hierarchy.Group``)
+     * ``zarr.indexing`` has gone, with no replacement
+     * ``zarr.meta`` has gone, with no replacement
+     * ``zarr.meta_v1`` has gone, with no replacement
+     * ``zarr.sync`` has gone, with no replacement
+     * ``zarr.types`` has gone, with no replacement
+     * ``zarr.util`` has gone, with no replacement
+     * ``zarr.n5`` has gone, see below for an alternative N5 options
 
-3. Test that your package works with v3. You can start testing against version 3 now
-   (pre-releases are being published to PyPI weekly).
+3. Test that your package works with version 3.
 4. Update the pin to include ``zarr>=3,<4``.
 
 Zarr-Python 2 support window
@@ -93,7 +92,7 @@ If you need to use the latest Zarr-Python 2 release, you can install it with:
 Migrating to Zarr-Python 3
 --------------------------
 
-The following sections provide details on the most important changes in Zarr-Python 3.
+The following sections provide details on breaking changes in Zarr-Python 3.
 
 The Array class
 ~~~~~~~~~~~~~~~
@@ -120,8 +119,7 @@ The Group class
 The Store class
 ~~~~~~~~~~~~~~~
 
-Some of the biggest changes in Zarr-Python 3 are found in the ``Store`` class. The most
-notable changes to the Store API are:
+The Store API has changed significant in Zarr-Python 3. The most notable changes to the Store API are:
 
 1. Replaced the ``MutableMapping`` base class in favor of a custom abstract base class
    (:class:`zarr.abc.store.Store`).
@@ -196,8 +194,8 @@ Miscellaneous
 
 Zarr-Python 3 is still under active development, and is not yet fully complete.
 The following list summarizes areas of the codebase that we expect to build out
-after the 3.0 release. If features listed below are important to your use case of
-Zarr-Python, please open (or comment on) a
+after the 3.0.0 release. If features listed below are important to your use case
+of Zarr-Python, please open (or comment on) a
 `GitHub issue <https://github.com/zarr-developers/zarr-python/issues/new>`_.
 
 - The following functions / methods have not been ported to Zarr-Python 3 yet:
@@ -208,7 +206,8 @@ Zarr-Python, please open (or comment on) a
   * :func:`zarr.Group.move` (:issue:`2108`)
 
 - The following features (corresponding to function arguments to functions in
-  :mod:`zarr`) have not been ported to Zarr-Python 3 yet.
+  :mod:`zarr`) have not been ported to Zarr-Python 3 yet. Using these features
+  will raise a warning or a ``NotImplementedError``:
 
   * ``cache_attrs``
   * ``cache_metadata``
