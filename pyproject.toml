@@ -397,7 +397,8 @@ ignore = [
 checks = [
     "GL06",
     "GL07",
-    "GL09",
+    # Currently broken; see https://github.com/numpy/numpydoc/issues/573
+    # "GL09",
     "GL10",
     "SS02",
     "SS04",
