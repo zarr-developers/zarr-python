@@ -7,7 +7,7 @@ import zarr
 from zarr.abc.store import Store
 from zarr.codecs import BloscCodec
 from zarr.core.buffer import default_buffer_prototype
-from zarr.storage.common import StorePath
+from zarr.storage import StorePath
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])

@@ -312,7 +312,7 @@ async def open(
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     # TODO: the mode check below seems wrong!
-    if "shape" not in kwargs and mode in {"a", "r", "r+"}:
+    if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts

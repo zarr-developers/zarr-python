@@ -25,8 +25,8 @@ from zarr.api.synchronous import (
 )
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
+from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
-from zarr.storage.memory import MemoryStore
 
 
 def test_create(memory_store: Store) -> None:
@@ -1084,6 +1084,13 @@ async def test_open_falls_back_to_open_group_async() -> None:
     group = await zarr.api.asynchronous.open(store=store)
     assert isinstance(group, zarr.core.group.AsyncGroup)
     assert group.attrs == {"key": "value"}
+
+
+def test_open_mode_write_creates_group(tmp_path: pathlib.Path) -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2490
+    zarr_dir = tmp_path / "test.zarr"
+    group = zarr.open(zarr_dir, mode="w")
+    assert isinstance(group, Group)
 
 
 async def test_metadata_validation_error() -> None:

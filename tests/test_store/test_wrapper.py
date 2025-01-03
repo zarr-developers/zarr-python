@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from zarr.core.buffer.cpu import Buffer, buffer_prototype
-from zarr.storage.wrapper import WrapperStore
+from zarr.storage import WrapperStore
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
