@@ -14,7 +14,7 @@ Creating an array
 Zarr has several functions for creating arrays. For example::
 
    >>> import zarr
-   >>>
+   >>> raise Exception(f"Zarr version {zarr.__version__}") # debugging
    >>> store = zarr.storage.MemoryStore()
    >>> z = zarr.create_array(store=store, shape=(10000, 10000), chunks=(1000, 1000), dtype='int32')
    >>> z
@@ -89,7 +89,7 @@ The array above will store its configuration metadata and all compressed chunk
 data in a directory called ``'data/example-1.zarr'`` relative to the current working
 directory. The :func:`zarr.create_array` function provides a convenient way
 to create a new persistent array or continue working with an existing
-array. Note, there is no need to close an array: data are automatically 
+array. Note, there is no need to close an array: data are automatically
 flushed to disk, and files are automatically closed whenever an array is modified.
 
 Persistent arrays support the same interface for reading and writing data,
@@ -158,10 +158,10 @@ used to append data to any axis. E.g.::
 Compressors
 -----------
 
-A number of different compressors can be used with Zarr. Zarr includes Blosc, 
-Zstandard and Gzip compressors. Additional compressors are available through 
+A number of different compressors can be used with Zarr. Zarr includes Blosc,
+Zstandard and Gzip compressors. Additional compressors are available through
 a separate package called NumCodecs_ which provides various
-compressor libraries including LZ4, Zlib, BZ2 and LZMA. 
+compressor libraries including LZ4, Zlib, BZ2 and LZMA.
 Different compressors can be provided via the ``compressors`` keyword
 argument accepted by all array creation functions. For example::
 
@@ -216,7 +216,7 @@ prints additional diagnostics, e.g.::
    statistics are not needed.
 
 If you don't specify a compressor, by default Zarr uses the Zstandard
-compressor. 
+compressor.
 
 In addition to Blosc and Zstandard, other compression libraries can also be used. For example,
 here is an array using Gzip compression, level 1::

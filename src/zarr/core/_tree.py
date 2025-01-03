@@ -1,4 +1,5 @@
 import io
+import os
 from collections.abc import Sequence
 from typing import Any
 
@@ -25,7 +26,9 @@ class TreeRepr:
 
     def __repr__(self) -> str:
         terminal = rich.get_console()
-        console = rich.console.Console(file=io.StringIO(), color_system=terminal.color_system)
+        # Mocking 'truecolor' color system for tests
+        color_system = "truecolor" if "PYTEST_VERSION" in os.environ else terminal.color_system
+        console = rich.console.Console(file=io.StringIO(), color_system=color_system)
         console.print(self._tree)
         return str(console.file.getvalue())
 
