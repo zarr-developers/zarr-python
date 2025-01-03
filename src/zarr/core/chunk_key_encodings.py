@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Literal, cast
+from typing import Literal, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
@@ -20,6 +20,11 @@ def parse_separator(data: JSON) -> SeparatorLiteral:
     return cast(SeparatorLiteral, data)
 
 
+class ChunkKeyEncodingLike(TypedDict):
+    name: Literal["v2", "default"]
+    separator: SeparatorLiteral
+
+
 @dataclass(frozen=True)
 class ChunkKeyEncoding(Metadata):
     name: str
@@ -31,9 +36,15 @@ class ChunkKeyEncoding(Metadata):
         object.__setattr__(self, "separator", separator_parsed)
 
     @classmethod
-    def from_dict(cls, data: dict[str, JSON] | ChunkKeyEncoding) -> ChunkKeyEncoding:
+    def from_dict(
+        cls, data: dict[str, JSON] | ChunkKeyEncoding | ChunkKeyEncodingLike
+    ) -> ChunkKeyEncoding:
         if isinstance(data, ChunkKeyEncoding):
             return data
+
+        # handle ChunkKeyEncodingParams
+        if "name" in data and "separator" in data:
+            data = {"name": data["name"], "configuration": {"separator": data["separator"]}}
 
         # configuration is optional for chunk key encodings
         name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)

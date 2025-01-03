@@ -54,6 +54,7 @@ docs/_build/
 docs/_autoapi
 docs/data
 data
+data.zip
 
 # PyBuilder
 target/

@@ -1,6 +1,6 @@
 .. _user-guide:
 
-User Guide
+User guide
 ==========
 
 .. toctree::
@@ -11,10 +11,10 @@ User Guide
     attributes
     storage
     config
+    v3_migration
 
 .. Coming soon
     installation
-    v3_migration
 
 Advanced Topics
 ---------------
@@ -24,10 +24,8 @@ Advanced Topics
 
     performance
     consolidated_metadata
-    whatsnew_v3
-    v3_todos
+    extending
 
 
 .. Coming soon
     async
-    extending
