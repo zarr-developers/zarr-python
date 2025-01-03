@@ -6,7 +6,7 @@ import pytest
 
 import zarr
 from zarr.core.buffer import Buffer, cpu
-from zarr.storage.local import LocalStore
+from zarr.storage import LocalStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
