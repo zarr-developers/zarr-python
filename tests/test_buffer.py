@@ -5,9 +5,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-from zarr import AsyncArray
+import zarr
 from zarr.codecs.blosc import BloscCodec
-from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
@@ -47,10 +46,10 @@ async def test_async_array_prototype() -> None:
     """Test the use of a custom buffer prototype"""
 
     expect = np.zeros((9, 9), dtype="uint16", order="F")
-    a = await AsyncArray.create(
+    a = await zarr.api.asynchronous.create_array(
         StorePath(StoreExpectingTestBuffer()) / "test_async_array_prototype",
         shape=expect.shape,
-        chunk_shape=(5, 5),
+        chunks=(5, 5),
         dtype=expect.dtype,
         fill_value=0,
     )
@@ -76,10 +75,10 @@ async def test_async_array_gpu_prototype() -> None:
     """Test the use of the GPU buffer prototype"""
 
     expect = cp.zeros((9, 9), dtype="uint16", order="F")
-    a = await AsyncArray.create(
+    a = await zarr.api.asynchronous.create_array(
         StorePath(MemoryStore()) / "test_async_array_gpu_prototype",
         shape=expect.shape,
-        chunk_shape=(5, 5),
+        chunks=(5, 5),
         dtype=expect.dtype,
         fill_value=0,
     )
@@ -98,20 +97,14 @@ async def test_async_array_gpu_prototype() -> None:
 @pytest.mark.asyncio
 async def test_codecs_use_of_prototype() -> None:
     expect = np.zeros((10, 10), dtype="uint16", order="F")
-    a = await AsyncArray.create(
+    a = await zarr.api.asynchronous.create_array(
         StorePath(StoreExpectingTestBuffer()) / "test_codecs_use_of_prototype",
         shape=expect.shape,
-        chunk_shape=(5, 5),
+        chunks=(5, 5),
         dtype=expect.dtype,
         fill_value=0,
-        codecs=[
-            TransposeCodec(order=(1, 0)),
-            BytesCodec(),
-            BloscCodec(),
-            Crc32cCodec(),
-            GzipCodec(),
-            ZstdCodec(),
-        ],
+        compressors=[BloscCodec(), Crc32cCodec(), GzipCodec(), ZstdCodec()],
+        filters=[TransposeCodec(order=(1, 0))],
     )
     expect[:] = np.arange(100).reshape(10, 10)
 
@@ -133,20 +126,14 @@ async def test_codecs_use_of_prototype() -> None:
 @pytest.mark.asyncio
 async def test_codecs_use_of_gpu_prototype() -> None:
     expect = cp.zeros((10, 10), dtype="uint16", order="F")
-    a = await AsyncArray.create(
+    a = await zarr.api.asynchronous.create_array(
         StorePath(MemoryStore()) / "test_codecs_use_of_gpu_prototype",
         shape=expect.shape,
-        chunk_shape=(5, 5),
+        chunks=(5, 5),
         dtype=expect.dtype,
         fill_value=0,
-        codecs=[
-            TransposeCodec(order=(1, 0)),
-            BytesCodec(),
-            BloscCodec(),
-            Crc32cCodec(),
-            GzipCodec(),
-            ZstdCodec(),
-        ],
+        compressors=[BloscCodec(), Crc32cCodec(), GzipCodec(), ZstdCodec()],
+        filters=[TransposeCodec(order=(1, 0))],
     )
     expect[:] = cp.arange(100).reshape(10, 10)
 
