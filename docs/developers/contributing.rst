@@ -1,3 +1,5 @@
+.. _dev-guide-contributing:
+
 Contributing to Zarr
 ====================
 

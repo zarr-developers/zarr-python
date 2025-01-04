@@ -9,7 +9,6 @@ Zarr-Python
     :hidden:
 
     quickstart
-    installation
     user-guide/index
     api/index
     developers/index
@@ -18,16 +17,19 @@ Zarr-Python
 
 **Version**: |version|
 
-**Download documentation**: `PDF/Zipped HTML <https://readthedocs.org/projects/zarr/downloads/>`_
-
 **Useful links**:
-`Installation <installation.html>`_ |
 `Source Repository <https://github.com/zarr-developers/zarr-python>`_ |
 `Issue Tracker <https://github.com/zarr-developers/zarr-python/issues>`_ |
 `Zulip Chat <https://ossci.zulipchat.com/>`_ |
 `Zarr specifications <https://zarr-specs.readthedocs.io>`_
 
-Zarr is a file storage format for chunked, compressed, N-dimensional arrays based on an open-source specification.
+Zarr-Python is a Python library for reading and writing Zarr groups and arrays. Highlights include:
+
+* Specification support for both Zarr v2 and v3.
+* Create and read from N-dimensional arrays using NumPy-like semantics.
+* Flexible storage enables reading and writing from local, cloud and in-memory stores.
+* High performance: Enables fast I/O with support for asynchronous I/O and multi-threading.
+* Extensible: Customizable with user-defined codecs and stores.
 
 .. grid:: 2
 
@@ -84,7 +86,7 @@ Zarr is a file storage format for chunked, compressed, N-dimensional arrays base
             :color: dark
             :click-parent:
 
-            To the api reference guide
+            To the API reference guide
 
     .. grid-item-card::
         :img-top: _static/index_contribute.svg
@@ -104,3 +106,8 @@ Zarr is a file storage format for chunked, compressed, N-dimensional arrays base
             :click-parent:
 
             To the contributor's guide
+
+
+**Download documentation**: `PDF/Zipped HTML <https://readthedocs.org/projects/zarr/downloads/>`_
+
+.. _NumCodecs: https://numcodecs.readthedocs.io
