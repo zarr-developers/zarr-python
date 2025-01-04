@@ -34,7 +34,7 @@ from zarr.core.metadata.common import parse_attributes
 
 class ArrayV2MetadataDict(TypedDict):
     """
-    A typed dictionary model for zarr v2 metadata.
+    A typed dictionary model for Zarr format 2 metadata.
     """
 
     zarr_format: Literal[2]
@@ -68,7 +68,7 @@ class ArrayV2Metadata(Metadata):
         attributes: dict[str, JSON] | None = None,
     ) -> None:
         """
-        Metadata for a Zarr version 2 array.
+        Metadata for a Zarr format 2 array.
         """
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
@@ -327,7 +327,7 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
     stored in the Array metadata into an in-memory value. This only gives
     the default fill value for some type.
 
-    This is useful for reading Zarr V2 arrays, which allow the fill
+    This is useful for reading Zarr format 2 arrays, which allow the fill
     value to be unspecified.
     """
     if dtype.kind == "S":
