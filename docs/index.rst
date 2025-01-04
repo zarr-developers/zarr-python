@@ -18,15 +18,19 @@ Zarr-Python
 
 **Version**: |version|
 
-Zarr is a storage format for chunked, compressed, N-dimensional arrays based on an open-source specification. Highlights include:
+**Useful links**:
+`Source Repository <https://github.com/zarr-developers/zarr-python>`_ |
+`Issue Tracker <https://github.com/zarr-developers/zarr-python/issues>`_ |
+`Zulip Chat <https://ossci.zulipchat.com/>`_ |
+`Zarr specifications <https://zarr-specs.readthedocs.io>`_
 
-* Create N-dimensional arrays with any NumPy dtype.
-* Chunk arrays along any dimension.
-* Compress and/or filter chunks using any NumCodecs_ codec.
-* Store arrays in memory, on disk, inside a Zip file, on S3, ...
-* Read an array concurrently from multiple threads or processes.
-* Write to an array concurrently from multiple threads or processes.
-* Organize arrays into hierarchies via groups.
+Zarr-Python is a Python library for reading and writing Zarr groups and arrays. Highlights include:
+
+* Specification support for both Zarr v2 and v3.
+* Create and read from N-dimensional arrays using NumPy-like semantics.
+* Flexible storage enables reading and writing from local, cloud and in-memory stores.
+* High performance: Enables fast I/O with support for asynchronous I/O and multi-threading.
+* Extensible: Customizable with user-defined codecs and stores.
 
 .. grid:: 2
 
@@ -104,11 +108,6 @@ Zarr is a storage format for chunked, compressed, N-dimensional arrays based on 
 
             To the contributor's guide
 
-**Useful links**:
-`Source Repository <https://github.com/zarr-developers/zarr-python>`_ |
-`Issue Tracker <https://github.com/zarr-developers/zarr-python/issues>`_ |
-`Zulip Chat <https://ossci.zulipchat.com/>`_ |
-`Zarr specifications <https://zarr-specs.readthedocs.io>`_
 
 **Download documentation**: `PDF/Zipped HTML <https://readthedocs.org/projects/zarr/downloads/>`_
 
