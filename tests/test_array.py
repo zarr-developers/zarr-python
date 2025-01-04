@@ -479,15 +479,26 @@ def test_update_attrs(zarr_format: ZarrFormat) -> None:
     assert arr2.attrs["foo"] == "bar"
 
 
+@pytest.mark.parametrize(("chunks", "shards"), [((2, 2), None), (2, 2), (4, 4)])
 class TestInfo:
+    chunks: tuple[int, int]
+    shards: tuple[int, int] | None
+
+    def __init__(self, chunks: tuple[int, int], shards: tuple[int, int] | None) -> None:
+        self.chunks = chunks
+        self.shards = shards
+
     def test_info_v2(self) -> None:
-        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=2)
+        arr = zarr.create_array(
+            store={}, shape=(8, 8), dtype="f8", chunks=self.chunks, zarr_format=2
+        )
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=2,
             _data_type=np.dtype("float64"),
-            _shape=(4, 4),
-            _chunk_shape=(2, 2),
+            _shape=(8, 8),
+            _chunk_shape=self.chunks,
+            _shard_shape=None,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
@@ -497,12 +508,14 @@ class TestInfo:
         assert result == expected
 
     def test_info_v3(self) -> None:
-        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        arr = zarr.create_array(
+            store={}, shape=(8, 8), dtype="f8", chunks=self.chunks, shards=self.shards
+        )
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=DataType.parse("float64"),
-            _shape=(4, 4),
+            _shape=(8, 8),
             _chunk_shape=(2, 2),
             _order="C",
             _read_only=False,
@@ -513,13 +526,21 @@ class TestInfo:
         assert result == expected
 
     def test_info_complete(self) -> None:
-        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=3, codecs=[BytesCodec()])
+        arr = zarr.create_array(
+            store={},
+            shape=(8, 8),
+            dtype="f8",
+            chunks=self.chunks,
+            shards=self.shards,
+            compressors=None,
+        )
         result = arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=DataType.parse("float64"),
-            _shape=(4, 4),
-            _chunk_shape=(2, 2),
+            _shape=(8, 8),
+            _chunk_shape=self.chunks,
+            _shard_shape=self.shards,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
@@ -538,13 +559,16 @@ class TestInfo:
         assert result == expected
 
     async def test_info_v2_async(self) -> None:
-        arr = await zarr.api.asynchronous.create(shape=(4, 4), chunks=(2, 2), zarr_format=2)
+        arr = await zarr.api.asynchronous.create_array(
+            store={}, shape=(8, 8), dtype="f8", chunks=self.chunks, zarr_format=2
+        )
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=2,
             _data_type=np.dtype("float64"),
-            _shape=(4, 4),
+            _shape=(8, 8),
             _chunk_shape=(2, 2),
+            _shard_shape=None,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
@@ -554,13 +578,20 @@ class TestInfo:
         assert result == expected
 
     async def test_info_v3_async(self) -> None:
-        arr = await zarr.api.asynchronous.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+        arr = await zarr.api.asynchronous.create_array(
+            store={},
+            shape=(8, 8),
+            dtype="f8",
+            chunks=self.chunks,
+            shards=self.shards,
+        )
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=DataType.parse("float64"),
-            _shape=(4, 4),
-            _chunk_shape=(2, 2),
+            _shape=(8, 8),
+            _chunk_shape=self.chunks,
+            _shard_shape=self.shards,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
@@ -570,15 +601,21 @@ class TestInfo:
         assert result == expected
 
     async def test_info_complete_async(self) -> None:
-        arr = await zarr.api.asynchronous.create(
-            shape=(4, 4), chunks=(2, 2), zarr_format=3, codecs=[BytesCodec()]
+        arr = await zarr.api.asynchronous.create_array(
+            store={},
+            dtype="f8",
+            shape=(8, 8),
+            chunks=self.chunks,
+            shards=self.shards,
+            compressors=None,
         )
         result = await arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=DataType.parse("float64"),
-            _shape=(4, 4),
-            _chunk_shape=(2, 2),
+            _shape=(8, 8),
+            _chunk_shape=self.chunks,
+            _shard_shape=self.shards,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
