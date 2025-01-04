@@ -1137,6 +1137,18 @@ async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: Zarr
     assert no_group == ()
 
 
+def test_create_dataset_with_data(store: Store, zarr_format: ZarrFormat) -> None:
+    """Check that deprecated create_dataset method allows input data.
+
+    See https://github.com/zarr-developers/zarr-python/issues/2631.
+    """
+    root = Group.from_store(store=store, zarr_format=zarr_format)
+    arr = np.random.random((5, 5))
+    with pytest.warns(DeprecationWarning):
+        data = root.create_dataset("random", data=arr, shape=arr.shape)
+    np.testing.assert_array_equal(np.asarray(data), arr)
+
+
 async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
     root = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
     with pytest.warns(DeprecationWarning):
