@@ -9,7 +9,6 @@ Zarr-Python
     :hidden:
 
     quickstart
-    installation
     user-guide/index
     api/index
     developers/index
