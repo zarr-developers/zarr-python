@@ -17,7 +17,7 @@ from zarr.abc.codec import (
 from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 from zarr.core.indexing import SelectorTuple, is_scalar, is_total_slice
-from zarr.core.metadata.v2 import _default_fill_value
+from zarr.core.metadata._v2 import _default_fill_value
 from zarr.registry import register_pipeline
 
 if TYPE_CHECKING:

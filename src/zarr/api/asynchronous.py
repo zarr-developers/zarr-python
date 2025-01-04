@@ -25,7 +25,7 @@ from zarr.core.common import (
 )
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
-from zarr.core.metadata.v2 import _default_compressor, _default_filters
+from zarr.core.metadata._v2 import _default_compressor, _default_filters
 from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
     StoreLike,

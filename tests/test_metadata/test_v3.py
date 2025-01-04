@@ -11,9 +11,11 @@ from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.group import parse_node_type
-from zarr.core.metadata.v3 import (
+from zarr.core.metadata import (
     ArrayV3Metadata,
     DataType,
+)
+from zarr.core.metadata._v3 import (
     default_fill_value,
     parse_dimension_names,
     parse_fill_value,
@@ -29,7 +31,7 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON
 
 
-from zarr.core.metadata.v3 import (
+from zarr.core.metadata._v3 import (
     parse_node_type_array,
 )
 
