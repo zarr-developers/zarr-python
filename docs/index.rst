@@ -92,11 +92,13 @@ Zarr is a file storage format for chunked, compressed, N-dimensional arrays base
         Contributor's Guide
         ^^^^^^^^^^^^^^^^^^^
 
-        Want to contribute to Zarr? We welcome contributions in the form of bug reports, bug fixes, documentation, enhancement proposals and more. The contributing guidelines will guide you through the process of improving Zarr.
+        Want to contribute to Zarr? We welcome contributions in the form of bug reports,
+        bug fixes, documentation, enhancement proposals and more. The contributing guidelines
+        will guide you through the process of improving Zarr.
 
         +++
 
-        .. button-ref:: contributing
+        .. button-ref:: developers/contributing
             :expand:
             :color: dark
             :click-parent:
