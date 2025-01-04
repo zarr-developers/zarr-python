@@ -9,11 +9,12 @@ Zarr-Python
     :hidden:
 
     quickstart
-    about
+    installation
     user-guide/index
     api/index
     developers/index
     developers/release
+    about
 
 **Version**: |version|
 
@@ -53,17 +54,16 @@ Zarr is a storage format for chunked, compressed, N-dimensional arrays based on 
         Guide
         ^^^^^
 
-        The user guide provides a detailed guide for how to use Zarr-Python.
+        A detailed guide for how to use Zarr-Python.
 
         +++
 
-        .. button-ref:: user-guide
-            :ref-type: ref
+        .. button-ref:: user-guide/index
             :expand:
             :color: dark
             :click-parent:
 
-            To the User Guide
+            To the user guide
 
     .. grid-item-card::
         :img-top: _static/index_api.svg
@@ -88,21 +88,21 @@ Zarr is a storage format for chunked, compressed, N-dimensional arrays based on 
     .. grid-item-card::
         :img-top: _static/index_contribute.svg
 
-        Developer's Guide
-        ^^^^^^^^^^^^^^^^^
+        Contributor's Guide
+        ^^^^^^^^^^^^^^^^^^^
 
         Want to contribute to Zarr? We welcome contributions in the form of bug reports,
-        bug fixes, documentation, enhancement proposals and more. The contributing
-        guidelines will guide you through the process of improving Zarr.
+        bug fixes, documentation, enhancement proposals and more. The contributing guidelines
+        will guide you through the process of improving Zarr.
 
         +++
 
-        .. button-ref:: developers/index
+        .. button-ref:: developers/contributing
             :expand:
             :color: dark
             :click-parent:
 
-            To the developers's guide
+            To the contributor's guide
 
 **Useful links**:
 `Source Repository <https://github.com/zarr-developers/zarr-python>`_ |

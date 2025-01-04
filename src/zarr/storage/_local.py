@@ -189,6 +189,18 @@ class LocalStore(Store):
         await concurrent_map(args, asyncio.to_thread, limit=None)  # TODO: fix limit
 
     async def delete(self, key: str) -> None:
+        """
+        Remove a key from the store.
+
+        Parameters
+        ----------
+        key : str
+
+        Notes
+        -----
+        If ``key`` is a directory within this store, the entire directory
+        at ``store.root / key`` is deleted.
+        """
         # docstring inherited
         self._check_writable()
         path = self.root / key

@@ -21,7 +21,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
-from zarr.storage.common import StorePath
+from zarr.storage import StorePath
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
@@ -31,16 +31,19 @@ if TYPE_CHECKING:
 @pytest.fixture
 async def memory_store_with_hierarchy(memory_store: Store) -> None:
     g = await group(store=memory_store, attributes={"foo": "bar"})
-    await g.create_array(name="air", shape=(1, 2, 3))
-    await g.create_array(name="lat", shape=(1,))
-    await g.create_array(name="lon", shape=(2,))
-    await g.create_array(name="time", shape=(3,))
+    dtype = "uint8"
+    await g.create_array(name="air", shape=(1, 2, 3), dtype=dtype)
+    await g.create_array(name="lat", shape=(1,), dtype=dtype)
+    await g.create_array(name="lon", shape=(2,), dtype=dtype)
+    await g.create_array(name="time", shape=(3,), dtype=dtype)
 
     child = await g.create_group("child", attributes={"key": "child"})
-    await child.create_array("array", shape=(4, 4), attributes={"key": "child"})
+    await child.create_array("array", shape=(4, 4), attributes={"key": "child"}, dtype=dtype)
 
     grandchild = await child.create_group("grandchild", attributes={"key": "grandchild"})
-    await grandchild.create_array("array", shape=(4, 4), attributes={"key": "grandchild"})
+    await grandchild.create_array(
+        "array", shape=(4, 4), attributes={"key": "grandchild"}, dtype=dtype
+    )
     await grandchild.create_group("empty_group", attributes={"key": "empty"})
     return memory_store
 
@@ -74,10 +77,10 @@ class TestConsolidated:
             },
             "codecs": (
                 {"configuration": {"endian": "little"}, "name": "bytes"},
-                {"configuration": {}, "name": "zstd"},
+                {"configuration": {"level": 0, "checksum": False}, "name": "zstd"},
             ),
-            "data_type": "float64",
-            "fill_value": np.float64(0.0),
+            "data_type": "uint8",
+            "fill_value": 0,
             "node_type": "array",
             # "shape": (1, 2, 3),
             "zarr_format": 3,
@@ -205,10 +208,11 @@ class TestConsolidated:
 
     def test_consolidated_sync(self, memory_store):
         g = zarr.api.synchronous.group(store=memory_store, attributes={"foo": "bar"})
-        g.create_array(name="air", shape=(1, 2, 3))
-        g.create_array(name="lat", shape=(1,))
-        g.create_array(name="lon", shape=(2,))
-        g.create_array(name="time", shape=(3,))
+        dtype = "uint8"
+        g.create_array(name="air", shape=(1, 2, 3), dtype=dtype)
+        g.create_array(name="lat", shape=(1,), dtype=dtype)
+        g.create_array(name="lon", shape=(2,), dtype=dtype)
+        g.create_array(name="time", shape=(3,), dtype=dtype)
 
         zarr.api.synchronous.consolidate_metadata(memory_store)
         group2 = zarr.api.synchronous.Group.open(memory_store)
@@ -221,10 +225,10 @@ class TestConsolidated:
             },
             "codecs": (
                 {"configuration": {"endian": "little"}, "name": "bytes"},
-                {"configuration": {}, "name": "zstd"},
+                {"configuration": {"level": 0, "checksum": False}, "name": "zstd"},
             ),
-            "data_type": "float64",
-            "fill_value": np.float64(0.0),
+            "data_type": dtype,
+            "fill_value": 0,
             "node_type": "array",
             # "shape": (1, 2, 3),
             "zarr_format": 3,
@@ -475,7 +479,8 @@ class TestConsolidated:
     async def test_consolidated_metadata_v2(self):
         store = zarr.storage.MemoryStore()
         g = await AsyncGroup.from_store(store, attributes={"key": "root"}, zarr_format=2)
-        await g.create_array(name="a", shape=(1,), attributes={"key": "a"})
+        dtype = "uint8"
+        await g.create_array(name="a", shape=(1,), attributes={"key": "a"}, dtype=dtype)
         g1 = await g.create_group(name="g1", attributes={"key": "g1"})
         await g1.create_group(name="g2", attributes={"key": "g2"})
 
@@ -489,11 +494,11 @@ class TestConsolidated:
                 metadata={
                     "a": ArrayV2Metadata(
                         shape=(1,),
-                        dtype="float64",
+                        dtype=dtype,
                         attributes={"key": "a"},
                         chunks=(1,),
-                        fill_value=None,
-                        filters=(Zstd(level=0),),
+                        fill_value=0,
+                        compressor=Zstd(level=0),
                         order="C",
                     ),
                     "g1": GroupMetadata(
@@ -518,7 +523,7 @@ class TestConsolidated:
     async def test_use_consolidated_false(
         self, memory_store: zarr.storage.MemoryStore, zarr_format: ZarrFormat
     ) -> None:
-        with zarr.config.set(default_zarr_version=zarr_format):
+        with zarr.config.set(default_zarr_format=zarr_format):
             g = await group(store=memory_store, attributes={"foo": "bar"})
             await g.create_group(name="a")
 

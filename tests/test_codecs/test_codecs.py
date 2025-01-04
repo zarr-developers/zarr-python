@@ -7,6 +7,9 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
+import zarr
+import zarr.api
+import zarr.api.asynchronous
 from zarr import Array, AsyncArray, config
 from zarr.codecs import (
     BytesCodec,
@@ -19,7 +22,6 @@ from zarr.core.indexing import Selection, morton_order_iter
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
-    from zarr.abc.codec import Codec
     from zarr.abc.store import Store
     from zarr.core.buffer.core import NDArrayLike
     from zarr.core.common import MemoryOrder
@@ -75,27 +77,18 @@ async def test_order(
     data = np.arange(0, 256, dtype="uint16").reshape((32, 8), order=input_order)
     path = "order"
     spath = StorePath(store, path=path)
-    codecs_: list[Codec] = (
-        [
-            ShardingCodec(
-                chunk_shape=(16, 8),
-                codecs=[TransposeCodec(order=order_from_dim(store_order, data.ndim)), BytesCodec()],
-            )
-        ]
-        if with_sharding
-        else [TransposeCodec(order=order_from_dim(store_order, data.ndim)), BytesCodec()]
-    )
 
-    with config.set({"array.order": runtime_write_order}):
-        a = await AsyncArray.create(
-            spath,
-            shape=data.shape,
-            chunk_shape=(32, 8),
-            dtype=data.dtype,
-            fill_value=0,
-            chunk_key_encoding=("v2", "."),
-            codecs=codecs_,
-        )
+    a = await zarr.api.asynchronous.create_array(
+        spath,
+        shape=data.shape,
+        chunks=(16, 8) if with_sharding else (32, 8),
+        shards=(32, 8) if with_sharding else None,
+        dtype=data.dtype,
+        fill_value=0,
+        chunk_key_encoding={"name": "v2", "separator": "."},
+        filters=[TransposeCodec(order=order_from_dim(store_order, data.ndim))],
+        config={"order": runtime_write_order},
+    )
 
     await _AsyncArrayProxy(a)[:, :].set(data)
     read_data = await _AsyncArrayProxy(a)[:, :].get()
@@ -131,16 +124,15 @@ def test_order_implicit(
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16), order=input_order)
     path = "order_implicit"
     spath = StorePath(store, path)
-    codecs_: list[Codec] | None = [ShardingCodec(chunk_shape=(8, 8))] if with_sharding else None
 
     with config.set({"array.order": runtime_write_order}):
-        a = Array.create(
+        a = zarr.create_array(
             spath,
             shape=data.shape,
-            chunk_shape=(16, 16),
+            chunks=(8, 8) if with_sharding else (16, 16),
+            shards=(16, 16) if with_sharding else None,
             dtype=data.dtype,
             fill_value=0,
-            codecs=codecs_,
         )
 
     a[:, :] = data
@@ -161,10 +153,10 @@ def test_order_implicit(
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_open(store: Store) -> None:
     spath = StorePath(store)
-    a = Array.create(
+    a = zarr.create_array(
         spath,
         shape=(16, 16),
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype="int32",
         fill_value=0,
     )
@@ -228,10 +220,10 @@ def test_morton2(shape) -> None:
 def test_write_partial_chunks(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
     spath = StorePath(store)
-    a = Array.create(
+    a = zarr.create_array(
         spath,
         shape=data.shape,
-        chunk_shape=(20, 20),
+        chunks=(20, 20),
         dtype=data.dtype,
         fill_value=1,
     )
@@ -244,10 +236,10 @@ async def test_delete_empty_chunks(store: Store) -> None:
     data = np.ones((16, 16))
     path = "delete_empty_chunks"
     spath = StorePath(store, path)
-    a = await AsyncArray.create(
+    a = await zarr.api.asynchronous.create_array(
         spath,
         shape=data.shape,
-        chunk_shape=(32, 32),
+        chunks=(32, 32),
         dtype=data.dtype,
         fill_value=1,
     )
@@ -262,25 +254,25 @@ async def test_dimension_names(store: Store) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
     path = "dimension_names"
     spath = StorePath(store, path)
-    await AsyncArray.create(
+    await zarr.api.asynchronous.create_array(
         spath,
         shape=data.shape,
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype=data.dtype,
         fill_value=0,
         dimension_names=("x", "y"),
     )
 
-    assert (await AsyncArray.open(spath)).metadata.dimension_names == (
+    assert (await zarr.api.asynchronous.open_array(store=spath)).metadata.dimension_names == (
         "x",
         "y",
     )
     path2 = "dimension_names2"
     spath2 = StorePath(store, path2)
-    await AsyncArray.create(
+    await zarr.api.asynchronous.create_array(
         spath2,
         shape=data.shape,
-        chunk_shape=(16, 16),
+        chunks=(16, 16),
         dtype=data.dtype,
         fill_value=0,
     )
@@ -293,7 +285,7 @@ async def test_dimension_names(store: Store) -> None:
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_invalid_metadata(store: Store) -> None:
-    spath2 = StorePath(store, "invalid_endian")
+    spath2 = StorePath(store, "invalid_codec_order")
     with pytest.raises(TypeError):
         Array.create(
             spath2,
@@ -302,7 +294,7 @@ def test_invalid_metadata(store: Store) -> None:
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
-                BytesCodec(endian="big"),
+                BytesCodec(),
                 TransposeCodec(order=order_from_dim("F", 2)),
             ],
         )
@@ -315,8 +307,8 @@ def test_invalid_metadata(store: Store) -> None:
             dtype=np.dtype("uint8"),
             fill_value=0,
             codecs=[
-                BytesCodec(),
                 TransposeCodec(order="F"),  # type: ignore[arg-type]
+                BytesCodec(),
             ],
         )
     spath4 = StorePath(store, "invalid_missing_bytes_codec")
@@ -371,16 +363,33 @@ def test_invalid_metadata(store: Store) -> None:
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_invalid_metadata_create_array(store: Store) -> None:
+    spath = StorePath(store, "warning_inefficient_codecs")
+    with pytest.warns(UserWarning):
+        zarr.create_array(
+            spath,
+            shape=(16, 16),
+            chunks=(16, 16),
+            dtype=np.dtype("uint8"),
+            fill_value=0,
+            serializer=ShardingCodec(chunk_shape=(8, 8)),
+            compressors=[
+                GzipCodec(),
+            ],
+        )
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 async def test_resize(store: Store) -> None:
     data = np.zeros((16, 18), dtype="uint16")
     path = "resize"
     spath = StorePath(store, path)
-    a = await AsyncArray.create(
+    a = await zarr.api.asynchronous.create_array(
         spath,
         shape=data.shape,
-        chunk_shape=(10, 10),
+        chunks=(10, 10),
         dtype=data.dtype,
-        chunk_key_encoding=("v2", "."),
+        chunk_key_encoding={"name": "v2", "separator": "."},
         fill_value=1,
     )
 

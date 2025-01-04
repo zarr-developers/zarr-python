@@ -1,11 +1,10 @@
-.. ipython::
-   :suppress:
+.. only:: doctest
 
-   In [999]: rm -r data/
-
-   In [999]: import numpy as np
-
-   In [999]: np.random.seed(0)
+   >>> import shutil
+   >>> shutil.rmtree('data', ignore_errors=True)
+   >>>
+   >>> import numpy as np
+   >>> np.random.seed(0)
 
 Quickstart
 ==========
@@ -20,7 +19,7 @@ large-scale data.
 Installation
 ------------
 
-Zarr requires Python 3.10 or higher. You can install it via `pip`:
+Zarr requires Python 3.11 or higher. You can install it via `pip`:
 
 .. code-block:: bash
 
@@ -35,24 +34,32 @@ or `conda`:
 Creating an Array
 -----------------
 
-To get started, you can create a simple Zarr array:
+To get started, you can create a simple Zarr array::
 
-.. ipython:: python
-
-    import zarr
-    import numpy as np
-
-    # Create a 2D Zarr array
-    z = zarr.zeros(
-        store="data/example-1.zarr",
-        shape=(100, 100),
-        chunks=(10, 10),
-        dtype="f4"
-    )
-
-    # Assign data to the array
-    z[:, :] = np.random.random((100, 100))
-    z.info
+    >>> import zarr
+    >>> import numpy as np
+    >>>
+    >>> # Create a 2D Zarr array
+    >>> z = zarr.create_array(
+    ...    store="data/example-1.zarr",
+    ...    shape=(100, 100),
+    ...    chunks=(10, 10),
+    ...    dtype="f4"
+    ... )
+    >>>
+    >>> # Assign data to the array
+    >>> z[:, :] = np.random.random((100, 100))
+    >>> z.info
+    Type               : Array
+    Zarr format        : 3
+    Data type          : DataType.float32
+    Shape              : (100, 100)
+    Chunk shape        : (10, 10)
+    Order              : C
+    Read-only          : False
+    Store type         : LocalStore
+    Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+    No. bytes          : 40000 (39.1K)
 
 Here, we created a 2D array of shape ``(100, 100)``, chunked into blocks of
 ``(10, 10)``, and filled it with random floating-point data. This array was
@@ -61,46 +68,53 @@ written to a ``LocalStore`` in the ``data/example-1.zarr`` directory.
 Compression and Filters
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-Zarr supports data compression and filters. For example, to use Blosc compression:
+Zarr supports data compression and filters. For example, to use Blosc compression::
 
-.. ipython:: python
-
-    from numcodecs import Blosc
-
-    z = zarr.open(
-        "data/example-3.zarr",
-        mode="w", shape=(100, 100),
-        chunks=(10, 10), dtype="f4",
-        compressor=Blosc(cname="zstd", clevel=3, shuffle=Blosc.SHUFFLE),
-        zarr_format=2
-    )
-    z[:, :] = np.random.random((100, 100))
-
-    z.info
+    >>> z = zarr.create_array(
+    ...    "data/example-3.zarr",
+    ...    mode="w", shape=(100, 100),
+    ...    chunks=(10, 10), dtype="f4",
+    ...    compressor=zarr.codecs.BloscCodec(cname="zstd", clevel=3, shuffle=zarr.codecs.BloscShuffle.SHUFFLE)
+    ... )
+    >>> z[:, :] = np.random.random((100, 100))
+    >>>
+    >>> z.info
+    Type               : Array
+    Zarr format        : 3
+    Data type          : DataType.float32
+    Shape              : (100, 100)
+    Chunk shape        : (10, 10)
+    Order              : C
+    Read-only          : False
+    Store type         : LocalStore
+    Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+    No. bytes          : 40000 (39.1K)
 
 This compresses the data using the Zstandard codec with shuffle enabled for better compression.
 
 Hierarchical Groups
 -------------------
 
-Zarr allows you to create hierarchical groups, similar to directories:
+Zarr allows you to create hierarchical groups, similar to directories::
 
-.. ipython:: python
-
-    # Create nested groups and add arrays
-    root = zarr.group("data/example-2.zarr")
-    foo = root.create_group(name="foo")
-    bar = root.create_array(
-        name="bar", shape=(100, 10), chunks=(10, 10)
-    )
-    spam = foo.create_array(name="spam", shape=(10,), dtype="i4")
-
-    # Assign values
-    bar[:, :] = np.random.random((100, 10))
-    spam[:] = np.arange(10)
-
-    # print the hierarchy
-    root.tree()
+    >>> # Create nested groups and add arrays
+    >>> root = zarr.group("data/example-2.zarr")
+    >>> foo = root.create_group(name="foo")
+    >>> bar = root.create_array(
+    ...     name="bar", shape=(100, 10), chunks=(10, 10)
+    ... )
+    >>> spam = foo.create_array(name="spam", shape=(10,), dtype="i4")
+    >>>
+    >>> # Assign values
+    >>> bar[:, :] = np.random.random((100, 10))
+    >>> spam[:] = np.arange(10)
+    >>>
+    >>> # print the hierarchy
+    >>> root.tree()
+    /
+    └── foo
+        └── spam (10,) int32
+    <BLANKLINE>
 
 This creates a group with two datasets: ``foo`` and ``bar``.
 
@@ -108,58 +122,60 @@ Persistent Storage
 ------------------
 
 Zarr supports persistent storage to disk or cloud-compatible backends. While examples above
-utilized a :class:`zarr.storage.LocalStore`, a number of other storage options are available,
-including the :class:`zarr.storage.ZipStore` and :class:`zarr.storage.FsspecStore`.
+utilized a :class:`zarr.storage.LocalStore`, a number of other storage options are available.
 
-.. ipython:: python
-
-    # Store the array in a ZIP file
-    store = zarr.storage.ZipStore("data/example-3.zip", mode='w')
-
-    z = zarr.open(
-        store=store,
-        mode="w",
-        shape=(100, 100),
-        chunks=(10, 10),
-        dtype="f4"
-    )
-
-    # write to the array
-    z[:, :] = np.random.random((100, 100))
-
-    # the ZipStore must be explicitly closed
-    store.close()
-
-To open an existing array:
-
-.. ipython:: python
-
-    # Open the ZipStore in read-only mode
-    store = zarr.storage.ZipStore("data/example-3.zip", read_only=True)
-
-    z = zarr.open(store, mode='r')
-
-    # read the data as a NumPy Array
-    z[:]
-
-Cloud Storage Backends
-~~~~~~~~~~~~~~~~~~~~~~
-
-Zarr integrates seamlessly with cloud storage such as Amazon S3 and Google Cloud Storage
+Zarr integrates seamlessly with cloud object storage such as Amazon S3 and Google Cloud Storage
 using external libraries like `s3fs <https://s3fs.readthedocs.io>`_ or
-`gcsfs <https://gcsfs.readthedocs.io>`_.
+`gcsfs <https://gcsfs.readthedocs.io>`_::
 
-For example, to use S3:
+    >>> import s3fs # doctest: +SKIP
+    >>>
+    >>> z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10)) # doctest: +SKIP
+    >>> z[:, :] = np.random.random((100, 100)) # doctest: +SKIP
 
-.. ipython:: python
-   :verbatim:
+A single-file store can also be created using the the :class:`zarr.storage.ZipStore`::
 
-    import s3fs
+    >>> # Store the array in a ZIP file
+    >>> store = zarr.storage.ZipStore("data/example-3.zip", mode='w')
+    >>>
+    >>> z = zarr.create_array(
+    ...     store=store,
+    ...     mode="w",
+    ...     shape=(100, 100),
+    ...     chunks=(10, 10),
+    ...     dtype="f4"
+    ... )
+    >>>
+    >>> # write to the array
+    >>> z[:, :] = np.random.random((100, 100))
+    >>>
+    >>> # the ZipStore must be explicitly closed
+    >>> store.close()
 
-    z = zarr.open("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10))
-    z[:, :] = np.random.random((100, 100))
+To open an existing array from a ZIP file::
 
-Read more about Zarr's :ref:`tutorial_storage` options in the User Guide.
+    >>> # Open the ZipStore in read-only mode
+    >>> store = zarr.storage.ZipStore("data/example-3.zip", read_only=True)
+    >>>
+    >>> z = zarr.open_array(store, mode='r')
+    >>>
+    >>> # read the data as a NumPy Array
+    >>> z[:]
+    array([[0.66734236, 0.15667458, 0.98720884, ..., 0.36229587, 0.67443246,
+            0.34315267],
+        [0.65787303, 0.9544212 , 0.4830079 , ..., 0.33097172, 0.60423803,
+            0.45621237],
+        [0.27632037, 0.9947008 , 0.42434934, ..., 0.94860053, 0.6226942 ,
+            0.6386924 ],
+        ...,
+        [0.12854576, 0.934397  , 0.19524333, ..., 0.11838563, 0.4967675 ,
+            0.43074256],
+        [0.82029045, 0.4671437 , 0.8090906 , ..., 0.7814118 , 0.42650765,
+            0.95929915],
+        [0.4335856 , 0.7565437 , 0.7828931 , ..., 0.48119593, 0.66220033,
+            0.6652362 ]], shape=(100, 100), dtype=float32)
+
+Read more about Zarr's storage options  in the :ref:`User Guide <user-guide-storage>`.
 
 Next Steps
 ----------

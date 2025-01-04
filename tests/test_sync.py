@@ -14,7 +14,7 @@ from zarr.core.sync import (
     cleanup_resources,
     sync,
 )
-from zarr.storage.memory import MemoryStore
+from zarr.storage import MemoryStore
 
 
 @pytest.fixture(params=[True, False])
