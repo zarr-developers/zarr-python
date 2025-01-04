@@ -1,4 +1,4 @@
-from zarr.core.buffer.core import (
+from zarr.core.buffer._core import (
     ArrayLike,
     Buffer,
     BufferPrototype,

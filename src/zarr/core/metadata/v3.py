@@ -4,7 +4,7 @@ import warnings
 from typing import TYPE_CHECKING, TypedDict, overload
 
 from zarr.abc.metadata import Metadata
-from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.buffer._core import default_buffer_prototype
 
 if TYPE_CHECKING:
     from typing import Self

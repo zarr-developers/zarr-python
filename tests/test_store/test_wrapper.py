@@ -9,7 +9,7 @@ from zarr.storage import WrapperStore
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
-    from zarr.core.buffer.core import BufferPrototype
+    from zarr.core.buffer import BufferPrototype
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)

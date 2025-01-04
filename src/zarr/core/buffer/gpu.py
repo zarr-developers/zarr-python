@@ -11,8 +11,8 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.buffer import core
-from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
+import zarr.core.buffer
+from zarr.core.buffer import ArrayLike, BufferPrototype, NDArrayLike
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -26,7 +26,7 @@ except ImportError:
     cp = None
 
 
-class Buffer(core.Buffer):
+class Buffer(zarr.core.buffer.Buffer):
     """A flat contiguous memory block on the GPU
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
@@ -83,7 +83,7 @@ class Buffer(core.Buffer):
         return cls(cp.array([], dtype="b"))
 
     @classmethod
-    def from_buffer(cls, buffer: core.Buffer) -> Self:
+    def from_buffer(cls, buffer: zarr.core.buffer.Buffer) -> Self:
         """Create an GPU Buffer given an arbitrary Buffer
         This will try to be zero-copy if `buffer` is already on the
         GPU and will trigger a copy if not.
@@ -101,7 +101,7 @@ class Buffer(core.Buffer):
     def as_numpy_array(self) -> npt.NDArray[Any]:
         return cast(npt.NDArray[Any], cp.asnumpy(self._data))
 
-    def __add__(self, other: core.Buffer) -> Self:
+    def __add__(self, other: zarr.core.buffer.Buffer) -> Self:
         other_array = other.as_array_like()
         assert other_array.dtype == np.dtype("b")
         gpu_other = Buffer(other_array)
@@ -111,7 +111,7 @@ class Buffer(core.Buffer):
         )
 
 
-class NDBuffer(core.NDBuffer):
+class NDBuffer(zarr.core.buffer.NDBuffer):
     """A n-dimensional memory block on the GPU
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
@@ -208,7 +208,7 @@ class NDBuffer(core.NDBuffer):
     def __setitem__(self, key: Any, value: Any) -> None:
         if isinstance(value, NDBuffer):
             value = value._data
-        elif isinstance(value, core.NDBuffer):
+        elif isinstance(value, zarr.core.buffer.NDBuffer):
             gpu_value = NDBuffer(value.as_ndarray_like())
             value = gpu_value._data
         self._data.__setitem__(key, value)
