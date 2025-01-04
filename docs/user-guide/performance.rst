@@ -69,14 +69,14 @@ Sharding
 If you have large arrays but need small chunks to efficiently access the data, you can
 use sharding. Sharding provides a mechanism to store multiple chunks in a single
 storage object or file. This can be useful because traditional file systems and object
-storage systems may have issues with many small files.
+storage systems may have issues storing and accessing many files.
 
 Picking a good combination of chunk shape and shard shape is important for performance.
 The chunk shape determines what unit of your data can be read independently, while the
 shard shape determines what unit of your data can be written efficiently.
 
 For an example, consider you have a 100 GB array and need to read small chunks of 1 MB.
-Without sharding, each chunk would be one file resulting in 10000 files. That can
+Without sharding, each chunk would be one file resulting in 100,000 files. That can
 already cause performance issues on some file systems.
 With sharding, you could use a shard size of 1 GB. This would result in 1000 chunks per
 file and 100 files in total, which seems manageable for most storage systems.

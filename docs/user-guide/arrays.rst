@@ -580,8 +580,8 @@ With Zarr format 3, a new sharding feature has been added to address this issue.
 
 With sharding, multiple chunks can be stored in a single storage object (e.g. a file).
 Within a shard, chunks are compressed and serialized separately.
-This allows to read individual chunks independently.
-However, when writing data, a full shard must be written for optimal performance and to
+This allows individual chunks to be read independently.
+However, when writing data, a full shard must be written in one go for optimal performance and to
 avoid concurrency issues.
 That means that shards are the units of writing and chunks are the units of reading.
 Users need to configure the chunk and shard shapes accordingly.
@@ -607,7 +607,7 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   Chunks Initialized : 100
 
 In this example a shard shape of (1000, 1000) and a chunk shape of (100, 100) is used.
-This means that 10*10 chunks are stored in each shard.
+This means that 10*10 chunks are stored in each shard, and there are 10*10 shards in total.
 
 Missing features in 3.0
 -----------------------
