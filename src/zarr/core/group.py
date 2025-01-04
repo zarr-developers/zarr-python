@@ -50,8 +50,8 @@ from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import V3JsonEncoder
 from zarr.core.sync import SyncMixin, sync
 from zarr.errors import MetadataValidationError
-from zarr.storage import StoreLike, make_store_path
-from zarr.storage.common import StorePath, ensure_no_existing_node
+from zarr.storage import StoreLike, StorePath, make_store_path
+from zarr.storage._common import ensure_no_existing_node
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable, Iterator

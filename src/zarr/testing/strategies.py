@@ -11,7 +11,7 @@ from zarr.core.array import Array
 from zarr.core.common import ZarrFormat
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
-from zarr.storage.common import _dereference_path
+from zarr.storage._common import _dereference_path
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)
