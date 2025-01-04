@@ -80,8 +80,8 @@ class ArrayInfo:
     _zarr_format: ZarrFormat
     _data_type: np.dtype[Any] | DataType
     _shape: tuple[int, ...]
-    _chunk_shape: tuple[int, ...] | None = None
     _shard_shape: tuple[int, ...] | None = None
+    _chunk_shape: tuple[int, ...] | None = None
     _order: Literal["C", "F"]
     _read_only: bool
     _store_type: str
@@ -97,14 +97,14 @@ class ArrayInfo:
         Type               : {_type}
         Zarr format        : {_zarr_format}
         Data type          : {_data_type}
-        Shape              : {_shape}
-        Chunk shape        : {_chunk_shape}""")
+        Shape              : {_shape}""")
 
         if self._shard_shape is not None:
             template += textwrap.dedent("""
         Shard shape        : {_shard_shape}""")
 
         template += textwrap.dedent("""
+        Chunk shape        : {_chunk_shape}
         Order              : {_order}
         Read-only          : {_read_only}
         Store type         : {_store_type}""")

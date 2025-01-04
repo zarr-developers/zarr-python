@@ -595,8 +595,8 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   Zarr format        : 3
   Data type          : DataType.uint8
   Shape              : (10000, 10000)
-  Chunk shape        : (100, 100)
   Shard shape        : (1000, 1000)
+  Chunk shape        : (100, 100)
   Order              : C
   Read-only          : False
   Store type         : LocalStore
