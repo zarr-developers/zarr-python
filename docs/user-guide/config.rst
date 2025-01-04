@@ -1,17 +1,21 @@
-.. _config:
+.. _user-guide-config:
 
 Runtime configuration
 =====================
 
-The :mod:`zarr.core.config` module is responsible for managing the configuration of zarr
-and is based on the `donfig <https://github.com/pytroll/donfig>`_ Python library.
+:mod:`zarr.config <zarr.core.config>` is responsible for managing the configuration of zarr and
+is based on the `donfig <https://github.com/pytroll/donfig>`_ Python library.
 
-Configuration values can be set using code like the following:
+Configuration values can be set using code like the following::
 
-.. code-block:: python
-
-    import zarr
-    zarr.config.set({"array.order": "F"})
+   >>> import zarr
+   >>>
+   >>> zarr.config.set({'array.order': 'F'})
+   <donfig.config_obj.ConfigSet object at ...>
+   >>>
+   >>> # revert this change so it doesn't impact the rest of the docs
+   >>> zarr.config.set({'array.order': 'C'})
+   <donfig.config_obj.ConfigSet object at ...>
 
 Alternatively, configuration values can be set using environment variables, e.g.
 ``ZARR_ARRAY__ORDER=F``.
@@ -31,13 +35,54 @@ Configuration options include the following:
 
 For selecting custom implementations of codecs, pipelines, buffers and ndbuffers,
 first register the implementations in the registry and then select them in the config.
-For example, an implementation of the bytes codec in a class "custompackage.NewBytesCodec",
-requires the value of ``codecs.bytes.name`` to be "custompackage.NewBytesCodec".
+For example, an implementation of the bytes codec in a class ``'custompackage.NewBytesCodec'``,
+requires the value of ``codecs.bytes.name`` to be ``'custompackage.NewBytesCodec'``.
 
-This is the current default configuration:
+This is the current default configuration::
 
-.. ipython:: python
-
-    import zarr
-
-    zarr.config.pprint()
+   >>> zarr.config.pprint()
+   {'array': {'order': 'C',
+              'v2_default_compressor': {'bytes': {'checksum': False,
+                                                  'id': 'zstd',
+                                                  'level': 0},
+                                        'numeric': {'checksum': False,
+                                                    'id': 'zstd',
+                                                    'level': 0},
+                                        'string': {'checksum': False,
+                                                   'id': 'zstd',
+                                                   'level': 0}},
+              'v2_default_filters': {'bytes': [{'id': 'vlen-bytes'}],
+                                     'numeric': None,
+                                     'string': [{'id': 'vlen-utf8'}]},
+              'v3_default_codecs': {'bytes': [{'name': 'vlen-bytes'},
+                                              {'configuration': {'checksum': False,
+                                                                 'level': 0},
+                                               'name': 'zstd'}],
+                                    'numeric': [{'configuration': {'endian': 'little'},
+                                                 'name': 'bytes'},
+                                                {'configuration': {'checksum': False,
+                                                                   'level': 0},
+                                                 'name': 'zstd'}],
+                                    'string': [{'name': 'vlen-utf8'},
+                                               {'configuration': {'checksum': False,
+                                                                  'level': 0},
+                                                'name': 'zstd'}]},
+              'write_empty_chunks': False},
+    'async': {'concurrency': 10, 'timeout': None},
+    'buffer': 'zarr.core.buffer.cpu.Buffer',
+    'codec_pipeline': {'batch_size': 1,
+                       'path': 'zarr.core.codec_pipeline.BatchedCodecPipeline'},
+    'codecs': {'blosc': 'zarr.codecs.blosc.BloscCodec',
+               'bytes': 'zarr.codecs.bytes.BytesCodec',
+               'crc32c': 'zarr.codecs.crc32c_.Crc32cCodec',
+               'endian': 'zarr.codecs.bytes.BytesCodec',
+               'gzip': 'zarr.codecs.gzip.GzipCodec',
+               'sharding_indexed': 'zarr.codecs.sharding.ShardingCodec',
+               'transpose': 'zarr.codecs.transpose.TransposeCodec',
+               'vlen-bytes': 'zarr.codecs.vlen_utf8.VLenBytesCodec',
+               'vlen-utf8': 'zarr.codecs.vlen_utf8.VLenUTF8Codec',
+               'zstd': 'zarr.codecs.zstd.ZstdCodec'},
+    'default_zarr_format': 3,
+    'json_indent': 2,
+    'ndbuffer': 'zarr.core.buffer.cpu.NDBuffer',
+    'threading': {'max_workers': None}}

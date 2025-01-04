@@ -6,6 +6,8 @@ from enum import Enum
 from functools import cached_property
 from typing import TYPE_CHECKING, TypedDict, cast
 
+import numcodecs.abc
+
 from zarr.abc.metadata import Metadata
 
 if TYPE_CHECKING:
@@ -14,7 +16,7 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import JSON, ChunkCoords
+    from zarr.core.common import ChunkCoords
 
 import json
 from dataclasses import dataclass, field, fields, replace
@@ -25,7 +27,7 @@ import numpy as np
 from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
-from zarr.core.common import ZARRAY_JSON, ZATTRS_JSON, MemoryOrder, parse_shapelike
+from zarr.core.common import JSON, ZARRAY_JSON, ZATTRS_JSON, MemoryOrder, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
 from zarr.core.metadata.common import parse_attributes
 
@@ -42,7 +44,7 @@ class ArrayV2MetadataDict(TypedDict):
 @dataclass(frozen=True, kw_only=True)
 class ArrayV2Metadata(Metadata):
     shape: ChunkCoords
-    chunks: tuple[int, ...]
+    chunks: ChunkCoords
     dtype: np.dtype[Any]
     fill_value: int | float | str | bytes | None = 0
     order: MemoryOrder = "C"
@@ -99,6 +101,10 @@ class ArrayV2Metadata(Metadata):
     @cached_property
     def chunk_grid(self) -> RegularChunkGrid:
         return RegularChunkGrid(chunk_shape=self.chunks)
+
+    @property
+    def shards(self) -> ChunkCoords | None:
+        return None
 
     def to_buffer_dict(self, prototype: BufferPrototype) -> dict[str, Buffer]:
         def _json_convert(
@@ -235,6 +241,9 @@ def parse_filters(data: object) -> tuple[numcodecs.abc.Codec, ...] | None:
                 msg = f"Invalid filter at index {idx}. Expected a numcodecs.abc.Codec or a dict representation of numcodecs.abc.Codec. Got {type(val)} instead."
                 raise TypeError(msg)
         return tuple(out)
+    # take a single codec instance and wrap it in a tuple
+    if isinstance(data, numcodecs.abc.Codec):
+        return (data,)
     msg = f"Invalid filters. Expected None, an iterable of numcodecs.abc.Codec or dict representations of numcodecs.abc.Codec. Got {type(data)} instead."
     raise TypeError(msg)
 
@@ -329,9 +338,9 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
         return dtype.type(0)
 
 
-def _default_filters_and_compressor(
+def _default_compressor(
     dtype: np.dtype[Any],
-) -> tuple[list[dict[str, JSON]], dict[str, JSON] | None]:
+) -> dict[str, JSON] | None:
     """Get the default filters and compressor for a dtype.
 
     https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
@@ -346,4 +355,24 @@ def _default_filters_and_compressor(
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
-    return [{"id": default_compressor[dtype_key]}], None
+    return cast(dict[str, JSON] | None, default_compressor.get(dtype_key, None))
+
+
+def _default_filters(
+    dtype: np.dtype[Any],
+) -> list[dict[str, JSON]] | None:
+    """Get the default filters and compressor for a dtype.
+
+    https://numpy.org/doc/2.1/reference/generated/numpy.dtype.kind.html
+    """
+    default_filters = config.get("array.v2_default_filters")
+    if dtype.kind in "biufcmM":
+        dtype_key = "numeric"
+    elif dtype.kind in "U":
+        dtype_key = "string"
+    elif dtype.kind in "OSV":
+        dtype_key = "bytes"
+    else:
+        raise ValueError(f"Unsupported dtype kind {dtype.kind}")
+
+    return cast(list[dict[str, JSON]] | None, default_filters.get(dtype_key, None))
