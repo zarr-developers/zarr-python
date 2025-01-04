@@ -69,7 +69,9 @@ Sharding
 If you have large arrays but need small chunks to efficiently access the data, you can
 use sharding. Sharding provides a mechanism to store multiple chunks in a single
 storage object or file. This can be useful because traditional file systems and object
-storage systems may have issues storing and accessing many files.
+storage systems may have performance issues storing and accessing many files.
+Additionally, small files can be inefficient to store if they are smaller than the
+block size of the file system.
 
 Picking a good combination of chunk shape and shard shape is important for performance.
 The chunk shape determines what unit of your data can be read independently, while the
