@@ -574,8 +574,40 @@ Any combination of integer and slice can be used for block indexing::
 Sharding
 --------
 
-Coming soon.
+Using small chunk shapes in very large arrays can lead to a very large number of chunks.
+This can become a performance issue for file systems and object storage.
+With Zarr format 3, a new sharding feature has been added to address this issue.
 
+With sharding, multiple chunks can be stored in a single storage object (e.g. a file).
+Within a shard, chunks are compressed and serialized separately.
+This allows to read individual chunks independently.
+However, when writing data, a full shard must be written for optimal performance and to
+avoid concurrency issues.
+That means that shards are the units of writing and chunks are the units of reading.
+Users need to configure the chunk and shard shapes accordingly.
+
+Sharded arrays can be created by providing the ``shards`` parameter to :func:`zarr.create_array`.
+
+  >>> a = zarr.create_array('data/example-20.zarr', shape=(10000, 10000), shards=(1000, 1000), chunks=(100, 100), dtype='uint8')
+  >>> a[:] = (np.arange(10000 * 10000) % 256).astype('uint8').reshape(10000, 10000)
+  >>> a.info_complete()
+  Type               : Array
+  Zarr format        : 3
+  Data type          : DataType.uint8
+  Shape              : (10000, 10000)
+  Chunk shape        : (100, 100)
+  Shard shape        : (1000, 1000)
+  Order              : C
+  Read-only          : False
+  Store type         : LocalStore
+  Codecs             : [{'chunk_shape': (100, 100), 'codecs': ({'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}), 'index_codecs': ({'endian': <Endian.little: 'little'>}, {}), 'index_location': <ShardingCodecIndexLocation.end: 'end'>}]
+  No. bytes          : 100000000 (95.4M)
+  No. bytes stored   : 3981060
+  Storage ratio      : 25.1
+  Chunks Initialized : 100
+
+In this example a shard shape of (1000, 1000) and a chunk shape of (100, 100) is used.
+This means that 10*10 chunks are stored in each shard.
 
 Missing features in 3.0
 -----------------------
