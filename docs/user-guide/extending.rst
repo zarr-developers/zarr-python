@@ -10,7 +10,7 @@ Custom codecs
 -------------
 
 .. note::
-    This section explains how custom codecs can be created for Zarr format 3 data. For Zarr
+    This section explains how custom codecs can be created for Zarr format 3 arrays. For Zarr
     format 2, codecs should subclass the
     `numcodecs.abc.Codec <https://numcodecs.readthedocs.io/en/stable/abc.html#numcodecs.abc.Codec>`_
     base class and register through

@@ -511,7 +511,7 @@ def open_group(
         To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
         which will fall back to using the regular, non consolidated metadata.
 
-        Zarr format 2 allowed configuring the key storing the consolidated metadata
+        Zarr format 2 allows configuring the key storing the consolidated metadata
         (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
         to load consolidated metadata from a non-default key.
 
@@ -804,7 +804,7 @@ def create_array(
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified).
 
-        For Zarr format 3, a "compressor" is a codec that takes a bytestrea, and
+        For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
         returns another bytestream. Multiple compressors my be provided for Zarr format 3.
         If ``filters`` and ``compressors`` are not specified, then the default codecs for
         Zarr format 3 will be used.
