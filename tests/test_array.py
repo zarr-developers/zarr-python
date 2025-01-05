@@ -20,7 +20,6 @@ from zarr.codecs import (
     VLenUTF8Codec,
     ZstdCodec,
 )
-from zarr.codecs.sharding import ShardingCodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     CompressorsLike,
@@ -494,7 +493,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressor=numcodecs.Zstd(),
+            _compressors=(numcodecs.Zstd(),),
         )
         assert result == expected
 
@@ -510,9 +509,8 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=(BytesCodec(), ZstdCodec())
-            if shards is None
-            else (ShardingCodec(chunk_shape=chunks, codecs=[BytesCodec(), ZstdCodec()]),),
+            _compressors=(ZstdCodec(),),
+            _serializer=BytesCodec(),
             _count_bytes=512,
         )
         assert result == expected
@@ -536,7 +534,7 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=(BytesCodec(),) if shards is None else (ShardingCodec(chunk_shape=chunks),),
+            _serializer=BytesCodec(),
             _count_bytes=512,
             _count_chunks_initialized=0,
             _count_bytes_stored=373 if shards is None else 578,  # the metadata?
@@ -572,7 +570,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressor=numcodecs.Zstd(),
+            _compressors=(numcodecs.Zstd(),),
         )
         assert result == expected
 
@@ -596,9 +594,8 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=(BytesCodec(), ZstdCodec())
-            if shards is None
-            else (ShardingCodec(chunk_shape=chunks, codecs=[BytesCodec(), ZstdCodec()]),),
+            _compressors=(ZstdCodec(),),
+            _serializer=BytesCodec(),
             _count_bytes=512,
         )
         assert result == expected
@@ -624,7 +621,7 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=(BytesCodec(),) if shards is None else (ShardingCodec(chunk_shape=chunks),),
+            _serializer=BytesCodec(),
             _count_bytes=512,
             _count_chunks_initialized=0,
             _count_bytes_stored=373 if shards is None else 578,  # the metadata?
@@ -1125,8 +1122,14 @@ async def test_create_array_no_filters_compressors(
         ({"name": "transpose", "configuration": {"order": [0]}},),
     ],
 )
+@pytest.mark.parametrize(("chunks", "shards"), [((6,), None), ((3,), (6,))])
 async def test_create_array_v3_chunk_encoding(
-    store: MemoryStore, compressors: CompressorsLike, filters: FiltersLike, dtype: str
+    store: MemoryStore,
+    compressors: CompressorsLike,
+    filters: FiltersLike,
+    dtype: str,
+    chunks: tuple[int, ...],
+    shards: tuple[int, ...] | None,
 ) -> None:
     """
     Test various possibilities for the compressors and filters parameter to create_array
@@ -1134,7 +1137,9 @@ async def test_create_array_v3_chunk_encoding(
     arr = await create_array(
         store=store,
         dtype=dtype,
-        shape=(10,),
+        shape=(12,),
+        chunks=chunks,
+        shards=shards,
         zarr_format=3,
         filters=filters,
         compressors=compressors,

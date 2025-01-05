@@ -924,7 +924,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 return ()
             return filters
 
-        return tuple(codec for codec in self.metadata.codecs if isinstance(codec, ArrayArrayCodec))
+        return tuple(
+            codec for codec in self.metadata.inner_codecs if isinstance(codec, ArrayArrayCodec)
+        )
 
     @property
     def serializer(self) -> ArrayBytesCodec | None:
@@ -934,7 +936,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         if self.metadata.zarr_format == 2:
             return None
 
-        return next(codec for codec in self.metadata.codecs if isinstance(codec, ArrayBytesCodec))
+        return next(
+            codec for codec in self.metadata.inner_codecs if isinstance(codec, ArrayBytesCodec)
+        )
 
     @property
     @deprecated("Use AsyncArray.compressors instead.")
@@ -961,7 +965,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 return (self.metadata.compressor,)
             return ()
 
-        return tuple(codec for codec in self.metadata.codecs if isinstance(codec, BytesBytesCodec))
+        return tuple(
+            codec for codec in self.metadata.inner_codecs if isinstance(codec, BytesBytesCodec)
+        )
 
     @property
     def dtype(self) -> np.dtype[Any]:
@@ -1613,31 +1619,26 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
-        kwargs: dict[str, Any] = {}
-        if self.metadata.zarr_format == 2:
-            assert isinstance(self.metadata, ArrayV2Metadata)
-            if self.metadata.compressor is not None:
-                kwargs["_compressor"] = self.metadata.compressor
-            if self.metadata.filters is not None:
-                kwargs["_filters"] = self.metadata.filters
-            kwargs["_data_type"] = self.metadata.dtype
-            kwargs["_chunk_shape"] = self.metadata.chunks
+        _data_type: np.dtype[Any] | DataType
+        if isinstance(self.metadata, ArrayV2Metadata):
+            _data_type = self.metadata.dtype
         else:
-            kwargs["_codecs"] = self.metadata.codecs
-            kwargs["_data_type"] = self.metadata.data_type
-            kwargs["_chunk_shape"] = self.chunks
-            kwargs["_shard_shape"] = self.shards
-
+            _data_type = self.metadata.data_type
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
+            _data_type=_data_type,
             _shape=self.shape,
             _order=self.order,
+            _shard_shape=self.shards,
+            _chunk_shape=self.chunks,
             _read_only=self.read_only,
+            _compressors=self.compressors,
+            _filters=self.filters,
+            _serializer=self.serializer,
             _store_type=type(self.store_path.store).__name__,
             _count_bytes=self.nbytes,
             _count_bytes_stored=count_bytes_stored,
             _count_chunks_initialized=count_chunks_initialized,
-            **kwargs,
         )
 
 
