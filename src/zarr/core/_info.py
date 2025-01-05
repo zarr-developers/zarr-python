@@ -117,6 +117,7 @@ class ArrayInfo:
             kwargs["chunk_shape"] = "<variable>"
 
         template += "\nFilters            : {_filters}"
+
         if self._serializer is not None:
             template += "\nSerializer         : {_serializer}"
 
