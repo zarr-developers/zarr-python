@@ -109,6 +109,7 @@ property. E.g.::
    Order              : C
    Read-only          : False
    Store type         : MemoryStore
+   Filters            : ()
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 8000000 (7.6M)
@@ -124,6 +125,7 @@ property. E.g.::
    Order              : C
    Read-only          : False
    Store type         : MemoryStore
+   Filters            : ()
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 4000000 (3.8M)

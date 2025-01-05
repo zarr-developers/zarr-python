@@ -188,6 +188,7 @@ which can be used to print useful diagnostics, e.g.::
    Order              : C
    Read-only          : False
    Store type         : LocalStore
+   Filters            : ()
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
@@ -204,6 +205,7 @@ prints additional diagnostics, e.g.::
    Order              : C
    Read-only          : False
    Store type         : LocalStore
+   Filters            : ()
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
@@ -605,6 +607,7 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   Order              : C
   Read-only          : False
   Store type         : LocalStore
+  Filters            : ()
   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
   Compressors        : (ZstdCodec(level=0, checksum=False),)
   No. bytes          : 100000000 (95.4M)

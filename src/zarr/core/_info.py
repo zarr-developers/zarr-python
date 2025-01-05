@@ -116,12 +116,11 @@ class ArrayInfo:
             # for non-regular chunk grids
             kwargs["chunk_shape"] = "<variable>"
 
-        if len(self._filters) > 0:
-            template += "\nFilters            : {_filters}"
+        template += "\nFilters            : {_filters}"
         if self._serializer is not None:
             template += "\nSerializer         : {_serializer}"
-        if len(self._compressors) > 0:
-            template += "\nCompressors        : {_compressors}"
+
+        template += "\nCompressors        : {_compressors}"
 
         if self._count_bytes is not None:
             template += "\nNo. bytes          : {_count_bytes}"
