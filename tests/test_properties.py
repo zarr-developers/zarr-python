@@ -34,7 +34,7 @@ def test_basic_indexing(data: st.DataObject) -> None:
 
 @given(data=st.data())
 def test_vindex(data: st.DataObject) -> None:
-    zarray = data.draw(arrays())
+    zarray = data.draw(arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
     # integer_array_indices can't handle 0-size dimensions.
     assume(all(s > 0 for s in zarray.shape))
     nparray = zarray[:]
