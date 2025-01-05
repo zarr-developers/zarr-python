@@ -59,7 +59,7 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
         _order="C",
         _read_only=True,
         _store_type="MemoryStore",
-        _codecs=[BytesCodec()],
+        _codecs=(BytesCodec(),),
     )
     result = repr(info)
     assert result == textwrap.dedent(f"""\
@@ -71,7 +71,7 @@ def test_array_info(zarr_format: ZarrFormat) -> None:
         Order              : C
         Read-only          : True
         Store type         : MemoryStore
-        Codecs             : [{{'endian': <Endian.little: 'little'>}}]""")
+        Codecs             : ({{'endian': <Endian.little: 'little'>}},)""")
 
 
 @pytest.mark.parametrize("zarr_format", ZARR_FORMATS)
@@ -95,7 +95,7 @@ def test_array_info_complete(
         _order="C",
         _read_only=True,
         _store_type="MemoryStore",
-        _codecs=[BytesCodec()],
+        _codecs=(BytesCodec(),),
         _count_bytes=count_bytes,
         _count_bytes_stored=count_bytes_stored,
         _count_chunks_initialized=count_chunks_initialized,
@@ -110,7 +110,7 @@ def test_array_info_complete(
         Order              : C
         Read-only          : True
         Store type         : MemoryStore
-        Codecs             : [{{'endian': <Endian.little: 'little'>}}]
+        Codecs             : ({{'endian': <Endian.little: 'little'>}},)
         No. bytes          : {count_bytes} ({count_bytes_formatted})
         No. bytes stored   : {count_bytes_stored_formatted}
         Storage ratio      : {storage_ratio_formatted}

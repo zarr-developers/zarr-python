@@ -254,7 +254,7 @@ class ArrayV3Metadata(Metadata):
             config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
-        codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]
+        codecs_parsed = tuple(c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial)
         validate_codecs(codecs_parsed_partial, data_type_parsed)
 
         object.__setattr__(self, "shape", shape_parsed)

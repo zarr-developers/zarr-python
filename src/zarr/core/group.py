@@ -1065,7 +1065,7 @@ class AsyncGroup:
             Use ``None`` to omit default filters.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
-            filters are applied (if any are specified).
+            filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr v3, a "compressor" is a codec that takes a bytestrea, and
             returns another bytestream. Multiple compressors my be provided for Zarr v3.
@@ -2321,7 +2321,7 @@ class Group(SyncMixin):
             Use ``None`` to omit default filters.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
-            filters are applied (if any are specified).
+            filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr v3, a "compressor" is a codec that takes a bytestrea, and
             returns another bytestream. Multiple compressors my be provided for Zarr v3.
@@ -2710,7 +2710,7 @@ class Group(SyncMixin):
             Use ``None`` to omit default filters.
         compressors : Iterable[Codec], optional
             List of compressors to apply to the array. Compressors are applied in order, and after any
-            filters are applied (if any are specified).
+            filters are applied (if any are specified) and the data is serialized into bytes.
 
             For Zarr v3, a "compressor" is a codec that takes a bytestrea, and
             returns another bytestream. Multiple compressors my be provided for Zarr v3.
