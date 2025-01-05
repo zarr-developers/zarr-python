@@ -156,11 +156,11 @@ Dependencies
 When installing using ``pip``:
 
 - The new ``remote`` dependency group can be used to install a supported version of
-   ``fsspec``, required for remote data access.
+  ``fsspec``, required for remote data access.
 - The new ``gpu`` dependency group can be used to install a supported version of
-   ``cuda``, required for GPU functionality.
+  ``cuda``, required for GPU functionality.
 - The ``jupyter`` optional dependency group has been removed, since v3 contains no
-   jupyter specific functionality.
+  jupyter specific functionality.
 
 Miscellaneous
 ~~~~~~~~~~~~~
