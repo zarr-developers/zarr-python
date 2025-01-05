@@ -4098,8 +4098,6 @@ def _parse_chunk_encoding_v3(
     else:
         if isinstance(filters, dict | Codec):
             maybe_array_array = (filters,)
-        elif filters is None:
-            maybe_array_array = ()
         else:
             maybe_array_array = cast(Iterable[Codec | dict[str, JSON]], filters)
         out_array_array = tuple(_parse_array_array_codec(c) for c in maybe_array_array)
@@ -4111,15 +4109,11 @@ def _parse_chunk_encoding_v3(
 
     if compressors is None:
         out_bytes_bytes = ()
-
     elif compressors == "auto":
         out_bytes_bytes = default_bytes_bytes
-
     else:
         if isinstance(compressors, dict | Codec):
             maybe_bytes_bytes = (compressors,)
-        elif compressors is None:
-            maybe_bytes_bytes = ()
         else:
             maybe_bytes_bytes = cast(Iterable[Codec | dict[str, JSON]], compressors)
 
