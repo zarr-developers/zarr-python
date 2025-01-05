@@ -4086,16 +4086,13 @@ def _parse_chunk_encoding_v3(
     default_array_array, default_array_bytes, default_bytes_bytes = _get_default_chunk_encoding_v3(
         dtype
     )
-    maybe_bytes_bytes: Iterable[Codec | dict[str, JSON]]
-    maybe_array_array: Iterable[Codec | dict[str, JSON]]
-    out_bytes_bytes: tuple[BytesBytesCodec, ...]
 
-    out_array_array: tuple[ArrayArrayCodec, ...]
     if filters is None:
-        out_array_array = ()
+        out_array_array: tuple[ArrayArrayCodec, ...] = ()
     elif filters == "auto":
         out_array_array = default_array_array
     else:
+        maybe_array_array: Iterable[Codec | dict[str, JSON]]
         if isinstance(filters, dict | Codec):
             maybe_array_array = (filters,)
         else:
@@ -4108,10 +4105,11 @@ def _parse_chunk_encoding_v3(
         out_array_bytes = _parse_array_bytes_codec(serializer)
 
     if compressors is None:
-        out_bytes_bytes = ()
+        out_bytes_bytes: tuple[BytesBytesCodec, ...] = ()
     elif compressors == "auto":
         out_bytes_bytes = default_bytes_bytes
     else:
+        maybe_bytes_bytes: Iterable[Codec | dict[str, JSON]]
         if isinstance(compressors, dict | Codec):
             maybe_bytes_bytes = (compressors,)
         else:
