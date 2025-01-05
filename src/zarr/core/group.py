@@ -1067,7 +1067,7 @@ class AsyncGroup:
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified).
 
-            For Zarr format 3, a "compressor" is a codec that takes a bytestrea, and
+            For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
             returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If ``filters`` and ``compressors`` are not specified, then the default codecs for
             Zarr format 3 will be used.
@@ -2314,7 +2314,7 @@ class Group(SyncMixin):
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified).
 
-            For Zarr format 3, a "compressor" is a codec that takes a bytestrea, and
+            For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
             returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If ``filters`` and ``compressors`` are not specified, then the default codecs for
             Zarr format 3 will be used.
@@ -2699,7 +2699,7 @@ class Group(SyncMixin):
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified).
 
-            For Zarr format 3, a "compressor" is a codec that takes a bytestrea, and
+            For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
             returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If ``filters`` and ``compressors`` are not specified, then the default codecs for
             Zarr format 3 will be used.
