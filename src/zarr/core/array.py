@@ -469,7 +469,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
             - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
 
-            These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
+            These defaults can be changed by modifying the value of ``array.v3_default_filters``,
+            ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in :mod:`zarr.core.config`.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
             V3 only. V2 arrays should not use this parameter.
@@ -1715,7 +1716,8 @@ class Array:
             - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
             - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
 
-            These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
+            These defaults can be changed by modifying the value of ``array.v3_default_filters``,
+            ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in :mod:`zarr.core.config`.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
             V3 only. V2 arrays should not use this parameter.
@@ -3698,17 +3700,9 @@ def _build_parents(
 
 def _get_default_codecs(
     np_dtype: np.dtype[Any],
-) -> list[dict[str, JSON]]:
-    default_codecs = zarr_config.get("array.v3_default_codecs")
-    dtype = DataType.from_numpy(np_dtype)
-    if dtype == DataType.string:
-        dtype_key = "string"
-    elif dtype == DataType.bytes:
-        dtype_key = "bytes"
-    else:
-        dtype_key = "numeric"
-
-    return cast(list[dict[str, JSON]], default_codecs[dtype_key])
+) -> tuple[Codec, ...]:
+    filters, serializer, compressors = _get_default_chunk_encoding_v3(np_dtype)
+    return filters + (serializer,) + compressors
 
 
 FiltersLike: TypeAlias = (
@@ -3785,9 +3779,8 @@ async def create_array(
         For Zarr v3, a "filter" is a codec that takes an array and returns an array,
         and these values must be instances of ``ArrayArrayCodec``, or dict representations
         of ``ArrayArrayCodec``.
-        If ``filters`` and ``compressors`` are not specified, then the default codecs for
-        Zarr v3 will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_codecs``
+        If no ``filters`` are provided, a default set of filters will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_filters``
         in :mod:`zarr.core.config`.
         Use ``None`` to omit default filters.
 
@@ -3803,22 +3796,22 @@ async def create_array(
 
         For Zarr v3, a "compressor" is a codec that takes a bytestrea, and
         returns another bytestream. Multiple compressors my be provided for Zarr v3.
-        If ``filters`` and ``compressors`` are not specified, then the default codecs for
-        Zarr v3 will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_codecs``
+        If no ``compressors`` are provided, a default set of compressors will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_compressors``
         in :mod:`zarr.core.config`.
         Use ``None`` to omit default compressors.
 
         For Zarr v2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr v2.
-        If no ``compressors`` are provided, a default compressor will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_compressor``
+        If no ``compressor`` is provided, a default compressor will be used.
         in :mod:`zarr.core.config`.
         Use ``None`` to omit the default compressor.
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr v3 only. Zarr v2 arrays use implicit array-to-bytes conversion.
-        If no ``serializer`` is provided, the `zarr.codecs.BytesCodec` codec will be used.
+        If no ``serializer`` is provided, a default serializer will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_serializer``
+        in :mod:`zarr.core.config`.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
@@ -3997,7 +3990,6 @@ def _get_default_chunk_encoding_v3(
     """
     Get the default ArrayArrayCodecs, ArrayBytesCodec, and BytesBytesCodec for a given dtype.
     """
-    default_codecs = zarr_config.get("array.v3_default_codecs")
     dtype = DataType.from_numpy(np_dtype)
     if dtype == DataType.string:
         dtype_key = "string"
@@ -4006,31 +3998,34 @@ def _get_default_chunk_encoding_v3(
     else:
         dtype_key = "numeric"
 
-    codec_dicts = default_codecs[dtype_key]
-    codecs = tuple(_resolve_codec(c) for c in codec_dicts)
-    array_bytes_maybe = None
-    array_array: list[ArrayArrayCodec] = []
-    bytes_bytes: list[BytesBytesCodec] = []
+    default_filters = zarr_config.get("array.v3_default_filters").get(dtype_key)
+    default_serializer = zarr_config.get("array.v3_default_serializer").get(dtype_key)
+    default_compressors = zarr_config.get("array.v3_default_compressors").get(dtype_key)
 
-    for codec in codecs:
-        if isinstance(codec, ArrayBytesCodec):
-            if array_bytes_maybe is not None:
-                raise ValueError(
-                    f"Got two instances of ArrayBytesCodec: {array_bytes_maybe} and {codec}. "
-                    "Only one array-to-bytes codec is allowed."
-                )
-            array_bytes_maybe = codec
-        elif isinstance(codec, ArrayArrayCodec):
-            array_array.append(codec)
-        elif isinstance(codec, BytesBytesCodec):
-            bytes_bytes.append(codec)
-        else:
-            raise TypeError(f"Unexpected codec type: {type(codec)}")
+    filters_list: list[ArrayArrayCodec] = []
+    compressors_list: list[BytesBytesCodec] = []
 
-    if array_bytes_maybe is None:
+    serializer = _resolve_codec(default_serializer)
+    if serializer is None:
         raise ValueError("Required ArrayBytesCodec was not found.")
+    if not isinstance(serializer, ArrayBytesCodec):
+        raise TypeError(f"Expected ArrayBytesCodec, got: {type(serializer)}")
 
-    return tuple(array_array), array_bytes_maybe, tuple(bytes_bytes)
+    for codec_dict in default_filters:
+        codec = _resolve_codec(codec_dict)
+        if isinstance(codec, ArrayArrayCodec):
+            filters_list.append(codec)
+        else:
+            raise TypeError(f"Expected ArrayArrayCodec, got: {type(codec)}")
+
+    for codec_dict in default_compressors:
+        codec = _resolve_codec(codec_dict)
+        if isinstance(codec, BytesBytesCodec):
+            compressors_list.append(codec)
+        else:
+            raise TypeError(f"Expected BytesBytesCodec, got: {type(codec)}")
+
+    return tuple(filters_list), serializer, tuple(compressors_list)
 
 
 def _get_default_chunk_encoding_v2(
@@ -4114,21 +4109,7 @@ def _parse_chunk_encoding_v3(
     maybe_bytes_bytes: Iterable[Codec | dict[str, JSON]]
     maybe_array_array: Iterable[Codec | dict[str, JSON]]
     out_bytes_bytes: tuple[BytesBytesCodec, ...]
-    if compressors is None:
-        out_bytes_bytes = ()
 
-    elif compressors == "auto":
-        out_bytes_bytes = default_bytes_bytes
-
-    else:
-        if isinstance(compressors, dict | Codec):
-            maybe_bytes_bytes = (compressors,)
-        elif compressors is None:
-            maybe_bytes_bytes = ()
-        else:
-            maybe_bytes_bytes = cast(Iterable[Codec | dict[str, JSON]], compressors)
-
-        out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
     out_array_array: tuple[ArrayArrayCodec, ...]
     if filters is None:
         out_array_array = ()
@@ -4147,6 +4128,22 @@ def _parse_chunk_encoding_v3(
         out_array_bytes = default_array_bytes
     else:
         out_array_bytes = _parse_array_bytes_codec(serializer)
+
+    if compressors is None:
+        out_bytes_bytes = ()
+
+    elif compressors == "auto":
+        out_bytes_bytes = default_bytes_bytes
+
+    else:
+        if isinstance(compressors, dict | Codec):
+            maybe_bytes_bytes = (compressors,)
+        elif compressors is None:
+            maybe_bytes_bytes = ()
+        else:
+            maybe_bytes_bytes = cast(Iterable[Codec | dict[str, JSON]], compressors)
+
+        out_bytes_bytes = tuple(_parse_bytes_bytes_codec(c) for c in maybe_bytes_bytes)
 
     return out_array_array, out_array_bytes, out_bytes_bytes
 
