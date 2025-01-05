@@ -303,10 +303,7 @@ def test_warning_on_missing_codec_config() -> None:
         get_codec_class("new_codec")
 
 
-@pytest.mark.parametrize(
-    ("dtype", "expected_codecs"),
-    ["int", "bytes", "str"],
-)
+@pytest.mark.parametrize("dtype", ["int", "bytes", "str"])
 async def test_default_codecs(dtype: str) -> None:
     with config.set(
         {

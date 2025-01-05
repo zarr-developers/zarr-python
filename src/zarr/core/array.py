@@ -110,7 +110,6 @@ from zarr.registry import (
     _parse_array_array_codec,
     _parse_array_bytes_codec,
     _parse_bytes_bytes_codec,
-    _resolve_codec,
     get_pipeline_class,
 )
 from zarr.storage import StoreLike, make_store_path
@@ -4002,30 +4001,11 @@ def _get_default_chunk_encoding_v3(
     default_serializer = zarr_config.get("array.v3_default_serializer").get(dtype_key)
     default_compressors = zarr_config.get("array.v3_default_compressors").get(dtype_key)
 
-    filters_list: list[ArrayArrayCodec] = []
-    compressors_list: list[BytesBytesCodec] = []
+    filters = tuple(_parse_array_array_codec(codec_dict) for codec_dict in default_filters)
+    serializer = _parse_array_bytes_codec(default_serializer)
+    compressors = tuple(_parse_bytes_bytes_codec(codec_dict) for codec_dict in default_compressors)
 
-    serializer = _resolve_codec(default_serializer)
-    if serializer is None:
-        raise ValueError("Required ArrayBytesCodec was not found.")
-    if not isinstance(serializer, ArrayBytesCodec):
-        raise TypeError(f"Expected ArrayBytesCodec, got: {type(serializer)}")
-
-    for codec_dict in default_filters:
-        codec = _resolve_codec(codec_dict)
-        if isinstance(codec, ArrayArrayCodec):
-            filters_list.append(codec)
-        else:
-            raise TypeError(f"Expected ArrayArrayCodec, got: {type(codec)}")
-
-    for codec_dict in default_compressors:
-        codec = _resolve_codec(codec_dict)
-        if isinstance(codec, BytesBytesCodec):
-            compressors_list.append(codec)
-        else:
-            raise TypeError(f"Expected BytesBytesCodec, got: {type(codec)}")
-
-    return tuple(filters_list), serializer, tuple(compressors_list)
+    return filters, serializer, compressors
 
 
 def _get_default_chunk_encoding_v2(
