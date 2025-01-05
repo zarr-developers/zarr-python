@@ -109,7 +109,8 @@ property. E.g.::
    Order              : C
    Read-only          : False
    Store type         : MemoryStore
-   Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+   Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 8000000 (7.6M)
    No. bytes stored   : 1432
    Storage ratio      : 5586.6
@@ -123,7 +124,8 @@ property. E.g.::
    Order              : C
    Read-only          : False
    Store type         : MemoryStore
-   Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+   Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 4000000 (3.8M)
 
 Groups also have the :func:`zarr.Group.tree` method, e.g.::

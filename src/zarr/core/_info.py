@@ -109,7 +109,9 @@ class ArrayInfo:
         Read-only          : {_read_only}
         Store type         : {_store_type}""")
 
-        kwargs = dataclasses.asdict(self)
+        # We can't use dataclasses.asdict, because we only want a shallow dict
+        kwargs = {field.name: getattr(self, field.name) for field in dataclasses.fields(self)}
+
         if self._chunk_shape is None:
             # for non-regular chunk grids
             kwargs["chunk_shape"] = "<variable>"

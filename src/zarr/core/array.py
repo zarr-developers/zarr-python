@@ -1624,6 +1624,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             _data_type = self.metadata.dtype
         else:
             _data_type = self.metadata.data_type
+
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
             _data_type=_data_type,

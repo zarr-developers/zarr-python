@@ -98,7 +98,8 @@ To use sharding, you need to specify the ``shards`` parameter when creating the 
    Order              : C
    Read-only          : False
    Store type         : MemoryStore
-   Codecs             : [{'chunk_shape': (100, 100, 100), 'codecs': ({'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}), 'index_codecs': ({'endian': <Endian.little: 'little'>}, {}), 'index_location': <ShardingCodecIndexLocation.end: 'end'>}]
+   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+   Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 100000000000 (93.1G)
 
 .. _user-guide-chunks-order:
@@ -125,7 +126,8 @@ ratios, depending on the correlation structure within the data. E.g.::
    Order              : C
    Read-only          : False
    Store type         : MemoryStore
-   Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+   Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 400000000 (381.5M)
    No. bytes stored   : 342588717
    Storage ratio      : 1.2
@@ -142,7 +144,8 @@ ratios, depending on the correlation structure within the data. E.g.::
    Order              : F
    Read-only          : False
    Store type         : MemoryStore
-   Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+   Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 400000000 (381.5M)
    No. bytes stored   : 342588717
    Storage ratio      : 1.2

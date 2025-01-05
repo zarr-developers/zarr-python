@@ -168,8 +168,8 @@ argument accepted by all array creation functions. For example::
    >>> data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
    >>> z = zarr.create_array(store='data/example-5.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
    >>> z[:] = data
-   >>> z.metadata.codecs
-   [BytesCodec(endian=<Endian.little: 'little'>), BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0)]
+   >>> z.compressors
+   (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0),)
 
 This array above will use Blosc as the primary compressor, using the Zstandard
 algorithm (compression level 3) internally within Blosc, and with the
@@ -188,7 +188,8 @@ which can be used to print useful diagnostics, e.g.::
    Order              : C
    Read-only          : False
    Store type         : LocalStore
-   Codecs             : [{'endian': <Endian.little: 'little'>}, {'typesize': 4, 'cname': <BloscCname.zstd: 'zstd'>, 'clevel': 3, 'shuffle': <BloscShuffle.bitshuffle: 'bitshuffle'>, 'blocksize': 0}]
+   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+   Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
 
 The :func:`zarr.Array.info_complete` method inspects the underlying store and
@@ -203,7 +204,8 @@ prints additional diagnostics, e.g.::
    Order              : C
    Read-only          : False
    Store type         : LocalStore
-   Codecs             : [{'endian': <Endian.little: 'little'>}, {'typesize': 4, 'cname': <BloscCname.zstd: 'zstd'>, 'clevel': 3, 'shuffle': <BloscShuffle.bitshuffle: 'bitshuffle'>, 'blocksize': 0}]
+   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+   Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
    No. bytes stored   : 9696302
    Storage ratio      : 41.3
@@ -223,8 +225,8 @@ here is an array using Gzip compression, level 1::
    >>> data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
    >>> z = zarr.create_array(store='data/example-6.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=zarr.codecs.GzipCodec(level=1))
    >>> z[:] = data
-   >>> z.metadata.codecs
-   [BytesCodec(endian=<Endian.little: 'little'>), GzipCodec(level=1)]
+   >>> z.compressors
+   (GzipCodec(level=1),)
 
 Here is an example using LZMA from NumCodecs_ with a custom filter pipeline including LZMA's
 built-in delta filter::
@@ -236,23 +238,24 @@ built-in delta filter::
    >>> compressors = LZMA(filters=lzma_filters)
    >>> data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
    >>> z = zarr.create_array(store='data/example-7.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
-   >>> z.metadata.codecs
-   [BytesCodec(endian=<Endian.little: 'little'>), _make_bytes_bytes_codec.<locals>._Codec(codec_name='numcodecs.lzma', codec_config={'id': 'lzma', 'filters': [{'id': 3, 'dist': 4}, {'id': 33, 'preset': 1}]})]
+   >>> z.compressors
+   (LZMA(codec_name='numcodecs.lzma', codec_config={'id': 'lzma', 'filters': [{'id': 3, 'dist': 4}, {'id': 33, 'preset': 1}]}),)
 
 The default compressor can be changed by setting the value of the using Zarr's
 :ref:`user-guide-config`, e.g.::
 
    >>> with zarr.config.set({'array.v2_default_compressor.numeric': {'id': 'blosc'}}):
    ...     z = zarr.create_array(store={}, shape=(100000000,), chunks=(1000000,), dtype='int32', zarr_format=2)
-   >>> z.metadata.filters
-   >>> z.metadata.compressor
-   Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0)
+   >>> z.filters
+   ()
+   >>> z.compressors
+   (Blosc(cname='lz4', clevel=5, shuffle=SHUFFLE, blocksize=0),)
 
 To disable compression, set ``compressors=None`` when creating an array, e.g.::
 
    >>> z = zarr.create_array(store='data/example-8.zarr', shape=(100000000,), chunks=(1000000,), dtype='int32', compressors=None)
-   >>> z.metadata.codecs
-   [BytesCodec(endian=<Endian.little: 'little'>)]
+   >>> z.compressors
+   ()
 
 .. _user-guide-filters:
 
@@ -287,7 +290,9 @@ Here is an example using a delta filter with the Blosc compressor::
    Order              : C
    Read-only          : False
    Store type         : LocalStore
-   Codecs             : [{'codec_name': 'numcodecs.delta', 'codec_config': {'id': 'delta', 'dtype': 'int32'}}, {'endian': <Endian.little: 'little'>}, {'typesize': 4, 'cname': <BloscCname.zstd: 'zstd'>, 'clevel': 1, 'shuffle': <BloscShuffle.shuffle: 'shuffle'>, 'blocksize': 0}]
+   Filters            : (Delta(codec_name='numcodecs.delta', codec_config={'id': 'delta', 'dtype': 'int32'}),)
+   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+   Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=1, shuffle=<BloscShuffle.shuffle: 'shuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
 
 For more information about available filter codecs, see the `Numcodecs
@@ -600,11 +605,12 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   Order              : C
   Read-only          : False
   Store type         : LocalStore
-  Codecs             : [{'chunk_shape': (100, 100), 'codecs': ({'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}), 'index_codecs': ({'endian': <Endian.little: 'little'>}, {}), 'index_location': <ShardingCodecIndexLocation.end: 'end'>}]
+  Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+  Compressors        : (ZstdCodec(level=0, checksum=False),)
   No. bytes          : 100000000 (95.4M)
   No. bytes stored   : 3981060
   Storage ratio      : 25.1
-  Chunks Initialized : 100
+  Shards Initialized : 100
 
 In this example a shard shape of (1000, 1000) and a chunk shape of (100, 100) is used.
 This means that 10*10 chunks are stored in each shard, and there are 10*10 shards in total.
