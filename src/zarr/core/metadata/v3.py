@@ -486,7 +486,7 @@ def parse_fill_value(
     fill_value : Any
         A potential fill value.
     dtype : str
-        A valid Zarr V3 DataType.
+        A valid Zarr format 3 DataType.
 
     Returns
     -------
@@ -694,10 +694,10 @@ class DataType(Enum):
         try:
             dtype = np.dtype(dtype)
         except (ValueError, TypeError) as e:
-            raise ValueError(f"Invalid V3 data_type: {dtype}") from e
+            raise ValueError(f"Invalid Zarr format 3 data_type: {dtype}") from e
         # check that this is a valid v3 data_type
         try:
             data_type = DataType.from_numpy(dtype)
         except KeyError as e:
-            raise ValueError(f"Invalid V3 data_type: {dtype}") from e
+            raise ValueError(f"Invalid Zarr format 3 data_type: {dtype}") from e
         return data_type
