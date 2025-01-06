@@ -52,7 +52,7 @@ jobs:
         cache: 'pip'
     - name: Install Hatch
       run: |
-        python -m pip install --upgrade pip 
+        python -m pip install --upgrade pip
         pip install hatch
     - name: Set Up Hatch Env
       run: |
@@ -84,7 +84,7 @@ jobs:
         cache: 'pip'
     - name: Install Hatch
       run: |
-        python -m pip install --upgrade pip 
+        python -m pip install --upgrade pip
         pip install hatch
     - name: Set Up Hatch Env
       run: |
@@ -94,6 +94,30 @@ jobs:
       run: |
         hatch env run --env ${{ matrix.dependency-set }} run
 
+  doctests:
+    name: doctests
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # required for hatch version discovery, which is needed for numcodecs.zarr3
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+        cache: 'pip'
+    - name: Install Hatch
+      run: |
+        python -m pip install --upgrade pip
+        pip install hatch
+    - name: Set Up Hatch Env
+      run: |
+        hatch env create doctest
+        hatch env run -e doctest list-env
+    - name: Run Tests
+      run: |
+        hatch env run --env doctest run
+
   test-complete:
     name: Test complete
 
@@ -101,6 +125,7 @@ jobs:
       [
         test,
         test-upstream-and-min-deps,
+        doctests
       ]
     if: always()
     runs-on: ubuntu-latest

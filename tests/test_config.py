@@ -8,10 +8,19 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr import Array, zeros
-from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
+import zarr.api
+from zarr import zeros
+from zarr.abc.codec import Codec, CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter, Store
-from zarr.codecs import BloscCodec, BytesCodec, Crc32cCodec, ShardingCodec
+from zarr.codecs import (
+    BloscCodec,
+    BytesCodec,
+    Crc32cCodec,
+    GzipCodec,
+    ShardingCodec,
+    VLenBytesCodec,
+    VLenUTF8Codec,
+)
 from zarr.core.array_spec import ArraySpec
 from zarr.core.buffer import NDBuffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
@@ -28,6 +37,7 @@ from zarr.registry import (
     register_ndbuffer,
     register_pipeline,
 )
+from zarr.storage import MemoryStore
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,
     StoreExpectingTestBuffer,
@@ -40,8 +50,35 @@ def test_config_defaults_set() -> None:
     # regression test for available defaults
     assert config.defaults == [
         {
-            "default_zarr_version": 3,
-            "array": {"order": "C"},
+            "default_zarr_format": 3,
+            "array": {
+                "order": "C",
+                "write_empty_chunks": False,
+                "v2_default_compressor": {
+                    "numeric": {"id": "zstd", "level": 0, "checksum": False},
+                    "string": {"id": "zstd", "level": 0, "checksum": False},
+                    "bytes": {"id": "zstd", "level": 0, "checksum": False},
+                },
+                "v2_default_filters": {
+                    "numeric": None,
+                    "string": [{"id": "vlen-utf8"}],
+                    "bytes": [{"id": "vlen-bytes"}],
+                },
+                "v3_default_codecs": {
+                    "bytes": [
+                        {"name": "vlen-bytes"},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
+                    "numeric": [
+                        {"name": "bytes", "configuration": {"endian": "little"}},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
+                    "string": [
+                        {"name": "vlen-utf8"},
+                        {"name": "zstd", "configuration": {"level": 0, "checksum": False}},
+                    ],
+                },
+            },
             "async": {"concurrency": 10, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
@@ -117,7 +154,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
     assert get_pipeline_class() == MockCodecPipeline
 
     # test if codec is used
-    arr = Array.create(
+    arr = zarr.create_array(
         store=store,
         shape=(100,),
         chunks=(10,),
@@ -143,6 +180,7 @@ def test_config_codec_pipeline_class(store: Store) -> None:
         assert get_pipeline_class(reload_config=True) == MockEnvCodecPipeline
 
 
+@pytest.mark.filterwarnings("error")
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_config_codec_implementation(store: Store) -> None:
     # has default value
@@ -156,24 +194,29 @@ def test_config_codec_implementation(store: Store) -> None:
         ) -> CodecOutput | None:
             _mock.call()
 
-    config.set({"codecs.blosc": fully_qualified_name(MockBloscCodec)})
     register_codec("blosc", MockBloscCodec)
-    assert get_codec_class("blosc") == MockBloscCodec
+    with config.set({"codecs.blosc": fully_qualified_name(MockBloscCodec)}):
+        assert get_codec_class("blosc") == MockBloscCodec
 
-    # test if codec is used
-    arr = Array.create(
-        store=store,
-        shape=(100,),
-        chunks=(10,),
-        zarr_format=3,
-        dtype="i4",
-        codecs=[BytesCodec(), {"name": "blosc", "configuration": {}}],
-    )
-    arr[:] = range(100)
-    _mock.call.assert_called()
+        # test if codec is used
+        arr = zarr.create_array(
+            store=store,
+            shape=(100,),
+            chunks=(10,),
+            zarr_format=3,
+            dtype="i4",
+            compressors=[{"name": "blosc", "configuration": {}}],
+        )
+        arr[:] = range(100)
+        _mock.call.assert_called()
 
-    with mock.patch.dict(os.environ, {"ZARR_CODECS__BLOSC": fully_qualified_name(BloscCodec)}):
-        assert get_codec_class("blosc", reload_config=True) == BloscCodec
+    # test set codec with environment variable
+    class NewBloscCodec(BloscCodec):
+        pass
+
+    register_codec("blosc", NewBloscCodec)
+    with mock.patch.dict(os.environ, {"ZARR_CODECS__BLOSC": fully_qualified_name(NewBloscCodec)}):
+        assert get_codec_class("blosc", reload_config=True) == NewBloscCodec
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
@@ -183,18 +226,17 @@ def test_config_ndbuffer_implementation(store: Store) -> None:
 
     # set custom ndbuffer with TestNDArrayLike implementation
     register_ndbuffer(NDBufferUsingTestNDArrayLike)
-    config.set({"ndbuffer": fully_qualified_name(NDBufferUsingTestNDArrayLike)})
-    assert get_ndbuffer_class() == NDBufferUsingTestNDArrayLike
-    arr = Array.create(
-        store=store,
-        shape=(100,),
-        chunks=(10,),
-        zarr_format=3,
-        dtype="i4",
-    )
-    got = arr[:]
-    print(type(got))
-    assert isinstance(got, TestNDArrayLike)
+    with config.set({"ndbuffer": fully_qualified_name(NDBufferUsingTestNDArrayLike)}):
+        assert get_ndbuffer_class() == NDBufferUsingTestNDArrayLike
+        arr = zarr.create_array(
+            store=store,
+            shape=(100,),
+            chunks=(10,),
+            zarr_format=3,
+            dtype="i4",
+        )
+        got = arr[:]
+        assert isinstance(got, TestNDArrayLike)
 
 
 def test_config_buffer_implementation() -> None:
@@ -208,27 +250,90 @@ def test_config_buffer_implementation() -> None:
         arr[:] = np.arange(100)
 
     register_buffer(TestBuffer)
-    config.set({"buffer": fully_qualified_name(TestBuffer)})
-    assert get_buffer_class() == TestBuffer
+    with config.set({"buffer": fully_qualified_name(TestBuffer)}):
+        assert get_buffer_class() == TestBuffer
 
-    # no error using TestBuffer
-    data = np.arange(100)
-    arr[:] = np.arange(100)
-    assert np.array_equal(arr[:], data)
+        # no error using TestBuffer
+        data = np.arange(100)
+        arr[:] = np.arange(100)
+        assert np.array_equal(arr[:], data)
 
-    data2d = np.arange(1000).reshape(100, 10)
-    arr_sharding = zeros(
-        shape=(100, 10),
-        store=StoreExpectingTestBuffer(),
-        codecs=[ShardingCodec(chunk_shape=(10, 10))],
-    )
-    arr_sharding[:] = data2d
-    assert np.array_equal(arr_sharding[:], data2d)
+        data2d = np.arange(1000).reshape(100, 10)
+        arr_sharding = zeros(
+            shape=(100, 10),
+            store=StoreExpectingTestBuffer(),
+            codecs=[ShardingCodec(chunk_shape=(10, 10))],
+        )
+        arr_sharding[:] = data2d
+        assert np.array_equal(arr_sharding[:], data2d)
 
-    arr_Crc32c = zeros(
-        shape=(100, 10),
-        store=StoreExpectingTestBuffer(),
-        codecs=[BytesCodec(), Crc32cCodec()],
-    )
-    arr_Crc32c[:] = data2d
-    assert np.array_equal(arr_Crc32c[:], data2d)
+        arr_Crc32c = zeros(
+            shape=(100, 10),
+            store=StoreExpectingTestBuffer(),
+            codecs=[BytesCodec(), Crc32cCodec()],
+        )
+        arr_Crc32c[:] = data2d
+        assert np.array_equal(arr_Crc32c[:], data2d)
+
+
+@pytest.mark.filterwarnings("error")
+def test_warning_on_missing_codec_config() -> None:
+    class NewCodec(BytesCodec):
+        pass
+
+    class NewCodec2(BytesCodec):
+        pass
+
+    # error if codec is not registered
+    with pytest.raises(KeyError):
+        get_codec_class("missing_codec")
+
+    # no warning if only one implementation is available
+    register_codec("new_codec", NewCodec)
+    get_codec_class("new_codec")
+
+    # warning because multiple implementations are available but none is selected in the config
+    register_codec("new_codec", NewCodec2)
+    with pytest.warns(UserWarning):
+        get_codec_class("new_codec")
+
+    # no warning if multiple implementations are available and one is selected in the config
+    with config.set({"codecs.new_codec": fully_qualified_name(NewCodec)}):
+        get_codec_class("new_codec")
+
+
+@pytest.mark.parametrize(
+    ("dtype", "expected_codecs"),
+    [
+        ("int", (BytesCodec(), GzipCodec())),
+        ("bytes", (VLenBytesCodec(), GzipCodec())),
+        ("str", (VLenUTF8Codec(), GzipCodec())),
+    ],
+)
+async def test_default_codecs(dtype: str, expected_codecs: tuple[Codec, ...]) -> None:
+    with config.set(
+        {
+            "array.v3_default_codecs": {  # test setting non-standard codecs
+                "numeric": [
+                    {"name": "bytes", "configuration": {"endian": "little"}},
+                    {"name": "gzip", "configuration": {"level": 5}},
+                ],
+                "string": [
+                    {"name": "vlen-utf8"},
+                    {"name": "gzip", "configuration": {"level": 5}},
+                ],
+                "bytes": [
+                    {"name": "vlen-bytes"},
+                    {"name": "gzip", "configuration": {"level": 5}},
+                ],
+            }
+        }
+    ):
+        arr = await zarr.api.asynchronous.create_array(
+            shape=(100,),
+            chunks=(100,),
+            dtype=np.dtype(dtype),
+            zarr_format=3,
+            store=MemoryStore(),
+        )
+        assert arr.metadata.codecs == expected_codecs
