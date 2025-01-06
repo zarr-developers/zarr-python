@@ -18,7 +18,7 @@ def test_zarr_hierarchy(sync_store: Store):
         pytest.skip(reason="ZipStore does not support delete")
     if isinstance(sync_store, MemoryStore):
         run_state_machine_as_test(
-            mk_test_instance_sync, settings=Settings(report_multiple_bugs=False, max_examples=5)
+            mk_test_instance_sync, settings=Settings(report_multiple_bugs=False, max_examples=50)
         )
 
 
