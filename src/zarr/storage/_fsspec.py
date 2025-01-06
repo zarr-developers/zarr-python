@@ -261,6 +261,49 @@ class FsspecStore(Store):
         except self.allowed_exceptions:
             pass
 
+    async def delete_dir(self, prefix: str) -> None:
+        """
+        Remove all keys and prefixes in the store that begin with a given prefix.
+        """
+        if not self.supports_deletes:
+            raise NotImplementedError
+        if not self.supports_listing:
+            raise NotImplementedError
+        self._check_writable()
+
+        if prefix and not prefix.endswith("/"):
+            prefix += "/"
+
+        paths_to_delete = []
+        async for key in self.list_prefix(prefix):
+            paths_to_delete.append(_dereference_path(self.path, key))
+
+        if not paths_to_delete:
+            return
+
+        try:
+            import s3fs
+        except ImportError:
+            s3fs = None
+
+        # If s3fs is installed and our filesystem is S3FileSystem, do a bulk delete
+        if s3fs and isinstance(self.fs, s3fs.S3FileSystem):
+            try:
+                await self.fs._rm(paths_to_delete)
+            except FileNotFoundError:
+                pass
+            except self.allowed_exceptions:
+                pass
+        else:
+            # Otherwise, delete one by one
+            for path in paths_to_delete:
+                try:
+                    await self.fs._rm(path)
+                except FileNotFoundError:
+                    pass
+                except self.allowed_exceptions:
+                    pass
+
     async def exists(self, key: str) -> bool:
         # docstring inherited
         path = _dereference_path(self.path, key)
