@@ -276,21 +276,34 @@ class FsspecStore(Store):
     ) -> list[Buffer | None]:
         # docstring inherited
         if key_ranges:
-            paths, starts, stops = zip(
-                *(
-                    (
-                        _dereference_path(self.path, k[0]),
-                        k[1][0],
-                        ((k[1][0] or 0) + k[1][1]) if k[1][1] is not None else None,
-                    )
-                    for k in key_ranges
-                ),
-                strict=False,
-            )
+            # _cat_ranges expects a list of paths, start, and end ranges, so we need to reformat each ByteRangeRequest.
+            key_ranges = list(key_ranges)
+            paths: list[str] = []
+            starts: list[int | None] = []
+            stops: list[int | None] = []
+            for key, byte_range in key_ranges:
+                paths.append(_dereference_path(self.path, key))
+                if byte_range is None:
+                    starts.append(None)
+                    stops.append(None)
+                elif isinstance(byte_range, tuple):
+                    starts.append(byte_range[0])
+                    stops.append(byte_range[1])
+                elif isinstance(byte_range, dict):
+                    if "offset" in byte_range:
+                        starts.append(byte_range["offset"])  # type: ignore[typeddict-item]
+                        stops.append(None)
+                    elif "suffix" in byte_range:
+                        starts.append(-byte_range["suffix"])
+                        stops.append(None)
+                    else:
+                        raise ValueError("Invalid format for ByteRangeRequest")
+                else:
+                    raise ValueError("Invalid format for ByteRangeRequest")
         else:
             return []
         # TODO: expectations for exceptions or missing keys?
-        res = await self.fs._cat_ranges(list(paths), starts, stops, on_error="return")
+        res = await self.fs._cat_ranges(paths, starts, stops)
         # the following is an s3-specific condition we probably don't want to leak
         res = [b"" if (isinstance(r, OSError) and "not satisfiable" in str(r)) else r for r in res]
         for r in res:
