@@ -20,7 +20,6 @@ from zarr.codecs import (
     VLenUTF8Codec,
     ZstdCodec,
 )
-from zarr.codecs.sharding import ShardingCodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     CompressorsLike,
@@ -494,7 +493,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressor=numcodecs.Zstd(),
+            _compressors=(numcodecs.Zstd(),),
         )
         assert result == expected
 
@@ -510,9 +509,8 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=[BytesCodec(), ZstdCodec()]
-            if shards is None
-            else [ShardingCodec(chunk_shape=chunks, codecs=[BytesCodec(), ZstdCodec()])],
+            _compressors=(ZstdCodec(),),
+            _serializer=BytesCodec(),
             _count_bytes=512,
         )
         assert result == expected
@@ -536,7 +534,7 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=[BytesCodec()] if shards is None else [ShardingCodec(chunk_shape=chunks)],
+            _serializer=BytesCodec(),
             _count_bytes=512,
             _count_chunks_initialized=0,
             _count_bytes_stored=373 if shards is None else 578,  # the metadata?
@@ -572,7 +570,7 @@ class TestInfo:
             _read_only=False,
             _store_type="MemoryStore",
             _count_bytes=512,
-            _compressor=numcodecs.Zstd(),
+            _compressors=(numcodecs.Zstd(),),
         )
         assert result == expected
 
@@ -596,9 +594,8 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=[BytesCodec(), ZstdCodec()]
-            if shards is None
-            else [ShardingCodec(chunk_shape=chunks, codecs=[BytesCodec(), ZstdCodec()])],
+            _compressors=(ZstdCodec(),),
+            _serializer=BytesCodec(),
             _count_bytes=512,
         )
         assert result == expected
@@ -624,7 +621,7 @@ class TestInfo:
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=[BytesCodec()] if shards is None else [ShardingCodec(chunk_shape=chunks)],
+            _serializer=BytesCodec(),
             _count_bytes=512,
             _count_chunks_initialized=0,
             _count_bytes_stored=373 if shards is None else 578,  # the metadata?
@@ -839,7 +836,8 @@ def test_array_create_metadata_order_v2(
     arr = zarr.create_array(store=store, shape=(2, 2), order=order, zarr_format=2, dtype="i4")
 
     expected = order or zarr.config.get("array.order")
-    assert arr.metadata.order == expected  # type: ignore[union-attr]
+    assert arr.metadata.zarr_format == 2  # guard for mypy
+    assert arr.metadata.order == expected
 
 
 @pytest.mark.parametrize("order_config", ["C", "F", None])
@@ -1048,10 +1046,15 @@ async def test_create_array_no_filters_compressors(
         compressors=empty_value,
         filters=empty_value,
     )
+    # Test metadata explicitly
+    assert arr.metadata.zarr_format == 2  # guard for mypy
     # The v2 metadata stores None and () separately
-    assert arr.metadata.filters == empty_value  # type: ignore[union-attr]
+    assert arr.metadata.filters == empty_value
     # The v2 metadata does not allow tuple for compressor, therefore it is turned into None
-    assert arr.metadata.compressor is None  # type: ignore[union-attr]
+    assert arr.metadata.compressor is None
+
+    assert arr.filters == ()
+    assert arr.compressors == ()
 
     # v3
     arr = await create_array(
@@ -1061,10 +1064,13 @@ async def test_create_array_no_filters_compressors(
         compressors=empty_value,
         filters=empty_value,
     )
+    assert arr.metadata.zarr_format == 3  # guard for mypy
     if dtype == "str":
-        assert arr.metadata.codecs == [VLenUTF8Codec()]  # type: ignore[union-attr]
+        assert arr.metadata.codecs == (VLenUTF8Codec(),)
+        assert arr.serializer == VLenUTF8Codec()
     else:
-        assert arr.metadata.codecs == [BytesCodec()]  # type: ignore[union-attr]
+        assert arr.metadata.codecs == (BytesCodec(),)
+        assert arr.serializer == BytesCodec()
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1116,8 +1122,14 @@ async def test_create_array_no_filters_compressors(
         ({"name": "transpose", "configuration": {"order": [0]}},),
     ],
 )
+@pytest.mark.parametrize(("chunks", "shards"), [((6,), None), ((3,), (6,))])
 async def test_create_array_v3_chunk_encoding(
-    store: MemoryStore, compressors: CompressorsLike, filters: FiltersLike, dtype: str
+    store: MemoryStore,
+    compressors: CompressorsLike,
+    filters: FiltersLike,
+    dtype: str,
+    chunks: tuple[int, ...],
+    shards: tuple[int, ...] | None,
 ) -> None:
     """
     Test various possibilities for the compressors and filters parameter to create_array
@@ -1125,17 +1137,18 @@ async def test_create_array_v3_chunk_encoding(
     arr = await create_array(
         store=store,
         dtype=dtype,
-        shape=(10,),
+        shape=(12,),
+        chunks=chunks,
+        shards=shards,
         zarr_format=3,
         filters=filters,
         compressors=compressors,
     )
-    aa_codecs_expected, _, bb_codecs_expected = _parse_chunk_encoding_v3(
+    filters_expected, _, compressors_expected = _parse_chunk_encoding_v3(
         filters=filters, compressors=compressors, serializer="auto", dtype=np.dtype(dtype)
     )
-    # TODO: find a better way to get the filters / compressors from the array.
-    assert arr.codec_pipeline.array_array_codecs == aa_codecs_expected  # type: ignore[attr-defined]
-    assert arr.codec_pipeline.bytes_bytes_codecs == bb_codecs_expected  # type: ignore[attr-defined]
+    assert arr.filters == filters_expected
+    assert arr.compressors == compressors_expected
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1167,9 +1180,16 @@ async def test_create_array_v2_chunk_encoding(
     filters_expected, compressor_expected = _parse_chunk_encoding_v2(
         filters=filters, compressor=compressors, dtype=np.dtype(dtype)
     )
-    # TODO: find a better way to get the filters/compressor from the array.
-    assert arr.metadata.compressor == compressor_expected  # type: ignore[union-attr]
-    assert arr.metadata.filters == filters_expected  # type: ignore[union-attr]
+    assert arr.metadata.zarr_format == 2  # guard for mypy
+    assert arr.metadata.compressor == compressor_expected
+    assert arr.metadata.filters == filters_expected
+
+    # Normalize for property getters
+    compressor_expected = () if compressor_expected is None else (compressor_expected,)
+    filters_expected = () if filters_expected is None else filters_expected
+
+    assert arr.compressors == compressor_expected
+    assert arr.filters == filters_expected
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1185,12 +1205,12 @@ async def test_create_array_v3_default_filters_compressors(store: MemoryStore, d
         shape=(10,),
         zarr_format=3,
     )
-    expected_aa, expected_ab, expected_bb = _get_default_chunk_encoding_v3(np_dtype=np.dtype(dtype))
-    # TODO: define the codec pipeline class such that these fields are required, which will obviate the
-    # type ignore statements
-    assert arr.codec_pipeline.array_array_codecs == expected_aa  # type: ignore[attr-defined]
-    assert arr.codec_pipeline.bytes_bytes_codecs == expected_bb  # type: ignore[attr-defined]
-    assert arr.codec_pipeline.array_bytes_codec == expected_ab  # type: ignore[attr-defined]
+    expected_filters, expected_serializer, expected_compressors = _get_default_chunk_encoding_v3(
+        np_dtype=np.dtype(dtype)
+    )
+    assert arr.filters == expected_filters
+    assert arr.serializer == expected_serializer
+    assert arr.compressors == expected_compressors
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1209,8 +1229,15 @@ async def test_create_array_v2_default_filters_compressors(store: MemoryStore, d
     expected_filters, expected_compressors = _get_default_chunk_encoding_v2(
         np_dtype=np.dtype(dtype)
     )
-    assert arr.metadata.filters == expected_filters  # type: ignore[union-attr]
-    assert arr.metadata.compressor == expected_compressors  # type: ignore[union-attr]
+    assert arr.metadata.zarr_format == 2  # guard for mypy
+    assert arr.metadata.filters == expected_filters
+    assert arr.metadata.compressor == expected_compressors
+
+    # Normalize for property getters
+    expected_filters = () if expected_filters is None else expected_filters
+    expected_compressors = () if expected_compressors is None else (expected_compressors,)
+    assert arr.filters == expected_filters
+    assert arr.compressors == expected_compressors
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1219,7 +1246,7 @@ async def test_create_array_v2_no_shards(store: MemoryStore) -> None:
     Test that creating a Zarr v2 array with ``shard_shape`` set to a non-None value raises an error.
     """
     msg = re.escape(
-        "Zarr v2 arrays can only be created with `shard_shape` set to `None`. Got `shard_shape=(5,)` instead."
+        "Zarr format 2 arrays can only be created with `shard_shape` set to `None`. Got `shard_shape=(5,)` instead."
     )
     with pytest.raises(ValueError, match=msg):
         _ = await create_array(
