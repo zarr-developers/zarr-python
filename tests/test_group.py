@@ -21,8 +21,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
-from zarr.storage.common import make_store_path
+from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore, make_store_path
 
 from .conftest import parse_store
 
@@ -155,9 +154,8 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
     subsubsubgroup = subsubgroup.create_group("subsubsubgroup")
 
     members_expected["subarray"] = group.create_array(
-        "subarray", shape=(100,), dtype="uint8", chunk_shape=(10,), overwrite=True
+        "subarray", shape=(100,), dtype="uint8", chunks=(10,), overwrite=True
     )
-
     # add an extra object to the domain of the group.
     # the list of children should ignore this object.
     sync(
@@ -227,9 +225,7 @@ def test_group(store: Store, zarr_format: ZarrFormat) -> None:
 
     # create an array from the "bar" group
     data = np.arange(0, 4 * 4, dtype="uint16").reshape((4, 4))
-    arr = bar.create_array(
-        "baz", shape=data.shape, dtype=data.dtype, chunk_shape=(2, 2), overwrite=True
-    )
+    arr = bar.create_array("baz", shape=data.shape, dtype=data.dtype, chunks=(2, 2), overwrite=True)
     arr[:] = data
 
     # check the array
@@ -313,8 +309,8 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
 
     group = Group.from_store(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
-    subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
-    subsubarray = subgroup.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+    subarray = group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
+    subsubarray = subgroup.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
 
     if consolidated:
         group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
@@ -391,7 +387,7 @@ def test_group_delitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
 
     group = Group.from_store(store, zarr_format=zarr_format)
     subgroup = group.create_group(name="subgroup")
-    subarray = group.create_array(name="subarray", shape=(10,), chunk_shape=(10,))
+    subarray = group.create_array(name="subarray", shape=(10,), chunks=(10,), dtype="uint8")
 
     if consolidated:
         group = zarr.api.synchronous.consolidate_metadata(store=store, zarr_format=zarr_format)
@@ -472,19 +468,21 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
     expected_group_values = [group.create_group(name=name) for name in expected_group_keys]
     expected_groups = list(zip(expected_group_keys, expected_group_values, strict=False))
 
+    fill_value = 3
+    dtype = "uint8"
+
     expected_group_values[0].create_group("subgroup")
-    expected_group_values[0].create_array("subarray", shape=(1,))
+    expected_group_values[0].create_array(
+        "subarray", shape=(1,), dtype=dtype, fill_value=fill_value
+    )
 
     expected_array_keys = ["a0", "a1"]
+
     expected_array_values = [
-        group.create_array(name=name, shape=(1,)) for name in expected_array_keys
+        group.create_array(name=name, shape=(1,), dtype=dtype, fill_value=fill_value)
+        for name in expected_array_keys
     ]
     expected_arrays = list(zip(expected_array_keys, expected_array_values, strict=False))
-    fill_value: float | None
-    if zarr_format == 2:
-        fill_value = None
-    else:
-        fill_value = np.float64(0.0)
 
     if consolidate:
         group = zarr.consolidate_metadata(store)
@@ -492,12 +490,13 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
             metadata = {
                 "subarray": {
                     "attributes": {},
-                    "dtype": "float64",
+                    "dtype": dtype,
                     "fill_value": fill_value,
                     "shape": (1,),
                     "chunks": (1,),
                     "order": "C",
-                    "filters": (Zstd(level=0),),
+                    "filters": None,
+                    "compressor": Zstd(level=0),
                     "zarr_format": zarr_format,
                 },
                 "subgroup": {
@@ -527,7 +526,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                         {"configuration": {"endian": "little"}, "name": "bytes"},
                         {"configuration": {}, "name": "zstd"},
                     ),
-                    "data_type": "float64",
+                    "data_type": dtype,
                     "fill_value": fill_value,
                     "node_type": "array",
                     "shape": (1,),
@@ -614,20 +613,24 @@ def test_group_create_array(
     data = np.arange(np.prod(shape)).reshape(shape).astype(dtype)
 
     if method == "create_array":
-        array = group.create_array(name="array", shape=shape, dtype=dtype, data=data)
+        array = group.create_array(name="array", shape=shape, dtype=dtype)
+        array[:] = data
     elif method == "array":
         with pytest.warns(DeprecationWarning):
-            array = group.array(name="array", shape=shape, dtype=dtype, data=data)
+            array = group.array(name="array", shape=shape, dtype=dtype)
+            array[:] = data
     else:
         raise AssertionError
 
     if not overwrite:
         if method == "create_array":
             with pytest.raises(ContainsArrayError):
-                group.create_array(name="array", shape=shape, dtype=dtype, data=data)
+                a = group.create_array(name="array", shape=shape, dtype=dtype)
+                a[:] = data
         elif method == "array":
             with pytest.raises(ContainsArrayError), pytest.warns(DeprecationWarning):
-                group.array(name="array", shape=shape, dtype=dtype, data=data)
+                a = group.array(name="array", shape=shape, dtype=dtype)
+                a[:] = data
     assert array.shape == shape
     assert array.dtype == np.dtype(dtype)
     assert np.array_equal(array[:], data)
@@ -780,7 +783,7 @@ async def test_asyncgroup_create(
             )
         # create an array at our target path
         collision_name = "foo"
-        _ = await AsyncArray.create(
+        _ = await zarr.api.asynchronous.create_array(
             spath / collision_name, shape=(10,), dtype="uint8", zarr_format=zarr_format
         )
         with pytest.raises(ContainsArrayError):
@@ -870,9 +873,7 @@ async def test_asyncgroup_getitem(store: Store, zarr_format: ZarrFormat) -> None
     agroup = await AsyncGroup.from_store(store=store, zarr_format=zarr_format)
 
     array_name = "sub_array"
-    sub_array = await agroup.create_array(
-        name=array_name, shape=(10,), dtype="uint8", chunk_shape=(2,)
-    )
+    sub_array = await agroup.create_array(name=array_name, shape=(10,), dtype="uint8", chunks=(2,))
     assert await agroup.getitem(array_name) == sub_array
 
     sub_group_path = "sub_group"
@@ -894,7 +895,7 @@ async def test_asyncgroup_delitem(store: Store, zarr_format: ZarrFormat) -> None
         name=array_name,
         shape=(10,),
         dtype="uint8",
-        chunk_shape=(2,),
+        chunks=(2,),
         attributes={"foo": 100},
     )
     await agroup.delitem(array_name)
@@ -960,7 +961,7 @@ async def test_asyncgroup_create_array(
         name=sub_node_path,
         shape=shape,
         dtype=dtype,
-        chunk_shape=chunk_shape,
+        chunks=chunk_shape,
         attributes=attributes,
     )
     assert isinstance(subnode, AsyncArray)
@@ -1014,11 +1015,11 @@ async def test_group_members_async(store: Store, consolidated_metadata: bool) ->
     group = await AsyncGroup.from_store(
         store=store,
     )
-    a0 = await group.create_array("a0", shape=(1,))
+    a0 = await group.create_array("a0", shape=(1,), dtype="uint8")
     g0 = await group.create_group("g0")
-    a1 = await g0.create_array("a1", shape=(1,))
+    a1 = await g0.create_array("a1", shape=(1,), dtype="uint8")
     g1 = await g0.create_group("g1")
-    a2 = await g1.create_array("a2", shape=(1,))
+    a2 = await g1.create_array("a2", shape=(1,), dtype="uint8")
     g2 = await g1.create_group("g2")
 
     # immediate children
@@ -1101,7 +1102,7 @@ async def test_require_group(store: LocalStore | MemoryStore, zarr_format: ZarrF
         assert foo_group.attrs == {}
 
     _ = await foo_group.create_array(
-        "bar", shape=(10,), dtype="uint8", chunk_shape=(2,), attributes={"foo": 100}
+        "bar", shape=(10,), dtype="uint8", chunks=(2,), attributes={"foo": 100}
     )
 
     # test that overwriting a group w/ children fails
@@ -1134,6 +1135,18 @@ async def test_require_groups(store: LocalStore | MemoryStore, zarr_format: Zarr
     # no names
     no_group = await root.require_groups()
     assert no_group == ()
+
+
+def test_create_dataset_with_data(store: Store, zarr_format: ZarrFormat) -> None:
+    """Check that deprecated create_dataset method allows input data.
+
+    See https://github.com/zarr-developers/zarr-python/issues/2631.
+    """
+    root = Group.from_store(store=store, zarr_format=zarr_format)
+    arr = np.random.random((5, 5))
+    with pytest.warns(DeprecationWarning):
+        data = root.create_dataset("random", data=arr, shape=arr.shape)
+    np.testing.assert_array_equal(np.asarray(data), arr)
 
 
 async def test_create_dataset(store: Store, zarr_format: ZarrFormat) -> None:
@@ -1179,9 +1192,9 @@ async def test_require_array(store: Store, zarr_format: ZarrFormat) -> None:
 async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFormat):
     group = Group.from_store(store=store, zarr_format=zarr_format)
     a = group.create_group(name="a")
-    a.create_array("array", shape=(1,))
+    a.create_array("array", shape=(1,), dtype="uint8")
     b = a.create_group(name="b")
-    b.create_array("array", shape=(1,))
+    b.create_array("array", shape=(1,), dtype="uint8")
 
     if consolidate:
         group = zarr.api.synchronous.consolidate_metadata(store)
@@ -1284,12 +1297,12 @@ class TestConsolidated:
         g0 = await root.create_group("g0")
         g1 = await g0.create_group("g1")
         g2 = await g1.create_group("g2")
-        await g2.create_array("data", shape=(1,))
+        await g2.create_array("data", shape=(1,), dtype="uint8")
 
         x0 = await root.create_group("x0")
         x1 = await x0.create_group("x1")
         x2 = await x1.create_group("x2")
-        await x2.create_array("data", shape=(1,))
+        await x2.create_array("data", shape=(1,), dtype="uint8")
 
         await zarr.api.asynchronous.consolidate_metadata(store)
 
@@ -1360,8 +1373,8 @@ class TestInfo:
         A = zarr.group(store=store, path="A")
         B = A.create_group(name="B")
 
-        B.create_array(name="x", shape=(1,))
-        B.create_array(name="y", shape=(2,))
+        B.create_array(name="x", shape=(1,), dtype="uint8")
+        B.create_array(name="y", shape=(2,), dtype="uint8")
 
         result = A.info
         expected = GroupInfo(
@@ -1420,8 +1433,18 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
     g1 = zarr.group(store=store, zarr_format=zarr_format)
     g1.create_group("0")
     g1.create_group("0/0")
-    arr = g1.create_array("0/0/0", shape=(1,))
+    arr = g1.create_array("0/0/0", shape=(1,), dtype="uint8")
     arr[:] = 1
     del g1["0"]
     with pytest.raises(KeyError):
         g1["0/0"]
+
+
+@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
+def test_deprecated_compressor(store: Store) -> None:
+    g = zarr.group(store=store, zarr_format=2)
+    with pytest.warns(UserWarning, match="The `compressor` argument is deprecated.*"):
+        a = g.create_array(
+            "foo", shape=(100,), chunks=(10,), dtype="i4", compressor={"id": "blosc"}
+        )
+        assert a.metadata.compressor.codec_id == "blosc"

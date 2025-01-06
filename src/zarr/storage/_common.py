@@ -8,9 +8,9 @@ from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, AccessModeLiteral, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
+from zarr.storage._local import LocalStore
+from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import normalize_path
-from zarr.storage.local import LocalStore
-from zarr.storage.memory import MemoryStore
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
@@ -281,7 +281,7 @@ async def make_store_path(
     TypeError
         If the StoreLike object is not one of the supported types.
     """
-    from zarr.storage.fsspec import FsspecStore  # circular import
+    from zarr.storage._fsspec import FsspecStore  # circular import
 
     used_storage_options = False
     path_normalized = normalize_path(path)
