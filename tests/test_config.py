@@ -305,12 +305,12 @@ def test_warning_on_missing_codec_config() -> None:
 @pytest.mark.parametrize(
     ("dtype", "expected_codecs"),
     [
-        ("int", [BytesCodec(), GzipCodec()]),
-        ("bytes", [VLenBytesCodec(), GzipCodec()]),
-        ("str", [VLenUTF8Codec(), GzipCodec()]),
+        ("int", (BytesCodec(), GzipCodec())),
+        ("bytes", (VLenBytesCodec(), GzipCodec())),
+        ("str", (VLenUTF8Codec(), GzipCodec())),
     ],
 )
-async def test_default_codecs(dtype: str, expected_codecs: list[Codec]) -> None:
+async def test_default_codecs(dtype: str, expected_codecs: tuple[Codec, ...]) -> None:
     with config.set(
         {
             "array.v3_default_codecs": {  # test setting non-standard codecs
