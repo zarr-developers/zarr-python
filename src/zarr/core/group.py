@@ -1066,7 +1066,7 @@ class AsyncGroup:
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
 
-            For Zarr format 3, a "compressor" is a codec that takes a bytestrea, and
+            For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
             returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
@@ -2321,7 +2321,7 @@ class Group(SyncMixin):
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
 
-            For Zarr format 3, a "compressor" is a codec that takes a bytestrea, and
+            For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
             returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
@@ -2709,7 +2709,7 @@ class Group(SyncMixin):
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
 
-            For Zarr format 3, a "compressor" is a codec that takes a bytestrea, and
+            For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
             returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
