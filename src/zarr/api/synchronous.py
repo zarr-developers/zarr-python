@@ -788,9 +788,8 @@ def create_array(
         For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
         and these values must be instances of ``ArrayArrayCodec``, or dict representations
         of ``ArrayArrayCodec``.
-        If ``filters`` and ``compressors`` are not specified, then the default codecs for
-        Zarr format 3 will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_codecs``
+        If no ``filters`` are provided, a default set of filters will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_filters``
         in :mod:`zarr.core.config`.
         Use ``None`` to omit default filters.
 
@@ -806,22 +805,22 @@ def create_array(
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
         returns another bytestream. Multiple compressors my be provided for Zarr format 3.
-        If ``filters`` and ``compressors`` are not specified, then the default codecs for
-        Zarr format 3 will be used.
-        These defaults can be changed by modifying the value of ``array.v3_default_codecs``
+        If no ``compressors`` are provided, a default set of compressors will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_compressors``
         in :mod:`zarr.core.config`.
         Use ``None`` to omit default compressors.
 
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr format 2.
-        If no ``compressors`` are provided, a default compressor will be used.
-        These defaults can be changed by modifying the value of ``array.v2_default_compressor``
+        If no ``compressor`` is provided, a default compressor will be used.
         in :mod:`zarr.core.config`.
         Use ``None`` to omit the default compressor.
     serializer : dict[str, JSON] | ArrayBytesCodec, optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
-        If no ``serializer`` is provided, the `zarr.codecs.BytesCodec` codec will be used.
+        If no ``serializer`` is provided, a default serializer will be used.
+        These defaults can be changed by modifying the value of ``array.v3_default_serializer``
+        in :mod:`zarr.core.config`.
     fill_value : Any, optional
         Fill value for the array.
     order : {"C", "F"}, optional
