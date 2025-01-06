@@ -459,8 +459,8 @@ class AsyncGroup:
             Whether to use consolidated metadata.
 
             By default, consolidated metadata is used if it's present in the
-            store (in the ``zarr.json`` for Zarr v3 and in the ``.zmetadata`` file
-            for Zarr v2).
+            store (in the ``zarr.json`` for Zarr format 3 and in the ``.zmetadata`` file
+            for Zarr format 2).
 
             To explicitly require consolidated metadata, set ``use_consolidated=True``,
             which will raise an exception if consolidated metadata is not found.
@@ -468,7 +468,7 @@ class AsyncGroup:
             To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
             which will fall back to using the regular, non consolidated metadata.
 
-            Zarr v2 allowed configuring the key storing the consolidated metadata
+            Zarr format 2 allowed configuring the key storing the consolidated metadata
             (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
             to load consolidated metadata from a non-default key.
         """
@@ -514,7 +514,7 @@ class AsyncGroup:
             )
             if zarr_json_bytes is not None and zgroup_bytes is not None:
                 # warn and favor v3
-                msg = f"Both zarr.json (Zarr v3) and .zgroup (Zarr v2) metadata objects exist at {store_path}. Zarr v3 will be used."
+                msg = f"Both zarr.json (Zarr format 3) and .zgroup (Zarr format 2) metadata objects exist at {store_path}. Zarr format 3 will be used."
                 warnings.warn(msg, stacklevel=1)
             if zarr_json_bytes is None and zgroup_bytes is None:
                 raise FileNotFoundError(
@@ -548,7 +548,7 @@ class AsyncGroup:
             # V3 groups are comprised of a zarr.json object
             assert zarr_json_bytes is not None
             if not isinstance(use_consolidated, bool | None):
-                raise TypeError("use_consolidated must be a bool or None for Zarr V3.")
+                raise TypeError("use_consolidated must be a bool or None for Zarr format 3.")
 
             return cls._from_bytes_v3(
                 store_path,
@@ -1048,7 +1048,7 @@ class AsyncGroup:
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
 
-            For Zarr v3, a "filter" is a codec that takes an array and returns an array,
+            For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
             and these values must be instances of ``ArrayArrayCodec``, or dict representations
             of ``ArrayArrayCodec``.
             If no ``filters`` are provided, a default set of filters will be used.
@@ -1056,7 +1056,7 @@ class AsyncGroup:
             in :mod:`zarr.core.config`.
             Use ``None`` to omit default filters.
 
-            For Zarr v2, a "filter" can be any numcodecs codec; you should ensure that the
+            For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             the order if your filters is consistent with the behavior of each filter.
             If no ``filters`` are provided, a default set of filters will be used.
             These defaults can be changed by modifying the value of ``array.v2_default_filters``
@@ -1066,15 +1066,15 @@ class AsyncGroup:
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
 
-            For Zarr v3, a "compressor" is a codec that takes a bytestrea, and
-            returns another bytestream. Multiple compressors my be provided for Zarr v3.
+            For Zarr format 3, a "compressor" is a codec that takes a bytestrea, and
+            returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
             in :mod:`zarr.core.config`.
             Use ``None`` to omit default compressors.
 
-            For Zarr v2, a "compressor" can be any numcodecs codec. Only a single compressor may
-            be provided for Zarr v2.
+            For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
+            be provided for Zarr format 2.
             If no ``compressor`` is provided, a default compressor will be used.
             in :mod:`zarr.core.config`.
             Use ``None`` to omit the default compressor.
@@ -1082,7 +1082,7 @@ class AsyncGroup:
             Deprecated in favor of ``compressors``.
         serializer : dict[str, JSON] | ArrayBytesCodec, optional
             Array-to-bytes codec to use for encoding the array data.
-            Zarr v3 only. Zarr v2 arrays use implicit array-to-bytes conversion.
+            Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
             If no ``serializer`` is provided, a default serializer will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_serializer``
             in :mod:`zarr.core.config`.
@@ -1090,21 +1090,21 @@ class AsyncGroup:
             Fill value for the array.
         order : {"C", "F"}, optional
             The memory of the array (default is "C").
-            For Zarr v2, this parameter sets the memory order of the array.
-            For Zarr v3, this parameter is deprecated, because memory order
-            is a runtime parameter for Zarr v3 arrays. The recommended way to specify the memory
-            order for Zarr v3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
+            For Zarr format 2, this parameter sets the memory order of the array.
+            For Zarr format 3, this parameter is deprecated, because memory order
+            is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
+            order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
             If no ``order`` is provided, a default order will be used.
             This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
         attributes : dict, optional
             Attributes for the array.
         chunk_key_encoding : ChunkKeyEncoding, optional
             A specification of how the chunk keys are represented in storage.
-            For Zarr v3, the default is ``{"name": "default", "separator": "/"}}``.
-            For Zarr v2, the default is ``{"name": "v2", "separator": "."}}``.
+            For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
+            For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
-            Zarr v3 only. Zarr v2 arrays should not use this parameter.
+            Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
         storage_options : dict, optional
             If using an fsspec URL to create the store, these will be passed to the backend implementation.
             Ignored otherwise.
@@ -2303,7 +2303,7 @@ class Group(SyncMixin):
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
 
-            For Zarr v3, a "filter" is a codec that takes an array and returns an array,
+            For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
             and these values must be instances of ``ArrayArrayCodec``, or dict representations
             of ``ArrayArrayCodec``.
             If no ``filters`` are provided, a default set of filters will be used.
@@ -2311,7 +2311,7 @@ class Group(SyncMixin):
             in :mod:`zarr.core.config`.
             Use ``None`` to omit default filters.
 
-            For Zarr v2, a "filter" can be any numcodecs codec; you should ensure that the
+            For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             the order if your filters is consistent with the behavior of each filter.
             If no ``filters`` are provided, a default set of filters will be used.
             These defaults can be changed by modifying the value of ``array.v2_default_filters``
@@ -2321,15 +2321,15 @@ class Group(SyncMixin):
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
 
-            For Zarr v3, a "compressor" is a codec that takes a bytestrea, and
-            returns another bytestream. Multiple compressors my be provided for Zarr v3.
+            For Zarr format 3, a "compressor" is a codec that takes a bytestrea, and
+            returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
             in :mod:`zarr.core.config`.
             Use ``None`` to omit default compressors.
 
-            For Zarr v2, a "compressor" can be any numcodecs codec. Only a single compressor may
-            be provided for Zarr v2.
+            For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
+            be provided for Zarr format 2.
             If no ``compressor`` is provided, a default compressor will be used.
             in :mod:`zarr.core.config`.
             Use ``None`` to omit the default compressor.
@@ -2337,7 +2337,7 @@ class Group(SyncMixin):
             Deprecated in favor of ``compressors``.
         serializer : dict[str, JSON] | ArrayBytesCodec, optional
             Array-to-bytes codec to use for encoding the array data.
-            Zarr v3 only. Zarr v2 arrays use implicit array-to-bytes conversion.
+            Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
             If no ``serializer`` is provided, a default serializer will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_serializer``
             in :mod:`zarr.core.config`.
@@ -2345,21 +2345,21 @@ class Group(SyncMixin):
             Fill value for the array.
         order : {"C", "F"}, optional
             The memory of the array (default is "C").
-            For Zarr v2, this parameter sets the memory order of the array.
-            For Zarr v3, this parameter is deprecated, because memory order
-            is a runtime parameter for Zarr v3 arrays. The recommended way to specify the memory
-            order for Zarr v3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
+            For Zarr format 2, this parameter sets the memory order of the array.
+            For Zarr format 3, this parameter is deprecated, because memory order
+            is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
+            order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
             If no ``order`` is provided, a default order will be used.
             This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
         attributes : dict, optional
             Attributes for the array.
         chunk_key_encoding : ChunkKeyEncoding, optional
             A specification of how the chunk keys are represented in storage.
-            For Zarr v3, the default is ``{"name": "default", "separator": "/"}}``.
-            For Zarr v2, the default is ``{"name": "v2", "separator": "."}}``.
+            For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
+            For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
-            Zarr v3 only. Zarr v2 arrays should not use this parameter.
+            Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
         storage_options : dict, optional
             If using an fsspec URL to create the store, these will be passed to the backend implementation.
             Ignored otherwise.
@@ -2691,7 +2691,7 @@ class Group(SyncMixin):
             Iterable of filters to apply to each chunk of the array, in order, before serializing that
             chunk to bytes.
 
-            For Zarr v3, a "filter" is a codec that takes an array and returns an array,
+            For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
             and these values must be instances of ``ArrayArrayCodec``, or dict representations
             of ``ArrayArrayCodec``.
             If no ``filters`` are provided, a default set of filters will be used.
@@ -2699,7 +2699,7 @@ class Group(SyncMixin):
             in :mod:`zarr.core.config`.
             Use ``None`` to omit default filters.
 
-            For Zarr v2, a "filter" can be any numcodecs codec; you should ensure that the
+            For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
             the order if your filters is consistent with the behavior of each filter.
             If no ``filters`` are provided, a default set of filters will be used.
             These defaults can be changed by modifying the value of ``array.v2_default_filters``
@@ -2709,15 +2709,15 @@ class Group(SyncMixin):
             List of compressors to apply to the array. Compressors are applied in order, and after any
             filters are applied (if any are specified) and the data is serialized into bytes.
 
-            For Zarr v3, a "compressor" is a codec that takes a bytestrea, and
-            returns another bytestream. Multiple compressors my be provided for Zarr v3.
+            For Zarr format 3, a "compressor" is a codec that takes a bytestrea, and
+            returns another bytestream. Multiple compressors my be provided for Zarr format 3.
             If no ``compressors`` are provided, a default set of compressors will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_compressors``
             in :mod:`zarr.core.config`.
             Use ``None`` to omit default compressors.
 
-            For Zarr v2, a "compressor" can be any numcodecs codec. Only a single compressor may
-            be provided for Zarr v2.
+            For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
+            be provided for Zarr format 2.
             If no ``compressor`` is provided, a default compressor will be used.
             in :mod:`zarr.core.config`.
             Use ``None`` to omit the default compressor.
@@ -2725,7 +2725,7 @@ class Group(SyncMixin):
             Deprecated in favor of ``compressors``.
         serializer : dict[str, JSON] | ArrayBytesCodec, optional
             Array-to-bytes codec to use for encoding the array data.
-            Zarr v3 only. Zarr v2 arrays use implicit array-to-bytes conversion.
+            Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
             If no ``serializer`` is provided, a default serializer will be used.
             These defaults can be changed by modifying the value of ``array.v3_default_serializer``
             in :mod:`zarr.core.config`.
@@ -2733,21 +2733,21 @@ class Group(SyncMixin):
             Fill value for the array.
         order : {"C", "F"}, optional
             The memory of the array (default is "C").
-            For Zarr v2, this parameter sets the memory order of the array.
-            For Zarr v3, this parameter is deprecated, because memory order
-            is a runtime parameter for Zarr v3 arrays. The recommended way to specify the memory
-            order for Zarr v3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
+            For Zarr format 2, this parameter sets the memory order of the array.
+            For Zarr format 3, this parameter is deprecated, because memory order
+            is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
+            order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
             If no ``order`` is provided, a default order will be used.
             This default can be changed by modifying the value of ``array.order`` in :mod:`zarr.core.config`.
         attributes : dict, optional
             Attributes for the array.
         chunk_key_encoding : ChunkKeyEncoding, optional
             A specification of how the chunk keys are represented in storage.
-            For Zarr v3, the default is ``{"name": "default", "separator": "/"}}``.
-            For Zarr v2, the default is ``{"name": "v2", "separator": "."}}``.
+            For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
+            For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
         dimension_names : Iterable[str], optional
             The names of the dimensions (default is None).
-            Zarr v3 only. Zarr v2 arrays should not use this parameter.
+            Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
         storage_options : dict, optional
             If using an fsspec URL to create the store, these will be passed to the backend implementation.
             Ignored otherwise.

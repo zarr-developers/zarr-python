@@ -1246,7 +1246,7 @@ async def test_create_array_v2_no_shards(store: MemoryStore) -> None:
     Test that creating a Zarr v2 array with ``shard_shape`` set to a non-None value raises an error.
     """
     msg = re.escape(
-        "Zarr v2 arrays can only be created with `shard_shape` set to `None`. Got `shard_shape=(5,)` instead."
+        "Zarr format 2 arrays can only be created with `shard_shape` set to `None`. Got `shard_shape=(5,)` instead."
     )
     with pytest.raises(ValueError, match=msg):
         _ = await create_array(

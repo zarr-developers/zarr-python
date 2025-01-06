@@ -98,6 +98,7 @@ To use sharding, you need to specify the ``shards`` parameter when creating the 
    Order              : C
    Read-only          : False
    Store type         : MemoryStore
+   Filters            : ()
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 100000000000 (93.1G)
@@ -126,6 +127,7 @@ ratios, depending on the correlation structure within the data. E.g.::
    Order              : C
    Read-only          : False
    Store type         : MemoryStore
+   Filters            : ()
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 400000000 (381.5M)
@@ -144,6 +146,7 @@ ratios, depending on the correlation structure within the data. E.g.::
    Order              : F
    Read-only          : False
    Store type         : MemoryStore
+   Filters            : ()
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 400000000 (381.5M)
