@@ -31,7 +31,7 @@ def test_zarr_store(sync_store: Store) -> None:
     elif isinstance(sync_store, LocalStore):
         pytest.skip(reason="This test has errors")
     elif isinstance(sync_store, MemoryStore):
-        run_state_machine_as_test(mk_test_instance_sync, settings=Settings(max_examples=5))
+        run_state_machine_as_test(mk_test_instance_sync, settings=Settings(max_examples=50))
     else:
         run_state_machine_as_test(
             mk_test_instance_sync, settings=Settings(report_multiple_bugs=True)
