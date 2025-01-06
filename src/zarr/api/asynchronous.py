@@ -892,7 +892,8 @@ async def create(
         - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
         - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
 
-        These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v3_default_filters``,
+        ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in :mod:`zarr.core.config`.
     compressor : Codec, optional
         Primary compressor to compress chunk data.
         Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
