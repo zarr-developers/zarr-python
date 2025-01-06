@@ -81,9 +81,7 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
     return out
 
 
-def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
-    """Check that the codecs are valid for the given dtype"""
-
+def validate_array_bytes_codec(codecs: tuple[Codec, ...]) -> ArrayBytesCodec:
     # ensure that we have at least one ArrayBytesCodec
     abcs: list[ArrayBytesCodec] = [codec for codec in codecs if isinstance(codec, ArrayBytesCodec)]
     if len(abcs) == 0:
@@ -91,7 +89,18 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
     elif len(abcs) > 1:
         raise ValueError("Only one ArrayBytesCodec is allowed.")
 
-    abc = abcs[0]
+    return abcs[0]
+
+
+def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
+    """Check that the codecs are valid for the given dtype"""
+    from zarr.codecs.sharding import ShardingCodec
+
+    abc = validate_array_bytes_codec(codecs)
+
+    # Recursively resolve array-bytes codecs within sharding codecs
+    while isinstance(abc, ShardingCodec):
+        abc = validate_array_bytes_codec(abc.codecs)
 
     # we need to have special codecs if we are decoding vlen strings or bytestrings
     # TODO: use codec ID instead of class name
@@ -254,7 +263,7 @@ class ArrayV3Metadata(Metadata):
             config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
-        codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]
+        codecs_parsed = tuple(c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial)
         validate_codecs(codecs_parsed_partial, data_type_parsed)
 
         object.__setattr__(self, "shape", shape_parsed)
@@ -329,6 +338,15 @@ class ArrayV3Metadata(Metadata):
             f"This array has a {self.chunk_grid} instead."
         )
         raise NotImplementedError(msg)
+
+    @property
+    def inner_codecs(self) -> tuple[Codec, ...]:
+        if isinstance(self.chunk_grid, RegularChunkGrid):
+            from zarr.codecs.sharding import ShardingCodec
+
+            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+                return self.codecs[0].codecs
+        return self.codecs
 
     def get_chunk_spec(
         self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype

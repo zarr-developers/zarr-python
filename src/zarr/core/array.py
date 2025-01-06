@@ -20,6 +20,7 @@ from typing import (
 from warnings import warn
 
 import numcodecs
+import numcodecs.abc
 import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
@@ -912,6 +913,63 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         return np.prod(self.metadata.shape).item()
 
     @property
+    def filters(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[ArrayArrayCodec, ...]:
+        """
+        Filters that are applied to each chunk of the array, in order, before serializing that
+        chunk to bytes.
+        """
+        if self.metadata.zarr_format == 2:
+            filters = self.metadata.filters
+            if filters is None:
+                return ()
+            return filters
+
+        return tuple(
+            codec for codec in self.metadata.inner_codecs if isinstance(codec, ArrayArrayCodec)
+        )
+
+    @property
+    def serializer(self) -> ArrayBytesCodec | None:
+        """
+        Array-to-bytes codec to use for serializing the chunks into bytes.
+        """
+        if self.metadata.zarr_format == 2:
+            return None
+
+        return next(
+            codec for codec in self.metadata.inner_codecs if isinstance(codec, ArrayBytesCodec)
+        )
+
+    @property
+    @deprecated("Use AsyncArray.compressors instead.")
+    def compressor(self) -> numcodecs.abc.Codec | None:
+        """
+        Compressor that is applied to each chunk of the array.
+
+        .. deprecated:: 3.0.0
+            `array.compressor` is deprecated and will be removed in a future release.
+            Use `array.compressors` instead.
+        """
+        if self.metadata.zarr_format == 2:
+            return self.metadata.compressor
+        raise TypeError("`compressor` is not available for Zarr format 3 arrays.")
+
+    @property
+    def compressors(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[BytesBytesCodec, ...]:
+        """
+        Compressors that are applied to each chunk of the array. Compressors are applied in order, and after any
+        filters are applied (if any are specified) and the data is serialized into bytes.
+        """
+        if self.metadata.zarr_format == 2:
+            if self.metadata.compressor is not None:
+                return (self.metadata.compressor,)
+            return ()
+
+        return tuple(
+            codec for codec in self.metadata.inner_codecs if isinstance(codec, BytesBytesCodec)
+        )
+
+    @property
     def dtype(self) -> np.dtype[Any]:
         """Returns the data type of the array.
 
@@ -1561,31 +1619,27 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     def _info(
         self, count_chunks_initialized: int | None = None, count_bytes_stored: int | None = None
     ) -> Any:
-        kwargs: dict[str, Any] = {}
-        if self.metadata.zarr_format == 2:
-            assert isinstance(self.metadata, ArrayV2Metadata)
-            if self.metadata.compressor is not None:
-                kwargs["_compressor"] = self.metadata.compressor
-            if self.metadata.filters is not None:
-                kwargs["_filters"] = self.metadata.filters
-            kwargs["_data_type"] = self.metadata.dtype
-            kwargs["_chunk_shape"] = self.metadata.chunks
+        _data_type: np.dtype[Any] | DataType
+        if isinstance(self.metadata, ArrayV2Metadata):
+            _data_type = self.metadata.dtype
         else:
-            kwargs["_codecs"] = self.metadata.codecs
-            kwargs["_data_type"] = self.metadata.data_type
-            kwargs["_chunk_shape"] = self.chunks
-            kwargs["_shard_shape"] = self.shards
+            _data_type = self.metadata.data_type
 
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
+            _data_type=_data_type,
             _shape=self.shape,
             _order=self.order,
+            _shard_shape=self.shards,
+            _chunk_shape=self.chunks,
             _read_only=self.read_only,
+            _compressors=self.compressors,
+            _filters=self.filters,
+            _serializer=self.serializer,
             _store_type=type(self.store_path.store).__name__,
             _count_bytes=self.nbytes,
             _count_bytes_stored=count_bytes_stored,
             _count_chunks_initialized=count_chunks_initialized,
-            **kwargs,
         )
 
 
@@ -1966,6 +2020,41 @@ class Array:
     @property
     def fill_value(self) -> Any:
         return self.metadata.fill_value
+
+    @property
+    def filters(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[ArrayArrayCodec, ...]:
+        """
+        Filters that are applied to each chunk of the array, in order, before serializing that
+        chunk to bytes.
+        """
+        return self._async_array.filters
+
+    @property
+    def serializer(self) -> None | ArrayBytesCodec:
+        """
+        Array-to-bytes codec to use for serializing the chunks into bytes.
+        """
+        return self._async_array.serializer
+
+    @property
+    @deprecated("Use Array.compressors instead.")
+    def compressor(self) -> numcodecs.abc.Codec | None:
+        """
+        Compressor that is applied to each chunk of the array.
+
+        .. deprecated:: 3.0.0
+            `array.compressor` is deprecated and will be removed in a future release.
+            Use `array.compressors` instead.
+        """
+        return self._async_array.compressor
+
+    @property
+    def compressors(self) -> tuple[numcodecs.abc.Codec, ...] | tuple[BytesBytesCodec, ...]:
+        """
+        Compressors that are applied to each chunk of the array. Compressors are applied in order, and after any
+        filters are applied (if any are specified) and the data is serialized into bytes.
+        """
+        return self._async_array.compressors
 
     @property
     def cdata_shape(self) -> ChunkCoords:
@@ -3710,7 +3799,7 @@ async def create_array(
         Use ``None`` to omit default filters.
     compressors : Iterable[Codec], optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
-        filters are applied (if any are specified).
+        filters are applied (if any are specified) and the data is serialized into bytes.
 
         For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
         returns another bytestream. Multiple compressors my be provided for Zarr format 3.
