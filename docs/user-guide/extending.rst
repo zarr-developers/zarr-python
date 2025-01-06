@@ -10,8 +10,8 @@ Custom codecs
 -------------
 
 .. note::
-    This section explains how custom codecs can be created for Zarr version 3 data. For Zarr
-    version 2, codecs should subclass the
+    This section explains how custom codecs can be created for Zarr format 3 arrays. For Zarr
+    format 2, codecs should subclass the
     `numcodecs.abc.Codec <https://numcodecs.readthedocs.io/en/stable/abc.html#numcodecs.abc.Codec>`_
     base class and register through
     `numcodecs.registry.register_codec <https://numcodecs.readthedocs.io/en/stable/registry.html#numcodecs.registry.register_codec>`_.
@@ -66,7 +66,7 @@ strongly recommended to prefix the codec identifier with a unique name. For exam
 the codecs from ``numcodecs`` are prefixed with ``numcodecs.``, e.g. ``numcodecs.delta``.
 
 .. note::
-    Note that the extension mechanism for the Zarr version 3 is still under development.
+    Note that the extension mechanism for the Zarr format 3 is still under development.
     Requirements for custom codecs including the choice of codec identifiers might
     change in the future.
 
