@@ -10,7 +10,7 @@ Zarr-Python
 
     quickstart
     user-guide/index
-    api/index
+    API reference <api/zarr/index>
     developers/index
     developers/release
     about
@@ -81,12 +81,12 @@ Zarr-Python is a Python library for reading and writing Zarr groups and arrays. 
 
         +++
 
-        .. button-ref:: api/index
+        .. button-ref:: api/zarr/index
             :expand:
             :color: dark
             :click-parent:
 
-            To the API reference guide
+            To the API reference
 
     .. grid-item-card::
         :img-top: _static/index_contribute.svg
