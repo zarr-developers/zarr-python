@@ -29,7 +29,7 @@ from zarr.core.chunk_grids import RegularChunkGrid
 from zarr.core.chunk_key_encodings import parse_separator
 from zarr.core.common import JSON, ZARRAY_JSON, ZATTRS_JSON, MemoryOrder, parse_shapelike
 from zarr.core.config import config, parse_indexing_order
-from zarr.core.metadata.common import parse_attributes
+from zarr.core.metadata._common import parse_attributes
 
 
 class ArrayV2MetadataDict(TypedDict):

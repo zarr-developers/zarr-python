@@ -35,7 +35,7 @@ from zarr.core.common import (
     parse_shapelike,
 )
 from zarr.core.config import config
-from zarr.core.metadata.common import parse_attributes
+from zarr.core.metadata._common import parse_attributes
 from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
 from zarr.errors import MetadataValidationError, NodeTypeValidationError

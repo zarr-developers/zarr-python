@@ -7,7 +7,7 @@ import numpy as np
 
 from zarr.abc.codec import Codec
 from zarr.core.common import ZarrFormat
-from zarr.core.metadata.v3 import DataType
+from zarr.core.metadata import DataType
 
 
 @dataclasses.dataclass(kw_only=True)
