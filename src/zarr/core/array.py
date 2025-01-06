@@ -432,6 +432,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Method to create a new asynchronous array instance.
 
+        .. deprecated:: 3.0.0
+            Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
+
         Parameters
         ----------
         store : StoreLike
@@ -509,9 +512,6 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         -------
         AsyncArray
             The created asynchronous array instance.
-
-        .. deprecated:: 3.0.0
-            Deprecated in favor of :func:`zarr.api.asynchronous.create_array`.
         """
         return await cls._create(
             store,
@@ -1573,14 +1573,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         else:
             kwargs["_codecs"] = self.metadata.codecs
             kwargs["_data_type"] = self.metadata.data_type
-            # just regular?
-            chunk_grid = self.metadata.chunk_grid
-            if isinstance(chunk_grid, RegularChunkGrid):
-                kwargs["_chunk_shape"] = chunk_grid.chunk_shape
-            else:
-                raise NotImplementedError(
-                    "'info' is not yet implemented for chunk grids of type {type(self.metadata.chunk_grid)}"
-                )
+            kwargs["_chunk_shape"] = self.chunks
+            kwargs["_shard_shape"] = self.shards
 
         return ArrayInfo(
             _zarr_format=self.metadata.zarr_format,
@@ -1636,6 +1630,9 @@ class Array:
         config: ArrayConfig | ArrayConfigLike | None = None,
     ) -> Array:
         """Creates a new Array instance from an initialized store.
+
+        .. deprecated:: 3.0.0
+            Deprecated in favor of :func:`zarr.create_array`.
 
         Parameters
         ----------
@@ -1704,9 +1701,6 @@ class Array:
         -------
         Array
             Array created from the store.
-
-        .. deprecated:: 3.0.0
-            Deprecated in favor of :func:`zarr.create_array`.
         """
         return cls._create(
             store,

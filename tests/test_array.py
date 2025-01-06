@@ -20,6 +20,7 @@ from zarr.codecs import (
     VLenUTF8Codec,
     ZstdCodec,
 )
+from zarr.codecs.sharding import ShardingCodec
 from zarr.core._info import ArrayInfo
 from zarr.core.array import (
     CompressorsLike,
@@ -478,121 +479,168 @@ def test_update_attrs(zarr_format: ZarrFormat) -> None:
     assert arr2.attrs["foo"] == "bar"
 
 
+@pytest.mark.parametrize(("chunks", "shards"), [((2, 2), None), ((2, 2), (4, 4))])
 class TestInfo:
-    def test_info_v2(self) -> None:
-        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=2)
+    def test_info_v2(self, chunks: tuple[int, int], shards: tuple[int, int] | None) -> None:
+        arr = zarr.create_array(store={}, shape=(8, 8), dtype="f8", chunks=chunks, zarr_format=2)
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=2,
             _data_type=np.dtype("float64"),
-            _shape=(4, 4),
-            _chunk_shape=(2, 2),
+            _shape=(8, 8),
+            _chunk_shape=chunks,
+            _shard_shape=None,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _count_bytes=128,
+            _count_bytes=512,
             _compressor=numcodecs.Zstd(),
         )
         assert result == expected
 
-    def test_info_v3(self) -> None:
-        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+    def test_info_v3(self, chunks: tuple[int, int], shards: tuple[int, int] | None) -> None:
+        arr = zarr.create_array(store={}, shape=(8, 8), dtype="f8", chunks=chunks, shards=shards)
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=DataType.parse("float64"),
-            _shape=(4, 4),
-            _chunk_shape=(2, 2),
+            _shape=(8, 8),
+            _chunk_shape=chunks,
+            _shard_shape=shards,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=[BytesCodec(), ZstdCodec()],
-            _count_bytes=128,
+            _codecs=[BytesCodec(), ZstdCodec()]
+            if shards is None
+            else [ShardingCodec(chunk_shape=chunks, codecs=[BytesCodec(), ZstdCodec()])],
+            _count_bytes=512,
         )
         assert result == expected
 
-    def test_info_complete(self) -> None:
-        arr = zarr.create(shape=(4, 4), chunks=(2, 2), zarr_format=3, codecs=[BytesCodec()])
+    def test_info_complete(self, chunks: tuple[int, int], shards: tuple[int, int] | None) -> None:
+        arr = zarr.create_array(
+            store={},
+            shape=(8, 8),
+            dtype="f8",
+            chunks=chunks,
+            shards=shards,
+            compressors=(),
+        )
         result = arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=DataType.parse("float64"),
-            _shape=(4, 4),
-            _chunk_shape=(2, 2),
+            _shape=(8, 8),
+            _chunk_shape=chunks,
+            _shard_shape=shards,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=[BytesCodec()],
-            _count_bytes=128,
+            _codecs=[BytesCodec()] if shards is None else [ShardingCodec(chunk_shape=chunks)],
+            _count_bytes=512,
             _count_chunks_initialized=0,
-            _count_bytes_stored=373,  # the metadata?
+            _count_bytes_stored=373 if shards is None else 578,  # the metadata?
         )
         assert result == expected
 
-        arr[:2, :2] = 10
+        arr[:4, :4] = 10
         result = arr.info_complete()
-        expected = dataclasses.replace(
-            expected, _count_chunks_initialized=1, _count_bytes_stored=405
-        )
+        if shards is None:
+            expected = dataclasses.replace(
+                expected, _count_chunks_initialized=4, _count_bytes_stored=501
+            )
+        else:
+            expected = dataclasses.replace(
+                expected, _count_chunks_initialized=1, _count_bytes_stored=774
+            )
         assert result == expected
 
-    async def test_info_v2_async(self) -> None:
-        arr = await zarr.api.asynchronous.create(shape=(4, 4), chunks=(2, 2), zarr_format=2)
+    async def test_info_v2_async(
+        self, chunks: tuple[int, int], shards: tuple[int, int] | None
+    ) -> None:
+        arr = await zarr.api.asynchronous.create_array(
+            store={}, shape=(8, 8), dtype="f8", chunks=chunks, zarr_format=2
+        )
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=2,
             _data_type=np.dtype("float64"),
-            _shape=(4, 4),
+            _shape=(8, 8),
             _chunk_shape=(2, 2),
+            _shard_shape=None,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _count_bytes=128,
+            _count_bytes=512,
             _compressor=numcodecs.Zstd(),
         )
         assert result == expected
 
-    async def test_info_v3_async(self) -> None:
-        arr = await zarr.api.asynchronous.create(shape=(4, 4), chunks=(2, 2), zarr_format=3)
+    async def test_info_v3_async(
+        self, chunks: tuple[int, int], shards: tuple[int, int] | None
+    ) -> None:
+        arr = await zarr.api.asynchronous.create_array(
+            store={},
+            shape=(8, 8),
+            dtype="f8",
+            chunks=chunks,
+            shards=shards,
+        )
         result = arr.info
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=DataType.parse("float64"),
-            _shape=(4, 4),
-            _chunk_shape=(2, 2),
+            _shape=(8, 8),
+            _chunk_shape=chunks,
+            _shard_shape=shards,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=[BytesCodec(), ZstdCodec()],
-            _count_bytes=128,
+            _codecs=[BytesCodec(), ZstdCodec()]
+            if shards is None
+            else [ShardingCodec(chunk_shape=chunks, codecs=[BytesCodec(), ZstdCodec()])],
+            _count_bytes=512,
         )
         assert result == expected
 
-    async def test_info_complete_async(self) -> None:
-        arr = await zarr.api.asynchronous.create(
-            shape=(4, 4), chunks=(2, 2), zarr_format=3, codecs=[BytesCodec()]
+    async def test_info_complete_async(
+        self, chunks: tuple[int, int], shards: tuple[int, int] | None
+    ) -> None:
+        arr = await zarr.api.asynchronous.create_array(
+            store={},
+            dtype="f8",
+            shape=(8, 8),
+            chunks=chunks,
+            shards=shards,
+            compressors=None,
         )
         result = await arr.info_complete()
         expected = ArrayInfo(
             _zarr_format=3,
             _data_type=DataType.parse("float64"),
-            _shape=(4, 4),
-            _chunk_shape=(2, 2),
+            _shape=(8, 8),
+            _chunk_shape=chunks,
+            _shard_shape=shards,
             _order="C",
             _read_only=False,
             _store_type="MemoryStore",
-            _codecs=[BytesCodec()],
-            _count_bytes=128,
+            _codecs=[BytesCodec()] if shards is None else [ShardingCodec(chunk_shape=chunks)],
+            _count_bytes=512,
             _count_chunks_initialized=0,
-            _count_bytes_stored=373,  # the metadata?
+            _count_bytes_stored=373 if shards is None else 578,  # the metadata?
         )
         assert result == expected
 
-        await arr.setitem((slice(2), slice(2)), 10)
+        await arr.setitem((slice(4), slice(4)), 10)
         result = await arr.info_complete()
-        expected = dataclasses.replace(
-            expected, _count_chunks_initialized=1, _count_bytes_stored=405
-        )
+        if shards is None:
+            expected = dataclasses.replace(
+                expected, _count_chunks_initialized=4, _count_bytes_stored=501
+            )
+        else:
+            expected = dataclasses.replace(
+                expected, _count_chunks_initialized=1, _count_bytes_stored=774
+            )
         assert result == expected
 
 

@@ -1148,6 +1148,9 @@ class AsyncGroup:
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array.
 
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.create_array` instead.
+
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
         with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.require_dataset` method.
 
@@ -1161,11 +1164,17 @@ class AsyncGroup:
         Returns
         -------
         a : AsyncArray
-
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.create_array` instead.
         """
-        return await self.create_array(name, shape=shape, **kwargs)
+        data = kwargs.pop("data", None)
+        # create_dataset in zarr 2.x requires shape but not dtype if data is
+        # provided. Allow this configuration by inferring dtype from data if
+        # necessary and passing it to create_array
+        if "dtype" not in kwargs and data is not None:
+            kwargs["dtype"] = data.dtype
+        array = await self.create_array(name, shape=shape, **kwargs)
+        if data is not None:
+            await array.setitem(slice(None), data)
+        return array
 
     @deprecated("Use AsyncGroup.require_array instead.")
     async def require_dataset(
@@ -1178,6 +1187,9 @@ class AsyncGroup:
         **kwargs: Any,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Obtain an array, creating if it doesn't exist.
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.require_dataset` instead.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
         with h5py, Zarr groups also implement the :func:`zarr.AsyncGroup.create_dataset` method.
@@ -1199,9 +1211,6 @@ class AsyncGroup:
         Returns
         -------
         a : AsyncArray
-
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `AsyncGroup.require_dataset` instead.
         """
         return await self.require_array(name, shape=shape, dtype=dtype, exact=exact, **kwargs)
 
@@ -2393,6 +2402,10 @@ class Group(SyncMixin):
     def create_dataset(self, name: str, **kwargs: Any) -> Array:
         """Create an array.
 
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `Group.create_array` instead.
+
+
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
         with h5py, Zarr groups also implement the :func:`zarr.Group.require_dataset` method.
 
@@ -2406,15 +2419,15 @@ class Group(SyncMixin):
         Returns
         -------
         a : Array
-
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `Group.create_array` instead.
         """
         return Array(self._sync(self._async_group.create_dataset(name, **kwargs)))
 
     @deprecated("Use Group.require_array instead.")
     def require_dataset(self, name: str, *, shape: ShapeLike, **kwargs: Any) -> Array:
         """Obtain an array, creating if it doesn't exist.
+
+        .. deprecated:: 3.0.0
+            The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
 
         Arrays are known as "datasets" in HDF5 terminology. For compatibility
         with h5py, Zarr groups also implement the :func:`zarr.Group.create_dataset` method.
@@ -2431,9 +2444,6 @@ class Group(SyncMixin):
         Returns
         -------
         a : Array
-
-        .. deprecated:: 3.0.0
-            The h5py compatibility methods will be removed in 3.1.0. Use `Group.require_array` instead.
         """
         return Array(self._sync(self._async_group.require_array(name, shape=shape, **kwargs)))
 
@@ -2659,6 +2669,9 @@ class Group(SyncMixin):
         data: npt.ArrayLike | None = None,
     ) -> Array:
         """Create an array within this group.
+
+        .. deprecated:: 3.0.0
+            Use `Group.create_array` instead.
 
         This method lightly wraps :func:`zarr.core.array.create_array`.
 
