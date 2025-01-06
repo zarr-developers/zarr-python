@@ -152,7 +152,7 @@ class ZipStore(Store):
                 elif isinstance(byte_range, dict):
                     size = f.seek(0, os.SEEK_END)
                     if "offset" in byte_range:
-                        f.seek(byte_range["offset"])
+                        f.seek(byte_range["offset"])  # type: ignore[typeddict-item]
                     elif "suffix" in byte_range:
                         f.seek(max(0, size - byte_range["suffix"]))
                     else:

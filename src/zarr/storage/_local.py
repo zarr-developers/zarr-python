@@ -29,7 +29,7 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest | 
             return prototype.buffer.from_bytes(f.read(end - f.tell()))
         elif isinstance(byte_range, dict):
             if "offset" in byte_range:
-                f.seek(byte_range["offset"])
+                f.seek(byte_range["offset"])  # type: ignore[typeddict-item]
             elif "suffix" in byte_range:
                 f.seek(max(0, size - byte_range["suffix"]))
             else:

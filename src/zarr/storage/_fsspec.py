@@ -216,7 +216,7 @@ class FsspecStore(Store):
             elif isinstance(byte_range, dict):
                 if "offset" in byte_range:
                     value = prototype.buffer.from_bytes(
-                        await self.fs._cat_file(path, start=byte_range["offset"], end=None)
+                        await self.fs._cat_file(path, start=byte_range["offset"], end=None)  # type: ignore[typeddict-item]
                     )
                 elif "suffix" in byte_range:
                     value = prototype.buffer.from_bytes(
