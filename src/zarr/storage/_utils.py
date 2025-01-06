@@ -57,7 +57,8 @@ def _normalize_byte_range_index(data: Buffer, byte_range: ByteRangeRequest) -> t
         length = byte_range[1] - start
     elif "offset" in byte_range:
         # See https://github.com/python/mypy/issues/17087 for typeddict-item ignore explanation
-        length = len(data) - byte_range["offset"]  # type: ignore[typeddict-item]
+        start = byte_range["offset"]  # type: ignore[typeddict-item]
+        length = len(data)
     elif "suffix" in byte_range:
         start = len(data) - byte_range["suffix"]
         length = len(data) - start
