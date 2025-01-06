@@ -4,7 +4,7 @@
 Zarr-Python 3 represents a major refactor of the Zarr-Python codebase. Some of the
 goals motivating this refactor included:
 
-* adding support for the Zarr V3 specification (along with the Zarr V2 specification)
+* adding support for the Zarr format 3 specification (along with the Zarr format 2 specification)
 * cleaning up internal and user facing APIs
 * improving performance (particularly in high latency storage environments like
   cloud object stores)

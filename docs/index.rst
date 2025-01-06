@@ -25,7 +25,7 @@ Zarr-Python
 
 Zarr-Python is a Python library for reading and writing Zarr groups and arrays. Highlights include:
 
-* Specification support for both Zarr v2 and v3.
+* Specification support for both Zarr format 2 and 3.
 * Create and read from N-dimensional arrays using NumPy-like semantics.
 * Flexible storage enables reading and writing from local, cloud and in-memory stores.
 * High performance: Enables fast I/O with support for asynchronous I/O and multi-threading.
