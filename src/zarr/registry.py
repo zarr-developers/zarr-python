@@ -10,6 +10,7 @@ from zarr.core.config import BadConfigError, config
 if TYPE_CHECKING:
     from importlib.metadata import EntryPoint
 
+    from zarr.abc.buffer import Buffer, NDBuffer
     from zarr.abc.codec import (
         ArrayArrayCodec,
         ArrayBytesCodec,
@@ -17,7 +18,6 @@ if TYPE_CHECKING:
         Codec,
         CodecPipeline,
     )
-    from zarr.core.buffer import Buffer, NDBuffer
     from zarr.core.common import JSON
 
 __all__ = [

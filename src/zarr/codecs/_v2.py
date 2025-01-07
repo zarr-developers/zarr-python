@@ -14,8 +14,8 @@ from zarr.registry import get_ndbuffer_class
 if TYPE_CHECKING:
     import numcodecs.abc
 
+    from zarr.abc.buffer import Buffer, NDBuffer
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, NDBuffer
 
 
 @dataclass(frozen=True)
