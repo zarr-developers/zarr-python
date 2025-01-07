@@ -303,7 +303,7 @@ class FsspecStore(Store):
         else:
             return []
         # TODO: expectations for exceptions or missing keys?
-        res = await self.fs._cat_ranges(paths, starts, stops)
+        res = await self.fs._cat_ranges(paths, starts, stops, on_error="return")
         # the following is an s3-specific condition we probably don't want to leak
         res = [b"" if (isinstance(r, OSError) and "not satisfiable" in str(r)) else r for r in res]
         for r in res:
