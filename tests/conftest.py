@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pathlib
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -10,6 +10,7 @@ import pytest
 from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr import AsyncGroup, config
+from zarr.abc.codec import Codec
 from zarr.abc.store import Store
 from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 from zarr.core.array import (
@@ -31,7 +32,6 @@ if TYPE_CHECKING:
 
     from _pytest.compat import LEGACY_PATH
 
-    from zarr.abc.codec import Codec
     from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike, ShardsLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import ChunkCoords, MemoryOrder, ShapeLike, ZarrFormat
@@ -273,7 +273,7 @@ def create_array_metadata(
             dtype=dtype_parsed,
         )
 
-        sub_codecs = (*array_array, array_bytes, *bytes_bytes)
+        sub_codecs = cast(tuple[Codec, ...], (*array_array, array_bytes, *bytes_bytes))
         codecs_out: tuple[Codec, ...]
         if shard_shape_parsed is not None:
             index_location = None
