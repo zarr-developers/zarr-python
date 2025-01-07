@@ -1488,6 +1488,24 @@ async def test_create_hierarchy(store: Store, zarr_format: ZarrFormat) -> None:
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
 
 
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_group_create_hierarchy(store: Store, zarr_format: ZarrFormat):
+    """
+    Test that the Group.create_hierarchy method creates specified nodes and returns them in a dict.
+    """
+    g = Group.from_store(store)
+    tree = {
+        "a": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a"}),
+        "a/b": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a/b"}),
+        "a/b/c": meta_from_array(
+            np.zeros(5), zarr_format=zarr_format, attributes={"name": "a/b/c"}
+        ),
+    }
+    nodes = g.create_hierarchy(tree)
+    for k, v in nodes.items():
+        assert v.metadata == tree[k]
+
+
 def test_group_members_performance(store: MemoryStore) -> None:
     """
     Test that the execution time of Group.members is less than the number of members times the

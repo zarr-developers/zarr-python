@@ -9,6 +9,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
 from functools import partial
 from itertools import accumulate
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
 
 import numpy as np
@@ -1424,6 +1425,33 @@ class AsyncGroup:
         ):
             yield member
 
+    # TODO: find a better name for this. create_tree could work.
+    # TODO: include an example in the docstring
+    async def create_hierarchy(
+        self, nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]
+    ) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+        """
+        Create a hierarchy of arrays or groups rooted at this group.
+
+        This method takes a dictionary where the keys are the names of the arrays or groups
+        to create and the values are the metadata or objects representing the arrays or groups.
+
+        The method returns an asynchronous iterator over the created nodes.
+
+        Parameters
+        ----------
+        nodes : A dictionary representing the hierarchy to create
+
+        Returns
+        -------
+            An asynchronous iterator over the created nodes.
+        """
+        semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+        async for node in create_hierarchy(
+            store_path=self.store_path, nodes=nodes, semaphore=semaphore
+        ):
+            yield node
+
     async def keys(self) -> AsyncGenerator[str, None]:
         """Iterate over member names."""
         async for key, _ in self.members():
@@ -2045,6 +2073,32 @@ class Group(SyncMixin):
         _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
         return tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
+
+    def create_hierarchy(
+        self, nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]
+    ) -> dict[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+        """
+        Create a hierarchy of arrays or groups rooted at this group.
+
+        This method takes a dictionary where the keys are the names of the arrays or groups
+        to create and the values are the metadata objects for the arrays or groups.
+
+        The method returns an asynchronous iterator over the created nodes.
+
+        Parameters
+        ----------
+        nodes : A dictionary representing the hierarchy to create
+
+        Returns
+        -------
+            A dict containing the created nodes.The keys are the same as th
+        """
+        nodes_created = self._sync_iter(self._async_group.create_hierarchy(nodes))
+        if self.path == "":
+            root = "/"
+        else:
+            root = self.path
+        return {str(PurePosixPath(n.name).relative_to(root)): n for n in nodes_created}
 
     def keys(self) -> Generator[str, None]:
         """Return an iterator over group member names.
