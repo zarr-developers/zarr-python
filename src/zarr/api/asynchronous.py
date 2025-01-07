@@ -188,7 +188,6 @@ async def consolidate_metadata(
     group.store_path.store._check_writable()
 
     members_metadata = {k: v.metadata async for k, v in group.members(max_depth=None)}
-
     # While consolidating, we want to be explicit about when child groups
     # are empty by inserting an empty dict for consolidated_metadata.metadata
     for k, v in members_metadata.items():
