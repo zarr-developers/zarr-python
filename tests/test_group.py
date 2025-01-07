@@ -619,8 +619,7 @@ def test_group_create_array(
         array[:] = data
     elif method == "array":
         with pytest.warns(DeprecationWarning):
-            array = group.array(name="array", shape=shape, dtype=dtype)
-            array[:] = data
+            array = group.array(name="array", data=data, shape=shape, dtype=dtype)
     else:
         raise AssertionError
 
