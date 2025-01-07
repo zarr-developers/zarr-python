@@ -5,14 +5,14 @@ import atexit
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from typing_extensions import ParamSpec
 
 from zarr.core.config import config
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Coroutine
+    from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine
     from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -192,3 +192,17 @@ class SyncMixin:
             return [item async for item in async_iterator]
 
         return self._sync(iter_to_list())
+
+
+async def _with_semaphore(
+    func: Callable[[], Awaitable[T]], semaphore: asyncio.Semaphore | None = None
+) -> T:
+    """
+    Await the result of invoking the no-argument-callable ``func`` within the context manager
+    provided by a Semaphore, if one is provided. Otherwise, just await the result of invoking
+    ``func``.
+    """
+    if semaphore is None:
+        return await func()
+    async with semaphore:
+        return await func()

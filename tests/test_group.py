@@ -4,6 +4,7 @@ import contextlib
 import operator
 import pickle
 import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -18,12 +19,12 @@ from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata, create_nodes
+from zarr.core.group import ConsolidatedMetadata, GroupMetadata, create_hierarchy, create_nodes
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore, make_store_path
 
-from .conftest import meta_from_array_v2, parse_store
+from .conftest import meta_from_array, parse_store
 
 if TYPE_CHECKING:
     from _pytest.compat import LEGACY_PATH
@@ -1441,13 +1442,49 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-async def test_create_nodes(store: Store) -> None:
+async def test_create_nodes(store: Store, zarr_format: ZarrFormat) -> None:
     """
-    Ensure that create_nodes works.
+    Ensure that ``create_nodes`` can create a zarr hierarchy from a model of that
+    hierarchy in dict form. Note that this creates an incomplete Zarr hierarchy.
     """
-    arrays = {str(idx): meta_from_array_v2(np.arange(idx)) for idx in range(1, 5)}
+    path = "foo"
+    expected_meta = {
+        "group": GroupMetadata(attributes={"foo": 10}),
+        "group/array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
+        "group/array_1": meta_from_array(np.arange(4), zarr_format=zarr_format),
+        "group/subgroup/array_0": meta_from_array(np.arange(4), zarr_format=zarr_format),
+        "group/subgroup/array_1": meta_from_array(np.arange(5), zarr_format=zarr_format),
+    }
     spath = await make_store_path(store, path="foo")
-    results = [a async for a in create_nodes(store_path=spath, nodes=arrays)]
+    observed_nodes = {
+        str(Path(a.name).relative_to("/" + path)): a
+        async for a in create_nodes(store_path=spath, nodes=expected_meta)
+    }
+    assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_hierarchy(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    Test that ``create_hierarchy`` can create a complete Zarr hierarchy, even if the input describes
+    an incomplete one.
+    """
+    path = "foo"
+    hierarchy_spec = {
+        "group": GroupMetadata(attributes={"foo": 10}),
+        "group/array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
+        "group/array_1": meta_from_array(np.arange(4), zarr_format=zarr_format),
+        "group/subgroup/array_0": meta_from_array(np.arange(4), zarr_format=zarr_format),
+        "group/subgroup/array_1": meta_from_array(np.arange(5), zarr_format=zarr_format),
+    }
+    expected_meta = hierarchy_spec | {"group/subgroup": GroupMetadata(zarr_format=zarr_format)}
+    spath = await make_store_path(store, path="foo")
+    observed_nodes = {
+        str(Path(a.name).relative_to("/" + path)): a
+        async for a in create_hierarchy(store_path=spath, nodes=expected_meta)
+    }
+    assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
+
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_deprecated_compressor(store: Store) -> None:

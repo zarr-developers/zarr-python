@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import pathlib
-from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -11,24 +10,31 @@ import pytest
 from hypothesis import HealthCheck, Verbosity, settings
 
 from zarr import AsyncGroup, config
-from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+from zarr.abc.codec import Codec
 from zarr.abc.store import Store
-from zarr.codecs.bytes import BytesCodec
-from zarr.codecs.sharding import ShardingCodec
-from zarr.core.chunk_grids import _guess_chunks
-from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
+from zarr.core.array import (
+    _parse_chunk_encoding_v2,
+    _parse_chunk_encoding_v3,
+    _parse_chunk_key_encoding,
+)
+from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition
+from zarr.core.common import JSON, parse_dtype, parse_shapelike
+from zarr.core.config import config as zarr_config
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Generator, Iterable
     from typing import Any, Literal
 
     from _pytest.compat import LEGACY_PATH
 
-    from zarr.core.common import ChunkCoords, MemoryOrder, ZarrFormat
+    from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike, ShardsLike
+    from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
+    from zarr.core.common import ChunkCoords, MemoryOrder, ShapeLike, ZarrFormat
 
 
 async def parse_store(
@@ -167,183 +173,210 @@ settings.register_profile(
     suppress_health_check=[HealthCheck.filter_too_much, HealthCheck.too_slow],
     verbosity=Verbosity.verbose,
 )
-import numcodecs
+
+# TODO: uncomment these overrides when we can get mypy to accept them
+"""
+@overload
+def create_array_metadata(
+    *,
+    shape: ShapeLike,
+    dtype: npt.DTypeLike,
+    chunks: ChunkCoords | Literal["auto"],
+    shards: None,
+    filters: FiltersLike,
+    compressors: CompressorsLike,
+    serializer: SerializerLike,
+    fill_value: Any | None,
+    order: MemoryOrder | None,
+    zarr_format: Literal[2],
+    attributes: dict[str, JSON] | None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None,
+    dimension_names: None,
+) -> ArrayV2Metadata: ...
 
 
-def meta_from_array_v2(
-    array: np.ndarray[Any, Any],
+@overload
+def create_array_metadata(
+    *,
+    shape: ShapeLike,
+    dtype: npt.DTypeLike,
+    chunks: ChunkCoords | Literal["auto"],
+    shards: ShardsLike | None,
+    filters: FiltersLike,
+    compressors: CompressorsLike,
+    serializer: SerializerLike,
+    fill_value: Any | None,
+    order: None,
+    zarr_format: Literal[3],
+    attributes: dict[str, JSON] | None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None,
+    dimension_names: Iterable[str] | None,
+) -> ArrayV3Metadata: ...
+"""
+
+
+def create_array_metadata(
+    *,
+    shape: ShapeLike,
+    dtype: npt.DTypeLike,
     chunks: ChunkCoords | Literal["auto"] = "auto",
-    compressor: numcodecs.abc.Codec | Literal["auto"] | None = "auto",
-    filters: Iterable[numcodecs.abc.Codec] | Literal["auto"] = "auto",
-    fill_value: Any = "auto",
-    order: MemoryOrder | Literal["auto"] = "auto",
-    dimension_separator: Literal[".", "/", "auto"] = "auto",
-    attributes: dict[str, Any] | None = None,
-) -> ArrayV2Metadata:
-    """
-    Create a v2 metadata object from a numpy array
-    """
-
-    _chunks = auto_chunks(chunks, array.shape, array.dtype)
-    _compressor = auto_compressor(compressor)
-    _filters = auto_filters(filters)
-    _fill_value = auto_fill_value(fill_value)
-    _order = auto_order(order)
-    _dimension_separator = auto_dimension_separator(dimension_separator)
-    return ArrayV2Metadata(
-        shape=array.shape,
-        dtype=array.dtype,
-        chunks=_chunks,
-        compressor=_compressor,
-        filters=_filters,
-        fill_value=_fill_value,
-        order=_order,
-        dimension_separator=_dimension_separator,
-        attributes=attributes,
-    )
-
-
-from typing import TypedDict
-
-
-class ChunkEncoding(TypedDict):
-    filters: tuple[ArrayArrayCodec]
-    compressors: tuple[BytesBytesCodec]
-    serializer: ArrayBytesCodec
-
-
-class ChunkingSpec(TypedDict):
-    shard_shape: tuple[int, ...]
-    chunk_shape: tuple[int, ...] | None
-    chunk_key_encoding: ChunkKeyEncoding
-
-
-def meta_from_array_v3(
-    array: np.ndarray[Any, Any],
-    shard_shape: tuple[int, ...] | Literal["auto"] | None,
-    chunk_shape: tuple[int, ...] | Literal["auto"],
-    serializer: ArrayBytesCodec | Literal["auto"] = "auto",
-    compressors: Iterable[BytesBytesCodec] | Literal["auto"] = "auto",
-    filters: Iterable[ArrayArrayCodec] | Literal["auto"] = "auto",
-    fill_value: Any = "auto",
-    chunk_key_encoding: ChunkKeyEncoding | Literal["auto"] = "auto",
+    shards: ShardsLike | None = None,
+    filters: FiltersLike = "auto",
+    compressors: CompressorsLike = "auto",
+    serializer: SerializerLike = "auto",
+    fill_value: Any | None = None,
+    order: MemoryOrder | None = None,
+    zarr_format: ZarrFormat,
+    attributes: dict[str, JSON] | None = None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
     dimension_names: Iterable[str] | None = None,
-    attributes: dict[str, Any] | None = None,
-) -> ArrayV3Metadata:
-    _write_chunks, _read_chunks = auto_chunks_v3(
-        shard_shape=shard_shape, chunk_shape=chunk_shape, array_shape=array.shape, dtype=array.dtype
+) -> ArrayV2Metadata | ArrayV3Metadata:
+    """
+    Create array metadata
+    """
+    dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
+    shape_parsed = parse_shapelike(shape)
+    chunk_key_encoding_parsed = _parse_chunk_key_encoding(
+        chunk_key_encoding, zarr_format=zarr_format
     )
-    _codecs = auto_codecs(serializer=serializer, compressors=compressors, filters=filters)
-    if _read_chunks is not None:
-        _codecs = (ShardingCodec(codecs=_codecs, chunk_shape=_read_chunks),)
 
-    _fill_value = auto_fill_value(fill_value)
-    _chunk_key_encoding = auto_chunk_key_encoding(chunk_key_encoding)
-    return ArrayV3Metadata(
+    shard_shape_parsed, chunk_shape_parsed = _auto_partition(
+        array_shape=shape_parsed, shard_shape=shards, chunk_shape=chunks, dtype=dtype_parsed
+    )
+
+    if order is None:
+        order_parsed = zarr_config.get("array.order")
+    else:
+        order_parsed = order
+    chunks_out: tuple[int, ...]
+
+    if zarr_format == 2:
+        filters_parsed, compressor_parsed = _parse_chunk_encoding_v2(
+            compressor=compressors, filters=filters, dtype=np.dtype(dtype)
+        )
+        return ArrayV2Metadata(
+            shape=shape_parsed,
+            dtype=np.dtype(dtype),
+            chunks=chunk_shape_parsed,
+            order=order_parsed,
+            dimension_separator=chunk_key_encoding_parsed.separator,
+            fill_value=fill_value,
+            compressor=compressor_parsed,
+            filters=filters_parsed,
+            attributes=attributes,
+        )
+    elif zarr_format == 3:
+        array_array, array_bytes, bytes_bytes = _parse_chunk_encoding_v3(
+            compressors=compressors,
+            filters=filters,
+            serializer=serializer,
+            dtype=dtype_parsed,
+        )
+
+        sub_codecs = cast(tuple[Codec, ...], (*array_array, array_bytes, *bytes_bytes))
+        codecs_out: tuple[Codec, ...]
+        if shard_shape_parsed is not None:
+            index_location = None
+            if isinstance(shards, dict):
+                index_location = ShardingCodecIndexLocation(shards.get("index_location", None))
+            if index_location is None:
+                index_location = ShardingCodecIndexLocation.end
+            sharding_codec = ShardingCodec(
+                chunk_shape=chunk_shape_parsed, codecs=sub_codecs, index_location=index_location
+            )
+            sharding_codec.validate(
+                shape=chunk_shape_parsed,
+                dtype=dtype_parsed,
+                chunk_grid=RegularChunkGrid(chunk_shape=shard_shape_parsed),
+            )
+            codecs_out = (sharding_codec,)
+            chunks_out = shard_shape_parsed
+        else:
+            chunks_out = chunk_shape_parsed
+            codecs_out = sub_codecs
+
+        return ArrayV3Metadata(
+            shape=shape_parsed,
+            data_type=dtype_parsed,
+            chunk_grid=RegularChunkGrid(chunk_shape=chunks_out),
+            chunk_key_encoding=chunk_key_encoding_parsed,
+            fill_value=fill_value,
+            codecs=codecs_out,
+            attributes=attributes,
+            dimension_names=dimension_names,
+        )
+
+    raise ValueError(f"Invalid Zarr format: {zarr_format}")
+
+
+# TODO: uncomment these overrides when we can get mypy to accept them
+"""
+@overload
+def meta_from_array(
+    array: np.ndarray[Any, Any],
+    chunks: ChunkCoords | Literal["auto"],
+    shards: None,
+    filters: FiltersLike,
+    compressors: CompressorsLike,
+    serializer: SerializerLike,
+    fill_value: Any | None,
+    order: MemoryOrder | None,
+    zarr_format: Literal[2],
+    attributes: dict[str, JSON] | None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None,
+    dimension_names: Iterable[str] | None,
+) -> ArrayV2Metadata: ...
+
+
+@overload
+def meta_from_array(
+    array: np.ndarray[Any, Any],
+    chunks: ChunkCoords | Literal["auto"],
+    shards: ShardsLike | None,
+    filters: FiltersLike,
+    compressors: CompressorsLike,
+    serializer: SerializerLike,
+    fill_value: Any | None,
+    order: None,
+    zarr_format: Literal[3],
+    attributes: dict[str, JSON] | None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None,
+    dimension_names: Iterable[str] | None,
+) -> ArrayV3Metadata: ...
+
+"""
+
+
+def meta_from_array(
+    array: np.ndarray[Any, Any],
+    *,
+    chunks: ChunkCoords | Literal["auto"] = "auto",
+    shards: ShardsLike | None = None,
+    filters: FiltersLike = "auto",
+    compressors: CompressorsLike = "auto",
+    serializer: SerializerLike = "auto",
+    fill_value: Any | None = None,
+    order: MemoryOrder | None = None,
+    zarr_format: ZarrFormat = 3,
+    attributes: dict[str, JSON] | None = None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
+    dimension_names: Iterable[str] | None = None,
+) -> ArrayV3Metadata | ArrayV2Metadata:
+    """
+    Create array metadata from an array
+    """
+    return create_array_metadata(
         shape=array.shape,
         dtype=array.dtype,
-        codecs=_codecs,
-        chunk_key_encoding=_chunk_key_encoding,
+        chunks=chunks,
+        shards=shards,
+        filters=filters,
+        compressors=compressors,
+        serializer=serializer,
         fill_value=fill_value,
-        chunk_grid={"name": "regular", "config": {"chunk_shape": shard_shape}},
+        order=order,
+        zarr_format=zarr_format,
         attributes=attributes,
+        chunk_key_encoding=chunk_key_encoding,
         dimension_names=dimension_names,
     )
-
-
-from zarr.abc.codec import Codec
-from zarr.codecs import ZstdCodec
-
-
-def auto_codecs(
-    *,
-    filters: Iterable[ArrayArrayCodec] | Literal["auto"] = "auto",
-    compressors: Iterable[BytesBytesCodec] | Literal["auto"] = "auto",
-    serializer: ArrayBytesCodec | Literal["auto"] = "auto",
-) -> tuple[Codec, ...]:
-    """
-    Heuristically generate a tuple of codecs
-    """
-    _compressors: tuple[BytesBytesCodec, ...]
-    _filters: tuple[ArrayArrayCodec, ...]
-    _serializer: ArrayBytesCodec
-    if filters == "auto":
-        _filters = ()
-    else:
-        _filters = tuple(filters)
-
-    if compressors == "auto":
-        _compressors = (ZstdCodec(level=3),)
-    else:
-        _compressors = tuple(compressors)
-
-    if serializer == "auto":
-        _serializer = BytesCodec()
-    else:
-        _serializer = serializer
-    return (*_filters, _serializer, *_compressors)
-
-
-def auto_dimension_separator(dimension_separator: Literal[".", "/", "auto"]) -> Literal[".", "/"]:
-    if dimension_separator == "auto":
-        return "/"
-    return dimension_separator
-
-
-def auto_order(order: MemoryOrder | Literal["auto"]) -> MemoryOrder:
-    if order == "auto":
-        return "C"
-    return order
-
-
-def auto_fill_value(fill_value: Any) -> Any:
-    if fill_value == "auto":
-        return 0
-    return fill_value
-
-
-def auto_compressor(
-    compressor: numcodecs.abc.Codec | Literal["auto"] | None,
-) -> numcodecs.abc.Codec | None:
-    if compressor == "auto":
-        return numcodecs.Zstd(level=3)
-    return compressor
-
-
-def auto_filters(
-    filters: Iterable[numcodecs.abc.Codec] | Literal["auto"],
-) -> tuple[numcodecs.abc.Codec, ...]:
-    if filters == "auto":
-        return ()
-    return tuple(filters)
-
-
-def auto_chunks(
-    chunks: tuple[int, ...] | Literal["auto"], shape: tuple[int, ...], dtype: npt.DTypeLike
-) -> tuple[int, ...]:
-    if chunks == "auto":
-        return _guess_chunks(shape, np.dtype(dtype).itemsize)
-    return chunks
-
-
-def auto_chunks_v3(
-    *,
-    shard_shape: tuple[int, ...] | Literal["auto"],
-    chunk_shape: tuple[int, ...] | Literal["auto"] | None,
-    array_shape: tuple[int, ...],
-    dtype: npt.DTypeLike,
-) -> tuple[tuple[int, ...], tuple[int, ...] | None]:
-    match (shard_shape, chunk_shape):
-        case ("auto", "auto"):
-            # stupid default but easy to think about
-            return ((256,) * len(array_shape), (64,) * len(array_shape))
-        case ("auto", None):
-            return (_guess_chunks(array_shape, np.dtype(dtype).itemsize), None)
-        case ("auto", _):
-            return (chunk_shape, chunk_shape)
-        case (_, None):
-            return (shard_shape, None)
-        case (_, "auto"):
-            return (shard_shape, shard_shape)
-        case _:
-            return (shard_shape, chunk_shape)

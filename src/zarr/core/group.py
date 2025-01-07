@@ -6,9 +6,9 @@ import json
 import logging
 import warnings
 from collections import defaultdict
-from collections.abc import AsyncIterator, Awaitable
 from dataclasses import asdict, dataclass, field, fields, replace
 from functools import partial
+from itertools import accumulate
 from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
 
 import numpy as np
@@ -50,13 +50,20 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import V3JsonEncoder
-from zarr.core.sync import SyncMixin, sync
+from zarr.core.sync import SyncMixin, _with_semaphore, sync
 from zarr.errors import MetadataValidationError
 from zarr.storage import StoreLike, StorePath, make_store_path
 from zarr.storage._common import ensure_no_existing_node
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Callable, Generator, Iterable, Iterator
+    from collections.abc import (
+        AsyncGenerator,
+        AsyncIterator,
+        Generator,
+        Iterable,
+        Iterator,
+        Mapping,
+    )
     from typing import Any
 
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
@@ -1265,36 +1272,14 @@ class AsyncGroup:
 
         return ds
 
-    async def create_nodes(
+    async def _create_nodes(
         self, nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
-    ) -> tuple[tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]]:
+    ) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
         """
         Create a set of arrays or groups rooted at this group.
         """
-        _nodes: (
-            dict[str, GroupMetadata | ArrayV3Metadata] | dict[str, GroupMetadata | ArrayV2Metadata]
-        )
-        match self.metadata.zarr_format:
-            case 2:
-                if not all(
-                    isinstance(node, ArrayV2Metadata | GroupMetadata) for node in nodes.values()
-                ):
-                    raise ValueError("Only v2 arrays and groups are supported")
-                _nodes = cast(dict[str, ArrayV2Metadata | GroupMetadata], nodes)
-                return await create_nodes_v2(
-                    store=self.store_path.store, path=self.path, nodes=_nodes
-                )
-            case 3:
-                if not all(
-                    isinstance(node, ArrayV3Metadata | GroupMetadata) for node in nodes.values()
-                ):
-                    raise ValueError("Only v3 arrays and groups are supported")
-                _nodes = cast(dict[str, ArrayV3Metadata | GroupMetadata], nodes)
-                return await create_nodes_v3(
-                    store=self.store_path.store, path=self.path, nodes=_nodes
-                )
-            case _:
-                raise ValueError(f"Unsupported zarr format: {self.metadata.zarr_format}")
+        async for node in create_hierarchy(store_path=self.store_path, nodes=nodes):
+            yield node
 
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
         """Update group attributes.
@@ -2818,15 +2803,6 @@ class Group(SyncMixin):
         )
 
 
-async def _with_semaphore(
-    func: Callable[[Any], Awaitable[T]], semaphore: asyncio.Semaphore | None = None
-) -> T:
-    if semaphore is None:
-        return await func(None)
-    async with semaphore:
-        return await func(None)
-
-
 async def _save_metadata(
     node: AsyncArray[Any] | AsyncGroup,
 ) -> AsyncArray[Any] | AsyncGroup:
@@ -2841,6 +2817,43 @@ async def _save_metadata(
         case _:
             raise ValueError(f"Unexpected node type {type(node)}")
     return node
+
+
+async def create_hierarchy(
+    *,
+    store_path: StorePath,
+    nodes: dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata],
+    semaphore: asyncio.Semaphore | None = None,
+) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+    """
+    Create a complete zarr hierarchy concurrently. Groups that are implicitly defined by the input
+    ``nodes`` will be created as needed.
+
+    This function takes a parsed hierarchy dictionary and creates all the nodes in the hierarchy
+    concurrently. The groups and arrays in the hierarchy are created in a single pass, and the
+    function yields the created nodes in the order they are created.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        The StorePath object pointing to the root of the hierarchy.
+    nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
+        A dictionary defining the hierarchy. The keys are the paths of the nodes
+        in the hierarchy, and the values are the metadata of the nodes. The
+        metadata must be either an instance of GroupMetadata, ArrayV3Metadata
+        or ArrayV2Metadata.
+    semaphore : asyncio.Semaphore | None
+        An optional semaphore to limit the number of concurrent tasks. If not
+        provided, the number of concurrent tasks is not limited.
+
+    Yields
+    ------
+    AsyncGroup | AsyncArray
+        The created nodes in the order they are created.
+    """
+    nodes_parsed = parse_hierarchy_dict(nodes)
+    async for node in create_nodes(store_path=store_path, nodes=nodes_parsed, semaphore=semaphore):
+        yield node
 
 
 async def create_nodes(
@@ -2875,28 +2888,28 @@ async def create_nodes(
 T = TypeVar("T")
 
 
-def _split_keys(data: dict[str, T], separator: str) -> dict[tuple[str, ...], T]:
+def parse_hierarchy_dict(
+    data: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+) -> dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]:
     """
-    Given a dict of {string: T} pairs, where the keys are strings separated by some separator,
-    return the result of splitting each key with the separator.
+    If the input represents a complete Zarr hierarchy, i.e. one with no implicit groups,
+    then return an identical copy of that dict. Otherwise, return a version of the input dict
+    with groups added where they are needed to make the hierarchy explicit.
 
-    Parameters
-    ----------
-    data : dict[str, T]
-        A dict of {string:, T} pairs.
+    For example, an input of {'a/b/c': ...} will result in a return value of
+    {'a': GroupMetadata, 'a/b': GroupMetadata, 'a/b/c': ...}.
 
-    Returns
-    -------
-    dict[tuple[str,...], T]
-        The same values, but the keys have been split and converted to tuples.
-
-    Examples
-    --------
-    >>> _split_keys({"a": 1}, separator='/')
-    {("a",): 1}
-
-    >>> _split_keys({"a/b": 1, "a/b/c": 2, "c": 3}, separator='/')
-    {("a", "b"): 1, ("a", "b", "c"): 2, ("c",): 3}
+    This function is useful for ensuring that the input to create_hierarchy is a complete
+    Zarr hierarchy.
     """
-
-    return {tuple(k.split(separator)): v for k, v in data.items()}
+    # Create a copy of the input dict
+    out: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {**data}
+    for k, v in data.items():
+        # Split the key into its path components
+        key_split = k.split("/")
+        # Iterate over the path components
+        for subpath in accumulate(key_split, lambda a, b: f"{a}/{b}"):
+            # If a component is not already in the output dict, add it
+            if subpath not in out:
+                out[subpath] = GroupMetadata(zarr_format=v.zarr_format)
+    return out
