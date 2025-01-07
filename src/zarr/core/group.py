@@ -6,8 +6,9 @@ import json
 import logging
 import warnings
 from collections import defaultdict
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from dataclasses import asdict, dataclass, field, fields, replace
+from functools import partial
 from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
 
 import numpy as np
@@ -55,7 +56,7 @@ from zarr.storage import StoreLike, StorePath, make_store_path
 from zarr.storage._common import ensure_no_existing_node
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
+    from collections.abc import AsyncGenerator, Callable, Generator, Iterable, Iterator
     from typing import Any
 
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
@@ -1266,7 +1267,7 @@ class AsyncGroup:
 
     async def create_nodes(
         self, nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
-    ) -> tuple[tuple[str, AsyncGroup | AsyncArray]]:
+    ) -> tuple[tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]]:
         """
         Create a set of arrays or groups rooted at this group.
         """
@@ -2817,23 +2818,36 @@ class Group(SyncMixin):
         )
 
 
-async def _save_metadata_return_node(
+async def _with_semaphore(
+    func: Callable[[Any], Awaitable[T]], semaphore: asyncio.Semaphore | None = None
+) -> T:
+    if semaphore is None:
+        return await func(None)
+    async with semaphore:
+        return await func(None)
+
+
+async def _save_metadata(
     node: AsyncArray[Any] | AsyncGroup,
 ) -> AsyncArray[Any] | AsyncGroup:
-    if isinstance(node, AsyncArray):
-        await node._save_metadata(node.metadata, ensure_parents=False)
-    else:
-        await node._save_metadata(ensure_parents=False)
+    """
+    Save the metadata for an array or group, and return the array or group
+    """
+    match node:
+        case AsyncArray():
+            await node._save_metadata(node.metadata, ensure_parents=False)
+        case AsyncGroup():
+            await node._save_metadata(ensure_parents=False)
+        case _:
+            raise ValueError(f"Unexpected node type {type(node)}")
     return node
 
 
-async def create_nodes_v2(
-    *, store: Store, path: str, nodes: dict[str, GroupMetadata | ArrayV2Metadata]
-) -> tuple[tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata]]]: ...
-
-
 async def create_nodes(
-    *, store_path: StorePath, nodes: dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
+    *,
+    store_path: StorePath,
+    nodes: dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata],
+    semaphore: asyncio.Semaphore | None = None,
 ) -> AsyncIterator[AsyncGroup | AsyncArray[Any]]:
     """
     Create a collection of arrays and groups concurrently and atomically. To ensure atomicity,
@@ -2850,7 +2864,10 @@ async def create_nodes(
                 node = AsyncGroup(value, store_path=new_store_path)
             case _:
                 raise ValueError(f"Unexpected metadata type {type(value)}")
-        create_tasks.append(_save_metadata_return_node(node))
+        partial_func = partial(_save_metadata, node)
+        fut = _with_semaphore(partial_func, semaphore)
+        create_tasks.append(fut)
+
     for coro in asyncio.as_completed(create_tasks):
         yield await coro
 
@@ -2858,7 +2875,7 @@ async def create_nodes(
 T = TypeVar("T")
 
 
-def _tuplize_keys(data: dict[str, T], separator: str) -> dict[tuple[str, ...], T]:
+def _split_keys(data: dict[str, T], separator: str) -> dict[tuple[str, ...], T]:
     """
     Given a dict of {string: T} pairs, where the keys are strings separated by some separator,
     return the result of splitting each key with the separator.
@@ -2875,10 +2892,10 @@ def _tuplize_keys(data: dict[str, T], separator: str) -> dict[tuple[str, ...], T
 
     Examples
     --------
-    >>> _tuplize_tree({"a": 1}, separator='/')
+    >>> _split_keys({"a": 1}, separator='/')
     {("a",): 1}
 
-    >>> _tuplize_tree({"a/b": 1, "a/b/c": 2, "c": 3}, separator='/')
+    >>> _split_keys({"a/b": 1, "a/b/c": 2, "c": 3}, separator='/')
     {("a", "b"): 1, ("a", "b", "c"): 2, ("c",): 3}
     """
 
