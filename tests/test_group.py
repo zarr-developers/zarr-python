@@ -5,7 +5,7 @@ import operator
 import pickle
 import time
 import warnings
-from pathlib import PosixPath
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -1459,7 +1459,7 @@ async def test_create_nodes(store: Store, zarr_format: ZarrFormat) -> None:
     }
     spath = await make_store_path(store, path="foo")
     observed_nodes = {
-        str(PosixPath(a.name).relative_to("/" + path)): a
+        str(PurePosixPath(a.name).relative_to("/" + path)): a
         async for a in create_nodes(store_path=spath, nodes=expected_meta)
     }
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
@@ -1482,7 +1482,7 @@ async def test_create_hierarchy(store: Store, zarr_format: ZarrFormat) -> None:
     expected_meta = hierarchy_spec | {"group/subgroup": GroupMetadata(zarr_format=zarr_format)}
     spath = await make_store_path(store, path="foo")
     observed_nodes = {
-        str(PosixPath(a.name).relative_to("/" + path)): a
+        str(PurePosixPath(a.name).relative_to("/" + path)): a
         async for a in create_hierarchy(store_path=spath, nodes=expected_meta)
     }
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
