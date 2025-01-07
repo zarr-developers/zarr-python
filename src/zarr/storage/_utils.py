@@ -45,7 +45,9 @@ def normalize_path(path: str | bytes | Path | None) -> str:
     return result
 
 
-def _normalize_byte_range_index(data: Buffer, byte_range: ByteRangeRequest) -> tuple[int, int]:
+def _normalize_byte_range_index(
+    data: Buffer, byte_range: ByteRangeRequest | None
+) -> tuple[int, int]:
     """
     Convert an ByteRangeRequest into an explicit start and stop
     """

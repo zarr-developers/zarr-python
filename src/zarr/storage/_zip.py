@@ -138,7 +138,7 @@ class ZipStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         try:
@@ -178,7 +178,7 @@ class ZipStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         out = []

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
 
 
-def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest) -> Buffer:
+def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest | None) -> Buffer:
     if byte_range is None:
         return prototype.buffer.from_bytes(path.read_bytes())
     with path.open("rb") as f:
@@ -122,7 +122,7 @@ class LocalStore(Store):
         self,
         key: str,
         prototype: BufferPrototype | None = None,
-        byte_range: ByteRangeRequest = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if prototype is None:
@@ -140,7 +140,7 @@ class LocalStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         args = []

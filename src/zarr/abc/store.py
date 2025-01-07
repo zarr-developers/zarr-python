@@ -34,7 +34,7 @@ class SuffixRange(TypedDict):
     """The number of bytes from the suffix to request."""
 
 
-ByteRangeRequest: TypeAlias = None | tuple[int, int] | OffsetRange | SuffixRange
+ByteRangeRequest: TypeAlias = tuple[int, int] | OffsetRange | SuffixRange
 
 
 class Store(ABC):
@@ -181,7 +181,7 @@ class Store(ABC):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
