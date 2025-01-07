@@ -123,8 +123,8 @@ class StoreTests(Generic[S, B]):
         data_buf = self.buffer_cls.from_bytes(data)
         await self.set(store, key, data_buf)
         observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
-        start, length = _normalize_byte_range_index(data_buf, byte_range=byte_range)
-        expected = data_buf[start : start + length]
+        start, stop = _normalize_byte_range_index(data_buf, byte_range=byte_range)
+        expected = data_buf[start:stop]
         assert_bytes_equal(observed, expected)
 
     async def test_get_many(self, store: S) -> None:

@@ -83,8 +83,8 @@ class MemoryStore(Store):
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
-            start, length = _normalize_byte_range_index(value, byte_range)
-            return prototype.buffer.from_buffer(value[start : start + length])
+            start, stop = _normalize_byte_range_index(value, byte_range)
+            return prototype.buffer.from_buffer(value[start:stop])
         except KeyError:
             return None
 

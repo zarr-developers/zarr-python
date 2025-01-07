@@ -47,19 +47,19 @@ def normalize_path(path: str | bytes | Path | None) -> str:
 
 def _normalize_byte_range_index(data: Buffer, byte_range: ByteRangeRequest) -> tuple[int, int]:
     """
-    Convert an ByteRangeRequest into an explicit start and length
+    Convert an ByteRangeRequest into an explicit start and stop
     """
     if byte_range is None:
         start = 0
-        length = len(data)
+        stop = len(data) + 1
     elif isinstance(byte_range, tuple):
         start = byte_range[0]
-        length = byte_range[1] - start
+        stop = byte_range[1]
     elif "offset" in byte_range:
         # See https://github.com/python/mypy/issues/17087 for typeddict-item ignore explanation
         start = byte_range["offset"]  # type: ignore[typeddict-item]
-        length = len(data)
+        stop = len(data) + 1
     elif "suffix" in byte_range:
         start = len(data) - byte_range["suffix"]
-        length = len(data) - start
-    return (start, length)
+        stop = len(data) + 1
+    return (start, stop)
