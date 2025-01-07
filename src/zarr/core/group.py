@@ -2851,7 +2851,7 @@ async def create_hierarchy(
     AsyncGroup | AsyncArray
         The created nodes in the order they are created.
     """
-    nodes_parsed = parse_hierarchy_dict(nodes)
+    nodes_parsed = _parse_hierarchy_dict(nodes)
     async for node in create_nodes(store_path=store_path, nodes=nodes_parsed, semaphore=semaphore):
         yield node
 
@@ -2888,7 +2888,7 @@ async def create_nodes(
 T = TypeVar("T")
 
 
-def parse_hierarchy_dict(
+def _parse_hierarchy_dict(
     data: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
 ) -> dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]:
     """
