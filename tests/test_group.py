@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import operator
 import pickle
+import time
 import warnings
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -22,6 +23,7 @@ from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore, make_store_path
+from zarr.testing.store import LatencyStore
 
 from .conftest import parse_store
 
@@ -617,8 +619,7 @@ def test_group_create_array(
         array[:] = data
     elif method == "array":
         with pytest.warns(DeprecationWarning):
-            array = group.array(name="array", shape=shape, dtype=dtype)
-            array[:] = data
+            array = group.array(name="array", data=data, shape=shape, dtype=dtype)
     else:
         raise AssertionError
 
@@ -1438,6 +1439,71 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
     del g1["0"]
     with pytest.raises(KeyError):
         g1["0/0"]
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_group_members_performance(store: MemoryStore) -> None:
+    """
+    Test that the execution time of Group.members is less than the number of members times the
+    latency for accessing each member.
+    """
+    get_latency = 0.1
+
+    # use the input store to create some groups
+    group_create = zarr.group(store=store)
+    num_groups = 10
+
+    # Create some groups
+    for i in range(num_groups):
+        group_create.create_group(f"group{i}")
+
+    latency_store = LatencyStore(store, get_latency=get_latency)
+    # create a group with some latency on get operations
+    group_read = zarr.group(store=latency_store)
+
+    # check how long it takes to iterate over the groups
+    # if .members is sensitive to IO latency,
+    # this should take (num_groups * get_latency) seconds
+    # otherwise, it should take only marginally more than get_latency seconds
+    start = time.time()
+    _ = group_read.members()
+    elapsed = time.time() - start
+
+    assert elapsed < (num_groups * get_latency)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_group_members_concurrency_limit(store: MemoryStore) -> None:
+    """
+    Test that the execution time of Group.members can be constrained by the async concurrency
+    configuration setting.
+    """
+    get_latency = 0.02
+
+    # use the input store to create some groups
+    group_create = zarr.group(store=store)
+    num_groups = 10
+
+    # Create some groups
+    for i in range(num_groups):
+        group_create.create_group(f"group{i}")
+
+    latency_store = LatencyStore(store, get_latency=get_latency)
+    # create a group with some latency on get operations
+    group_read = zarr.group(store=latency_store)
+
+    # check how long it takes to iterate over the groups
+    # if .members is sensitive to IO latency,
+    # this should take (num_groups * get_latency) seconds
+    # otherwise, it should take only marginally more than get_latency seconds
+    from zarr.core.config import config
+
+    with config.set({"async.concurrency": 1}):
+        start = time.time()
+        _ = group_read.members()
+        elapsed = time.time() - start
+
+        assert elapsed > num_groups * get_latency
 
 
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
