@@ -45,7 +45,7 @@ def normalize_path(path: str | bytes | Path | None) -> str:
 
 
 def _normalize_interval_index(
-    data: Buffer, interval: None | tuple[int | None, int | None]
+    data: Buffer, interval: tuple[int | None, int | None] | None
 ) -> tuple[int, int]:
     """
     Convert an implicit interval into an explicit start and length

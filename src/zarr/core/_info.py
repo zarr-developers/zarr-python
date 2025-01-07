@@ -5,7 +5,8 @@ from typing import Any, Literal
 import numcodecs.abc
 import numpy as np
 
-from zarr.abc.codec import Codec
+from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec
+from zarr.core.common import ZarrFormat
 from zarr.core.metadata.v3 import DataType
 
 
@@ -20,7 +21,7 @@ class GroupInfo:
 
     _name: str
     _type: Literal["Group"] = "Group"
-    _zarr_format: Literal[2, 3]
+    _zarr_format: ZarrFormat
     _read_only: bool
     _store_type: str
     _count_members: int | None = None
@@ -76,16 +77,17 @@ class ArrayInfo:
     """
 
     _type: Literal["Array"] = "Array"
-    _zarr_format: Literal[2, 3]
+    _zarr_format: ZarrFormat
     _data_type: np.dtype[Any] | DataType
     _shape: tuple[int, ...]
+    _shard_shape: tuple[int, ...] | None = None
     _chunk_shape: tuple[int, ...] | None = None
     _order: Literal["C", "F"]
     _read_only: bool
     _store_type: str
-    _compressor: numcodecs.abc.Codec | None = None
-    _filters: tuple[numcodecs.abc.Codec, ...] | None = None
-    _codecs: list[Codec] | None = None
+    _filters: tuple[numcodecs.abc.Codec, ...] | tuple[ArrayArrayCodec, ...] = ()
+    _serializer: ArrayBytesCodec | None = None
+    _compressors: tuple[numcodecs.abc.Codec, ...] | tuple[BytesBytesCodec, ...] = ()
     _count_bytes: int | None = None
     _count_bytes_stored: int | None = None
     _count_chunks_initialized: int | None = None
@@ -95,24 +97,31 @@ class ArrayInfo:
         Type               : {_type}
         Zarr format        : {_zarr_format}
         Data type          : {_data_type}
-        Shape              : {_shape}
+        Shape              : {_shape}""")
+
+        if self._shard_shape is not None:
+            template += textwrap.dedent("""
+        Shard shape        : {_shard_shape}""")
+
+        template += textwrap.dedent("""
         Chunk shape        : {_chunk_shape}
         Order              : {_order}
         Read-only          : {_read_only}
         Store type         : {_store_type}""")
 
-        kwargs = dataclasses.asdict(self)
+        # We can't use dataclasses.asdict, because we only want a shallow dict
+        kwargs = {field.name: getattr(self, field.name) for field in dataclasses.fields(self)}
+
         if self._chunk_shape is None:
             # for non-regular chunk grids
             kwargs["chunk_shape"] = "<variable>"
-        if self._compressor is not None:
-            template += "\nCompressor         : {_compressor}"
 
-        if self._filters is not None:
-            template += "\nFilters            : {_filters}"
+        template += "\nFilters            : {_filters}"
 
-        if self._codecs is not None:
-            template += "\nCodecs             : {_codecs}"
+        if self._serializer is not None:
+            template += "\nSerializer         : {_serializer}"
+
+        template += "\nCompressors        : {_compressors}"
 
         if self._count_bytes is not None:
             template += "\nNo. bytes          : {_count_bytes}"
@@ -131,5 +140,8 @@ class ArrayInfo:
             kwargs["_storage_ratio"] = f"{self._count_bytes / self._count_bytes_stored:.1f}"
 
         if self._count_chunks_initialized is not None:
-            template += "\nChunks Initialized : {_count_chunks_initialized}"
+            if self._shard_shape is not None:
+                template += "\nShards Initialized : {_count_chunks_initialized}"
+            else:
+                template += "\nChunks Initialized : {_count_chunks_initialized}"
         return template.format(**kwargs)

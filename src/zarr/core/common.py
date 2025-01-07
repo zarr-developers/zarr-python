@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import operator
+import warnings
 from collections.abc import Iterable, Mapping
 from enum import Enum
 from itertools import starmap
@@ -17,6 +18,7 @@ from typing import (
 
 import numpy as np
 
+from zarr.core.config import config as zarr_config
 from zarr.core.strings import _STRING_DTYPE
 
 if TYPE_CHECKING:
@@ -36,7 +38,7 @@ ChunkCoords = tuple[int, ...]
 ChunkCoordsLike = Iterable[int]
 ZarrFormat = Literal[2, 3]
 NodeType = Literal["array", "group"]
-JSON = None | str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...]
+JSON = str | int | float | Mapping[str, "JSON"] | tuple["JSON", ...] | None
 MemoryOrder = Literal["C", "F"]
 AccessModeLiteral = Literal["r", "r+", "a", "w", "w-"]
 
@@ -160,6 +162,12 @@ def parse_order(data: Any) -> Literal["C", "F"]:
     raise ValueError(f"Expected one of ('C', 'F'), got {data} instead.")
 
 
+def parse_bool(data: Any) -> bool:
+    if isinstance(data, bool):
+        return data
+    raise ValueError(f"Expected bool, got {data} instead.")
+
+
 def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
     if dtype is str or dtype == "str":
         if zarr_format == 2:
@@ -168,3 +176,30 @@ def parse_dtype(dtype: Any, zarr_format: ZarrFormat) -> np.dtype[Any]:
         else:
             return _STRING_DTYPE
     return np.dtype(dtype)
+
+
+def _warn_write_empty_chunks_kwarg() -> None:
+    # TODO: link to docs page on array configuration in this message
+    msg = (
+        "The `write_empty_chunks` keyword argument is deprecated and will be removed in future versions. "
+        "To control whether empty chunks are written to storage, either use the `config` keyword "
+        "argument, as in `config={'write_empty_chunks: True}`,"
+        "or change the global 'array.write_empty_chunks' configuration variable."
+    )
+    warnings.warn(msg, RuntimeWarning, stacklevel=2)
+
+
+def _warn_order_kwarg() -> None:
+    # TODO: link to docs page on array configuration in this message
+    msg = (
+        "The `order` keyword argument has no effect for Zarr format 3 arrays. "
+        "To control the memory layout of the array, either use the `config` keyword "
+        "argument, as in `config={'order: 'C'}`,"
+        "or change the global 'array.order' configuration variable."
+    )
+    warnings.warn(msg, RuntimeWarning, stacklevel=2)
+
+
+def _default_zarr_format() -> ZarrFormat:
+    """Return the default zarr_version"""
+    return cast(ZarrFormat, int(zarr_config.get("default_zarr_format", 3)))

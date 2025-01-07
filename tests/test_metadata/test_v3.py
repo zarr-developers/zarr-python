@@ -240,8 +240,8 @@ def test_metadata_to_dict(
     chunk_key_encoding: Literal["v2", "default"],
     dimension_separator: Literal[".", "/"] | None,
     dimension_names: Literal["nones", "strings", "missing"],
-    attributes: None | dict[str, Any],
-    storage_transformers: None | tuple[dict[str, JSON]],
+    attributes: dict[str, Any] | None,
+    storage_transformers: tuple[dict[str, JSON]] | None,
 ) -> None:
     shape = (1, 2, 3)
     data_type = DataType.uint8
@@ -336,13 +336,13 @@ def test_invalid_dtype_raises() -> None:
         "codecs": (),
         "fill_value": np.datetime64(0, "ns"),
     }
-    with pytest.raises(ValueError, match=r"Invalid V3 data_type: .*"):
+    with pytest.raises(ValueError, match=r"Invalid Zarr format 3 data_type: .*"):
         ArrayV3Metadata.from_dict(metadata_dict)
 
 
 @pytest.mark.parametrize("data", ["datetime64[s]", "foo", object()])
 def test_parse_invalid_dtype_raises(data):
-    with pytest.raises(ValueError, match=r"Invalid V3 data_type: .*"):
+    with pytest.raises(ValueError, match=r"Invalid Zarr format 3 data_type: .*"):
         DataType.parse(data)
 
 
