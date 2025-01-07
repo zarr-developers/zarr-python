@@ -77,7 +77,7 @@ class WrapperStore(Store, Generic[T_Store]):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
     ) -> list[Buffer | None]:
         return await self._store.get_partial_values(prototype, key_ranges)
 

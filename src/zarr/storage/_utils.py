@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from zarr.abc.store import ExplicitRange, OffsetRange, SuffixRange
+
 if TYPE_CHECKING:
     from zarr.abc.store import ByteRangeRequest
     from zarr.core.buffer import Buffer
@@ -45,21 +47,22 @@ def normalize_path(path: str | bytes | Path | None) -> str:
     return result
 
 
-def _normalize_byte_range_index(data: Buffer, byte_range: ByteRangeRequest) -> tuple[int, int]:
+def _normalize_byte_range_index(
+    data: Buffer, byte_range: ByteRangeRequest | None
+) -> tuple[int, int]:
     """
     Convert an ByteRangeRequest into an explicit start and stop
     """
     if byte_range is None:
         start = 0
         stop = len(data) + 1
-    elif "start" in byte_range:
-        # See https://github.com/python/mypy/issues/17087 for typeddict-item ignore explanation
-        start = byte_range["start"]  # type: ignore[typeddict-item]
-        stop = byte_range["end"]  # type: ignore[typeddict-item]
-    elif "offset" in byte_range:
-        start = byte_range["offset"]  # type: ignore[typeddict-item]
+    elif isinstance(byte_range, ExplicitRange):
+        start = byte_range.start
+        stop = byte_range.end
+    elif isinstance(byte_range, OffsetRange):
+        start = byte_range.offset
         stop = len(data) + 1
-    elif "suffix" in byte_range:
-        start = len(data) - byte_range["suffix"]
+    elif isinstance(byte_range, SuffixRange):
+        start = len(data) - byte_range.suffix
         stop = len(data) + 1
     return (start, stop)

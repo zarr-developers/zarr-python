@@ -17,7 +17,13 @@ from zarr.abc.codec import (
     Codec,
     CodecPipeline,
 )
-from zarr.abc.store import ByteGetter, ByteRangeRequest, ByteSetter
+from zarr.abc.store import (
+    ByteGetter,
+    ByteRangeRequest,
+    ByteSetter,
+    ExplicitRange,
+    SuffixRange,
+)
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.core.array_spec import ArrayConfig, ArraySpec
@@ -505,7 +511,7 @@ class ShardingCodec(
                 if chunk_byte_slice:
                     chunk_bytes = await byte_getter.get(
                         prototype=chunk_spec.prototype,
-                        byte_range={"start": chunk_byte_slice[0], "end": chunk_byte_slice[1]},
+                        byte_range=ExplicitRange(chunk_byte_slice[0], chunk_byte_slice[1]),
                     )
                     if chunk_bytes:
                         shard_dict[chunk_coords] = chunk_bytes
@@ -697,11 +703,11 @@ class ShardingCodec(
         shard_index_size = self._shard_index_size(chunks_per_shard)
         if self.index_location == ShardingCodecIndexLocation.start:
             index_bytes = await byte_getter.get(
-                prototype=numpy_buffer_prototype(), byte_range={"start": 0, "end": shard_index_size}
+                prototype=numpy_buffer_prototype(), byte_range=ExplicitRange(0, shard_index_size)
             )
         else:
             index_bytes = await byte_getter.get(
-                prototype=numpy_buffer_prototype(), byte_range={"suffix": shard_index_size}
+                prototype=numpy_buffer_prototype(), byte_range=SuffixRange(shard_index_size)
             )
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes, chunks_per_shard)

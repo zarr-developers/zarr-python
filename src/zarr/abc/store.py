@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from asyncio import gather
+from dataclasses import dataclass
 from itertools import starmap
-from typing import TYPE_CHECKING, Protocol, TypedDict, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
@@ -20,7 +21,8 @@ if TYPE_CHECKING:
 __all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
 
-class ExplicitRange(TypedDict):
+@dataclass
+class ExplicitRange:
     """Request a specific byte range"""
 
     start: int
@@ -29,21 +31,23 @@ class ExplicitRange(TypedDict):
     """The end of the byte range request (exclusive)."""
 
 
-class OffsetRange(TypedDict):
+@dataclass
+class OffsetRange:
     """Request all bytes starting from a given byte offset"""
 
     offset: int
     """The byte offset for the offset range request."""
 
 
-class SuffixRange(TypedDict):
+@dataclass
+class SuffixRange:
     """Request up to the last `n` bytes"""
 
     suffix: int
     """The number of bytes from the suffix to request."""
 
 
-ByteRangeRequest: TypeAlias = None | ExplicitRange | OffsetRange | SuffixRange
+ByteRangeRequest: TypeAlias = ExplicitRange | OffsetRange | SuffixRange
 
 
 class Store(ABC):
@@ -190,7 +194,7 @@ class Store(ABC):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 

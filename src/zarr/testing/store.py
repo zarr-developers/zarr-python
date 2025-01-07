@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 import pytest
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import ByteRangeRequest, ExplicitRange, OffsetRange, Store, SuffixRange
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator
 from zarr.storage._utils import _normalize_byte_range_index
@@ -116,7 +116,7 @@ class StoreTests(Generic[S, B]):
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     @pytest.mark.parametrize(
-        "byte_range", [None, {"start": 1, "end": 4}, {"offset": 1}, {"suffix": 1}]
+        "byte_range", [None, ExplicitRange(1, 4), OffsetRange(1), SuffixRange(1)]
     )
     async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRangeRequest) -> None:
         """
@@ -179,9 +179,9 @@ class StoreTests(Generic[S, B]):
         "key_ranges",
         [
             [],
-            [("zarr.json", {"start": 0, "end": 2})],
-            [("c/0", {"start": 0, "end": 2}), ("zarr.json", None)],
-            [("c/0/0", {"start": 0, "end": 2}), ("c/0/1", {"suffix": 2}), ("c/0/2", {"offset": 2})],
+            [("zarr.json", ExplicitRange(0, 2))],
+            [("c/0", ExplicitRange(0, 2)), ("zarr.json", None)],
+            [("c/0/0", ExplicitRange(0, 2)), ("c/0/1", SuffixRange(2)), ("c/0/2", OffsetRange(2))],
         ],
     )
     async def test_get_partial_values(

@@ -75,7 +75,7 @@ class MemoryStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if not self._is_open:
@@ -91,12 +91,12 @@ class MemoryStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
 
         # All the key-ranges arguments goes with the same prototype
-        async def _get(key: str, byte_range: ByteRangeRequest) -> Buffer | None:
+        async def _get(key: str, byte_range: ByteRangeRequest | None) -> Buffer | None:
             return await self.get(key, prototype=prototype, byte_range=byte_range)
 
         return await concurrent_map(key_ranges, _get, limit=None)

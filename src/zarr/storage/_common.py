@@ -102,7 +102,7 @@ class StorePath:
     async def get(
         self,
         prototype: BufferPrototype | None = None,
-        byte_range: ByteRangeRequest = None,
+        byte_range: ByteRangeRequest | None = None,
     ) -> Buffer | None:
         """
         Read bytes from the store.
