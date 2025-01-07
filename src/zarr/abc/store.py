@@ -20,6 +20,15 @@ if TYPE_CHECKING:
 __all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
 
+class ExplicitRange(TypedDict):
+    """Request a specific byte range"""
+
+    start: int
+    """The start of the byte range request (inclusive)."""
+    end: int
+    """The end of the byte range request (exclusive)."""
+
+
 class OffsetRange(TypedDict):
     """Request all bytes starting from a given byte offset"""
 
@@ -34,7 +43,7 @@ class SuffixRange(TypedDict):
     """The number of bytes from the suffix to request."""
 
 
-ByteRangeRequest: TypeAlias = None | tuple[int, int] | OffsetRange | SuffixRange
+ByteRangeRequest: TypeAlias = None | ExplicitRange | OffsetRange | SuffixRange
 
 
 class Store(ABC):

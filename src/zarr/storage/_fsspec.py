@@ -209,12 +209,16 @@ class FsspecStore(Store):
         try:
             if byte_range is None:
                 value = prototype.buffer.from_bytes(await self.fs._cat_file(path))
-            elif isinstance(byte_range, tuple):
-                value = prototype.buffer.from_bytes(
-                    await self.fs._cat_file(path, start=byte_range[0], end=byte_range[1])
-                )
             elif isinstance(byte_range, dict):
-                if "offset" in byte_range:
+                if "start" in byte_range:
+                    value = prototype.buffer.from_bytes(
+                        await self.fs._cat_file(
+                            path,
+                            start=byte_range["start"],  # type: ignore[typeddict-item]
+                            end=byte_range["end"],  # type: ignore[typeddict-item]
+                        )
+                    )
+                elif "offset" in byte_range:
                     value = prototype.buffer.from_bytes(
                         await self.fs._cat_file(path, start=byte_range["offset"], end=None)  # type: ignore[typeddict-item]
                     )
@@ -286,11 +290,11 @@ class FsspecStore(Store):
                 if byte_range is None:
                     starts.append(None)
                     stops.append(None)
-                elif isinstance(byte_range, tuple):
-                    starts.append(byte_range[0])
-                    stops.append(byte_range[1])
                 elif isinstance(byte_range, dict):
-                    if "offset" in byte_range:
+                    if "start" in byte_range:
+                        starts.append(byte_range["start"])  # type: ignore[typeddict-item]
+                        stops.append(byte_range["end"])  # type: ignore[typeddict-item]
+                    elif "offset" in byte_range:
                         starts.append(byte_range["offset"])  # type: ignore[typeddict-item]
                         stops.append(None)
                     elif "suffix" in byte_range:

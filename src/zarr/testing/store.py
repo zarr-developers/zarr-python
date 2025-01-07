@@ -115,7 +115,9 @@ class StoreTests(Generic[S, B]):
 
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
-    @pytest.mark.parametrize("byte_range", [None, (1, 3), {"offset": 1}, {"suffix": 1}])
+    @pytest.mark.parametrize(
+        "byte_range", [None, {"start": 1, "end": 4}, {"offset": 1}, {"suffix": 1}]
+    )
     async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRangeRequest) -> None:
         """
         Ensure that data can be read from the store using the store.get method.
@@ -177,9 +179,9 @@ class StoreTests(Generic[S, B]):
         "key_ranges",
         [
             [],
-            [("zarr.json", (0, 1))],
-            [("c/0", (0, 1)), ("zarr.json", None)],
-            [("c/0/0", (0, 1)), ("c/0/1", {"suffix": 2}), ("c/0/2", {"offset": 2})],
+            [("zarr.json", {"start": 0, "end": 2})],
+            [("c/0", {"start": 0, "end": 2}), ("zarr.json", None)],
+            [("c/0/0", {"start": 0, "end": 2}), ("c/0/1", {"suffix": 2}), ("c/0/2", {"offset": 2})],
         ],
     )
     async def test_get_partial_values(

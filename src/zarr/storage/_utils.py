@@ -52,11 +52,11 @@ def _normalize_byte_range_index(data: Buffer, byte_range: ByteRangeRequest) -> t
     if byte_range is None:
         start = 0
         stop = len(data) + 1
-    elif isinstance(byte_range, tuple):
-        start = byte_range[0]
-        stop = byte_range[1]
-    elif "offset" in byte_range:
+    elif "start" in byte_range:
         # See https://github.com/python/mypy/issues/17087 for typeddict-item ignore explanation
+        start = byte_range["start"]  # type: ignore[typeddict-item]
+        stop = byte_range["end"]  # type: ignore[typeddict-item]
+    elif "offset" in byte_range:
         start = byte_range["offset"]  # type: ignore[typeddict-item]
         stop = len(data) + 1
     elif "suffix" in byte_range:

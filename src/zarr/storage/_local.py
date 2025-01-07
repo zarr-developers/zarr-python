@@ -23,12 +23,11 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest) -
         return prototype.buffer.from_bytes(path.read_bytes())
     with path.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
-        if isinstance(byte_range, tuple):
-            start, end = byte_range
-            f.seek(start)
-            return prototype.buffer.from_bytes(f.read(end - f.tell()))
-        elif isinstance(byte_range, dict):
-            if "offset" in byte_range:
+        if isinstance(byte_range, dict):
+            if "start" in byte_range:
+                f.seek(byte_range["start"])  # type: ignore[typeddict-item]
+                return prototype.buffer.from_bytes(f.read(byte_range["end"] - f.tell()))  # type: ignore[typeddict-item]
+            elif "offset" in byte_range:
                 f.seek(byte_range["offset"])  # type: ignore[typeddict-item]
             elif "suffix" in byte_range:
                 f.seek(max(0, size - byte_range["suffix"]))

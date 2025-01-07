@@ -145,11 +145,10 @@ class ZipStore(Store):
             with self._zf.open(key) as f:  # will raise KeyError
                 if byte_range is None:
                     return prototype.buffer.from_bytes(f.read())
-                if isinstance(byte_range, tuple):
-                    start, end = byte_range
-                    f.seek(start)
-                    return prototype.buffer.from_bytes(f.read(end - f.tell()))
                 elif isinstance(byte_range, dict):
+                    if "start" in byte_range:
+                        f.seek(byte_range["start"])  # type: ignore[typeddict-item]
+                        return prototype.buffer.from_bytes(f.read(byte_range["end"] - f.tell()))  # type: ignore[typeddict-item]
                     size = f.seek(0, os.SEEK_END)
                     if "offset" in byte_range:
                         f.seek(byte_range["offset"])  # type: ignore[typeddict-item]

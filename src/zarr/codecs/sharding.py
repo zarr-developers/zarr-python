@@ -504,7 +504,8 @@ class ShardingCodec(
                 chunk_byte_slice = shard_index.get_chunk_slice(chunk_coords)
                 if chunk_byte_slice:
                     chunk_bytes = await byte_getter.get(
-                        prototype=chunk_spec.prototype, byte_range=chunk_byte_slice
+                        prototype=chunk_spec.prototype,
+                        byte_range={"start": chunk_byte_slice[0], "end": chunk_byte_slice[1]},
                     )
                     if chunk_bytes:
                         shard_dict[chunk_coords] = chunk_bytes
@@ -696,7 +697,7 @@ class ShardingCodec(
         shard_index_size = self._shard_index_size(chunks_per_shard)
         if self.index_location == ShardingCodecIndexLocation.start:
             index_bytes = await byte_getter.get(
-                prototype=numpy_buffer_prototype(), byte_range=(0, shard_index_size)
+                prototype=numpy_buffer_prototype(), byte_range={"start": 0, "end": shard_index_size}
             )
         else:
             index_bytes = await byte_getter.get(
