@@ -2758,6 +2758,8 @@ class Group(SyncMixin):
             Whether to overwrite an array with the same name in the store, if one exists.
         config : ArrayConfig or ArrayConfigLike, optional
             Runtime configuration for the array.
+        data : array_like
+            The data to fill the array with.
 
         Returns
         -------
@@ -2766,7 +2768,7 @@ class Group(SyncMixin):
         compressors = _parse_deprecated_compressor(compressor, compressors)
         return Array(
             self._sync(
-                self._async_group.create_array(
+                self._async_group.create_dataset(
                     name=name,
                     shape=shape,
                     dtype=dtype,
@@ -2783,6 +2785,7 @@ class Group(SyncMixin):
                     overwrite=overwrite,
                     storage_options=storage_options,
                     config=config,
+                    data=data,
                 )
             )
         )
