@@ -116,7 +116,13 @@ class ArrayV2Metadata(Metadata):
                 else:
                     return o.descr
             if isinstance(o, numcodecs.abc.Codec):
-                return o.get_config()
+                codec_config = o.get_config()
+
+                # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
+                if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
+                    codec_config.pop("checksum", None)
+
+                return codec_config
             if np.isscalar(o):
                 out: Any
                 if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
