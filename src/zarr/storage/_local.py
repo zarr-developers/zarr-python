@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
 
 
-def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest | None) -> Buffer:
+def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest) -> Buffer:
     if byte_range is None:
         return prototype.buffer.from_bytes(path.read_bytes())
     with path.open("rb") as f:
