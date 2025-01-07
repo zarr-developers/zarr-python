@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import Store
-from zarr.storage.wrapper import WrapperStore
+from zarr.storage._wrapper import WrapperStore
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
