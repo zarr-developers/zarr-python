@@ -1995,10 +1995,11 @@ class Array:
 
     @property
     def name(self) -> str:
+        """Array name following h5py convention."""
         return self._async_array.name
 
     @property
-    def basename(self) -> str | None:
+    def basename(self) -> str:
         """Final component of name."""
         return self._async_array.basename
 
