@@ -18,6 +18,7 @@ from typing import (
 
 import numpy as np
 
+from zarr.core.config import config as zarr_config
 from zarr.core.strings import _STRING_DTYPE
 
 if TYPE_CHECKING:
@@ -191,9 +192,14 @@ def _warn_write_empty_chunks_kwarg() -> None:
 def _warn_order_kwarg() -> None:
     # TODO: link to docs page on array configuration in this message
     msg = (
-        "The `order` keyword argument has no effect for zarr v3 arrays. "
+        "The `order` keyword argument has no effect for Zarr format 3 arrays. "
         "To control the memory layout of the array, either use the `config` keyword "
         "argument, as in `config={'order: 'C'}`,"
         "or change the global 'array.order' configuration variable."
     )
     warnings.warn(msg, RuntimeWarning, stacklevel=2)
+
+
+def _default_zarr_format() -> ZarrFormat:
+    """Return the default zarr_version"""
+    return cast(ZarrFormat, int(zarr_config.get("default_zarr_format", 3)))

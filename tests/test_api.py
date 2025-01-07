@@ -13,6 +13,8 @@ from zarr import Array, Group
 from zarr.abc.store import Store
 from zarr.api.synchronous import (
     create,
+    create_array,
+    create_group,
     group,
     load,
     open,
@@ -21,13 +23,13 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.common import MemoryOrder, ZarrFormat
+from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
 
 
-def test_create_array(memory_store: Store) -> None:
+def test_create(memory_store: Store) -> None:
     store = memory_store
 
     # create array
@@ -54,6 +56,22 @@ def test_create_array(memory_store: Store) -> None:
     # create array with float chunk shape
     with pytest.raises(TypeError):
         z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore [arg-type]
+
+
+# TODO: parametrize over everything this function takes
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_create_array(store: Store) -> None:
+    attrs: dict[str, JSON] = {"foo": 100}  # explicit type annotation to avoid mypy error
+    shape = (10, 10)
+    path = "foo"
+    data_val = 1
+    array_w = create_array(
+        store, name=path, shape=shape, attributes=attrs, chunks=shape, dtype="uint8"
+    )
+    array_w[:] = data_val
+    assert array_w.shape == shape
+    assert array_w.attrs == attrs
+    assert np.array_equal(array_w[:], np.zeros(shape, dtype=array_w.dtype) + data_val)
 
 
 @pytest.mark.parametrize("write_empty_chunks", [True, False])
@@ -111,6 +129,16 @@ async def test_open_array(memory_store: MemoryStore) -> None:
     # path not found
     with pytest.raises(FileNotFoundError):
         open(store="doesnotexist", mode="r")
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_group(store: Store, zarr_format: ZarrFormat) -> None:
+    attrs = {"foo": 100}
+    path = "node"
+    node = create_group(store, path=path, attributes=attrs, zarr_format=zarr_format)
+    assert isinstance(node, Group)
+    assert node.attrs == attrs
+    assert node.metadata.zarr_format == zarr_format
 
 
 async def test_open_group(memory_store: MemoryStore) -> None:
@@ -331,7 +359,7 @@ def test_tree() -> None:
     g3 = g1.create_group("bar")
     g3.create_group("baz")
     g5 = g3.create_group("qux")
-    g5.create_array("baz", shape=100, chunks=10)
+    g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
     with pytest.warns(DeprecationWarning):
         assert repr(zarr.tree(g1)) == repr(g1.tree())
         assert str(zarr.tree(g1)) == str(g1.tree())
@@ -1056,6 +1084,13 @@ async def test_open_falls_back_to_open_group_async() -> None:
     group = await zarr.api.asynchronous.open(store=store)
     assert isinstance(group, zarr.core.group.AsyncGroup)
     assert group.attrs == {"key": "value"}
+
+
+def test_open_mode_write_creates_group(tmp_path: pathlib.Path) -> None:
+    # https://github.com/zarr-developers/zarr-python/issues/2490
+    zarr_dir = tmp_path / "test.zarr"
+    group = zarr.open(zarr_dir, mode="w")
+    assert isinstance(group, Group)
 
 
 async def test_metadata_validation_error() -> None:

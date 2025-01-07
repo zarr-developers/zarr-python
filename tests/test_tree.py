@@ -1,3 +1,4 @@
+import os
 import textwrap
 from typing import Any
 
@@ -10,6 +11,8 @@ pytest.importorskip("rich")
 
 @pytest.mark.parametrize("root_name", [None, "root"])
 def test_tree(root_name: Any) -> None:
+    os.environ["OVERRIDE_COLOR_SYSTEM"] = "truecolor"
+
     g = zarr.group(path=root_name)
     A = g.create_group("A")
     B = g.create_group("B")
@@ -18,9 +21,9 @@ def test_tree(root_name: Any) -> None:
 
     A.create_array(name="x", shape=(2), dtype="float64")
     A.create_array(name="y", shape=(0,), dtype="int8")
-    B.create_array(name="x", shape=(0,))
-    C.create_array(name="x", shape=(0,))
-    D.create_array(name="x", shape=(0,))
+    B.create_array(name="x", shape=(0,), dtype="float64")
+    C.create_array(name="x", shape=(0,), dtype="float64")
+    D.create_array(name="x", shape=(0,), dtype="float64")
 
     result = repr(g.tree())
     root = root_name or ""

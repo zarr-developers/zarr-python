@@ -332,12 +332,21 @@ class BatchedCodecPipeline(CodecPipeline):
         drop_axes: tuple[int, ...] = (),
     ) -> None:
         if self.supports_partial_encode:
-            await self.encode_partial_batch(
-                [
-                    (byte_setter, value[out_selection], chunk_selection, chunk_spec)
-                    for byte_setter, chunk_spec, chunk_selection, out_selection in batch_info
-                ],
-            )
+            # Pass scalar values as is
+            if len(value.shape) == 0:
+                await self.encode_partial_batch(
+                    [
+                        (byte_setter, value, chunk_selection, chunk_spec)
+                        for byte_setter, chunk_spec, chunk_selection, out_selection in batch_info
+                    ],
+                )
+            else:
+                await self.encode_partial_batch(
+                    [
+                        (byte_setter, value[out_selection], chunk_selection, chunk_spec)
+                        for byte_setter, chunk_spec, chunk_selection, out_selection in batch_info
+                    ],
+                )
 
         else:
             # Read existing bytes if not total slice
