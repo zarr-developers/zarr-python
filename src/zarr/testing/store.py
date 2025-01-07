@@ -14,8 +14,9 @@ if TYPE_CHECKING:
 
 import pytest
 
+from zarr.abc.buffer import Buffer
 from zarr.abc.store import ByteRangeRequest, Store
-from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.buffer import default_buffer_prototype
 from zarr.core.sync import _collect_aiterator
 from zarr.storage._utils import _normalize_interval_index
 from zarr.testing.utils import assert_bytes_equal

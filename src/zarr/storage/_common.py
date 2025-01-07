@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from zarr.abc.buffer import Buffer
 from zarr.abc.store import ByteRangeRequest, Store
-from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.buffer import default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, AccessModeLiteral, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
 from zarr.storage._local import LocalStore
@@ -13,7 +14,7 @@ from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import normalize_path
 
 if TYPE_CHECKING:
-    from zarr.core.buffer import BufferPrototype
+    from zarr.abc.buffer import BufferPrototype
 
 
 def _dereference_path(root: str, path: str) -> str:

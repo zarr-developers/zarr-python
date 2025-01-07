@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
     from fsspec.asyn import AsyncFileSystem
 
-    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.abc.buffer import Buffer, BufferPrototype
     from zarr.core.common import BytesLike
 
 

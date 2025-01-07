@@ -14,7 +14,7 @@ from zarr.registry import register_codec
 if TYPE_CHECKING:
     from typing import Any, Self
 
-    from zarr.core.buffer import NDBuffer
+    from zarr.abc.buffer import NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
 
 

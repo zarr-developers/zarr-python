@@ -17,6 +17,7 @@ import zarr.api.asynchronous as async_api
 from zarr._compat import _deprecate_positional_args
 from zarr.abc.metadata import Metadata
 from zarr.abc.store import Store, set_or_delete
+from zarr.buffer import default_buffer_prototype
 from zarr.core._info import GroupInfo
 from zarr.core.array import (
     Array,
@@ -31,7 +32,6 @@ from zarr.core.array import (
     create_array,
 )
 from zarr.core.attributes import Attributes
-from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
@@ -57,8 +57,8 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
     from typing import Any
 
+    from zarr.abc.buffer import Buffer, BufferPrototype
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
-    from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import MemoryOrder
 

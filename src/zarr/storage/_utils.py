@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from zarr.core.buffer import Buffer
+    from zarr.abc.buffer import Buffer
 
 
 def normalize_path(path: str | bytes | Path | None) -> str:

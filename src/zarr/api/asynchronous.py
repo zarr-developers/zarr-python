@@ -9,9 +9,9 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
+from zarr.abc.buffer import NDArrayLike
 from zarr.core.array import Array, AsyncArray, create_array, get_array_metadata
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
-from zarr.core.buffer import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,

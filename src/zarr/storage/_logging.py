@@ -13,8 +13,8 @@ from zarr.storage._wrapper import WrapperStore
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Generator, Iterable
 
+    from zarr.abc.buffer import Buffer, BufferPrototype
     from zarr.abc.store import ByteRangeRequest
-    from zarr.core.buffer import Buffer, BufferPrototype
 
     counter: defaultdict[str, int]
 

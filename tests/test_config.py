@@ -10,6 +10,7 @@ import pytest
 import zarr
 import zarr.api
 from zarr import zeros
+from zarr.abc.buffer import NDBuffer
 from zarr.abc.codec import CodecInput, CodecOutput, CodecPipeline
 from zarr.abc.store import ByteSetter, Store
 from zarr.codecs import (
@@ -20,7 +21,6 @@ from zarr.codecs import (
     ShardingCodec,
 )
 from zarr.core.array_spec import ArraySpec
-from zarr.core.buffer import NDBuffer
 from zarr.core.codec_pipeline import BatchedCodecPipeline
 from zarr.core.config import BadConfigError, config
 from zarr.core.indexing import SelectorTuple
@@ -87,8 +87,8 @@ def test_config_defaults_set() -> None:
                 "path": "zarr.core.codec_pipeline.BatchedCodecPipeline",
                 "batch_size": 1,
             },
-            "buffer": "zarr.core.buffer.cpu.Buffer",
-            "ndbuffer": "zarr.core.buffer.cpu.NDBuffer",
+            "buffer": "zarr.buffer.cpu.Buffer",
+            "ndbuffer": "zarr.buffer.cpu.NDBuffer",
             "codecs": {
                 "blosc": "zarr.codecs.blosc.BloscCodec",
                 "gzip": "zarr.codecs.gzip.GzipCodec",

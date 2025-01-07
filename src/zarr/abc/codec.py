@@ -3,8 +3,8 @@ from __future__ import annotations
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
+from zarr.abc.buffer import Buffer, NDBuffer
 from zarr.abc.metadata import Metadata
-from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import ChunkCoords, concurrent_map
 from zarr.core.config import config
 

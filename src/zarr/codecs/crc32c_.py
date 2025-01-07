@@ -14,8 +14,8 @@ from zarr.registry import register_codec
 if TYPE_CHECKING:
     from typing import Self
 
+    from zarr.abc.buffer import Buffer
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer
 
 
 @dataclass(frozen=True)

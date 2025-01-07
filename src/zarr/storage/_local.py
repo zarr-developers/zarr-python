@@ -7,15 +7,15 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from zarr.abc.buffer import Buffer
 from zarr.abc.store import ByteRangeRequest, Store
-from zarr.core.buffer import Buffer
-from zarr.core.buffer.core import default_buffer_prototype
+from zarr.buffer import default_buffer_prototype
 from zarr.core.common import concurrent_map
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
 
-    from zarr.core.buffer import BufferPrototype
+    from zarr.abc.buffer import BufferPrototype
 
 
 def _get(

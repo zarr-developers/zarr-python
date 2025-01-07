@@ -17,7 +17,7 @@ from zarr.core.config import config as zarr_config
 if TYPE_CHECKING:
     from typing import NotRequired
 
-    from zarr.core.buffer import BufferPrototype
+    from zarr.abc.buffer import BufferPrototype
     from zarr.core.common import ChunkCoords
 
 

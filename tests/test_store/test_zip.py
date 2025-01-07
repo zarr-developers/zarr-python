@@ -9,12 +9,14 @@ import numpy as np
 import pytest
 
 import zarr
-from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
+from zarr.buffer import cpu, default_buffer_prototype
 from zarr.storage import ZipStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
     from typing import Any
+
+    from zarr.abc.buffer import Buffer
 
 
 class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):

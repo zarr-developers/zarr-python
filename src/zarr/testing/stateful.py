@@ -16,8 +16,9 @@ from hypothesis.strategies import DataObject
 
 import zarr
 from zarr import Array
+from zarr.abc.buffer import Buffer, BufferPrototype
 from zarr.abc.store import Store
-from zarr.core.buffer import Buffer, BufferPrototype, cpu, default_buffer_prototype
+from zarr.buffer import cpu, default_buffer_prototype
 from zarr.core.sync import SyncMixin
 from zarr.storage import LocalStore, MemoryStore
 from zarr.testing.strategies import key_ranges, node_names, np_array_and_chunks, numpy_arrays

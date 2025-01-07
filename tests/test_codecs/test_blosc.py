@@ -5,8 +5,8 @@ import pytest
 
 import zarr
 from zarr.abc.store import Store
+from zarr.buffer import default_buffer_prototype
 from zarr.codecs import BloscCodec
-from zarr.core.buffer import default_buffer_prototype
 from zarr.storage import StorePath
 
 

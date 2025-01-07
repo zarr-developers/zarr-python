@@ -26,9 +26,9 @@ if TYPE_CHECKING:
 
     import numpy as np
 
+    from zarr.abc.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.abc.store import ByteGetter, ByteSetter
     from zarr.core.array_spec import ArraySpec
-    from zarr.core.buffer import Buffer, BufferPrototype, NDBuffer
     from zarr.core.chunk_grids import ChunkGrid
 
 T = TypeVar("T")

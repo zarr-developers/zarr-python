@@ -5,12 +5,14 @@ from typing import TYPE_CHECKING
 import pytest
 
 import zarr
-from zarr.core.buffer import Buffer, cpu
+from zarr.buffer import cpu
 from zarr.storage import LocalStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
     import pathlib
+
+    from zarr.abc.buffer import Buffer
 
 
 class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):

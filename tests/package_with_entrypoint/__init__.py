@@ -2,11 +2,11 @@ from collections.abc import Iterable
 
 from numpy import ndarray
 
-import zarr.core.buffer
+import zarr.buffer
+from zarr.abc.buffer import Buffer, NDBuffer
 from zarr.abc.codec import ArrayBytesCodec, CodecInput, CodecOutput, CodecPipeline
 from zarr.codecs import BytesCodec
 from zarr.core.array_spec import ArraySpec
-from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import BytesLike
 
 
@@ -56,10 +56,10 @@ class TestEntrypointGroup:
     class Codec(BytesCodec):
         pass
 
-    class Buffer(zarr.core.buffer.Buffer):
+    class Buffer(zarr.abc.buffer.Buffer):
         pass
 
-    class NDBuffer(zarr.core.buffer.NDBuffer):
+    class NDBuffer(zarr.abc.buffer.NDBuffer):
         pass
 
     class Pipeline(CodecPipeline):

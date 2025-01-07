@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
+    from zarr.abc.buffer import NDArrayLike
     from zarr.abc.codec import Codec
     from zarr.api.asynchronous import ArrayLike, PathLike
     from zarr.core.array import (
@@ -25,7 +26,6 @@ if TYPE_CHECKING:
         ShardsLike,
     )
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
-    from zarr.core.buffer import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
         JSON,

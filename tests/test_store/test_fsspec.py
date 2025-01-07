@@ -8,7 +8,7 @@ import pytest
 from botocore.session import Session
 
 import zarr.api.asynchronous
-from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
+from zarr.buffer import cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.storage import FsspecStore
 from zarr.testing.store import StoreTests
@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
     import botocore.client
+
+    from zarr.abc.buffer import Buffer
 
 
 fsspec = pytest.importorskip("fsspec")

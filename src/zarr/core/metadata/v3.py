@@ -4,12 +4,12 @@ import warnings
 from typing import TYPE_CHECKING, TypedDict, overload
 
 from zarr.abc.metadata import Metadata
-from zarr.core.buffer.core import default_buffer_prototype
+from zarr.buffer import default_buffer_prototype
 
 if TYPE_CHECKING:
     from typing import Self
 
-    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.abc.buffer import Buffer, BufferPrototype
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import JSON, ChunkCoords
 

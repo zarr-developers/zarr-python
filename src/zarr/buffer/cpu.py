@@ -9,7 +9,7 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.buffer import core
+import zarr.abc.buffer
 from zarr.registry import (
     register_buffer,
     register_ndbuffer,
@@ -19,11 +19,11 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from typing import Self
 
-    from zarr.core.buffer.core import ArrayLike, NDArrayLike
+    from zarr.abc.buffer import ArrayLike, NDArrayLike
     from zarr.core.common import BytesLike
 
 
-class Buffer(core.Buffer):
+class Buffer(zarr.abc.buffer.Buffer):
     """A flat contiguous memory block
 
     We use Buffer throughout Zarr to represent a contiguous block of memory.
@@ -52,7 +52,7 @@ class Buffer(core.Buffer):
         return cls(np.array([], dtype="b"))
 
     @classmethod
-    def from_buffer(cls, buffer: core.Buffer) -> Self:
+    def from_buffer(cls, buffer: zarr.abc.buffer.Buffer) -> Self:
         """Create a new buffer of an existing Buffer
 
         This is useful if you want to ensure that an existing buffer is
@@ -107,7 +107,7 @@ class Buffer(core.Buffer):
         """
         return np.asanyarray(self._data)
 
-    def __add__(self, other: core.Buffer) -> Self:
+    def __add__(self, other: zarr.abc.buffer.Buffer) -> Self:
         """Concatenate two buffers"""
 
         other_array = other.as_array_like()
@@ -117,7 +117,7 @@ class Buffer(core.Buffer):
         )
 
 
-class NDBuffer(core.NDBuffer):
+class NDBuffer(zarr.abc.buffer.NDBuffer):
     """An n-dimensional memory block
 
     We use NDBuffer throughout Zarr to represent a n-dimensional memory block.
@@ -186,8 +186,10 @@ class NDBuffer(core.NDBuffer):
 
 
 def as_numpy_array_wrapper(
-    func: Callable[[npt.NDArray[Any]], bytes], buf: core.Buffer, prototype: core.BufferPrototype
-) -> core.Buffer:
+    func: Callable[[npt.NDArray[Any]], bytes],
+    buf: zarr.abc.buffer.Buffer,
+    prototype: zarr.abc.buffer.BufferPrototype,
+) -> zarr.abc.buffer.Buffer:
     """Converts the input of `func` to a numpy array and the output back to `Buffer`.
 
     This function is useful when calling a `func` that only support host memory such
@@ -214,13 +216,13 @@ def as_numpy_array_wrapper(
 
 
 # CPU buffer prototype using numpy arrays
-buffer_prototype = core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
+buffer_prototype = zarr.abc.buffer.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 # default_buffer_prototype = buffer_prototype
 
 
 # The numpy prototype used for E.g. when reading the shard index
-def numpy_buffer_prototype() -> core.BufferPrototype:
-    return core.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
+def numpy_buffer_prototype() -> zarr.abc.buffer.BufferPrototype:
+    return zarr.abc.buffer.BufferPrototype(buffer=Buffer, nd_buffer=NDBuffer)
 
 
 register_buffer(Buffer)

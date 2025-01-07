@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
-    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.abc.buffer import Buffer, BufferPrototype
     from zarr.core.common import ChunkCoords
 
 import json

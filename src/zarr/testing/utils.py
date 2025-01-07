@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 import pytest
 
-from zarr.core.buffer import Buffer
+from zarr.abc.buffer import Buffer
 
 if TYPE_CHECKING:
     from zarr.core.common import BytesLike

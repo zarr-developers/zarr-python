@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
-from zarr.core.buffer import Buffer, cpu, gpu
+from zarr.buffer import cpu, gpu
 from zarr.storage import GpuMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
+
+if TYPE_CHECKING:
+    from zarr.abc.buffer import Buffer
 
 
 class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):

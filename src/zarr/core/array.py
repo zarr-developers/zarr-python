@@ -26,18 +26,14 @@ import numpy.typing as npt
 from typing_extensions import deprecated
 
 from zarr._compat import _deprecate_positional_args
+from zarr.abc.buffer import BufferPrototype, NDArrayLike, NDBuffer
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
 from zarr.abc.store import Store, set_or_delete
+from zarr.buffer import default_buffer_prototype
 from zarr.codecs._v2 import V2Codec
 from zarr.core._info import ArrayInfo
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, parse_array_config
 from zarr.core.attributes import Attributes
-from zarr.core.buffer import (
-    BufferPrototype,
-    NDArrayLike,
-    NDBuffer,
-    default_buffer_prototype,
-)
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,

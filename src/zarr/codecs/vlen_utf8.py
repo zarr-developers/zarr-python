@@ -7,8 +7,8 @@ from warnings import warn
 import numpy as np
 from numcodecs.vlen import VLenBytes, VLenUTF8
 
+from zarr.abc.buffer import Buffer, NDBuffer
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.core.buffer import Buffer, NDBuffer
 from zarr.core.common import JSON, parse_named_configuration
 from zarr.core.strings import cast_to_string_dtype
 from zarr.registry import register_codec

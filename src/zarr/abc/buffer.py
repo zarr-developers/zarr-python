@@ -23,8 +23,23 @@ if TYPE_CHECKING:
     from zarr.codecs.bytes import Endian
     from zarr.core.common import BytesLike, ChunkCoords
 
-# Everything here is imported into ``zarr.core.buffer`` namespace.
-__all__: list[str] = []
+__all__ = [
+    "ArrayLike",
+    "Buffer",
+    "BufferPrototype",
+    "NDArrayLike",
+    "NDBuffer",
+]
+
+
+def _check_item_key_is_1d_contiguous(key: Any) -> None:
+    """Raises error if `key` isn't a 1d contiguous slice"""
+    if not isinstance(key, slice):
+        raise TypeError(
+            f"Item key has incorrect type (expected slice, got {key.__class__.__name__})"
+        )
+    if not (key.step is None or key.step == 1):
+        raise ValueError("slice must be contiguous")
 
 
 @runtime_checkable
@@ -103,16 +118,6 @@ class NDArrayLike(Protocol):
         This is true, but since NumPy's ndarray is defined as an element-wise equal,
         our hands are tied.
         """
-
-
-def check_item_key_is_1d_contiguous(key: Any) -> None:
-    """Raises error if `key` isn't a 1d contiguous slice"""
-    if not isinstance(key, slice):
-        raise TypeError(
-            f"Item key has incorrect type (expected slice, got {key.__class__.__name__})"
-        )
-    if not (key.step is None or key.step == 1):
-        raise ValueError("slice must be contiguous")
 
 
 class Buffer(ABC):
@@ -266,11 +271,11 @@ class Buffer(ABC):
         return bytes(self.as_numpy_array())
 
     def __getitem__(self, key: slice) -> Self:
-        check_item_key_is_1d_contiguous(key)
+        _check_item_key_is_1d_contiguous(key)
         return self.__class__(self._data.__getitem__(key))
 
     def __setitem__(self, key: slice, value: Any) -> None:
-        check_item_key_is_1d_contiguous(key)
+        _check_item_key_is_1d_contiguous(key)
         self._data.__setitem__(key, value)
 
     def __len__(self) -> int:
@@ -498,13 +503,3 @@ class BufferPrototype(NamedTuple):
 
     buffer: type[Buffer]
     nd_buffer: type[NDBuffer]
-
-
-# The default buffer prototype used throughout the Zarr codebase.
-def default_buffer_prototype() -> BufferPrototype:
-    from zarr.registry import (
-        get_buffer_class,
-        get_ndbuffer_class,
-    )
-
-    return BufferPrototype(buffer=get_buffer_class(), nd_buffer=get_ndbuffer_class())

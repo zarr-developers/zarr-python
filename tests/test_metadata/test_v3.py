@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import pytest
 
+from zarr.buffer import default_buffer_prototype
 from zarr.codecs.bytes import BytesCodec
-from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
 from zarr.core.group import parse_node_type
 from zarr.core.metadata.v3 import (

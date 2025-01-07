@@ -6,12 +6,14 @@ from typing import TYPE_CHECKING, Any, Literal
 import numpy as np
 import numpy.typing as npt
 
-from zarr.core.buffer import Buffer, BufferPrototype, cpu
+from zarr.buffer import cpu
 from zarr.storage import MemoryStore
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from typing import Self
+
+    from zarr.abc.buffer import Buffer, BufferPrototype
 
 
 __all__ = [

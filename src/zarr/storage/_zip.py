@@ -7,8 +7,8 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
+from zarr.abc.buffer import Buffer, BufferPrototype
 from zarr.abc.store import ByteRangeRequest, Store
-from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable

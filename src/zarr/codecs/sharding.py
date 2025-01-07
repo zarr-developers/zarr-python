@@ -10,6 +10,11 @@ from typing import TYPE_CHECKING, Any, NamedTuple, cast
 import numpy as np
 import numpy.typing as npt
 
+from zarr.abc.buffer import (
+    Buffer,
+    BufferPrototype,
+    NDBuffer,
+)
 from zarr.abc.codec import (
     ArrayBytesCodec,
     ArrayBytesCodecPartialDecodeMixin,
@@ -18,16 +23,13 @@ from zarr.abc.codec import (
     CodecPipeline,
 )
 from zarr.abc.store import ByteGetter, ByteRangeRequest, ByteSetter
-from zarr.codecs.bytes import BytesCodec
-from zarr.codecs.crc32c_ import Crc32cCodec
-from zarr.core.array_spec import ArrayConfig, ArraySpec
-from zarr.core.buffer import (
-    Buffer,
-    BufferPrototype,
-    NDBuffer,
+from zarr.buffer import (
     default_buffer_prototype,
     numpy_buffer_prototype,
 )
+from zarr.codecs.bytes import BytesCodec
+from zarr.codecs.crc32c_ import Crc32cCodec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.common import (
     ChunkCoords,

@@ -3,15 +3,16 @@ from __future__ import annotations
 from logging import getLogger
 from typing import TYPE_CHECKING, Self
 
+from zarr.abc.buffer import Buffer
 from zarr.abc.store import ByteRangeRequest, Store
-from zarr.core.buffer import Buffer, gpu
+from zarr.buffer import gpu
 from zarr.core.common import concurrent_map
 from zarr.storage._utils import _normalize_interval_index
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, MutableMapping
 
-    from zarr.core.buffer import BufferPrototype
+    from zarr.abc.buffer import BufferPrototype
 
 
 logger = getLogger(__name__)

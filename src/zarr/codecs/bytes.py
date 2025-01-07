@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from zarr.abc.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.registry import register_codec
 

@@ -11,19 +11,19 @@ import zarr
 import zarr.api
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, config
+from zarr.buffer import default_buffer_prototype
 from zarr.codecs import (
     BytesCodec,
     GzipCodec,
     ShardingCodec,
     TransposeCodec,
 )
-from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import Selection, morton_order_iter
 from zarr.storage import StorePath
 
 if TYPE_CHECKING:
+    from zarr.abc.buffer import NDArrayLike
     from zarr.abc.store import Store
-    from zarr.core.buffer.core import NDArrayLike
     from zarr.core.common import MemoryOrder
 
 

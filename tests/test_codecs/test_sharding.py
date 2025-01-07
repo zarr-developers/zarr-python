@@ -10,13 +10,13 @@ import zarr.api
 import zarr.api.asynchronous
 from zarr import Array
 from zarr.abc.store import Store
+from zarr.buffer import default_buffer_prototype
 from zarr.codecs import (
     BloscCodec,
     ShardingCodec,
     ShardingCodecIndexLocation,
     TransposeCodec,
 )
-from zarr.core.buffer import default_buffer_prototype
 from zarr.storage import StorePath
 
 from ..conftest import ArrayRequest

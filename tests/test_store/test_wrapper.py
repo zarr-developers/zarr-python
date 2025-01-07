@@ -4,12 +4,12 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from zarr.core.buffer.cpu import Buffer, buffer_prototype
+from zarr.buffer.cpu import Buffer, buffer_prototype
 from zarr.storage import WrapperStore
 
 if TYPE_CHECKING:
+    from zarr.abc.buffer import BufferPrototype
     from zarr.abc.store import Store
-    from zarr.core.buffer.core import BufferPrototype
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
