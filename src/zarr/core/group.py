@@ -2083,7 +2083,7 @@ class Group(SyncMixin):
         This method takes a dictionary where the keys are the names of the arrays or groups
         to create and the values are the metadata objects for the arrays or groups.
 
-        The method returns an asynchronous iterator over the created nodes.
+        The method returns a dict containing the created nodes.
 
         Parameters
         ----------
