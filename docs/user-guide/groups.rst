@@ -113,8 +113,8 @@ property. E.g.::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 8000000 (7.6M)
-   No. bytes stored   : 1432
-   Storage ratio      : 5586.6
+   No. bytes stored   : 1614
+   Storage ratio      : 4956.6
    Chunks Initialized : 0
    >>> baz.info
    Type               : Array

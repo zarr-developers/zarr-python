@@ -209,7 +209,7 @@ prints additional diagnostics, e.g.::
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=3, shuffle=<BloscShuffle.bitshuffle: 'bitshuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 9696302
+   No. bytes stored   : 9696520
    Storage ratio      : 41.3
    Chunks Initialized : 100
 
@@ -611,7 +611,7 @@ Sharded arrays can be created by providing the ``shards`` parameter to :func:`za
   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
   Compressors        : (ZstdCodec(level=0, checksum=False),)
   No. bytes          : 100000000 (95.4M)
-  No. bytes stored   : 3981060
+  No. bytes stored   : 3981552
   Storage ratio      : 25.1
   Shards Initialized : 100
 
