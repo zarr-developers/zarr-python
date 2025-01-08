@@ -1871,7 +1871,7 @@ def test_iter_grid(
     """
     Test that iter_grid works as expected for 1, 2, and 3 dimensions.
     """
-    grid_shape = (10, 2, 7)[:ndim]
+    grid_shape = (10, 5, 7)[:ndim]
 
     if origin_0d is not None:
         origin_kwarg = origin_0d * ndim

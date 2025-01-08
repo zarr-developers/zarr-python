@@ -562,7 +562,7 @@ async def array(
         if new_array.chunks == data.chunks:
             # Stream data from the source array to the new array
             await concurrent_map(
-                [(region,data) for region in data._iter_chunk_regions()],
+                [(region, data) for region in data._iter_chunk_regions()],
                 _copy_chunk,
                 config.get("async.concurrency"),
             )
