@@ -232,7 +232,7 @@ class FsspecStore(Store):
                     await self.fs._cat_file(path, start=-byte_range.suffix, end=None)
                 )
             else:
-                raise ValueError("Invalid format for ByteRequest")
+                raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         except self.allowed_exceptions:
             return None
         except OSError as e:
@@ -303,7 +303,7 @@ class FsspecStore(Store):
                     starts.append(-byte_range.suffix)
                     stops.append(None)
                 else:
-                    raise ValueError("Invalid format for ByteRequest")
+                    raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         else:
             return []
         # TODO: expectations for exceptions or missing keys?

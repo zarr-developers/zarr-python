@@ -37,7 +37,7 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None)
         elif isinstance(byte_range, SuffixByteRequest):
             f.seek(max(0, size - byte_range.suffix))
         else:
-            raise TypeError("Invalid format for ByteRequest")
+            raise TypeError(f"Unexpected byte_range, got {byte_range}.")
         return prototype.buffer.from_bytes(f.read())
 
 

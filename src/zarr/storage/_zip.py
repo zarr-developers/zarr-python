@@ -160,7 +160,7 @@ class ZipStore(Store):
                 elif isinstance(byte_range, SuffixByteRequest):
                     f.seek(max(0, size - byte_range.suffix))
                 else:
-                    raise TypeError("Invalid format for ByteRequest")
+                    raise TypeError(f"Unexpected byte_range, got {byte_range}.")
                 return prototype.buffer.from_bytes(f.read())
         except KeyError:
             return None
