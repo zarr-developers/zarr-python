@@ -275,7 +275,7 @@ class FsspecStore(Store):
 
         # this is probably the same condition as `if self.fs.async_impl`
         if hasattr(self.fs, "_rm") and inspect.iscoroutinefunction(self.fs._rm):
-            with suppress(self.allowed_exceptions):
+            with suppress(*self.allowed_exceptions):
                 await self.fs._rm(path_to_delete, recursive=True)
         else:
             raise NotImplementedError("The store does not support async deletes")
