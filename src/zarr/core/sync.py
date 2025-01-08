@@ -54,9 +54,7 @@ def _get_executor() -> ThreadPoolExecutor:
     global _executor
     if not _executor:
         max_workers = config.get("threading.max_workers", None)
-        print(max_workers)
-        # if max_workers is not None and max_workers > 0:
-        #     raise ValueError(max_workers)
+        logger.debug("Creating Zarr ThreadPoolExecutor with max_workers=%s", max_workers)
         _executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="zarr_pool")
         _get_loop().set_default_executor(_executor)
     return _executor
@@ -118,6 +116,9 @@ def sync(
         # NB: if the loop is not running *yet*, it is OK to submit work
         # and we will wait for it
         loop = _get_loop()
+    if _executor is None and config.get("threading.max_workers", None) is not None:
+        # trigger executor creation and attach to loop
+        _ = _get_executor()
     if not isinstance(loop, asyncio.AbstractEventLoop):
         raise TypeError(f"loop cannot be of type {type(loop)}")
     if loop.is_closed():
@@ -153,6 +154,7 @@ def _get_loop() -> asyncio.AbstractEventLoop:
             # repeat the check just in case the loop got filled between the
             # previous two calls from another thread
             if loop[0] is None:
+                logger.debug("Creating Zarr event loop")
                 new_loop = asyncio.new_event_loop()
                 loop[0] = new_loop
                 iothread[0] = threading.Thread(target=new_loop.run_forever, name="zarr_io")

@@ -213,7 +213,7 @@ and functions are included in the API documentation, under the ``docs/api`` fold
 using the `autodoc <https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html>`_
 extension to sphinx. Any new features or important usage information should be included in the
 user-guide (``docs/user-guide``). Any changes should also be included in the release
-notes (``docs/developers/release.rst``).
+notes (``docs/release-notes.rst``).
 
 The documentation can be built locally by running::
 

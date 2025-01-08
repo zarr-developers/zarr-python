@@ -23,7 +23,8 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata, create_hierarchy, create_nodes
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
-from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore, make_store_path
+from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
+from zarr.storage._common import make_store_path
 from zarr.testing.store import LatencyStore
 
 from .conftest import meta_from_array, parse_store
@@ -620,8 +621,7 @@ def test_group_create_array(
         array[:] = data
     elif method == "array":
         with pytest.warns(DeprecationWarning):
-            array = group.array(name="array", shape=shape, dtype=dtype)
-            array[:] = data
+            array = group.array(name="array", data=data, shape=shape, dtype=dtype)
     else:
         raise AssertionError
 

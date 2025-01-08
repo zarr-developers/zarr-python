@@ -53,8 +53,8 @@ from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import V3JsonEncoder
 from zarr.core.sync import SyncMixin, _with_semaphore, sync
 from zarr.errors import MetadataValidationError
-from zarr.storage import StoreLike, StorePath, make_store_path
-from zarr.storage._common import ensure_no_existing_node
+from zarr.storage import StoreLike, StorePath
+from zarr.storage._common import ensure_no_existing_node, make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import (
@@ -2801,6 +2801,8 @@ class Group(SyncMixin):
             Whether to overwrite an array with the same name in the store, if one exists.
         config : ArrayConfig or ArrayConfigLike, optional
             Runtime configuration for the array.
+        data : array_like
+            The data to fill the array with.
 
         Returns
         -------
@@ -2809,7 +2811,7 @@ class Group(SyncMixin):
         compressors = _parse_deprecated_compressor(compressor, compressors)
         return Array(
             self._sync(
-                self._async_group.create_array(
+                self._async_group.create_dataset(
                     name=name,
                     shape=shape,
                     dtype=dtype,
@@ -2826,6 +2828,7 @@ class Group(SyncMixin):
                     overwrite=overwrite,
                     storage_options=storage_options,
                     config=config,
+                    data=data,
                 )
             )
         )
