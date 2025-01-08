@@ -5,7 +5,8 @@ import pytest
 from _pytest.compat import LEGACY_PATH
 
 from zarr.core.common import AccessModeLiteral
-from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath, make_store_path
+from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath
+from zarr.storage._common import make_store_path
 from zarr.storage._utils import normalize_path
 
 

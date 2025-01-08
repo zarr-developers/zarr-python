@@ -3,7 +3,7 @@
 Runtime configuration
 =====================
 
-:mod:`zarr.config <zarr.core.config>` is responsible for managing the configuration of zarr and
+``zarr.config`` is responsible for managing the configuration of zarr and
 is based on the `donfig <https://github.com/pytroll/donfig>`_ Python library.
 
 Configuration values can be set using code like the following::
