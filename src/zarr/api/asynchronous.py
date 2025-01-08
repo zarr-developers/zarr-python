@@ -9,7 +9,6 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
-from zarr import config
 from zarr.core.array import Array, AsyncArray, create_array, get_array_metadata
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
 from zarr.core.buffer import NDArrayLike
@@ -25,6 +24,7 @@ from zarr.core.common import (
     concurrent_map,
     parse_dtype,
 )
+from zarr.core.config import config
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
