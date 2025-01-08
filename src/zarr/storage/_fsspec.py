@@ -3,7 +3,13 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any
 
-from zarr.abc.store import ByteRangeRequest, ExplicitByteRequest, OffsetRange, Store, SuffixRange
+from zarr.abc.store import (
+    ByteRangeRequest,
+    ExplicitByteRequest,
+    OffsetByteRequest,
+    Store,
+    SuffixRange,
+)
 from zarr.storage._common import _dereference_path
 
 if TYPE_CHECKING:
@@ -217,7 +223,7 @@ class FsspecStore(Store):
                         end=byte_range.end,
                     )
                 )
-            elif isinstance(byte_range, OffsetRange):
+            elif isinstance(byte_range, OffsetByteRequest):
                 value = prototype.buffer.from_bytes(
                     await self.fs._cat_file(path, start=byte_range.offset, end=None)
                 )
@@ -290,7 +296,7 @@ class FsspecStore(Store):
                 elif isinstance(byte_range, ExplicitByteRequest):
                     starts.append(byte_range.start)
                     stops.append(byte_range.end)
-                elif isinstance(byte_range, OffsetRange):
+                elif isinstance(byte_range, OffsetByteRequest):
                     starts.append(byte_range.offset)
                     stops.append(None)
                 elif isinstance(byte_range, SuffixRange):

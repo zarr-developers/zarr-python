@@ -8,7 +8,7 @@ import pytest
 from botocore.session import Session
 
 import zarr.api.asynchronous
-from zarr.abc.store import OffsetRange
+from zarr.abc.store import OffsetByteRequest
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.storage import FsspecStore
@@ -98,7 +98,7 @@ async def test_basic() -> None:
     assert await store.exists("foo")
     assert (await store.get("foo", prototype=default_buffer_prototype())).to_bytes() == data
     out = await store.get_partial_values(
-        prototype=default_buffer_prototype(), key_ranges=[("foo", OffsetRange(1))]
+        prototype=default_buffer_prototype(), key_ranges=[("foo", OffsetByteRequest(1))]
     )
     assert out[0].to_bytes() == data[1:]
 

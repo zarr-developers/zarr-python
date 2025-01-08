@@ -32,7 +32,7 @@ class ExplicitByteRequest:
 
 
 @dataclass
-class OffsetRange:
+class OffsetByteRequest:
     """Request all bytes starting from a given byte offset"""
 
     offset: int
@@ -47,7 +47,7 @@ class SuffixRange:
     """The number of bytes from the suffix to request."""
 
 
-ByteRangeRequest: TypeAlias = ExplicitByteRequest | OffsetRange | SuffixRange
+ByteRangeRequest: TypeAlias = ExplicitByteRequest | OffsetByteRequest | SuffixRange
 
 
 class Store(ABC):
@@ -181,7 +181,7 @@ class Store(ABC):
             ByteRangeRequest may be one of the following. If not provided, all data associated with the key is retrieved.
 
             - ExplicitByteRequest(int, int): Request a specific range of bytes in the form (start, end). The end is exclusive. If the given range is zero-length or starts after the end of the object, an error will be returned. Additionally, if the range ends after the end of the object, the entire remainder of the object will be returned. Otherwise, the exact requested range will be returned.
-            - OffsetRange(int): Request all bytes starting from a given byte offset. This is equivalent to bytes={int}- as an HTTP header.
+            - OffsetByteRequest(int): Request all bytes starting from a given byte offset. This is equivalent to bytes={int}- as an HTTP header.
             - SuffixRange(int): Request the last int bytes. Note that here, int is the size of the request, not the byte offset. This is equivalent to bytes=-{int} as an HTTP header.
 
         Returns
