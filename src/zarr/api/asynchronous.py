@@ -27,7 +27,6 @@ from zarr.core.config import config
 from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_filters_and_compressor
-from zarr.core.sync import sync
 from zarr.errors import NodeTypeValidationError
 from zarr.storage import (
     StoreLike,
@@ -562,16 +561,19 @@ async def array(
 
         new_array = await create(data.shape, **kwargs)
 
-        async def _copy_chunk(chunk_coords: ChunkCoords) -> None:
+        async def _copy_chunk(chunk_coords: ChunkCoords|slice) -> None:
             arr = await data._async_array.getitem(chunk_coords)
             await new_array.setitem(chunk_coords, arr)
 
-        # Stream data from the source array to the new array
-        await concurrent_map(
-            [(region,) for region in data._iter_chunk_regions()],
-            _copy_chunk,
-            config.get("async.concurrency"),
-        )
+        if new_array.chunks == data.chunks:
+            # Stream data from the source array to the new array
+            await concurrent_map(
+                [(region,) for region in data._iter_chunk_regions()],
+                _copy_chunk,
+                config.get("async.concurrency"),
+            )
+        else:
+            await _copy_chunk(slice(None))
         return new_array
 
     # ensure data is array-like
