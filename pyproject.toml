@@ -69,7 +69,7 @@ test = [
     "s3fs",
     "pytest-asyncio",
     "pytest-accept",
-    "moto[s3]",
+    "moto[s3,server]",
     "requests",
     "rich",
     "mypy",
