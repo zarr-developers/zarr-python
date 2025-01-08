@@ -18,7 +18,6 @@ from typing import (
 
 import numpy as np
 
-from zarr.abc.store import ExplicitByteRequest, OffsetByteRequest, SuffixByteRequest
 from zarr.core.config import config as zarr_config
 from zarr.core.strings import _STRING_DTYPE
 
@@ -32,7 +31,6 @@ ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
 ZMETADATA_V2_JSON = ".zmetadata"
 
-ByteRequest = ExplicitByteRequest | OffsetByteRequest | SuffixByteRequest
 BytesLike = bytes | bytearray | memoryview
 ShapeLike = tuple[int, ...] | int
 ChunkCoords = tuple[int, ...]
