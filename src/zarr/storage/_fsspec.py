@@ -8,7 +8,7 @@ from zarr.abc.store import (
     ExplicitByteRequest,
     OffsetByteRequest,
     Store,
-    SuffixRange,
+    SuffixByteRequest,
 )
 from zarr.storage._common import _dereference_path
 
@@ -227,7 +227,7 @@ class FsspecStore(Store):
                 value = prototype.buffer.from_bytes(
                     await self.fs._cat_file(path, start=byte_range.offset, end=None)
                 )
-            elif isinstance(byte_range, SuffixRange):
+            elif isinstance(byte_range, SuffixByteRequest):
                 value = prototype.buffer.from_bytes(
                     await self.fs._cat_file(path, start=-byte_range.suffix, end=None)
                 )
@@ -299,7 +299,7 @@ class FsspecStore(Store):
                 elif isinstance(byte_range, OffsetByteRequest):
                     starts.append(byte_range.offset)
                     stops.append(None)
-                elif isinstance(byte_range, SuffixRange):
+                elif isinstance(byte_range, SuffixByteRequest):
                     starts.append(-byte_range.suffix)
                     stops.append(None)
                 else:

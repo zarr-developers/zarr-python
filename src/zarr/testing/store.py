@@ -19,7 +19,7 @@ from zarr.abc.store import (
     ExplicitByteRequest,
     OffsetByteRequest,
     Store,
-    SuffixRange,
+    SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator
@@ -122,7 +122,7 @@ class StoreTests(Generic[S, B]):
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     @pytest.mark.parametrize(
-        "byte_range", [None, ExplicitByteRequest(1, 4), OffsetByteRequest(1), SuffixRange(1)]
+        "byte_range", [None, ExplicitByteRequest(1, 4), OffsetByteRequest(1), SuffixByteRequest(1)]
     )
     async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRangeRequest) -> None:
         """
@@ -189,7 +189,7 @@ class StoreTests(Generic[S, B]):
             [("c/0", ExplicitByteRequest(0, 2)), ("zarr.json", None)],
             [
                 ("c/0/0", ExplicitByteRequest(0, 2)),
-                ("c/0/1", SuffixRange(2)),
+                ("c/0/1", SuffixByteRequest(2)),
                 ("c/0/2", OffsetByteRequest(2)),
             ],
         ],

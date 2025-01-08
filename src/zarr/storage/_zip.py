@@ -12,7 +12,7 @@ from zarr.abc.store import (
     ExplicitByteRequest,
     OffsetByteRequest,
     Store,
-    SuffixRange,
+    SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer, BufferPrototype
 
@@ -157,7 +157,7 @@ class ZipStore(Store):
                 size = f.seek(0, os.SEEK_END)
                 if isinstance(byte_range, OffsetByteRequest):
                     f.seek(byte_range.offset)
-                elif isinstance(byte_range, SuffixRange):
+                elif isinstance(byte_range, SuffixByteRequest):
                     f.seek(max(0, size - byte_range.suffix))
                 else:
                     raise TypeError("Invalid format for ByteRangeRequest")

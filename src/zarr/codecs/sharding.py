@@ -22,7 +22,7 @@ from zarr.abc.store import (
     ByteRangeRequest,
     ByteSetter,
     ExplicitByteRequest,
-    SuffixRange,
+    SuffixByteRequest,
 )
 from zarr.codecs.bytes import BytesCodec
 from zarr.codecs.crc32c_ import Crc32cCodec
@@ -708,7 +708,7 @@ class ShardingCodec(
             )
         else:
             index_bytes = await byte_getter.get(
-                prototype=numpy_buffer_prototype(), byte_range=SuffixRange(shard_index_size)
+                prototype=numpy_buffer_prototype(), byte_range=SuffixByteRequest(shard_index_size)
             )
         if index_bytes is not None:
             return await self._decode_shard_index(index_bytes, chunks_per_shard)

@@ -12,7 +12,7 @@ from zarr.abc.store import (
     ExplicitByteRequest,
     OffsetByteRequest,
     Store,
-    SuffixRange,
+    SuffixByteRequest,
 )
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
@@ -34,7 +34,7 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest | 
             return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
         elif isinstance(byte_range, OffsetByteRequest):
             f.seek(byte_range.offset)
-        elif isinstance(byte_range, SuffixRange):
+        elif isinstance(byte_range, SuffixByteRequest):
             f.seek(max(0, size - byte_range.suffix))
         else:
             raise TypeError("Invalid format for ByteRangeRequest")
