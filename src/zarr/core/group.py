@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass, field, fields, replace
 from functools import partial
 from itertools import accumulate
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
+from typing import TYPE_CHECKING, Literal, Self, TypeVar, assert_never, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -425,6 +425,27 @@ class AsyncGroup:
 
     metadata: GroupMetadata
     store_path: StorePath
+
+    # TODO: make this correct and work
+    # TODO: ensure that this can be bound properly to subclass of AsyncGroup
+    @classmethod
+    async def from_flat(
+        cls,
+        store: StoreLike, 
+        *, 
+        nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata], 
+        overwrite: bool = False) -> Self:
+        
+        if overwrite:
+            store_path = await make_store_path(store, mode='w')
+        else:
+            store_path = await make_store_path(store, mode='w-')
+        semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+        
+        nodes_created = {x.name: x async for x in create_hierarchy(
+            store_path=store_path, nodes=nodes, semaphore=semaphore
+        )}
+        return nodes_created['']
 
     @classmethod
     async def from_store(
@@ -1269,15 +1290,6 @@ class AsyncGroup:
 
         return ds
 
-    async def _create_nodes(
-        self, nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
-    ) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
-        """
-        Create a set of arrays or groups rooted at this group.
-        """
-        async for node in create_hierarchy(store_path=self.store_path, nodes=nodes):
-            yield node
-
     async def update_attributes(self, new_attributes: dict[str, Any]) -> AsyncGroup:
         """Update group attributes.
 
@@ -1731,6 +1743,17 @@ class AsyncGroup:
 @dataclass(frozen=True)
 class Group(SyncMixin):
     _async_group: AsyncGroup
+    
+    @classmethod
+    def from_flat(
+        cls, 
+        store: StoreLike,
+        *, 
+        nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+        overwrite: bool = False) -> Group:
+        nodes = sync(AsyncGroup.from_flat(store, nodes=nodes, overwrite=overwrite))
+        # return the root node of the hierarchy
+        return nodes['']
 
     @classmethod
     def from_store(
