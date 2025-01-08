@@ -554,7 +554,7 @@ async def array(
 
     # setup dtype
     kw_dtype = kwargs.get("dtype")
-    if kw_dtype is None:
+    if kw_dtype is None and hasattr(data, "dtype"):
         kwargs["dtype"] = data.dtype
     else:
         kwargs["dtype"] = kw_dtype

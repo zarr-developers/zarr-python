@@ -3850,7 +3850,7 @@ async def from_array(
         filters = data.filters
     if compressors is None:
         compressors = data.compressors
-    if serializer is None:
+    if serializer is "auto":
         serializer = data.serializer
     if fill_value is None:
         fill_value = data.fill_value
