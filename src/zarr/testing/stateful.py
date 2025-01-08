@@ -355,8 +355,8 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
         model_vals_ls = []
 
         for key, byte_range in key_range:
-            start = byte_range[0] or 0
-            stop = byte_range[1]
+            start = byte_range.start
+            stop = byte_range.end
             model_vals_ls.append(self.model[key][start:stop])
 
         assert all(

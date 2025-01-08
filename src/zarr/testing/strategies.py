@@ -7,6 +7,7 @@ from hypothesis import given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
 import zarr
+from zarr.abc.store import ExplicitRange
 from zarr.core.array import Array
 from zarr.core.common import ZarrFormat
 from zarr.core.sync import sync
@@ -197,9 +198,10 @@ def key_ranges(
         [(key, (range_start, range_end)),
          (key, (range_start, range_end)),...]
     """
-    byte_ranges = st.tuples(
-        st.integers(min_value=0, max_value=max_size),
-        st.integers(min_value=0, max_value=max_size),
+    byte_ranges = st.builds(
+        ExplicitRange,
+        start=st.integers(min_value=0, max_value=max_size),
+        end=st.integers(min_value=0, max_value=max_size),
     )
     key_tuple = st.tuples(keys, byte_ranges)
     return st.lists(key_tuple, min_size=1, max_size=10)

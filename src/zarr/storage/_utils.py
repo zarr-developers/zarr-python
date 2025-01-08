@@ -4,6 +4,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from zarr.abc.store import ExplicitRange, OffsetRange, SuffixRange
+
 if TYPE_CHECKING:
     from zarr.abc.store import ByteRangeRequest
     from zarr.core.buffer import Buffer
@@ -54,14 +56,13 @@ def _normalize_byte_range_index(
     if byte_range is None:
         start = 0
         stop = len(data) + 1
-    elif isinstance(byte_range, tuple):
-        start = byte_range[0]
-        stop = byte_range[1]
-    elif "offset" in byte_range:
-        # See https://github.com/python/mypy/issues/17087 for typeddict-item ignore explanation
-        start = byte_range["offset"]  # type: ignore[typeddict-item]
+    elif isinstance(byte_range, ExplicitRange):
+        start = byte_range.start
+        stop = byte_range.end
+    elif isinstance(byte_range, OffsetRange):
+        start = byte_range.offset
         stop = len(data) + 1
-    elif "suffix" in byte_range:
-        start = len(data) - byte_range["suffix"]
+    elif isinstance(byte_range, SuffixRange):
+        start = len(data) - byte_range.suffix
         stop = len(data) + 1
     return (start, stop)

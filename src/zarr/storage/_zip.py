@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import ByteRangeRequest, ExplicitRange, OffsetRange, Store, SuffixRange
 from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
@@ -145,21 +145,17 @@ class ZipStore(Store):
             with self._zf.open(key) as f:  # will raise KeyError
                 if byte_range is None:
                     return prototype.buffer.from_bytes(f.read())
-                if isinstance(byte_range, tuple):
-                    start, end = byte_range
-                    f.seek(start)
-                    return prototype.buffer.from_bytes(f.read(end - f.tell()))
-                elif isinstance(byte_range, dict):
-                    size = f.seek(0, os.SEEK_END)
-                    if "offset" in byte_range:
-                        f.seek(byte_range["offset"])  # type: ignore[typeddict-item]
-                    elif "suffix" in byte_range:
-                        f.seek(max(0, size - byte_range["suffix"]))
-                    else:
-                        raise TypeError("Invalid format for ByteRangeRequest")
-                    return prototype.buffer.from_bytes(f.read())
+                elif isinstance(byte_range, ExplicitRange):
+                    f.seek(byte_range.start)
+                    return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
+                size = f.seek(0, os.SEEK_END)
+                if isinstance(byte_range, OffsetRange):
+                    f.seek(byte_range.offset)
+                elif isinstance(byte_range, SuffixRange):
+                    f.seek(max(0, size - byte_range.suffix))
                 else:
                     raise TypeError("Invalid format for ByteRangeRequest")
+                return prototype.buffer.from_bytes(f.read())
         except KeyError:
             return None
 

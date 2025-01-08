@@ -3,7 +3,7 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import ByteRangeRequest, ExplicitRange, OffsetRange, Store, SuffixRange
 from zarr.storage._common import _dereference_path
 
 if TYPE_CHECKING:
@@ -209,21 +209,22 @@ class FsspecStore(Store):
         try:
             if byte_range is None:
                 value = prototype.buffer.from_bytes(await self.fs._cat_file(path))
-            elif isinstance(byte_range, tuple):
+            elif isinstance(byte_range, ExplicitRange):
                 value = prototype.buffer.from_bytes(
-                    await self.fs._cat_file(path, start=byte_range[0], end=byte_range[1])
+                    await self.fs._cat_file(
+                        path,
+                        start=byte_range.start,
+                        end=byte_range.end,
+                    )
                 )
-            elif isinstance(byte_range, dict):
-                if "offset" in byte_range:
-                    value = prototype.buffer.from_bytes(
-                        await self.fs._cat_file(path, start=byte_range["offset"], end=None)  # type: ignore[typeddict-item]
-                    )
-                elif "suffix" in byte_range:
-                    value = prototype.buffer.from_bytes(
-                        await self.fs._cat_file(path, start=-byte_range["suffix"], end=None)
-                    )
-                else:
-                    raise ValueError("Invalid format for ByteRangeRequest")
+            elif isinstance(byte_range, OffsetRange):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(path, start=byte_range.offset, end=None)
+                )
+            elif isinstance(byte_range, SuffixRange):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(path, start=-byte_range.suffix, end=None)
+                )
             else:
                 raise ValueError("Invalid format for ByteRangeRequest")
         except self.allowed_exceptions:
@@ -286,18 +287,15 @@ class FsspecStore(Store):
                 if byte_range is None:
                     starts.append(None)
                     stops.append(None)
-                elif isinstance(byte_range, tuple):
-                    starts.append(byte_range[0])
-                    stops.append(byte_range[1])
-                elif isinstance(byte_range, dict):
-                    if "offset" in byte_range:
-                        starts.append(byte_range["offset"])  # type: ignore[typeddict-item]
-                        stops.append(None)
-                    elif "suffix" in byte_range:
-                        starts.append(-byte_range["suffix"])
-                        stops.append(None)
-                    else:
-                        raise ValueError("Invalid format for ByteRangeRequest")
+                elif isinstance(byte_range, ExplicitRange):
+                    starts.append(byte_range.start)
+                    stops.append(byte_range.end)
+                elif isinstance(byte_range, OffsetRange):
+                    starts.append(byte_range.offset)
+                    stops.append(None)
+                elif isinstance(byte_range, SuffixRange):
+                    starts.append(-byte_range.suffix)
+                    stops.append(None)
                 else:
                     raise ValueError("Invalid format for ByteRangeRequest")
         else:

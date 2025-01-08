@@ -96,7 +96,7 @@ class MemoryStore(Store):
         # docstring inherited
 
         # All the key-ranges arguments goes with the same prototype
-        async def _get(key: str, byte_range: ByteRangeRequest) -> Buffer | None:
+        async def _get(key: str, byte_range: ByteRangeRequest | None) -> Buffer | None:
             return await self.get(key, prototype=prototype, byte_range=byte_range)
 
         return await concurrent_map(key_ranges, _get, limit=None)
