@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 import inspect
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import ByteRangeRequest, Store
@@ -273,10 +274,8 @@ class FsspecStore(Store):
         path_to_delete = _dereference_path(self.path, prefix)
 
         if hasattr(self.fs, "_rm") and inspect.iscoroutinefunction(self.fs._rm):
-            try:
+            with suppress(self.allowed_exceptions):
                 await self.fs._rm(path_to_delete, recursive=True)
-            except self.allowed_exceptions:
-                pass
         else:
             raise NotImplementedError("The store does not support async deletes")
 
