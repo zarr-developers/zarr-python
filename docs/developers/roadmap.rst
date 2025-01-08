@@ -1,6 +1,13 @@
 Roadmap
 =======
 
+.. note::
+
+   This document was written in the early stages of the 3.0 refactor. Some
+   aspects of the design have changed since this was originally written.
+   Questions and discussion about the contents of this document should be directed to
+   `this GitHub Discussion <https://github.com/zarr-developers/zarr-python/discussions/1569>`__.
+
 -  Status: active
 -  Author: Joe Hamman
 -  Created On: October 31, 2023
@@ -14,13 +21,6 @@ Roadmap
    -  Ryan Abernathey / @rabernat
    -  Jack Kelly / @JackKelly
    -  Martin Durrant / @martindurant
-
-.. note::
-
-   This document was written in the early stages of the 3.0 refactor. Some
-   aspects of the design have changed since this was originally written.
-   Questions and discussion about the contents of this document should be directed to
-   `this GitHub Discussion <https://github.com/zarr-developers/zarr-python/discussions/1569>`__.
 
 Introduction
 ------------
