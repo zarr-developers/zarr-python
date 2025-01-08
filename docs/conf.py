@@ -71,7 +71,7 @@ def skip_submodules(
       ) -> bool:
     # Skip documenting zarr.codecs submodules
     # codecs are documented in the main zarr.codecs namespace
-    if what == "module" and name.startswith("zarr.codecs."):
+    if what == "module" and name.startswith("zarr.codecs.") or name.startswith("zarr.core"):
         skip = True
     return skip
 
