@@ -9,6 +9,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import deprecated
 
+from zarr import config
 from zarr.core.array import Array, AsyncArray, create_array, get_array_metadata
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
 from zarr.core.buffer import NDArrayLike
@@ -554,7 +555,7 @@ async def array(
 
         new_array = await create(data.shape, **kwargs)
 
-        async def _copy_chunk(chunk_coords: ChunkCoords|slice) -> None:
+        async def _copy_chunk(chunk_coords: ChunkCoords | slice) -> None:
             arr = await data._async_array.getitem(chunk_coords)
             await new_array.setitem(chunk_coords, arr)
 

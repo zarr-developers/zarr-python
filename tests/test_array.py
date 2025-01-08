@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any, Literal
 import numcodecs
 import numpy as np
 import pytest
-from numcodecs import Zstd
 from numpy.ma.testutils import assert_array_equal
 
 import zarr.api.asynchronous
