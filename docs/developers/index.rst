@@ -6,5 +6,4 @@ Developer's Guide
     :maxdepth: 1
 
     contributing
-    release
     roadmap
