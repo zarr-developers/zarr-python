@@ -47,6 +47,7 @@ __all__ = [
     "create_array",
     "empty",
     "empty_like",
+    "from_array",
     "full",
     "full_like",
     "group",
@@ -874,6 +875,138 @@ def create_array(
                 name=name,
                 shape=shape,
                 dtype=dtype,
+                chunks=chunks,
+                shards=shards,
+                filters=filters,
+                compressors=compressors,
+                serializer=serializer,
+                fill_value=fill_value,
+                order=order,
+                zarr_format=zarr_format,
+                attributes=attributes,
+                chunk_key_encoding=chunk_key_encoding,
+                dimension_names=dimension_names,
+                storage_options=storage_options,
+                overwrite=overwrite,
+                config=config,
+            )
+        )
+    )
+
+
+def from_array(
+    data: Array,
+    store: str | StoreLike,
+    *,
+    name: str | None = None,
+    chunks: ChunkCoords | Literal["auto"] = "auto",
+    shards: ShardsLike | None = None,
+    filters: FiltersLike = "auto",
+    compressors: CompressorsLike = "auto",
+    serializer: SerializerLike = "auto",
+    fill_value: Any | None = None,
+    order: MemoryOrder | None = None,
+    zarr_format: ZarrFormat | None = 3,
+    attributes: dict[str, JSON] | None = None,
+    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
+    dimension_names: Iterable[str] | None = None,
+    storage_options: dict[str, Any] | None = None,
+    overwrite: bool = False,
+    config: ArrayConfig | ArrayConfigLike | None = None,
+) -> Array:
+    """Create an array from an existing array.
+
+    Parameters
+    ----------
+    data : Array
+        The array to copy.
+    store : str or Store
+        Store or path to directory in file system or name of zip file for the new array.
+    name : str or None, optional
+        The name of the array within the store. If ``name`` is ``None``, the array will be located
+        at the root of the store.
+    chunks : ChunkCoords, optional
+        Chunk shape of the array.
+        If not specified, defaults to the chunk shape of the data array.
+    shards : ChunkCoords, optional
+        Shard shape of the array. The default value of ``None`` results in no sharding at all.
+    filters : Iterable[Codec], optional
+        Iterable of filters to apply to each chunk of the array, in order, before serializing that
+        chunk to bytes.
+
+        For Zarr format 3, a "filter" is a codec that takes an array and returns an array,
+        and these values must be instances of ``ArrayArrayCodec``, or dict representations
+        of ``ArrayArrayCodec``.
+
+        For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
+        the order if your filters is consistent with the behavior of each filter.
+
+        If no ``filters`` are provided, defaults to the filters of the data array.
+    compressors : Iterable[Codec], optional
+        List of compressors to apply to the array. Compressors are applied in order, and after any
+        filters are applied (if any are specified) and the data is serialized into bytes.
+
+        For Zarr format 3, a "compressor" is a codec that takes a bytestream, and
+        returns another bytestream. Multiple compressors my be provided for Zarr format 3.
+
+        For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
+        be provided for Zarr format 2.
+
+        If no ``compressors`` are provided, defaults to the compressors of the data array.
+    serializer : dict[str, JSON] | ArrayBytesCodec, optional
+        Array-to-bytes codec to use for encoding the array data.
+        Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
+
+        If no ``serializer`` is provided, defaults to the serializer of the input array.
+    fill_value : Any, optional
+        Fill value for the array.
+        If not specified, defaults to the fill value of the data array.
+    order : {"C", "F"}, optional
+        The memory of the array (default is "C").
+        For Zarr format 2, this parameter sets the memory order of the array.
+        For Zarr format 3, this parameter is deprecated, because memory order
+        is a runtime parameter for Zarr format 3 arrays. The recommended way to specify the memory
+        order for Zarr format 3 arrays is via the ``config`` parameter, e.g. ``{'config': 'C'}``.
+        If not specified, defaults to the memory order of the data array.
+    zarr_format : {2, 3}, optional
+        The zarr format to use when saving.
+        If not specified, defaults to the zarr format of the data array.
+    attributes : dict, optional
+        Attributes for the array.
+        If not specified, defaults to the attributes of the data array.
+    chunk_key_encoding : ChunkKeyEncoding, optional
+        A specification of how the chunk keys are represented in storage.
+        For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
+        For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
+        If not specified and the data array has the same zarr format as the target array,
+        the chunk key encoding of the data array is used.
+    dimension_names : Iterable[str], optional
+        The names of the dimensions (default is None).
+        Zarr format 3 only. Zarr format 2 arrays should not use this parameter.
+        If not specified, defaults to the dimension names of the data array.
+    storage_options : dict, optional
+        If using an fsspec URL to create the store, these will be passed to the backend implementation.
+        Ignored otherwise.
+    overwrite : bool, default False
+        Whether to overwrite an array with the same name in the store, if one exists.
+    config : ArrayConfig or ArrayConfigLike, optional
+        Runtime configuration for the array.
+
+    Returns
+    -------
+    AsyncArray
+        The array.
+
+    Examples
+    --------
+    #TODO
+    """
+    return Array(
+        sync(
+            zarr.core.array.from_array(
+                data,
+                store,
+                name=name,
                 chunks=chunks,
                 shards=shards,
                 filters=filters,
