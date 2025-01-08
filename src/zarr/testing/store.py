@@ -16,8 +16,8 @@ import pytest
 
 from zarr.abc.store import (
     ByteRequest,
-    ExplicitByteRequest,
     OffsetByteRequest,
+    RangeByteRequest,
     Store,
     SuffixByteRequest,
 )
@@ -122,7 +122,7 @@ class StoreTests(Generic[S, B]):
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     @pytest.mark.parametrize(
-        "byte_range", [None, ExplicitByteRequest(1, 4), OffsetByteRequest(1), SuffixByteRequest(1)]
+        "byte_range", [None, RangeByteRequest(1, 4), OffsetByteRequest(1), SuffixByteRequest(1)]
     )
     async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRequest) -> None:
         """
@@ -185,10 +185,10 @@ class StoreTests(Generic[S, B]):
         "key_ranges",
         [
             [],
-            [("zarr.json", ExplicitByteRequest(0, 2))],
-            [("c/0", ExplicitByteRequest(0, 2)), ("zarr.json", None)],
+            [("zarr.json", RangeByteRequest(0, 2))],
+            [("c/0", RangeByteRequest(0, 2)), ("zarr.json", None)],
             [
-                ("c/0/0", ExplicitByteRequest(0, 2)),
+                ("c/0/0", RangeByteRequest(0, 2)),
                 ("c/0/1", SuffixByteRequest(2)),
                 ("c/0/2", OffsetByteRequest(2)),
             ],

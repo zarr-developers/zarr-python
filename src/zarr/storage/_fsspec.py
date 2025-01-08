@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import (
     ByteRequest,
-    ExplicitByteRequest,
     OffsetByteRequest,
+    RangeByteRequest,
     Store,
     SuffixByteRequest,
 )
@@ -215,7 +215,7 @@ class FsspecStore(Store):
         try:
             if byte_range is None:
                 value = prototype.buffer.from_bytes(await self.fs._cat_file(path))
-            elif isinstance(byte_range, ExplicitByteRequest):
+            elif isinstance(byte_range, RangeByteRequest):
                 value = prototype.buffer.from_bytes(
                     await self.fs._cat_file(
                         path,
@@ -293,7 +293,7 @@ class FsspecStore(Store):
                 if byte_range is None:
                     starts.append(None)
                     stops.append(None)
-                elif isinstance(byte_range, ExplicitByteRequest):
+                elif isinstance(byte_range, RangeByteRequest):
                     starts.append(byte_range.start)
                     stops.append(byte_range.end)
                 elif isinstance(byte_range, OffsetByteRequest):

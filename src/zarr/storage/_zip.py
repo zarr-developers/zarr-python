@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import (
     ByteRequest,
-    ExplicitByteRequest,
     OffsetByteRequest,
+    RangeByteRequest,
     Store,
     SuffixByteRequest,
 )
@@ -151,7 +151,7 @@ class ZipStore(Store):
             with self._zf.open(key) as f:  # will raise KeyError
                 if byte_range is None:
                     return prototype.buffer.from_bytes(f.read())
-                elif isinstance(byte_range, ExplicitByteRequest):
+                elif isinstance(byte_range, RangeByteRequest):
                     f.seek(byte_range.start)
                     return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
                 size = f.seek(0, os.SEEK_END)

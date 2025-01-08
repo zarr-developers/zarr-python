@@ -21,7 +21,7 @@ from zarr.abc.store import (
     ByteGetter,
     ByteRequest,
     ByteSetter,
-    ExplicitByteRequest,
+    RangeByteRequest,
     SuffixByteRequest,
 )
 from zarr.codecs.bytes import BytesCodec
@@ -511,7 +511,7 @@ class ShardingCodec(
                 if chunk_byte_slice:
                     chunk_bytes = await byte_getter.get(
                         prototype=chunk_spec.prototype,
-                        byte_range=ExplicitByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]),
+                        byte_range=RangeByteRequest(chunk_byte_slice[0], chunk_byte_slice[1]),
                     )
                     if chunk_bytes:
                         shard_dict[chunk_coords] = chunk_bytes
@@ -704,7 +704,7 @@ class ShardingCodec(
         if self.index_location == ShardingCodecIndexLocation.start:
             index_bytes = await byte_getter.get(
                 prototype=numpy_buffer_prototype(),
-                byte_range=ExplicitByteRequest(0, shard_index_size),
+                byte_range=RangeByteRequest(0, shard_index_size),
             )
         else:
             index_bytes = await byte_getter.get(

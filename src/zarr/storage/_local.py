@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING
 
 from zarr.abc.store import (
     ByteRequest,
-    ExplicitByteRequest,
     OffsetByteRequest,
+    RangeByteRequest,
     Store,
     SuffixByteRequest,
 )
@@ -29,7 +29,7 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None)
         return prototype.buffer.from_bytes(path.read_bytes())
     with path.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
-        if isinstance(byte_range, ExplicitByteRequest):
+        if isinstance(byte_range, RangeByteRequest):
             f.seek(byte_range.start)
             return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
         elif isinstance(byte_range, OffsetByteRequest):
