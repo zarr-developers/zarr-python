@@ -112,8 +112,8 @@ from zarr.registry import (
     _parse_bytes_bytes_codec,
     get_pipeline_class,
 )
-from zarr.storage import StoreLike, make_store_path
-from zarr.storage._common import StorePath, ensure_no_existing_node
+from zarr.storage import StoreLike
+from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -122,6 +122,7 @@ if TYPE_CHECKING:
     from zarr.abc.codec import CodecPipeline
     from zarr.codecs.sharding import ShardingCodecIndexLocation
     from zarr.core.group import AsyncGroup
+    from zarr.storage import StoreLike
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
@@ -1995,10 +1996,11 @@ class Array:
 
     @property
     def name(self) -> str:
+        """Array name following h5py convention."""
         return self._async_array.name
 
     @property
-    def basename(self) -> str | None:
+    def basename(self) -> str:
         """Final component of name."""
         return self._async_array.basename
 
