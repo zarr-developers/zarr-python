@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zarr.abc.store import ExplicitRange, OffsetRange, SuffixRange
+from zarr.abc.store import ExplicitByteRequest, OffsetRange, SuffixRange
 
 if TYPE_CHECKING:
     from zarr.abc.store import ByteRangeRequest
@@ -56,7 +56,7 @@ def _normalize_byte_range_index(
     if byte_range is None:
         start = 0
         stop = len(data) + 1
-    elif isinstance(byte_range, ExplicitRange):
+    elif isinstance(byte_range, ExplicitByteRequest):
         start = byte_range.start
         stop = byte_range.end
     elif isinstance(byte_range, OffsetRange):

@@ -7,7 +7,7 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import ByteRangeRequest, ExplicitRange, OffsetRange, Store, SuffixRange
+from zarr.abc.store import ByteRangeRequest, ExplicitByteRequest, OffsetRange, Store, SuffixRange
 from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
@@ -145,7 +145,7 @@ class ZipStore(Store):
             with self._zf.open(key) as f:  # will raise KeyError
                 if byte_range is None:
                     return prototype.buffer.from_bytes(f.read())
-                elif isinstance(byte_range, ExplicitRange):
+                elif isinstance(byte_range, ExplicitByteRequest):
                     f.seek(byte_range.start)
                     return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
                 size = f.seek(0, os.SEEK_END)

@@ -7,7 +7,7 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zarr.abc.store import ByteRangeRequest, ExplicitRange, OffsetRange, Store, SuffixRange
+from zarr.abc.store import ByteRangeRequest, ExplicitByteRequest, OffsetRange, Store, SuffixRange
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
@@ -23,7 +23,7 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest | 
         return prototype.buffer.from_bytes(path.read_bytes())
     with path.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
-        if isinstance(byte_range, ExplicitRange):
+        if isinstance(byte_range, ExplicitByteRequest):
             f.seek(byte_range.start)
             return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
         elif isinstance(byte_range, OffsetRange):
