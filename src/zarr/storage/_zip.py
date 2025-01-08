@@ -149,20 +149,18 @@ class ZipStore(Store):
         # docstring inherited
         try:
             with self._zf.open(key) as f:  # will raise KeyError
-                match byte_range:
-                    case None:
-                        return prototype.buffer.from_bytes(f.read())
-                    case ExplicitByteRequest(start, end):
-                        f.seek(start)
-                        return prototype.buffer.from_bytes(f.read(end - f.tell()))
-                    case OffsetByteRequest(offset):
-                        size = f.seek(0, os.SEEK_END)
-                        f.seek(offset)
-                    case SuffixByteRequest(suffix):
-                        size = f.seek(0, os.SEEK_END)
-                        f.seek(max(0, size - suffix))
-                    case _:
-                        raise TypeError(f"Unexpected byte_range, got {byte_range}.")
+                if byte_range is None:
+                    return prototype.buffer.from_bytes(f.read())
+                elif isinstance(byte_range, ExplicitByteRequest):
+                    f.seek(byte_range.start)
+                    return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
+                size = f.seek(0, os.SEEK_END)
+                if isinstance(byte_range, OffsetByteRequest):
+                    f.seek(byte_range.offset)
+                elif isinstance(byte_range, SuffixByteRequest):
+                    f.seek(max(0, size - byte_range.suffix))
+                else:
+                    raise TypeError("Invalid format for ByteRangeRequest")
                 return prototype.buffer.from_bytes(f.read())
         except KeyError:
             return None

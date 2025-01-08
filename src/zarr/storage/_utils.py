@@ -53,14 +53,16 @@ def _normalize_byte_range_index(
     """
     Convert an ByteRangeRequest into an explicit start and stop
     """
-    match byte_range:
-        case None:
-            return (0, len(data) + 1)
-        case ExplicitByteRequest(start, end):
-            return (start, end)
-        case OffsetByteRequest(offset):
-            return (offset, len(data) + 1)
-        case SuffixByteRequest(suffix):
-            return (len(data) - suffix, len(data) + 1)
-        case _:
-            raise ValueError(f"Unexpected byte_range, got {byte_range}.")
+    if byte_range is None:
+        start = 0
+        stop = len(data) + 1
+    elif isinstance(byte_range, ExplicitByteRequest):
+        start = byte_range.start
+        stop = byte_range.end
+    elif isinstance(byte_range, OffsetByteRequest):
+        start = byte_range.offset
+        stop = len(data) + 1
+    elif isinstance(byte_range, SuffixByteRequest):
+        start = len(data) - byte_range.suffix
+        stop = len(data) + 1
+    return (start, stop)
