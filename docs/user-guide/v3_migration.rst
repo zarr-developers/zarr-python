@@ -206,3 +206,5 @@ of Zarr-Python, please open (or comment on) a
   * Object dtypes (:issue:`2617`)
   * Ragged arrays (:issue:`2618`)
   * Groups and Arrays do not implement ``__enter__`` and ``__exit__`` protocols (:issue:`2619`)
+  * Big Endian dtypes (:issue:`2324`)
+  * Default filters for object dtypes for Zarr format 2 arrays (:issue:`2627`)
