@@ -29,15 +29,16 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest | 
         return prototype.buffer.from_bytes(path.read_bytes())
     with path.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
-        if isinstance(byte_range, ExplicitByteRequest):
-            f.seek(byte_range.start)
-            return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
-        elif isinstance(byte_range, OffsetByteRequest):
-            f.seek(byte_range.offset)
-        elif isinstance(byte_range, SuffixByteRequest):
-            f.seek(max(0, size - byte_range.suffix))
-        else:
-            raise TypeError("Invalid format for ByteRangeRequest")
+        match byte_range:
+            case ExplicitByteRequest(start, end):
+                f.seek(start)
+                return prototype.buffer.from_bytes(f.read(end - f.tell()))
+            case OffsetByteRequest(offset):
+                f.seek(offset)
+            case SuffixByteRequest(suffix):
+                f.seek(max(0, size - suffix))
+            case _:
+                raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         return prototype.buffer.from_bytes(f.read())
 
 

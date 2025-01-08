@@ -213,26 +213,27 @@ class FsspecStore(Store):
         path = _dereference_path(self.path, key)
 
         try:
-            if byte_range is None:
-                value = prototype.buffer.from_bytes(await self.fs._cat_file(path))
-            elif isinstance(byte_range, ExplicitByteRequest):
-                value = prototype.buffer.from_bytes(
-                    await self.fs._cat_file(
-                        path,
-                        start=byte_range.start,
-                        end=byte_range.end,
+            match byte_range:
+                case None:
+                    value = prototype.buffer.from_bytes(await self.fs._cat_file(path))
+                case ExplicitByteRequest(start, end):
+                    value = prototype.buffer.from_bytes(
+                        await self.fs._cat_file(
+                            path,
+                            start=start,
+                            end=end,
+                        )
                     )
-                )
-            elif isinstance(byte_range, OffsetByteRequest):
-                value = prototype.buffer.from_bytes(
-                    await self.fs._cat_file(path, start=byte_range.offset, end=None)
-                )
-            elif isinstance(byte_range, SuffixByteRequest):
-                value = prototype.buffer.from_bytes(
-                    await self.fs._cat_file(path, start=-byte_range.suffix, end=None)
-                )
-            else:
-                raise ValueError("Invalid format for ByteRangeRequest")
+                case OffsetByteRequest(offset):
+                    value = prototype.buffer.from_bytes(
+                        await self.fs._cat_file(path, start=offset, end=None)
+                    )
+                case SuffixByteRequest(suffix):
+                    value = prototype.buffer.from_bytes(
+                        await self.fs._cat_file(path, start=-suffix, end=None)
+                    )
+                case _:
+                    raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         except self.allowed_exceptions:
             return None
         except OSError as e:
@@ -290,20 +291,21 @@ class FsspecStore(Store):
             stops: list[int | None] = []
             for key, byte_range in key_ranges:
                 paths.append(_dereference_path(self.path, key))
-                if byte_range is None:
-                    starts.append(None)
-                    stops.append(None)
-                elif isinstance(byte_range, ExplicitByteRequest):
-                    starts.append(byte_range.start)
-                    stops.append(byte_range.end)
-                elif isinstance(byte_range, OffsetByteRequest):
-                    starts.append(byte_range.offset)
-                    stops.append(None)
-                elif isinstance(byte_range, SuffixByteRequest):
-                    starts.append(-byte_range.suffix)
-                    stops.append(None)
-                else:
-                    raise ValueError("Invalid format for ByteRangeRequest")
+                match byte_range:
+                    case None:
+                        starts.append(None)
+                        stops.append(None)
+                    case ExplicitByteRequest(start, end):
+                        starts.append(start)
+                        stops.append(end)
+                    case OffsetByteRequest(offset):
+                        starts.append(offset)
+                        stops.append(None)
+                    case SuffixByteRequest(suffix):
+                        starts.append(-suffix)
+                        stops.append(None)
+                    case _:
+                        raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         else:
             return []
         # TODO: expectations for exceptions or missing keys?
