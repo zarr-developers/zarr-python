@@ -26,8 +26,8 @@ from zarr.core.buffer import (
     BufferPrototype,
     NDBuffer,
     default_buffer_prototype,
-    numpy_buffer_prototype,
 )
+from zarr.core.buffer.cpu import numpy_buffer_prototype
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.common import (
     ChunkCoords,

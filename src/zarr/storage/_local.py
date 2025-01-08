@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from zarr.abc.store import ByteRangeRequest, Store
 from zarr.core.buffer import Buffer
-from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.buffer._core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 
 if TYPE_CHECKING:

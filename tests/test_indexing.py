@@ -31,8 +31,7 @@ from zarr.storage import MemoryStore, StorePath
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
-    from zarr.core.buffer import BufferPrototype
-    from zarr.core.buffer.core import Buffer
+    from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import ChunkCoords
 
 

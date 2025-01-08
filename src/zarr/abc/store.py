@@ -5,7 +5,7 @@ from asyncio import gather
 from itertools import starmap
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.buffer._core import default_buffer_prototype
 from zarr.core.common import concurrent_map
 from zarr.core.config import config
 

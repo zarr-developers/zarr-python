@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from zarr.abc.store import ByteRangeRequest
-    from zarr.core.buffer.core import BufferPrototype
+    from zarr.core.buffer._core import BufferPrototype
 
 import pytest
 
