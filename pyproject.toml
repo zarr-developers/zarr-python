@@ -68,8 +68,10 @@ test = [
     "pytest-cov",
     "s3fs",
     "pytest-asyncio",
-    "moto[s3]",
+    "pytest-accept",
+    "moto[s3,server]",
     "requests",
+    "rich",
     "mypy",
     "hypothesis",
     "universal-pathlib",
@@ -86,6 +88,8 @@ docs = [
     'pydata-sphinx-theme',
     'numpydoc',
     'numcodecs[msgpack]',
+    'rich',
+    's3fs',
 ]
 
 
@@ -136,12 +140,21 @@ numpy = ["1.25", "2.1"]
 features = ["gpu"]
 
 [tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=tests"
-run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=tests"
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov=src"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=src"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+list-env = "pip list"
+
+[tool.hatch.envs.doctest]
+features = ["test", "optional"]
+description = "Test environment for doctests"
+
+[tool.hatch.envs.doctest.scripts]
+run = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst'"
+fix = "rm -r data/; pytest docs/user-guide --doctest-glob='*.rst' --accept"
 list-env = "pip list"
 
 [tool.hatch.envs.gputest]
@@ -157,7 +170,7 @@ numpy = ["1.25", "2.1"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
-run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=tests"
+run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov=src"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
@@ -349,7 +362,7 @@ ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "7"
-testpaths = ["tests"]
+testpaths = ["tests", "docs/user-guide"]
 log_cli_level = "INFO"
 xfail_strict = true
 asyncio_mode = "auto"
@@ -367,7 +380,7 @@ filterwarnings = [
     "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
     "ignore:Creating a zarr.buffer.gpu.*:UserWarning",
     "ignore:Duplicate name:UserWarning",  # from ZipFile
-    "ignore:.*is currently not part in the Zarr version 3 specification.*:UserWarning",
+    "ignore:.*is currently not part in the Zarr format 3 specification.*:UserWarning",
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU"
@@ -384,7 +397,8 @@ ignore = [
 checks = [
     "GL06",
     "GL07",
-    "GL09",
+    # Currently broken; see https://github.com/numpy/numpydoc/issues/573
+    # "GL09",
     "GL10",
     "SS02",
     "SS04",

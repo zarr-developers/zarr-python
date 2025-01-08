@@ -4,7 +4,7 @@ import asyncio
 import pickle
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from zarr.storage.wrapper import WrapperStore
+from zarr.storage import WrapperStore
 
 if TYPE_CHECKING:
     from typing import Any

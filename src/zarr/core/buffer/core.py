@@ -16,11 +16,6 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.registry import (
-    get_buffer_class,
-    get_ndbuffer_class,
-)
-
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from typing import Self
@@ -507,4 +502,9 @@ class BufferPrototype(NamedTuple):
 
 # The default buffer prototype used throughout the Zarr codebase.
 def default_buffer_prototype() -> BufferPrototype:
+    from zarr.registry import (
+        get_buffer_class,
+        get_ndbuffer_class,
+    )
+
     return BufferPrototype(buffer=get_buffer_class(), nd_buffer=get_ndbuffer_class())

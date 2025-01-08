@@ -12,8 +12,7 @@ from hypothesis import HealthCheck, Verbosity, settings
 from zarr import AsyncGroup, config
 from zarr.abc.store import Store
 from zarr.core.sync import sync
-from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
-from zarr.storage.fsspec import FsspecStore
+from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
 
 if TYPE_CHECKING:
     from collections.abc import Generator
