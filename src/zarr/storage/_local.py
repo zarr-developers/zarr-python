@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from zarr.abc.store import (
-    ByteRangeRequest,
+    ByteRequest,
     ExplicitByteRequest,
     OffsetByteRequest,
     Store,
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
 
 
-def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest | None) -> Buffer:
+def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None) -> Buffer:
     if byte_range is None:
         return prototype.buffer.from_bytes(path.read_bytes())
     with path.open("rb") as f:
@@ -37,7 +37,7 @@ def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRangeRequest | 
         elif isinstance(byte_range, SuffixByteRequest):
             f.seek(max(0, size - byte_range.suffix))
         else:
-            raise TypeError("Invalid format for ByteRangeRequest")
+            raise TypeError("Invalid format for ByteRequest")
         return prototype.buffer.from_bytes(f.read())
 
 
@@ -124,7 +124,7 @@ class LocalStore(Store):
         self,
         key: str,
         prototype: BufferPrototype | None = None,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if prototype is None:
@@ -142,7 +142,7 @@ class LocalStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         args = []

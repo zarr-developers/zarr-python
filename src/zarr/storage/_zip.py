@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 from zarr.abc.store import (
-    ByteRangeRequest,
+    ByteRequest,
     ExplicitByteRequest,
     OffsetByteRequest,
     Store,
@@ -144,7 +144,7 @@ class ZipStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         try:
@@ -160,7 +160,7 @@ class ZipStore(Store):
                 elif isinstance(byte_range, SuffixByteRequest):
                     f.seek(max(0, size - byte_range.suffix))
                 else:
-                    raise TypeError("Invalid format for ByteRangeRequest")
+                    raise TypeError("Invalid format for ByteRequest")
                 return prototype.buffer.from_bytes(f.read())
         except KeyError:
             return None
@@ -169,7 +169,7 @@ class ZipStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         assert isinstance(key, str)
@@ -180,7 +180,7 @@ class ZipStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         out = []

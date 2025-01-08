@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from zarr.abc.store import ExplicitByteRequest, OffsetByteRequest, SuffixByteRequest
 
 if TYPE_CHECKING:
-    from zarr.abc.store import ByteRangeRequest
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer
 
 
@@ -47,11 +47,9 @@ def normalize_path(path: str | bytes | Path | None) -> str:
     return result
 
 
-def _normalize_byte_range_index(
-    data: Buffer, byte_range: ByteRangeRequest | None
-) -> tuple[int, int]:
+def _normalize_byte_range_index(data: Buffer, byte_range: ByteRequest | None) -> tuple[int, int]:
     """
-    Convert an ByteRangeRequest into an explicit start and stop
+    Convert an ByteRequest into an explicit start and stop
     """
     if byte_range is None:
         start = 0

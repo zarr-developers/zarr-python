@@ -4,7 +4,7 @@ import warnings
 from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import (
-    ByteRangeRequest,
+    ByteRequest,
     ExplicitByteRequest,
     OffsetByteRequest,
     Store,
@@ -205,7 +205,7 @@ class FsspecStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if not self._is_open:
@@ -232,7 +232,7 @@ class FsspecStore(Store):
                     await self.fs._cat_file(path, start=-byte_range.suffix, end=None)
                 )
             else:
-                raise ValueError("Invalid format for ByteRangeRequest")
+                raise ValueError("Invalid format for ByteRequest")
         except self.allowed_exceptions:
             return None
         except OSError as e:
@@ -279,11 +279,11 @@ class FsspecStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         if key_ranges:
-            # _cat_ranges expects a list of paths, start, and end ranges, so we need to reformat each ByteRangeRequest.
+            # _cat_ranges expects a list of paths, start, and end ranges, so we need to reformat each ByteRequest.
             key_ranges = list(key_ranges)
             paths: list[str] = []
             starts: list[int | None] = []
@@ -303,7 +303,7 @@ class FsspecStore(Store):
                     starts.append(-byte_range.suffix)
                     stops.append(None)
                 else:
-                    raise ValueError("Invalid format for ByteRangeRequest")
+                    raise ValueError("Invalid format for ByteRequest")
         else:
             return []
         # TODO: expectations for exceptions or missing keys?

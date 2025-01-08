@@ -47,7 +47,7 @@ class SuffixByteRequest:
     """The number of bytes from the suffix to request."""
 
 
-ByteRangeRequest: TypeAlias = ExplicitByteRequest | OffsetByteRequest | SuffixByteRequest
+ByteRequest: TypeAlias = ExplicitByteRequest | OffsetByteRequest | SuffixByteRequest
 
 
 class Store(ABC):
@@ -169,16 +169,16 @@ class Store(ABC):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """Retrieve the value associated with a given key.
 
         Parameters
         ----------
         key : str
-        byte_range : ByteRangeRequest, optional
+        byte_range : ByteRequest, optional
 
-            ByteRangeRequest may be one of the following. If not provided, all data associated with the key is retrieved.
+            ByteRequest may be one of the following. If not provided, all data associated with the key is retrieved.
 
             - ExplicitByteRequest(int, int): Request a specific range of bytes in the form (start, end). The end is exclusive. If the given range is zero-length or starts after the end of the object, an error will be returned. Additionally, if the range ends after the end of the object, the entire remainder of the object will be returned. Otherwise, the exact requested range will be returned.
             - OffsetByteRequest(int): Request all bytes starting from a given byte offset. This is equivalent to bytes={int}- as an HTTP header.
@@ -194,7 +194,7 @@ class Store(ABC):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         """Retrieve possibly partial values from given key_ranges.
 
@@ -372,7 +372,7 @@ class Store(ABC):
         self._is_open = False
 
     async def _get_many(
-        self, requests: Iterable[tuple[str, BufferPrototype, ByteRangeRequest | None]]
+        self, requests: Iterable[tuple[str, BufferPrototype, ByteRequest | None]]
     ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
         """
         Retrieve a collection of objects from storage. In general this method does not guarantee
@@ -450,17 +450,17 @@ class Store(ABC):
 @runtime_checkable
 class ByteGetter(Protocol):
     async def get(
-        self, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None: ...
 
 
 @runtime_checkable
 class ByteSetter(Protocol):
     async def get(
-        self, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None: ...
 
-    async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None: ...
+    async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None: ...
 
     async def delete(self) -> None: ...
 

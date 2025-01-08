@@ -13,7 +13,7 @@ from zarr.storage._wrapper import WrapperStore
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable
 
-    from zarr.abc.store import ByteRangeRequest
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer, BufferPrototype
 
     counter: defaultdict[str, int]
@@ -161,7 +161,7 @@ class LoggingStore(WrapperStore[Store]):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         with self.log(key):
@@ -170,7 +170,7 @@ class LoggingStore(WrapperStore[Store]):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest | None]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         keys = ",".join([k[0] for k in key_ranges])

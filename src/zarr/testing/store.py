@@ -9,13 +9,13 @@ from zarr.storage import WrapperStore
 if TYPE_CHECKING:
     from typing import Any
 
-    from zarr.abc.store import ByteRangeRequest
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer.core import BufferPrototype
 
 import pytest
 
 from zarr.abc.store import (
-    ByteRangeRequest,
+    ByteRequest,
     ExplicitByteRequest,
     OffsetByteRequest,
     Store,
@@ -124,7 +124,7 @@ class StoreTests(Generic[S, B]):
     @pytest.mark.parametrize(
         "byte_range", [None, ExplicitByteRequest(1, 4), OffsetByteRequest(1), SuffixByteRequest(1)]
     )
-    async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRangeRequest) -> None:
+    async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRequest) -> None:
         """
         Ensure that data can be read from the store using the store.get method.
         """
@@ -195,7 +195,7 @@ class StoreTests(Generic[S, B]):
         ],
     )
     async def test_get_partial_values(
-        self, store: S, key_ranges: list[tuple[str, ByteRangeRequest]]
+        self, store: S, key_ranges: list[tuple[str, ByteRequest]]
     ) -> None:
         # put all of the data
         for key, _ in key_ranges:
@@ -377,7 +377,7 @@ class LatencyStore(WrapperStore[Store]):
         await self._store.set(key, value)
 
     async def get(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         """
         Add latency to the ``get`` method.
@@ -390,7 +390,7 @@ class LatencyStore(WrapperStore[Store]):
             The key to get
         prototype : BufferPrototype
             The BufferPrototype to use.
-        byte_range : ByteRangeRequest, optional
+        byte_range : ByteRequest, optional
             An optional byte range.
 
         Returns

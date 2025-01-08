@@ -19,7 +19,7 @@ from zarr.abc.codec import (
 )
 from zarr.abc.store import (
     ByteGetter,
-    ByteRangeRequest,
+    ByteRequest,
     ByteSetter,
     ExplicitByteRequest,
     SuffixByteRequest,
@@ -83,7 +83,7 @@ class _ShardingByteGetter(ByteGetter):
     chunk_coords: ChunkCoords
 
     async def get(
-        self, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
+        self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         assert byte_range is None, "byte_range is not supported within shards"
         assert (
@@ -96,7 +96,7 @@ class _ShardingByteGetter(ByteGetter):
 class _ShardingByteSetter(_ShardingByteGetter, ByteSetter):
     shard_dict: ShardMutableMapping
 
-    async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None:
+    async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
         assert byte_range is None, "byte_range is not supported within shards"
         self.shard_dict[self.chunk_coords] = value
 
