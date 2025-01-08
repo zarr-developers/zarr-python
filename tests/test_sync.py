@@ -12,6 +12,7 @@ from zarr.core.sync import (
     _get_lock,
     _get_loop,
     cleanup_resources,
+    loop,
     sync,
 )
 from zarr.storage import MemoryStore
@@ -148,11 +149,20 @@ def test_open_positional_args_deprecate():
 
 
 @pytest.mark.parametrize("workers", [None, 1, 2])
-def test_get_executor(clean_state, workers) -> None:
+def test_threadpool_executor(clean_state, workers: int | None) -> None:
     with zarr.config.set({"threading.max_workers": workers}):
-        e = _get_executor()
-        if workers is not None and workers != 0:
-            assert e._max_workers == workers
+        _ = zarr.zeros(shape=(1,))  # trigger executor creation
+        assert loop != [None]  # confirm loop was created
+        if workers is None:
+            # confirm no executor was created if no workers were specified
+            # (this is the default behavior)
+            assert loop[0]._default_executor is None
+        else:
+            # confirm executor was created and attached to loop as the default executor
+            # note: python doesn't have a direct way to get the default executor so we
+            # use the private attribute
+            assert _get_executor() is loop[0]._default_executor
+            assert _get_executor()._max_workers == workers
 
 
 def test_cleanup_resources_idempotent() -> None:
