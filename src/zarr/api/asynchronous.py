@@ -555,19 +555,19 @@ async def array(
 
         new_array = await create(data.shape, **kwargs)
 
-        async def _copy_chunk(chunk_coords: ChunkCoords | slice) -> None:
-            arr = await data._async_array.getitem(chunk_coords)
+        async def _copy_chunk(chunk_coords: ChunkCoords | slice, _data: Array) -> None:
+            arr = await _data._async_array.getitem(chunk_coords)
             await new_array.setitem(chunk_coords, arr)
 
         if new_array.chunks == data.chunks:
             # Stream data from the source array to the new array
             await concurrent_map(
-                [(region,) for region in data._iter_chunk_regions()],
+                [(region,data) for region in data._iter_chunk_regions()],
                 _copy_chunk,
                 config.get("async.concurrency"),
             )
         else:
-            await _copy_chunk(slice(None))
+            await _copy_chunk(slice(None), data)
         return new_array
 
     # ensure data is array-like
