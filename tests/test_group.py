@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import operator
 import pickle
+import re
 import time
 import warnings
 from pathlib import PurePosixPath
@@ -21,7 +22,7 @@ from zarr.abc.store import Store
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata, create_hierarchy, create_nodes
-from zarr.core.sync import sync
+from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
@@ -1473,14 +1474,14 @@ async def test_create_hierarchy(store: Store, zarr_format: ZarrFormat) -> None:
     """
     path = "foo"
     hierarchy_spec = {
-        "group": GroupMetadata(attributes={"foo": 10}),
+        "group": GroupMetadata(attributes={"foo": 10}, zarr_format=zarr_format),
         "group/array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
         "group/array_1": meta_from_array(np.arange(4), zarr_format=zarr_format),
         "group/subgroup/array_0": meta_from_array(np.arange(4), zarr_format=zarr_format),
         "group/subgroup/array_1": meta_from_array(np.arange(5), zarr_format=zarr_format),
     }
     expected_meta = hierarchy_spec | {"group/subgroup": GroupMetadata(zarr_format=zarr_format)}
-    spath = await make_store_path(store, path="foo")
+    spath = await make_store_path(store, path=path)
     observed_nodes = {
         str(PurePosixPath(a.name).relative_to("/" + path)): a
         async for a in create_hierarchy(store_path=spath, nodes=expected_meta)
@@ -1493,7 +1494,7 @@ def test_group_create_hierarchy(store: Store, zarr_format: ZarrFormat):
     """
     Test that the Group.create_hierarchy method creates specified nodes and returns them in a dict.
     """
-    g = Group.from_store(store)
+    g = Group.from_store(store, zarr_format=zarr_format)
     tree = {
         "a": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a"}),
         "a/b": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a/b"}),
@@ -1502,11 +1503,99 @@ def test_group_create_hierarchy(store: Store, zarr_format: ZarrFormat):
         ),
     }
     nodes = g.create_hierarchy(tree)
-    for k, v in nodes.items():
-        assert v.metadata == tree[k]
+    for k, v in g.members(max_depth=None):
+        assert v.metadata == tree[k] == nodes[k].metadata
 
 
-def test_group_members_performance(store: MemoryStore) -> None:
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_group_create_hierarchy_invalid_mixed_zarr_format(store: Store, zarr_format: ZarrFormat):
+    """
+    Test that ```Group.create_hierarchy``` will raise an error if the zarr_format of the nodes is
+    different from the parent group.
+    """
+    other_format = 2 if zarr_format == 3 else 3
+    g = Group.from_store(store, zarr_format=other_format)
+    tree = {
+        "a": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a"}),
+        "a/b": meta_from_array(np.zeros(5), zarr_format=zarr_format, attributes={"name": "a/c"}),
+    }
+
+    msg = "The zarr_format of the nodes must be the same as the parent group."
+    with pytest.raises(ValueError, match=msg):
+        _ = g.create_hierarchy(tree)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("defect", ["array/array", "array/group"])
+async def test_create_hierarchy_invalid_nested(
+    store: Store, defect: tuple[str, str], zarr_format
+) -> None:
+    """
+    Test that create_hierarchy will not create a Zarr array that contains a Zarr group
+    or Zarr array.
+    """
+
+    if defect == "array/array":
+        hierarchy_spec = {
+            "array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
+            "array_0/subarray": meta_from_array(np.arange(4), zarr_format=zarr_format),
+        }
+    elif defect == "array/group":
+        hierarchy_spec = {
+            "array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
+            "array_0/subgroup": GroupMetadata(attributes={"foo": 10}, zarr_format=zarr_format),
+        }
+
+    msg = "Only Zarr groups can contain other nodes."
+    with pytest.raises(ValueError, match=msg):
+        spath = await make_store_path(store, path="foo")
+        await _collect_aiterator(create_hierarchy(store_path=spath, nodes=hierarchy_spec))
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_hierarchy_invalid_mixed_format(store: Store):
+    """
+    Test that create_hierarchy will not create a Zarr group that contains a both Zarr v2 and
+    Zarr v3 nodes.
+    """
+    spath = await make_store_path(store, path="foo")
+    msg = (
+        "Got data with both Zarr v2 and Zarr v3 nodes, which is invalid. "
+        "The following keys map to Zarr v2 nodes: ['v2']. "
+        "The following keys map to Zarr v3 nodes: ['v3']."
+        "Ensure that all nodes have the same Zarr format."
+    )
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        await _collect_aiterator(
+            create_hierarchy(
+                store_path=spath,
+                nodes={
+                    "v2": GroupMetadata(zarr_format=2),
+                    "v3": GroupMetadata(zarr_format=3),
+                },
+            )
+        )
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_group_from_flat(store: Store, zarr_format):
+    """
+    Test that the AsyncGroup.from_flat method creates a zarr group in one shot.
+    """
+    hierarchy_spec = {
+        "a": GroupMetadata(zarr_format=zarr_format),
+        "a/b": GroupMetadata(zarr_format=zarr_format),
+        "a/b/c": GroupMetadata(zarr_format=zarr_format),
+    }
+    g = await AsyncGroup.from_flat(store, nodes=hierarchy_spec)
+    assert g.members() == [
+        ("b", GroupMetadata(zarr_format=zarr_format)),
+        ("b/c", GroupMetadata(zarr_format=zarr_format)),
+    ]
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_group_members_performance(store: Store) -> None:
     """
     Test that the execution time of Group.members is less than the number of members times the
     latency for accessing each member.

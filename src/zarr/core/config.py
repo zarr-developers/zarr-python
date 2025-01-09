@@ -94,7 +94,7 @@ config = Config(
                     ],
                 },
             },
-            "async": {"concurrency": 10, "timeout": None},
+            "async": {"concurrency": 256, "timeout": None},
             "threading": {"max_workers": None},
             "json_indent": 2,
             "codec_pipeline": {
