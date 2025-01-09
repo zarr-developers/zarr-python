@@ -243,3 +243,11 @@ def test_default_filters_and_compressor(dtype_expected: Any) -> None:
         assert arr.metadata.compressor.codec_id == expected_compressor
         if expected_filter is not None:
             assert arr.metadata.filters[0].codec_id == expected_filter
+
+def test_structured_dtype() -> None:
+    a = np.array(
+        [(b"aaa", 1, 4.2), (b"bbb", 2, 8.4), (b"ccc", 3, 12.6)],
+        dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+    )
+    za = zarr.array(a, chunks=2, fill_value=None, zarr_format=2)
+    assert (a == za[:]).all()

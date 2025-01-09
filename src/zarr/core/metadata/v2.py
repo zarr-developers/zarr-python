@@ -376,8 +376,10 @@ def _default_filters(
         dtype_key = "numeric"
     elif dtype.kind in "U":
         dtype_key = "string"
-    elif dtype.kind in "OSV":
+    elif dtype.kind in "OS":
         dtype_key = "bytes"
+    elif dtype.kind == "V":
+        dtype_key = "raw"
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 
