@@ -202,6 +202,7 @@ of Zarr-Python, please open (or comment on) a
 - The following features that were supported by Zarr-Python 2 have not been ported
   to Zarr-Python 3 yet:
 
+  * Structured arrays / dtypes (:issue:`2134`)
   * Fixed-length string dtypes (:issue:`2347`)
   * Datetime and timedelta dtypes (:issue:`2616`)
   * Object dtypes (:issue:`2617`)
