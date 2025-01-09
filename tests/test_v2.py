@@ -245,10 +245,16 @@ def test_default_filters_and_compressor(dtype_expected: Any) -> None:
             assert arr.metadata.filters[0].codec_id == expected_filter
 
 
-def test_structured_dtype() -> None:
+@pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])
+def test_structured_dtype(fill_value, tmp_path) -> None:
     a = np.array(
         [(b"aaa", 1, 4.2), (b"bbb", 2, 8.4), (b"ccc", 3, 12.6)],
         dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
     )
-    za = zarr.array(a, chunks=2, fill_value=None, zarr_format=2)
+    za = zarr.create(
+        shape=(3,), path=tmp_path, chunks=(2,), fill_value=fill_value, zarr_format=2, dtype=a.dtype
+    )
+    if fill_value is not None:
+        assert (np.array([fill_value] * a.shape[0], dtype=a.dtype) == za[:]).all()
+    za[...] = a
     assert (a == za[:]).all()
