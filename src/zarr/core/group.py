@@ -2967,12 +2967,15 @@ async def create_nodes(
         create_tasks.extend(
             _prepare_save_metadata(store_path.store, f"{store_path.path}/{key}", value)
         )
-
+    if store_path.path == "":
+        root = "/"
+    else:
+        root = store_path.path
     created_keys = []
     async with ctx:
         for coro in asyncio.as_completed(create_tasks):
             created_key = await coro
-            relative_path = PurePosixPath(created_key).relative_to(store_path.path)
+            relative_path = PurePosixPath(created_key).relative_to(root)
             created_keys.append(str(relative_path))
             # convert /foo/bar/baz/.zattrs to bar/baz
             node_name = str(relative_path.parent)
