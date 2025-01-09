@@ -3850,8 +3850,8 @@ async def from_array(
         filters = data.filters
     if compressors is None:
         compressors = data.compressors
-    if serializer is "auto" and data.serializer is not None:
-        serializer = data.serializer
+    if serializer == "auto":
+        serializer = cast(SerializerLike, data.serializer)
     if fill_value is None:
         fill_value = data.fill_value
     if order is None:
