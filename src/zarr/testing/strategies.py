@@ -7,6 +7,7 @@ from hypothesis import given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
 import zarr
+from zarr.abc.store import RangeByteRequest
 from zarr.core.array import Array
 from zarr.core.common import ZarrFormat
 from zarr.core.sync import sync
@@ -194,12 +195,13 @@ def key_ranges(
     Function to generate key_ranges strategy for get_partial_values()
     returns list strategy w/ form::
 
-        [(key, (range_start, range_step)),
-         (key, (range_start, range_step)),...]
+        [(key, (range_start, range_end)),
+         (key, (range_start, range_end)),...]
     """
-    byte_ranges = st.tuples(
-        st.none() | st.integers(min_value=0, max_value=max_size),
-        st.none() | st.integers(min_value=0, max_value=max_size),
+    byte_ranges = st.builds(
+        RangeByteRequest,
+        start=st.integers(min_value=0, max_value=max_size),
+        end=st.integers(min_value=0, max_value=max_size),
     )
     key_tuple = st.tuples(keys, byte_ranges)
     return st.lists(key_tuple, min_size=1, max_size=10)

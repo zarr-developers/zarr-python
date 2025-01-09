@@ -31,7 +31,6 @@ ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
 ZMETADATA_V2_JSON = ".zmetadata"
 
-ByteRangeRequest = tuple[int | None, int | None]
 BytesLike = bytes | bytearray | memoryview
 ShapeLike = tuple[int, ...] | int
 ChunkCoords = tuple[int, ...]
