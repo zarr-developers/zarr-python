@@ -11,8 +11,8 @@ Zarr-Python
     quickstart
     user-guide/index
     API reference <api/zarr/index>
+    release-notes
     developers/index
-    developers/release
     about
 
 **Version**: |version|

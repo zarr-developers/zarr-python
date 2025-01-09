@@ -7,7 +7,13 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import (
+    ByteRequest,
+    OffsetByteRequest,
+    RangeByteRequest,
+    Store,
+    SuffixByteRequest,
+)
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.common import concurrent_map
@@ -18,29 +24,20 @@ if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
 
 
-def _get(
-    path: Path, prototype: BufferPrototype, byte_range: tuple[int | None, int | None] | None
-) -> Buffer:
-    if byte_range is not None:
-        if byte_range[0] is None:
-            start = 0
-        else:
-            start = byte_range[0]
-
-        end = (start + byte_range[1]) if byte_range[1] is not None else None
-    else:
+def _get(path: Path, prototype: BufferPrototype, byte_range: ByteRequest | None) -> Buffer:
+    if byte_range is None:
         return prototype.buffer.from_bytes(path.read_bytes())
     with path.open("rb") as f:
         size = f.seek(0, io.SEEK_END)
-        if start is not None:
-            if start >= 0:
-                f.seek(start)
-            else:
-                f.seek(max(0, size + start))
-        if end is not None:
-            if end < 0:
-                end = size + end
-            return prototype.buffer.from_bytes(f.read(end - f.tell()))
+        if isinstance(byte_range, RangeByteRequest):
+            f.seek(byte_range.start)
+            return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
+        elif isinstance(byte_range, OffsetByteRequest):
+            f.seek(byte_range.offset)
+        elif isinstance(byte_range, SuffixByteRequest):
+            f.seek(max(0, size - byte_range.suffix))
+        else:
+            raise TypeError(f"Unexpected byte_range, got {byte_range}.")
         return prototype.buffer.from_bytes(f.read())
 
 
@@ -127,7 +124,7 @@ class LocalStore(Store):
         self,
         key: str,
         prototype: BufferPrototype | None = None,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if prototype is None:
@@ -145,7 +142,7 @@ class LocalStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         args = []

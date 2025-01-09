@@ -1,3 +1,5 @@
+.. _v3 migration guide:
+
 3.0 Migration Guide
 ===================
 
