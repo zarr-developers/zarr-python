@@ -3850,14 +3850,14 @@ async def from_array(
         filters = data.filters
     if compressors is None:
         compressors = data.compressors
-    if serializer == "auto":
-        serializer = cast(SerializerLike, data.serializer)
     if fill_value is None:
         fill_value = data.fill_value
     if order is None:
         order = data.order
     if zarr_format is None:
         zarr_format = data.metadata.zarr_format
+    if zarr_format == 3 and serializer == "auto":
+        serializer = cast(SerializerLike, data.serializer)
     if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
         if data.metadata.zarr_format == 2:
             chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}
