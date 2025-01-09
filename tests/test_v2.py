@@ -244,6 +244,7 @@ def test_default_filters_and_compressor(dtype_expected: Any) -> None:
         if expected_filter is not None:
             assert arr.metadata.filters[0].codec_id == expected_filter
 
+
 def test_structured_dtype() -> None:
     a = np.array(
         [(b"aaa", 1, 4.2), (b"bbb", 2, 8.4), (b"ccc", 3, 12.6)],
