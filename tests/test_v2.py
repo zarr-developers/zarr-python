@@ -107,7 +107,7 @@ async def test_v2_encode_decode(dtype):
             "compressor": None,
             "dtype": f"{dtype}0",
             "fill_value": "WA==",
-            "filters": [{"id": "vlen-bytes"}],
+            "filters": [{"id": "vlen-bytes"}] if dtype == "|S" else None,
             "order": "C",
             "shape": [3],
             "zarr_format": 2,
