@@ -52,7 +52,7 @@ jobs:
         cache: 'pip'
     - name: Install Hatch
       run: |
-        python -m pip install --upgrade pip 
+        python -m pip install --upgrade pip
         pip install hatch
     - name: Set Up Hatch Env
       run: |
@@ -60,7 +60,12 @@ jobs:
         hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
     - name: Run Tests
       run: |
-        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run
+        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage
+    - name: Upload coverage
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        verbose: true # optional (default = false)
 
   test-upstream-and-min-deps:
     name: py=${{ matrix.python-version }}-${{ matrix.dependency-set }}
@@ -84,7 +89,7 @@ jobs:
         cache: 'pip'
     - name: Install Hatch
       run: |
-        python -m pip install --upgrade pip 
+        python -m pip install --upgrade pip
         pip install hatch
     - name: Set Up Hatch Env
       run: |
@@ -93,3 +98,47 @@ jobs:
     - name: Run Tests
       run: |
         hatch env run --env ${{ matrix.dependency-set }} run
+
+  doctests:
+    name: doctests
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # required for hatch version discovery, which is needed for numcodecs.zarr3
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.13'
+        cache: 'pip'
+    - name: Install Hatch
+      run: |
+        python -m pip install --upgrade pip
+        pip install hatch
+    - name: Set Up Hatch Env
+      run: |
+        hatch env create doctest
+        hatch env run -e doctest list-env
+    - name: Run Tests
+      run: |
+        hatch env run --env doctest run
+
+  test-complete:
+    name: Test complete
+
+    needs:
+      [
+        test,
+        test-upstream-and-min-deps,
+        doctests
+      ]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check failure
+        if: |
+          contains(needs.*.result, 'failure') ||
+          contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - name: Success
+        run: echo Success!

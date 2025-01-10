@@ -12,7 +12,7 @@ from numpy.testing import assert_array_equal
 
 import zarr
 from zarr import Array
-from zarr.core.buffer import BufferPrototype, default_buffer_prototype
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.indexing import (
     BasicSelection,
     CoordinateSelection,
@@ -26,8 +26,7 @@ from zarr.core.indexing import (
     replace_ellipsis,
 )
 from zarr.registry import get_ndbuffer_class
-from zarr.storage.common import StorePath
-from zarr.storage.memory import MemoryStore
+from zarr.storage import MemoryStore, StorePath
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
@@ -47,12 +46,12 @@ def zarr_array_from_numpy_array(
     a: npt.NDArray[Any],
     chunk_shape: ChunkCoords | None = None,
 ) -> zarr.Array:
-    z = zarr.Array.create(
+    z = zarr.create_array(
         store=store / str(uuid4()),
         shape=a.shape,
         dtype=a.dtype,
-        chunk_shape=chunk_shape or a.shape,
-        chunk_key_encoding=("v2", "."),
+        chunks=chunk_shape or a.shape,
+        chunk_key_encoding={"name": "v2", "separator": "."},
     )
     z[()] = a
     return z
@@ -1933,6 +1932,24 @@ def test_indexing_with_zarr_array(store: StorePath) -> None:
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 @pytest.mark.parametrize("shape", [(0, 2, 3), (0), (3, 0)])
 def test_zero_sized_chunks(store: StorePath, shape: list[int]) -> None:
-    z = Array.create(store=store, shape=shape, chunk_shape=shape, zarr_format=3, dtype="f8")
+    z = zarr.create_array(store=store, shape=shape, chunks=shape, zarr_format=3, dtype="f8")
     z[...] = 42
     assert_array_equal(z[...], np.zeros(shape, dtype="f8"))
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=["store"])
+def test_vectorized_indexing_incompatible_shape(store) -> None:
+    # GH2469
+    shape = (4, 4)
+    chunks = (2, 2)
+    fill_value = 32767
+    arr = zarr.create(
+        shape,
+        store=store,
+        chunks=chunks,
+        dtype=np.int16,
+        fill_value=fill_value,
+        codecs=[zarr.codecs.BytesCodec(), zarr.codecs.BloscCodec()],
+    )
+    with pytest.raises(ValueError, match="Attempting to set"):
+        arr[np.array([1, 2]), np.array([1, 2])] = np.array([[-1, -2], [-3, -4]])

@@ -7,6 +7,7 @@ from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -24,19 +25,19 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.abc.codec import ArrayArrayCodec, ArrayBytesCodec, BytesBytesCodec, Codec
-from zarr.core.array_spec import ArraySpec
+from zarr.core.array_spec import ArrayConfig, ArraySpec
 from zarr.core.chunk_grids import ChunkGrid, RegularChunkGrid
 from zarr.core.chunk_key_encodings import ChunkKeyEncoding
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
     ChunkCoords,
-    MemoryOrder,
     parse_named_configuration,
     parse_shapelike,
 )
 from zarr.core.config import config
 from zarr.core.metadata.common import parse_attributes
+from zarr.core.strings import _NUMPY_SUPPORTS_VLEN_STRING
 from zarr.core.strings import _STRING_DTYPE as STRING_NP_DTYPE
 from zarr.errors import MetadataValidationError, NodeTypeValidationError
 from zarr.registry import get_codec_class
@@ -81,9 +82,7 @@ def parse_codecs(data: object) -> tuple[Codec, ...]:
     return out
 
 
-def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
-    """Check that the codecs are valid for the given dtype"""
-
+def validate_array_bytes_codec(codecs: tuple[Codec, ...]) -> ArrayBytesCodec:
     # ensure that we have at least one ArrayBytesCodec
     abcs: list[ArrayBytesCodec] = [codec for codec in codecs if isinstance(codec, ArrayBytesCodec)]
     if len(abcs) == 0:
@@ -91,18 +90,29 @@ def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
     elif len(abcs) > 1:
         raise ValueError("Only one ArrayBytesCodec is allowed.")
 
-    abc = abcs[0]
+    return abcs[0]
+
+
+def validate_codecs(codecs: tuple[Codec, ...], dtype: DataType) -> None:
+    """Check that the codecs are valid for the given dtype"""
+    from zarr.codecs.sharding import ShardingCodec
+
+    abc = validate_array_bytes_codec(codecs)
+
+    # Recursively resolve array-bytes codecs within sharding codecs
+    while isinstance(abc, ShardingCodec):
+        abc = validate_array_bytes_codec(abc.codecs)
 
     # we need to have special codecs if we are decoding vlen strings or bytestrings
     # TODO: use codec ID instead of class name
-    codec_id = abc.__class__.__name__
-    if dtype == DataType.string and not codec_id == "VLenUTF8Codec":
+    codec_class_name = abc.__class__.__name__
+    if dtype == DataType.string and not codec_class_name == "VLenUTF8Codec":
         raise ValueError(
-            f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_id}`."
+            f"For string dtype, ArrayBytesCodec must be `VLenUTF8Codec`, got `{codec_class_name}`."
         )
-    if dtype == DataType.bytes and not codec_id == "VLenBytesCodec":
+    if dtype == DataType.bytes and not codec_class_name == "VLenBytesCodec":
         raise ValueError(
-            f"For bytes dtype, ArrayBytesCodec must be `VLenBytesCodec`, got `{codec_id}`."
+            f"For bytes dtype, ArrayBytesCodec must be `VLenBytesCodec`, got `{codec_class_name}`."
         )
 
 
@@ -134,9 +144,30 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
 
 
 class V3JsonEncoder(json.JSONEncoder):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self.indent = kwargs.pop("indent", config.get("json_indent"))
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        *,
+        skipkeys: bool = False,
+        ensure_ascii: bool = True,
+        check_circular: bool = True,
+        allow_nan: bool = True,
+        sort_keys: bool = False,
+        indent: int | None = None,
+        separators: tuple[str, str] | None = None,
+        default: Callable[[object], object] | None = None,
+    ) -> None:
+        if indent is None:
+            indent = config.get("json_indent")
+        super().__init__(
+            skipkeys=skipkeys,
+            ensure_ascii=ensure_ascii,
+            check_circular=check_circular,
+            allow_nan=allow_nan,
+            sort_keys=sort_keys,
+            indent=indent,
+            separators=separators,
+            default=default,
+        )
 
     def default(self, o: object) -> Any:
         if isinstance(o, np.dtype):
@@ -225,9 +256,9 @@ class ArrayV3Metadata(Metadata):
         chunk_key_encoding: dict[str, JSON] | ChunkKeyEncoding,
         fill_value: Any,
         codecs: Iterable[Codec | dict[str, JSON]],
-        attributes: None | dict[str, JSON],
-        dimension_names: None | Iterable[str],
-        storage_transformers: None | Iterable[dict[str, JSON]] = None,
+        attributes: dict[str, JSON] | None,
+        dimension_names: Iterable[str] | None,
+        storage_transformers: Iterable[dict[str, JSON]] | None = None,
     ) -> None:
         """
         Because the class is a frozen dataclass, we set attributes using object.__setattr__
@@ -251,10 +282,10 @@ class ArrayV3Metadata(Metadata):
             shape=shape_parsed,
             dtype=data_type_parsed.to_numpy(),
             fill_value=fill_value_parsed,
-            order="C",  # TODO: order is not needed here.
+            config=ArrayConfig.from_dict({}),  # TODO: config is not needed here.
             prototype=default_buffer_prototype(),  # TODO: prototype is not needed here.
         )
-        codecs_parsed = [c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial]
+        codecs_parsed = tuple(c.evolve_from_array_spec(array_spec) for c in codecs_parsed_partial)
         validate_codecs(codecs_parsed_partial, data_type_parsed)
 
         object.__setattr__(self, "shape", shape_parsed)
@@ -296,8 +327,51 @@ class ArrayV3Metadata(Metadata):
     def ndim(self) -> int:
         return len(self.shape)
 
+    @property
+    def chunks(self) -> ChunkCoords:
+        if isinstance(self.chunk_grid, RegularChunkGrid):
+            from zarr.codecs.sharding import ShardingCodec
+
+            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+                sharding_codec = self.codecs[0]
+                assert isinstance(sharding_codec, ShardingCodec)  # for mypy
+                return sharding_codec.chunk_shape
+            else:
+                return self.chunk_grid.chunk_shape
+
+        msg = (
+            f"The `chunks` attribute is only defined for arrays using `RegularChunkGrid`."
+            f"This array has a {self.chunk_grid} instead."
+        )
+        raise NotImplementedError(msg)
+
+    @property
+    def shards(self) -> ChunkCoords | None:
+        if isinstance(self.chunk_grid, RegularChunkGrid):
+            from zarr.codecs.sharding import ShardingCodec
+
+            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+                return self.chunk_grid.chunk_shape
+            else:
+                return None
+
+        msg = (
+            f"The `shards` attribute is only defined for arrays using `RegularChunkGrid`."
+            f"This array has a {self.chunk_grid} instead."
+        )
+        raise NotImplementedError(msg)
+
+    @property
+    def inner_codecs(self) -> tuple[Codec, ...]:
+        if isinstance(self.chunk_grid, RegularChunkGrid):
+            from zarr.codecs.sharding import ShardingCodec
+
+            if len(self.codecs) == 1 and isinstance(self.codecs[0], ShardingCodec):
+                return self.codecs[0].codecs
+        return self.codecs
+
     def get_chunk_spec(
-        self, _chunk_coords: ChunkCoords, order: MemoryOrder, prototype: BufferPrototype
+        self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
         assert isinstance(
             self.chunk_grid, RegularChunkGrid
@@ -306,7 +380,7 @@ class ArrayV3Metadata(Metadata):
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,
             fill_value=self.fill_value,
-            order=order,
+            config=array_config,
             prototype=prototype,
         )
 
@@ -434,7 +508,7 @@ def parse_fill_value(
     fill_value : Any
         A potential fill value.
     dtype : str
-        A valid Zarr V3 DataType.
+        A valid Zarr format 3 DataType.
 
     Returns
     -------
@@ -449,7 +523,7 @@ def parse_fill_value(
         return np.bytes_(fill_value)
 
     # the rest are numeric types
-    np_dtype = cast(np.dtype[np.generic], data_type.to_numpy())
+    np_dtype = cast(np.dtype[Any], data_type.to_numpy())
 
     if isinstance(fill_value, Sequence) and not isinstance(fill_value, str):
         if data_type in (DataType.complex64, DataType.complex128):
@@ -513,8 +587,8 @@ def default_fill_value(dtype: DataType) -> str | bytes | np.generic:
         return b""
     else:
         np_dtype = dtype.to_numpy()
-        np_dtype = cast(np.dtype[np.generic], np_dtype)
-        return np_dtype.type(0)
+        np_dtype = cast(np.dtype[Any], np_dtype)
+        return np_dtype.type(0)  # type: ignore[misc]
 
 
 # For type checking
@@ -540,7 +614,7 @@ class DataType(Enum):
     bytes = "bytes"
 
     @property
-    def byte_count(self) -> None | int:
+    def byte_count(self) -> int | None:
         data_type_byte_counts = {
             DataType.bool: 1,
             DataType.int8: 1,
@@ -586,7 +660,7 @@ class DataType(Enum):
         }
         return data_type_to_numpy[self]
 
-    def to_numpy(self) -> np.dtypes.StringDType | np.dtypes.ObjectDType | np.dtype[np.generic]:
+    def to_numpy(self) -> np.dtypes.StringDType | np.dtypes.ObjectDType | np.dtype[Any]:
         # note: it is not possible to round trip DataType <-> np.dtype
         # due to the fact that DataType.string and DataType.bytes both
         # generally return np.dtype("O") from this function, even though
@@ -606,6 +680,10 @@ class DataType(Enum):
             return DataType.string
         elif dtype.kind == "S":
             return DataType.bytes
+        elif not _NUMPY_SUPPORTS_VLEN_STRING and dtype.kind == "O":
+            # numpy < 2.0 does not support vlen string dtype
+            # so we fall back on object array of strings
+            return DataType.string
         dtype_to_data_type = {
             "|b1": "bool",
             "bool": "bool",
@@ -626,7 +704,7 @@ class DataType(Enum):
         return DataType[dtype_to_data_type[dtype.str]]
 
     @classmethod
-    def parse(cls, dtype: None | DataType | Any) -> DataType:
+    def parse(cls, dtype: DataType | Any | None) -> DataType:
         if dtype is None:
             return DataType[DEFAULT_DTYPE]
         if isinstance(dtype, DataType):
@@ -638,10 +716,10 @@ class DataType(Enum):
         try:
             dtype = np.dtype(dtype)
         except (ValueError, TypeError) as e:
-            raise ValueError(f"Invalid V3 data_type: {dtype}") from e
+            raise ValueError(f"Invalid Zarr format 3 data_type: {dtype}") from e
         # check that this is a valid v3 data_type
         try:
             data_type = DataType.from_numpy(dtype)
         except KeyError as e:
-            raise ValueError(f"Invalid V3 data_type: {dtype}") from e
+            raise ValueError(f"Invalid Zarr format 3 data_type: {dtype}") from e
         return data_type

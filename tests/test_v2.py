@@ -1,6 +1,6 @@
 import json
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Literal
 
 import numcodecs.vlen
 import numpy as np
@@ -11,7 +11,9 @@ from numcodecs.blosc import Blosc
 import zarr
 import zarr.core.buffer
 import zarr.storage
-from zarr import Array
+from zarr import config
+from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -23,7 +25,7 @@ async def store() -> Iterator[StorePath]:
 def test_simple(store: StorePath) -> None:
     data = np.arange(0, 256, dtype="uint16").reshape((16, 16))
 
-    a = Array.create(
+    a = zarr.create_array(
         store / "simple_v2",
         zarr_format=2,
         shape=data.shape,
@@ -82,36 +84,64 @@ def test_codec_pipeline() -> None:
 
 @pytest.mark.parametrize("dtype", ["|S", "|V"])
 async def test_v2_encode_decode(dtype):
-    store = zarr.storage.MemoryStore()
-    g = zarr.group(store=store, zarr_format=2)
-    g.create_array(
-        name="foo",
-        shape=(3,),
-        chunks=(3,),
-        dtype=dtype,
-        fill_value=b"X",
-    )
+    with config.set(
+        {
+            "array.v2_default_filters.bytes": [{"id": "vlen-bytes"}],
+            "array.v2_default_compressor.bytes": None,
+        }
+    ):
+        store = zarr.storage.MemoryStore()
+        g = zarr.group(store=store, zarr_format=2)
+        g.create_array(
+            name="foo",
+            shape=(3,),
+            chunks=(3,),
+            dtype=dtype,
+            fill_value=b"X",
+        )
 
-    result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
-    assert result is not None
+        result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
+        assert result is not None
 
-    serialized = json.loads(result.to_bytes())
-    expected = {
-        "chunks": [3],
-        "compressor": None,
-        "dtype": f"{dtype}0",
-        "fill_value": "WA==",
-        "filters": None,
-        "order": "C",
-        "shape": [3],
-        "zarr_format": 2,
-        "dimension_separator": ".",
-    }
-    assert serialized == expected
+        serialized = json.loads(result.to_bytes())
+        expected = {
+            "chunks": [3],
+            "compressor": None,
+            "dtype": f"{dtype}0",
+            "fill_value": "WA==",
+            "filters": [{"id": "vlen-bytes"}],
+            "order": "C",
+            "shape": [3],
+            "zarr_format": 2,
+            "dimension_separator": ".",
+        }
+        assert serialized == expected
 
-    data = zarr.open_array(store=store, path="foo")[:]
-    expected = np.full((3,), b"X", dtype=dtype)
-    np.testing.assert_equal(data, expected)
+        data = zarr.open_array(store=store, path="foo")[:]
+        expected = np.full((3,), b"X", dtype=dtype)
+        np.testing.assert_equal(data, expected)
+
+
+@pytest.mark.parametrize("dtype_value", [["|S", b"Y"], ["|U", "Y"], ["O", b"Y"]])
+def test_v2_encode_decode_with_data(dtype_value):
+    dtype, value = dtype_value
+    with config.set(
+        {
+            "array.v2_default_filters": {
+                "string": [{"id": "vlen-utf8"}],
+                "bytes": [{"id": "vlen-bytes"}],
+            },
+        }
+    ):
+        expected = np.full((3,), value, dtype=dtype)
+        a = zarr.create(
+            shape=(3,),
+            zarr_format=2,
+            dtype=dtype,
+        )
+        a[:] = expected
+        data = a[:]
+        np.testing.assert_equal(data, expected)
 
 
 @pytest.mark.parametrize("dtype", [str, "str"])
@@ -119,16 +149,117 @@ async def test_create_dtype_str(dtype: Any) -> None:
     arr = zarr.create(shape=3, dtype=dtype, zarr_format=2)
     assert arr.dtype.kind == "O"
     assert arr.metadata.to_dict()["dtype"] == "|O"
-    assert arr.metadata.filters == (numcodecs.vlen.VLenUTF8(),)
-    arr[:] = ["a", "bb", "ccc"]
+    assert arr.metadata.filters == (numcodecs.vlen.VLenBytes(),)
+    arr[:] = [b"a", b"bb", b"ccc"]
     result = arr[:]
-    np.testing.assert_array_equal(result, np.array(["a", "bb", "ccc"], dtype="object"))
+    np.testing.assert_array_equal(result, np.array([b"a", b"bb", b"ccc"], dtype="object"))
 
 
 @pytest.mark.parametrize("filters", [[], [numcodecs.Delta(dtype="<i4")], [numcodecs.Zlib(level=2)]])
-def test_v2_filters_codecs(filters: Any) -> None:
+@pytest.mark.parametrize("order", ["C", "F"])
+def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     array_fixture = [42]
-    arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
+    with config.set({"array.order": order}):
+        arr = zarr.create(shape=1, dtype="<i4", zarr_format=2, filters=filters)
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)
+
+
+@pytest.mark.parametrize("array_order", ["C", "F"])
+@pytest.mark.parametrize("data_order", ["C", "F"])
+@pytest.mark.parametrize("memory_order", ["C", "F"])
+def test_v2_non_contiguous(
+    array_order: Literal["C", "F"], data_order: Literal["C", "F"], memory_order: Literal["C", "F"]
+) -> None:
+    store = MemoryStore()
+    arr = zarr.create_array(
+        store,
+        shape=(10, 8),
+        chunks=(3, 3),
+        fill_value=np.nan,
+        dtype="float64",
+        zarr_format=2,
+        filters=None,
+        compressors=None,
+        overwrite=True,
+        order=array_order,
+        config={"order": memory_order},
+    )
+
+    # Non-contiguous write
+    a = np.arange(arr.shape[0] * arr.shape[1]).reshape(arr.shape, order=data_order)
+    arr[6:9, 3:6] = a[6:9, 3:6]  # The slice on the RHS is important
+    np.testing.assert_array_equal(arr[6:9, 3:6], a[6:9, 3:6])
+
+    np.testing.assert_array_equal(
+        a[6:9, 3:6],
+        np.frombuffer(
+            sync(store.get("2.1", default_buffer_prototype())).to_bytes(), dtype="float64"
+        ).reshape((3, 3), order=array_order),
+    )
+    if memory_order == "F":
+        assert (arr[6:9, 3:6]).flags.f_contiguous
+    else:
+        assert (arr[6:9, 3:6]).flags.c_contiguous
+
+    store = MemoryStore()
+    arr = zarr.create_array(
+        store,
+        shape=(10, 8),
+        chunks=(3, 3),
+        fill_value=np.nan,
+        dtype="float64",
+        zarr_format=2,
+        compressors=None,
+        filters=None,
+        overwrite=True,
+        order=array_order,
+        config={"order": memory_order},
+    )
+
+    # Contiguous write
+    a = np.arange(9).reshape((3, 3), order=data_order)
+    if data_order == "F":
+        assert a.flags.f_contiguous
+    else:
+        assert a.flags.c_contiguous
+    arr[6:9, 3:6] = a
+    np.testing.assert_array_equal(arr[6:9, 3:6], a)
+
+
+def test_default_compressor_deprecation_warning():
+    with pytest.warns(DeprecationWarning, match="default_compressor is deprecated"):
+        zarr.storage.default_compressor = "zarr.codecs.zstd.ZstdCodec()"
+
+
+@pytest.mark.parametrize(
+    "dtype_expected",
+    [
+        ["b", "zstd", None],
+        ["i", "zstd", None],
+        ["f", "zstd", None],
+        ["|S1", "zstd", "vlen-bytes"],
+        ["|U1", "zstd", "vlen-utf8"],
+    ],
+)
+def test_default_filters_and_compressor(dtype_expected: Any) -> None:
+    with config.set(
+        {
+            "array.v2_default_compressor": {
+                "numeric": {"id": "zstd", "level": "0"},
+                "string": {"id": "zstd", "level": "0"},
+                "bytes": {"id": "zstd", "level": "0"},
+            },
+            "array.v2_default_filters": {
+                "numeric": [],
+                "string": [{"id": "vlen-utf8"}],
+                "bytes": [{"id": "vlen-bytes"}],
+            },
+        }
+    ):
+        dtype, expected_compressor, expected_filter = dtype_expected
+        arr = zarr.create(shape=(3,), path="foo", store={}, zarr_format=2, dtype=dtype)
+        assert arr.metadata.compressor.codec_id == expected_compressor
+        if expected_filter is not None:
+            assert arr.metadata.filters[0].codec_id == expected_filter

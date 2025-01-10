@@ -16,11 +16,6 @@ from typing import (
 import numpy as np
 import numpy.typing as npt
 
-from zarr.registry import (
-    get_buffer_class,
-    get_ndbuffer_class,
-)
-
 if TYPE_CHECKING:
     from collections.abc import Iterable, Sequence
     from typing import Self
@@ -80,7 +75,13 @@ class NDArrayLike(Protocol):
 
     def view(self, dtype: npt.DTypeLike) -> Self: ...
 
-    def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = ...) -> Self: ...
+    def astype(
+        self,
+        dtype: npt.DTypeLike,
+        order: Literal["K", "A", "C", "F"] = ...,
+        *,
+        copy: bool = ...,
+    ) -> Self: ...
 
     def fill(self, value: Any) -> None: ...
 
@@ -501,4 +502,9 @@ class BufferPrototype(NamedTuple):
 
 # The default buffer prototype used throughout the Zarr codebase.
 def default_buffer_prototype() -> BufferPrototype:
+    from zarr.registry import (
+        get_buffer_class,
+        get_ndbuffer_class,
+    )
+
     return BufferPrototype(buffer=get_buffer_class(), nd_buffer=get_ndbuffer_class())

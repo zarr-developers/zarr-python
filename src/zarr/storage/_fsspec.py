@@ -3,8 +3,14 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any
 
-from zarr.abc.store import ByteRangeRequest, Store
-from zarr.storage.common import _dereference_path
+from zarr.abc.store import (
+    ByteRequest,
+    OffsetByteRequest,
+    RangeByteRequest,
+    Store,
+    SuffixByteRequest,
+)
+from zarr.storage._common import _dereference_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
@@ -22,7 +28,7 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 )
 
 
-class RemoteStore(Store):
+class FsspecStore(Store):
     """
     A remote Store based on FSSpec
 
@@ -61,8 +67,8 @@ class RemoteStore(Store):
 
     See Also
     --------
-    RemoteStore.from_upath
-    RemoteStore.from_url
+    FsspecStore.from_upath
+    FsspecStore.from_url
     """
 
     # based on FSSpec
@@ -96,7 +102,7 @@ class RemoteStore(Store):
         if "://" in path and not path.startswith("http"):
             # `not path.startswith("http")` is a special case for the http filesystem (¯\_(ツ)_/¯)
             scheme, _ = path.split("://", maxsplit=1)
-            raise ValueError(f"path argument to RemoteStore must not include scheme ({scheme}://)")
+            raise ValueError(f"path argument to FsspecStore must not include scheme ({scheme}://)")
 
     @classmethod
     def from_upath(
@@ -104,9 +110,9 @@ class RemoteStore(Store):
         upath: Any,
         read_only: bool = False,
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
-    ) -> RemoteStore:
+    ) -> FsspecStore:
         """
-        Create a RemoteStore from an upath object.
+        Create a FsspecStore from an upath object.
 
         Parameters
         ----------
@@ -120,7 +126,7 @@ class RemoteStore(Store):
 
         Returns
         -------
-        RemoteStore
+        FsspecStore
         """
         return cls(
             fs=upath.fs,
@@ -136,9 +142,9 @@ class RemoteStore(Store):
         storage_options: dict[str, Any] | None = None,
         read_only: bool = False,
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
-    ) -> RemoteStore:
+    ) -> FsspecStore:
         """
-        Create a RemoteStore from a URL.
+        Create a FsspecStore from a URL.
 
         Parameters
         ----------
@@ -154,7 +160,7 @@ class RemoteStore(Store):
 
         Returns
         -------
-        RemoteStore
+        FsspecStore
         """
         try:
             from fsspec import url_to_fs
@@ -185,7 +191,7 @@ class RemoteStore(Store):
             pass
 
     def __repr__(self) -> str:
-        return f"<RemoteStore({type(self.fs).__name__}, {self.path})>"
+        return f"<FsspecStore({type(self.fs).__name__}, {self.path})>"
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -199,7 +205,7 @@ class RemoteStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if not self._is_open:
@@ -207,23 +213,26 @@ class RemoteStore(Store):
         path = _dereference_path(self.path, key)
 
         try:
-            if byte_range:
-                # fsspec uses start/end, not start/length
-                start, length = byte_range
-                if start is not None and length is not None:
-                    end = start + length
-                elif length is not None:
-                    end = length
-                else:
-                    end = None
-            value = prototype.buffer.from_bytes(
-                await (
-                    self.fs._cat_file(path, start=byte_range[0], end=end)
-                    if byte_range
-                    else self.fs._cat_file(path)
+            if byte_range is None:
+                value = prototype.buffer.from_bytes(await self.fs._cat_file(path))
+            elif isinstance(byte_range, RangeByteRequest):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(
+                        path,
+                        start=byte_range.start,
+                        end=byte_range.end,
+                    )
                 )
-            )
-
+            elif isinstance(byte_range, OffsetByteRequest):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(path, start=byte_range.offset, end=None)
+                )
+            elif isinstance(byte_range, SuffixByteRequest):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(path, start=-byte_range.suffix, end=None)
+                )
+            else:
+                raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         except self.allowed_exceptions:
             return None
         except OSError as e:
@@ -270,25 +279,35 @@ class RemoteStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         if key_ranges:
-            paths, starts, stops = zip(
-                *(
-                    (
-                        _dereference_path(self.path, k[0]),
-                        k[1][0],
-                        ((k[1][0] or 0) + k[1][1]) if k[1][1] is not None else None,
-                    )
-                    for k in key_ranges
-                ),
-                strict=False,
-            )
+            # _cat_ranges expects a list of paths, start, and end ranges, so we need to reformat each ByteRequest.
+            key_ranges = list(key_ranges)
+            paths: list[str] = []
+            starts: list[int | None] = []
+            stops: list[int | None] = []
+            for key, byte_range in key_ranges:
+                paths.append(_dereference_path(self.path, key))
+                if byte_range is None:
+                    starts.append(None)
+                    stops.append(None)
+                elif isinstance(byte_range, RangeByteRequest):
+                    starts.append(byte_range.start)
+                    stops.append(byte_range.end)
+                elif isinstance(byte_range, OffsetByteRequest):
+                    starts.append(byte_range.offset)
+                    stops.append(None)
+                elif isinstance(byte_range, SuffixByteRequest):
+                    starts.append(-byte_range.suffix)
+                    stops.append(None)
+                else:
+                    raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         else:
             return []
         # TODO: expectations for exceptions or missing keys?
-        res = await self.fs._cat_ranges(list(paths), starts, stops, on_error="return")
+        res = await self.fs._cat_ranges(paths, starts, stops, on_error="return")
         # the following is an s3-specific condition we probably don't want to leak
         res = [b"" if (isinstance(r, OSError) and "not satisfiable" in str(r)) else r for r in res]
         for r in res:

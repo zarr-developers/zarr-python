@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from zarr.core.common import JSON
 
 
-def parse_attributes(data: None | dict[str, JSON]) -> dict[str, JSON]:
+def parse_attributes(data: dict[str, JSON] | None) -> dict[str, JSON]:
     if data is None:
         return {}
 
