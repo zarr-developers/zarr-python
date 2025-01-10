@@ -246,15 +246,22 @@ def test_default_filters_and_compressor(dtype_expected: Any) -> None:
 
 
 @pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])
-def test_structured_dtype(fill_value, tmp_path) -> None:
+def test_structured_dtype_roundtrip(fill_value, tmp_path) -> None:
     a = np.array(
         [(b"aaa", 1, 4.2), (b"bbb", 2, 8.4), (b"ccc", 3, 12.6)],
         dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
     )
+    array_path = tmp_path / "data.zarr"
     za = zarr.create(
-        shape=(3,), path=tmp_path, chunks=(2,), fill_value=fill_value, zarr_format=2, dtype=a.dtype
+        shape=(3,),
+        store=array_path,
+        chunks=(2,),
+        fill_value=fill_value,
+        zarr_format=2,
+        dtype=a.dtype,
     )
     if fill_value is not None:
         assert (np.array([fill_value] * a.shape[0], dtype=a.dtype) == za[:]).all()
     za[...] = a
+    za = zarr.open_array(store=array_path)
     assert (a == za[:]).all()

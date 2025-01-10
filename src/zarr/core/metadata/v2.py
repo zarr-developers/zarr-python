@@ -193,7 +193,12 @@ class ArrayV2Metadata(Metadata):
             zarray_dict["fill_value"] = fill_value
 
         _ = zarray_dict.pop("dtype")
-        zarray_dict["dtype"] = self.dtype.str
+        dtype_json: JSON
+        if self.dtype.kind == "V":
+            dtype_json = tuple(self.dtype.descr)
+        else:
+            dtype_json = self.dtype.str
+        zarray_dict["dtype"] = dtype_json
 
         return zarray_dict
 
@@ -220,6 +225,8 @@ class ArrayV2Metadata(Metadata):
 
 
 def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
+    if isinstance(data, list):  # this is a valid _VoidDTypeLike check
+        data = [tuple(d) for d in data]
     return np.dtype(data)
 
 
