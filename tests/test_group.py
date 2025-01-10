@@ -25,6 +25,7 @@ from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
     _from_flat,
+    _ImplicitGroupMetadata,
     create_hierarchy,
     create_nodes,
 )
@@ -1607,6 +1608,28 @@ async def test_group_from_flat(store: Store, zarr_format, root_key: str):
         str(PurePosixPath(k).relative_to(root_key)): v for k, v in members_expected_meta.items()
     }
     assert members_observed_meta == members_expected_meta_relative
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_create_hierarchy_implicit_groups(store: Store, zarr_format):
+    """
+    Test that writing a hierarchy with implicit groups does not result in altering an existing group
+    """
+    spath = await make_store_path(store, path="")
+    key = "a"
+    attrs = {"name": key}
+    _ = await _from_flat(
+        store,
+        nodes={
+            key: GroupMetadata(zarr_format=zarr_format, attributes=attrs),
+        },
+    )
+
+    _ = await _collect_aiterator(
+        create_nodes(store_path=spath, nodes={key: _ImplicitGroupMetadata(zarr_format=zarr_format)})
+    )
+    assert zarr.open_group(store, path=key).metadata.attributes == attrs
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)

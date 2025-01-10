@@ -3258,12 +3258,12 @@ def _persist_metadata(
 
 class _ImplicitGroupMetadata(GroupMetadata):
     """
-    This class represents the metadata document of a group that should created at some
+    This class represents the metadata document of a group that should be created at a
     location in storage if and only if there is not already a group at that location.
 
     This class is used to fill group-shaped "holes" in a dict specification of a Zarr hierarchy.
 
-    When attempting to write this class to disk, the writer should first check if a Zarr group
+    When attempting to write this class to storage, the writer should first check if a Zarr group
     already exists at the desired location. If such a group does exist, the writer should do nothing.
     If not, the writer should write this metadata document to storage.
 
@@ -3282,6 +3282,9 @@ class _ImplicitGroupMetadata(GroupMetadata):
             raise ValueError("consolidated_metadata must be None for implicit groups")
 
         super().__init__(attributes, zarr_format, consolidated_metadata)
+
+    def to_dict(self) -> dict[str, JSON]:
+        return asdict(self)
 
 
 async def _from_flat(
