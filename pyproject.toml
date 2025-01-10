@@ -139,8 +139,8 @@ numpy = ["1.25", "2.1"]
 features = ["gpu"]
 
 [tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src"
-run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src"
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
@@ -169,7 +169,7 @@ numpy = ["1.25", "2.1"]
 version = ["minimal"]
 
 [tool.hatch.envs.gputest.scripts]
-run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src"
+run-coverage = "pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
 run = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
