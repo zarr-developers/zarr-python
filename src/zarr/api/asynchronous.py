@@ -27,16 +27,14 @@ from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
 from zarr.errors import NodeTypeValidationError
-from zarr.storage import (
-    StoreLike,
-    make_store_path,
-)
+from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+    from zarr.storage import StoreLike
 
     # TODO: this type could use some more thought
     ArrayLike = AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any]
@@ -188,7 +186,6 @@ async def consolidate_metadata(
     group.store_path.store._check_writable()
 
     members_metadata = {k: v.metadata async for k, v in group.members(max_depth=None)}
-
     # While consolidating, we want to be explicit about when child groups
     # are empty by inserting an empty dict for consolidated_metadata.metadata
     for k, v in members_metadata.items():

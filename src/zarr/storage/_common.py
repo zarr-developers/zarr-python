@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, AccessModeLiteral, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
@@ -102,7 +102,7 @@ class StorePath:
     async def get(
         self,
         prototype: BufferPrototype | None = None,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """
         Read bytes from the store.
@@ -111,7 +111,7 @@ class StorePath:
         ----------
         prototype : BufferPrototype, optional
             The buffer prototype to use when reading the bytes.
-        byte_range : ByteRangeRequest, optional
+        byte_range : ByteRequest, optional
             The range of bytes to read.
 
         Returns
@@ -123,7 +123,7 @@ class StorePath:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
-    async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None:
+    async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
         """
         Write bytes to the store.
 
@@ -131,7 +131,7 @@ class StorePath:
         ----------
         value : Buffer
             The buffer to write.
-        byte_range : ByteRangeRequest, optional
+        byte_range : ByteRequest, optional
             The range of bytes to write. If None, the entire buffer is written.
 
         Raises

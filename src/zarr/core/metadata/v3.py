@@ -7,6 +7,7 @@ from zarr.abc.metadata import Metadata
 from zarr.core.buffer.core import default_buffer_prototype
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import Self
 
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -143,9 +144,30 @@ def parse_storage_transformers(data: object) -> tuple[dict[str, JSON], ...]:
 
 
 class V3JsonEncoder(json.JSONEncoder):
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        self.indent = kwargs.pop("indent", config.get("json_indent"))
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        *,
+        skipkeys: bool = False,
+        ensure_ascii: bool = True,
+        check_circular: bool = True,
+        allow_nan: bool = True,
+        sort_keys: bool = False,
+        indent: int | None = None,
+        separators: tuple[str, str] | None = None,
+        default: Callable[[object], object] | None = None,
+    ) -> None:
+        if indent is None:
+            indent = config.get("json_indent")
+        super().__init__(
+            skipkeys=skipkeys,
+            ensure_ascii=ensure_ascii,
+            check_circular=check_circular,
+            allow_nan=allow_nan,
+            sort_keys=sort_keys,
+            indent=indent,
+            separators=separators,
+            default=default,
+        )
 
     def default(self, o: object) -> Any:
         if isinstance(o, np.dtype):

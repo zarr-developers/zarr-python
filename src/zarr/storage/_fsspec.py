@@ -5,7 +5,13 @@ import inspect
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import (
+    ByteRequest,
+    OffsetByteRequest,
+    RangeByteRequest,
+    Store,
+    SuffixByteRequest,
+)
 from zarr.storage._common import _dereference_path
 
 if TYPE_CHECKING:
@@ -201,7 +207,7 @@ class FsspecStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if not self._is_open:
@@ -209,23 +215,26 @@ class FsspecStore(Store):
         path = _dereference_path(self.path, key)
 
         try:
-            if byte_range:
-                # fsspec uses start/end, not start/length
-                start, length = byte_range
-                if start is not None and length is not None:
-                    end = start + length
-                elif length is not None:
-                    end = length
-                else:
-                    end = None
-            value = prototype.buffer.from_bytes(
-                await (
-                    self.fs._cat_file(path, start=byte_range[0], end=end)
-                    if byte_range
-                    else self.fs._cat_file(path)
+            if byte_range is None:
+                value = prototype.buffer.from_bytes(await self.fs._cat_file(path))
+            elif isinstance(byte_range, RangeByteRequest):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(
+                        path,
+                        start=byte_range.start,
+                        end=byte_range.end,
+                    )
                 )
-            )
-
+            elif isinstance(byte_range, OffsetByteRequest):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(path, start=byte_range.offset, end=None)
+                )
+            elif isinstance(byte_range, SuffixByteRequest):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(path, start=-byte_range.suffix, end=None)
+                )
+            else:
+                raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         except self.allowed_exceptions:
             return None
         except OSError as e:
@@ -289,25 +298,35 @@ class FsspecStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         if key_ranges:
-            paths, starts, stops = zip(
-                *(
-                    (
-                        _dereference_path(self.path, k[0]),
-                        k[1][0],
-                        ((k[1][0] or 0) + k[1][1]) if k[1][1] is not None else None,
-                    )
-                    for k in key_ranges
-                ),
-                strict=False,
-            )
+            # _cat_ranges expects a list of paths, start, and end ranges, so we need to reformat each ByteRequest.
+            key_ranges = list(key_ranges)
+            paths: list[str] = []
+            starts: list[int | None] = []
+            stops: list[int | None] = []
+            for key, byte_range in key_ranges:
+                paths.append(_dereference_path(self.path, key))
+                if byte_range is None:
+                    starts.append(None)
+                    stops.append(None)
+                elif isinstance(byte_range, RangeByteRequest):
+                    starts.append(byte_range.start)
+                    stops.append(byte_range.end)
+                elif isinstance(byte_range, OffsetByteRequest):
+                    starts.append(byte_range.offset)
+                    stops.append(None)
+                elif isinstance(byte_range, SuffixByteRequest):
+                    starts.append(-byte_range.suffix)
+                    stops.append(None)
+                else:
+                    raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         else:
             return []
         # TODO: expectations for exceptions or missing keys?
-        res = await self.fs._cat_ranges(list(paths), starts, stops, on_error="return")
+        res = await self.fs._cat_ranges(paths, starts, stops, on_error="return")
         # the following is an s3-specific condition we probably don't want to leak
         res = [b"" if (isinstance(r, OSError) and "not satisfiable" in str(r)) else r for r in res]
         for r in res:
