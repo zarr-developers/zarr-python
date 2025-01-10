@@ -60,7 +60,12 @@ jobs:
         hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
     - name: Run Tests
       run: |
-        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run
+        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage
+    - name: Upload coverage
+      uses: codecov/codecov-action@v5
+      with:
+        token: ${{ secrets.CODECOV_TOKEN }}
+        verbose: true # optional (default = false)
 
   test-upstream-and-min-deps:
     name: py=${{ matrix.python-version }}-${{ matrix.dependency-set }}
