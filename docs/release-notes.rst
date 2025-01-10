@@ -15,6 +15,12 @@ Bug fixes
 Behaviour changes
 ~~~~~~~~~~~~~~~~~
 
+Other
+~~~~~
+* Removed some unnecessary files from the source distribution
+  to reduce its size. (:issue:`2686`)
+
+
 .. _release_3.0.0:
 
 3.0.0
