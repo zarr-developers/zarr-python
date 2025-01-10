@@ -13,7 +13,6 @@ from pathlib import PurePosixPath
 from typing import (
     TYPE_CHECKING,
     Literal,
-    Self,
     TypeVar,
     assert_never,
     cast,
@@ -437,35 +436,6 @@ class AsyncGroup:
 
     # TODO: make this correct and work
     # TODO: ensure that this can be bound properly to subclass of AsyncGroup
-    @classmethod
-    async def from_flat(
-        cls,
-        store: StoreLike,
-        *,
-        nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
-        overwrite: bool = False,
-    ) -> Self:
-        if not _is_rooted(nodes):
-            msg = (
-                "The input does not specify a root node. ",
-                "This function can only create hierarchies that contain a root node, which is ",
-                "defined as a group that is ancestral to all the other arrays and ",
-                "groups in the hierarchy.",
-            )
-            raise ValueError(msg)
-
-        if overwrite:
-            store_path = await make_store_path(store, mode="w")
-        else:
-            store_path = await make_store_path(store, mode="w-")
-
-        semaphore = asyncio.Semaphore(config.get("async.concurrency"))
-
-        nodes_created = {
-            x.name: x
-            async for x in create_hierarchy(store_path=store_path, nodes=nodes, semaphore=semaphore)
-        }
-        # TODO: make this work
 
     @classmethod
     async def from_store(
@@ -1765,18 +1735,6 @@ class Group(SyncMixin):
     _async_group: AsyncGroup
 
     @classmethod
-    def from_flat(
-        cls,
-        store: StoreLike,
-        *,
-        nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
-        overwrite: bool = False,
-    ) -> Group:
-        nodes = sync(AsyncGroup.from_flat(store, nodes=nodes, overwrite=overwrite))
-        # return the root node of the hierarchy
-        return nodes[""]
-
-    @classmethod
     def from_store(
         cls,
         store: StoreLike,
@@ -2889,23 +2847,6 @@ class Group(SyncMixin):
         )
 
 
-async def _save_metadata(
-    node: AsyncArray[Any] | AsyncGroup,
-    overwrite: bool,
-) -> AsyncArray[Any] | AsyncGroup:
-    """
-    Save the metadata for an array or group, and return the array or group
-    """
-    match node:
-        case AsyncArray():
-            await node._save_metadata(node.metadata, ensure_parents=False)
-        case AsyncGroup():
-            await node._save_metadata(ensure_parents=False)
-        case _:
-            raise ValueError(f"Unexpected node type {type(node)}")
-    return node
-
-
 async def create_hierarchy(
     *,
     store_path: StorePath,
@@ -2962,22 +2903,17 @@ async def create_nodes(
         ctx = semaphore
 
     create_tasks: list[Coroutine[None, None, str]] = []
-
     for key, value in nodes.items():
-        create_tasks.extend(
-            _prepare_save_metadata(store_path.store, f"{store_path.path}/{key}", value)
-        )
-    if store_path.path == "":
-        root = "/"
-    else:
-        root = store_path.path
+        write_key = str(PurePosixPath(store_path.path) / key)
+        create_tasks.extend(_persist_metadata(store_path.store, write_key, value))
+
     created_keys = []
     async with ctx:
         for coro in asyncio.as_completed(create_tasks):
             created_key = await coro
-            relative_path = PurePosixPath(created_key).relative_to(root)
+            relative_path = PurePosixPath(created_key).relative_to(store_path.path)
             created_keys.append(str(relative_path))
-            # convert /foo/bar/baz/.zattrs to bar/baz
+            # convert foo/bar/baz/.zattrs to bar/baz
             node_name = str(relative_path.parent)
             meta_out = nodes[node_name]
 
@@ -3009,13 +2945,17 @@ async def create_nodes(
 T = TypeVar("T")
 
 
-def _is_rooted(data: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]) -> bool:
+def _get_roots(
+    data: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+) -> tuple[str, ...]:
     """
-    Check if the data describes a hierarchy that's rooted, which means there is a single node with
-    the least number of components in its key
+    Return the keys of the root(s) of the hierarchy
     """
-    # a dict
-    return False
+    keys_split = sorted((key.split("/") for key in data), key=len)
+    groups: defaultdict[int, list[str]] = defaultdict(list)
+    for key_split in keys_split:
+        groups[len(key_split)].append("/".join(key_split))
+    return tuple(groups[min(groups.keys())])
 
 
 def _parse_hierarchy_dict(
@@ -3066,9 +3006,9 @@ def _parse_hierarchy_dict(
         # Iterate over the intermediate path components
         *subpaths, _ = accumulate(key_split, lambda a, b: f"{a}/{b}")
         for subpath in subpaths:
-            # If a component is not already in the output dict, add it
+            # If a component is not already in the output dict, add an implicit group marker
             if subpath not in out:
-                out[subpath] = GroupMetadata(zarr_format=v.zarr_format)
+                out[subpath] = _ImplicitGroupMetadata(zarr_format=v.zarr_format)
             else:
                 if not isinstance(out[subpath], GroupMetadata):
                     msg = (
@@ -3268,22 +3208,115 @@ def _build_node_v2(
             raise ValueError(f"Unexpected metadata type: {type(metadata)}")
 
 
-async def _set_return_key(store: Store, key: str, value: Buffer) -> str:
+async def _set_return_key(*, store: Store, key: str, value: Buffer, replace: bool) -> str:
     """
-    Store.set, but the key and the value are returned.
-    Useful when saving metadata via asyncio.as_completed, because
-    we need to know which key was saved.
+    Either write a value to storage at the given key, or ensure that there is already a value in
+    storage at the given key. The key is returned in either case.
+    Useful when saving values via routines that return results in execution order,
+    like asyncio.as_completed, because in this case we need to know which key was saved in order
+    to yield the right object to the caller.
+
+    Parameters
+    ----------
+    store : Store
+        The store to save the value to.
+    key : str
+        The key to save the value to.
+    value : Buffer
+        The value to save.
+    replace : bool
+        If True, then the value will be written even if a value associated with the key
+        already exists in storage. If False, an existing value will not be overwritten.
     """
-    await store.set(key, value)
+    if replace:
+        await store.set(key, value)
+    else:
+        await store.set_if_not_exists(key, value)
     return key
 
 
-def _prepare_save_metadata(
+def _persist_metadata(
     store: Store, path: str, metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata
 ) -> tuple[Coroutine[None, None, str], ...]:
     """
-    Prepare to save a metadata document to storage. Returns a tuple of coroutines that must be awaited.
+    Prepare to save a metadata document to storage, returning a tuple of coroutines that must be awaited.
+    If ``metadata`` is an instance of ``_ImplicitGroupMetadata``, then _set_return_key will be invoked with
+    ``replace=False``, which defers to a pre-existing metadata document in storage if one exists. Otherwise, existing values will be overwritten.
     """
 
     to_save = metadata.to_buffer_dict(default_buffer_prototype())
-    return tuple(_set_return_key(store, f"{path}/{key}", value) for key, value in to_save.items())
+    if isinstance(metadata, _ImplicitGroupMetadata):
+        replace = False
+    else:
+        replace = True
+    # TODO: should this function be a generator that yields values instead of eagerly returning a tuple?
+    return tuple(
+        _set_return_key(store=store, key=f"{path}/{key}", value=value, replace=replace)
+        for key, value in to_save.items()
+    )
+
+
+class _ImplicitGroupMetadata(GroupMetadata):
+    """
+    This class represents the metadata document of a group that should created at some
+    location in storage if and only if there is not already a group at that location.
+
+    This class is used to fill group-shaped "holes" in a dict specification of a Zarr hierarchy.
+
+    When attempting to write this class to disk, the writer should first check if a Zarr group
+    already exists at the desired location. If such a group does exist, the writer should do nothing.
+    If not, the writer should write this metadata document to storage.
+
+    """
+
+    def __init__(
+        self,
+        attributes: dict[str, Any] | None = None,
+        zarr_format: ZarrFormat = 3,
+        consolidated_metadata: ConsolidatedMetadata | None = None,
+    ) -> None:
+        if attributes is not None:
+            raise ValueError("attributes must be None for implicit groups")
+
+        if consolidated_metadata is not None:
+            raise ValueError("consolidated_metadata must be None for implicit groups")
+
+        super().__init__(attributes, zarr_format, consolidated_metadata)
+
+
+async def _from_flat(
+    store: StoreLike,
+    *,
+    nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    overwrite: bool = False,
+) -> AsyncGroup:
+    """
+    Create an ``AsyncGroup`` from a store + a dict of nodes.
+    """
+    roots = _get_roots(nodes)
+    if len(roots) != 1:
+        msg = (
+            "The input does not specify a root node. "
+            "This function can only create hierarchies that contain a root node, which is "
+            "defined as a group that is ancestral to all the other arrays and "
+            "groups in the hierarchy."
+        )
+        raise ValueError(msg)
+    else:
+        root = roots[0]
+
+    if overwrite:
+        store_path = await make_store_path(store, mode="w")
+    else:
+        store_path = await make_store_path(store, mode="w-")
+
+    semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+
+    nodes_created = {
+        x.path: x
+        async for x in create_hierarchy(store_path=store_path, nodes=nodes, semaphore=semaphore)
+    }
+    root_group = nodes_created[root]
+    if not isinstance(root_group, AsyncGroup):
+        raise TypeError("Invalid root node returned from create_hierarchy.")
+    return root_group

@@ -21,7 +21,13 @@ from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata, create_hierarchy, create_nodes
+from zarr.core.group import (
+    ConsolidatedMetadata,
+    GroupMetadata,
+    _from_flat,
+    create_hierarchy,
+    create_nodes,
+)
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
@@ -1578,20 +1584,29 @@ async def test_create_hierarchy_invalid_mixed_format(store: Store):
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-async def test_group_from_flat(store: Store, zarr_format):
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("root_key", ["", "a", "a/b"])
+async def test_group_from_flat(store: Store, zarr_format, root_key: str):
     """
     Test that the AsyncGroup.from_flat method creates a zarr group in one shot.
     """
-    hierarchy_spec = {
-        "a": GroupMetadata(zarr_format=zarr_format),
-        "a/b": GroupMetadata(zarr_format=zarr_format),
-        "a/b/c": GroupMetadata(zarr_format=zarr_format),
+    root_key = "a"
+    root_meta = {root_key: GroupMetadata(zarr_format=zarr_format, attributes={"path": root_key})}
+    members_expected_meta = {
+        f"{root_key}/b": GroupMetadata(
+            zarr_format=zarr_format, attributes={"path": f"{root_key}/b"}
+        ),
+        f"{root_key}/b/c": GroupMetadata(
+            zarr_format=zarr_format, attributes={"path": f"{root_key}/b/c"}
+        ),
     }
-    g = await AsyncGroup.from_flat(store, nodes=hierarchy_spec)
-    assert g.members() == [
-        ("b", GroupMetadata(zarr_format=zarr_format)),
-        ("b/c", GroupMetadata(zarr_format=zarr_format)),
-    ]
+    g = await _from_flat(store, nodes=root_meta | members_expected_meta)
+    members = await _collect_aiterator(g.members(max_depth=None))
+    members_observed_meta = {k: v.metadata for k, v in members}
+    members_expected_meta_relative = {
+        str(PurePosixPath(k).relative_to(root_key)): v for k, v in members_expected_meta.items()
+    }
+    assert members_observed_meta == members_expected_meta_relative
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
