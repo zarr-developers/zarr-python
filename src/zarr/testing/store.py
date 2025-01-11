@@ -137,6 +137,15 @@ class StoreTests(Generic[S, B]):
         expected = data_buf[start:stop]
         assert_bytes_equal(observed, expected)
 
+    async def test_get_raises(self, store: S) -> None:
+        """
+        Ensure that a ValueError is raise for invalid byte range syntax
+        """
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        await self.set(store, "c/0", data_buf)
+        with pytest.raises((ValueError, TypeError)):
+            await store.get("c/0", prototype=default_buffer_prototype(), byte_range=(0, 2))  # type: ignore[arg-type]
+
     async def test_get_many(self, store: S) -> None:
         """
         Ensure that multiple keys can be retrieved at once with the _get_many method.
