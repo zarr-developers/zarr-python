@@ -57,6 +57,11 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
         store2 = self.store_cls(**init_kwargs)
         assert store == store2
 
+    def test_store_repr(self, store: WrapperStore) -> None:
+        assert (
+            str(store) == f"WrapperStore(\"LocalStore('file://{store._store.root.as_posix()}')\")"
+        )
+
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
 async def test_wrapped_set(store: Store, capsys: pytest.CaptureFixture[str]) -> None:
