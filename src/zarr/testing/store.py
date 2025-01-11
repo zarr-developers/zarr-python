@@ -184,7 +184,7 @@ class StoreTests(Generic[S, B]):
     @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"])
     async def test_set_partial_values(self, store: S, key: str) -> None:
         """
-        Ensure that data can be written to the store using the store.set method.
+        Ensure that data can be written to the store using the store.set_partial_values method.
         """
         assert not store.read_only
         # Create empty key
