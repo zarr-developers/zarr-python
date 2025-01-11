@@ -56,6 +56,14 @@ class WrapperStore(Store, Generic[T_Store]):
     async def is_empty(self, prefix: str) -> bool:
         return await self._store.is_empty(prefix)
 
+    @property
+    def _is_open(self) -> bool:
+        return self._store._is_open
+
+    @_is_open.setter
+    def _is_open(self, value: bool) -> None:
+        self._store._is_open = value
+
     async def clear(self) -> None:
         return await self._store.clear()
 

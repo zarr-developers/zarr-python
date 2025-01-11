@@ -5,10 +5,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from zarr.core.buffer.cpu import Buffer, buffer_prototype
-from zarr.storage import WrapperStore
+from zarr.storage import LocalStore, WrapperStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
+    from typing import Any
+
     from zarr.abc.store import Store
     from zarr.core.buffer.core import BufferPrototype
 
@@ -42,6 +44,40 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
 
     def test_store_supports_listing(self, store: WrapperStore) -> None:
         assert store.supports_listing
+
+    @pytest.mark.parametrize("read_only", [True, False])
+    async def test_store_open_read_only(
+        self, store_kwargs: dict[str, Any], read_only: bool, tmpdir
+    ) -> None:
+        store_kwargs = {
+            **store_kwargs,
+            "read_only": read_only,
+            "root": str(tmpdir),
+            "store_cls": LocalStore,
+        }
+        store_kwargs.pop("store")
+        store = await self.store_cls.open(**store_kwargs)
+        assert store._is_open
+        assert store.read_only == read_only
+
+    async def test_read_only_store_raises(self, store_kwargs: dict[str, Any], tmpdir) -> None:
+        store_kwargs = {
+            **store_kwargs,
+            "read_only": True,
+            "root": str(tmpdir),
+            "store_cls": LocalStore,
+        }
+        store_kwargs.pop("store")
+        store = await self.store_cls.open(**store_kwargs)
+        assert store.read_only
+
+        # set
+        with pytest.raises(ValueError):
+            await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
+
+        # delete
+        with pytest.raises(ValueError):
+            await store.delete("foo")
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
