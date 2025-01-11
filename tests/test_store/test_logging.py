@@ -6,7 +6,7 @@ import pytest
 
 import zarr
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
-from zarr.storage import LoggingStore
+from zarr.storage import LocalStore, LoggingStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
@@ -29,6 +29,10 @@ class TestLoggingStore(StoreTests[LoggingStore, cpu.Buffer]):
     @pytest.fixture
     def store_kwargs(self, local_store) -> dict[str, str]:
         return {"store": local_store, "log_level": "DEBUG"}
+
+    @pytest.fixture
+    def open_kwargs(self, tmpdir) -> dict[str, str]:
+        return {"store_cls": LocalStore, "root": str(tmpdir), "log_level": "DEBUG"}
 
     @pytest.fixture
     def store(self, store_kwargs: str | dict[str, Buffer] | None) -> LoggingStore:

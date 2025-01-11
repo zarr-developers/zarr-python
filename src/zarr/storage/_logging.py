@@ -5,7 +5,7 @@ import logging
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self, TypeVar
 
 from zarr.abc.store import Store
 from zarr.storage._wrapper import WrapperStore
@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
 
     counter: defaultdict[str, int]
+
+T_Store = TypeVar("T_Store", bound=Store)
 
 
 class LoggingStore(WrapperStore[Store]):
@@ -93,6 +95,14 @@ class LoggingStore(WrapperStore[Store]):
         finally:
             end_time = time.time()
             self.logger.info("Finished %s [%.2f s]", op, end_time - start_time)
+
+    @classmethod
+    async def open(cls: type[Self], store_cls: type[T_Store], *args: Any, **kwargs: Any) -> Self:
+        log_level = kwargs.pop("log_level", "DEBUG")
+        log_handler = kwargs.pop("log_handler", None)
+        store = store_cls(*args, **kwargs)
+        await store._open()
+        return cls(store=store, log_level=log_level, log_handler=log_handler)
 
     @property
     def supports_writes(self) -> bool:
