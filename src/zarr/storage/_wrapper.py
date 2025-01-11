@@ -77,6 +77,9 @@ class WrapperStore(Store, Generic[T_Store]):
     def __eq__(self, value: object) -> bool:
         return type(self) is type(value) and self._store.__eq__(value._store)  # type: ignore[attr-defined]
 
+    def __str__(self) -> str:
+        return f"wrapping-{self._store}"
+
     def __repr__(self) -> str:
         return f"WrapperStore({repr(self._store)!r})"
 

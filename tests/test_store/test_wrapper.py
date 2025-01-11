@@ -48,9 +48,7 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
         assert store.supports_listing
 
     def test_store_repr(self, store: WrapperStore) -> None:
-        assert (
-            str(store) == f"WrapperStore(\"LocalStore('file://{store._store.root.as_posix()}')\")"
-        )
+        assert str(store) == f"wrapping-file://{store._store.root.as_posix()}"
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
