@@ -5,11 +5,43 @@ from typing import TYPE_CHECKING
 import pytest
 
 import zarr
-from zarr.core.buffer import default_buffer_prototype
+from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.storage import LoggingStore
+from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
+
+
+class TestLoggingStore(StoreTests[LoggingStore, cpu.Buffer]):
+    store_cls = LoggingStore
+    buffer_cls = cpu.Buffer
+
+    async def get(self, store: LoggingStore, key: str) -> Buffer:
+        return self.buffer_cls.from_bytes((store._store.root / key).read_bytes())
+
+    async def set(self, store: LoggingStore, key: str, value: Buffer) -> None:
+        parent = (store._store.root / key).parent
+        if not parent.exists():
+            parent.mkdir(parents=True)
+        (store._store.root / key).write_bytes(value.to_bytes())
+
+    @pytest.fixture
+    def store_kwargs(self, local_store) -> dict[str, str]:
+        return {"store": local_store, "log_level": "DEBUG"}
+
+    @pytest.fixture
+    def store(self, store_kwargs: str | dict[str, Buffer] | None) -> LoggingStore:
+        return self.store_cls(**store_kwargs)
+
+    def test_store_supports_writes(self, store: LoggingStore) -> None:
+        assert store.supports_writes
+
+    def test_store_supports_partial_writes(self, store: LoggingStore) -> None:
+        assert store.supports_partial_writes
+
+    def test_store_supports_listing(self, store: LoggingStore) -> None:
+        assert store.supports_listing
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
