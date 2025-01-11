@@ -6,10 +6,42 @@ import pytest
 
 from zarr.core.buffer.cpu import Buffer, buffer_prototype
 from zarr.storage import WrapperStore
+from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store
     from zarr.core.buffer.core import BufferPrototype
+
+
+class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
+    store_cls = WrapperStore
+    buffer_cls = Buffer
+
+    async def get(self, store: WrapperStore, key: str) -> Buffer:
+        return self.buffer_cls.from_bytes((store._store.root / key).read_bytes())
+
+    async def set(self, store: WrapperStore, key: str, value: Buffer) -> None:
+        parent = (store._store.root / key).parent
+        if not parent.exists():
+            parent.mkdir(parents=True)
+        (store._store.root / key).write_bytes(value.to_bytes())
+
+    @pytest.fixture
+    def store_kwargs(self, local_store) -> dict[str, str]:
+        return {"store": local_store}
+
+    @pytest.fixture
+    def store(self, store_kwargs: str | dict[str, Buffer] | None) -> WrapperStore:
+        return self.store_cls(**store_kwargs)
+
+    def test_store_supports_writes(self, store: WrapperStore) -> None:
+        assert store.supports_writes
+
+    def test_store_supports_partial_writes(self, store: WrapperStore) -> None:
+        assert store.supports_partial_writes
+
+    def test_store_supports_listing(self, store: WrapperStore) -> None:
+        assert store.supports_listing
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
