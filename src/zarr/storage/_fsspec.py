@@ -18,7 +18,6 @@ if TYPE_CHECKING:
     from fsspec.asyn import AsyncFileSystem
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
 
 
 ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
@@ -316,9 +315,7 @@ class FsspecStore(Store):
 
         return [None if isinstance(r, Exception) else prototype.buffer.from_bytes(r) for r in res]
 
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
+    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, Buffer]]) -> None:
         # docstring inherited
         raise NotImplementedError
 

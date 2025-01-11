@@ -174,7 +174,8 @@ class LocalStore(Store):
         await asyncio.to_thread(_put, path, value, start=None, exclusive=exclusive)
 
     async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
+        self,
+        key_start_values: Iterable[tuple[str, int, Buffer]],
     ) -> None:
         # docstring inherited
         self._check_writable()
