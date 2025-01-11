@@ -165,7 +165,7 @@ class LoggingStore(WrapperStore[Store]):
 
     def __eq__(self, other: object) -> bool:
         with self.log(other):
-            return self._store == other
+            return type(self) is type(other) and self._store.__eq__(other._store)  # type: ignore[attr-defined]
 
     async def get(
         self,
