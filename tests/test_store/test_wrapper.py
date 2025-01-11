@@ -9,8 +9,6 @@ from zarr.storage import LocalStore, WrapperStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
-    from typing import Any
-
     from zarr.abc.store import Store
     from zarr.core.buffer.core import BufferPrototype
 
@@ -29,12 +27,16 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
         (store._store.root / key).write_bytes(value.to_bytes())
 
     @pytest.fixture
-    def store_kwargs(self, local_store) -> dict[str, str]:
+    def init_kwargs(self, local_store) -> dict[str, str]:
         return {"store": local_store}
 
     @pytest.fixture
-    def store(self, store_kwargs: str | dict[str, Buffer] | None) -> WrapperStore:
-        return self.store_cls(**store_kwargs)
+    def store_kwargs(self, tmpdir) -> dict[str, str]:
+        return {"store_cls": LocalStore, "root": str(tmpdir)}
+
+    @pytest.fixture
+    def store(self, init_kwargs: str | dict[str, str] | None) -> WrapperStore:
+        return self.store_cls(**init_kwargs)
 
     def test_store_supports_writes(self, store: WrapperStore) -> None:
         assert store.supports_writes
@@ -44,40 +46,6 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
 
     def test_store_supports_listing(self, store: WrapperStore) -> None:
         assert store.supports_listing
-
-    @pytest.mark.parametrize("read_only", [True, False])
-    async def test_store_open_read_only(
-        self, store_kwargs: dict[str, Any], read_only: bool, tmpdir
-    ) -> None:
-        store_kwargs = {
-            **store_kwargs,
-            "read_only": read_only,
-            "root": str(tmpdir),
-            "store_cls": LocalStore,
-        }
-        store_kwargs.pop("store")
-        store = await self.store_cls.open(**store_kwargs)
-        assert store._is_open
-        assert store.read_only == read_only
-
-    async def test_read_only_store_raises(self, store_kwargs: dict[str, Any], tmpdir) -> None:
-        store_kwargs = {
-            **store_kwargs,
-            "read_only": True,
-            "root": str(tmpdir),
-            "store_cls": LocalStore,
-        }
-        store_kwargs.pop("store")
-        store = await self.store_cls.open(**store_kwargs)
-        assert store.read_only
-
-        # set
-        with pytest.raises(ValueError):
-            await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
-
-        # delete
-        with pytest.raises(ValueError):
-            await store.delete("foo")
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
