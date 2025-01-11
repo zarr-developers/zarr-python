@@ -159,6 +159,25 @@ class StoreTests(Generic[S, B]):
         expected_kvs = sorted(((k, b) for k, b in zip(keys, values, strict=False)))
         assert observed_kvs == expected_kvs
 
+    @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
+    @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
+    async def test_getsize(self, store: S, key: str, data: bytes) -> None:
+        """
+        Test the result of store.getsize().
+        """
+        data_buf = self.buffer_cls.from_bytes(data)
+        expected = len(data_buf)
+        await self.set(store, key, data_buf)
+        observed = await store.getsize(key)
+        assert observed == expected
+
+    async def test_getsize_raises(self, store: S) -> None:
+        """
+        Test the result of store.getsize().
+        """
+        with pytest.raises(FileNotFoundError):
+            await store.getsize("c/1000")
+
     @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     async def test_set(self, store: S, key: str, data: bytes) -> None:
