@@ -27,16 +27,16 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
         (store._store.root / key).write_bytes(value.to_bytes())
 
     @pytest.fixture
-    def init_kwargs(self, local_store) -> dict[str, str]:
+    def store_kwargs(self, local_store) -> dict[str, str]:
         return {"store": local_store}
 
     @pytest.fixture
-    def store_kwargs(self, tmpdir) -> dict[str, str]:
+    def open_kwargs(self, tmpdir) -> dict[str, str]:
         return {"store_cls": LocalStore, "root": str(tmpdir)}
 
     @pytest.fixture
-    def store(self, init_kwargs: dict[str, str]) -> WrapperStore:
-        return self.store_cls(**init_kwargs)
+    def store(self, store_kwargs: dict[str, str]) -> WrapperStore:
+        return self.store_cls(**store_kwargs)
 
     def test_store_supports_writes(self, store: WrapperStore) -> None:
         assert store.supports_writes
@@ -46,16 +46,6 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
 
     def test_store_supports_listing(self, store: WrapperStore) -> None:
         assert store.supports_listing
-
-    def test_store_eq(self, store: WrapperStore, init_kwargs: dict[str, str]) -> None:
-        # Overload store.testing version due to different store.open and store.__init__ kwargs
-        # check self equality
-        assert store == store
-
-        # check store equality with same inputs
-        # asserting this is important for being able to compare (de)serialized stores
-        store2 = self.store_cls(**init_kwargs)
-        assert store == store2
 
     def test_store_repr(self, store: WrapperStore) -> None:
         assert (

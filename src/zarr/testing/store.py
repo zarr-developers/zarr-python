@@ -59,8 +59,12 @@ class StoreTests(Generic[S, B]):
         return {"read_only": False}
 
     @pytest.fixture
-    async def store(self, store_kwargs: dict[str, Any]) -> Store:
-        return await self.store_cls.open(**store_kwargs)
+    def open_kwargs(self, store_kwargs: dict[str, Any]) -> dict[str, Any]:
+        return store_kwargs
+
+    @pytest.fixture
+    async def store(self, open_kwargs: dict[str, Any]) -> Store:
+        return await self.store_cls.open(**open_kwargs)
 
     def test_store_type(self, store: S) -> None:
         assert isinstance(store, Store)
@@ -86,16 +90,14 @@ class StoreTests(Generic[S, B]):
             store.read_only = False  # type: ignore[misc]
 
     @pytest.mark.parametrize("read_only", [True, False])
-    async def test_store_open_read_only(
-        self, store_kwargs: dict[str, Any], read_only: bool
-    ) -> None:
-        store_kwargs["read_only"] = read_only
-        store = await self.store_cls.open(**store_kwargs)
+    async def test_store_open_read_only(self, open_kwargs: dict[str, Any], read_only: bool) -> None:
+        open_kwargs["read_only"] = read_only
+        store = await self.store_cls.open(**open_kwargs)
         assert store._is_open
         assert store.read_only == read_only
 
-    async def test_read_only_store_raises(self, store_kwargs: dict[str, Any]) -> None:
-        kwargs = {**store_kwargs, "read_only": True}
+    async def test_read_only_store_raises(self, open_kwargs: dict[str, Any]) -> None:
+        kwargs = {**open_kwargs, "read_only": True}
         store = await self.store_cls.open(**kwargs)
         assert store.read_only
 
