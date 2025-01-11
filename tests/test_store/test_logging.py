@@ -47,6 +47,9 @@ class TestLoggingStore(StoreTests[LoggingStore, cpu.Buffer]):
     def test_store_supports_listing(self, store: LoggingStore) -> None:
         assert store.supports_listing
 
+    def test_store_repr(self, store: LoggingStore) -> None:
+        assert str(store) == f"logging-file://{store._store.root.as_posix()}"
+
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 async def test_logging_store(store: Store, caplog) -> None:
