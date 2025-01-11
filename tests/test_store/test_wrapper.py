@@ -35,7 +35,7 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
         return {"store_cls": LocalStore, "root": str(tmpdir)}
 
     @pytest.fixture
-    def store(self, init_kwargs: str | dict[str, str] | None) -> WrapperStore:
+    def store(self, init_kwargs: dict[str, str]) -> WrapperStore:
         return self.store_cls(**init_kwargs)
 
     def test_store_supports_writes(self, store: WrapperStore) -> None:
@@ -46,6 +46,16 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
 
     def test_store_supports_listing(self, store: WrapperStore) -> None:
         assert store.supports_listing
+
+    def test_store_eq(self, store: WrapperStore, init_kwargs: dict[str, str]) -> None:
+        # Overload store.testing version due to different store.open and store.__init__ kwargs
+        # check self equality
+        assert store == store
+
+        # check store equality with same inputs
+        # asserting this is important for being able to compare (de)serialized stores
+        store2 = self.store_cls(**init_kwargs)
+        assert store == store2
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)

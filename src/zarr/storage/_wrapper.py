@@ -75,7 +75,7 @@ class WrapperStore(Store, Generic[T_Store]):
         return self._store._check_writable()
 
     def __eq__(self, value: object) -> bool:
-        return type(self) is type(value) and self._store.__eq__(value)
+        return type(self) is type(value) and self._store.__eq__(value._store)  # type: ignore[attr-defined]
 
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
