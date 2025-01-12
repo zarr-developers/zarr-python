@@ -56,8 +56,17 @@ async def test_make_store_path_store_path(
     assert Path(store_path.store.root) == Path(tmpdir)
     path_normalized = normalize_path(path)
     assert store_path.path == (store_like / path_normalized).path
-
     assert store_path.read_only == ro
+
+
+async def test_store_path_invalid_mode_raises(tmpdir: LEGACY_PATH) -> None:
+    """
+    Test that ValueErrors are raise for invalid mode.
+    """
+    with pytest.raises(ValueError):
+        await StorePath.open(LocalStore(str(tmpdir), read_only=True), path=None, mode="w")
+    with pytest.raises(ValueError):
+        await StorePath.open(LocalStore(str(tmpdir), read_only=False), path=None, mode="x")
 
 
 async def test_make_store_path_invalid() -> None:
