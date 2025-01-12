@@ -180,6 +180,18 @@ class StoreTests(Generic[S, B]):
         observed = await store.getsize(key)
         assert observed == expected
 
+    async def test_getsize_prefix(self, store: S) -> None:
+        """
+        Test the result of store.getsize_prefix().
+        """
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        keys = ["c/0/0", "c/0/1", "c/1/0", "c/1/1"]
+        keys_values = [(k, data_buf) for k in keys]
+        await store._set_many(keys_values)
+        expected = len(data_buf) * len(keys)
+        observed = await store.getsize_prefix("c")
+        assert observed == expected
+
     async def test_getsize_raises(self, store: S) -> None:
         """
         Test the result of store.getsize().
