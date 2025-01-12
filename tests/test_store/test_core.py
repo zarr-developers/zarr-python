@@ -24,6 +24,19 @@ async def test_contains_group(local_store, write_group: bool, zarr_format: ZarrF
     assert await contains_group(store_path, zarr_format=zarr_format) == write_group
 
 
+@pytest.mark.parametrize("write_array", [True, False])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_contains_array(local_store, write_array: bool, zarr_format: ZarrFormat) -> None:
+    """
+    Test contains group method
+    """
+    root = Group.from_store(store=local_store, zarr_format=zarr_format)
+    if write_array:
+        root.create_array("foo", shape=(100,), chunks=(10,), dtype="i4")
+    store_path = StorePath(local_store, path="foo")
+    assert await contains_array(store_path, zarr_format=zarr_format) == write_array
+
+
 async def test_contains_invalid_format_raises(local_store) -> None:
     """
     Test contains_group and contains_array raise errors for invalid zarr_formats
