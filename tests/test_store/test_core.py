@@ -4,10 +4,35 @@ from pathlib import Path
 import pytest
 from _pytest.compat import LEGACY_PATH
 
-from zarr.core.common import AccessModeLiteral
+from zarr import Group
+from zarr.core.common import AccessModeLiteral, ZarrFormat
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath
-from zarr.storage._common import make_store_path
+from zarr.storage._common import contains_array, contains_group, make_store_path
 from zarr.storage._utils import normalize_path
+
+
+@pytest.mark.parametrize("write_group", [True, False])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+async def test_contains_group(local_store, write_group: bool, zarr_format: ZarrFormat) -> None:
+    """
+    Test contains group method
+    """
+    root = Group.from_store(store=local_store, zarr_format=zarr_format)
+    if write_group:
+        root.create_group("foo")
+    store_path = StorePath(local_store, path="foo")
+    assert await contains_group(store_path, zarr_format=zarr_format) == write_group
+
+
+async def test_contains_invalid_format_raises(local_store) -> None:
+    """
+    Test contains_group and contains_array raise errors for invalid zarr_formats
+    """
+    store_path = StorePath(local_store)
+    with pytest.raises(ValueError):
+        assert await contains_group(store_path, zarr_format="3.0")
+    with pytest.raises(ValueError):
+        assert await contains_array(store_path, zarr_format="3.0")
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
