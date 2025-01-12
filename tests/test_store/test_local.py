@@ -53,3 +53,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
         store = self.store_cls(root=target)
         zarr.group(store=store)
+
+    def test_invalid_root_raises(self):
+        with pytest.raises(TypeError):
+            LocalStore(root=0)
