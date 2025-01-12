@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import sys
 import time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -69,7 +70,7 @@ class LoggingStore(WrapperStore[Store]):
 
     def _default_handler(self) -> logging.Handler:
         """Define a default log handler"""
-        handler = logging.StreamHandler()
+        handler = logging.StreamHandler(stream=sys.stdout)
         handler.setLevel(self.log_level)
         handler.setFormatter(
             logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
