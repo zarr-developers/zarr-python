@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 import pytest
@@ -49,6 +50,24 @@ class TestLoggingStore(StoreTests[LoggingStore, cpu.Buffer]):
 
     def test_store_repr(self, store: LoggingStore) -> None:
         assert str(store) == f"logging-file://{store._store.root.as_posix()}"
+
+    async def test_default_handler(self, local_store, capsys) -> None:
+        # Store and then remove existing handlers to enter default handler code path
+        handlers = logging.getLogger().handlers[:]
+        for h in handlers:
+            logging.getLogger().removeHandler(h)
+        # Test logs are sent to stdout
+        wrapped = LoggingStore(store=local_store)
+        buffer = default_buffer_prototype().buffer
+        res = await wrapped.set("foo/bar/c/0", buffer.from_bytes(b"\x01\x02\x03\x04"))
+        assert res is None
+        captured = capsys.readouterr()
+        assert len(captured) == 2
+        assert "Calling LocalStore.set" in captured.out
+        assert "Finished LocalStore.set" in captured.out
+        # Restore handlers
+        for h in handlers:
+            logging.getLogger().addHandler(h)
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
