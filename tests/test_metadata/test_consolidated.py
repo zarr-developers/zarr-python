@@ -491,6 +491,9 @@ class TestConsolidated:
     async def test_consolidated_metadata_backwards_compatibility(
         self, v2_consolidated_metadata_empty_dataset
     ):
+        """
+        Test that consolidated metadata handles a missing .zattrs key. This is necessary for backwards compatibility  with zarr-python 2.x. See https://github.com/zarr-developers/zarr-python/issues/2694
+        """
         store = zarr.storage.MemoryStore()
         await zarr.api.asynchronous.open(store=store, zarr_format=2)
         await zarr.api.asynchronous.consolidate_metadata(store)
