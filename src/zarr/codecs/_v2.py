@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numcodecs
-from numcodecs.compat import ensure_ndarray_like
+import numpy as np
+from numcodecs.compat import ensure_bytes, ensure_ndarray_like
 
 from zarr.abc.codec import ArrayBytesCodec
 from zarr.registry import get_ndbuffer_class
@@ -46,7 +47,17 @@ class V2Codec(ArrayBytesCodec):
         # special case object dtype, because incorrect handling can lead to
         # segfaults and other bad things happening
         if chunk_spec.dtype != object:
-            chunk = chunk.view(chunk_spec.dtype)
+            try:
+                chunk = chunk.view(chunk_spec.dtype)
+            except TypeError:
+                # this will happen if the dtype of the chunk
+                # does not match the dtype of the array spec i.g. if
+                # the dtype of the chunk_spec is a string dtype, but the chunk
+                # is an object array. In this case, we need to convert the object
+                # array to the correct dtype.
+
+                chunk = np.array(chunk).astype(chunk_spec.dtype)
+
         elif chunk.dtype != object:
             # If we end up here, someone must have hacked around with the filters.
             # We cannot deal with object arrays unless there is an object
@@ -68,6 +79,9 @@ class V2Codec(ArrayBytesCodec):
     ) -> Buffer | None:
         chunk = chunk_array.as_ndarray_like()
 
+        # ensure contiguous and correct order
+        chunk = chunk.astype(chunk_spec.dtype, order=chunk_spec.order, copy=False)
+
         # apply filters
         if self.filters:
             for f in self.filters:
@@ -83,6 +97,7 @@ class V2Codec(ArrayBytesCodec):
         else:
             cdata = chunk
 
+        cdata = ensure_bytes(cdata)
         return chunk_spec.prototype.buffer.from_bytes(cdata)
 
     def compute_encoded_size(self, _input_byte_length: int, _chunk_spec: ArraySpec) -> int:

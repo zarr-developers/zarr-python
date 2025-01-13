@@ -5,9 +5,8 @@ from typing import TYPE_CHECKING
 import pytest
 
 import zarr
-import zarr.storage
 from zarr.core.buffer import default_buffer_prototype
-from zarr.storage.logging import LoggingStore
+from zarr.storage import LoggingStore
 
 if TYPE_CHECKING:
     from zarr.abc.store import Store

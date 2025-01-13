@@ -9,6 +9,7 @@ import pytest
 import zarr.api.asynchronous
 import zarr.storage
 from zarr.core.buffer import cpu
+from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV2Metadata
 from zarr.core.metadata.v2 import parse_zarr_format
@@ -43,7 +44,7 @@ def test_metadata_to_dict(
     fill_value: Any,
     order: Literal["C", "F"],
     dimension_separator: Literal[".", "/"] | None,
-    attributes: None | dict[str, Any],
+    attributes: dict[str, Any] | None,
 ) -> None:
     shape = (1, 2, 3)
     chunks = (1,) * len(shape)
@@ -282,3 +283,18 @@ def test_from_dict_extra_fields() -> None:
         order="C",
     )
     assert result == expected
+
+
+def test_zstd_checksum() -> None:
+    arr = zarr.create_array(
+        {},
+        shape=(10,),
+        chunks=(10,),
+        dtype="int32",
+        compressors={"id": "zstd", "level": 5, "checksum": False},
+        zarr_format=2,
+    )
+    metadata = json.loads(
+        arr.metadata.to_buffer_dict(default_buffer_prototype())[".zarray"].to_bytes()
+    )
+    assert "checksum" not in metadata["compressor"]

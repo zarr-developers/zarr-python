@@ -7,15 +7,19 @@ from collections import defaultdict
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import Store
+from zarr.storage._wrapper import WrapperStore
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Generator, Iterable
+    from collections.abc import AsyncGenerator, Generator, Iterable
 
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer, BufferPrototype
 
+    counter: defaultdict[str, int]
 
-class LoggingStore(Store):
+
+class LoggingStore(WrapperStore[Store]):
     """
     Store wrapper that logs all calls to the wrapped store.
 
@@ -34,7 +38,6 @@ class LoggingStore(Store):
         Counter of number of times each method has been called
     """
 
-    _store: Store
     counter: defaultdict[str, int]
 
     def __init__(
@@ -43,11 +46,10 @@ class LoggingStore(Store):
         log_level: str = "DEBUG",
         log_handler: logging.Handler | None = None,
     ) -> None:
-        self._store = store
+        super().__init__(store)
         self.counter = defaultdict(int)
         self.log_level = log_level
         self.log_handler = log_handler
-
         self._configure_logger(log_level, log_handler)
 
     def _configure_logger(
@@ -159,7 +161,7 @@ class LoggingStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         with self.log(key):
@@ -168,7 +170,7 @@ class LoggingStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         keys = ",".join([k[0] for k in key_ranges])
@@ -203,19 +205,19 @@ class LoggingStore(Store):
         with self.log(keys):
             return await self._store.set_partial_values(key_start_values=key_start_values)
 
-    async def list(self) -> AsyncIterator[str]:
+    async def list(self) -> AsyncGenerator[str, None]:
         # docstring inherited
         with self.log():
             async for key in self._store.list():
                 yield key
 
-    async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
         with self.log(prefix):
             async for key in self._store.list_prefix(prefix=prefix):
                 yield key
 
-    async def list_dir(self, prefix: str) -> AsyncIterator[str]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
         with self.log(prefix):
             async for key in self._store.list_dir(prefix=prefix):

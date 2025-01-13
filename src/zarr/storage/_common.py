@@ -4,15 +4,13 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.common import ZARR_JSON, ZARRAY_JSON, ZGROUP_JSON, AccessModeLiteral, ZarrFormat
 from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, ContainsGroupError
+from zarr.storage._local import LocalStore
+from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import normalize_path
-from zarr.storage.local import LocalStore
-from zarr.storage.memory import MemoryStore
-
-# from zarr.store.remote import RemoteStore
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
@@ -104,7 +102,7 @@ class StorePath:
     async def get(
         self,
         prototype: BufferPrototype | None = None,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         """
         Read bytes from the store.
@@ -113,7 +111,7 @@ class StorePath:
         ----------
         prototype : BufferPrototype, optional
             The buffer prototype to use when reading the bytes.
-        byte_range : ByteRangeRequest, optional
+        byte_range : ByteRequest, optional
             The range of bytes to read.
 
         Returns
@@ -125,7 +123,7 @@ class StorePath:
             prototype = default_buffer_prototype()
         return await self.store.get(self.path, prototype=prototype, byte_range=byte_range)
 
-    async def set(self, value: Buffer, byte_range: ByteRangeRequest | None = None) -> None:
+    async def set(self, value: Buffer, byte_range: ByteRequest | None = None) -> None:
         """
         Write bytes to the store.
 
@@ -133,7 +131,7 @@ class StorePath:
         ----------
         value : Buffer
             The buffer to write.
-        byte_range : ByteRangeRequest, optional
+        byte_range : ByteRequest, optional
             The range of bytes to write. If None, the entire buffer is written.
 
         Raises
@@ -283,7 +281,7 @@ async def make_store_path(
     TypeError
         If the StoreLike object is not one of the supported types.
     """
-    from zarr.storage.remote import RemoteStore  # circular import
+    from zarr.storage._fsspec import FsspecStore  # circular import
 
     used_storage_options = False
     path_normalized = normalize_path(path)
@@ -304,7 +302,7 @@ async def make_store_path(
 
             if _is_fsspec_uri(store_like):
                 used_storage_options = True
-                store = RemoteStore.from_url(
+                store = FsspecStore.from_url(
                     store_like, storage_options=storage_options, read_only=_read_only
                 )
             else:

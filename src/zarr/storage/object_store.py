@@ -8,7 +8,13 @@ from typing import TYPE_CHECKING, Any, TypedDict
 
 import obstore as obs
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import (
+    ByteRequest,
+    OffsetByteRequest,
+    RangeByteRequest,
+    Store,
+    SuffixByteRequest,
+)
 from zarr.core.buffer import Buffer
 from zarr.core.buffer.core import BufferPrototype
 
@@ -63,37 +69,40 @@ class ObjectStore(Store):
     def __repr__(self) -> str:
         return f"ObjectStore({self})"
 
+    def __getstate__(self) -> None:
+        raise NotImplementedError("Pickling has not been implement for ObjectStore")
+
+    def __setstate__(self) -> None:
+        raise NotImplementedError("Pickling has not been implement for ObjectStore")
+
     async def get(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer:
         if byte_range is None:
             resp = await obs.get_async(self.store, key)
             return prototype.buffer.from_bytes(await resp.bytes_async())
-
-        start, end = byte_range
-        if (start is None or start == 0) and end is None:
-            resp = await obs.get_async(self.store, key)
-            return prototype.buffer.from_bytes(await resp.bytes_async())
-        if start is not None and end is not None:
-            resp = await obs.get_range_async(self.store, key, start=start, end=end)
+        elif isinstance(byte_range, RangeByteRequest):
+            resp = await obs.get_range_async(
+                self.store, key, start=byte_range.start, end=byte_range.end
+            )
             return prototype.buffer.from_bytes(memoryview(resp))
-        elif start is not None:
-            if start > 0:
-                # Offset request
-                resp = await obs.get_async(self.store, key, options={"range": {"offset": start}})
-            else:
-                resp = await obs.get_async(self.store, key, options={"range": {"suffix": start}})
+        elif isinstance(byte_range, OffsetByteRequest):
+            resp = await obs.get_async(
+                self.store, key, options={"range": {"offset": byte_range.offset}}
+            )
             return prototype.buffer.from_bytes(await resp.bytes_async())
-        elif end is not None:
-            resp = await obs.get_range_async(self.store, key, start=0, end=end)
-            return prototype.buffer.from_bytes(memoryview(resp))
+        elif isinstance(byte_range, SuffixByteRequest):
+            resp = await obs.get_async(
+                self.store, key, options={"range": {"suffix": byte_range.suffix}}
+            )
+            return prototype.buffer.from_bytes(await resp.bytes_async())
         else:
-            raise ValueError(f"Unexpected input to `get`: {start=}, {end=}")
+            raise ValueError(f"Unexpected input to `get`: {byte_range}")
 
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         return await _get_partial_values(self.store, prototype=prototype, key_ranges=key_ranges)
 
@@ -260,7 +269,10 @@ async def _make_other_request(
     We return a `list[_Response]` for symmetry with `_make_bounded_requests` so that all
     futures can be gathered together.
     """
-    resp = await obs.get_async(store, request["path"], options={"range": request["range"]})
+    if request["range"] is None:
+        resp = await obs.get_async(store, request["path"])
+    else:
+        resp = await obs.get_async(store, request["path"], options={"range": request["range"]})
     buffer = await resp.bytes_async()
     return [
         {
@@ -273,7 +285,7 @@ async def _make_other_request(
 async def _get_partial_values(
     store: obs.store.ObjectStore,
     prototype: BufferPrototype,
-    key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+    key_ranges: Iterable[tuple[str, ByteRequest | None]],
 ) -> list[Buffer | None]:
     """Make multiple range requests.
 
@@ -290,27 +302,37 @@ async def _get_partial_values(
     per_file_bounded_requests: dict[str, list[_BoundedRequest]] = defaultdict(list)
     other_requests: list[_OtherRequest] = []
 
-    for idx, (path, (start, end)) in enumerate(key_ranges):
-        if start is None:
-            raise ValueError("Cannot pass `None` for the start of the range request.")
-
-        if end is not None:
-            # This is a bounded request with known start and end byte.
+    for idx, (path, byte_range) in enumerate(key_ranges):
+        if byte_range is None:
+            other_requests.append(
+                {
+                    "original_request_index": idx,
+                    "path": path,
+                    "range": None,
+                }
+            )
+        elif isinstance(byte_range, RangeByteRequest):
             per_file_bounded_requests[path].append(
-                {"original_request_index": idx, "start": start, "end": end}
+                {"original_request_index": idx, "start": byte_range.start, "end": byte_range.end}
             )
-        elif start < 0:
-            # Suffix request from the end
+        elif isinstance(byte_range, OffsetByteRequest):
             other_requests.append(
-                {"original_request_index": idx, "path": path, "range": {"suffix": abs(start)}}
+                {
+                    "original_request_index": idx,
+                    "path": path,
+                    "range": {"offset": byte_range.offset},
+                }
             )
-        elif start >= 0:
-            # Offset request to the end
+        elif isinstance(byte_range, SuffixByteRequest):
             other_requests.append(
-                {"original_request_index": idx, "path": path, "range": {"offset": start}}
+                {
+                    "original_request_index": idx,
+                    "path": path,
+                    "range": {"suffix": byte_range.suffix},
+                }
             )
         else:
-            raise ValueError(f"Unsupported range input: {start=}, {end=}")
+            raise ValueError(f"Unsupported range input: {byte_range}")
 
     futs: list[Coroutine[Any, Any, list[_Response]]] = []
     for path, bounded_ranges in per_file_bounded_requests.items():

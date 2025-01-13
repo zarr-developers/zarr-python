@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Any
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
@@ -7,9 +7,12 @@ from hypothesis import given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
 import zarr
+from zarr.abc.store import RangeByteRequest
 from zarr.core.array import Array
+from zarr.core.common import ZarrFormat
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
+from zarr.storage._common import _dereference_path
 
 # Copied from Xarray
 _attr_keys = st.text(st.characters(), min_size=1)
@@ -68,7 +71,7 @@ paths = st.just("/") | keys
 # So we map a clear to reset the store.
 stores = st.builds(MemoryStore, st.just({})).map(lambda x: sync(x.clear()))
 compressors = st.sampled_from([None, "default"])
-zarr_formats: st.SearchStrategy[Literal[2, 3]] = st.sampled_from([2, 3])
+zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([2, 3])
 array_shapes = npst.array_shapes(max_dims=4, min_side=0)
 
 
@@ -77,7 +80,7 @@ def numpy_arrays(
     draw: st.DrawFn,
     *,
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
-    zarr_formats: st.SearchStrategy[Literal[2, 3]] = zarr_formats,
+    zarr_formats: st.SearchStrategy[ZarrFormat] = zarr_formats,
 ) -> Any:
     """
     Generate numpy arrays that can be saved in the provided Zarr format.
@@ -117,7 +120,7 @@ def arrays(
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
     compressors: st.SearchStrategy = compressors,
     stores: st.SearchStrategy[StoreLike] = stores,
-    paths: st.SearchStrategy[None | str] = paths,
+    paths: st.SearchStrategy[str | None] = paths,
     array_names: st.SearchStrategy = array_names,
     arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
@@ -137,7 +140,7 @@ def arrays(
 
     expected_attrs = {} if attributes is None else attributes
 
-    array_path = path + ("/" if not path.endswith("/") else "") + name
+    array_path = _dereference_path(path, name)
     root = zarr.open_group(store, mode="w", zarr_format=zarr_format)
 
     a = root.create_array(
@@ -153,6 +156,7 @@ def arrays(
     assert isinstance(a, Array)
     if a.metadata.zarr_format == 3:
         assert a.fill_value is not None
+    assert a.name is not None
     assert isinstance(root[array_path], Array)
     assert nparray.shape == a.shape
     assert chunks == a.chunks
@@ -191,12 +195,13 @@ def key_ranges(
     Function to generate key_ranges strategy for get_partial_values()
     returns list strategy w/ form::
 
-        [(key, (range_start, range_step)),
-         (key, (range_start, range_step)),...]
+        [(key, (range_start, range_end)),
+         (key, (range_start, range_end)),...]
     """
-    byte_ranges = st.tuples(
-        st.none() | st.integers(min_value=0, max_value=max_size),
-        st.none() | st.integers(min_value=0, max_value=max_size),
+    byte_ranges = st.builds(
+        RangeByteRequest,
+        start=st.integers(min_value=0, max_value=max_size),
+        end=st.integers(min_value=0, max_value=max_size),
     )
     key_tuple = st.tuples(keys, byte_ranges)
     return st.lists(key_tuple, min_size=1, max_size=10)

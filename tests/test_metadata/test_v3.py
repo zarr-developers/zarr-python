@@ -10,7 +10,8 @@ import pytest
 from zarr.codecs.bytes import BytesCodec
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding, V2ChunkKeyEncoding
-from zarr.core.group import parse_node_type
+from zarr.core.config import config
+from zarr.core.group import GroupMetadata, parse_node_type
 from zarr.core.metadata.v3 import (
     ArrayV3Metadata,
     DataType,
@@ -240,8 +241,8 @@ def test_metadata_to_dict(
     chunk_key_encoding: Literal["v2", "default"],
     dimension_separator: Literal[".", "/"] | None,
     dimension_names: Literal["nones", "strings", "missing"],
-    attributes: None | dict[str, Any],
-    storage_transformers: None | tuple[dict[str, JSON]],
+    attributes: dict[str, Any] | None,
+    storage_transformers: tuple[dict[str, JSON]] | None,
 ) -> None:
     shape = (1, 2, 3)
     data_type = DataType.uint8
@@ -304,6 +305,14 @@ def test_metadata_to_dict(
     assert observed == expected
 
 
+@pytest.mark.parametrize("indent", [2, 4, None])
+def test_json_indent(indent: int):
+    with config.set({"json_indent": indent}):
+        m = GroupMetadata()
+        d = m.to_buffer_dict(default_buffer_prototype())["zarr.json"].to_bytes()
+        assert d == json.dumps(json.loads(d), indent=indent).encode()
+
+
 # @pytest.mark.parametrize("fill_value", [-1, 0, 1, 2932897])
 # @pytest.mark.parametrize("precision", ["ns", "D"])
 # async def test_datetime_metadata(fill_value: int, precision: str) -> None:
@@ -336,13 +345,13 @@ def test_invalid_dtype_raises() -> None:
         "codecs": (),
         "fill_value": np.datetime64(0, "ns"),
     }
-    with pytest.raises(ValueError, match=r"Invalid V3 data_type: .*"):
+    with pytest.raises(ValueError, match=r"Invalid Zarr format 3 data_type: .*"):
         ArrayV3Metadata.from_dict(metadata_dict)
 
 
 @pytest.mark.parametrize("data", ["datetime64[s]", "foo", object()])
 def test_parse_invalid_dtype_raises(data):
-    with pytest.raises(ValueError, match=r"Invalid V3 data_type: .*"):
+    with pytest.raises(ValueError, match=r"Invalid Zarr format 3 data_type: .*"):
         DataType.parse(data)
 
 
