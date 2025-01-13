@@ -15,7 +15,7 @@ from zarr.storage._utils import normalize_path
 @pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_contains_group(local_store, write_group: bool, zarr_format: ZarrFormat) -> None:
     """
-    Test contains group method
+     Test that the contains_group method correctly reports the existence of a group.
     """
     root = Group.from_store(store=local_store, zarr_format=zarr_format)
     if write_group:
@@ -28,7 +28,7 @@ async def test_contains_group(local_store, write_group: bool, zarr_format: ZarrF
 @pytest.mark.parametrize("zarr_format", [2, 3])
 async def test_contains_array(local_store, write_array: bool, zarr_format: ZarrFormat) -> None:
     """
-    Test contains group method
+    Test that the contains array method correctly reports the existence of an array.
     """
     root = Group.from_store(store=local_store, zarr_format=zarr_format)
     if write_array:

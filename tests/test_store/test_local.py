@@ -61,7 +61,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
     async def test_get_with_prototype_default(self, store: LocalStore):
         """
-        Ensure that data can be read using the default prototype method.
+        Ensure that data can be read via ``store.get`` if the prototype keyword argument is unspecified, i.e. set to ``None``.
         """
         data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
         key = "c/0"
