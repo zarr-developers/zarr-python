@@ -10,6 +10,7 @@ New features
 Bug fixes
 ~~~~~~~~~
 * Fixes ``order`` argument for Zarr format 2 arrays (:issue:`2679`).
+* Backwards compatibility for Zarr format 2 structured arrays (:issue:`2134`)
 
 Behaviour changes
 ~~~~~~~~~~~~~~~~~
