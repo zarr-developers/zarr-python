@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import pickle
+from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 from zarr.storage import WrapperStore
@@ -37,26 +38,41 @@ class StoreTests(Generic[S, B]):
     store_cls: type[S]
     buffer_cls: type[B]
 
+    @abstractmethod
     async def set(self, store: S, key: str, value: Buffer) -> None:
         """
         Insert a value into a storage backend, with a specific key.
         This should not not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def get(self, store: S, key: str) -> Buffer:
         """
         Retrieve a value from a storage backend, by key.
         This should not not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
+        ...
 
-        raise NotImplementedError
-
+    @abstractmethod
     @pytest.fixture
     def store_kwargs(self) -> dict[str, Any]:
-        return {"read_only": False}
+        """Kwargs for instantiating a store"""
+        ...
+
+    @abstractmethod
+    def test_store_repr(self, store: S) -> None: ...
+
+    @abstractmethod
+    def test_store_supports_writes(self, store: S) -> None: ...
+
+    @abstractmethod
+    def test_store_supports_partial_writes(self, store: S) -> None: ...
+
+    @abstractmethod
+    def test_store_supports_listing(self, store: S) -> None: ...
 
     @pytest.fixture
     def open_kwargs(self, store_kwargs: dict[str, Any]) -> dict[str, Any]:
@@ -121,18 +137,6 @@ class StoreTests(Generic[S, B]):
         # delete
         with pytest.raises(ValueError):
             await store.delete("foo")
-
-    def test_store_repr(self, store: S) -> None:
-        raise NotImplementedError
-
-    def test_store_supports_writes(self, store: S) -> None:
-        raise NotImplementedError
-
-    def test_store_supports_partial_writes(self, store: S) -> None:
-        raise NotImplementedError
-
-    def test_store_supports_listing(self, store: S) -> None:
-        raise NotImplementedError
 
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
