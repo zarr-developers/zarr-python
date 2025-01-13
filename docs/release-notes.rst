@@ -1,6 +1,19 @@
 Release notes
 =============
 
+Unreleased
+----------
+
+New features
+~~~~~~~~~~~~
+
+Bug fixes
+~~~~~~~~~
+* Fixes ``order`` argument for Zarr format 2 arrays (:issue:`2679`).
+
+Behaviour changes
+~~~~~~~~~~~~~~~~~
+
 .. _release_3.0.0:
 
 3.0.0
