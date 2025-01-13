@@ -66,6 +66,10 @@ class StoreTests(Generic[S, B]):
     async def store(self, open_kwargs: dict[str, Any]) -> Store:
         return await self.store_cls.open(**open_kwargs)
 
+    @pytest.fixture
+    async def store_not_open(self, store_kwargs: dict[str, Any]) -> Store:
+        return self.store_cls(**store_kwargs)
+
     def test_store_type(self, store: S) -> None:
         assert isinstance(store, Store)
         assert isinstance(store, self.store_cls)
@@ -136,6 +140,17 @@ class StoreTests(Generic[S, B]):
         start, stop = _normalize_byte_range_index(data_buf, byte_range=byte_range)
         expected = data_buf[start:stop]
         assert_bytes_equal(observed, expected)
+
+    async def test_get_not_open(self, store_not_open: S) -> None:
+        """
+        Ensure that data can be read from the store that isn't yet open using the store.get method.
+        """
+        assert not store_not_open._is_open
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "c/0"
+        await self.set(store_not_open, key, data_buf)
+        observed = await store_not_open.get(key, prototype=default_buffer_prototype())
+        assert_bytes_equal(observed, data_buf)
 
     async def test_get_raises(self, store: S) -> None:
         """
@@ -209,6 +224,17 @@ class StoreTests(Generic[S, B]):
         data_buf = self.buffer_cls.from_bytes(data)
         await store.set(key, data_buf)
         observed = await self.get(store, key)
+        assert_bytes_equal(observed, data_buf)
+
+    async def test_set_not_open(self, store_not_open: S) -> None:
+        """
+        Ensure that data can be written to the store that's not yet open using the store.set method.
+        """
+        assert not store_not_open._is_open
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "c/0"
+        await store_not_open.set(key, data_buf)
+        observed = await self.get(store_not_open, key)
         assert_bytes_equal(observed, data_buf)
 
     async def test_set_many(self, store: S) -> None:

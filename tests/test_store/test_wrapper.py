@@ -9,6 +9,8 @@ from zarr.storage import LocalStore, WrapperStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
+    from _pytest.compat import LEGACY_PATH
+
     from zarr.abc.store import Store
     from zarr.core.buffer.core import BufferPrototype
 
@@ -27,8 +29,8 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
         (store._store.root / key).write_bytes(value.to_bytes())
 
     @pytest.fixture
-    def store_kwargs(self, local_store) -> dict[str, str]:
-        return {"store": local_store}
+    def store_kwargs(self, tmpdir: LEGACY_PATH) -> dict[str, str]:
+        return {"store": LocalStore(str(tmpdir))}
 
     @pytest.fixture
     def open_kwargs(self, tmpdir) -> dict[str, str]:
