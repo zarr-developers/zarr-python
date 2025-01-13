@@ -82,8 +82,15 @@ def test_codec_pipeline() -> None:
     np.testing.assert_array_equal(result, expected)
 
 
-@pytest.mark.parametrize("dtype", ["|S", "|V"])
-async def test_v2_encode_decode(dtype):
+@pytest.mark.parametrize(
+    ("dtype", "expected_dtype", "fill_value", "fill_value_encoding"),
+    [
+        ("|S", "|S0", b"X", "WA=="),
+        ("|V", "|V0", b"X", "WA=="),
+        ("|V10", "|V10", b"X", "WAAAAAAAAAAAAA=="),
+    ],
+)
+async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_encoding) -> None:
     with config.set(
         {
             "array.v2_default_filters.bytes": [{"id": "vlen-bytes"}],
@@ -97,7 +104,7 @@ async def test_v2_encode_decode(dtype):
             shape=(3,),
             chunks=(3,),
             dtype=dtype,
-            fill_value=b"X",
+            fill_value=fill_value,
         )
 
         result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
@@ -107,8 +114,8 @@ async def test_v2_encode_decode(dtype):
         expected = {
             "chunks": [3],
             "compressor": None,
-            "dtype": f"{dtype}0",
-            "fill_value": "WA==",
+            "dtype": expected_dtype,
+            "fill_value": fill_value_encoding,
             "filters": [{"id": "vlen-bytes"}] if dtype == "|S" else None,
             "order": "C",
             "shape": [3],

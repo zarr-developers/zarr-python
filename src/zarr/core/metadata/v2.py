@@ -194,7 +194,9 @@ class ArrayV2Metadata(Metadata):
 
         _ = zarray_dict.pop("dtype")
         dtype_json: JSON
-        if self.dtype.kind == "V":
+        # In the case of zarr v2, the simplest i.e., '|VXX' dtype is represented as a string
+        dtype_descr = self.dtype.descr
+        if self.dtype.kind == "V" and dtype_descr[0][0] != "" and len(dtype_descr) != 0:
             dtype_json = tuple(self.dtype.descr)
         else:
             dtype_json = self.dtype.str
