@@ -7,7 +7,7 @@ import logging
 import warnings
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
-from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload, Self
+from typing import TYPE_CHECKING, Literal, Self, TypeVar, assert_never, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -55,6 +55,7 @@ from zarr.storage._common import ensure_no_existing_node, make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
+    from types import TracebackType
     from typing import Any
 
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
@@ -1755,7 +1756,9 @@ class Group(SyncMixin):
     def __enter__(self) -> Self:
         return self
 
-    def __exit__(self) -> None:  # noqa: PYI036
+    def __exit__(
+        self, typ: type[BaseException] | None, exc: BaseException | None, tb: TracebackType | None
+    ) -> None:
         self.store.close()
 
     def __getitem__(self, path: str) -> Array | Group:
