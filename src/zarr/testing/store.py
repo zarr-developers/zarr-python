@@ -100,6 +100,15 @@ class StoreTests(Generic[S, B]):
         assert store._is_open
         assert store.read_only == read_only
 
+    async def test_store_context_manager(self, open_kwargs: dict[str, Any]) -> None:
+        # Test that the context manager closes the store
+        with await self.store_cls.open(**open_kwargs) as store:
+            assert store._is_open
+            # Test trying to open an already open store
+            with pytest.raises(ValueError):
+                await store._open()
+        assert not store._is_open
+
     async def test_read_only_store_raises(self, open_kwargs: dict[str, Any]) -> None:
         kwargs = {**open_kwargs, "read_only": True}
         store = await self.store_cls.open(**kwargs)
