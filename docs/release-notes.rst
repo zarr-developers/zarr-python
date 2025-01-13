@@ -9,8 +9,7 @@ New features
 
 Bug fixes
 ~~~~~~~~~
-* Fixes ``order`` argument for Zarr format 2 arrays.
-  By :user:`Norman Rzepka <normanrz>` (:issue:`2679`).
+* Fixes ``order`` argument for Zarr format 2 arrays (:issue:`2679`).
 
 Behaviour changes
 ~~~~~~~~~~~~~~~~~
