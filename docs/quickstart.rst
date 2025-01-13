@@ -74,7 +74,7 @@ Zarr supports data compression and filters. For example, to use Blosc compressio
     ...    "data/example-3.zarr",
     ...    mode="w", shape=(100, 100),
     ...    chunks=(10, 10), dtype="f4",
-    ...    compressor=zarr.codecs.BloscCodec(cname="zstd", clevel=3, shuffle=zarr.codecs.BloscShuffle.SHUFFLE)
+    ...    compressors=zarr.codecs.BloscCodec(cname="zstd", clevel=3, shuffle=zarr.codecs.BloscShuffle.shuffle)
     ... )
     >>> z[:, :] = np.random.random((100, 100))
     >>>
