@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-from numcodecs import Zstd
+from numcodecs import Blosc
 
 import zarr.api.asynchronous
 import zarr.api.synchronous
@@ -522,7 +522,7 @@ class TestConsolidated:
                         attributes={"key": "a"},
                         chunks=(1,),
                         fill_value=0,
-                        compressor=Zstd(level=0),
+                        compressor=Blosc(),
                         order="C",
                     ),
                     "g1": GroupMetadata(
