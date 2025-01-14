@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from numcodecs import Delta
 from numcodecs.blosc import Blosc
+from numcodecs.zstd import Zstd
 
 import zarr
 import zarr.core.buffer
@@ -177,6 +178,13 @@ def test_create_array_defaults(store: Store):
     arr = g.create_array("two", dtype="i8", shape=(1,), chunks=(1,))
     assert arr._async_array.compressor is not None
     assert not (arr.filters)
+    arr = g.create_array("three", dtype="i8", shape=(1,), chunks=(1,), compressor=Zstd())
+    assert arr._async_array.compressor is not None
+    assert not (arr.filters)
+    with pytest.raises(ValueError):
+        g.create_array(
+            "four", dtype="i8", shape=(1,), chunks=(1,), compressor=None, compressors=None
+        )
 
 
 @pytest.mark.parametrize("array_order", ["C", "F"])
