@@ -37,15 +37,14 @@ async def test_contains_array(local_store, write_array: bool, zarr_format: ZarrF
     assert await contains_array(store_path, zarr_format=zarr_format) == write_array
 
 
-async def test_contains_invalid_format_raises(local_store) -> None:
+@pytest.mark.parametrize("func", [contains_array, contains_group])
+async def test_contains_invalid_format_raises(local_store, func: callable) -> None:
     """
     Test contains_group and contains_array raise errors for invalid zarr_formats
     """
     store_path = StorePath(local_store)
     with pytest.raises(ValueError):
-        assert await contains_group(store_path, zarr_format="3.0")
-    with pytest.raises(ValueError):
-        assert await contains_array(store_path, zarr_format="3.0")
+        assert await func(store_path, zarr_format="3.0")
 
 
 @pytest.mark.parametrize("path", [None, "", "bar"])
@@ -97,14 +96,13 @@ async def test_make_store_path_store_path(
     assert store_path.read_only == ro
 
 
-async def test_store_path_invalid_mode_raises(tmpdir: LEGACY_PATH) -> None:
+@pytest.mark.parametrize("modes", [(True, "w"), (False, "x")])
+async def test_store_path_invalid_mode_raises(tmpdir: LEGACY_PATH, modes: tuple) -> None:
     """
     Test that ValueErrors are raise for invalid mode.
     """
     with pytest.raises(ValueError):
-        await StorePath.open(LocalStore(str(tmpdir), read_only=True), path=None, mode="w")
-    with pytest.raises(ValueError):
-        await StorePath.open(LocalStore(str(tmpdir), read_only=False), path=None, mode="x")
+        await StorePath.open(LocalStore(str(tmpdir), read_only=modes[0]), path=None, mode=modes[1])
 
 
 async def test_make_store_path_invalid() -> None:
