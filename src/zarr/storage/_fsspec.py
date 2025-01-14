@@ -255,7 +255,9 @@ class FsspecStore(Store):
             await self._open()
         self._check_writable()
         if not isinstance(value, Buffer):
-            raise TypeError(f"FsspecStore.set(): `value` must a Buffer instance. Got an instance of {type(value)} instead.")
+            raise TypeError(
+                f"FsspecStore.set(): `value` must a Buffer instance. Got an instance of {type(value)} instead."
+            )
         path = _dereference_path(self.path, key)
         # write data
         if byte_range:
