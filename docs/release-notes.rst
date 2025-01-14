@@ -11,6 +11,8 @@ Bug fixes
 ~~~~~~~~~
 * Fixes ``order`` argument for Zarr format 2 arrays (:issue:`2679`).
 
+* Fixes a bug that prevented reading Zarr format 2 data with consolidated metadata written using ``zarr-python`` version 2 (:issue:`2694`).
+
 Behaviour changes
 ~~~~~~~~~~~~~~~~~
 
