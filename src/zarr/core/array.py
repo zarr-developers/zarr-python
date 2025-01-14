@@ -4,7 +4,7 @@ import json
 import warnings
 from asyncio import gather
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
 from typing import (
@@ -112,8 +112,8 @@ from zarr.registry import (
     _parse_bytes_bytes_codec,
     get_pipeline_class,
 )
-from zarr.storage import StoreLike, make_store_path
-from zarr.storage._common import StorePath, ensure_no_existing_node
+from zarr.storage import StoreLike
+from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
@@ -122,6 +122,7 @@ if TYPE_CHECKING:
     from zarr.abc.codec import CodecPipeline
     from zarr.codecs.sharding import ShardingCodecIndexLocation
     from zarr.core.group import AsyncGroup
+    from zarr.storage import StoreLike
 
 
 # Array and AsyncArray are defined in the base ``zarr`` namespace
@@ -1225,14 +1226,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 fill_value=self.metadata.fill_value,
             )
         if product(indexer.shape) > 0:
+            # need to use the order from the metadata for v2
+            _config = self._config
+            if self.metadata.zarr_format == 2:
+                _config = replace(_config, order=self.metadata.order)
+
             # reading chunks and decoding them
             await self.codec_pipeline.read(
                 [
                     (
                         self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                        self.metadata.get_chunk_spec(
-                            chunk_coords, self._config, prototype=prototype
-                        ),
+                        self.metadata.get_chunk_spec(chunk_coords, _config, prototype=prototype),
                         chunk_selection,
                         out_selection,
                     )
@@ -1349,12 +1353,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # Buffer and NDBuffer between components.
         value_buffer = prototype.nd_buffer.from_ndarray_like(value)
 
+        # need to use the order from the metadata for v2
+        _config = self._config
+        if self.metadata.zarr_format == 2:
+            _config = replace(_config, order=self.metadata.order)
+
         # merging with existing data and encoding chunks
         await self.codec_pipeline.write(
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                    self.metadata.get_chunk_spec(chunk_coords, self._config, prototype),
+                    self.metadata.get_chunk_spec(chunk_coords, _config, prototype),
                     chunk_selection,
                     out_selection,
                 )
@@ -1995,10 +2004,11 @@ class Array:
 
     @property
     def name(self) -> str:
+        """Array name following h5py convention."""
         return self._async_array.name
 
     @property
-    def basename(self) -> str | None:
+    def basename(self) -> str:
         """Final component of name."""
         return self._async_array.basename
 

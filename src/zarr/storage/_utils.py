@@ -4,7 +4,10 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from zarr.abc.store import OffsetByteRequest, RangeByteRequest, SuffixByteRequest
+
 if TYPE_CHECKING:
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer
 
 
@@ -44,25 +47,22 @@ def normalize_path(path: str | bytes | Path | None) -> str:
     return result
 
 
-def _normalize_interval_index(
-    data: Buffer, interval: tuple[int | None, int | None] | None
-) -> tuple[int, int]:
+def _normalize_byte_range_index(data: Buffer, byte_range: ByteRequest | None) -> tuple[int, int]:
     """
-    Convert an implicit interval into an explicit start and length
+    Convert an ByteRequest into an explicit start and stop
     """
-    if interval is None:
+    if byte_range is None:
         start = 0
-        length = len(data)
+        stop = len(data) + 1
+    elif isinstance(byte_range, RangeByteRequest):
+        start = byte_range.start
+        stop = byte_range.end
+    elif isinstance(byte_range, OffsetByteRequest):
+        start = byte_range.offset
+        stop = len(data) + 1
+    elif isinstance(byte_range, SuffixByteRequest):
+        start = len(data) - byte_range.suffix
+        stop = len(data) + 1
     else:
-        maybe_start, maybe_len = interval
-        if maybe_start is None:
-            start = 0
-        else:
-            start = maybe_start
-
-        if maybe_len is None:
-            length = len(data) - start
-        else:
-            length = maybe_len
-
-    return (start, length)
+        raise ValueError(f"Unexpected byte_range, got {byte_range}.")
+    return (start, stop)

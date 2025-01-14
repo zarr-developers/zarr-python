@@ -11,9 +11,9 @@ from zarr.abc.store import Store
 from zarr.storage._wrapper import WrapperStore
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator, Generator, Iterable
+    from collections.abc import AsyncGenerator, Generator, Iterable
 
-    from zarr.abc.store import ByteRangeRequest
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer, BufferPrototype
 
     counter: defaultdict[str, int]
@@ -161,7 +161,7 @@ class LoggingStore(WrapperStore[Store]):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         with self.log(key):
@@ -170,7 +170,7 @@ class LoggingStore(WrapperStore[Store]):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         keys = ",".join([k[0] for k in key_ranges])
@@ -205,19 +205,19 @@ class LoggingStore(WrapperStore[Store]):
         with self.log(keys):
             return await self._store.set_partial_values(key_start_values=key_start_values)
 
-    async def list(self) -> AsyncIterator[str]:
+    async def list(self) -> AsyncGenerator[str, None]:
         # docstring inherited
         with self.log():
             async for key in self._store.list():
                 yield key
 
-    async def list_prefix(self, prefix: str) -> AsyncIterator[str]:
+    async def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
         with self.log(prefix):
             async for key in self._store.list_prefix(prefix=prefix):
                 yield key
 
-    async def list_dir(self, prefix: str) -> AsyncIterator[str]:
+    async def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
         with self.log(prefix):
             async for key in self._store.list_dir(prefix=prefix):
