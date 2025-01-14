@@ -74,7 +74,7 @@ Zarr supports data compression and filters. For example, to use Blosc compressio
     ...    "data/example-3.zarr",
     ...    mode="w", shape=(100, 100),
     ...    chunks=(10, 10), dtype="f4",
-    ...    compressor=zarr.codecs.BloscCodec(cname="zstd", clevel=3, shuffle=zarr.codecs.BloscShuffle.SHUFFLE)
+    ...    compressors=zarr.codecs.BloscCodec(cname="zstd", clevel=3, shuffle=zarr.codecs.BloscShuffle.shuffle)
     ... )
     >>> z[:, :] = np.random.random((100, 100))
     >>>
@@ -101,7 +101,7 @@ Zarr allows you to create hierarchical groups, similar to directories::
     >>> root = zarr.group("data/example-2.zarr")
     >>> foo = root.create_group(name="foo")
     >>> bar = root.create_array(
-    ...     name="bar", shape=(100, 10), chunks=(10, 10)
+    ...     name="bar", shape=(100, 10), chunks=(10, 10), dtype="f4"
     ... )
     >>> spam = foo.create_array(name="spam", shape=(10,), dtype="i4")
     >>>
@@ -112,6 +112,7 @@ Zarr allows you to create hierarchical groups, similar to directories::
     >>> # print the hierarchy
     >>> root.tree()
     /
+    ├── bar (100, 10) float32
     └── foo
         └── spam (10,) int32
     <BLANKLINE>
@@ -130,7 +131,7 @@ using external libraries like `s3fs <https://s3fs.readthedocs.io>`_ or
 
     >>> import s3fs # doctest: +SKIP
     >>>
-    >>> z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10)) # doctest: +SKIP
+    >>> z = zarr.create_array("s3://example-bucket/foo", mode="w", shape=(100, 100), chunks=(10, 10), dtype="f4") # doctest: +SKIP
     >>> z[:, :] = np.random.random((100, 100)) # doctest: +SKIP
 
 A single-file store can also be created using the the :class:`zarr.storage.ZipStore`::
