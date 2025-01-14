@@ -4131,12 +4131,12 @@ def _parse_chunk_encoding_v3(
 
 
 def _parse_deprecated_compressor(
-    compressor: CompressorLike | None, compressors: CompressorsLike, version: int = 3
+    compressor: CompressorLike | None, compressors: CompressorsLike, zarr_format: int = 3
 ) -> CompressorsLike | None:
     if compressor != "auto":
         if compressors != "auto":
             raise ValueError("Cannot specify both `compressor` and `compressors`.")
-        if version == 3:
+        if zarr_format == 3:
             warn(
                 "The `compressor` argument is deprecated. Use `compressors` instead.",
                 category=UserWarning,
@@ -4147,6 +4147,6 @@ def _parse_deprecated_compressor(
             compressors = ()
         else:
             compressors = (compressor,)
-    elif version == 2 and compressor == compressors == "auto":
+    elif zarr_format == 2 and compressor == compressors == "auto":
         compressors = ({"id": "blosc"},)
     return compressors

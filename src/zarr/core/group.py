@@ -1115,7 +1115,7 @@ class AsyncGroup:
 
         """
         compressors = _parse_deprecated_compressor(
-            compressor, compressors, version=self.metadata.zarr_format
+            compressor, compressors, zarr_format=self.metadata.zarr_format
         )
         return await create_array(
             store=self.store_path,
@@ -2348,7 +2348,7 @@ class Group(SyncMixin):
         AsyncArray
         """
         compressors = _parse_deprecated_compressor(
-            compressor, compressors, version=self.metadata.zarr_format
+            compressor, compressors, zarr_format=self.metadata.zarr_format
         )
         return Array(
             self._sync(
