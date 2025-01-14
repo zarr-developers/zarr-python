@@ -111,7 +111,9 @@ class MemoryStore(Store):
         await self._ensure_open()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
-            raise TypeError(f"Expected Buffer. Got {type(value)}.")
+            raise TypeError(
+                f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
 
         if byte_range is not None:
             buf = self._store_dict[key]

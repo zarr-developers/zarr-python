@@ -121,7 +121,7 @@ class StoreTests(Generic[S, B]):
         with await self.store_cls.open(**open_kwargs) as store:
             assert store._is_open
             # Test trying to open an already open store
-            with pytest.raises(ValueError):
+            with pytest.raises(ValueError, match="store is already open"):
                 await store._open()
         assert not store._is_open
 
@@ -131,11 +131,15 @@ class StoreTests(Generic[S, B]):
         assert store.read_only
 
         # set
-        with pytest.raises(ValueError):
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
             await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
 
         # delete
-        with pytest.raises(ValueError):
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
             await store.delete("foo")
 
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
@@ -171,7 +175,7 @@ class StoreTests(Generic[S, B]):
         """
         data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
         await self.set(store, "c/0", data_buf)
-        with pytest.raises((ValueError, TypeError)):
+        with pytest.raises((ValueError, TypeError), match=r"Unexpected byte_range, got.*"):
             await store.get("c/0", prototype=default_buffer_prototype(), byte_range=(0, 2))  # type: ignore[arg-type]
 
     async def test_get_many(self, store: S) -> None:
@@ -222,7 +226,7 @@ class StoreTests(Generic[S, B]):
 
     async def test_getsize_raises(self, store: S) -> None:
         """
-        Test the result of store.getsize().
+        Test that getsize() raise a FileNotFoundError if the key doesn't exist.
         """
         with pytest.raises(FileNotFoundError):
             await store.getsize("c/1000")
@@ -266,7 +270,10 @@ class StoreTests(Generic[S, B]):
         """
         Ensure that set raises a Type or Value Error for invalid buffer arguments.
         """
-        with pytest.raises((ValueError, TypeError)):
+        with pytest.raises(
+            (ValueError, TypeError),
+            match=r"\S+\.set\(\): `value` must be a Buffer instance. Got an instance of <class 'int'> instead.",
+        ):
             await store.set("c/0", 0)  # type: ignore[arg-type]
 
     @pytest.mark.parametrize(

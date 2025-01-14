@@ -211,7 +211,9 @@ class ZipStore(Store):
             self._sync_open()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
-            raise TypeError("ZipStore.set(): `value` must a Buffer instance")
+            raise TypeError(
+                f"ZipStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
         with self._lock:
             self._set(key, value)
 
