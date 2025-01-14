@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 from botocore.session import Session
+from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
 import zarr.api.asynchronous
 from zarr.abc.store import OffsetByteRequest
@@ -215,3 +216,19 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         store_kwargs["path"] += "/abc"
         store = await self.store_cls.open(**store_kwargs)
         assert await store.is_empty("")
+
+
+def test_wrap_sync_filesystem():
+    """The local fs is not async so we should expect it to be wrapped automatically"""
+    store = FsspecStore.from_url("local://test/path")
+
+    assert isinstance(store.fs, AsyncFileSystemWrapper)
+    assert store.fs.async_impl
+
+
+def test_no_wrap_async_filesystem():
+    """An async fs should not be wrapped automatically; fsspec's https filesystem is such an fs"""
+    store = FsspecStore.from_url("https://test/path")
+
+    assert not isinstance(store.fs, AsyncFileSystemWrapper)
+    assert store.fs.async_impl
