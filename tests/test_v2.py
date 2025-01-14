@@ -12,6 +12,7 @@ import zarr
 import zarr.core.buffer
 import zarr.storage
 from zarr import config
+from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
@@ -163,12 +164,12 @@ def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
 
 
 @pytest.mark.filterwarnings("ignore")
-@pytest.mark.parametrize('store', ['memory'], indirect=True)
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_create_array_defaults(store: Store):
-"""
-Test that passing compressor=None results in no compressor. Also test that the default value of the compressor
-parameter does produce a compressor.
-"""
+    """
+    Test that passing compressor=None results in no compressor. Also test that the default value of the compressor
+    parameter does produce a compressor.
+    """
     g = zarr.open(store, mode="w", zarr_format=2)
     arr = g.create_array("one", dtype="i8", shape=(1,), chunks=(1,), compressor=None)
     assert arr._async_array.compressor is None
