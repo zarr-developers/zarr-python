@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from typing import Any, Self, TypeAlias
 
     from zarr.core.buffer import Buffer, BufferPrototype
-    from zarr.core.common import BytesLike
 
 __all__ = ["ByteGetter", "ByteSetter", "Store", "set_or_delete"]
 
@@ -285,9 +284,7 @@ class Store(ABC):
         ...
 
     @abstractmethod
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, BytesLike]]
-    ) -> None:
+    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, Buffer]]) -> None:
         """Store values at a given key, starting at byte range_start.
 
         Parameters

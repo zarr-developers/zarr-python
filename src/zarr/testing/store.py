@@ -181,6 +181,23 @@ class StoreTests(Generic[S, B]):
         for k, v in store_dict.items():
             assert (await self.get(store, k)).to_bytes() == v.to_bytes()
 
+    @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"])
+    async def test_set_partial_values(self, store: S, key: str) -> None:
+        """
+        Ensure that data can be written to the store using the store.set_partial_values method.
+        """
+        assert not store.read_only
+        # Create empty key
+        await store.set(key, self.buffer_cls.from_bytes(b""))
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        if store.supports_partial_writes:
+            await store.set_partial_values([(key, 0, data_buf[:2]), (key, 2, data_buf[2:])])
+            observed = await self.get(store, key)
+            assert_bytes_equal(observed.to_bytes(), data_buf)
+        else:
+            with pytest.raises(NotImplementedError):
+                await store.set_partial_values([(key, 0, data_buf[:2]), (key, 2, data_buf[2:])])
+
     @pytest.mark.parametrize(
         "key_ranges",
         [
