@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import warnings
+import inspect
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
 from zarr.abc.store import (
@@ -269,6 +271,23 @@ class FsspecStore(Store):
             pass
         except self.allowed_exceptions:
             pass
+
+    async def delete_dir(self, prefix: str) -> None:
+        # docstring inherited
+        if not self.supports_deletes:
+            raise NotImplementedError('This method is only available for stores that support deletes.')
+        if not self.supports_listing:
+            raise NotImplementedError('This method is only available for stores that support directory listing.')
+        self._check_writable()
+
+        path_to_delete = _dereference_path(self.path, prefix)
+
+        # this is probably the same condition as `if self.fs.async_impl`
+        if hasattr(self.fs, "_rm") and inspect.iscoroutinefunction(self.fs._rm):
+            with suppress(*self.allowed_exceptions):
+                await self.fs._rm(path_to_delete, recursive=True)
+        else:
+            raise NotImplementedError("The store does not support async deletes")
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
