@@ -56,6 +56,9 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         zarr.group(store=store)
 
     def test_invalid_root_raises(self):
+        """
+        Test that a TypeError is raised when a non-str/Path type is used for the `root` argument
+        """
         with pytest.raises(TypeError):
             LocalStore(root=0)
 
