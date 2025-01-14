@@ -573,8 +573,8 @@ class AsyncGroup:
             v2_consolidated_metadata = json.loads(consolidated_metadata_bytes.to_bytes())
             v2_consolidated_metadata = v2_consolidated_metadata["metadata"]
             # We already read zattrs and zgroup. Should we ignore these?
-            v2_consolidated_metadata.pop(".zattrs")
-            v2_consolidated_metadata.pop(".zgroup")
+            v2_consolidated_metadata.pop(".zattrs", None)
+            v2_consolidated_metadata.pop(".zgroup", None)
 
             consolidated_metadata: defaultdict[str, dict[str, Any]] = defaultdict(dict)
 
