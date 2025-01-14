@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 T_Store = TypeVar("T_Store", bound=Store)
 
 
-class LoggingStore(WrapperStore[Store]):
+class LoggingStore(WrapperStore[T_Store]):
     """
     Store wrapper that logs all calls to the wrapped store.
 
@@ -45,7 +45,7 @@ class LoggingStore(WrapperStore[Store]):
 
     def __init__(
         self,
-        store: Store,
+        store: T_Store,
         log_level: str = "DEBUG",
         log_handler: logging.Handler | None = None,
     ) -> None:
