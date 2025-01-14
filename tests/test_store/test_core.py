@@ -11,29 +11,35 @@ from zarr.storage._common import contains_array, contains_group, make_store_path
 from zarr.storage._utils import normalize_path
 
 
+@pytest.mark.parametrize("path", ["foo", "foo/bar"])
 @pytest.mark.parametrize("write_group", [True, False])
 @pytest.mark.parametrize("zarr_format", [2, 3])
-async def test_contains_group(local_store, write_group: bool, zarr_format: ZarrFormat) -> None:
+async def test_contains_group(
+    local_store, path: str, write_group: bool, zarr_format: ZarrFormat
+) -> None:
     """
     Test that the contains_group method correctly reports the existence of a group.
     """
     root = Group.from_store(store=local_store, zarr_format=zarr_format)
     if write_group:
-        root.create_group("foo")
-    store_path = StorePath(local_store, path="foo")
+        root.create_group(path)
+    store_path = StorePath(local_store, path=path)
     assert await contains_group(store_path, zarr_format=zarr_format) == write_group
 
 
+@pytest.mark.parametrize("path", ["foo", "foo/bar"])
 @pytest.mark.parametrize("write_array", [True, False])
 @pytest.mark.parametrize("zarr_format", [2, 3])
-async def test_contains_array(local_store, write_array: bool, zarr_format: ZarrFormat) -> None:
+async def test_contains_array(
+    local_store, path: str, write_array: bool, zarr_format: ZarrFormat
+) -> None:
     """
     Test that the contains array method correctly reports the existence of an array.
     """
     root = Group.from_store(store=local_store, zarr_format=zarr_format)
     if write_array:
-        root.create_array("foo", shape=(100,), chunks=(10,), dtype="i4")
-    store_path = StorePath(local_store, path="foo")
+        root.create_array(path, shape=(100,), chunks=(10,), dtype="i4")
+    store_path = StorePath(local_store, path=path)
     assert await contains_array(store_path, zarr_format=zarr_format) == write_array
 
 
