@@ -13,6 +13,8 @@ Bug fixes
 
 * Fixes a bug that prevented reading Zarr format 2 data with consolidated metadata written using ``zarr-python`` version 2 (:issue:`2694`).
 
+* Ensure that compressor=None results in no compression when writing Zarr format 2 data (:issue:`2708`)
+
 Behaviour changes
 ~~~~~~~~~~~~~~~~~
 
