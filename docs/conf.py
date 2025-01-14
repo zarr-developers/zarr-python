@@ -51,6 +51,8 @@ extensions = [
     'sphinx_reredirects',
 ]
 
+nitpicky = True
+
 issues_github_path = "zarr-developers/zarr-python"
 
 autoapi_dirs = ['../src/zarr']
