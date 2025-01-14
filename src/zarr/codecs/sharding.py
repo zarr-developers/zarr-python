@@ -86,9 +86,9 @@ class _ShardingByteGetter(ByteGetter):
         self, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         assert byte_range is None, "byte_range is not supported within shards"
-        assert (
-            prototype == default_buffer_prototype()
-        ), f"prototype is not supported within shards currently. diff: {prototype} != {default_buffer_prototype()}"
+        assert prototype == default_buffer_prototype(), (
+            f"prototype is not supported within shards currently. diff: {prototype} != {default_buffer_prototype()}"
+        )
         return self.shard_dict.get(self.chunk_coords)
 
 

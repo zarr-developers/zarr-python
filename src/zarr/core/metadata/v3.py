@@ -373,9 +373,9 @@ class ArrayV3Metadata(Metadata):
     def get_chunk_spec(
         self, _chunk_coords: ChunkCoords, array_config: ArrayConfig, prototype: BufferPrototype
     ) -> ArraySpec:
-        assert isinstance(
-            self.chunk_grid, RegularChunkGrid
-        ), "Currently, only regular chunk grid is supported"
+        assert isinstance(self.chunk_grid, RegularChunkGrid), (
+            "Currently, only regular chunk grid is supported"
+        )
         return ArraySpec(
             shape=self.chunk_grid.chunk_shape,
             dtype=self.dtype,

@@ -289,9 +289,9 @@ def is_pure_orthogonal_indexing(selection: Selection, ndim: int) -> TypeGuard[Or
 def get_chunk_shape(chunk_grid: ChunkGrid) -> ChunkCoords:
     from zarr.core.chunk_grids import RegularChunkGrid
 
-    assert isinstance(
-        chunk_grid, RegularChunkGrid
-    ), "Only regular chunk grid is supported, currently."
+    assert isinstance(chunk_grid, RegularChunkGrid), (
+        "Only regular chunk grid is supported, currently."
+    )
     return chunk_grid.chunk_shape
 
 
