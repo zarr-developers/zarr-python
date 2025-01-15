@@ -7,11 +7,15 @@ import numpy as np
 import pytest
 from numcodecs import Delta
 from numcodecs.blosc import Blosc
+from numcodecs.zstd import Zstd
 
 import zarr
 import zarr.core.buffer
 import zarr.storage
 from zarr import config
+from zarr.abc.store import Store
+from zarr.core.buffer.core import default_buffer_prototype
+from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
 
 
@@ -91,11 +95,7 @@ async def test_v2_encode_decode(dtype):
         store = zarr.storage.MemoryStore()
         g = zarr.group(store=store, zarr_format=2)
         g.create_array(
-            name="foo",
-            shape=(3,),
-            chunks=(3,),
-            dtype=dtype,
-            fill_value=b"X",
+            name="foo", shape=(3,), chunks=(3,), dtype=dtype, fill_value=b"X", compressor=None
         )
 
         result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
@@ -164,38 +164,79 @@ def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     np.testing.assert_array_equal(result, array_fixture)
 
 
+@pytest.mark.filterwarnings("ignore")
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_create_array_defaults(store: Store):
+    """
+    Test that passing compressor=None results in no compressor. Also test that the default value of the compressor
+    parameter does produce a compressor.
+    """
+    g = zarr.open(store, mode="w", zarr_format=2)
+    arr = g.create_array("one", dtype="i8", shape=(1,), chunks=(1,), compressor=None)
+    assert arr._async_array.compressor is None
+    assert not (arr.filters)
+    arr = g.create_array("two", dtype="i8", shape=(1,), chunks=(1,))
+    assert arr._async_array.compressor is not None
+    assert not (arr.filters)
+    arr = g.create_array("three", dtype="i8", shape=(1,), chunks=(1,), compressor=Zstd())
+    assert arr._async_array.compressor is not None
+    assert not (arr.filters)
+    with pytest.raises(ValueError):
+        g.create_array(
+            "four", dtype="i8", shape=(1,), chunks=(1,), compressor=None, compressors=None
+        )
+
+
 @pytest.mark.parametrize("array_order", ["C", "F"])
 @pytest.mark.parametrize("data_order", ["C", "F"])
-def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["C", "F"]) -> None:
+@pytest.mark.parametrize("memory_order", ["C", "F"])
+def test_v2_non_contiguous(
+    array_order: Literal["C", "F"], data_order: Literal["C", "F"], memory_order: Literal["C", "F"]
+) -> None:
+    store = MemoryStore()
     arr = zarr.create_array(
-        MemoryStore({}),
+        store,
         shape=(10, 8),
         chunks=(3, 3),
         fill_value=np.nan,
         dtype="float64",
         zarr_format=2,
+        filters=None,
+        compressors=None,
         overwrite=True,
         order=array_order,
+        config={"order": memory_order},
     )
 
     # Non-contiguous write
     a = np.arange(arr.shape[0] * arr.shape[1]).reshape(arr.shape, order=data_order)
-    arr[slice(6, 9, None), slice(3, 6, None)] = a[
-        slice(6, 9, None), slice(3, 6, None)
-    ]  # The slice on the RHS is important
-    np.testing.assert_array_equal(
-        arr[slice(6, 9, None), slice(3, 6, None)], a[slice(6, 9, None), slice(3, 6, None)]
-    )
+    arr[6:9, 3:6] = a[6:9, 3:6]  # The slice on the RHS is important
+    np.testing.assert_array_equal(arr[6:9, 3:6], a[6:9, 3:6])
 
+    np.testing.assert_array_equal(
+        a[6:9, 3:6],
+        np.frombuffer(
+            sync(store.get("2.1", default_buffer_prototype())).to_bytes(), dtype="float64"
+        ).reshape((3, 3), order=array_order),
+    )
+    if memory_order == "F":
+        assert (arr[6:9, 3:6]).flags.f_contiguous
+    else:
+        assert (arr[6:9, 3:6]).flags.c_contiguous
+
+    store = MemoryStore()
     arr = zarr.create_array(
-        MemoryStore({}),
+        store,
         shape=(10, 8),
         chunks=(3, 3),
         fill_value=np.nan,
         dtype="float64",
         zarr_format=2,
+        compressors=None,
+        filters=None,
         overwrite=True,
         order=array_order,
+        config={"order": memory_order},
     )
 
     # Contiguous write
@@ -204,8 +245,8 @@ def test_v2_non_contiguous(array_order: Literal["C", "F"], data_order: Literal["
         assert a.flags.f_contiguous
     else:
         assert a.flags.c_contiguous
-    arr[slice(6, 9, None), slice(3, 6, None)] = a
-    np.testing.assert_array_equal(arr[slice(6, 9, None), slice(3, 6, None)], a)
+    arr[6:9, 3:6] = a
+    np.testing.assert_array_equal(arr[6:9, 3:6], a)
 
 
 def test_default_compressor_deprecation_warning():

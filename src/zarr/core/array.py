@@ -4,7 +4,7 @@ import json
 import warnings
 from asyncio import gather
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from itertools import starmap
 from logging import getLogger
 from typing import (
@@ -1227,14 +1227,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 fill_value=self.metadata.fill_value,
             )
         if product(indexer.shape) > 0:
+            # need to use the order from the metadata for v2
+            _config = self._config
+            if self.metadata.zarr_format == 2:
+                _config = replace(_config, order=self.metadata.order)
+
             # reading chunks and decoding them
             await self.codec_pipeline.read(
                 [
                     (
                         self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                        self.metadata.get_chunk_spec(
-                            chunk_coords, self._config, prototype=prototype
-                        ),
+                        self.metadata.get_chunk_spec(chunk_coords, _config, prototype=prototype),
                         chunk_selection,
                         out_selection,
                     )
@@ -1351,12 +1354,17 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # Buffer and NDBuffer between components.
         value_buffer = prototype.nd_buffer.from_ndarray_like(value)
 
+        # need to use the order from the metadata for v2
+        _config = self._config
+        if self.metadata.zarr_format == 2:
+            _config = replace(_config, order=self.metadata.order)
+
         # merging with existing data and encoding chunks
         await self.codec_pipeline.write(
             [
                 (
                     self.store_path / self.metadata.encode_chunk_key(chunk_coords),
-                    self.metadata.get_chunk_spec(chunk_coords, self._config, prototype),
+                    self.metadata.get_chunk_spec(chunk_coords, _config, prototype),
                     chunk_selection,
                     out_selection,
                 )
@@ -4393,15 +4401,22 @@ def _parse_chunk_encoding_v3(
 
 
 def _parse_deprecated_compressor(
-    compressor: CompressorLike | None, compressors: CompressorsLike
+    compressor: CompressorLike | None, compressors: CompressorsLike, zarr_format: int = 3
 ) -> CompressorsLike | None:
-    if compressor:
+    if compressor != "auto":
         if compressors != "auto":
             raise ValueError("Cannot specify both `compressor` and `compressors`.")
-        warn(
-            "The `compressor` argument is deprecated. Use `compressors` instead.",
-            category=UserWarning,
-            stacklevel=2,
-        )
-        compressors = (compressor,)
+        if zarr_format == 3:
+            warn(
+                "The `compressor` argument is deprecated. Use `compressors` instead.",
+                category=UserWarning,
+                stacklevel=2,
+            )
+        if compressor is None:
+            # "no compression"
+            compressors = ()
+        else:
+            compressors = (compressor,)
+    elif zarr_format == 2 and compressor == compressors == "auto":
+        compressors = ({"id": "blosc"},)
     return compressors

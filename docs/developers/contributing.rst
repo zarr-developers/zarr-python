@@ -329,10 +329,16 @@ Release procedure
    Most of the release process is now handled by GitHub workflow which should
    automatically push a release to PyPI if a tag is pushed.
 
-Before releasing, make sure that all pull requests which will be
-included in the release have been properly documented in
-`docs/release.rst`.
+Pre-release
+"""""""""""
+1. Make sure that all pull requests which will be
+   included in the release have been properly documented in
+   :file:`docs/release-notes.rst`.
+2. Rename the "Unreleased" section heading in :file:`docs/release-notes.rst`
+   to the version you are about to release.
 
+Releasing
+"""""""""
 To make a new release, go to
 https://github.com/zarr-developers/zarr-python/releases and
 click "Draft a new release". Choose a version number prefixed
@@ -355,5 +361,8 @@ https://readthedocs.io. Full releases will be available under
 pre-releases will be available under
 `/latest <https://zarr.readthedocs.io/en/latest>`_.
 
-Also review and merge the https://github.com/conda-forge/zarr-feedstock
-pull request that will be automatically generated.
+Post-release
+""""""""""""
+
+- Review and merge the pull request on the `conda-forge feedstock <https://github.com/conda-forge/zarr-feedstock>`_ that will be automatically generated.
+- Create a new "Unreleased" section in the release notes
