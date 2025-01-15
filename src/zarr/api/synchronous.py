@@ -897,6 +897,7 @@ def create_array(
 def from_array(
     data: Array | npt.ArrayLike,
     store: str | StoreLike,
+    write_data: bool = True,
     *,
     name: str | None = None,
     chunks: Literal["auto", "keep"] | ChunkCoords = "keep",
@@ -922,6 +923,10 @@ def from_array(
         The array to copy.
     store : str or Store
         Store or path to directory in file system or name of zip file for the new array.
+    write_data : bool, default True
+        Whether to copy the data from the input array to the new array.
+        If ``write_data`` is ``False``, the new array will be created with the same metadata as the
+        input array, but without any data.
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
@@ -1014,6 +1019,7 @@ def from_array(
             zarr.core.array.from_array(
                 data,
                 store,
+                write_data,
                 name=name,
                 chunks=chunks,
                 shards=shards,

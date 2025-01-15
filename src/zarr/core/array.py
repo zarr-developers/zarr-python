@@ -3738,6 +3738,7 @@ ShardsLike: TypeAlias = ChunkCoords | ShardsConfigParam | Literal["auto"]
 async def from_array(
     data: Array | npt.ArrayLike,
     store: str | StoreLike,
+    write_data: bool = True,
     *,
     name: str | None = None,
     chunks: Literal["auto", "keep"] | ChunkCoords = "keep",
@@ -3766,6 +3767,10 @@ async def from_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
+    write_data : bool, default True
+        Whether to copy the data from the input array to the new array.
+        If ``write_data`` is ``False``, the new array will be created with the same metadata as the
+        input array, but without any data.
     chunks : ChunkCoords or "auto" or "keep", optional
         Chunk shape of the array.
         If not specified, defaults to the chunk shape of the data array.
@@ -3893,6 +3898,9 @@ async def from_array(
             compressors = "auto"
         if serializer == "keep":
             serializer = "auto"
+    if not hasattr(data, "dtype") or not hasattr(data, "shape"):
+        data = np.array(data)
+        print(data.shape)
     new_array = await create_array(
         store,
         name=name,
@@ -3913,29 +3921,30 @@ async def from_array(
         overwrite=overwrite,
         config=config,
     )
-    if isinstance(data, Array):
+    if write_data:
+        if isinstance(data, Array):
 
-        async def _copy_region(chunk_coords: ChunkCoords | slice, _data: Array) -> None:
-            arr = await _data._async_array.getitem(chunk_coords)
-            await new_array.setitem(chunk_coords, arr)
+            async def _copy_region(chunk_coords: ChunkCoords | slice, _data: Array) -> None:
+                arr = await _data._async_array.getitem(chunk_coords)
+                await new_array.setitem(chunk_coords, arr)
 
-        # Stream data from the source array to the new array
-        await concurrent_map(
-            [(region, data) for region in new_array._iter_chunk_regions()],
-            _copy_region,
-            zarr.core.config.config.get("async.concurrency"),
-        )
-    else:
+            # Stream data from the source array to the new array
+            await concurrent_map(
+                [(region, data) for region in new_array._iter_chunk_regions()],
+                _copy_region,
+                zarr.core.config.config.get("async.concurrency"),
+            )
+        else:
 
-        async def _copy_region(chunk_coords: ChunkCoords | slice, _data: npt.ArrayLike) -> None:
-            await new_array.setitem(chunk_coords, _data[chunk_coords])
+            async def _copy_region(chunk_coords: ChunkCoords | slice, _data: npt.ArrayLike) -> None:
+                await new_array.setitem(chunk_coords, _data[chunk_coords])
 
-        # Stream data from the source array to the new array
-        await concurrent_map(
-            [(region, data) for region in new_array._iter_chunk_regions()],
-            _copy_region,
-            zarr.core.config.config.get("async.concurrency"),
-        )
+            # Stream data from the source array to the new array
+            await concurrent_map(
+                [(region, data) for region in new_array._iter_chunk_regions()],
+                _copy_region,
+                zarr.core.config.config.get("async.concurrency"),
+            )
     return new_array
 
 
