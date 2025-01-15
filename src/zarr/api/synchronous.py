@@ -1029,45 +1029,49 @@ def from_array(
 
     Examples
     --------
-    Create an array from an existing Array:
-    >>> import zarr
-    >>> store = zarr.storage.MemoryStore()
-    >>> store2 = zarr.storage.LocalStore('example.zarr')
-    >>> arr = zarr.create_array(
-    >>>     store=store,
-    >>>     shape=(100,100),
-    >>>     chunks=(10,10),
-    >>>     dtype='int32',
-    >>>     fill_value=0)
-    >>> arr2 = zarr.from_array(arr, store=store2)
-    <Array file://example.zarr shape=(100, 100) dtype=int32>
+    Create an array from an existing Array::
 
-    Create an array from an existing NumPy array:
-    >>> import numpy as np
-    >>> arr3 = zarr.from_array(
-    >>>     np.arange(10000, dtype='i4').reshape(100, 100),
-    >>>     store=zarr.storage.MemoryStore(),
-    >>> )
-    <Array memory://125477403529984 shape=(100, 100) dtype=int32>
+        >>> import zarr
+        >>> store = zarr.storage.MemoryStore()
+        >>> store2 = zarr.storage.LocalStore('example.zarr')
+        >>> arr = zarr.create_array(
+        >>>     store=store,
+        >>>     shape=(100,100),
+        >>>     chunks=(10,10),
+        >>>     dtype='int32',
+        >>>     fill_value=0)
+        >>> arr2 = zarr.from_array(arr, store=store2)
+        <Array file://example.zarr shape=(100, 100) dtype=int32>
 
-    Create an array from any array-like object:
-    >>> arr4 = zarr.from_array(
-    >>>     [[1, 2], [3, 4]],
-    >>>     store= zarr.storage.MemoryStore(),
-    >>> )
-    <Array memory://125477392154368 shape=(2, 2) dtype=int64>
-    >>> arr4[...]
-    array([[1, 2],[3, 4]])
+    Create an array from an existing NumPy array::
 
-    Create an array from an existing Array without copying the data:
-    >>> arr5 = zarr.from_array(
-    >>>     arr4,
-    >>>     store=zarr.storage.MemoryStore(),
-    >>>     write_data=False,
-    >>> )
-    <Array memory://140678602965568 shape=(2, 2) dtype=int64>
-    >>> arr5[...]
-    array([[0, 0],[0, 0]])
+        >>> import numpy as np
+        >>> arr3 = zarr.from_array(
+        >>>     np.arange(10000, dtype='i4').reshape(100, 100),
+        >>>     store=zarr.storage.MemoryStore(),
+        >>> )
+        <Array memory://125477403529984 shape=(100, 100) dtype=int32>
+
+    Create an array from any array-like object::
+
+        >>> arr4 = zarr.from_array(
+        >>>     [[1, 2], [3, 4]],
+        >>>     store= zarr.storage.MemoryStore(),
+        >>> )
+        <Array memory://125477392154368 shape=(2, 2) dtype=int64>
+        >>> arr4[...]
+        array([[1, 2],[3, 4]])
+
+    Create an array from an existing Array without copying the data::
+
+        >>> arr5 = zarr.from_array(
+        >>>     arr4,
+        >>>     store=zarr.storage.MemoryStore(),
+        >>>     write_data=False,
+        >>> )
+        <Array memory://140678602965568 shape=(2, 2) dtype=int64>
+        >>> arr5[...]
+        array([[0, 0],[0, 0]])
     """
     return Array(
         sync(
