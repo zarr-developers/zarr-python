@@ -3,8 +3,10 @@ from __future__ import annotations
 import contextlib
 import operator
 import pickle
+import re
 import time
 import warnings
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -19,14 +21,20 @@ from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata
-from zarr.core.sync import sync
+from zarr.core.group import (
+    ConsolidatedMetadata,
+    GroupMetadata,
+    _from_flat,
+    create_hierarchy,
+    create_nodes,
+)
+from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
 from zarr.testing.store import LatencyStore
 
-from .conftest import parse_store
+from .conftest import meta_from_array, parse_store
 
 if TYPE_CHECKING:
     from _pytest.compat import LEGACY_PATH
@@ -1443,7 +1451,172 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_group_members_performance(store: MemoryStore) -> None:
+async def test_create_nodes(store: Store, zarr_format: ZarrFormat) -> None:
+    """
+    Ensure that ``create_nodes`` can create a zarr hierarchy from a model of that
+    hierarchy in dict form. Note that this creates an incomplete Zarr hierarchy.
+    """
+    path = "foo"
+    expected_meta = {
+        "group": GroupMetadata(attributes={"foo": 10}),
+        "group/array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
+        "group/array_1": meta_from_array(np.arange(4), zarr_format=zarr_format),
+        "group/subgroup/array_0": meta_from_array(np.arange(4), zarr_format=zarr_format),
+        "group/subgroup/array_1": meta_from_array(np.arange(5), zarr_format=zarr_format),
+    }
+    spath = await make_store_path(store, path="foo")
+    observed_nodes = {
+        str(PurePosixPath(a.name).relative_to("/" + path)): a
+        async for a in create_nodes(store_path=spath, nodes=expected_meta)
+    }
+    assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("overwrite", [True, False])
+async def test_create_hierarchy(store: Store, overwrite: bool, zarr_format: ZarrFormat) -> None:
+    """
+    Test that ``create_hierarchy`` can create a complete Zarr hierarchy, even if the input describes
+    an incomplete one.
+    """
+    path = "foo"
+    hierarchy_spec = {
+        "group": GroupMetadata(attributes={"foo": 10}, zarr_format=zarr_format),
+        "group/array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
+        "group/array_1": meta_from_array(np.arange(4), zarr_format=zarr_format),
+        "group/subgroup/array_0": meta_from_array(np.arange(4), zarr_format=zarr_format),
+        "group/subgroup/array_1": meta_from_array(np.arange(5), zarr_format=zarr_format),
+    }
+    pre_existing_nodes = {"extra": GroupMetadata(zarr_format=zarr_format)}
+    # we expect create_hierarchy to insert a group that was missing from the hierarchy spec
+    expected_meta = hierarchy_spec | {"group/subgroup": GroupMetadata(zarr_format=zarr_format)}
+    spath = await make_store_path(store, path=path)
+    # initialize the group with some nodes
+    await _collect_aiterator(_from_flat(store_path=spath, nodes=pre_existing_nodes))
+    observed_nodes = {
+        str(PurePosixPath(a.name).relative_to("/" + path)): a
+        async for a in create_hierarchy(store_path=spath, nodes=expected_meta, overwrite=overwrite)
+    }
+    assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_group_create_hierarchy(store: Store, zarr_format: ZarrFormat):
+    """
+    Test that the Group.create_hierarchy method creates specified nodes and returns them in a dict.
+    """
+    g = Group.from_store(store, zarr_format=zarr_format)
+    tree = {
+        "a": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a"}),
+        "a/b": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a/b"}),
+        "a/b/c": meta_from_array(
+            np.zeros(5), zarr_format=zarr_format, attributes={"name": "a/b/c"}
+        ),
+    }
+    nodes = g.create_hierarchy(tree)
+    for k, v in g.members(max_depth=None):
+        assert v.metadata == tree[k] == nodes[k].metadata
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_group_create_hierarchy_invalid_mixed_zarr_format(store: Store, zarr_format: ZarrFormat):
+    """
+    Test that ```Group.create_hierarchy``` will raise an error if the zarr_format of the nodes is
+    different from the parent group.
+    """
+    other_format = 2 if zarr_format == 3 else 3
+    g = Group.from_store(store, zarr_format=other_format)
+    tree = {
+        "a": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a"}),
+        "a/b": meta_from_array(np.zeros(5), zarr_format=zarr_format, attributes={"name": "a/c"}),
+    }
+
+    msg = "The zarr_format of the nodes must be the same as the parent group."
+    with pytest.raises(ValueError, match=msg):
+        _ = g.create_hierarchy(tree)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("defect", ["array/array", "array/group"])
+async def test_create_hierarchy_invalid_nested(
+    store: Store, defect: tuple[str, str], zarr_format
+) -> None:
+    """
+    Test that create_hierarchy will not create a Zarr array that contains a Zarr group
+    or Zarr array.
+    """
+
+    if defect == "array/array":
+        hierarchy_spec = {
+            "array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
+            "array_0/subarray": meta_from_array(np.arange(4), zarr_format=zarr_format),
+        }
+    elif defect == "array/group":
+        hierarchy_spec = {
+            "array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
+            "array_0/subgroup": GroupMetadata(attributes={"foo": 10}, zarr_format=zarr_format),
+        }
+
+    msg = "Only Zarr groups can contain other nodes."
+    with pytest.raises(ValueError, match=msg):
+        spath = await make_store_path(store, path="foo")
+        await _collect_aiterator(create_hierarchy(store_path=spath, nodes=hierarchy_spec))
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_hierarchy_invalid_mixed_format(store: Store):
+    """
+    Test that create_hierarchy will not create a Zarr group that contains a both Zarr v2 and
+    Zarr v3 nodes.
+    """
+    spath = await make_store_path(store, path="foo")
+    msg = (
+        "Got data with both Zarr v2 and Zarr v3 nodes, which is invalid. "
+        "The following keys map to Zarr v2 nodes: ['v2']. "
+        "The following keys map to Zarr v3 nodes: ['v3']."
+        "Ensure that all nodes have the same Zarr format."
+    )
+    with pytest.raises(ValueError, match=re.escape(msg)):
+        await _collect_aiterator(
+            create_hierarchy(
+                store_path=spath,
+                nodes={
+                    "v2": GroupMetadata(zarr_format=2),
+                    "v3": GroupMetadata(zarr_format=3),
+                },
+            )
+        )
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("root_key", ["", "a", "a/b"])
+@pytest.mark.parametrize("path", ["", "foo"])
+async def test_group_from_flat(store: Store, zarr_format, path: str, root_key: str):
+    """
+    Test that the AsyncGroup.from_flat method creates a zarr group in one shot.
+    """
+    spath = await make_store_path(store, path=path)
+    root_meta = {root_key: GroupMetadata(zarr_format=zarr_format, attributes={"path": root_key})}
+    members_expected_meta = {
+        f"{root_key}/b": GroupMetadata(
+            zarr_format=zarr_format, attributes={"path": f"{root_key}/b"}
+        ),
+        f"{root_key}/b/c": GroupMetadata(
+            zarr_format=zarr_format, attributes={"path": f"{root_key}/b/c"}
+        ),
+    }
+    g = await _from_flat(spath, nodes=root_meta | members_expected_meta)
+    members = await _collect_aiterator(g.members(max_depth=None))
+    members_observed_meta = {k: v.metadata for k, v in members}
+    members_expected_meta_relative = {
+        str(PurePosixPath(k).relative_to(root_key)): v for k, v in members_expected_meta.items()
+    }
+    assert members_observed_meta == members_expected_meta_relative
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_group_members_performance(store: Store) -> None:
     """
     Test that the execution time of Group.members is less than the number of members times the
     latency for accessing each member.

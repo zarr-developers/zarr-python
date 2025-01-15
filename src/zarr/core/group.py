@@ -1,13 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import itertools
 import json
 import logging
 import warnings
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
-from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
+from itertools import accumulate
+from pathlib import PurePosixPath
+from typing import (
+    TYPE_CHECKING,
+    Literal,
+    TypeVar,
+    assert_never,
+    cast,
+    overload,
+)
 
 import numpy as np
 import numpy.typing as npt
@@ -54,7 +64,15 @@ from zarr.storage import StoreLike, StorePath
 from zarr.storage._common import ensure_no_existing_node, make_store_path
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncGenerator, Generator, Iterable, Iterator
+    from collections.abc import (
+        AsyncGenerator,
+        AsyncIterator,
+        Coroutine,
+        Generator,
+        Iterable,
+        Iterator,
+        Mapping,
+    )
     from typing import Any
 
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
@@ -415,6 +433,9 @@ class AsyncGroup:
 
     metadata: GroupMetadata
     store_path: StorePath
+
+    # TODO: make this correct and work
+    # TODO: ensure that this can be bound properly to subclass of AsyncGroup
 
     @classmethod
     async def from_store(
@@ -1407,6 +1428,33 @@ class AsyncGroup:
         ):
             yield member
 
+    # TODO: find a better name for this. create_tree could work.
+    # TODO: include an example in the docstring
+    async def create_hierarchy(
+        self, nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]
+    ) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+        """
+        Create a hierarchy of arrays or groups rooted at this group.
+
+        This method takes a dictionary where the keys are the names of the arrays or groups
+        to create and the values are the metadata or objects representing the arrays or groups.
+
+        The method returns an asynchronous iterator over the created nodes.
+
+        Parameters
+        ----------
+        nodes : A dictionary representing the hierarchy to create
+
+        Returns
+        -------
+            An asynchronous iterator over the created nodes.
+        """
+        semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+        async for node in create_hierarchy(
+            store_path=self.store_path, nodes=nodes, semaphore=semaphore
+        ):
+            yield node
+
     async def keys(self) -> AsyncGenerator[str, None]:
         """Iterate over member names."""
         async for key, _ in self.members():
@@ -2028,6 +2076,43 @@ class Group(SyncMixin):
         _members = self._sync_iter(self._async_group.members(max_depth=max_depth))
 
         return tuple((kv[0], _parse_async_node(kv[1])) for kv in _members)
+
+    def create_hierarchy(
+        self, nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]
+    ) -> dict[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+        """
+        Create a hierarchy of arrays or groups rooted at this group.
+
+        This method takes a dictionary where the keys are the names of the arrays or groups
+        to create and the values are the metadata objects for the arrays or groups.
+
+        The method returns a dict containing the created nodes.
+
+        Parameters
+        ----------
+        nodes : A dictionary representing the hierarchy to create. The keys should be relative paths
+            and the values should be the metadata for the arrays or groups to create.
+
+        Returns
+        -------
+            A dict containing the created nodes, with the same keys as the input
+        """
+        # check that all the nodes have the same zarr_format as Self
+        for key, value in nodes.items():
+            if value.zarr_format != self.metadata.zarr_format:
+                msg = (
+                    "The zarr_format of the nodes must be the same as the parent group. "
+                    f"The node at {key} has zarr_format {value.zarr_format}, but the parent group"
+                    f" has zarr_format {self.metadata.zarr_format}."
+                )
+                raise ValueError(msg)
+        nodes_created = self._sync_iter(self._async_group.create_hierarchy(nodes))
+        if self.path == "":
+            root = "/"
+        else:
+            root = self.path
+        # TODO: make this safe against invalid path inputs
+        return {str(PurePosixPath(n.name).relative_to(root)): n for n in nodes_created}
 
     def keys(self) -> Generator[str, None]:
         """Return an iterator over group member names.
@@ -2765,6 +2850,188 @@ class Group(SyncMixin):
         )
 
 
+async def create_hierarchy(
+    *,
+    store_path: StorePath,
+    nodes: dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata],
+    semaphore: asyncio.Semaphore | None = None,
+    overwrite: bool = False,
+) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+    """
+    Create a complete zarr hierarchy concurrently. Groups that are implicitly defined by the input
+    ``nodes`` will be created as needed.
+
+    This function takes a parsed hierarchy dictionary and creates all the nodes in the hierarchy
+    concurrently. The groups and arrays in the hierarchy are created in a single pass, and the
+    function yields the created nodes in the order they are created.
+
+    Parameters
+    ----------
+    store_path : StorePath
+        The StorePath object pointing to the root of the hierarchy.
+    nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
+        A dictionary defining the hierarchy. The keys are the paths of the nodes
+        in the hierarchy, and the values are the metadata of the nodes. The
+        metadata must be either an instance of GroupMetadata, ArrayV3Metadata
+        or ArrayV2Metadata.
+    semaphore : asyncio.Semaphore | None
+        An optional semaphore to limit the number of concurrent tasks. If not
+        provided, the number of concurrent tasks is not limited.
+
+    Yields
+    ------
+    AsyncGroup | AsyncArray
+        The created nodes in the order they are created.
+    """
+    nodes_parsed = _parse_hierarchy_dict(nodes)
+    if overwrite:
+        await store_path.delete_dir()
+    async for node in create_nodes(store_path=store_path, nodes=nodes_parsed, semaphore=semaphore):
+        yield node
+
+
+async def create_nodes(
+    *,
+    store_path: StorePath,
+    nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    semaphore: asyncio.Semaphore | None = None,
+) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+    """
+    Create a collection of zarr v2 arrays and groups concurrently and atomically. To ensure atomicity,
+    no attempt is made to ensure that intermediate groups are created.
+    """
+    ctx: asyncio.Semaphore | contextlib.nullcontext[None]
+    if semaphore is None:
+        ctx = contextlib.nullcontext()
+    else:
+        ctx = semaphore
+
+    create_tasks: list[Coroutine[None, None, str]] = []
+    for key, value in nodes.items():
+        write_key = f"{store_path.path}/{key}".lstrip("/")
+        create_tasks.extend(_persist_metadata(store_path.store, write_key, value))
+
+    created_keys = []
+    async with ctx:
+        for coro in asyncio.as_completed(create_tasks):
+            created_key = await coro
+            # the created key will be in the store key space. we have to remove the store_path.path
+            # component of that path to bring it back to the relative key space of store_path
+
+            relative_path = created_key.removeprefix(store_path.path).lstrip("/")
+            created_keys.append(relative_path)
+
+            if len(relative_path.split("/")) == 1:
+                node_name = ""
+            else:
+                node_name = "/".join(["", *relative_path.split("/")[:-1]])
+
+            meta_out = nodes[node_name]
+
+            if meta_out.zarr_format == 3:
+                if isinstance(meta_out, GroupMetadata):
+                    yield AsyncGroup(metadata=meta_out, store_path=store_path / node_name)
+                else:
+                    yield AsyncArray(metadata=meta_out, store_path=store_path / node_name)
+            else:
+                # For zarr v2
+                # we only want to yield when both the metadata and attributes are created
+                # so we track which keys have been created, and wait for both the meta key and
+                # the attrs key to be created before yielding back the AsyncArray / AsyncGroup
+
+                attrs_done = f"{node_name}/.zattrs".lstrip("/") in created_keys
+
+                if isinstance(meta_out, GroupMetadata):
+                    meta_done = f"{node_name}/.zgroup".lstrip("/") in created_keys
+                else:
+                    meta_done = f"{node_name}/.zarray".lstrip("/") in created_keys
+
+                if meta_done and attrs_done:
+                    if isinstance(meta_out, GroupMetadata):
+                        yield AsyncGroup(metadata=meta_out, store_path=store_path / node_name)
+                    else:
+                        yield AsyncArray(metadata=meta_out, store_path=store_path / node_name)
+                continue
+
+
+T = TypeVar("T")
+
+
+def _get_roots(
+    data: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+) -> tuple[str, ...]:
+    """
+    Return the keys of the root(s) of the hierarchy
+    """
+    keys_split = sorted((key.split("/") for key in data), key=len)
+    groups: defaultdict[int, list[str]] = defaultdict(list)
+    for key_split in keys_split:
+        groups[len(key_split)].append("/".join(key_split))
+    return tuple(groups[min(groups.keys())])
+
+
+def _parse_hierarchy_dict(
+    data: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+) -> dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]:
+    """
+    If the input represents a complete Zarr hierarchy, i.e. one with no implicit groups,
+    then return an identical copy of that dict. Otherwise, return a version of the input dict
+    with groups added where they are needed to make the hierarchy explicit.
+
+    For example, an input of {'a/b/c': ...} will result in a return value of
+    {'a': GroupMetadata, 'a/b': GroupMetadata, 'a/b/c': ...}.
+
+    The input is also checked for the following conditions, and an error is raised if any
+    of them are violated:
+
+    - No arrays can contain group or arrays (i.e., all arrays must be leaf nodes).
+    - All arrays and groups must have the same ``zarr_format`` value.
+
+    This function ensures that the input is transformed into a specification of a complete and valid
+    Zarr hierarchy.
+    """
+    # Create a copy of the input dict
+    out: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {**data}
+
+    observed_zarr_formats: dict[ZarrFormat, list[str]] = {2: [], 3: []}
+
+    # We will iterate over the dict again, but a full pass here ensures that the error message
+    # is comprehensive, and I think the performance cost will be negligible.
+    for k, v in data.items():
+        observed_zarr_formats[v.zarr_format].append(k)
+
+    if len(observed_zarr_formats[2]) > 0 and len(observed_zarr_formats[3]) > 0:
+        msg = (
+            "Got data with both Zarr v2 and Zarr v3 nodes, which is invalid. "
+            f"The following keys map to Zarr v2 nodes: {observed_zarr_formats.get(2)}. "
+            f"The following keys map to Zarr v3 nodes: {observed_zarr_formats.get(3)}."
+            "Ensure that all nodes have the same Zarr format."
+        )
+
+        raise ValueError(msg)
+
+    for k, v in data.items():
+        # TODO: ensure that the key is a valid path
+        # Split the key into its path components
+        key_split = k.split("/")
+
+        # Iterate over the intermediate path components
+        *subpaths, _ = accumulate(key_split, lambda a, b: f"{a}/{b}")
+        for subpath in subpaths:
+            # If a component is not already in the output dict, add a group
+            if subpath not in out:
+                out[subpath] = GroupMetadata(zarr_format=v.zarr_format)
+            else:
+                if not isinstance(out[subpath], GroupMetadata):
+                    msg = (
+                        f"The node at {subpath} contains other nodes, but it is not a Zarr group. "
+                        "This is invalid. Only Zarr groups can contain other nodes."
+                    )
+                    raise ValueError(msg)
+
+    return out
+
+
 async def _getitem_semaphore(
     node: AsyncGroup, key: str, semaphore: asyncio.Semaphore | None
 ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup:
@@ -2951,3 +3218,81 @@ def _build_node_v2(
             return AsyncGroup(metadata, store_path=store_path)
         case _:
             raise ValueError(f"Unexpected metadata type: {type(metadata)}")
+
+
+async def _set_return_key(*, store: Store, key: str, value: Buffer, replace: bool) -> str:
+    """
+    Either write a value to storage at the given key, or ensure that there is already a value in
+    storage at the given key. The key is returned in either case.
+    Useful when saving values via routines that return results in execution order,
+    like asyncio.as_completed, because in this case we need to know which key was saved in order
+    to yield the right object to the caller.
+
+    Parameters
+    ----------
+    store : Store
+        The store to save the value to.
+    key : str
+        The key to save the value to.
+    value : Buffer
+        The value to save.
+    replace : bool
+        If True, then the value will be written even if a value associated with the key
+        already exists in storage. If False, an existing value will not be overwritten.
+    """
+    if replace:
+        await store.set(key, value)
+    else:
+        await store.set_if_not_exists(key, value)
+    return key
+
+
+def _persist_metadata(
+    store: Store, path: str, metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata
+) -> tuple[Coroutine[None, None, str], ...]:
+    """
+    Prepare to save a metadata document to storage, returning a tuple of coroutines that must be awaited.
+    If ``metadata`` is an instance of ``_ImplicitGroupMetadata``, then _set_return_key will be invoked with
+    ``replace=False``, which defers to a pre-existing metadata document in storage if one exists. Otherwise, existing values will be overwritten.
+    """
+
+    to_save = metadata.to_buffer_dict(default_buffer_prototype())
+    return tuple(
+        _set_return_key(store=store, key=f"{path}/{key}".lstrip("/"), value=value, replace=True)
+        for key, value in to_save.items()
+    )
+
+
+async def _from_flat(
+    store_path: StorePath,
+    *,
+    nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    overwrite: bool = False,
+) -> AsyncGroup:
+    """
+    Create an ``AsyncGroup`` from a store + a dict of nodes.
+    """
+    roots = _get_roots(nodes)
+    if len(roots) != 1:
+        msg = (
+            "The input does not specify a root node. "
+            "This function can only create hierarchies that contain a root node, which is "
+            "defined as a group that is ancestral to all the other arrays and "
+            "groups in the hierarchy."
+        )
+        raise ValueError(msg)
+    else:
+        root = roots[0]
+
+    semaphore = asyncio.Semaphore(config.get("async.concurrency"))
+
+    nodes_created = {
+        x.path: x
+        async for x in create_hierarchy(
+            store_path=store_path, nodes=nodes, semaphore=semaphore, overwrite=overwrite
+        )
+    }
+    root_group = nodes_created[root]
+    if not isinstance(root_group, AsyncGroup):
+        raise TypeError("Invalid root node returned from create_hierarchy.")
+    return root_group
