@@ -7,6 +7,8 @@ Unreleased
 New features
 ~~~~~~~~~~~~
 
+* Implement ``zarr.from_array`` using concurrent streaming (:issue:`2622`).
+
 Bug fixes
 ~~~~~~~~~
 * Fixes ``order`` argument for Zarr format 2 arrays (:issue:`2679`).

@@ -985,7 +985,7 @@ def from_array(
         - dict[str, JSON]: A dict representation of an ``ArrayBytesCodec``.
         - ArrayBytesCodec: An instance of ``ArrayBytesCodec``.
         - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
-          `array.v3_default_serializer` in :mod:`zarr.core.config`.
+          ``array.v3_default_serializer`` in :mod:`zarr.core.config`.
         - "keep": Retain the serializer of the input array if it is a zarr Array.
 
     fill_value : Any, optional
