@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import inspect
 import logging
+import sys
 import time
 from collections import defaultdict
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self, TypeVar
 
 from zarr.abc.store import Store
 from zarr.storage._wrapper import WrapperStore
@@ -18,8 +19,10 @@ if TYPE_CHECKING:
 
     counter: defaultdict[str, int]
 
+T_Store = TypeVar("T_Store", bound=Store)
 
-class LoggingStore(WrapperStore[Store]):
+
+class LoggingStore(WrapperStore[T_Store]):
     """
     Store wrapper that logs all calls to the wrapped store.
 
@@ -42,7 +45,7 @@ class LoggingStore(WrapperStore[Store]):
 
     def __init__(
         self,
-        store: Store,
+        store: T_Store,
         log_level: str = "DEBUG",
         log_handler: logging.Handler | None = None,
     ) -> None:
@@ -67,7 +70,7 @@ class LoggingStore(WrapperStore[Store]):
 
     def _default_handler(self) -> logging.Handler:
         """Define a default log handler"""
-        handler = logging.StreamHandler()
+        handler = logging.StreamHandler(stream=sys.stdout)
         handler.setLevel(self.log_level)
         handler.setFormatter(
             logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -93,6 +96,14 @@ class LoggingStore(WrapperStore[Store]):
         finally:
             end_time = time.time()
             self.logger.info("Finished %s [%.2f s]", op, end_time - start_time)
+
+    @classmethod
+    async def open(cls: type[Self], store_cls: type[T_Store], *args: Any, **kwargs: Any) -> Self:
+        log_level = kwargs.pop("log_level", "DEBUG")
+        log_handler = kwargs.pop("log_handler", None)
+        store = store_cls(*args, **kwargs)
+        await store._open()
+        return cls(store=store, log_level=log_level, log_handler=log_handler)
 
     @property
     def supports_writes(self) -> bool:
@@ -155,7 +166,7 @@ class LoggingStore(WrapperStore[Store]):
 
     def __eq__(self, other: object) -> bool:
         with self.log(other):
-            return self._store == other
+            return type(self) is type(other) and self._store.__eq__(other._store)  # type: ignore[attr-defined]
 
     async def get(
         self,
