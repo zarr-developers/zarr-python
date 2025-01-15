@@ -232,7 +232,7 @@ async def load(
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
     zarr_version: ZarrFormat | None = None,
-) -> NDArrayLike | dict[str, NDArrayLike]:
+) -> npt.ArrayLike | dict[str, npt.ArrayLike]:
     """Load data from an array or group into memory.
 
     Parameters

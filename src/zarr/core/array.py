@@ -1204,7 +1204,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         prototype: BufferPrototype,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
-    ) -> NDArrayLike:
+    ) -> npt.ArrayLike:
         # check fields are sensible
         out_dtype = check_fields(fields, self.dtype)
 
@@ -1254,7 +1254,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         selection: BasicSelection,
         *,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> npt.ArrayLike:
         """
         Asynchronous function that retrieves a subset of the array's data based on the provided selection.
 
@@ -1267,7 +1267,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        NDArrayLike
+        npt.ArrayLike
             The retrieved subset of the array's data.
 
         Examples
@@ -2225,7 +2225,7 @@ class Array:
 
         return arr_np
 
-    def __getitem__(self, selection: Selection) -> NDArrayLike:
+    def __getitem__(self, selection: Selection) -> npt.ArrayLike:
         """Retrieve data for an item or region of the array.
 
         Parameters
@@ -2236,7 +2236,7 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
+        npt.ArrayLike
              An array-like containing the data for the requested region.
 
         Examples
@@ -2483,7 +2483,7 @@ class Array:
         out: NDBuffer | None = None,
         prototype: BufferPrototype | None = None,
         fields: Fields | None = None,
-    ) -> NDArrayLike:
+    ) -> npt.ArrayLike:
         """Retrieve data for an item or region of the array.
 
         Parameters
@@ -2703,7 +2703,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> npt.ArrayLike:
         """Retrieve data by making a selection for each dimension of the array. For
         example, if an array has 2 dimensions, allows selecting specific rows and/or
         columns. The selection for each dimension can be either an integer (indexing a
@@ -2939,7 +2939,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> npt.ArrayLike:
         """Retrieve a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
         values indicate a selected item.
@@ -3101,7 +3101,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> npt.ArrayLike:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
 
@@ -3289,7 +3289,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> npt.ArrayLike:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
 
@@ -3307,7 +3307,7 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
+        npt.ArrayLike
             An array-like containing the data for the requested block selection.
 
         Examples
