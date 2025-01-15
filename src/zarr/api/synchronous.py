@@ -915,7 +915,7 @@ def from_array(
     overwrite: bool = False,
     config: ArrayConfig | ArrayConfigLike | None = None,
 ) -> Array:
-    """Create an array from an existing array.
+    """Create an array from an existing array or array-like.
 
     Parameters
     ----------

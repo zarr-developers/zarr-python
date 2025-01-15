@@ -3756,7 +3756,7 @@ async def from_array(
     overwrite: bool = False,
     config: ArrayConfig | ArrayConfigLike | None = None,
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-    """Create an array from an existing array.
+    """Create an array from an existing array or array-like.
 
     Parameters
     ----------
@@ -3774,9 +3774,11 @@ async def from_array(
     chunks : ChunkCoords or "auto" or "keep", optional
         Chunk shape of the array.
         Following values are supported:
-            - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
-            - "keep": Retain the chunk shape of the data array if it is a zarr Array.
-            - ChunkCoords: A tuple of integers representing the chunk shape.
+
+        - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
+        - "keep": Retain the chunk shape of the data array if it is a zarr Array.
+        - ChunkCoords: A tuple of integers representing the chunk shape.
+
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
     shards : ChunkCoords, optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
@@ -3792,9 +3794,11 @@ async def from_array(
         the order if your filters is consistent with the behavior of each filter.
 
         Following values are supported:
+
         - Iterable[Codec]: List of filters to apply to the array.
         - "auto": Automatically determine the filters based on the array's dtype.
         - "keep": Retain the filters of the data array if it is a zarr Array.
+
         If no ``filters`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
     compressors : Iterable[Codec] or "auto" or "keep", optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
@@ -3807,20 +3811,24 @@ async def from_array(
         be provided for Zarr format 2.
 
         Following values are supported:
+
         - Iterable[Codec]: List of compressors to apply to the array.
         - "auto": Automatically determine the compressors based on the array's dtype.
         - "keep": Retain the compressors of the input array if it is a zarr Array.
+
         If no ``compressors`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
     serializer : dict[str, JSON] | ArrayBytesCodec or "auto" or "keep", optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
 
         Following values are supported:
+
         - dict[str, JSON]: A dict representation of an ``ArrayBytesCodec``.
         - ArrayBytesCodec: An instance of ``ArrayBytesCodec``.
         - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
          ``array.v3_default_serializer`` in :mod:`zarr.core.config`.
         - "keep": Retain the serializer of the input array if it is a zarr Array.
+
     fill_value : Any, optional
         Fill value for the array.
         If not specified, defaults to the fill value of the data array.
@@ -3983,7 +3991,7 @@ async def from_array(
         else:
 
             async def _copy_arraylike_region(
-                chunk_coords: ChunkCoords | slice, _data: npt.ArrayLike
+                chunk_coords: ChunkCoords | slice, _data: NDArrayLike
             ) -> None:
                 await new_array.setitem(chunk_coords, _data[chunk_coords])
 
