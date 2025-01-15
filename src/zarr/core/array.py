@@ -3736,7 +3736,7 @@ ShardsLike: TypeAlias = ChunkCoords | ShardsConfigParam | Literal["auto"]
 
 
 async def from_array(
-    data: Array,
+    data: Array | npt.ArrayLike,
     store: str | StoreLike,
     *,
     name: str | None = None,
