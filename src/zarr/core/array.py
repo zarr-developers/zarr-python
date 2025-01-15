@@ -3875,9 +3875,9 @@ async def from_array(
     if order is None:
         order = data.order
     if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
-        if zarr_format == 2:
+        if isinstance(data.metadata, ArrayV2Metadata):
             chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}
-        else:
+        elif isinstance(data.metadata, ArrayV3Metadata):
             chunk_key_encoding = data.metadata.chunk_key_encoding
     if dimension_names is None and data.metadata.zarr_format == 3:
         dimension_names = data.metadata.dimension_names
