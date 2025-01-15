@@ -3907,15 +3907,12 @@ async def from_array(
         arr = await _data._async_array.getitem(chunk_coords)
         await new_array.setitem(chunk_coords, arr)
 
-    if new_array.chunks == data.chunks:
-        # Stream data from the source array to the new array
-        await concurrent_map(
-            [(region, data) for region in data._iter_chunk_regions()],
-            _copy_region,
-            zarr.core.config.config.get("async.concurrency"),
-        )
-    else:
-        await _copy_region(slice(None), data)
+    # Stream data from the source array to the new array
+    await concurrent_map(
+        [(region, data) for region in new_array._iter_chunk_regions()],
+        _copy_region,
+        zarr.core.config.config.get("async.concurrency"),
+    )
     return new_array
 
 
