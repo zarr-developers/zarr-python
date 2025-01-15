@@ -3905,8 +3905,7 @@ async def from_array(
     >>> )
     <AsyncArray memory://123286959761024 shape=(2, 2) dtype=int64>
     >>> await arr4.getitem(...)
-    array([[1, 2],
-           [3, 4]])
+    array([[1, 2],[3, 4]])
 
     Create an array from an existing Array without copying the data:
     >>> arr5 = await zarr.api.asynchronous.from_array(
@@ -3916,8 +3915,7 @@ async def from_array(
     >>> )
     <AsyncArray memory://140678602965568 shape=(2, 2) dtype=int64>
     >>> await arr5.getitem(...)
-    array([[0, 0],
-           [0, 0]])
+    array([[0, 0],[0, 0]])
     """
     if isinstance(data, Array):
         if chunks == "keep":

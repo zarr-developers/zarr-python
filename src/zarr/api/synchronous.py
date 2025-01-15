@@ -1057,8 +1057,7 @@ def from_array(
     >>> )
     <Array memory://125477392154368 shape=(2, 2) dtype=int64>
     >>> arr4[...]
-    [[1 2]
-     [3 4]]
+    array([[1, 2],[3, 4]])
 
     Create an array from an existing Array without copying the data:
     >>> arr5 = zarr.from_array(
@@ -1068,8 +1067,7 @@ def from_array(
     >>> )
     <Array memory://140678602965568 shape=(2, 2) dtype=int64>
     >>> arr5[...]
-    [[0 0]
-    [0 0]]
+    array([[0, 0],[0, 0]])
     """
     return Array(
         sync(
