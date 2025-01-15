@@ -75,6 +75,13 @@ async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
     return await parse_store(param, str(tmpdir))
 
 
+@pytest.fixture
+async def store2(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
+    param = request.param
+    store2_path = tmpdir.mkdir("store2")
+    return await parse_store(param, str(store2_path))
+
+
 @pytest.fixture(params=["local", "memory", "zip"])
 def sync_store(request: pytest.FixtureRequest, tmp_path: LEGACY_PATH) -> Store:
     result = sync(parse_store(request.param, str(tmp_path)))

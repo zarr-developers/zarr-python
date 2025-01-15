@@ -8,10 +8,12 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numcodecs
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
+from zarr.abc.store import Store
 from zarr.codecs import (
     BytesCodec,
     GzipCodec,
@@ -1262,3 +1264,107 @@ async def test_scalar_array() -> None:
     assert arr[...] == 1.5
     assert arr[()] == 1.5
     assert arr.shape == ()
+
+
+@pytest.mark.parametrize("store", ["local"], indirect=True)
+@pytest.mark.parametrize("store2", ["local"], indirect=["store2"])
+@pytest.mark.parametrize("src_format", [2, 3])
+@pytest.mark.parametrize("new_format", [2, 3])
+async def test_creation_from_other_zarr_format(
+    store: Store,
+    store2: Store,
+    src_format: ZarrFormat,
+    new_format: ZarrFormat,
+) -> None:
+    kwargs: dict[str, tuple[Literal["default"], Literal[".", "/"]] | Literal[".", "/"]] = {}
+    # set dimension_separator to non default
+    if src_format == 2:
+        kwargs["dimension_separator"] = "/"
+    else:
+        kwargs["chunk_key_encoding"] = ("default", ".")
+
+    src = zarr.create((50, 50), chunks=(10, 10), store=store, zarr_format=src_format, **kwargs)
+    src[:] = np.arange(50 * 50).reshape((50, 50))
+    result = zarr.from_array(
+        src,
+        store=store2,
+        zarr_format=new_format,
+    )
+    np.testing.assert_array_equal(result[:], src[:])
+    assert result.fill_value == src.fill_value
+    assert result.dtype == src.dtype
+    assert result.chunks == src.chunks
+    if src_format == new_format:
+        assert result.metadata == src.metadata
+
+
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
+@pytest.mark.parametrize("store2", ["local", "memory", "zip"], indirect=["store2"])
+@pytest.mark.parametrize("src_chunks", [(40, 10), (11, 50)])
+@pytest.mark.parametrize("new_chunks", [(40, 10), (11, 50)])
+async def test_from_array(
+    store: Store,
+    store2: Store,
+    src_chunks: tuple[int, int],
+    new_chunks: tuple[int, int],
+    zarr_format: ZarrFormat,
+) -> None:
+    src_fill_value = 2
+    src_dtype = np.dtype("uint8")
+    src_attributes = None
+
+    src = zarr.create(
+        (100, 10),
+        chunks=src_chunks,
+        dtype=src_dtype,
+        store=store,
+        fill_value=src_fill_value,
+        attributes=src_attributes,
+    )
+    src[:] = np.arange(1000).reshape((100, 10))
+
+    new_fill_value = 3
+    new_attributes = {"foo": "bar"}
+
+    result = zarr.array(
+        src,
+        store=store2,
+        chunks=new_chunks,
+        fill_value=new_fill_value,
+        attributes=new_attributes,
+    )
+
+    np.testing.assert_array_equal(result[:], src[:])
+    assert result.fill_value == new_fill_value
+    assert result.dtype == src_dtype
+    assert result.attrs == new_attributes
+    assert result.chunks == new_chunks
+
+
+@pytest.mark.parametrize("store", ["local"], indirect=True)
+@pytest.mark.parametrize("chunks", ["keep", "auto"])
+@pytest.mark.parametrize("write_data", [True, False])
+@pytest.mark.parametrize(
+    "src",
+    [
+        np.arange(1000).reshape(10, 10, 10),
+        zarr.ones((10, 10, 10)),
+        5,
+        [1, 2, 3],
+        [[1, 2, 3], [4, 5, 6]],
+    ],
+)  # add other npt.ArrayLike?
+async def test_from_array_arraylike(
+    store: Store,
+    chunks: Literal["auto", "keep"] | tuple[int, int],
+    write_data: bool,
+    src: Array | npt.ArrayLike,
+) -> None:
+    fill_value = 42
+    result = zarr.from_array(
+        src, store=store, chunks=chunks, write_data=write_data, fill_value=fill_value
+    )
+    if write_data:
+        np.testing.assert_array_equal(result[...], src)
+    else:
+        np.testing.assert_array_equal(result[...], np.full_like(src, fill_value))
