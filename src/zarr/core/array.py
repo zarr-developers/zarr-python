@@ -3851,37 +3851,48 @@ async def from_array(
     #TODO
     """
 
-    if chunks == "keep":
-        chunks = data.chunks
-    if zarr_format is None:
-        zarr_format = data.metadata.zarr_format
-    if filters == "keep":
-        if zarr_format == data.metadata.zarr_format:
-            filters = data.filters or None
-        else:
+    if isinstance(data, Array):
+        if chunks == "keep":
+            chunks = data.chunks
+        if zarr_format is None:
+            zarr_format = data.metadata.zarr_format
+        if filters == "keep":
+            if zarr_format == data.metadata.zarr_format:
+                filters = data.filters or None
+            else:
+                filters = "auto"
+        if compressors == "keep":
+            if zarr_format == data.metadata.zarr_format:
+                compressors = data.compressors or None
+            else:
+                compressors = "auto"
+        if serializer == "keep":
+            if zarr_format == 3:
+                serializer = cast(SerializerLike, data.serializer)
+            else:
+                serializer = "auto"
+        if fill_value is None:
+            fill_value = data.fill_value
+        if order is None:
+            order = data.order
+        if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
+            if isinstance(data.metadata, ArrayV2Metadata):
+                chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}
+            elif isinstance(data.metadata, ArrayV3Metadata):
+                chunk_key_encoding = data.metadata.chunk_key_encoding
+        if dimension_names is None and data.metadata.zarr_format == 3:
+            dimension_names = data.metadata.dimension_names
+    else:
+        if chunks == "keep":
+            chunks = "auto"
+        if zarr_format is None:
+            zarr_format = 3
+        if filters == "keep":
             filters = "auto"
-    if compressors == "keep":
-        if zarr_format == data.metadata.zarr_format:
-            compressors = data.compressors or None
-        else:
+        if compressors == "keep":
             compressors = "auto"
-    if serializer == "keep":
-        if zarr_format == 3:
-            serializer = cast(SerializerLike, data.serializer)
-        else:
+        if serializer == "keep":
             serializer = "auto"
-    if fill_value is None:
-        fill_value = data.fill_value
-    if order is None:
-        order = data.order
-    if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
-        if isinstance(data.metadata, ArrayV2Metadata):
-            chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}
-        elif isinstance(data.metadata, ArrayV3Metadata):
-            chunk_key_encoding = data.metadata.chunk_key_encoding
-    if dimension_names is None and data.metadata.zarr_format == 3:
-        dimension_names = data.metadata.dimension_names
-
     new_array = await create_array(
         store,
         name=name,
@@ -3902,17 +3913,29 @@ async def from_array(
         overwrite=overwrite,
         config=config,
     )
+    if isinstance(data, Array):
 
-    async def _copy_region(chunk_coords: ChunkCoords | slice, _data: Array) -> None:
-        arr = await _data._async_array.getitem(chunk_coords)
-        await new_array.setitem(chunk_coords, arr)
+        async def _copy_region(chunk_coords: ChunkCoords | slice, _data: Array) -> None:
+            arr = await _data._async_array.getitem(chunk_coords)
+            await new_array.setitem(chunk_coords, arr)
 
-    # Stream data from the source array to the new array
-    await concurrent_map(
-        [(region, data) for region in new_array._iter_chunk_regions()],
-        _copy_region,
-        zarr.core.config.config.get("async.concurrency"),
-    )
+        # Stream data from the source array to the new array
+        await concurrent_map(
+            [(region, data) for region in new_array._iter_chunk_regions()],
+            _copy_region,
+            zarr.core.config.config.get("async.concurrency"),
+        )
+    else:
+
+        async def _copy_region(chunk_coords: ChunkCoords | slice, _data: npt.ArrayLike) -> None:
+            await new_array.setitem(chunk_coords, _data[chunk_coords])
+
+        # Stream data from the source array to the new array
+        await concurrent_map(
+            [(region, data) for region in new_array._iter_chunk_regions()],
+            _copy_region,
+            zarr.core.config.config.get("async.concurrency"),
+        )
     return new_array
 
 

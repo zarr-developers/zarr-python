@@ -895,7 +895,7 @@ def create_array(
 
 
 def from_array(
-    data: Array,
+    data: Array | npt.ArrayLike,
     store: str | StoreLike,
     *,
     name: str | None = None,

@@ -1338,3 +1338,13 @@ async def test_from_array(
     assert result.dtype == src_dtype
     assert result.attrs == new_attributes
     assert result.chunks == new_chunks
+
+
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
+@pytest.mark.parametrize("chunks", [(10, 2, 3), "keep", "auto"])
+async def test_from_numpy_array(
+    store: Store, chunks: Literal["auto", "keep"] | tuple[int, int]
+) -> None:
+    src = np.arange(1000).reshape(10, 10, 10)
+    result = zarr.from_array(src, store=store, chunks=chunks)
+    np.testing.assert_array_equal(result[:], src)
