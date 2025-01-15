@@ -987,6 +987,7 @@ def from_array(
         - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
           `array.v3_default_serializer` in :mod:`zarr.core.config`.
         - "keep": Retain the serializer of the input array if it is a zarr Array.
+
     fill_value : Any, optional
         Fill value for the array.
         If not specified, defaults to the fill value of the data array.
@@ -1068,7 +1069,7 @@ def from_array(
     <Array memory://140678602965568 shape=(2, 2) dtype=int64>
     >>> arr5[...]
     [[0 0]
-     [0 0]]
+    [0 0]]
     """
     return Array(
         sync(

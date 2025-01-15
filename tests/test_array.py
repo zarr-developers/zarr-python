@@ -1370,6 +1370,6 @@ async def test_from_array_arraylike(
         src, store=store, chunks=chunks, write_data=write_data, fill_value=fill_value
     )
     if write_data:
-        np.testing.assert_array_equal(result[...], src)
+        np.testing.assert_array_equal(result[...], np.array(src))
     else:
         np.testing.assert_array_equal(result[...], np.full_like(src, fill_value))
