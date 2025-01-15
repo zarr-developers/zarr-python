@@ -3857,12 +3857,12 @@ async def from_array(
         zarr_format = data.metadata.zarr_format
     if filters == "keep":
         if zarr_format == data.metadata.zarr_format:
-            filters = data.filters
+            filters = data.filters or None
         else:
             filters = "auto"
     if compressors == "keep":
         if zarr_format == data.metadata.zarr_format:
-            compressors = data.compressors
+            compressors = data.compressors or None
         else:
             compressors = "auto"
     if serializer == "keep":

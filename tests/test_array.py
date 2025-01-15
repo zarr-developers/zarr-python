@@ -1275,12 +1275,14 @@ async def test_creation_from_other_zarr_format(
     src_format: ZarrFormat,
     new_format: ZarrFormat,
 ) -> None:
-    src = zarr.create(
-        (50, 50),
-        chunks=(10, 10),
-        store=store,
-        zarr_format=src_format,
-    )
+    kwargs = {}
+    # set dimension_separator to non default
+    if src_format == 2:
+        kwargs["dimension_separator"] = "/"
+    else:
+        kwargs["chunk_key_encoding"] = ("default", ".")
+
+    src = zarr.create((50, 50), chunks=(10, 10), store=store, zarr_format=src_format, **kwargs)
     src[:] = np.arange(50 * 50).reshape((50, 50))
     result = zarr.from_array(
         src,
@@ -1291,6 +1293,8 @@ async def test_creation_from_other_zarr_format(
     assert result.fill_value == src.fill_value
     assert result.dtype == src.dtype
     assert result.chunks == src.chunks
+    if src_format == new_format:
+        assert result.metadata == src.metadata
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
