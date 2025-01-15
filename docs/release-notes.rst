@@ -12,8 +12,18 @@ Bug fixes
 * Fixes ``order`` argument for Zarr format 2 arrays (:issue:`2679`).
 * Backwards compatibility for Zarr format 2 structured arrays (:issue:`2134`)
 
+* Fixes a bug that prevented reading Zarr format 2 data with consolidated metadata written using ``zarr-python`` version 2 (:issue:`2694`).
+
+* Ensure that compressor=None results in no compression when writing Zarr format 2 data (:issue:`2708`)
+
 Behaviour changes
 ~~~~~~~~~~~~~~~~~
+
+Other
+~~~~~
+* Removed some unnecessary files from the source distribution
+  to reduce its size. (:issue:`2686`)
+
 
 .. _release_3.0.0:
 
