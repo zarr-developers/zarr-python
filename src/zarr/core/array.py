@@ -3834,7 +3834,7 @@ async def from_array(
         - dict[str, JSON]: A dict representation of an ``ArrayBytesCodec``.
         - ArrayBytesCodec: An instance of ``ArrayBytesCodec``.
         - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
-         ``array.v3_default_serializer`` in :mod:`zarr.core.config`.
+          `array.v3_default_serializer`` in :mod:`zarr.core.config`.
         - "keep": Retain the serializer of the input array if it is a zarr Array.
 
     fill_value : Any, optional
@@ -3998,9 +3998,7 @@ async def from_array(
             )
         else:
 
-            async def _copy_arraylike_region(
-                chunk_coords: ChunkCoords | slice, _data: NDArrayLike
-            ) -> None:
+            async def _copy_arraylike_region(chunk_coords: slice, _data: NDArrayLike) -> None:
                 await new_array.setitem(chunk_coords, _data[chunk_coords])
 
             # Stream data from the source array to the new array

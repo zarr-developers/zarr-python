@@ -1276,14 +1276,19 @@ async def test_creation_from_other_zarr_format(
     src_format: ZarrFormat,
     new_format: ZarrFormat,
 ) -> None:
-    kwargs: dict[str, tuple[Literal["default"], Literal[".", "/"]] | Literal[".", "/"]] = {}
-    # set dimension_separator to non default
     if src_format == 2:
-        kwargs["dimension_separator"] = "/"
+        src = zarr.create(
+            (50, 50), chunks=(10, 10), store=store, zarr_format=src_format, dimension_separator="/"
+        )
     else:
-        kwargs["chunk_key_encoding"] = ("default", ".")
+        src = zarr.create(
+            (50, 50),
+            chunks=(10, 10),
+            store=store,
+            zarr_format=src_format,
+            chunk_key_encoding=("default", "."),
+        )
 
-    src = zarr.create((50, 50), chunks=(10, 10), store=store, zarr_format=src_format, **kwargs)
     src[:] = np.arange(50 * 50).reshape((50, 50))
     result = zarr.from_array(
         src,
