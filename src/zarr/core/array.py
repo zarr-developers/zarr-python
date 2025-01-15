@@ -3740,11 +3740,11 @@ async def from_array(
     store: str | StoreLike,
     *,
     name: str | None = None,
-    chunks: ChunkCoords | Literal["auto"] = "auto",
+    chunks: Literal["auto", "keep"] | ChunkCoords = "keep",
     shards: ShardsLike | None = None,
-    filters: FiltersLike = "auto",
-    compressors: CompressorsLike = "auto",
-    serializer: SerializerLike = "auto",
+    filters: FiltersLike | Literal["keep"] = "keep",
+    compressors: CompressorsLike | Literal["keep"] = "keep",
+    serializer: SerializerLike | Literal["keep"] = "keep",
     fill_value: Any | None = None,
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
@@ -3766,12 +3766,14 @@ async def from_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    chunks : ChunkCoords, optional
+    chunks : ChunkCoords or "auto" or "keep", optional
         Chunk shape of the array.
         If not specified, defaults to the chunk shape of the data array.
+        - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
+        - "keep": Retain the chunk shape of the input array.
     shards : ChunkCoords, optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
-    filters : Iterable[Codec], optional
+    filters : Iterable[Codec] or "auto" or "keep", optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
 
@@ -3783,7 +3785,9 @@ async def from_array(
         the order if your filters is consistent with the behavior of each filter.
 
         If no ``filters`` are provided, defaults to the filters of the data array.
-    compressors : Iterable[Codec], optional
+        - "auto": Automatically determine the filters based on the array's dtype.
+        - "keep": Retain the filters of the input array.
+    compressors : Iterable[Codec] or "auto" or "keep", optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
 
@@ -3794,11 +3798,15 @@ async def from_array(
         be provided for Zarr format 2.
 
         If no ``compressors`` are provided, defaults to the compressors of the data array.
-    serializer : dict[str, JSON] | ArrayBytesCodec, optional
+        - "auto": Automatically determine the compressors based on the array's dtype.
+        - "keep": Retain the compressors of the input array.
+    serializer : dict[str, JSON] | ArrayBytesCodec or "auto" or "keep", optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
 
         If no ``serializer`` is provided, defaults to the serializer of the input array.
+        - "auto": Automatically determine the serializer based on the array's dtype.
+        - "keep": Retain the serializer of the input array.
     fill_value : Any, optional
         Fill value for the array.
         If not specified, defaults to the fill value of the data array.
@@ -3843,23 +3851,31 @@ async def from_array(
     #TODO
     """
 
-    # fill missing arguments with metadata of data Array
-    if chunks == "auto":
+    if chunks == "keep":
         chunks = data.chunks
-    if filters is None:
-        filters = data.filters
-    if compressors is None:
-        compressors = data.compressors
+    if zarr_format is None:
+        zarr_format = data.metadata.zarr_format
+    if filters == "keep":
+        if zarr_format == data.metadata.zarr_format:
+            filters = data.filters
+        else:
+            filters = "auto"
+    if compressors == "keep":
+        if zarr_format == data.metadata.zarr_format:
+            compressors = data.compressors
+        else:
+            compressors = "auto"
+    if serializer == "keep":
+        if zarr_format == 3:
+            serializer = cast(SerializerLike, data.serializer)
+        else:
+            serializer = "auto"
     if fill_value is None:
         fill_value = data.fill_value
     if order is None:
         order = data.order
-    if zarr_format is None:
-        zarr_format = data.metadata.zarr_format
-    if zarr_format == 3 and serializer == "auto":
-        serializer = cast(SerializerLike, data.serializer)
     if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
-        if data.metadata.zarr_format == 2:
+        if zarr_format == 2:
             chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}
         else:
             chunk_key_encoding = data.metadata.chunk_key_encoding
