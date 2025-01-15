@@ -397,12 +397,9 @@ addopts = [
     "--durations=10", "-ra", "--strict-config", "--strict-markers",
 ]
 filterwarnings = [
-    "error:::zarr.*",
-    "ignore:PY_SSIZE_T_CLEAN will be required.*:DeprecationWarning",
-    "ignore:The loop argument is deprecated since Python 3.8.*:DeprecationWarning",
-    "ignore:Creating a zarr.buffer.gpu.*:UserWarning",
-    "ignore:Duplicate name:UserWarning",  # from ZipFile
-    "ignore:.*is currently not part in the Zarr format 3 specification.*:UserWarning",
+    "error",
+    # TODO: explicitly filter or catch the warnings below where we expect them to be emitted in the tests
+    "ignore:Consolidated metadata is currently not part in the Zarr format 3 specification.*:UserWarning",
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU",
