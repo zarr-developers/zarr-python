@@ -75,6 +75,7 @@ config = Config(
                     "numeric": None,
                     "string": [{"id": "vlen-utf8"}],
                     "bytes": [{"id": "vlen-bytes"}],
+                    "raw": None,
                 },
                 "v3_default_filters": {"numeric": [], "string": [], "bytes": []},
                 "v3_default_serializer": {
