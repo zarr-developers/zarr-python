@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numcodecs
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 import zarr.api.asynchronous
@@ -1299,8 +1300,8 @@ async def test_creation_from_other_zarr_format(
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
 @pytest.mark.parametrize("store2", ["local", "memory", "zip"], indirect=["store2"])
-@pytest.mark.parametrize("src_chunks", [(10, 2), (50, 10)])
-@pytest.mark.parametrize("new_chunks", [(10, 2), (50, 10)])
+@pytest.mark.parametrize("src_chunks", [(40, 10), (11, 50)])
+@pytest.mark.parametrize("new_chunks", [(40, 10), (11, 50)])
 async def test_from_array(
     store: Store,
     store2: Store,
@@ -1340,11 +1341,30 @@ async def test_from_array(
     assert result.chunks == new_chunks
 
 
-@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
-@pytest.mark.parametrize("chunks", [(10, 2, 3), "keep", "auto"])
-async def test_from_numpy_array(
-    store: Store, chunks: Literal["auto", "keep"] | tuple[int, int]
+@pytest.mark.parametrize("store", ["local"], indirect=True)
+@pytest.mark.parametrize("chunks", ["keep", "auto"])
+@pytest.mark.parametrize("write_data", [True, False])
+@pytest.mark.parametrize(
+    "src",
+    [
+        np.arange(1000).reshape(10, 10, 10),
+        zarr.ones((10, 10, 10)),
+        5,
+        [1, 2, 3],
+        [[1, 2, 3], [4, 5, 6]],
+    ],
+)  # add other npt.ArrayLike?
+async def test_from_array_arraylike(
+    store: Store,
+    chunks: Literal["auto", "keep"] | tuple[int, int],
+    write_data: bool,
+    src: Array | npt.ArrayLike,
 ) -> None:
-    src = np.arange(1000).reshape(10, 10, 10)
-    result = zarr.from_array(src, store=store, chunks=chunks)
-    np.testing.assert_array_equal(result[:], src)
+    fill_value = 42
+    result = zarr.from_array(
+        src, store=store, chunks=chunks, write_data=write_data, fill_value=fill_value
+    )
+    if write_data:
+        np.testing.assert_array_equal(result[...], src)
+    else:
+        np.testing.assert_array_equal(result[...], np.full_like(src, fill_value))
