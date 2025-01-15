@@ -400,6 +400,9 @@ filterwarnings = [
     "error",
     # TODO: explicitly filter or catch the warnings below where we expect them to be emitted in the tests
     "ignore:Consolidated metadata is currently not part in the Zarr format 3 specification.*:UserWarning",
+    "ignore:Creating a zarr.buffer.gpu.Buffer with an array that does not support the __cuda_array_interface__.*:UserWarning",
+    "ignore:Automatic shard shape inference is experimental and may change without notice.*:UserWarning",
+    "ignore:The codec .* is currently not part in the Zarr format 3 specification.*:UserWarning"
 ]
 markers = [
     "gpu: mark a test as requiring CuPy and GPU",
