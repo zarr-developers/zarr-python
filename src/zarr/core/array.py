@@ -837,7 +837,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Examples
         --------
         >>> import zarr
-        >>>  store = zarr.storage.MemoryStore(mode='w')
+        >>>  store = zarr.storage.MemoryStore()
         >>>  async_arr = await AsyncArray.open(store) # doctest: +ELLIPSIS
         <AsyncArray memory://... shape=(100, 100) dtype=int32>
         """
@@ -1269,7 +1269,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         Examples
         --------
         >>> import zarr
-        >>>  store = zarr.storage.MemoryStore(mode='w')
+        >>>  store = zarr.storage.MemoryStore()
         >>>  async_arr = await zarr.api.asynchronous.create_array(
         ...      store=store,
         ...      shape=(100,100),
@@ -3760,22 +3760,24 @@ async def from_array(
 
     Parameters
     ----------
-    data : Array
+    data : Array | array-like
         The array to copy.
     store : str or Store
         Store or path to directory in file system or name of zip file for the new array.
-    name : str or None, optional
-        The name of the array within the store. If ``name`` is ``None``, the array will be located
-        at the root of the store.
     write_data : bool, default True
         Whether to copy the data from the input array to the new array.
         If ``write_data`` is ``False``, the new array will be created with the same metadata as the
         input array, but without any data.
+    name : str or None, optional
+        The name of the array within the store. If ``name`` is ``None``, the array will be located
+        at the root of the store.
     chunks : ChunkCoords or "auto" or "keep", optional
         Chunk shape of the array.
-        If not specified, defaults to the chunk shape of the data array.
-        - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
-        - "keep": Retain the chunk shape of the input array.
+        Following values are supported:
+            - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
+            - "keep": Retain the chunk shape of the data array if it is a zarr Array.
+            - ChunkCoords: A tuple of integers representing the chunk shape.
+        If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
     shards : ChunkCoords, optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
     filters : Iterable[Codec] or "auto" or "keep", optional
@@ -3789,9 +3791,11 @@ async def from_array(
         For Zarr format 2, a "filter" can be any numcodecs codec; you should ensure that the
         the order if your filters is consistent with the behavior of each filter.
 
-        If no ``filters`` are provided, defaults to the filters of the data array.
+        Following values are supported:
+        - Iterable[Codec]: List of filters to apply to the array.
         - "auto": Automatically determine the filters based on the array's dtype.
-        - "keep": Retain the filters of the input array.
+        - "keep": Retain the filters of the data array if it is a zarr Array.
+        If no ``filters`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
     compressors : Iterable[Codec] or "auto" or "keep", optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
         filters are applied (if any are specified) and the data is serialized into bytes.
@@ -3802,16 +3806,21 @@ async def from_array(
         For Zarr format 2, a "compressor" can be any numcodecs codec. Only a single compressor may
         be provided for Zarr format 2.
 
-        If no ``compressors`` are provided, defaults to the compressors of the data array.
+        Following values are supported:
+        - Iterable[Codec]: List of compressors to apply to the array.
         - "auto": Automatically determine the compressors based on the array's dtype.
-        - "keep": Retain the compressors of the input array.
+        - "keep": Retain the compressors of the input array if it is a zarr Array.
+        If no ``compressors`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
     serializer : dict[str, JSON] | ArrayBytesCodec or "auto" or "keep", optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
 
-        If no ``serializer`` is provided, defaults to the serializer of the input array.
-        - "auto": Automatically determine the serializer based on the array's dtype.
-        - "keep": Retain the serializer of the input array.
+        Following values are supported:
+        - dict[str, JSON]: A dict representation of an ``ArrayBytesCodec``.
+        - ArrayBytesCodec: An instance of ``ArrayBytesCodec``.
+        - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
+         ``array.v3_default_serializer`` in :mod:`zarr.core.config`.
+        - "keep": Retain the serializer of the input array if it is a zarr Array.
     fill_value : Any, optional
         Fill value for the array.
         If not specified, defaults to the fill value of the data array.
@@ -3853,9 +3862,47 @@ async def from_array(
 
     Examples
     --------
-    #TODO
-    """
+    Create an array from an existing Array:
+    >>> import zarr
+    >>> store = zarr.storage.MemoryStore()
+    >>> store2 = zarr.storage.LocalStore('example.zarr')
+    >>> arr = zarr.create_array(
+    >>>     store=store,
+    >>>     shape=(100,100),
+    >>>     chunks=(10,10),
+    >>>     dtype='int32',
+    >>>     fill_value=0)
+    >>> arr2 = await zarr.api.asynchronous.from_array(arr, store=store2)
+    <AsyncArray file://example.zarr shape=(100, 100) dtype=int32>
 
+    Create an array from an existing NumPy array:
+    >>> arr3 = await zarr.api.asynchronous.from_array(
+    >>>     np.arange(10000, dtype='i4').reshape(100, 100),
+    >>>     store=zarr.storage.MemoryStore(),
+    >>> )
+    <AsyncArray memory://123286956732800 shape=(100, 100) dtype=int32>
+
+    Create an array from any array-like object:
+    >>> arr4 = await zarr.api.asynchronous.from_array(
+    >>>     [[1, 2], [3, 4]],
+    >>>     store=zarr.storage.MemoryStore(),
+    >>> )
+    <AsyncArray memory://123286959761024 shape=(2, 2) dtype=int64>
+    >>> await arr4.getitem(...)
+    array([[1, 2],
+           [3, 4]])
+
+    Create an array from an existing Array without copying the data:
+    >>> arr5 = await zarr.api.asynchronous.from_array(
+    >>>     Array(arr4),
+    >>>     store=zarr.storage.MemoryStore(),
+    >>>     write_data=False,
+    >>> )
+    <AsyncArray memory://140678602965568 shape=(2, 2) dtype=int64>
+    >>> await arr5.getitem(...)
+    array([[0, 0],
+           [0, 0]])
+    """
     if isinstance(data, Array):
         if chunks == "keep":
             chunks = data.chunks
@@ -3900,7 +3947,6 @@ async def from_array(
             serializer = "auto"
     if not hasattr(data, "dtype") or not hasattr(data, "shape"):
         data = np.array(data)
-        print(data.shape)
     new_array = await create_array(
         store,
         name=name,
@@ -4064,7 +4110,7 @@ async def create_array(
     Examples
     --------
     >>> import zarr
-    >>> store = zarr.storage.MemoryStore(mode='w')
+    >>> store = zarr.storage.MemoryStore()
     >>> async_arr = await zarr.api.asynchronous.create_array(
     >>>     store=store,
     >>>     shape=(100,100),
