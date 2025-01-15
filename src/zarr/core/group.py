@@ -2881,7 +2881,8 @@ async def create_hierarchy(
         The created nodes in the order they are created.
     """
     nodes_parsed = _parse_hierarchy_dict(nodes)
-
+    if overwrite:
+        await store_path.delete_dir()
     async for node in create_nodes(store_path=store_path, nodes=nodes_parsed, semaphore=semaphore):
         yield node
 
@@ -2904,17 +2905,24 @@ async def create_nodes(
 
     create_tasks: list[Coroutine[None, None, str]] = []
     for key, value in nodes.items():
-        write_key = str(PurePosixPath(store_path.path) / key)
+        write_key = f"{store_path.path}/{key}".lstrip("/")
         create_tasks.extend(_persist_metadata(store_path.store, write_key, value))
 
     created_keys = []
     async with ctx:
         for coro in asyncio.as_completed(create_tasks):
             created_key = await coro
-            relative_path = PurePosixPath(created_key).relative_to(store_path.path)
-            created_keys.append(str(relative_path))
-            # convert foo/bar/baz/.zattrs to bar/baz
-            node_name = str(relative_path.parent)
+            # the created key will be in the store key space. we have to remove the store_path.path
+            # component of that path to bring it back to the relative key space of store_path
+
+            relative_path = created_key.removeprefix(store_path.path).lstrip("/")
+            created_keys.append(relative_path)
+
+            if len(relative_path.split("/")) == 1:
+                node_name = ""
+            else:
+                node_name = "/".join(["", *relative_path.split("/")[:-1]])
+
             meta_out = nodes[node_name]
 
             if meta_out.zarr_format == 3:
@@ -2928,18 +2936,19 @@ async def create_nodes(
                 # so we track which keys have been created, and wait for both the meta key and
                 # the attrs key to be created before yielding back the AsyncArray / AsyncGroup
 
-                attrs_done = f"{node_name}/.zattrs" in created_keys
+                attrs_done = f"{node_name}/.zattrs".lstrip("/") in created_keys
 
                 if isinstance(meta_out, GroupMetadata):
-                    meta_done = f"{node_name}/.zgroup" in created_keys
+                    meta_done = f"{node_name}/.zgroup".lstrip("/") in created_keys
                 else:
-                    meta_done = f"{node_name}/.zarray" in created_keys
+                    meta_done = f"{node_name}/.zarray".lstrip("/") in created_keys
 
                 if meta_done and attrs_done:
                     if isinstance(meta_out, GroupMetadata):
                         yield AsyncGroup(metadata=meta_out, store_path=store_path / node_name)
                     else:
                         yield AsyncArray(metadata=meta_out, store_path=store_path / node_name)
+                continue
 
 
 T = TypeVar("T")
@@ -3006,9 +3015,9 @@ def _parse_hierarchy_dict(
         # Iterate over the intermediate path components
         *subpaths, _ = accumulate(key_split, lambda a, b: f"{a}/{b}")
         for subpath in subpaths:
-            # If a component is not already in the output dict, add an implicit group marker
+            # If a component is not already in the output dict, add a group
             if subpath not in out:
-                out[subpath] = _ImplicitGroupMetadata(zarr_format=v.zarr_format)
+                out[subpath] = GroupMetadata(zarr_format=v.zarr_format)
             else:
                 if not isinstance(out[subpath], GroupMetadata):
                     msg = (
@@ -3245,50 +3254,14 @@ def _persist_metadata(
     """
 
     to_save = metadata.to_buffer_dict(default_buffer_prototype())
-    if isinstance(metadata, _ImplicitGroupMetadata):
-        replace = False
-    else:
-        replace = True
-    # TODO: should this function be a generator that yields values instead of eagerly returning a tuple?
     return tuple(
-        _set_return_key(store=store, key=f"{path}/{key}", value=value, replace=replace)
+        _set_return_key(store=store, key=f"{path}/{key}".lstrip("/"), value=value, replace=True)
         for key, value in to_save.items()
     )
 
 
-class _ImplicitGroupMetadata(GroupMetadata):
-    """
-    This class represents the metadata document of a group that should be created at a
-    location in storage if and only if there is not already a group at that location.
-
-    This class is used to fill group-shaped "holes" in a dict specification of a Zarr hierarchy.
-
-    When attempting to write this class to storage, the writer should first check if a Zarr group
-    already exists at the desired location. If such a group does exist, the writer should do nothing.
-    If not, the writer should write this metadata document to storage.
-
-    """
-
-    def __init__(
-        self,
-        attributes: dict[str, Any] | None = None,
-        zarr_format: ZarrFormat = 3,
-        consolidated_metadata: ConsolidatedMetadata | None = None,
-    ) -> None:
-        if attributes is not None:
-            raise ValueError("attributes must be None for implicit groups")
-
-        if consolidated_metadata is not None:
-            raise ValueError("consolidated_metadata must be None for implicit groups")
-
-        super().__init__(attributes, zarr_format, consolidated_metadata)
-
-    def to_dict(self) -> dict[str, JSON]:
-        return asdict(self)
-
-
 async def _from_flat(
-    store: StoreLike,
+    store_path: StorePath,
     *,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
@@ -3308,16 +3281,13 @@ async def _from_flat(
     else:
         root = roots[0]
 
-    if overwrite:
-        store_path = await make_store_path(store, mode="w")
-    else:
-        store_path = await make_store_path(store, mode="w-")
-
     semaphore = asyncio.Semaphore(config.get("async.concurrency"))
 
     nodes_created = {
         x.path: x
-        async for x in create_hierarchy(store_path=store_path, nodes=nodes, semaphore=semaphore)
+        async for x in create_hierarchy(
+            store_path=store_path, nodes=nodes, semaphore=semaphore, overwrite=overwrite
+        )
     }
     root_group = nodes_created[root]
     if not isinstance(root_group, AsyncGroup):

@@ -25,7 +25,6 @@ from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
     _from_flat,
-    _ImplicitGroupMetadata,
     create_hierarchy,
     create_nodes,
 )
@@ -1474,7 +1473,8 @@ async def test_create_nodes(store: Store, zarr_format: ZarrFormat) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-async def test_create_hierarchy(store: Store, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("overwrite", [True, False])
+async def test_create_hierarchy(store: Store, overwrite: bool, zarr_format: ZarrFormat) -> None:
     """
     Test that ``create_hierarchy`` can create a complete Zarr hierarchy, even if the input describes
     an incomplete one.
@@ -1487,11 +1487,15 @@ async def test_create_hierarchy(store: Store, zarr_format: ZarrFormat) -> None:
         "group/subgroup/array_0": meta_from_array(np.arange(4), zarr_format=zarr_format),
         "group/subgroup/array_1": meta_from_array(np.arange(5), zarr_format=zarr_format),
     }
+    pre_existing_nodes = {"extra": GroupMetadata(zarr_format=zarr_format)}
+    # we expect create_hierarchy to insert a group that was missing from the hierarchy spec
     expected_meta = hierarchy_spec | {"group/subgroup": GroupMetadata(zarr_format=zarr_format)}
     spath = await make_store_path(store, path=path)
+    # initialize the group with some nodes
+    await _collect_aiterator(_from_flat(store_path=spath, nodes=pre_existing_nodes))
     observed_nodes = {
         str(PurePosixPath(a.name).relative_to("/" + path)): a
-        async for a in create_hierarchy(store_path=spath, nodes=expected_meta)
+        async for a in create_hierarchy(store_path=spath, nodes=expected_meta, overwrite=overwrite)
     }
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
 
@@ -1587,11 +1591,12 @@ async def test_create_hierarchy_invalid_mixed_format(store: Store):
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("root_key", ["", "a", "a/b"])
-async def test_group_from_flat(store: Store, zarr_format, root_key: str):
+@pytest.mark.parametrize("path", ["", "foo"])
+async def test_group_from_flat(store: Store, zarr_format, path: str, root_key: str):
     """
     Test that the AsyncGroup.from_flat method creates a zarr group in one shot.
     """
-    root_key = "a"
+    spath = await make_store_path(store, path=path)
     root_meta = {root_key: GroupMetadata(zarr_format=zarr_format, attributes={"path": root_key})}
     members_expected_meta = {
         f"{root_key}/b": GroupMetadata(
@@ -1601,35 +1606,13 @@ async def test_group_from_flat(store: Store, zarr_format, root_key: str):
             zarr_format=zarr_format, attributes={"path": f"{root_key}/b/c"}
         ),
     }
-    g = await _from_flat(store, nodes=root_meta | members_expected_meta)
+    g = await _from_flat(spath, nodes=root_meta | members_expected_meta)
     members = await _collect_aiterator(g.members(max_depth=None))
     members_observed_meta = {k: v.metadata for k, v in members}
     members_expected_meta_relative = {
         str(PurePosixPath(k).relative_to(root_key)): v for k, v in members_expected_meta.items()
     }
     assert members_observed_meta == members_expected_meta_relative
-
-
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
-async def test_create_hierarchy_implicit_groups(store: Store, zarr_format):
-    """
-    Test that writing a hierarchy with implicit groups does not result in altering an existing group
-    """
-    spath = await make_store_path(store, path="")
-    key = "a"
-    attrs = {"name": key}
-    _ = await _from_flat(
-        store,
-        nodes={
-            key: GroupMetadata(zarr_format=zarr_format, attributes=attrs),
-        },
-    )
-
-    _ = await _collect_aiterator(
-        create_nodes(store_path=spath, nodes={key: _ImplicitGroupMetadata(zarr_format=zarr_format)})
-    )
-    assert zarr.open_group(store, path=key).metadata.attributes == attrs
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
