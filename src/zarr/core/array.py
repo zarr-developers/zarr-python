@@ -1246,7 +1246,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 drop_axes=indexer.drop_axes,
             )
         if indexer.shape == ():
-            return out_buffer.as_numpy_array().item()
+            return cast(out_buffer.as_numpy_array().item(), out_buffer.dtype)
         return out_buffer.as_ndarray_like()
 
     async def getitem(
@@ -2209,7 +2209,7 @@ class Array:
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
-    ) -> NDArrayLike:
+    ) -> npt.ArrayLike:
         """
         This method is used by numpy when converting zarr.Array into a numpy array.
         For more information, see https://numpy.org/devdocs/user/basics.interoperability.html#the-array-method
@@ -2220,7 +2220,7 @@ class Array:
 
         arr_np = self[...]
 
-        if dtype is not None:
+        if dtype is not None and hasattr(arr_np, "astype"):
             arr_np = arr_np.astype(dtype)
 
         return arr_np
