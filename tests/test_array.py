@@ -1275,7 +1275,7 @@ async def test_creation_from_other_zarr_format(
     src_format: ZarrFormat,
     new_format: ZarrFormat,
 ) -> None:
-    kwargs = {}
+    kwargs: dict[str, tuple[Literal["default"], Literal[".", "/"]] | Literal[".", "/"]] = {}
     # set dimension_separator to non default
     if src_format == 2:
         kwargs["dimension_separator"] = "/"
