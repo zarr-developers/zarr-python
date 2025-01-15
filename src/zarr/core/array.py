@@ -3970,25 +3970,27 @@ async def from_array(
     if write_data:
         if isinstance(data, Array):
 
-            async def _copy_region(chunk_coords: ChunkCoords | slice, _data: Array) -> None:
+            async def _copy_array_region(chunk_coords: ChunkCoords | slice, _data: Array) -> None:
                 arr = await _data._async_array.getitem(chunk_coords)
                 await new_array.setitem(chunk_coords, arr)
 
             # Stream data from the source array to the new array
             await concurrent_map(
                 [(region, data) for region in new_array._iter_chunk_regions()],
-                _copy_region,
+                _copy_array_region,
                 zarr.core.config.config.get("async.concurrency"),
             )
         else:
 
-            async def _copy_region(chunk_coords: ChunkCoords | slice, _data: npt.ArrayLike) -> None:
+            async def _copy_arraylike_region(
+                chunk_coords: ChunkCoords | slice, _data: npt.ArrayLike
+            ) -> None:
                 await new_array.setitem(chunk_coords, _data[chunk_coords])
 
             # Stream data from the source array to the new array
             await concurrent_map(
                 [(region, data) for region in new_array._iter_chunk_regions()],
-                _copy_region,
+                _copy_arraylike_region,
                 zarr.core.config.config.get("async.concurrency"),
             )
     return new_array

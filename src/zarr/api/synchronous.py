@@ -933,9 +933,11 @@ def from_array(
     chunks : ChunkCoords or "auto" or "keep", optional
         Chunk shape of the array.
         Following values are supported:
-            - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
-            - "keep": Retain the chunk shape of the data array if it is a zarr Array.
-            - ChunkCoords: A tuple of integers representing the chunk shape.
+
+        - "auto": Automatically determine the chunk shape based on the array's shape and dtype.
+        - "keep": Retain the chunk shape of the data array if it is a zarr Array.
+        - ChunkCoords: A tuple of integers representing the chunk shape.
+
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
     shards : ChunkCoords, optional
         Shard shape of the array. The default value of ``None`` results in no sharding at all.
@@ -951,9 +953,11 @@ def from_array(
         the order if your filters is consistent with the behavior of each filter.
 
         Following values are supported:
+
         - Iterable[Codec]: List of filters to apply to the array.
         - "auto": Automatically determine the filters based on the array's dtype.
         - "keep": Retain the filters of the data array if it is a zarr Array.
+
         If no ``filters`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
     compressors : Iterable[Codec] or "auto" or "keep", optional
         List of compressors to apply to the array. Compressors are applied in order, and after any
@@ -966,15 +970,18 @@ def from_array(
         be provided for Zarr format 2.
 
         Following values are supported:
+
         - Iterable[Codec]: List of compressors to apply to the array.
         - "auto": Automatically determine the compressors based on the array's dtype.
         - "keep": Retain the compressors of the input array if it is a zarr Array.
+
         If no ``compressors`` are provided, defaults to "keep" if data is a zarr Array, otherwise "auto".
     serializer : dict[str, JSON] | ArrayBytesCodec or "auto" or "keep", optional
         Array-to-bytes codec to use for encoding the array data.
         Zarr format 3 only. Zarr format 2 arrays use implicit array-to-bytes conversion.
 
         Following values are supported:
+
         - dict[str, JSON]: A dict representation of an ``ArrayBytesCodec``.
         - ArrayBytesCodec: An instance of ``ArrayBytesCodec``.
         - "auto": a default serializer will be used. These defaults can be changed by modifying the value of
@@ -1062,7 +1069,6 @@ def from_array(
     >>> arr5[...]
     [[0 0]
      [0 0]]
-
     """
     return Array(
         sync(
