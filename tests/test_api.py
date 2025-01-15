@@ -1086,10 +1086,14 @@ async def test_open_falls_back_to_open_group_async() -> None:
     assert group.attrs == {"key": "value"}
 
 
-def test_open_mode_write_creates_group(tmp_path: pathlib.Path) -> None:
+@pytest.mark.parametrize("mode", ["w", "a"])
+def test_open_write_modes_creates_group(tmp_path: pathlib.Path, mode: str) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2490
-    zarr_dir = tmp_path / "test.zarr"
-    group = zarr.open(zarr_dir, mode="w")
+    zarr_dir = tmp_path / f"{mode}-test.zarr"
+    if mode in ["r", "r+"]:
+        # If read modes, create a zarr store first.
+        zarr.open(zarr_dir, mode="w")
+    group = zarr.open(zarr_dir, mode=mode)
     assert isinstance(group, Group)
 
 
