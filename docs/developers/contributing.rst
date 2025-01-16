@@ -190,8 +190,12 @@ Both unit tests and docstring doctests are included when computing coverage. Run
 
     $ hatch env run --env test.py3.12-2.1-optional run-coverage
 
-will automatically run the test suite with coverage and produce a coverage report.
+will automatically run the test suite with coverage and produce a XML coverage report.
 This should be 100% before code can be accepted into the main code base.
+
+You can also generate a HTML rendered of the coverage report by running::
+
+     $ hatch env run --env test.py3.12-2.1-optional run-coverage-html
 
 When submitting a pull request, coverage will also be collected across all supported
 Python versions via the Codecov service, and will be reported back within the pull
