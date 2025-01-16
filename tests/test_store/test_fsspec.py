@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from typing import TYPE_CHECKING
 
 import pytest
@@ -19,6 +20,12 @@ if TYPE_CHECKING:
 
     import botocore.client
 
+# Warning filter due to https://github.com/boto/boto3/issues/3889
+pytestmark = [
+    pytest.mark.filterwarnings(
+        re.escape("ignore:datetime.datetime.utcnow() is deprecated:DeprecationWarning")
+    )
+]
 
 fsspec = pytest.importorskip("fsspec")
 s3fs = pytest.importorskip("s3fs")
