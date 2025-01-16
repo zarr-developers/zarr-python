@@ -62,10 +62,8 @@ async def test_async_array_prototype() -> None:
         prototype=my_prototype,
     )
     got = await a.getitem(selection=(slice(0, 9), slice(0, 9)), prototype=my_prototype)
-    # ignoring a mypy error here that TestNDArrayLike doesn't meet the NDArrayLike protocol
-    # The test passes, so it clearly does.
-    assert isinstance(got, TestNDArrayLike)  # type: ignore[unreachable]
-    assert np.array_equal(expect, got)  # type: ignore[unreachable]
+    assert isinstance(got, TestNDArrayLike)
+    assert np.array_equal(expect, got)
 
 
 @gpu_test
@@ -115,10 +113,8 @@ async def test_codecs_use_of_prototype() -> None:
         prototype=my_prototype,
     )
     got = await a.getitem(selection=(slice(0, 10), slice(0, 10)), prototype=my_prototype)
-    # ignoring a mypy error here that TestNDArrayLike doesn't meet the NDArrayLike protocol
-    # The test passes, so it clearly does.
-    assert isinstance(got, TestNDArrayLike)  # type: ignore[unreachable]
-    assert np.array_equal(expect, got)  # type: ignore[unreachable]
+    assert isinstance(got, TestNDArrayLike)
+    assert np.array_equal(expect, got)
 
 
 @gpu_test
