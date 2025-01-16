@@ -98,7 +98,7 @@ you can do something like the following::
 To verify that your development environment is working, you can run the unit tests
 for one of the test environments, e.g.::
 
-    $ hatch env run --env test.py3.12-2.1-optional run
+    $ hatch env run --env test.py3.12-2.1-optional run-pytest
 
 Creating a branch
 ~~~~~~~~~~~~~~~~~
@@ -140,7 +140,7 @@ Zarr includes a suite of unit tests. The simplest way to run the unit tests
 is to activate your development environment
 (see `creating a development environment`_ above) and invoke::
 
-    $ hatch env run --env test.py3.12-2.1-optional run
+    $ hatch env run --env test.py3.12-2.1-optional run-pytest
 
 All tests are automatically run via GitHub Actions for every pull
 request and must pass before code can be accepted. Test coverage is
