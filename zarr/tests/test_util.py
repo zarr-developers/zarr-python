@@ -44,7 +44,8 @@ def test_normalize_shape():
     with pytest.raises(TypeError):
         normalize_shape(None)
     with pytest.raises(ValueError):
-        normalize_shape("foo")
+        with pytest.warns(UserWarning):
+            normalize_shape("foo")
 
 
 def test_normalize_chunks():

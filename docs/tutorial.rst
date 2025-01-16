@@ -809,7 +809,7 @@ Another storage alternative is the :class:`zarr.storage.DBMStore` class, added
 in Zarr version 2.2. This class allows any DBM-style database to be used for
 storing an array or group. Here is an example using a Berkeley DB B-tree
 database for storage (requires `bsddb3
-<https://www.jcea.es/programacion/pybsddb.htm>`_ to be installed)::
+<https://www.jcea.es/programacion/pybsddb.htm>`_ to be installed):
 
 .. doctest-requires:: bsddb3
 

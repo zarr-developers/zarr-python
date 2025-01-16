@@ -18,6 +18,7 @@ from typing import (
     Iterable,
     cast,
 )
+import warnings
 
 import numpy as np
 from asciitree import BoxStyle, LeftAligned
@@ -88,6 +89,8 @@ def normalize_shape(shape: Union[int, Tuple[int, ...], None]) -> Tuple[int, ...]
 
     # normalize
     shape = cast(Tuple[int, ...], shape)
+    if not all(isinstance(s, numbers.Integral) for s in shape):
+        warnings.warn("shape contains non-integer value(s)", UserWarning, stacklevel=2)
     shape = tuple(int(s) for s in shape)
     return shape
 
@@ -175,6 +178,9 @@ def normalize_chunks(chunks: Any, shape: Tuple[int, ...], typesize: int) -> Tupl
     # handle None or -1 in chunks
     if -1 in chunks or None in chunks:
         chunks = tuple(s if c == -1 or c is None else int(c) for s, c in zip(shape, chunks))
+
+    if not all(isinstance(c, numbers.Integral) for c in chunks):
+        warnings.warn("chunks contains non-integer value(s)", UserWarning, stacklevel=2)
 
     chunks = tuple(int(c) for c in chunks)
     return chunks

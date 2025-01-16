@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64.0.0", "setuptools-scm>1.5.4"]
+requires = ["setuptools>=64", "setuptools-scm>8"]
 build-backend = "setuptools.build_meta"
 
 
@@ -13,7 +13,7 @@ dependencies = [
     'asciitree',
     'numpy>=1.24',
     'fasteners; sys_platform != "emscripten"',
-    'numcodecs>=0.10.0',
+    'numcodecs>=0.10.0,!=0.14.0,!=0.14.1',
 ]
 dynamic = ["version"]
 classifiers = [
@@ -42,7 +42,8 @@ docs = [
     'sphinx-copybutton',
     'pydata-sphinx-theme',
     'numpydoc',
-    'numcodecs[msgpack]',
+    'numcodecs[msgpack]!=0.14.0,!=0.14.1',
+    'pytest-doctestplus',
 ]
 
 [project.urls]
@@ -67,9 +68,8 @@ packages = ["zarr", "zarr._storage", "zarr.tests"]
 license-files = ["LICENSE.txt"]
 
 [tool.setuptools_scm]
-version_scheme = "guess-next-dev"
 local_scheme = "dirty-tag"
-write_to = "zarr/version.py"
+version_file = "zarr/version.py"
 
 [tool.ruff]
 line-length = 100
