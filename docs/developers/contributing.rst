@@ -193,7 +193,7 @@ Both unit tests and docstring doctests are included when computing coverage. Run
 will automatically run the test suite with coverage and produce a XML coverage report.
 This should be 100% before code can be accepted into the main code base.
 
-You can also generate a HTML rendered of the coverage report by running::
+You can also generate an HTML coverage report by running::
 
      $ hatch env run --env test.py3.12-2.1-optional run-coverage-html
 
