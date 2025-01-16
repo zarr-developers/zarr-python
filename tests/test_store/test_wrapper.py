@@ -52,6 +52,13 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
     def test_store_repr(self, store: WrapperStore) -> None:
         assert str(store) == f"wrapping-file://{store._store.root.as_posix()}"
 
+    def test_is_open_setter_raises(self, store: WrapperStore) -> None:
+        "Test that a user cannot change `_is_open` without opening the underlying store."
+        with pytest.raises(
+            NotImplementedError, match="WrapperStore must be opened via the `_open` method"
+        ):
+            store._is_open = True
+
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
 async def test_wrapped_set(store: Store, capsys: pytest.CaptureFixture[str]) -> None:

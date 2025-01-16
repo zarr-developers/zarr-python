@@ -137,8 +137,7 @@ class LoggingStore(WrapperStore[T_Store]):
 
     @_is_open.setter
     def _is_open(self, value: bool) -> None:
-        with self.log(value):
-            self._store._is_open = value
+        raise NotImplementedError("LoggingStore must be opened via the `_open` method")
 
     async def _open(self) -> None:
         with self.log():

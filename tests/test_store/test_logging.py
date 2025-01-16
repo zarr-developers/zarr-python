@@ -71,6 +71,13 @@ class TestLoggingStore(StoreTests[LoggingStore, cpu.Buffer]):
         for h in handlers:
             logging.getLogger().addHandler(h)
 
+    def test_is_open_setter_raises(self, store: LoggingStore) -> None:
+        "Test that a user cannot change `_is_open` without opening the underlying store."
+        with pytest.raises(
+            NotImplementedError, match="LoggingStore must be opened via the `_open` method"
+        ):
+            store._is_open = True
+
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
 async def test_logging_store(store: Store, caplog) -> None:

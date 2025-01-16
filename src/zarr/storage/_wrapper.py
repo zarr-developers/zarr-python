@@ -62,7 +62,7 @@ class WrapperStore(Store, Generic[T_Store]):
 
     @_is_open.setter
     def _is_open(self, value: bool) -> None:
-        self._store._is_open = value
+        raise NotImplementedError("WrapperStore must be opened via the `_open` method")
 
     async def clear(self) -> None:
         return await self._store.clear()
