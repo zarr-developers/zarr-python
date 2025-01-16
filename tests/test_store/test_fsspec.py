@@ -24,7 +24,9 @@ if TYPE_CHECKING:
 pytestmark = [
     pytest.mark.filterwarnings(
         re.escape("ignore:datetime.datetime.utcnow() is deprecated:DeprecationWarning")
-    )
+    ),
+    # TODO: fix these resource warnings
+    pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
 ]
 
 fsspec = pytest.importorskip("fsspec")
