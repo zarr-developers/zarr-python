@@ -2,6 +2,13 @@
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.github",
+  "/bench",
+  "/docs",
+  "/notebooks"
+]
 
 [project]
 name = "zarr"
@@ -319,8 +326,6 @@ ignore = [
     "Q003",
     "COM812",
     "COM819",
-    "ISC001",
-    "ISC002",
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
