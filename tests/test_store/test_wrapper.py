@@ -36,10 +36,6 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
     def open_kwargs(self, tmpdir) -> dict[str, str]:
         return {"store_cls": LocalStore, "root": str(tmpdir)}
 
-    @pytest.fixture
-    def store(self, store_kwargs: dict[str, str]) -> WrapperStore:
-        return self.store_cls(**store_kwargs)
-
     def test_store_supports_writes(self, store: WrapperStore) -> None:
         assert store.supports_writes
 
@@ -55,8 +51,21 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
     def test_store_str(self, store: WrapperStore) -> None:
         assert str(store) == f"wrapping-file://{store._store.root.as_posix()}"
 
+    def test_check_writeable(self, store: WrapperStore) -> None:
+        """
+        Test _check_writeable() runs without errors.
+        """
+        store._check_writable()
+
+    def test_close(self, store: WrapperStore) -> None:
+        "Test store can be closed"
+        store.close()
+        assert not store._is_open
+
     def test_is_open_setter_raises(self, store: WrapperStore) -> None:
-        "Test that a user cannot change `_is_open` without opening the underlying store."
+        """
+        Test that a user cannot change `_is_open` without opening the underlying store.
+        """
         with pytest.raises(
             NotImplementedError, match="WrapperStore must be opened via the `_open` method"
         ):
