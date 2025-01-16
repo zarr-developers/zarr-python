@@ -25,8 +25,9 @@ pytestmark = [
     pytest.mark.filterwarnings(
         re.escape("ignore:datetime.datetime.utcnow() is deprecated:DeprecationWarning")
     ),
-    # TODO: fix these resource warnings
-    pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")
+    # TODO: fix these warnings
+    pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning"),
+    pytest.mark.filterwarnings("ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning")
 ]
 
 fsspec = pytest.importorskip("fsspec")
