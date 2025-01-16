@@ -50,6 +50,9 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
         assert store.supports_listing
 
     def test_store_repr(self, store: WrapperStore) -> None:
+        assert f"{store!r}" == f"WrapperStore(LocalStore, 'file://{store._store.root.as_posix()}')"
+
+    def test_store_str(self, store: WrapperStore) -> None:
         assert str(store) == f"wrapping-file://{store._store.root.as_posix()}"
 
     def test_is_open_setter_raises(self, store: WrapperStore) -> None:

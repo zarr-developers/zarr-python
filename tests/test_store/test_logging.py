@@ -51,6 +51,9 @@ class TestLoggingStore(StoreTests[LoggingStore, cpu.Buffer]):
         assert store.supports_listing
 
     def test_store_repr(self, store: LoggingStore) -> None:
+        assert f"{store!r}" == f"LoggingStore(LocalStore, 'file://{store._store.root.as_posix()}')"
+
+    def test_store_str(self, store: LoggingStore) -> None:
         assert str(store) == f"logging-file://{store._store.root.as_posix()}"
 
     async def test_default_handler(self, local_store, capsys) -> None:

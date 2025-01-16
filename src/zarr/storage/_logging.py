@@ -161,7 +161,7 @@ class LoggingStore(WrapperStore[T_Store]):
         return f"logging-{self._store}"
 
     def __repr__(self) -> str:
-        return f"LoggingStore({repr(self._store)!r})"
+        return f"LoggingStore({self._store.__class__.__name__}, '{self._store}')"
 
     def __eq__(self, other: object) -> bool:
         with self.log(other):

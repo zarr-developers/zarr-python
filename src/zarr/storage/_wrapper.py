@@ -81,7 +81,7 @@ class WrapperStore(Store, Generic[T_Store]):
         return f"wrapping-{self._store}"
 
     def __repr__(self) -> str:
-        return f"WrapperStore({repr(self._store)!r})"
+        return f"WrapperStore({self._store.__class__.__name__}, '{self._store}')"
 
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
