@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import pytest
-from numcodecs import Zstd
+from numcodecs import Blosc
 
 import zarr
 import zarr.api.asynchronous
@@ -499,7 +499,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
                     "chunks": (1,),
                     "order": "C",
                     "filters": None,
-                    "compressor": Zstd(level=0),
+                    "compressor": Blosc(),
                     "zarr_format": zarr_format,
                 },
                 "subgroup": {
@@ -1505,13 +1505,3 @@ def test_group_members_concurrency_limit(store: MemoryStore) -> None:
         elapsed = time.time() - start
 
         assert elapsed > num_groups * get_latency
-
-
-@pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
-def test_deprecated_compressor(store: Store) -> None:
-    g = zarr.group(store=store, zarr_format=2)
-    with pytest.warns(UserWarning, match="The `compressor` argument is deprecated.*"):
-        a = g.create_array(
-            "foo", shape=(100,), chunks=(10,), dtype="i4", compressor={"id": "blosc"}
-        )
-        assert a.metadata.compressor.codec_id == "blosc"

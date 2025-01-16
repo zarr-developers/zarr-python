@@ -1011,7 +1011,7 @@ class AsyncGroup:
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
-        compressor: CompressorLike = None,
+        compressor: CompressorLike = "auto",
         serializer: SerializerLike = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = None,
@@ -1114,8 +1114,9 @@ class AsyncGroup:
         AsyncArray
 
         """
-
-        compressors = _parse_deprecated_compressor(compressor, compressors)
+        compressors = _parse_deprecated_compressor(
+            compressor, compressors, zarr_format=self.metadata.zarr_format
+        )
         return await create_array(
             store=self.store_path,
             name=name,
@@ -2244,7 +2245,7 @@ class Group(SyncMixin):
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
         compressors: CompressorsLike = "auto",
-        compressor: CompressorLike = None,
+        compressor: CompressorLike = "auto",
         serializer: SerializerLike = "auto",
         fill_value: Any | None = 0,
         order: MemoryOrder | None = "C",
@@ -2346,7 +2347,9 @@ class Group(SyncMixin):
         -------
         AsyncArray
         """
-        compressors = _parse_deprecated_compressor(compressor, compressors)
+        compressors = _parse_deprecated_compressor(
+            compressor, compressors, zarr_format=self.metadata.zarr_format
+        )
         return Array(
             self._sync(
                 self._async_group.create_array(
