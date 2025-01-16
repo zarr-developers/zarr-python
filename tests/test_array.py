@@ -658,7 +658,7 @@ def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     assert (205,) == z.shape
     assert (205,) == z[:].shape  # type: ignore[union-attr]
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == z[:].dtype  # type: ignore[union-attr]
     assert (10,) == z.chunks
     np.testing.assert_array_equal(a, z[:105])
     np.testing.assert_array_equal(np.zeros(100, dtype="i4"), z[105:])
@@ -693,7 +693,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     assert (105, 105) == z.shape
     assert (105, 105) == z[:].shape  # type: ignore[union-attr]
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == z[:].dtype  # type: ignore[union-attr]
     assert (10, 10) == z.chunks
     np.testing.assert_array_equal(a, z[:])
 
@@ -701,7 +701,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     assert (205, 205) == z.shape
     assert (205, 205) == z[:].shape  # type: ignore[union-attr]
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == z[:].dtype  # type: ignore[union-attr]
     assert (10, 10) == z.chunks
     np.testing.assert_array_equal(a, z[:105, :105])
     np.testing.assert_array_equal(np.zeros((100, 205), dtype="i4"), z[105:, :])
@@ -711,7 +711,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     assert (55, 55) == z.shape
     assert (55, 55) == z[:].shape  # type: ignore[union-attr]
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == z[:].dtype  # type: ignore[union-attr]
     assert (10, 10) == z.chunks
     np.testing.assert_array_equal(a[:55, :55], z[:])
 
@@ -719,7 +719,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     assert (55, 1) == z.shape
     assert (55, 1) == z[:].shape  # type: ignore[union-attr]
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == z[:].dtype  # type: ignore[union-attr]
     assert (10, 10) == z.chunks
     np.testing.assert_array_equal(a[:55, :1], z[:])
 
@@ -727,7 +727,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     assert (1, 55) == z.shape
     assert (1, 55) == z[:].shape  # type: ignore[union-attr]
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == z[:].dtype  # type: ignore[union-attr]
     assert (10, 10) == z.chunks
     np.testing.assert_array_equal(a[:1, :10], z[:, :10])
     np.testing.assert_array_equal(np.zeros((1, 55 - 10), dtype="i4"), z[:, 10:55])

@@ -275,7 +275,7 @@ def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
     arr[...] = 3
     z2 = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
     assert isinstance(z2, Array)
-    assert not (z2[:] == 3).all()
+    assert not np.array(z2[:] == 3).all()
     z2[:] = 3
 
 

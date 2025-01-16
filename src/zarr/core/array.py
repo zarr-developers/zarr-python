@@ -1246,7 +1246,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 drop_axes=indexer.drop_axes,
             )
         if indexer.shape == ():
-            return cast(out_buffer.as_numpy_array().item(), out_buffer.dtype)
+            return cast(out_buffer.as_numpy_array().item(), npt.ArrayLike)
         return out_buffer.as_ndarray_like()
 
     async def getitem(
