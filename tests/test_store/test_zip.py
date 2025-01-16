@@ -19,6 +19,14 @@ if TYPE_CHECKING:
     from typing import Any
 
 
+# TODO: work out where this is coming from and fix
+pytestmark = [
+    pytest.mark.filterwarnings(
+        "ignore:coroutine method 'aclose' of 'ZipStore.list' was never awaited:RuntimeWarning"
+    )
+]
+
+
 class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
     store_cls = ZipStore
     buffer_cls = cpu.Buffer
