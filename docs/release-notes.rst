@@ -23,9 +23,6 @@ Documentation
 
 * Quickstart guide alignment with V3 API (:issue:`2697`).
 
-Documentation
-~~~~~~~~~~~~~
-
 * Fix doctest failures related to numcodecs 0.15 (:issue:`2727`).
 
 Other
