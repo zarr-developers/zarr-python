@@ -18,6 +18,11 @@ Bug fixes
 Behaviour changes
 ~~~~~~~~~~~~~~~~~
 
+Documentation
+~~~~~~~~~~~~~
+
+* Fix doctest failures related to numcodecs 0.15 (:issue:`2727`).
+
 Other
 ~~~~~
 * Removed some unnecessary files from the source distribution
