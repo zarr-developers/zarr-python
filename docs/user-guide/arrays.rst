@@ -241,7 +241,7 @@ built-in delta filter::
    >>> data = np.arange(100000000, dtype='int32').reshape(10000, 10000)
    >>> z = zarr.create_array(store='data/example-7.zarr', shape=data.shape, dtype=data.dtype, chunks=(1000, 1000), compressors=compressors)
    >>> z.compressors
-   (_make_bytes_bytes_codec.<locals>._Codec(codec_name='numcodecs.lzma', codec_config={'id': 'lzma', 'filters': [{'id': 3, 'dist': 4}, {'id': 33, 'preset': 1}]}),)
+   (LZMA(codec_name='numcodecs.lzma', codec_config={'filters': [{'id': 3, 'dist': 4}, {'id': 33, 'preset': 1}]}),)
 
 The default compressor can be changed by setting the value of the using Zarr's
 :ref:`user-guide-config`, e.g.::
@@ -292,7 +292,7 @@ Here is an example using a delta filter with the Blosc compressor::
    Order              : C
    Read-only          : False
    Store type         : LocalStore
-   Filters            : (_make_array_array_codec.<locals>._Codec(codec_name='numcodecs.delta', codec_config={'id': 'delta', 'dtype': 'int32'}),)
+   Filters            : (Delta(codec_name='numcodecs.delta', codec_config={'dtype': 'int32'}),)
    Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
    Compressors        : (BloscCodec(typesize=4, cname=<BloscCname.zstd: 'zstd'>, clevel=1, shuffle=<BloscShuffle.shuffle: 'shuffle'>, blocksize=0),)
    No. bytes          : 400000000 (381.5M)
