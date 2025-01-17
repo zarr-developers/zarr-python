@@ -2,6 +2,13 @@
 requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.github",
+  "/bench",
+  "/docs",
+  "/notebooks"
+]
 
 [project]
 name = "zarr"
@@ -221,11 +228,12 @@ See Spec 0000 for details and drop schedule: https://scientific-python.org/specs
 """
 python = "3.11"
 dependencies = [
+    'zarr[remote]',
     'packaging==22.*',
     'numpy==1.25.*',
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
-    'fsspec==2022.10.0',
-    's3fs==2022.10.0',
+    'fsspec==2023.10.0',
+    's3fs==2023.10.0',
     'universal_pathlib==0.0.22',
     'typing_extensions==4.9.*',
     'donfig==0.8.*',
@@ -319,8 +327,6 @@ ignore = [
     "Q003",
     "COM812",
     "COM819",
-    "ISC001",
-    "ISC002",
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]

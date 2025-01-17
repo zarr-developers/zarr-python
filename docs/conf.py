@@ -15,14 +15,11 @@
 
 import os
 import sys
+from importlib.metadata import version as get_version
 from typing import Any
 
 import sphinx
 import sphinx.application
-
-from importlib.metadata import version as get_version
-
-import sphinx
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
