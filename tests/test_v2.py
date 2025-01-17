@@ -7,11 +7,13 @@ import numpy as np
 import pytest
 from numcodecs import Delta
 from numcodecs.blosc import Blosc
+from numcodecs.zstd import Zstd
 
 import zarr
 import zarr.core.buffer
 import zarr.storage
 from zarr import config
+from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
@@ -93,11 +95,7 @@ async def test_v2_encode_decode(dtype):
         store = zarr.storage.MemoryStore()
         g = zarr.group(store=store, zarr_format=2)
         g.create_array(
-            name="foo",
-            shape=(3,),
-            chunks=(3,),
-            dtype=dtype,
-            fill_value=b"X",
+            name="foo", shape=(3,), chunks=(3,), dtype=dtype, fill_value=b"X", compressor=None
         )
 
         result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
@@ -164,6 +162,29 @@ def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)
+
+
+@pytest.mark.filterwarnings("ignore")
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_create_array_defaults(store: Store):
+    """
+    Test that passing compressor=None results in no compressor. Also test that the default value of the compressor
+    parameter does produce a compressor.
+    """
+    g = zarr.open(store, mode="w", zarr_format=2)
+    arr = g.create_array("one", dtype="i8", shape=(1,), chunks=(1,), compressor=None)
+    assert arr._async_array.compressor is None
+    assert not (arr.filters)
+    arr = g.create_array("two", dtype="i8", shape=(1,), chunks=(1,))
+    assert arr._async_array.compressor is not None
+    assert not (arr.filters)
+    arr = g.create_array("three", dtype="i8", shape=(1,), chunks=(1,), compressor=Zstd())
+    assert arr._async_array.compressor is not None
+    assert not (arr.filters)
+    with pytest.raises(ValueError):
+        g.create_array(
+            "four", dtype="i8", shape=(1,), chunks=(1,), compressor=None, compressors=None
+        )
 
 
 @pytest.mark.parametrize("array_order", ["C", "F"])
