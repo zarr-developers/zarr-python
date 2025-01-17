@@ -28,6 +28,12 @@ if TYPE_CHECKING:
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import BytesLike
 
+ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
+    FileNotFoundError,
+    IsADirectoryError,
+    NotADirectoryError,
+)
+
 
 class ObjectStore(Store):
     """A Zarr store that uses obstore for fast read/write from AWS, GCP, and Azure.
@@ -77,27 +83,30 @@ class ObjectStore(Store):
 
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
-    ) -> Buffer:
-        if byte_range is None:
-            resp = await obs.get_async(self.store, key)
-            return prototype.buffer.from_bytes(await resp.bytes_async())
-        elif isinstance(byte_range, RangeByteRequest):
-            resp = await obs.get_range_async(
-                self.store, key, start=byte_range.start, end=byte_range.end
-            )
-            return prototype.buffer.from_bytes(memoryview(resp))
-        elif isinstance(byte_range, OffsetByteRequest):
-            resp = await obs.get_async(
-                self.store, key, options={"range": {"offset": byte_range.offset}}
-            )
-            return prototype.buffer.from_bytes(await resp.bytes_async())
-        elif isinstance(byte_range, SuffixByteRequest):
-            resp = await obs.get_async(
-                self.store, key, options={"range": {"suffix": byte_range.suffix}}
-            )
-            return prototype.buffer.from_bytes(await resp.bytes_async())
-        else:
-            raise ValueError(f"Unexpected input to `get`: {byte_range}")
+    ) -> Buffer | None:
+        try:
+            if byte_range is None:
+                resp = await obs.get_async(self.store, key)
+                return prototype.buffer.from_bytes(await resp.bytes_async())
+            elif isinstance(byte_range, RangeByteRequest):
+                resp = await obs.get_range_async(
+                    self.store, key, start=byte_range.start, end=byte_range.end
+                )
+                return prototype.buffer.from_bytes(memoryview(resp))
+            elif isinstance(byte_range, OffsetByteRequest):
+                resp = await obs.get_async(
+                    self.store, key, options={"range": {"offset": byte_range.offset}}
+                )
+                return prototype.buffer.from_bytes(await resp.bytes_async())
+            elif isinstance(byte_range, SuffixByteRequest):
+                resp = await obs.get_async(
+                    self.store, key, options={"range": {"suffix": byte_range.suffix}}
+                )
+                return prototype.buffer.from_bytes(await resp.bytes_async())
+            else:
+                raise ValueError(f"Unexpected input to `get`: {byte_range}")
+        except ALLOWED_EXCEPTIONS:
+            return None
 
     async def get_partial_values(
         self,
