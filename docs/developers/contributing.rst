@@ -337,7 +337,7 @@ Pre-release
 """""""""""
 1. Make sure that all pull requests which will be included in the release
    have been properly documented as changelog files in :file:`changes`.
-2. Run ``towncrier --build --version x.y.z`` to create the changelog.
+2. Run ``towncrier build --version x.y.z`` to create the changelog.
 
 Releasing
 """""""""

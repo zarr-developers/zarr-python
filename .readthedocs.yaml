@@ -6,7 +6,7 @@ build:
     python: "3.12"
   jobs:
     pre_build:
-      - towncrier --build --version Unreleased --yes
+      - towncrier build --version Unreleased --yes
 
 sphinx:
   configuration: docs/conf.py
