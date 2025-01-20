@@ -424,3 +424,4 @@ checks = [
 directory = 'changes'
 filename = "docs/release-notes.rst"
 underlines = ["-", "~", "^"]
+issue_format = ":issue:`{issue}`"
