@@ -6,7 +6,11 @@ build:
     python: "3.12"
   jobs:
     pre_build:
-      - towncrier build --version Unreleased --yes
+      - |
+        if [ "$READTHEDOCS_VERSION_TYPE" != "tag" ];
+        then
+          towncrier build --version Unreleased --yes;
+        fi
 
 sphinx:
   configuration: docs/conf.py
