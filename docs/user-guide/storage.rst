@@ -114,21 +114,18 @@ read small slices from large chunks.:
    ...         with open(fn, "rb") as fh:
    ...             return memoryview(mmap.mmap(fh.fileno(), 0, prot=mmap.PROT_READ))
    >>>
-   >>> # Create a memory-mapped store
-   >>> store = MemoryMappedDirectoryStore('data/example.zarr')
-   >>> z = zarr.open_array(store=store)
-
-For example, if you have an array with large 1000x1000 chunks and frequently need to access small 100x100 sections,
-memory mapping can provide efficient access by mapping only the needed portions into memory,
-rather than loading entire chunks.:
-
    >>> # Create an array with large chunks
    >>> z = zarr.create_array('data/example.zarr', shape=(10000, 10000), chunks=(1000, 1000), dtype='float64')
-   >>> # Later, open with memory mapping for efficient chunk access
+   >>> z[:] = 42  # Fill with test data
+   >>>
+   >>> # Open with memory mapping for efficient access
    >>> mmap_store = MemoryMappedDirectoryStore('data/example.zarr')
    >>> z = zarr.open_array(store=mmap_store)
-   >>> # Access specific chunks efficiently
-   >>> chunk_data = z[500:600, 500:600]  # Only maps the needed chunks into memory
+   >>>
+   >>> # Access small slices efficiently
+   >>> chunk_data = z[500:600, 500:600]  # Only maps the needed portion into memory
+   >>> chunk_data[0, 0]  # Verify data
+   42.0
 
 .. _user-guide-custom-stores:
 
