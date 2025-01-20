@@ -335,11 +335,9 @@ Release procedure
 
 Pre-release
 """""""""""
-1. Make sure that all pull requests which will be
-   included in the release have been properly documented in
-   :file:`docs/release-notes.rst`.
-2. Rename the "Unreleased" section heading in :file:`docs/release-notes.rst`
-   to the version you are about to release.
+1. Make sure that all pull requests which will be included in the release
+   have been properly documented as changelog files in :file:`changes`.
+2. Run ``towncrier --build --version x.y.z`` to create the changelog.
 
 Releasing
 """""""""
