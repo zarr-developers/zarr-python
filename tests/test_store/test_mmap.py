@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import mmap
 from typing import TYPE_CHECKING
 
-import mmap
 import pytest
 
 import zarr
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 class MemoryMappedDirectoryStore(LocalStore):
-    def _fromfile(self, fn):
+    def _fromfile(self, fn: str) -> memoryview:
         with open(fn, "rb") as fh:
             return memoryview(mmap.mmap(fh.fileno(), 0, prot=mmap.PROT_READ))
 
@@ -64,13 +64,11 @@ class TestMemoryMappedDirectoryStore(StoreTests[MemoryMappedDirectoryStore, cpu.
     async def test_mmap_slice_reads(self, store: MemoryMappedDirectoryStore) -> None:
         """Test reading slices with memory mapping"""
         # Create array with large chunks
-        z = zarr.create_array(store=store, shape=(2000, 2000), chunks=(1000, 1000), 
-                            dtype='float64')
+        z = zarr.create_array(store=store, shape=(2000, 2000), chunks=(1000, 1000), dtype="float64")
         # Write test data
-        data = zarr.full(shape=(2000, 2000), chunks=(1000, 1000), fill_value=42.0, 
-                        dtype='float64')
+        data = zarr.full(shape=(2000, 2000), chunks=(1000, 1000), fill_value=42.0, dtype="float64")
         z[:] = data[:]
-        
+
         # Test reading various slices
         slices = [
             # Within single chunk
@@ -78,8 +76,8 @@ class TestMemoryMappedDirectoryStore(StoreTests[MemoryMappedDirectoryStore, cpu.
             # Across chunk boundaries
             (slice(900, 1100), slice(900, 1100)),
             # Full chunk
-            (slice(0, 1000), slice(0, 1000))
+            (slice(0, 1000), slice(0, 1000)),
         ]
-        
+
         for test_slice in slices:
             assert (z[test_slice] == data[test_slice]).all()

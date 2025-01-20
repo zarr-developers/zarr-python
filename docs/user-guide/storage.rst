@@ -102,8 +102,8 @@ Zarr data (metadata and chunks) to a dictionary.:
 Memory-Mapped Store
 ~~~~~~~~~~~~~~~~~~~~
 
-For performance optimization when working with uncompressed data, you can create a memory-mapped store by subclassing :class:`zarr.storage.LocalStore`. 
-Memory mapping allows direct access to portions of chunk data without loading entire chunks into memory, which can be beneficial when you need to 
+For performance optimization when working with uncompressed data, you can create a memory-mapped store by subclassing :class:`zarr.storage.LocalStore`.
+Memory mapping allows direct access to portions of chunk data without loading entire chunks into memory, which can be beneficial when you need to
 read small slices from large chunks.:
 
    >>> import mmap
@@ -119,7 +119,7 @@ read small slices from large chunks.:
    >>> z = zarr.open_array(store=store)
 
 For example, if you have an array with large 1000x1000 chunks and frequently need to access small 100x100 sections,
-memory mapping can provide efficient access by mapping only the needed portions into memory
+memory mapping can provide efficient access by mapping only the needed portions into memory,
 rather than loading entire chunks.:
 
    >>> # Create an array with large chunks
