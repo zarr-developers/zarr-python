@@ -1,2 +1,2 @@
 needs release notes:
-- all: ['!docs/release.rst']
+- all: ['!docs/release-notes.rst']

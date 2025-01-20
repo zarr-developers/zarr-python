@@ -149,7 +149,9 @@ features = ["gpu"]
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
 run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
 run = "run-coverage --no-cov"
+run-pytest = "run"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
@@ -228,11 +230,12 @@ See Spec 0000 for details and drop schedule: https://scientific-python.org/specs
 """
 python = "3.11"
 dependencies = [
+    'zarr[remote]',
     'packaging==22.*',
     'numpy==1.25.*',
     'numcodecs==0.14.*',  # 0.14 needed for zarr3 codecs
-    'fsspec==2022.10.0',
-    's3fs==2022.10.0',
+    'fsspec==2023.10.0',
+    's3fs==2023.10.0',
     'universal_pathlib==0.0.22',
     'typing_extensions==4.9.*',
     'donfig==0.8.*',
@@ -326,8 +329,6 @@ ignore = [
     "Q003",
     "COM812",
     "COM819",
-    "ISC001",
-    "ISC002",
 ]
 
 [tool.ruff.lint.extend-per-file-ignores]
