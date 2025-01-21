@@ -460,18 +460,33 @@ class NDBuffer:
     def __repr__(self) -> str:
         return f"<NDBuffer shape={self.shape} dtype={self.dtype} {self._data!r}>"
 
-    def all_equal(self, other: Any, equal_nan: bool = True) -> bool:
-        """Compare to `other` using np.array_equal."""
-        if other is None:
+    def all_equal(self, value: Any, equal_nan: bool = True) -> bool:
+        if value is None:
             # Handle None fill_value for Zarr V2
             return False
-        # use array_equal to obtain equal_nan=True functionality
-        # Since fill-value is a scalar, isn't there a faster path than allocating a new array for fill value
-        # every single time we have to write data?
-        _data, other = np.broadcast_arrays(self._data, other)
-        return np.array_equal(
-            self._data, other, equal_nan=equal_nan if self._data.dtype.kind not in "USTO" else False
-        )
+
+        if not value:
+            # If `value` is falsey, then just 1 truthy value in `array`
+            # is sufficient to return False. We assume here that np.any is
+            # optimized to return on the first truthy value in `array`.
+            try:
+                return not np.any(self._data)
+            except (TypeError, ValueError):  # pragma: no cover
+                pass
+
+        if np.issubdtype(self._data.dtype, np.object_):
+            # We have to flatten the result of np.equal to handle outputs like
+            # [np.array([True,True]), True, True]
+            return all(np.equal(value, self._data, dtype=self._data.dtype).flatten())
+        else:
+            # Numpy errors if you call np.isnan on custom dtypes, so ensure
+            # we are working with floats before calling isnan
+            if np.issubdtype(self._data.dtype, np.floating) and np.isnan(value):
+                return np.all(np.isnan(self._data))
+            else:
+                # Using == raises warnings from numpy deprecated pattern, but
+                # using np.equal() raises type errors for structured dtypes...
+                return np.all(value == self._data)
 
     def fill(self, value: Any) -> None:
         self._data.fill(value)
