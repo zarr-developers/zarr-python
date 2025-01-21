@@ -7,6 +7,8 @@ Unreleased
 Bug fixes
 ~~~~~~~~~
 
+* Backwards compatibility for Zarr format 2 structured arrays (:issue:`2134`)
+
 Features
 ~~~~~~~~
 
