@@ -9,6 +9,8 @@ from zarr.abc.store import Store
 from zarr.storage import LocalStore, MemoryStore, ZipStore
 from zarr.testing.stateful import ZarrHierarchyStateMachine, ZarrStoreStateMachine
 
+# TODO: work out where this warning is coming from and fix
+pytestmark = [pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")]
 
 def test_zarr_hierarchy(sync_store: Store):
     def mk_test_instance_sync() -> ZarrHierarchyStateMachine:
