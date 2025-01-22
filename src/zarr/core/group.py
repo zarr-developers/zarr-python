@@ -3402,14 +3402,13 @@ async def _read_node(
             return await _read_node_v2(store_path=store_path)
         case 3:
             return await _read_node_v3(store_path=store_path)
-        case _:
+        case _: # pragma: no cover
             raise ValueError(f"Unexpected zarr format: {zarr_format}")  # pragma: no cover
 
 
-async def _set_return_key(*, store: Store, key: str, value: Buffer, replace: bool) -> str:
+async def _set_return_key(*, store: Store, key: str, value: Buffer) -> str:
     """
-    Either write a value to storage at the given key, or ensure that there is already a value in
-    storage at the given key. The key is returned in either case.
+    Write a value to storage at the given key. The key is returned.
     Useful when saving values via routines that return results in execution order,
     like asyncio.as_completed, because in this case we need to know which key was saved in order
     to yield the right object to the caller.
@@ -3422,14 +3421,8 @@ async def _set_return_key(*, store: Store, key: str, value: Buffer, replace: boo
         The key to save the value to.
     value : Buffer
         The value to save.
-    replace : bool
-        If True, then the value will be written even if a value associated with the key
-        already exists in storage. If False, an existing value will not be overwritten.
     """
-    if replace:
-        await store.set(key, value)
-    else:
-        await store.set_if_not_exists(key, value)
+    await store.set(key, value)
     return key
 
 
@@ -3442,7 +3435,7 @@ def _persist_metadata(
 
     to_save = metadata.to_buffer_dict(default_buffer_prototype())
     return tuple(
-        _set_return_key(store=store, key=_join_paths([path, key]), value=value, replace=True)
+        _set_return_key(store=store, key=_join_paths([path, key]), value=value)
         for key, value in to_save.items()
     )
 
