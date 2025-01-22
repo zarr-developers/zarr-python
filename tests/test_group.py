@@ -28,6 +28,7 @@ from zarr.core.group import (
     _join_paths,
     _normalize_path_keys,
     _normalize_paths,
+    _read_node,
     create_hierarchy,
     create_nodes,
 )
@@ -1487,20 +1488,29 @@ async def test_create_hierarchy(store: Store, overwrite: bool, zarr_format: Zarr
     hierarchy_spec = {
         "group": GroupMetadata(attributes={"foo": 10}, zarr_format=zarr_format),
         "group/array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
-        "group/array_1": meta_from_array(np.arange(4), zarr_format=zarr_format),
         "group/subgroup/array_0": meta_from_array(np.arange(4), zarr_format=zarr_format),
-        "group/subgroup/array_1": meta_from_array(np.arange(5), zarr_format=zarr_format),
     }
-    pre_existing_nodes = {"extra": GroupMetadata(zarr_format=zarr_format)}
+    pre_existing_nodes = {
+        "group/extra": GroupMetadata(zarr_format=zarr_format, attributes={"name": "extra"}),
+        "": GroupMetadata(zarr_format=zarr_format, attributes={"name": "root"}),
+    }
     # we expect create_hierarchy to insert a group that was missing from the hierarchy spec
     expected_meta = hierarchy_spec | {"group/subgroup": GroupMetadata(zarr_format=zarr_format)}
     spath = await make_store_path(store, path=path)
+
     # initialize the group with some nodes
-    await _from_flat(store_path=spath, nodes=pre_existing_nodes)
+    sync(_collect_aiterator(create_nodes(store_path=spath, nodes=pre_existing_nodes)))
+
     observed_nodes = {
         str(PurePosixPath(a.name).relative_to("/" + path)): a
         async for a in create_hierarchy(store_path=spath, nodes=expected_meta, overwrite=overwrite)
     }
+    if not overwrite:
+        extra_group = await _read_node(spath / "group/extra", zarr_format=zarr_format)
+        assert extra_group.metadata.attributes == {"name": "extra"}
+    else:
+        with pytest.raises(KeyError):
+            await _read_node(spath / "group/extra", zarr_format=zarr_format)
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
 
 
@@ -1518,15 +1528,31 @@ def test_group_create_hierarchy(store: Store, zarr_format: ZarrFormat, overwrite
             np.zeros(5), zarr_format=zarr_format, attributes={"name": "a/b/c"}
         ),
     }
-    nodes = g.create_hierarchy(tree)
+    nodes = g.create_hierarchy(tree, overwrite=overwrite)
     for k, v in g.members(max_depth=None):
         assert v.metadata == tree[k] == nodes[k].metadata
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("overwrite", [True, False])
+def test_group_create_hierarchy_no_root(store: Store, zarr_format: ZarrFormat, overwrite: bool):
+    """
+    Test that the Group.create_hierarchy method will error if the dict provided contains a root.
+    """
+    g = Group.from_store(store, zarr_format=zarr_format)
+    tree = {
+        "": GroupMetadata(zarr_format=zarr_format, attributes={"name": "a"}),
+    }
+    with pytest.raises(
+        ValueError, match="It is an error to use this method to create a root node. "
+    ):
+        _ = tuple(g.create_hierarchy(tree, overwrite=overwrite))
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_group_create_hierarchy_invalid_mixed_zarr_format(store: Store, zarr_format: ZarrFormat):
     """
-    Test that ```Group.create_hierarchy``` will raise an error if the zarr_format of the nodes is
+    Test that ``Group.create_hierarchy`` will raise an error if the zarr_format of the nodes is
     different from the parent group.
     """
     other_format = 2 if zarr_format == 3 else 3
