@@ -1,7 +1,7 @@
 name: "Pull Request Labeler"
 
 on:
-  pull_request_target
+  pull_request
 
 jobs:
   labeler:
@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Run Pull Request Labeler
         uses: actions/labeler@v5.0.0
