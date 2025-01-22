@@ -3325,7 +3325,7 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
             return ArrayV3Metadata.from_dict(zarr_json)
         case {"node_type": "group"}:
             return GroupMetadata.from_dict(zarr_json)
-        case _:
+        case _:  # pragma: no cover
             raise ValueError(
                 "invalid value for `node_type` key in metadata document"
             )  # pragma: no cover
@@ -3340,7 +3340,7 @@ def _build_metadata_v2(
     match zarr_json:
         case {"shape": _}:
             return ArrayV2Metadata.from_dict(zarr_json | {"attributes": attrs_json})
-        case _:
+        case _:  # pragma: no cover
             return GroupMetadata.from_dict(zarr_json | {"attributes": attrs_json})
 
 
@@ -3355,7 +3355,7 @@ def _build_node_v3(
             return AsyncArray(metadata, store_path=store_path)
         case GroupMetadata():
             return AsyncGroup(metadata, store_path=store_path)
-        case _:
+        case _:  # pragma: no cover
             raise ValueError(f"Unexpected metadata type: {type(metadata)}")  # pragma: no cover
 
 
@@ -3371,7 +3371,7 @@ def _build_node_v2(
             return AsyncArray(metadata, store_path=store_path)
         case GroupMetadata():
             return AsyncGroup(metadata, store_path=store_path)
-        case _:
+        case _:  # pragma: no cover
             raise ValueError(f"Unexpected metadata type: {type(metadata)}")  # pragma: no cover
 
 
@@ -3402,7 +3402,7 @@ async def _read_node(
             return await _read_node_v2(store_path=store_path)
         case 3:
             return await _read_node_v3(store_path=store_path)
-        case _: # pragma: no cover
+        case _:  # pragma: no cover
             raise ValueError(f"Unexpected zarr format: {zarr_format}")  # pragma: no cover
 
 
