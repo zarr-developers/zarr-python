@@ -40,7 +40,7 @@ from zarr.core.array import (
     create_array,
 )
 from zarr.core.attributes import Attributes
-from zarr.core.buffer import Buffer, default_buffer_prototype
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.common import (
     JSON,
     ZARR_JSON,
