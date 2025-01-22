@@ -29,6 +29,7 @@ from zarr.core.group import (
     _join_paths,
     _normalize_path_keys,
     _normalize_paths,
+    _parse_hierarchy_dict,
     _read_node,
     create_hierarchy,
     create_nodes,
@@ -1642,6 +1643,7 @@ async def test_create_rooted_hierarchy_group(store: Store, zarr_format, path: st
         )
         for node_name in group_names
     }
+    
     arrays_expected_meta = {
         _join_paths([root_key, node_name]): meta_from_array(np.zeros(4), zarr_format=zarr_format)
         for node_name in array_names
@@ -1660,6 +1662,18 @@ async def test_create_rooted_hierarchy_group(store: Store, zarr_format, path: st
     }
     assert members_observed_meta == members_expected_meta_relative
 
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
+def test_create_hierarchy_implicit_groups(store: Store):
+    spath = sync(make_store_path(store, path=''))
+    nodes = {
+        '': GroupMetadata(zarr_format=3, attributes={'implicit': False}),
+        'a/b/c': GroupMetadata(zarr_format=3, attributes={'implicit': False})
+        }    
+    
+    hierarchy_parsed = _parse_hierarchy_dict(nodes)
+    g = _create_rooted_hierarchy_sync(spath, nodes=nodes)
+    for key, value in hierarchy_parsed.items():
+        assert g[key].metadata.attributes == value.attributes
 
 # TODO: simplify testing sync versions of async functions.
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
@@ -1721,7 +1735,30 @@ async def test_create_rooted_hierarchy_array(store: Store, zarr_format, path: st
     nodes_create = root_meta
 
     a = await _create_rooted_hierarchy(spath, nodes=nodes_create, overwrite=True)
+    assert isinstance(a, AsyncArray)
     assert a.metadata.attributes == {"path": root_key}
+
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("root_key", ["", "root"])
+@pytest.mark.parametrize("path", ["", "foo"])
+async def test_create_rooted_hierarchy_sync_array(store: Store, zarr_format, path: str, root_key: str):
+    """
+    Test that _create_rooted_hierarchy_sync can create an array.
+    """
+    spath = await make_store_path(store, path=path)
+    root_meta = {
+        root_key: meta_from_array(
+            np.arange(3), zarr_format=zarr_format, attributes={"path": root_key}
+        )
+    }
+
+    nodes_create = root_meta
+
+    a =_create_rooted_hierarchy_sync(spath, nodes=nodes_create, overwrite=True)
+    assert isinstance(a, Array)
+    assert a.metadata.attributes == {"path": root_key}
+
 
 
 async def test_create_rooted_hierarchy_invalid():
