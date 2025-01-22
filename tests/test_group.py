@@ -25,6 +25,7 @@ from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
     _create_rooted_hierarchy,
+    _create_rooted_hierarchy_sync,
     _join_paths,
     _normalize_path_keys,
     _normalize_paths,
@@ -1648,10 +1649,52 @@ async def test_create_rooted_hierarchy_group(store: Store, zarr_format, path: st
 
     nodes_create = root_meta | groups_expected_meta | arrays_expected_meta
 
-    g = await _create_rooted_hierarchy(spath, nodes=nodes_create, overwrite=True)
+    g = await _create_rooted_hierarchy(spath, nodes=nodes_create)
     assert g.metadata.attributes == {"path": root_key}
 
     members = await _collect_aiterator(g.members(max_depth=None))
+    members_observed_meta = {k: v.metadata for k, v in members}
+    members_expected_meta_relative = {
+        k.removeprefix(root_key).lstrip("/"): v
+        for k, v in (groups_expected_meta | arrays_expected_meta).items()
+    }
+    assert members_observed_meta == members_expected_meta_relative
+
+
+# TODO: simplify testing sync versions of async functions.
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("root_key", ["", "root"])
+@pytest.mark.parametrize("path", ["", "foo"])
+def test_create_rooted_hierarchy_sync_group(store: Store, zarr_format, path: str, root_key: str):
+    """
+    Test that the _create_rooted_hierarchy_sync can create a group.
+    """
+    spath = sync(make_store_path(store, path=path))
+    root_meta = {root_key: GroupMetadata(zarr_format=zarr_format, attributes={"path": root_key})}
+    group_names = ["a", "a/b"]
+    array_names = ["a/b/c", "a/b/d"]
+
+    # just to ensure that we don't use the same name twice in tests
+    assert set(group_names) & set(array_names) == set()
+
+    groups_expected_meta = {
+        _join_paths([root_key, node_name]): GroupMetadata(
+            zarr_format=zarr_format, attributes={"path": node_name}
+        )
+        for node_name in group_names
+    }
+    arrays_expected_meta = {
+        _join_paths([root_key, node_name]): meta_from_array(np.zeros(4), zarr_format=zarr_format)
+        for node_name in array_names
+    }
+
+    nodes_create = root_meta | groups_expected_meta | arrays_expected_meta
+
+    g = _create_rooted_hierarchy_sync(spath, nodes=nodes_create)
+    assert g.metadata.attributes == {"path": root_key}
+
+    members = g.members(max_depth=None)
     members_observed_meta = {k: v.metadata for k, v in members}
     members_expected_meta_relative = {
         k.removeprefix(root_key).lstrip("/"): v

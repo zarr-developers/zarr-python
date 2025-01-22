@@ -3326,7 +3326,9 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
         case {"node_type": "group"}:
             return GroupMetadata.from_dict(zarr_json)
         case _:
-            raise ValueError("invalid value for `node_type` key in metadata document")
+            raise ValueError(
+                "invalid value for `node_type` key in metadata document"
+            )  # pragma: no cover
 
 
 def _build_metadata_v2(
@@ -3354,7 +3356,7 @@ def _build_node_v3(
         case GroupMetadata():
             return AsyncGroup(metadata, store_path=store_path)
         case _:
-            raise ValueError(f"Unexpected metadata type: {type(metadata)}")
+            raise ValueError(f"Unexpected metadata type: {type(metadata)}")  # pragma: no cover
 
 
 def _build_node_v2(
@@ -3370,7 +3372,7 @@ def _build_node_v2(
         case GroupMetadata():
             return AsyncGroup(metadata, store_path=store_path)
         case _:
-            raise ValueError(f"Unexpected metadata type: {type(metadata)}")
+            raise ValueError(f"Unexpected metadata type: {type(metadata)}")  # pragma: no cover
 
 
 async def _read_node_v2(store_path: StorePath) -> AsyncArray[ArrayV2Metadata] | AsyncGroup:
@@ -3401,7 +3403,7 @@ async def _read_node(
         case 3:
             return await _read_node_v3(store_path=store_path)
         case _:
-            raise ValueError(f"Unexpected zarr format: {zarr_format}")
+            raise ValueError(f"Unexpected zarr format: {zarr_format}")  # pragma: no cover
 
 
 async def _set_return_key(*, store: Store, key: str, value: Buffer, replace: bool) -> str:
@@ -3499,4 +3501,4 @@ def _create_rooted_hierarchy_sync(
     elif isinstance(async_node, AsyncArray):
         return Array(async_node)
     else:
-        raise TypeError(f"Unexpected node type: {type(async_node)}")
+        raise TypeError(f"Unexpected node type: {type(async_node)}")  # pragma: no cover
