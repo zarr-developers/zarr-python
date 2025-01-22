@@ -38,6 +38,7 @@ from zarr.core.buffer import (
     NDBuffer,
     default_buffer_prototype,
 )
+from zarr.core.buffer.cpu import buffer_prototype as cpu_buffer_prototype
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -163,19 +164,20 @@ async def get_array_metadata(
 ) -> dict[str, JSON]:
     if zarr_format == 2:
         zarray_bytes, zattrs_bytes = await gather(
-            (store_path / ZARRAY_JSON).get(), (store_path / ZATTRS_JSON).get()
+            (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
+            (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
         )
         if zarray_bytes is None:
             raise FileNotFoundError(store_path)
     elif zarr_format == 3:
-        zarr_json_bytes = await (store_path / ZARR_JSON).get()
+        zarr_json_bytes = await (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype)
         if zarr_json_bytes is None:
             raise FileNotFoundError(store_path)
     elif zarr_format is None:
         zarr_json_bytes, zarray_bytes, zattrs_bytes = await gather(
-            (store_path / ZARR_JSON).get(),
-            (store_path / ZARRAY_JSON).get(),
-            (store_path / ZATTRS_JSON).get(),
+            (store_path / ZARR_JSON).get(prototype=cpu_buffer_prototype),
+            (store_path / ZARRAY_JSON).get(prototype=cpu_buffer_prototype),
+            (store_path / ZATTRS_JSON).get(prototype=cpu_buffer_prototype),
         )
         if zarr_json_bytes is not None and zarray_bytes is not None:
             # warn and favor v3
@@ -1295,7 +1297,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         """
         Asynchronously save the array metadata.
         """
-        to_save = metadata.to_buffer_dict(default_buffer_prototype())
+        to_save = metadata.to_buffer_dict(cpu_buffer_prototype)
         awaitables = [set_or_delete(self.store_path / key, value) for key, value in to_save.items()]
 
         if ensure_parents:
@@ -1307,7 +1309,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     [
                         (parent.store_path / key).set_if_not_exists(value)
                         for key, value in parent.metadata.to_buffer_dict(
-                            default_buffer_prototype()
+                            cpu_buffer_prototype
                         ).items()
                     ]
                 )
