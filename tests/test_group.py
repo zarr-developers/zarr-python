@@ -24,7 +24,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
-    _from_flat,
+    _create_rooted_hierarchy,
     _join_paths,
     _normalize_path_keys,
     _normalize_paths,
@@ -1648,7 +1648,7 @@ async def test_group_from_flat(store: Store, zarr_format, path: str, root_key: s
 
     nodes_create = root_meta | groups_expected_meta | arrays_expected_meta
 
-    g = await _from_flat(spath, nodes=nodes_create, overwrite=True)
+    g = await _create_rooted_hierarchy(spath, nodes=nodes_create, overwrite=True)
     assert g.metadata.attributes == {"path": root_key}
 
     members = await _collect_aiterator(g.members(max_depth=None))

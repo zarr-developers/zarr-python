@@ -3445,14 +3445,16 @@ def _persist_metadata(
     )
 
 
-async def _from_flat(
+async def _create_rooted_hierarchy(
     store_path: StorePath,
     *,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
-) -> AsyncGroup:
+) -> AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
     """
-    Create an ``AsyncGroup`` from a store + a dict of nodes.
+    Create an ``AsyncGroup`` or ``AsyncArray`` from a store and a dict of metadata documents.
+    This function ensures that its input contains a specification of a root node,
+    calls ``create_hierarchy`` to create nodes, and returns the root node of the hierarchy.
     """
     roots = _get_roots(nodes)
     if len(roots) != 1:
@@ -3476,7 +3478,25 @@ async def _from_flat(
     }
     # the names of the created nodes will be relative to the store_path instance
     root_relative_to_store_path = _join_paths([store_path.path, root])
-    root_group = nodes_created[root_relative_to_store_path]
-    if not isinstance(root_group, AsyncGroup):
-        raise TypeError("Invalid root node returned from create_hierarchy.")
-    return root_group
+    return nodes_created[root_relative_to_store_path]
+
+
+def _create_rooted_hierarchy_sync(
+    store_path: StorePath,
+    *,
+    nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    overwrite: bool = False,
+) -> Group | Array:
+    """
+    Create a ``Group`` from a store and a dict of metadata documents. Calls the async method
+    ``_create_rooted_hierarchy`` and waits for the result.
+    """
+    async_node = sync(
+        _create_rooted_hierarchy(store_path=store_path, nodes=nodes, overwrite=overwrite)
+    )
+    if isinstance(async_node, AsyncGroup):
+        return Group(async_node)
+    elif isinstance(async_node, AsyncArray):
+        return Array(async_node)
+    else:
+        raise TypeError(f"Unexpected node type: {type(async_node)}")
