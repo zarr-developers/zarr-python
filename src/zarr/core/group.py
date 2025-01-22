@@ -62,6 +62,7 @@ from zarr.core.sync import SyncMixin, sync
 from zarr.errors import MetadataValidationError
 from zarr.storage import StoreLike, StorePath
 from zarr.storage._common import ensure_no_existing_node, make_store_path
+from zarr.storage._utils import normalize_path
 
 if TYPE_CHECKING:
     from collections.abc import (
@@ -2961,7 +2962,8 @@ def _get_roots(
     data: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
 ) -> tuple[str, ...]:
     """
-    Return the keys of the root(s) of the hierarchy
+    Return the keys of the root(s) of the hierarchy. A root is a key with the fewest number of
+    path segments.
     """
     keys_split = sorted((key.split("/") for key in data), key=len)
     groups: defaultdict[int, list[str]] = defaultdict(list)
@@ -2978,8 +2980,8 @@ def _parse_hierarchy_dict(
     then return an identical copy of that dict. Otherwise, return a version of the input dict
     with groups added where they are needed to make the hierarchy explicit.
 
-    For example, an input of {'a/b/c': ...} will result in a return value of
-    {'a': GroupMetadata, 'a/b': GroupMetadata, 'a/b/c': ...}.
+    For example, an input of {'a/b/c': ArrayMetadata} will result in a return value of
+    {'a': GroupMetadata, 'a/b': GroupMetadata, 'a/b/c': ArrayMetadata}.
 
     The input is also checked for the following conditions, and an error is raised if any
     of them are violated:
@@ -2990,8 +2992,6 @@ def _parse_hierarchy_dict(
     This function ensures that the input is transformed into a specification of a complete and valid
     Zarr hierarchy.
     """
-    # Create a copy of the input dict
-    out: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {**data}
 
     observed_zarr_formats: dict[ZarrFormat, list[str]] = {2: [], 3: []}
 
@@ -3007,16 +3007,15 @@ def _parse_hierarchy_dict(
             f"The following keys map to Zarr v3 nodes: {observed_zarr_formats.get(3)}."
             "Ensure that all nodes have the same Zarr format."
         )
-
         raise ValueError(msg)
+
+    out: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {}
 
     for k, v in data.items():
         # TODO: ensure that the key is a valid path
-        # Split the key into its path components
-        key_split = k.split("/")
 
-        # Iterate over the intermediate path components
-        *subpaths, _ = accumulate(key_split, lambda a, b: f"{a}/{b}")
+        *subpaths, _ = accumulate(key_split, lambda a, b: "/".join([a, b]))
+
         for subpath in subpaths:
             # If a component is not already in the output dict, add a group
             if subpath not in out:
@@ -3030,6 +3029,35 @@ def _parse_hierarchy_dict(
                     raise ValueError(msg)
 
     return out
+
+
+def _normalize_paths(paths: Iterable[str]) -> tuple[str, ...]:
+    """
+    Normalize the input paths according to the normalization scheme used for zarr node paths.
+    If any two paths normalize to the same value, raise a ValueError.
+    """
+    path_map: dict[str, str] = {}
+    for path in paths:
+        parsed = normalize_path(path)
+        if parsed in path_map:
+            msg = (
+                f"After normalization, the value '{path}' collides with '{path_map[parsed]}'. "
+                f"Both '{path}' and '{path_map[parsed]}' normalize to the same value: '{parsed}'. "
+                f"You should use either '{path}' or '{path_map[parsed]}', but not both."
+            )
+            raise ValueError(msg)
+        path_map[parsed] = path
+    return tuple(path_map.keys())
+
+
+def _normalize_path_keys(data: dict[str, T]) -> dict[str, T]:
+    """
+    Normalize the keys of the input dict according to the normalization scheme used for zarr node
+    paths. If any two keys in the input normalize to the value, raise a ValueError. Return the
+    values of data with the normalized keys.
+    """
+    parsed_keys = _normalize_paths(data.keys())
+    return dict(zip(parsed_keys, data.values(), strict=False))
 
 
 async def _getitem_semaphore(
