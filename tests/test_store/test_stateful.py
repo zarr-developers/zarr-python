@@ -12,6 +12,7 @@ from zarr.testing.stateful import ZarrHierarchyStateMachine, ZarrStoreStateMachi
 # TODO: work out where this warning is coming from and fix
 pytestmark = [pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning")]
 
+
 def test_zarr_hierarchy(sync_store: Store):
     def mk_test_instance_sync() -> ZarrHierarchyStateMachine:
         return ZarrHierarchyStateMachine(sync_store)
