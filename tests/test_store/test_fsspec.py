@@ -27,7 +27,9 @@ pytestmark = [
     ),
     # TODO: fix these warnings
     pytest.mark.filterwarnings("ignore:Unclosed client session:ResourceWarning"),
-    pytest.mark.filterwarnings("ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning")
+    pytest.mark.filterwarnings(
+        "ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning"
+    ),
 ]
 
 fsspec = pytest.importorskip("fsspec")
