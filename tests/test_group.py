@@ -1623,9 +1623,9 @@ async def test_create_hierarchy_invalid_mixed_format(store: Store):
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("root_key", ["", "root"])
 @pytest.mark.parametrize("path", ["", "foo"])
-async def test_group_from_flat(store: Store, zarr_format, path: str, root_key: str):
+async def test_create_rooted_hierarchy_group(store: Store, zarr_format, path: str, root_key: str):
     """
-    Test that the AsyncGroup.from_flat method creates a zarr group in one shot.
+    Test that the _create_rooted_hierarchy can create a group.
     """
     spath = await make_store_path(store, path=path)
     root_meta = {root_key: GroupMetadata(zarr_format=zarr_format, attributes={"path": root_key})}
@@ -1658,6 +1658,42 @@ async def test_group_from_flat(store: Store, zarr_format, path: str, root_key: s
         for k, v in (groups_expected_meta | arrays_expected_meta).items()
     }
     assert members_observed_meta == members_expected_meta_relative
+
+
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
+@pytest.mark.parametrize("zarr_format", [2, 3])
+@pytest.mark.parametrize("root_key", ["", "root"])
+@pytest.mark.parametrize("path", ["", "foo"])
+async def test_create_rooted_hierarchy_array(store: Store, zarr_format, path: str, root_key: str):
+    """
+    Test that the _create_rooted_hierarchy can create an array.
+    """
+    spath = await make_store_path(store, path=path)
+    root_meta = {
+        root_key: meta_from_array(
+            np.arange(3), zarr_format=zarr_format, attributes={"path": root_key}
+        )
+    }
+
+    nodes_create = root_meta
+
+    a = await _create_rooted_hierarchy(spath, nodes=nodes_create, overwrite=True)
+    assert a.metadata.attributes == {"path": root_key}
+
+
+async def test_create_rooted_hierarchy_invalid():
+    """
+    Ensure _create_rooted_hierarchy will raise a ValueError if the input does not contain
+    a root node.
+    """
+    zarr_format = 3
+    nodes = {
+        "a": GroupMetadata(zarr_format=zarr_format),
+        "b": GroupMetadata(zarr_format=zarr_format),
+    }
+    msg = "The input does not specify a root node. "
+    with pytest.raises(ValueError, match=msg):
+        await _create_rooted_hierarchy(store_path=StorePath("store"), nodes=nodes)
 
 
 @pytest.mark.parametrize("paths", [("a", "/a"), ("", "/"), ("b/", "b")])
