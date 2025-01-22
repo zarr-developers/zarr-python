@@ -112,7 +112,6 @@ from zarr.registry import (
     _parse_bytes_bytes_codec,
     get_pipeline_class,
 )
-from zarr.storage import StoreLike
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
 
 if TYPE_CHECKING:
@@ -4131,15 +4130,22 @@ def _parse_chunk_encoding_v3(
 
 
 def _parse_deprecated_compressor(
-    compressor: CompressorLike | None, compressors: CompressorsLike
+    compressor: CompressorLike | None, compressors: CompressorsLike, zarr_format: int = 3
 ) -> CompressorsLike | None:
-    if compressor:
+    if compressor != "auto":
         if compressors != "auto":
             raise ValueError("Cannot specify both `compressor` and `compressors`.")
-        warn(
-            "The `compressor` argument is deprecated. Use `compressors` instead.",
-            category=UserWarning,
-            stacklevel=2,
-        )
-        compressors = (compressor,)
+        if zarr_format == 3:
+            warn(
+                "The `compressor` argument is deprecated. Use `compressors` instead.",
+                category=UserWarning,
+                stacklevel=2,
+            )
+        if compressor is None:
+            # "no compression"
+            compressors = ()
+        else:
+            compressors = (compressor,)
+    elif zarr_format == 2 and compressor == compressors == "auto":
+        compressors = ({"id": "blosc"},)
     return compressors

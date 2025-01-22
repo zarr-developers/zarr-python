@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-from numcodecs import Zstd
+from numcodecs import Blosc
 
 import zarr.api.asynchronous
 import zarr.api.synchronous
@@ -17,7 +17,7 @@ from zarr.api.asynchronous import (
     open,
     open_consolidated,
 )
-from zarr.core.buffer import default_buffer_prototype
+from zarr.core.buffer import cpu, default_buffer_prototype
 from zarr.core.group import ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayV3Metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
@@ -476,6 +476,30 @@ class TestConsolidated:
         with pytest.raises(ValueError):
             await zarr.api.asynchronous.open_consolidated(store, zarr_format=None)
 
+    @pytest.fixture
+    async def v2_consolidated_metadata_empty_dataset(
+        self, memory_store: zarr.storage.MemoryStore
+    ) -> AsyncGroup:
+        zgroup_bytes = cpu.Buffer.from_bytes(json.dumps({"zarr_format": 2}).encode())
+        zmetadata_bytes = cpu.Buffer.from_bytes(
+            b'{"metadata":{".zgroup":{"zarr_format":2}},"zarr_consolidated_format":1}'
+        )
+        return AsyncGroup._from_bytes_v2(
+            None, zgroup_bytes, zattrs_bytes=None, consolidated_metadata_bytes=zmetadata_bytes
+        )
+
+    async def test_consolidated_metadata_backwards_compatibility(
+        self, v2_consolidated_metadata_empty_dataset
+    ):
+        """
+        Test that consolidated metadata handles a missing .zattrs key. This is necessary for backwards compatibility  with zarr-python 2.x. See https://github.com/zarr-developers/zarr-python/issues/2694
+        """
+        store = zarr.storage.MemoryStore()
+        await zarr.api.asynchronous.open(store=store, zarr_format=2)
+        await zarr.api.asynchronous.consolidate_metadata(store)
+        result = await zarr.api.asynchronous.open_consolidated(store, zarr_format=2)
+        assert result.metadata == v2_consolidated_metadata_empty_dataset.metadata
+
     async def test_consolidated_metadata_v2(self):
         store = zarr.storage.MemoryStore()
         g = await AsyncGroup.from_store(store, attributes={"key": "root"}, zarr_format=2)
@@ -498,7 +522,7 @@ class TestConsolidated:
                         attributes={"key": "a"},
                         chunks=(1,),
                         fill_value=0,
-                        compressor=Zstd(level=0),
+                        compressor=Blosc(),
                         order="C",
                     ),
                     "g1": GroupMetadata(
