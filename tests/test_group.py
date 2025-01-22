@@ -26,6 +26,8 @@ from zarr.core.group import (
     GroupMetadata,
     _from_flat,
     _join_paths,
+    _normalize_path_keys,
+    _normalize_paths,
     create_hierarchy,
     create_nodes,
 )
@@ -33,6 +35,7 @@ from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
+from zarr.storage._utils import normalize_path
 from zarr.testing.store import LatencyStore
 
 from .conftest import meta_from_array, parse_store
@@ -1629,6 +1632,37 @@ async def test_group_from_flat(store: Store, zarr_format, path: str, root_key: s
         for k, v in (groups_expected_meta | arrays_expected_meta).items()
     }
     assert members_observed_meta == members_expected_meta_relative
+
+
+@pytest.mark.parametrize("paths", [("a", "/a"), ("", "/"), ("b/", "b")])
+def test_normalize_paths_invalid(paths: tuple[str, str]):
+    """
+    Ensure that calling _normalize_paths on values that will normalize to the same value
+    will generate a ValueError.
+    """
+    a, b = paths
+    msg = f"After normalization, the value '{b}' collides with '{a}'. "
+    with pytest.raises(ValueError, match=msg):
+        _normalize_paths(paths)
+
+
+@pytest.mark.parametrize(
+    "paths", [("/a", "a/b"), ("a", "a/b"), ("a/", "a///b"), ("/a/", "//a/b///")]
+)
+def test_normalize_paths_valid(paths: tuple[str, str]):
+    """
+    Ensure that calling _normalize_paths on values that normalize to distinct values
+    returns a tuple of those normalized values.
+    """
+    expected = tuple(map(normalize_path, paths))
+    assert _normalize_paths(paths) == expected
+
+
+def test_normalize_path_keys():
+    data = {"": 10, "a": "hello", "a/b": None, "/a/b/c/d": None}
+    observed = _normalize_path_keys(data)
+    expected = {normalize_path(k): v for k, v in data.items()}
+    assert observed == expected
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
