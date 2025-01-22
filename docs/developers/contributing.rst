@@ -216,8 +216,8 @@ The documentation consists both of prose and API documentation. All user-facing 
 and functions are included in the API documentation, under the ``docs/api`` folder
 using the `autodoc <https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html>`_
 extension to sphinx. Any new features or important usage information should be included in the
-user-guide (``docs/user-guide``). Any changes should also be included in the release
-notes (``docs/release-notes.rst``).
+user-guide (``docs/user-guide``). Any changes should also be included as a new file in the
+:file:`changes` directory.
 
 The documentation can be built locally by running::
 
@@ -335,11 +335,9 @@ Release procedure
 
 Pre-release
 """""""""""
-1. Make sure that all pull requests which will be
-   included in the release have been properly documented in
-   :file:`docs/release-notes.rst`.
-2. Rename the "Unreleased" section heading in :file:`docs/release-notes.rst`
-   to the version you are about to release.
+1. Make sure that all pull requests which will be included in the release
+   have been properly documented as changelog files in :file:`changes`.
+2. Run ``towncrier build --version x.y.z`` to create the changelog.
 
 Releasing
 """""""""
@@ -352,7 +350,7 @@ appropriate suffix (e.g. `v0.0.0a1` or `v0.0.0rc2`).
 
 Set the description of the release to::
 
-    See release notes https://zarr.readthedocs.io/en/stable/release.html#release-0-0-0
+    See release notes https://zarr.readthedocs.io/en/stable/release-notes.html#release-0-0-0
 
 replacing the correct version numbers. For pre-release versions,
 the URL should omit the pre-release suffix, e.g. "a1" or "rc1".
