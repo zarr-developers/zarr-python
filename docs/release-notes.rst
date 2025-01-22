@@ -1,7 +1,22 @@
 Release notes
 =============
 
-.. towncrier release notes start
+Unreleased
+----------
+
+Bug fixes
+~~~~~~~~~
+
+* Backwards compatibility for Zarr format 2 structured arrays (:issue:`2134`)
+
+Features
+~~~~~~~~
+
+Documentation
+~~~~~~~~~~~~~
+
+Other
+~~~~~
 
 3.0.1 (Jan. 17, 2025)
 ---------------------
