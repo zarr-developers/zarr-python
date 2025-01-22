@@ -25,6 +25,7 @@ from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
     _from_flat,
+    _join_paths,
     create_hierarchy,
     create_nodes,
 )
@@ -1492,7 +1493,7 @@ async def test_create_hierarchy(store: Store, overwrite: bool, zarr_format: Zarr
     expected_meta = hierarchy_spec | {"group/subgroup": GroupMetadata(zarr_format=zarr_format)}
     spath = await make_store_path(store, path=path)
     # initialize the group with some nodes
-    await _collect_aiterator(_from_flat(store_path=spath, nodes=pre_existing_nodes))
+    await _from_flat(store_path=spath, nodes=pre_existing_nodes)
     observed_nodes = {
         str(PurePosixPath(a.name).relative_to("/" + path)): a
         async for a in create_hierarchy(store_path=spath, nodes=expected_meta, overwrite=overwrite)
@@ -1501,7 +1502,8 @@ async def test_create_hierarchy(store: Store, overwrite: bool, zarr_format: Zarr
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_group_create_hierarchy(store: Store, zarr_format: ZarrFormat):
+@pytest.mark.parametrize("overwrite", [True, False])
+def test_group_create_hierarchy(store: Store, zarr_format: ZarrFormat, overwrite: bool):
     """
     Test that the Group.create_hierarchy method creates specified nodes and returns them in a dict.
     """
@@ -1533,7 +1535,7 @@ def test_group_create_hierarchy_invalid_mixed_zarr_format(store: Store, zarr_for
 
     msg = "The zarr_format of the nodes must be the same as the parent group."
     with pytest.raises(ValueError, match=msg):
-        _ = g.create_hierarchy(tree)
+        _ = tuple(g.create_hierarchy(tree))
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1588,9 +1590,9 @@ async def test_create_hierarchy_invalid_mixed_format(store: Store):
         )
 
 
-@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize("root_key", ["", "a", "a/b"])
+@pytest.mark.parametrize("root_key", ["", "root"])
 @pytest.mark.parametrize("path", ["", "foo"])
 async def test_group_from_flat(store: Store, zarr_format, path: str, root_key: str):
     """
@@ -1598,19 +1600,33 @@ async def test_group_from_flat(store: Store, zarr_format, path: str, root_key: s
     """
     spath = await make_store_path(store, path=path)
     root_meta = {root_key: GroupMetadata(zarr_format=zarr_format, attributes={"path": root_key})}
-    members_expected_meta = {
-        f"{root_key}/b": GroupMetadata(
-            zarr_format=zarr_format, attributes={"path": f"{root_key}/b"}
-        ),
-        f"{root_key}/b/c": GroupMetadata(
-            zarr_format=zarr_format, attributes={"path": f"{root_key}/b/c"}
-        ),
+    group_names = ["a", "a/b"]
+    array_names = ["a/b/c", "a/b/d"]
+
+    # just to ensure that we don't use the same name twice in tests
+    assert set(group_names) & set(array_names) == set()
+
+    groups_expected_meta = {
+        _join_paths([root_key, node_name]): GroupMetadata(
+            zarr_format=zarr_format, attributes={"path": node_name}
+        )
+        for node_name in group_names
     }
-    g = await _from_flat(spath, nodes=root_meta | members_expected_meta)
+    arrays_expected_meta = {
+        _join_paths([root_key, node_name]): meta_from_array(np.zeros(4), zarr_format=zarr_format)
+        for node_name in array_names
+    }
+
+    nodes_create = root_meta | groups_expected_meta | arrays_expected_meta
+
+    g = await _from_flat(spath, nodes=nodes_create, overwrite=True)
+    assert g.metadata.attributes == {"path": root_key}
+
     members = await _collect_aiterator(g.members(max_depth=None))
     members_observed_meta = {k: v.metadata for k, v in members}
     members_expected_meta_relative = {
-        str(PurePosixPath(k).relative_to(root_key)): v for k, v in members_expected_meta.items()
+        k.removeprefix(root_key).lstrip("/"): v
+        for k, v in (groups_expected_meta | arrays_expected_meta).items()
     }
     assert members_observed_meta == members_expected_meta_relative
 

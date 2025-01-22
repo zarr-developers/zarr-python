@@ -9,7 +9,6 @@ import warnings
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field, fields, replace
 from itertools import accumulate
-from pathlib import PurePosixPath
 from typing import (
     TYPE_CHECKING,
     Literal,
@@ -2079,7 +2078,9 @@ class Group(SyncMixin):
 
     def create_hierarchy(
         self, nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata]
-    ) -> dict[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+    ) -> Iterator[
+        tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]
+    ]:
         """
         Create a hierarchy of arrays or groups rooted at this group.
 
@@ -2097,6 +2098,14 @@ class Group(SyncMixin):
         -------
             A dict containing the created nodes, with the same keys as the input
         """
+        if "" in nodes:
+            msg = (
+                "Found the key '' in nodes, which denotes the root group. Creating the root group "
+                "from an existing group is not supported. If you want to create an entire Zarr group, "
+                "including the root group, from a dict then use the _from_flat method."
+            )
+            raise ValueError(msg)
+
         # check that all the nodes have the same zarr_format as Self
         for key, value in nodes.items():
             if value.zarr_format != self.metadata.zarr_format:
@@ -2107,12 +2116,8 @@ class Group(SyncMixin):
                 )
                 raise ValueError(msg)
         nodes_created = self._sync_iter(self._async_group.create_hierarchy(nodes))
-        if self.path == "":
-            root = "/"
-        else:
-            root = self.path
-        # TODO: make this safe against invalid path inputs
-        return {str(PurePosixPath(n.name).relative_to(root)): n for n in nodes_created}
+        for n in nodes_created:
+            yield (_join_paths([self.path, n.name]), n)
 
     def keys(self) -> Generator[str, None]:
         """Return an iterator over group member names.
@@ -2884,8 +2889,12 @@ async def create_hierarchy(
         The created nodes in the order they are created.
     """
     nodes_parsed = _parse_hierarchy_dict(nodes)
+
     if overwrite:
         await store_path.delete_dir()
+    else:
+        # TODO: check if any of the nodes already exist, and error if so
+        raise NotImplementedError
     async for node in create_nodes(store_path=store_path, nodes=nodes_parsed, semaphore=semaphore):
         yield node
 
@@ -2897,10 +2906,11 @@ async def create_nodes(
     semaphore: asyncio.Semaphore | None = None,
 ) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
     """
-    Create a collection of zarr v2 arrays and groups concurrently and atomically. To ensure atomicity,
+    Create a collection of zarr arrays and groups concurrently and atomically. To ensure atomicity,
     no attempt is made to ensure that intermediate groups are created.
     """
     ctx: asyncio.Semaphore | contextlib.nullcontext[None]
+
     if semaphore is None:
         ctx = contextlib.nullcontext()
     else:
@@ -2908,49 +2918,62 @@ async def create_nodes(
 
     create_tasks: list[Coroutine[None, None, str]] = []
     for key, value in nodes.items():
-        write_key = f"{store_path.path}/{key}".lstrip("/")
-        create_tasks.extend(_persist_metadata(store_path.store, write_key, value))
+        # transform the key, which is relative to a store_path.path, to a key in the store
+        write_prefix = _join_paths([store_path.path, key])
+        create_tasks.extend(_persist_metadata(store_path.store, write_prefix, value))
 
-    created_keys = []
+    created_object_keys = []
     async with ctx:
         for coro in asyncio.as_completed(create_tasks):
             created_key = await coro
-            # the created key will be in the store key space. we have to remove the store_path.path
+
+            # the created key will be in the store key space, and it will end with the name of
+            # a metadata document.
+            #  we have to remove the store_path.path
             # component of that path to bring it back to the relative key space of store_path
 
-            relative_path = created_key.removeprefix(store_path.path).lstrip("/")
-            created_keys.append(relative_path)
+            # the relative path of the object we just created -- we need this to track which metadata documents
+            # were written so that we can yield a complete v2 Array / Group class after both .zattrs
+            # and the metadata JSON was created.
+            object_path_relative = created_key.removeprefix(store_path.path).lstrip("/")
+            created_object_keys.append(object_path_relative)
 
-            if len(relative_path.split("/")) == 1:
+            # get the node name from the object key
+            if len(object_path_relative.split("/")) == 1:
+                # this is the root node
+                meta_out = nodes[""]
                 node_name = ""
             else:
-                node_name = "/".join(["", *relative_path.split("/")[:-1]])
-
-            meta_out = nodes[node_name]
+                # turn "foo/<anything>" into "foo"
+                node_name = object_path_relative[: object_path_relative.rfind("/")]
+                meta_out = nodes[node_name]
 
             if meta_out.zarr_format == 3:
+                # yes, it is silly that we relativize, then de-relativize this same path
+                node_store_path = store_path / node_name
                 if isinstance(meta_out, GroupMetadata):
-                    yield AsyncGroup(metadata=meta_out, store_path=store_path / node_name)
+                    yield AsyncGroup(metadata=meta_out, store_path=node_store_path)
                 else:
-                    yield AsyncArray(metadata=meta_out, store_path=store_path / node_name)
+                    yield AsyncArray(metadata=meta_out, store_path=node_store_path)
             else:
                 # For zarr v2
                 # we only want to yield when both the metadata and attributes are created
                 # so we track which keys have been created, and wait for both the meta key and
                 # the attrs key to be created before yielding back the AsyncArray / AsyncGroup
 
-                attrs_done = f"{node_name}/.zattrs".lstrip("/") in created_keys
+                attrs_done = _join_paths([node_name, ZATTRS_JSON]) in created_object_keys
 
                 if isinstance(meta_out, GroupMetadata):
-                    meta_done = f"{node_name}/.zgroup".lstrip("/") in created_keys
+                    meta_done = _join_paths([node_name, ZGROUP_JSON]) in created_object_keys
                 else:
-                    meta_done = f"{node_name}/.zarray".lstrip("/") in created_keys
+                    meta_done = _join_paths([node_name, ZARRAY_JSON]) in created_object_keys
 
                 if meta_done and attrs_done:
+                    node_store_path = store_path / node_name
                     if isinstance(meta_out, GroupMetadata):
-                        yield AsyncGroup(metadata=meta_out, store_path=store_path / node_name)
+                        yield AsyncGroup(metadata=meta_out, store_path=node_store_path)
                     else:
-                        yield AsyncArray(metadata=meta_out, store_path=store_path / node_name)
+                        yield AsyncArray(metadata=meta_out, store_path=node_store_path)
                 continue
 
 
@@ -2963,11 +2986,22 @@ def _get_roots(
     """
     Return the keys of the root(s) of the hierarchy
     """
+    if "" in data:
+        return ("",)
     keys_split = sorted((key.split("/") for key in data), key=len)
     groups: defaultdict[int, list[str]] = defaultdict(list)
     for key_split in keys_split:
         groups[len(key_split)].append("/".join(key_split))
     return tuple(groups[min(groups.keys())])
+
+
+def _join_paths(paths: Iterable[str]) -> str:
+    """
+    Filter out instances of '' and join the remaining strings with '/'.
+
+    Because the root node of a zarr hierarchy is represented by an empty string,
+    """
+    return "/".join(filter(lambda v: v != "", paths))
 
 
 def _parse_hierarchy_dict(
@@ -2993,7 +3027,7 @@ def _parse_hierarchy_dict(
     # Create a copy of the input dict
     out: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {**data}
 
-    observed_zarr_formats: dict[ZarrFormat, list[str]] = {2: [], 3: []}
+    observed_zarr_formats: dict[ZarrFormat, list[str | None]] = {2: [], 3: []}
 
     # We will iterate over the dict again, but a full pass here ensures that the error message
     # is comprehensive, and I think the performance cost will be negligible.
@@ -3011,23 +3045,30 @@ def _parse_hierarchy_dict(
         raise ValueError(msg)
 
     for k, v in data.items():
-        # TODO: ensure that the key is a valid path
-        # Split the key into its path components
-        key_split = k.split("/")
+        if k is None:
+            # root node
+            pass
+        else:
+            if k.startswith("/"):
+                msg = f"Keys of hierarchy dicts must be relative paths, i.e. they cannot start with '/'. Got {k}, which violates this rule."
+                raise ValueError(k)
+            # TODO: ensure that the key is a valid path
+            # Split the key into its path components
+            key_split = k.split("/")
 
-        # Iterate over the intermediate path components
-        *subpaths, _ = accumulate(key_split, lambda a, b: f"{a}/{b}")
-        for subpath in subpaths:
-            # If a component is not already in the output dict, add a group
-            if subpath not in out:
-                out[subpath] = GroupMetadata(zarr_format=v.zarr_format)
-            else:
-                if not isinstance(out[subpath], GroupMetadata):
-                    msg = (
-                        f"The node at {subpath} contains other nodes, but it is not a Zarr group. "
-                        "This is invalid. Only Zarr groups can contain other nodes."
-                    )
-                    raise ValueError(msg)
+            # Iterate over the intermediate path components
+            *subpaths, _ = accumulate(key_split, lambda a, b: f"{a}/{b}")
+            for subpath in subpaths:
+                # If a component is not already in the output dict, add a group
+                if subpath not in out:
+                    out[subpath] = GroupMetadata(zarr_format=v.zarr_format)
+                else:
+                    if not isinstance(out[subpath], GroupMetadata):
+                        msg = (
+                            f"The node at {subpath} contains other nodes, but it is not a Zarr group. "
+                            "This is invalid. Only Zarr groups can contain other nodes."
+                        )
+                        raise ValueError(msg)
 
     return out
 
@@ -3258,7 +3299,7 @@ def _persist_metadata(
 
     to_save = metadata.to_buffer_dict(default_buffer_prototype())
     return tuple(
-        _set_return_key(store=store, key=f"{path}/{key}".lstrip("/"), value=value, replace=True)
+        _set_return_key(store=store, key=_join_paths([path, key]), value=value, replace=True)
         for key, value in to_save.items()
     )
 
@@ -3278,7 +3319,7 @@ async def _from_flat(
             "The input does not specify a root node. "
             "This function can only create hierarchies that contain a root node, which is "
             "defined as a group that is ancestral to all the other arrays and "
-            "groups in the hierarchy."
+            "groups in the hierarchy, or a single array."
         )
         raise ValueError(msg)
     else:
@@ -3292,7 +3333,9 @@ async def _from_flat(
             store_path=store_path, nodes=nodes, semaphore=semaphore, overwrite=overwrite
         )
     }
-    root_group = nodes_created[root]
+    # the names of the created nodes will be relative to the store_path instance
+    root_relative_to_store_path = _join_paths([store_path.path, root])
+    root_group = nodes_created[root_relative_to_store_path]
     if not isinstance(root_group, AsyncGroup):
         raise TypeError("Invalid root node returned from create_hierarchy.")
     return root_group
