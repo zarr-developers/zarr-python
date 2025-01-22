@@ -72,6 +72,7 @@ if TYPE_CHECKING:
     from collections.abc import (
         AsyncGenerator,
         AsyncIterator,
+        Callable,
         Coroutine,
         Generator,
         Iterable,
@@ -2898,10 +2899,17 @@ async def create_hierarchy(
             implicit_group_names = set(nodes_parsed.keys()) - set(nodes.keys())
 
             zarr_format = sample.zarr_format
-            if zarr_format == 3 or zarr_format == 2:
+            # TODO: this type hint is so long
+            func: (
+                Callable[[StorePath], Coroutine[Any, Any, GroupMetadata | ArrayV3Metadata]]
+                | Callable[[StorePath], Coroutine[Any, Any, GroupMetadata | ArrayV2Metadata]]
+            )
+            if zarr_format == 3:
                 func = _read_metadata_v3
-            else:
-                raise ValueError(f"Invalid zarr_format: {zarr_format}")
+            elif zarr_format == 2:
+                func = _read_metadata_v2
+            else:  # pragma: no cover
+                raise ValueError(f"Invalid zarr_format: {zarr_format}")  # pragma: no cover
 
             coros = (func(store_path=store_path / key) for key in nodes_parsed)
             extant_node_query = dict(
@@ -3319,7 +3327,7 @@ def _build_metadata_v3(zarr_json: dict[str, JSON]) -> ArrayV3Metadata | GroupMet
     Convert a dict representation of Zarr V3 metadata into the corresponding metadata class.
     """
     if "node_type" not in zarr_json:
-        raise KeyError("missing `node_type` key in metadata document.")
+        raise MetadataValidationError("node_type", "array or group", "nothing (the key is missing)")
     match zarr_json:
         case {"node_type": "array"}:
             return ArrayV3Metadata.from_dict(zarr_json)
@@ -3395,7 +3403,7 @@ async def _read_node(
     store_path: StorePath, zarr_format: ZarrFormat
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
     """
-    Read and AsyncArray or AsyncGroup from a location defined by a StorePath.
+    Read an AsyncArray or AsyncGroup from a location defined by a StorePath.
     """
     match zarr_format:
         case 2:

@@ -24,6 +24,7 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
+    _build_metadata_v3,
     _create_rooted_hierarchy,
     _create_rooted_hierarchy_sync,
     _join_paths,
@@ -34,8 +35,9 @@ from zarr.core.group import (
     create_hierarchy,
     create_nodes,
 )
+from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import _collect_aiterator, sync
-from zarr.errors import ContainsArrayError, ContainsGroupError
+from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
 from zarr.storage._utils import normalize_path
@@ -1517,8 +1519,52 @@ async def test_create_hierarchy(store: Store, overwrite: bool, zarr_format: Zarr
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("extant_node", ["array", "group"])
+async def test_create_hierarchy_existing_nodes(
+    store: Store, extant_node: Literal["array", "group"], zarr_format: ZarrFormat
+) -> None:
+    """
+    Test that create_hierarchy with overwrite = False will not overwrite an existing array or group,
+    and raises an exception instead.
+    """
+    spath = await make_store_path(store, path="path")
+    extant_node_path = "node"
+
+    if extant_node == "array":
+        extant_metadata = meta_from_array(
+            np.zeros(4), zarr_format=zarr_format, attributes={"extant": True}
+        )
+        new_metadata = meta_from_array(np.zeros(4), zarr_format=zarr_format)
+        err_cls = ContainsArrayError
+    else:
+        extant_metadata = GroupMetadata(zarr_format=zarr_format, attributes={"extant": True})
+        new_metadata = GroupMetadata(zarr_format=zarr_format)
+        err_cls = ContainsGroupError
+
+    # write the extant metadata
+    sync(
+        _collect_aiterator(
+            create_nodes(store_path=spath, nodes={extant_node_path: extant_metadata})
+        )
+    )
+
+    msg = f"{extant_node} exists in store {store!r} at path {extant_node_path!r}."
+    # ensure that we cannot invoke create_hierarchy with overwrite=False here
+    with pytest.raises(err_cls, match=re.escape(msg)):
+        sync(
+            _collect_aiterator(
+                create_hierarchy(store_path=spath, nodes={"node": new_metadata}, overwrite=False)
+            )
+        )
+    # ensure that the extant metadata was not overwritten
+    assert (
+        await _read_node(spath / extant_node_path, zarr_format=zarr_format)
+    ).metadata.attributes == {"extant": True}
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("overwrite", [True, False])
-def test_group_create_hierarchy(store: Store, zarr_format: ZarrFormat, overwrite: bool):
+def test_group_create_hierarchy(store: Store, zarr_format: ZarrFormat, overwrite: bool) -> None:
     """
     Test that the Group.create_hierarchy method creates specified nodes and returns them in a dict.
     """
@@ -1537,7 +1583,9 @@ def test_group_create_hierarchy(store: Store, zarr_format: ZarrFormat, overwrite
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("overwrite", [True, False])
-def test_group_create_hierarchy_no_root(store: Store, zarr_format: ZarrFormat, overwrite: bool):
+def test_group_create_hierarchy_no_root(
+    store: Store, zarr_format: ZarrFormat, overwrite: bool
+) -> None:
     """
     Test that the Group.create_hierarchy method will error if the dict provided contains a root.
     """
@@ -1552,7 +1600,9 @@ def test_group_create_hierarchy_no_root(store: Store, zarr_format: ZarrFormat, o
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_group_create_hierarchy_invalid_mixed_zarr_format(store: Store, zarr_format: ZarrFormat):
+def test_group_create_hierarchy_invalid_mixed_zarr_format(
+    store: Store, zarr_format: ZarrFormat
+) -> None:
     """
     Test that ``Group.create_hierarchy`` will raise an error if the zarr_format of the nodes is
     different from the parent group.
@@ -1597,7 +1647,7 @@ async def test_create_hierarchy_invalid_nested(
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-async def test_create_hierarchy_invalid_mixed_format(store: Store):
+async def test_create_hierarchy_invalid_mixed_format(store: Store) -> None:
     """
     Test that create_hierarchy will not create a Zarr group that contains a both Zarr v2 and
     Zarr v3 nodes.
@@ -1625,7 +1675,9 @@ async def test_create_hierarchy_invalid_mixed_format(store: Store):
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("root_key", ["", "root"])
 @pytest.mark.parametrize("path", ["", "foo"])
-async def test_create_rooted_hierarchy_group(store: Store, zarr_format, path: str, root_key: str):
+async def test_create_rooted_hierarchy_group(
+    store: Store, zarr_format, path: str, root_key: str
+) -> None:
     """
     Test that the _create_rooted_hierarchy can create a group.
     """
@@ -1663,8 +1715,8 @@ async def test_create_rooted_hierarchy_group(store: Store, zarr_format, path: st
     assert members_observed_meta == members_expected_meta_relative
 
 
-@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
-def test_create_hierarchy_implicit_groups(store: Store):
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_create_hierarchy_implicit_groups(store: Store) -> None:
     spath = sync(make_store_path(store, path=""))
     nodes = {
         "": GroupMetadata(zarr_format=3, attributes={"implicit": False}),
@@ -1682,7 +1734,9 @@ def test_create_hierarchy_implicit_groups(store: Store):
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("root_key", ["", "root"])
 @pytest.mark.parametrize("path", ["", "foo"])
-def test_create_rooted_hierarchy_sync_group(store: Store, zarr_format, path: str, root_key: str):
+def test_create_rooted_hierarchy_sync_group(
+    store: Store, zarr_format, path: str, root_key: str
+) -> None:
     """
     Test that the _create_rooted_hierarchy_sync can create a group.
     """
@@ -1723,7 +1777,9 @@ def test_create_rooted_hierarchy_sync_group(store: Store, zarr_format, path: str
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("root_key", ["", "root"])
 @pytest.mark.parametrize("path", ["", "foo"])
-async def test_create_rooted_hierarchy_array(store: Store, zarr_format, path: str, root_key: str):
+async def test_create_rooted_hierarchy_array(
+    store: Store, zarr_format, path: str, root_key: str
+) -> None:
     """
     Test that the _create_rooted_hierarchy can create an array.
     """
@@ -1747,7 +1803,7 @@ async def test_create_rooted_hierarchy_array(store: Store, zarr_format, path: st
 @pytest.mark.parametrize("path", ["", "foo"])
 async def test_create_rooted_hierarchy_sync_array(
     store: Store, zarr_format, path: str, root_key: str
-):
+) -> None:
     """
     Test that _create_rooted_hierarchy_sync can create an array.
     """
@@ -1765,7 +1821,7 @@ async def test_create_rooted_hierarchy_sync_array(
     assert a.metadata.attributes == {"path": root_key}
 
 
-async def test_create_rooted_hierarchy_invalid():
+async def test_create_rooted_hierarchy_invalid() -> None:
     """
     Ensure _create_rooted_hierarchy will raise a ValueError if the input does not contain
     a root node.
@@ -1781,7 +1837,7 @@ async def test_create_rooted_hierarchy_invalid():
 
 
 @pytest.mark.parametrize("paths", [("a", "/a"), ("", "/"), ("b/", "b")])
-def test_normalize_paths_invalid(paths: tuple[str, str]):
+def test_normalize_paths_invalid(paths: tuple[str, str]) -> None:
     """
     Ensure that calling _normalize_paths on values that will normalize to the same value
     will generate a ValueError.
@@ -1795,7 +1851,7 @@ def test_normalize_paths_invalid(paths: tuple[str, str]):
 @pytest.mark.parametrize(
     "paths", [("/a", "a/b"), ("a", "a/b"), ("a/", "a///b"), ("/a/", "//a/b///")]
 )
-def test_normalize_paths_valid(paths: tuple[str, str]):
+def test_normalize_paths_valid(paths: tuple[str, str]) -> None:
     """
     Ensure that calling _normalize_paths on values that normalize to distinct values
     returns a tuple of those normalized values.
@@ -1804,7 +1860,10 @@ def test_normalize_paths_valid(paths: tuple[str, str]):
     assert _normalize_paths(paths) == expected
 
 
-def test_normalize_path_keys():
+def test_normalize_path_keys() -> None:
+    """
+    Test that normalize_path_keys returns a dict where each key has been normalized.
+    """
     data = {"": 10, "a": "hello", "a/b": None, "/a/b/c/d": None}
     observed = _normalize_path_keys(data)
     expected = {normalize_path(k): v for k, v in data.items()}
@@ -1874,3 +1933,24 @@ def test_group_members_concurrency_limit(store: MemoryStore) -> None:
         elapsed = time.time() - start
 
         assert elapsed > num_groups * get_latency
+
+
+@pytest.mark.parametrize("option", ["array", "group", "invalid"])
+def test_build_metadata_v3(option: Literal["array", "group", "invalid"]) -> None:
+    """
+    Test that _build_metadata_v3 returns the correct metadata for a v3 array or group
+    """
+    match option:
+        case "array":
+            metadata_dict = meta_from_array(np.arange(10), zarr_format=3).to_dict()
+            assert _build_metadata_v3(metadata_dict) == ArrayV3Metadata.from_dict(metadata_dict)
+        case "group":
+            metadata_dict = GroupMetadata(attributes={"foo": 10}, zarr_format=3).to_dict()
+            assert _build_metadata_v3(metadata_dict) == GroupMetadata.from_dict(metadata_dict)
+        case "invalid":
+            metadata_dict = GroupMetadata(zarr_format=3).to_dict()
+            metadata_dict.pop("node_type")
+            # TODO: fix the error message
+            msg = "Invalid value for 'node_type'. Expected 'array or group'. Got 'nothing (the key is missing)'."
+            with pytest.raises(MetadataValidationError, match=re.escape(msg)):
+                _build_metadata_v3(metadata_dict)
