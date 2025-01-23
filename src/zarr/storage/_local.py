@@ -96,7 +96,7 @@ class LocalStore(Store):
             root = Path(root)
         if not isinstance(root, Path):
             raise TypeError(
-                f'"root" must be a string or Path instance. Got an object with type {type(root)} instead.'
+                f"'root' must be a string or Path instance. Got an instance of {type(root)} instead."
             )
         self.root = root
 

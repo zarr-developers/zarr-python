@@ -59,7 +59,10 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         """
         Test that a TypeError is raised when a non-str/Path type is used for the `root` argument
         """
-        with pytest.raises(TypeError):
+        with pytest.raises(
+            TypeError,
+            match=r"'root' must be a string or Path instance. Got an instance of <class 'int'> instead.",
+        ):
             LocalStore(root=0)
 
     async def test_get_with_prototype_default(self, store: LocalStore):
