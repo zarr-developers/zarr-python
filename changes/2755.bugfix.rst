@@ -1,0 +1,1 @@
+Upon creation, an empty ``zarr.core.buffer.cpu.NDBuffer`` is filled with zeros to ensure deterministic behavior.
