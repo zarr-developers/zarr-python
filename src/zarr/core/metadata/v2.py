@@ -193,7 +193,14 @@ class ArrayV2Metadata(Metadata):
             zarray_dict["fill_value"] = fill_value
 
         _ = zarray_dict.pop("dtype")
-        zarray_dict["dtype"] = self.dtype.str
+        dtype_json: JSON
+        # In the case of zarr v2, the simplest i.e., '|VXX' dtype is represented as a string
+        dtype_descr = self.dtype.descr
+        if self.dtype.kind == "V" and dtype_descr[0][0] != "" and len(dtype_descr) != 0:
+            dtype_json = tuple(self.dtype.descr)
+        else:
+            dtype_json = self.dtype.str
+        zarray_dict["dtype"] = dtype_json
 
         return zarray_dict
 
@@ -220,6 +227,8 @@ class ArrayV2Metadata(Metadata):
 
 
 def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
+    if isinstance(data, list):  # this is a valid _VoidDTypeLike check
+        data = [tuple(d) for d in data]
     return np.dtype(data)
 
 
@@ -376,8 +385,10 @@ def _default_filters(
         dtype_key = "numeric"
     elif dtype.kind in "U":
         dtype_key = "string"
-    elif dtype.kind in "OSV":
+    elif dtype.kind in "OS":
         dtype_key = "bytes"
+    elif dtype.kind == "V":
+        dtype_key = "raw"
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 

@@ -98,7 +98,7 @@ you can do something like the following::
 To verify that your development environment is working, you can run the unit tests
 for one of the test environments, e.g.::
 
-    $ hatch env run --env test.py3.12-2.1-optional run
+    $ hatch env run --env test.py3.12-2.1-optional run-pytest
 
 Creating a branch
 ~~~~~~~~~~~~~~~~~
@@ -140,7 +140,7 @@ Zarr includes a suite of unit tests. The simplest way to run the unit tests
 is to activate your development environment
 (see `creating a development environment`_ above) and invoke::
 
-    $ hatch env run --env test.py3.12-2.1-optional run
+    $ hatch env run --env test.py3.12-2.1-optional run-pytest
 
 All tests are automatically run via GitHub Actions for every pull
 request and must pass before code can be accepted. Test coverage is
@@ -190,8 +190,12 @@ Both unit tests and docstring doctests are included when computing coverage. Run
 
     $ hatch env run --env test.py3.12-2.1-optional run-coverage
 
-will automatically run the test suite with coverage and produce a coverage report.
+will automatically run the test suite with coverage and produce a XML coverage report.
 This should be 100% before code can be accepted into the main code base.
+
+You can also generate an HTML coverage report by running::
+
+     $ hatch env run --env test.py3.12-2.1-optional run-coverage-html
 
 When submitting a pull request, coverage will also be collected across all supported
 Python versions via the Codecov service, and will be reported back within the pull
@@ -212,8 +216,8 @@ The documentation consists both of prose and API documentation. All user-facing 
 and functions are included in the API documentation, under the ``docs/api`` folder
 using the `autodoc <https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html>`_
 extension to sphinx. Any new features or important usage information should be included in the
-user-guide (``docs/user-guide``). Any changes should also be included in the release
-notes (``docs/release-notes.rst``).
+user-guide (``docs/user-guide``). Any changes should also be included as a new file in the
+:file:`changes` directory.
 
 The documentation can be built locally by running::
 
@@ -331,11 +335,9 @@ Release procedure
 
 Pre-release
 """""""""""
-1. Make sure that all pull requests which will be
-   included in the release have been properly documented in
-   :file:`docs/release-notes.rst`.
-2. Rename the "Unreleased" section heading in :file:`docs/release-notes.rst`
-   to the version you are about to release.
+1. Make sure that all pull requests which will be included in the release
+   have been properly documented as changelog files in :file:`changes`.
+2. Run ``towncrier build --version x.y.z`` to create the changelog.
 
 Releasing
 """""""""
@@ -348,7 +350,7 @@ appropriate suffix (e.g. `v0.0.0a1` or `v0.0.0rc2`).
 
 Set the description of the release to::
 
-    See release notes https://zarr.readthedocs.io/en/stable/release.html#release-0-0-0
+    See release notes https://zarr.readthedocs.io/en/stable/release-notes.html#release-0-0-0
 
 replacing the correct version numbers. For pre-release versions,
 the URL should omit the pre-release suffix, e.g. "a1" or "rc1".
