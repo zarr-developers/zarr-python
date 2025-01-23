@@ -1,0 +1,2 @@
+Changed the machinery for creating changelog entries.
+Now individual entries should be added as files to the `changes` directory in the `zarr-python` repository, instead of directly to the changelog file.

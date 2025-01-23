@@ -173,6 +173,17 @@ class FsspecStore(Store):
         opts = {"asynchronous": True, **opts}
 
         fs, path = url_to_fs(url, **opts)
+        if not fs.async_impl:
+            try:
+                from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+
+                fs = AsyncFileSystemWrapper(fs)
+            except ImportError as e:
+                raise ImportError(
+                    f"The filesystem for URL '{url}' is synchronous, and the required "
+                    "AsyncFileSystemWrapper is not available. Upgrade fsspec to version "
+                    "2024.12.0 or later to enable this functionality."
+                ) from e
 
         # fsspec is not consistent about removing the scheme from the path, so check and strip it here
         # https://github.com/fsspec/filesystem_spec/issues/1722

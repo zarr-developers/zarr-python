@@ -112,7 +112,6 @@ from zarr.registry import (
     _parse_bytes_bytes_codec,
     get_pipeline_class,
 )
-from zarr.storage import StoreLike
 from zarr.storage._common import StorePath, ensure_no_existing_node, make_store_path
 
 if TYPE_CHECKING:
