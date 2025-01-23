@@ -1262,5 +1262,6 @@ async def test_scalar_array() -> None:
     assert arr[...] == 1.5
     assert arr[()] == 1.5
     assert arr.shape == ()
+    assert isinstance(arr[()], np.generic) # is scalar np value
     assert isinstance(arr[()], float)
     assert arr.ndim == 0
