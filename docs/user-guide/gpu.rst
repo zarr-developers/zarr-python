@@ -16,6 +16,7 @@ Reading data into device memory
    >>> import cupy as cp
    >>> zarr.config.enable_cuda()
    >>> store = zarr.storage.MemoryStore()
+   >>> z = zarr.create_array(store=store, shape=(100, 100), chunks=(10, 10), dtype="float32")
    >>> type(z[:10, :10])
    cupy.ndarray
 
