@@ -52,7 +52,7 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     def test_list_prefix(self, store: MemoryStore) -> None:
         assert True
 
-    @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
+    @pytest.mark.parametrize("dtype", ["uint8", "float32", "int64"])
     @pytest.mark.parametrize("zarr_format", [2, 3])
     async def test_deterministic_size(
         self, store: MemoryStore, dtype, zarr_format: ZarrFormat
@@ -66,7 +66,7 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
                 zarr_format=zarr_format,
                 overwrite=True,
             )
-            a[...] = b"1" if dtype == "str" else 1
+            a[...] = 1
             key = "0" if zarr_format == 2 else "c/0"
             return len(store._store_dict[key])
 
