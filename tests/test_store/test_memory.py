@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 
+import zarr
 from zarr.core.buffer import Buffer, cpu, gpu
 from zarr.storage import GpuMemoryStore, MemoryStore
 from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
+
+if TYPE_CHECKING:
+    from zarr.core.common import ZarrFormat
 
 
 class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
@@ -45,6 +51,28 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
 
     def test_list_prefix(self, store: MemoryStore) -> None:
         assert True
+
+    @pytest.mark.parametrize("dtype", ["uint8", "float32", "str"])
+    @pytest.mark.parametrize("zarr_format", [2, 3])
+    async def test_deterministic_size(
+        self, store: MemoryStore, dtype, zarr_format: ZarrFormat
+    ) -> None:
+        def padding_size() -> int:
+            a = zarr.empty(
+                store=store,
+                shape=(3,),
+                chunks=(1000,),
+                dtype=dtype,
+                zarr_format=zarr_format,
+                overwrite=True,
+            )
+            a[...] = b"1" if dtype == "str" else 1
+            key = "0" if zarr_format == 2 else "c/0"
+            return len(store._store_dict[key])
+
+        l1 = padding_size()
+        l2 = padding_size()
+        assert l1 == l2
 
 
 @gpu_test
