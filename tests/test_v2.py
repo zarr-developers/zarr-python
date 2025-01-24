@@ -7,11 +7,13 @@ import numpy as np
 import pytest
 from numcodecs import Delta
 from numcodecs.blosc import Blosc
+from numcodecs.zstd import Zstd
 
 import zarr
 import zarr.core.buffer
 import zarr.storage
 from zarr import config
+from zarr.abc.store import Store
 from zarr.core.buffer.core import default_buffer_prototype
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StorePath
@@ -82,8 +84,15 @@ def test_codec_pipeline() -> None:
     np.testing.assert_array_equal(result, expected)
 
 
-@pytest.mark.parametrize("dtype", ["|S", "|V"])
-async def test_v2_encode_decode(dtype):
+@pytest.mark.parametrize(
+    ("dtype", "expected_dtype", "fill_value", "fill_value_encoding"),
+    [
+        ("|S", "|S0", b"X", "WA=="),
+        ("|V", "|V0", b"X", "WA=="),
+        ("|V10", "|V10", b"X", "WAAAAAAAAAAAAA=="),
+    ],
+)
+async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_encoding) -> None:
     with config.set(
         {
             "array.v2_default_filters.bytes": [{"id": "vlen-bytes"}],
@@ -93,11 +102,7 @@ async def test_v2_encode_decode(dtype):
         store = zarr.storage.MemoryStore()
         g = zarr.group(store=store, zarr_format=2)
         g.create_array(
-            name="foo",
-            shape=(3,),
-            chunks=(3,),
-            dtype=dtype,
-            fill_value=b"X",
+            name="foo", shape=(3,), chunks=(3,), dtype=dtype, fill_value=fill_value, compressor=None
         )
 
         result = await store.get("foo/.zarray", zarr.core.buffer.default_buffer_prototype())
@@ -107,9 +112,9 @@ async def test_v2_encode_decode(dtype):
         expected = {
             "chunks": [3],
             "compressor": None,
-            "dtype": f"{dtype}0",
-            "fill_value": "WA==",
-            "filters": [{"id": "vlen-bytes"}],
+            "dtype": expected_dtype,
+            "fill_value": fill_value_encoding,
+            "filters": [{"id": "vlen-bytes"}] if dtype == "|S" else None,
             "order": "C",
             "shape": [3],
             "zarr_format": 2,
@@ -164,6 +169,29 @@ def test_v2_filters_codecs(filters: Any, order: Literal["C", "F"]) -> None:
     arr[:] = array_fixture
     result = arr[:]
     np.testing.assert_array_equal(result, array_fixture)
+
+
+@pytest.mark.filterwarnings("ignore")
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_create_array_defaults(store: Store):
+    """
+    Test that passing compressor=None results in no compressor. Also test that the default value of the compressor
+    parameter does produce a compressor.
+    """
+    g = zarr.open(store, mode="w", zarr_format=2)
+    arr = g.create_array("one", dtype="i8", shape=(1,), chunks=(1,), compressor=None)
+    assert arr._async_array.compressor is None
+    assert not (arr.filters)
+    arr = g.create_array("two", dtype="i8", shape=(1,), chunks=(1,))
+    assert arr._async_array.compressor is not None
+    assert not (arr.filters)
+    arr = g.create_array("three", dtype="i8", shape=(1,), chunks=(1,), compressor=Zstd())
+    assert arr._async_array.compressor is not None
+    assert not (arr.filters)
+    with pytest.raises(ValueError):
+        g.create_array(
+            "four", dtype="i8", shape=(1,), chunks=(1,), compressor=None, compressors=None
+        )
 
 
 @pytest.mark.parametrize("array_order", ["C", "F"])
@@ -263,3 +291,25 @@ def test_default_filters_and_compressor(dtype_expected: Any) -> None:
         assert arr.metadata.compressor.codec_id == expected_compressor
         if expected_filter is not None:
             assert arr.metadata.filters[0].codec_id == expected_filter
+
+
+@pytest.mark.parametrize("fill_value", [None, (b"", 0, 0.0)], ids=["no_fill", "fill"])
+def test_structured_dtype_roundtrip(fill_value, tmp_path) -> None:
+    a = np.array(
+        [(b"aaa", 1, 4.2), (b"bbb", 2, 8.4), (b"ccc", 3, 12.6)],
+        dtype=[("foo", "S3"), ("bar", "i4"), ("baz", "f8")],
+    )
+    array_path = tmp_path / "data.zarr"
+    za = zarr.create(
+        shape=(3,),
+        store=array_path,
+        chunks=(2,),
+        fill_value=fill_value,
+        zarr_format=2,
+        dtype=a.dtype,
+    )
+    if fill_value is not None:
+        assert (np.array([fill_value] * a.shape[0], dtype=a.dtype) == za[:]).all()
+    za[...] = a
+    za = zarr.open_array(store=array_path)
+    assert (a == za[:]).all()
