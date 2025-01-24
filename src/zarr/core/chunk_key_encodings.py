@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Literal, TypeAlias, TypedDict, cast
+from typing import TYPE_CHECKING, Literal, TypeAlias, TypedDict, cast
+
+if TYPE_CHECKING:
+    from typing import NotRequired
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
@@ -22,7 +25,7 @@ def parse_separator(data: JSON) -> SeparatorLiteral:
 
 class ChunkKeyEncodingParams(TypedDict):
     name: Literal["v2", "default"]
-    separator: SeparatorLiteral
+    separator: NotRequired[SeparatorLiteral]
 
 
 @dataclass(frozen=True)
@@ -45,7 +48,8 @@ class ChunkKeyEncoding(Metadata):
             data = {"name": data["name"], "configuration": {"separator": data["separator"]}}
 
         # configuration is optional for chunk key encodings
-        name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)
+        # TODO: remove the type: ignore statement when we use typeddicts for all our static metadata
+        name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)  # type: ignore[arg-type]
         if name_parsed == "default":
             if config_parsed is None:
                 # for default, normalize missing configuration to use the "/" separator.
