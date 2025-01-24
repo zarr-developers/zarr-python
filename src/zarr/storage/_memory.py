@@ -38,7 +38,7 @@ class MemoryStore(Store):
 
     supports_writes: bool = True
     supports_deletes: bool = True
-    supports_partial_writes: bool = True
+    supports_partial_writes: bool = False
     supports_listing: bool = True
 
     _store_dict: MutableMapping[str, Buffer]
@@ -134,7 +134,7 @@ class MemoryStore(Store):
         except KeyError:
             logger.debug("Key %s does not exist.", key)
 
-    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, bytes]]) -> None:
+    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, Buffer]]) -> None:
         # docstring inherited
         raise NotImplementedError
 

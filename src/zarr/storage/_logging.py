@@ -197,9 +197,7 @@ class LoggingStore(WrapperStore[Store]):
         with self.log(key):
             return await self._store.delete(key=key)
 
-    async def set_partial_values(
-        self, key_start_values: Iterable[tuple[str, int, bytes | bytearray | memoryview]]
-    ) -> None:
+    async def set_partial_values(self, key_start_values: Iterable[tuple[str, int, Buffer]]) -> None:
         # docstring inherited
         keys = ",".join([k[0] for k in key_start_values])
         with self.log(keys):
