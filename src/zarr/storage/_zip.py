@@ -107,11 +107,14 @@ class ZipStore(Store):
     async def _open(self) -> None:
         self._sync_open()
 
-    def __getstate__(self) -> tuple[Path, ZipStoreAccessModeLiteral, int, bool]:
-        return self.path, self._zmode, self.compression, self.allowZip64
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__
+        for attr in ["_zf", "_lock"]:
+            state.pop(attr, None)
+        return state
 
-    def __setstate__(self, state: Any) -> None:
-        self.path, self._zmode, self.compression, self.allowZip64 = state
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__ = state
         self._is_open = False
         self._sync_open()
 

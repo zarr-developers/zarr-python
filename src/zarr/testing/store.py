@@ -76,8 +76,9 @@ class StoreTests(Generic[S, B]):
         assert store == store2
 
     def test_serializable_store(self, store: S) -> None:
-        foo = pickle.dumps(store)
-        assert pickle.loads(foo) == store
+        new_store: S = pickle.loads(pickle.dumps(store))
+        assert new_store == store
+        assert new_store.read_only == store.read_only
 
     def test_store_read_only(self, store: S) -> None:
         assert not store.read_only
