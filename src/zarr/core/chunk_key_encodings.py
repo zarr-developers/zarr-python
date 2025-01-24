@@ -47,9 +47,11 @@ class ChunkKeyEncoding(Metadata):
         if "name" in data and "separator" in data:
             data = {"name": data["name"], "configuration": {"separator": data["separator"]}}
 
+        # TODO: remove this cast when we are statically typing the JSON metadata completely.
+        data = cast(dict[str, JSON], data)
+
         # configuration is optional for chunk key encodings
-        # TODO: remove the type: ignore statement when we use typeddicts for all our static metadata
-        name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)  # type: ignore[arg-type]
+        name_parsed, config_parsed = parse_named_configuration(data, require_configuration=False)
         if name_parsed == "default":
             if config_parsed is None:
                 # for default, normalize missing configuration to use the "/" separator.
