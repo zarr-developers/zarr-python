@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 
 import zarr
@@ -57,22 +58,19 @@ class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     async def test_deterministic_size(
         self, store: MemoryStore, dtype, zarr_format: ZarrFormat
     ) -> None:
-        def padding_size() -> int:
-            a = zarr.empty(
-                store=store,
-                shape=(3,),
-                chunks=(1000,),
-                dtype=dtype,
-                zarr_format=zarr_format,
-                overwrite=True,
-            )
-            a[...] = 1
-            key = "0" if zarr_format == 2 else "c/0"
-            return len(store._store_dict[key])
+        a = zarr.empty(
+            store=store,
+            shape=(3,),
+            chunks=(1000,),
+            dtype=dtype,
+            zarr_format=zarr_format,
+            overwrite=True,
+        )
+        a[...] = 1
+        a.resize((1000,))
 
-        l1 = padding_size()
-        l2 = padding_size()
-        assert l1 == l2
+        np.testing.assert_array_equal(a[:3], 1)
+        np.testing.assert_array_equal(a[3:], 0)
 
 
 @gpu_test
