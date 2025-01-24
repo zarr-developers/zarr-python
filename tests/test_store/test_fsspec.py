@@ -217,6 +217,20 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         store = await self.store_cls.open(**store_kwargs)
         assert await store.is_empty("")
 
+    async def test_delete_dir_unsupported_deletes(self, store: FsspecStore) -> None:
+        store.supports_deletes = False
+        with pytest.raises(
+            NotImplementedError, match=".*only available for stores that support deletes."
+        ):
+            await store.delete_dir("test_prefix")
+
+    async def test_delete_dir_unsupported_listing(self, store: FsspecStore) -> None:
+        store.supports_listing = False
+        with pytest.raises(
+            NotImplementedError, match=".*only available for stores that support directory listing."
+        ):
+            await store.delete_dir("test_prefix")
+
 
 @pytest.mark.skipif(
     parse_version(fsspec.__version__) < parse_version("2024.12.0"),
@@ -244,3 +258,27 @@ def test_no_wrap_async_filesystem():
 
     assert not isinstance(store.fs, AsyncFileSystemWrapper)
     assert store.fs.async_impl
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+async def test_delete_dir_wrapped_filesystem(tmpdir) -> None:
+    """The local fs is not async so we should expect it to be wrapped automatically"""
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+
+    store = FsspecStore.from_url(tmpdir / "test/path", storage_options={"auto_mkdir": True})
+
+    assert isinstance(store.fs, AsyncFileSystemWrapper)
+    assert store.fs.async_impl
+
+    await store.set("zarr.json", cpu.Buffer.from_bytes(b"root"))
+    await store.set("foo-bar/zarr.json", cpu.Buffer.from_bytes(b"root"))
+    await store.set("foo/zarr.json", cpu.Buffer.from_bytes(b"bar"))
+    await store.set("foo/c/0", cpu.Buffer.from_bytes(b"chunk"))
+    await store.delete_dir("foo")
+    assert await store.exists("zarr.json")
+    assert await store.exists("foo-bar/zarr.json")
+    assert not await store.exists("foo/zarr.json")
+    assert not await store.exists("foo/c/0")
