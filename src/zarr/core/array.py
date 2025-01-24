@@ -412,7 +412,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # v3 only
         chunk_shape: ShapeLike | None = None,
         chunk_key_encoding: (
-            ChunkKeyEncoding
+            ChunkKeyEncodingLike
             | tuple[Literal["default"], Literal[".", "/"]]
             | tuple[Literal["v2"], Literal[".", "/"]]
             | None
@@ -453,7 +453,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             The shape of the array's chunks
             Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
             If not specified, default are guessed based on the shape and dtype.
-        chunk_key_encoding : ChunkKeyEncoding, optional
+        chunk_key_encoding : ChunkKeyEncodingLike, optional
             A specification of how the chunk keys are represented in storage.
             Zarr format 3 only. Zarr format 2 arrays should use `dimension_separator` instead.
             Default is ``("default", "/")``.
@@ -553,7 +553,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         # v3 only
         chunk_shape: ShapeLike | None = None,
         chunk_key_encoding: (
-            ChunkKeyEncoding
+            ChunkKeyEncodingLike
             | tuple[Literal["default"], Literal[".", "/"]]
             | tuple[Literal["v2"], Literal[".", "/"]]
             | None
@@ -671,7 +671,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         config: ArrayConfig,
         fill_value: Any | None = None,
         chunk_key_encoding: (
-            ChunkKeyEncoding
+            ChunkKeyEncodingLike
             | tuple[Literal["default"], Literal[".", "/"]]
             | tuple[Literal["v2"], Literal[".", "/"]]
             | None
@@ -1708,7 +1708,7 @@ class Array:
             The shape of the Array's chunks.
             Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
             If not specified, default are guessed based on the shape and dtype.
-        chunk_key_encoding : ChunkKeyEncoding, optional
+        chunk_key_encoding : ChunkKeyEncodingLike, optional
             A specification of how the chunk keys are represented in storage.
             Zarr format 3 only. Zarr format 2 arrays should use `dimension_separator` instead.
             Default is ``("default", "/")``.
@@ -3756,7 +3756,7 @@ async def create_array(
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = 3,
     attributes: dict[str, JSON] | None = None,
-    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
+    chunk_key_encoding: ChunkKeyEncodingLike | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
@@ -3834,7 +3834,7 @@ async def create_array(
         The zarr format to use when saving.
     attributes : dict, optional
         Attributes for the array.
-    chunk_key_encoding : ChunkKeyEncoding, optional
+    chunk_key_encoding : ChunkKeyEncodingLike, optional
         A specification of how the chunk keys are represented in storage.
         For Zarr format 3, the default is ``{"name": "default", "separator": "/"}}``.
         For Zarr format 2, the default is ``{"name": "v2", "separator": "."}}``.
