@@ -12,6 +12,7 @@ import pytest
 
 import zarr.api.asynchronous
 from zarr import Array, AsyncArray, Group
+from zarr.abc.store import Store
 from zarr.codecs import (
     BytesCodec,
     GzipCodec,
@@ -36,7 +37,7 @@ from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
-from zarr.core.indexing import ceildiv
+from zarr.core.indexing import BasicIndexer, ceildiv
 from zarr.core.metadata.v3 import DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
@@ -1255,6 +1256,53 @@ async def test_create_array_v2_no_shards(store: MemoryStore) -> None:
             shards=(5,),
             zarr_format=2,
         )
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_data(store: Store) -> None:
+    """
+    Test that we can invoke ``create_array`` with a ``data`` parameter.
+    """
+    data = np.arange(10)
+    arr = await create_array(store, name="foo", data=data)
+    stored = await arr._get_selection(
+        BasicIndexer(..., shape=arr.shape, chunk_grid=arr.metadata.chunk_grid),
+        prototype=default_buffer_prototype(),
+    )
+    assert np.array_equal(stored, data)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_data_invalid_params(store: Store) -> None:
+    """
+    Test that failing to specify data AND shape / dtype results in a ValueError
+    """
+    with pytest.raises(ValueError, match="shape was not specified"):
+        await create_array(store, data=None, shape=None, dtype=None)
+
+    # we catch shape=None first, so specifying a dtype should raise the same exception as before
+    with pytest.raises(ValueError, match="shape was not specified"):
+        await create_array(store, data=None, shape=None, dtype="uint8")
+
+    with pytest.raises(ValueError, match="dtype was not specified"):
+        await create_array(store, data=None, shape=(10, 10))
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_data_ignored_params(store: Store) -> None:
+    """
+    Test that specify data AND shape AND dtype results in a warning
+    """
+    data = np.arange(10)
+    with pytest.warns(UserWarning, match="The shape parameter will be ignored"):
+        await create_array(store, data=data, shape=data.shape, dtype=None, overwrite=True)
+
+    # we catch shape first, so specifying a dtype should raise the same warning as before
+    with pytest.warns(UserWarning, match="The shape parameter will be ignored"):
+        await create_array(store, data=data, shape=data.shape, dtype=data.dtype, overwrite=True)
+
+    with pytest.warns(UserWarning, match="The dtype parameter will be ignored"):
+        await create_array(store, data=data, shape=None, dtype=data.dtype, overwrite=True)
 
 
 async def test_scalar_array() -> None:

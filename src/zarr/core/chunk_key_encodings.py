@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Literal, TypedDict, cast
+from typing import Literal, TypeAlias, TypedDict, cast
 
 from zarr.abc.metadata import Metadata
 from zarr.core.common import (
@@ -20,7 +20,7 @@ def parse_separator(data: JSON) -> SeparatorLiteral:
     return cast(SeparatorLiteral, data)
 
 
-class ChunkKeyEncodingLike(TypedDict):
+class ChunkKeyEncodingParams(TypedDict):
     name: Literal["v2", "default"]
     separator: SeparatorLiteral
 
@@ -36,9 +36,7 @@ class ChunkKeyEncoding(Metadata):
         object.__setattr__(self, "separator", separator_parsed)
 
     @classmethod
-    def from_dict(
-        cls, data: dict[str, JSON] | ChunkKeyEncoding | ChunkKeyEncodingLike
-    ) -> ChunkKeyEncoding:
+    def from_dict(cls, data: dict[str, JSON] | ChunkKeyEncodingLike) -> ChunkKeyEncoding:
         if isinstance(data, ChunkKeyEncoding):
             return data
 
@@ -71,6 +69,9 @@ class ChunkKeyEncoding(Metadata):
     @abstractmethod
     def encode_chunk_key(self, chunk_coords: ChunkCoords) -> str:
         pass
+
+
+ChunkKeyEncodingLike: TypeAlias = ChunkKeyEncodingParams | ChunkKeyEncoding
 
 
 @dataclass(frozen=True)
