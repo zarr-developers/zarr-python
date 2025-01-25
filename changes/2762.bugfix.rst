@@ -1,0 +1,2 @@
+Fixed ZipStore to make sure the correct attributes are saved when instances are pickled.
+This fixes a previous bug that prevent using ZipStore with a ProcessPoolExecutor.
