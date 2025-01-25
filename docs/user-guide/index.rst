@@ -6,14 +6,12 @@ User guide
 .. toctree::
     :maxdepth: 1
 
+    installation
     arrays
     groups
     attributes
     storage
     config
-
-.. Coming soon
-    installation
     v3_migration
 
 Advanced Topics

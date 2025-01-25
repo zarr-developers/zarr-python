@@ -31,7 +31,6 @@ ZGROUP_JSON = ".zgroup"
 ZATTRS_JSON = ".zattrs"
 ZMETADATA_V2_JSON = ".zmetadata"
 
-ByteRangeRequest = tuple[int | None, int | None]
 BytesLike = bytes | bytearray | memoryview
 ShapeLike = tuple[int, ...] | int
 ChunkCoords = tuple[int, ...]
@@ -192,7 +191,7 @@ def _warn_write_empty_chunks_kwarg() -> None:
 def _warn_order_kwarg() -> None:
     # TODO: link to docs page on array configuration in this message
     msg = (
-        "The `order` keyword argument has no effect for zarr v3 arrays. "
+        "The `order` keyword argument has no effect for Zarr format 3 arrays. "
         "To control the memory layout of the array, either use the `config` keyword "
         "argument, as in `config={'order: 'C'}`,"
         "or change the global 'array.order' configuration variable."

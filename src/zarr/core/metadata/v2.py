@@ -34,7 +34,7 @@ from zarr.core.metadata.common import parse_attributes
 
 class ArrayV2MetadataDict(TypedDict):
     """
-    A typed dictionary model for zarr v2 metadata.
+    A typed dictionary model for Zarr format 2 metadata.
     """
 
     zarr_format: Literal[2]
@@ -68,7 +68,7 @@ class ArrayV2Metadata(Metadata):
         attributes: dict[str, JSON] | None = None,
     ) -> None:
         """
-        Metadata for a Zarr version 2 array.
+        Metadata for a Zarr format 2 array.
         """
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = parse_dtype(dtype)
@@ -116,7 +116,13 @@ class ArrayV2Metadata(Metadata):
                 else:
                     return o.descr
             if isinstance(o, numcodecs.abc.Codec):
-                return o.get_config()
+                codec_config = o.get_config()
+
+                # Hotfix for https://github.com/zarr-developers/zarr-python/issues/2647
+                if codec_config["id"] == "zstd" and not codec_config.get("checksum", False):
+                    codec_config.pop("checksum", None)
+
+                return codec_config
             if np.isscalar(o):
                 out: Any
                 if hasattr(o, "dtype") and o.dtype.kind == "M" and hasattr(o, "view"):
@@ -187,7 +193,14 @@ class ArrayV2Metadata(Metadata):
             zarray_dict["fill_value"] = fill_value
 
         _ = zarray_dict.pop("dtype")
-        zarray_dict["dtype"] = self.dtype.str
+        dtype_json: JSON
+        # In the case of zarr v2, the simplest i.e., '|VXX' dtype is represented as a string
+        dtype_descr = self.dtype.descr
+        if self.dtype.kind == "V" and dtype_descr[0][0] != "" and len(dtype_descr) != 0:
+            dtype_json = tuple(self.dtype.descr)
+        else:
+            dtype_json = self.dtype.str
+        zarray_dict["dtype"] = dtype_json
 
         return zarray_dict
 
@@ -214,6 +227,8 @@ class ArrayV2Metadata(Metadata):
 
 
 def parse_dtype(data: npt.DTypeLike) -> np.dtype[Any]:
+    if isinstance(data, list):  # this is a valid _VoidDTypeLike check
+        data = [tuple(d) for d in data]
     return np.dtype(data)
 
 
@@ -327,7 +342,7 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
     stored in the Array metadata into an in-memory value. This only gives
     the default fill value for some type.
 
-    This is useful for reading Zarr V2 arrays, which allow the fill
+    This is useful for reading Zarr format 2 arrays, which allow the fill
     value to be unspecified.
     """
     if dtype.kind == "S":
@@ -370,8 +385,10 @@ def _default_filters(
         dtype_key = "numeric"
     elif dtype.kind in "U":
         dtype_key = "string"
-    elif dtype.kind in "OSV":
+    elif dtype.kind in "OS":
         dtype_key = "bytes"
+    elif dtype.kind == "V":
+        dtype_key = "raw"
     else:
         raise ValueError(f"Unsupported dtype kind {dtype.kind}")
 

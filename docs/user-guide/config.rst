@@ -3,8 +3,8 @@
 Runtime configuration
 =====================
 
-The :mod:`zarr.core.config` module is responsible for managing the configuration of zarr
-and is based on the `donfig <https://github.com/pytroll/donfig>`_ Python library.
+``zarr.config`` is responsible for managing the configuration of zarr and
+is based on the `donfig <https://github.com/pytroll/donfig>`_ Python library.
 
 Configuration values can be set using code like the following::
 
@@ -28,7 +28,7 @@ Configuration options include the following:
 
 - Default Zarr format ``default_zarr_version``
 - Default array order in memory ``array.order``
-- Default codecs ``array.v3_default_codecs`` and ``array.v2_default_compressor``
+- Default filters, serializers and compressors, e.g. ``array.v3_default_filters``, ``array.v3_default_serializer``, ``array.v3_default_compressors``, ``array.v2_default_filters`` and ``array.v2_default_compressor``
 - Whether empty chunks are written to storage ``array.write_empty_chunks``
 - Async and threading options, e.g. ``async.concurrency`` and ``threading.max_workers``
 - Selections of implementations of codecs, codec pipelines and buffers
@@ -53,20 +53,22 @@ This is the current default configuration::
                                                    'level': 0}},
               'v2_default_filters': {'bytes': [{'id': 'vlen-bytes'}],
                                      'numeric': None,
+                                     'raw': None,
                                      'string': [{'id': 'vlen-utf8'}]},
-              'v3_default_codecs': {'bytes': [{'name': 'vlen-bytes'},
-                                              {'configuration': {'checksum': False,
-                                                                 'level': 0},
-                                               'name': 'zstd'}],
-                                    'numeric': [{'configuration': {'endian': 'little'},
-                                                 'name': 'bytes'},
-                                                {'configuration': {'checksum': False,
-                                                                   'level': 0},
-                                                 'name': 'zstd'}],
-                                    'string': [{'name': 'vlen-utf8'},
-                                               {'configuration': {'checksum': False,
-                                                                  'level': 0},
-                                                'name': 'zstd'}]},
+              'v3_default_compressors': {'bytes': [{'configuration': {'checksum': False,
+                                                                      'level': 0},
+                                                    'name': 'zstd'}],
+                                         'numeric': [{'configuration': {'checksum': False,
+                                                                        'level': 0},
+                                                      'name': 'zstd'}],
+                                         'string': [{'configuration': {'checksum': False,
+                                                                       'level': 0},
+                                                     'name': 'zstd'}]},
+              'v3_default_filters': {'bytes': [], 'numeric': [], 'string': []},
+              'v3_default_serializer': {'bytes': {'name': 'vlen-bytes'},
+                                        'numeric': {'configuration': {'endian': 'little'},
+                                                    'name': 'bytes'},
+                                        'string': {'name': 'vlen-utf8'}},
               'write_empty_chunks': False},
     'async': {'concurrency': 10, 'timeout': None},
     'buffer': 'zarr.core.buffer.cpu.Buffer',

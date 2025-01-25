@@ -6,8 +6,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 from botocore.session import Session
+from packaging.version import parse as parse_version
 
 import zarr.api.asynchronous
+from zarr.abc.store import OffsetByteRequest
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.storage import FsspecStore
@@ -97,7 +99,7 @@ async def test_basic() -> None:
     assert await store.exists("foo")
     assert (await store.get("foo", prototype=default_buffer_prototype())).to_bytes() == data
     out = await store.get_partial_values(
-        prototype=default_buffer_prototype(), key_ranges=[("foo", (1, None))]
+        prototype=default_buffer_prototype(), key_ranges=[("foo", OffsetByteRequest(1))]
     )
     assert out[0].to_bytes() == data[1:]
 
@@ -214,3 +216,31 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         store_kwargs["path"] += "/abc"
         store = await self.store_cls.open(**store_kwargs)
         assert await store.is_empty("")
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+def test_wrap_sync_filesystem():
+    """The local fs is not async so we should expect it to be wrapped automatically"""
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+
+    store = FsspecStore.from_url("local://test/path")
+
+    assert isinstance(store.fs, AsyncFileSystemWrapper)
+    assert store.fs.async_impl
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+def test_no_wrap_async_filesystem():
+    """An async fs should not be wrapped automatically; fsspec's https filesystem is such an fs"""
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+
+    store = FsspecStore.from_url("https://test/path")
+
+    assert not isinstance(store.fs, AsyncFileSystemWrapper)
+    assert store.fs.async_impl

@@ -17,7 +17,7 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
-from zarr.storage.common import StorePath
+from zarr.storage import StorePath
 
 from ..conftest import ArrayRequest
 from .test_codecs import _AsyncArrayProxy, order_from_dim
@@ -68,6 +68,35 @@ def test_sharding(
     read_data = arr[write_region]
     assert data.shape == read_data.shape
     assert np.array_equal(data, read_data)
+
+
+@pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
+@pytest.mark.parametrize("index_location", ["start", "end"])
+@pytest.mark.parametrize("offset", [0, 10])
+def test_sharding_scalar(
+    store: Store,
+    index_location: ShardingCodecIndexLocation,
+    offset: int,
+) -> None:
+    """
+    Test that we can create an array with a sharding codec, write data to that array, and get
+    the same data out via indexing.
+    """
+    spath = StorePath(store)
+
+    arr = zarr.create_array(
+        spath,
+        shape=(128, 128),
+        chunks=(32, 32),
+        shards={"shape": (64, 64), "index_location": index_location},
+        dtype="uint8",
+        fill_value=6,
+        filters=[TransposeCodec(order=order_from_dim("F", 2))],
+        compressors=BloscCodec(cname="lz4"),
+    )
+    arr[:16, :16] = 10  # intentionally write partial chunks
+    read_data = arr[:16, :16]
+    np.testing.assert_array_equal(read_data, 10)
 
 
 @pytest.mark.parametrize("index_location", ["start", "end"])

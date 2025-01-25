@@ -3,10 +3,10 @@ from __future__ import annotations
 from logging import getLogger
 from typing import TYPE_CHECKING, Self
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import ByteRequest, Store
 from zarr.core.buffer import Buffer, gpu
 from zarr.core.common import concurrent_map
-from zarr.storage._utils import _normalize_interval_index
+from zarr.storage._utils import _normalize_byte_range_index
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable, MutableMapping
@@ -75,7 +75,7 @@ class MemoryStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: tuple[int | None, int | None] | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if not self._is_open:
@@ -83,20 +83,20 @@ class MemoryStore(Store):
         assert isinstance(key, str)
         try:
             value = self._store_dict[key]
-            start, length = _normalize_interval_index(value, byte_range)
-            return prototype.buffer.from_buffer(value[start : start + length])
+            start, stop = _normalize_byte_range_index(value, byte_range)
+            return prototype.buffer.from_buffer(value[start:stop])
         except KeyError:
             return None
 
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
 
         # All the key-ranges arguments goes with the same prototype
-        async def _get(key: str, byte_range: ByteRangeRequest) -> Buffer | None:
+        async def _get(key: str, byte_range: ByteRequest | None) -> Buffer | None:
             return await self.get(key, prototype=prototype, byte_range=byte_range)
 
         return await concurrent_map(key_ranges, _get, limit=None)
@@ -111,7 +111,9 @@ class MemoryStore(Store):
         await self._ensure_open()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
-            raise TypeError(f"Expected Buffer. Got {type(value)}.")
+            raise TypeError(
+                f"MemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
 
         if byte_range is not None:
             buf = self._store_dict[key]
@@ -231,8 +233,9 @@ class GpuMemoryStore(MemoryStore):
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
-            raise TypeError(f"Expected Buffer. Got {type(value)}.")
-
+            raise TypeError(
+                f"GpuMemoryStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
         # Convert to gpu.Buffer
         gpu_value = value if isinstance(value, gpu.Buffer) else gpu.Buffer.from_buffer(value)
         await super().set(key, gpu_value, byte_range=byte_range)

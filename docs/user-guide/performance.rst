@@ -62,6 +62,47 @@ will be one single chunk for the array::
    >>> z5.chunks
    (10000, 10000)
 
+
+Sharding
+~~~~~~~~
+
+If you have large arrays but need small chunks to efficiently access the data, you can
+use sharding. Sharding provides a mechanism to store multiple chunks in a single
+storage object or file. This can be useful because traditional file systems and object
+storage systems may have performance issues storing and accessing many files.
+Additionally, small files can be inefficient to store if they are smaller than the
+block size of the file system.
+
+Picking a good combination of chunk shape and shard shape is important for performance.
+The chunk shape determines what unit of your data can be read independently, while the
+shard shape determines what unit of your data can be written efficiently.
+
+For an example, consider you have a 100 GB array and need to read small chunks of 1 MB.
+Without sharding, each chunk would be one file resulting in 100,000 files. That can
+already cause performance issues on some file systems.
+With sharding, you could use a shard size of 1 GB. This would result in 1000 chunks per
+file and 100 files in total, which seems manageable for most storage systems.
+You would still be able to read each 1 MB chunk independently, but you would need to
+write your data in 1 GB increments.
+
+To use sharding, you need to specify the ``shards`` parameter when creating the array.
+
+   >>> z6 = zarr.create_array(store={}, shape=(10000, 10000, 1000), shards=(1000, 1000, 1000), chunks=(100, 100, 100), dtype='uint8')
+   >>> z6.info
+   Type               : Array
+   Zarr format        : 3
+   Data type          : DataType.uint8
+   Shape              : (10000, 10000, 1000)
+   Shard shape        : (1000, 1000, 1000)
+   Chunk shape        : (100, 100, 100)
+   Order              : C
+   Read-only          : False
+   Store type         : MemoryStore
+   Filters            : ()
+   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+   Compressors        : (ZstdCodec(level=0, checksum=False),)
+   No. bytes          : 100000000000 (93.1G)
+
 .. _user-guide-chunks-order:
 
 Chunk memory layout
@@ -86,9 +127,11 @@ ratios, depending on the correlation structure within the data. E.g.::
    Order              : C
    Read-only          : False
    Store type         : MemoryStore
-   Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+   Filters            : ()
+   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+   Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 342588717
+   No. bytes stored   : 342588911
    Storage ratio      : 1.2
    Chunks Initialized : 100
    >>> with zarr.config.set({'array.order': 'F'}):
@@ -103,9 +146,11 @@ ratios, depending on the correlation structure within the data. E.g.::
    Order              : F
    Read-only          : False
    Store type         : MemoryStore
-   Codecs             : [{'endian': <Endian.little: 'little'>}, {'level': 0, 'checksum': False}]
+   Filters            : ()
+   Serializer         : BytesCodec(endian=<Endian.little: 'little'>)
+   Compressors        : (ZstdCodec(level=0, checksum=False),)
    No. bytes          : 400000000 (381.5M)
-   No. bytes stored   : 342588717
+   No. bytes stored   : 342588911
    Storage ratio      : 1.2
    Chunks Initialized : 100
 

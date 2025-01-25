@@ -3,16 +3,17 @@ import warnings
 from types import ModuleType
 from typing import Any
 
-from zarr.storage.common import StoreLike, StorePath, make_store_path
-from zarr.storage.fsspec import FsspecStore
-from zarr.storage.local import LocalStore
-from zarr.storage.logging import LoggingStore
-from zarr.storage.memory import MemoryStore
-from zarr.storage.wrapper import WrapperStore
-from zarr.storage.zip import ZipStore
+from zarr.storage._common import StoreLike, StorePath
+from zarr.storage._fsspec import FsspecStore
+from zarr.storage._local import LocalStore
+from zarr.storage._logging import LoggingStore
+from zarr.storage._memory import GpuMemoryStore, MemoryStore
+from zarr.storage._wrapper import WrapperStore
+from zarr.storage._zip import ZipStore
 
 __all__ = [
     "FsspecStore",
+    "GpuMemoryStore",
     "LocalStore",
     "LoggingStore",
     "MemoryStore",
@@ -20,7 +21,6 @@ __all__ = [
     "StorePath",
     "WrapperStore",
     "ZipStore",
-    "make_store_path",
 ]
 
 

@@ -7,7 +7,13 @@ import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import (
+    ByteRequest,
+    OffsetByteRequest,
+    RangeByteRequest,
+    Store,
+    SuffixByteRequest,
+)
 from zarr.core.buffer import Buffer, BufferPrototype
 
 if TYPE_CHECKING:
@@ -101,11 +107,14 @@ class ZipStore(Store):
     async def _open(self) -> None:
         self._sync_open()
 
-    def __getstate__(self) -> tuple[Path, ZipStoreAccessModeLiteral, int, bool]:
-        return self.path, self._zmode, self.compression, self.allowZip64
+    def __getstate__(self) -> dict[str, Any]:
+        state = self.__dict__
+        for attr in ["_zf", "_lock"]:
+            state.pop(attr, None)
+        return state
 
-    def __setstate__(self, state: Any) -> None:
-        self.path, self._zmode, self.compression, self.allowZip64 = state
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__ = state
         self._is_open = False
         self._sync_open()
 
@@ -138,23 +147,26 @@ class ZipStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
+        if not self._is_open:
+            self._sync_open()
         # docstring inherited
         try:
             with self._zf.open(key) as f:  # will raise KeyError
                 if byte_range is None:
                     return prototype.buffer.from_bytes(f.read())
-                start, length = byte_range
-                if start:
-                    if start < 0:
-                        start = f.seek(start, os.SEEK_END) + start
-                    else:
-                        start = f.seek(start, os.SEEK_SET)
-                if length:
-                    return prototype.buffer.from_bytes(f.read(length))
+                elif isinstance(byte_range, RangeByteRequest):
+                    f.seek(byte_range.start)
+                    return prototype.buffer.from_bytes(f.read(byte_range.end - f.tell()))
+                size = f.seek(0, os.SEEK_END)
+                if isinstance(byte_range, OffsetByteRequest):
+                    f.seek(byte_range.offset)
+                elif isinstance(byte_range, SuffixByteRequest):
+                    f.seek(max(0, size - byte_range.suffix))
                 else:
-                    return prototype.buffer.from_bytes(f.read())
+                    raise TypeError(f"Unexpected byte_range, got {byte_range}.")
+                return prototype.buffer.from_bytes(f.read())
         except KeyError:
             return None
 
@@ -162,7 +174,7 @@ class ZipStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         assert isinstance(key, str)
@@ -173,7 +185,7 @@ class ZipStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         out = []
@@ -183,6 +195,8 @@ class ZipStore(Store):
         return out
 
     def _set(self, key: str, value: Buffer) -> None:
+        if not self._is_open:
+            self._sync_open()
         # generally, this should be called inside a lock
         keyinfo = zipfile.ZipInfo(filename=key, date_time=time.localtime(time.time())[:6])
         keyinfo.compress_type = self.compression
@@ -196,9 +210,13 @@ class ZipStore(Store):
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
         self._check_writable()
+        if not self._is_open:
+            self._sync_open()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
-            raise TypeError("ZipStore.set(): `value` must a Buffer instance")
+            raise TypeError(
+                f"ZipStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
         with self._lock:
             self._set(key, value)
 

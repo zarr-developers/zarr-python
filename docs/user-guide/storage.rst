@@ -99,6 +99,8 @@ Zarr data (metadata and chunks) to a dictionary.:
    >>> zarr.create_array(store=store, shape=(2,), dtype='float64')
    <Array memory://... shape=(2,) dtype=float64>
 
+.. _user-guide-custom-stores:
+
 Developing custom stores
 ------------------------
 

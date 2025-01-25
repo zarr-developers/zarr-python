@@ -27,16 +27,14 @@ from zarr.core.group import AsyncGroup, ConsolidatedMetadata, GroupMetadata
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
 from zarr.errors import NodeTypeValidationError
-from zarr.storage import (
-    StoreLike,
-    make_store_path,
-)
+from zarr.storage._common import make_store_path
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
+    from zarr.storage import StoreLike
 
     # TODO: this type could use some more thought
     ArrayLike = AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array | npt.NDArray[Any]
@@ -188,7 +186,6 @@ async def consolidate_metadata(
     group.store_path.store._check_writable()
 
     members_metadata = {k: v.metadata async for k, v in group.members(max_depth=None)}
-
     # While consolidating, we want to be explicit about when child groups
     # are empty by inserting an empty dict for consolidated_metadata.metadata
     for k, v in members_metadata.items():
@@ -198,7 +195,7 @@ async def consolidate_metadata(
 
     if any(m.zarr_format == 3 for m in members_metadata.values()):
         warnings.warn(
-            "Consolidated metadata is currently not part in the Zarr version 3 specification. It "
+            "Consolidated metadata is currently not part in the Zarr format 3 specification. It "
             "may not be supported by other zarr implementations and may change in the future.",
             category=UserWarning,
             stacklevel=1,
@@ -312,7 +309,7 @@ async def open(
     store_path = await make_store_path(store, mode=mode, path=path, storage_options=storage_options)
 
     # TODO: the mode check below seems wrong!
-    if "shape" not in kwargs and mode in {"a", "r", "r+"}:
+    if "shape" not in kwargs and mode in {"a", "r", "r+", "w"}:
         try:
             metadata_dict = await get_array_metadata(store_path, zarr_format=zarr_format)
             # TODO: remove this cast when we fix typing for array metadata dicts
@@ -508,6 +505,10 @@ async def save_group(
 async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = None) -> Any:
     """Provide a rich display of the hierarchy.
 
+    .. deprecated:: 3.0.0
+        `zarr.tree()` is deprecated and will be removed in a future release.
+        Use `group.tree()` instead.
+
     Parameters
     ----------
     grp : Group
@@ -521,10 +522,6 @@ async def tree(grp: AsyncGroup, expand: bool | None = None, level: int | None = 
     -------
     TreeRepr
         A pretty-printable object displaying the hierarchy.
-
-    .. deprecated:: 3.0.0
-        `zarr.tree()` is deprecated and will be removed in a future release.
-        Use `group.tree()` instead.
     """
     return await grp.tree(expand=expand, level=level)
 
@@ -770,8 +767,8 @@ async def open_group(
         Whether to use consolidated metadata.
 
         By default, consolidated metadata is used if it's present in the
-        store (in the ``zarr.json`` for Zarr v3 and in the ``.zmetadata`` file
-        for Zarr v2).
+        store (in the ``zarr.json`` for Zarr format 3 and in the ``.zmetadata`` file
+        for Zarr format 2).
 
         To explicitly require consolidated metadata, set ``use_consolidated=True``,
         which will raise an exception if consolidated metadata is not found.
@@ -779,7 +776,7 @@ async def open_group(
         To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
         which will fall back to using the regular, non consolidated metadata.
 
-        Zarr v2 allowed configuring the key storing the consolidated metadata
+        Zarr format 2 allowed configuring the key storing the consolidated metadata
         (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
         to load consolidated metadata from a non-default key.
 
@@ -870,21 +867,21 @@ async def create(
         Array shape.
     chunks : int or tuple of ints, optional
         The shape of the array's chunks.
-        V2 only. V3 arrays should use `chunk_shape` instead.
+        Zarr format 2 only. Zarr format 3 arrays should use `chunk_shape` instead.
         If not specified, default values are guessed based on the shape and dtype.
     dtype : str or dtype, optional
         NumPy dtype.
     chunk_shape : int or tuple of ints, optional
         The shape of the Array's chunks (default is None).
-        V3 only. V2 arrays should use `chunks` instead.
+        Zarr format 3 only. Zarr format 2 arrays should use `chunks` instead.
     chunk_key_encoding : ChunkKeyEncoding, optional
         A specification of how the chunk keys are represented in storage.
-        V3 only. V2 arrays should use `dimension_separator` instead.
+        Zarr format 3 only. Zarr format 2 arrays should use `dimension_separator` instead.
         Default is ``("default", "/")``.
     codecs : Sequence of Codecs or dicts, optional
         An iterable of Codec or dict serializations of Codecs. The elements of
         this collection specify the transformation from array values to stored bytes.
-        V3 only. V2 arrays should use ``filters`` and ``compressor`` instead.
+        Zarr format 3 only. Zarr format 2 arrays should use ``filters`` and ``compressor`` instead.
 
         If no codecs are provided, default codecs will be used:
 
@@ -892,10 +889,11 @@ async def create(
         - For Unicode strings, the default is ``VLenUTF8Codec`` and ``ZstdCodec``.
         - For bytes or objects, the default is ``VLenBytesCodec`` and ``ZstdCodec``.
 
-        These defaults can be changed by modifying the value of ``array.v3_default_codecs`` in :mod:`zarr.core.config`.
+        These defaults can be changed by modifying the value of ``array.v3_default_filters``,
+        ``array.v3_default_serializer`` and ``array.v3_default_compressors`` in :mod:`zarr.core.config`.
     compressor : Codec, optional
         Primary compressor to compress chunk data.
-        V2 only. V3 arrays should use ``codecs`` instead.
+        Zarr format 2 only. Zarr format 3 arrays should use ``codecs`` instead.
 
         If neither ``compressor`` nor ``filters`` are provided, a default compressor will be used:
 
@@ -925,7 +923,7 @@ async def create(
         for storage of both chunks and metadata.
     filters : sequence of Codecs, optional
         Sequence of filters to use to encode chunk data prior to compression.
-        V2 only. If no ``filters`` are provided, a default set of filters will be used.
+        Zarr format 2 only. If no ``filters`` are provided, a default set of filters will be used.
         These defaults can be changed by modifying the value of ``array.v2_default_filters`` in :mod:`zarr.core.config`.
     cache_metadata : bool, optional
         If True, array configuration metadata will be cached for the
@@ -942,7 +940,7 @@ async def create(
         A codec to encode object arrays, only needed if dtype=object.
     dimension_separator : {'.', '/'}, optional
         Separator placed between the dimensions of a chunk.
-        V2 only. V3 arrays should use ``chunk_key_encoding`` instead.
+        Zarr format 2 only. Zarr format 3 arrays should use ``chunk_key_encoding`` instead.
         Default is ".".
     write_empty_chunks : bool, optional
         Deprecated in favor of the ``config`` keyword argument.

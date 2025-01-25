@@ -2,22 +2,29 @@ from __future__ import annotations
 
 import asyncio
 import pickle
+from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from zarr.storage.wrapper import WrapperStore
+from zarr.storage import WrapperStore
 
 if TYPE_CHECKING:
     from typing import Any
 
-    from zarr.abc.store import ByteRangeRequest
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer.core import BufferPrototype
 
 import pytest
 
-from zarr.abc.store import ByteRangeRequest, Store
+from zarr.abc.store import (
+    ByteRequest,
+    OffsetByteRequest,
+    RangeByteRequest,
+    Store,
+    SuffixByteRequest,
+)
 from zarr.core.buffer import Buffer, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator
-from zarr.storage._utils import _normalize_interval_index
+from zarr.storage._utils import _normalize_byte_range_index
 from zarr.testing.utils import assert_bytes_equal
 
 __all__ = ["StoreTests"]
@@ -31,30 +38,53 @@ class StoreTests(Generic[S, B]):
     store_cls: type[S]
     buffer_cls: type[B]
 
+    @abstractmethod
     async def set(self, store: S, key: str, value: Buffer) -> None:
         """
         Insert a value into a storage backend, with a specific key.
         This should not not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
-        raise NotImplementedError
+        ...
 
+    @abstractmethod
     async def get(self, store: S, key: str) -> Buffer:
         """
         Retrieve a value from a storage backend, by key.
         This should not not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
+        ...
 
-        raise NotImplementedError
-
+    @abstractmethod
     @pytest.fixture
     def store_kwargs(self) -> dict[str, Any]:
-        return {"read_only": False}
+        """Kwargs for instantiating a store"""
+        ...
+
+    @abstractmethod
+    def test_store_repr(self, store: S) -> None: ...
+
+    @abstractmethod
+    def test_store_supports_writes(self, store: S) -> None: ...
+
+    @abstractmethod
+    def test_store_supports_partial_writes(self, store: S) -> None: ...
+
+    @abstractmethod
+    def test_store_supports_listing(self, store: S) -> None: ...
 
     @pytest.fixture
-    async def store(self, store_kwargs: dict[str, Any]) -> Store:
-        return await self.store_cls.open(**store_kwargs)
+    def open_kwargs(self, store_kwargs: dict[str, Any]) -> dict[str, Any]:
+        return store_kwargs
+
+    @pytest.fixture
+    async def store(self, open_kwargs: dict[str, Any]) -> Store:
+        return await self.store_cls.open(**open_kwargs)
+
+    @pytest.fixture
+    async def store_not_open(self, store_kwargs: dict[str, Any]) -> Store:
+        return self.store_cls(**store_kwargs)
 
     def test_store_type(self, store: S) -> None:
         assert isinstance(store, Store)
@@ -70,8 +100,9 @@ class StoreTests(Generic[S, B]):
         assert store == store2
 
     def test_serializable_store(self, store: S) -> None:
-        foo = pickle.dumps(store)
-        assert pickle.loads(foo) == store
+        new_store: S = pickle.loads(pickle.dumps(store))
+        assert new_store == store
+        assert new_store.read_only == store.read_only
 
     def test_store_read_only(self, store: S) -> None:
         assert not store.read_only
@@ -80,54 +111,73 @@ class StoreTests(Generic[S, B]):
             store.read_only = False  # type: ignore[misc]
 
     @pytest.mark.parametrize("read_only", [True, False])
-    async def test_store_open_read_only(
-        self, store_kwargs: dict[str, Any], read_only: bool
-    ) -> None:
-        store_kwargs["read_only"] = read_only
-        store = await self.store_cls.open(**store_kwargs)
+    async def test_store_open_read_only(self, open_kwargs: dict[str, Any], read_only: bool) -> None:
+        open_kwargs["read_only"] = read_only
+        store = await self.store_cls.open(**open_kwargs)
         assert store._is_open
         assert store.read_only == read_only
 
-    async def test_read_only_store_raises(self, store_kwargs: dict[str, Any]) -> None:
-        kwargs = {**store_kwargs, "read_only": True}
+    async def test_store_context_manager(self, open_kwargs: dict[str, Any]) -> None:
+        # Test that the context manager closes the store
+        with await self.store_cls.open(**open_kwargs) as store:
+            assert store._is_open
+            # Test trying to open an already open store
+            with pytest.raises(ValueError, match="store is already open"):
+                await store._open()
+        assert not store._is_open
+
+    async def test_read_only_store_raises(self, open_kwargs: dict[str, Any]) -> None:
+        kwargs = {**open_kwargs, "read_only": True}
         store = await self.store_cls.open(**kwargs)
         assert store.read_only
 
         # set
-        with pytest.raises(ValueError):
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
             await store.set("foo", self.buffer_cls.from_bytes(b"bar"))
 
         # delete
-        with pytest.raises(ValueError):
+        with pytest.raises(
+            ValueError, match="store was opened in read-only mode and does not support writing"
+        ):
             await store.delete("foo")
-
-    def test_store_repr(self, store: S) -> None:
-        raise NotImplementedError
-
-    def test_store_supports_writes(self, store: S) -> None:
-        raise NotImplementedError
-
-    def test_store_supports_partial_writes(self, store: S) -> None:
-        raise NotImplementedError
-
-    def test_store_supports_listing(self, store: S) -> None:
-        raise NotImplementedError
 
     @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
-    @pytest.mark.parametrize("byte_range", [None, (0, None), (1, None), (1, 2), (None, 1)])
-    async def test_get(
-        self, store: S, key: str, data: bytes, byte_range: tuple[int | None, int | None] | None
-    ) -> None:
+    @pytest.mark.parametrize(
+        "byte_range", [None, RangeByteRequest(1, 4), OffsetByteRequest(1), SuffixByteRequest(1)]
+    )
+    async def test_get(self, store: S, key: str, data: bytes, byte_range: ByteRequest) -> None:
         """
         Ensure that data can be read from the store using the store.get method.
         """
         data_buf = self.buffer_cls.from_bytes(data)
         await self.set(store, key, data_buf)
         observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
-        start, length = _normalize_interval_index(data_buf, interval=byte_range)
-        expected = data_buf[start : start + length]
+        start, stop = _normalize_byte_range_index(data_buf, byte_range=byte_range)
+        expected = data_buf[start:stop]
         assert_bytes_equal(observed, expected)
+
+    async def test_get_not_open(self, store_not_open: S) -> None:
+        """
+        Ensure that data can be read from the store that isn't yet open using the store.get method.
+        """
+        assert not store_not_open._is_open
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "c/0"
+        await self.set(store_not_open, key, data_buf)
+        observed = await store_not_open.get(key, prototype=default_buffer_prototype())
+        assert_bytes_equal(observed, data_buf)
+
+    async def test_get_raises(self, store: S) -> None:
+        """
+        Ensure that a ValueError is raise for invalid byte range syntax
+        """
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        await self.set(store, "c/0", data_buf)
+        with pytest.raises((ValueError, TypeError), match=r"Unexpected byte_range, got.*"):
+            await store.get("c/0", prototype=default_buffer_prototype(), byte_range=(0, 2))  # type: ignore[arg-type]
 
     async def test_get_many(self, store: S) -> None:
         """
@@ -151,6 +201,37 @@ class StoreTests(Generic[S, B]):
         expected_kvs = sorted(((k, b) for k, b in zip(keys, values, strict=False)))
         assert observed_kvs == expected_kvs
 
+    @pytest.mark.parametrize("key", ["c/0", "foo/c/0.0", "foo/0/0"])
+    @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
+    async def test_getsize(self, store: S, key: str, data: bytes) -> None:
+        """
+        Test the result of store.getsize().
+        """
+        data_buf = self.buffer_cls.from_bytes(data)
+        expected = len(data_buf)
+        await self.set(store, key, data_buf)
+        observed = await store.getsize(key)
+        assert observed == expected
+
+    async def test_getsize_prefix(self, store: S) -> None:
+        """
+        Test the result of store.getsize_prefix().
+        """
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        keys = ["c/0/0", "c/0/1", "c/1/0", "c/1/1"]
+        keys_values = [(k, data_buf) for k in keys]
+        await store._set_many(keys_values)
+        expected = len(data_buf) * len(keys)
+        observed = await store.getsize_prefix("c")
+        assert observed == expected
+
+    async def test_getsize_raises(self, store: S) -> None:
+        """
+        Test that getsize() raise a FileNotFoundError if the key doesn't exist.
+        """
+        with pytest.raises(FileNotFoundError):
+            await store.getsize("c/1000")
+
     @pytest.mark.parametrize("key", ["zarr.json", "c/0", "foo/c/0.0", "foo/0/0"])
     @pytest.mark.parametrize("data", [b"\x01\x02\x03\x04", b""])
     async def test_set(self, store: S, key: str, data: bytes) -> None:
@@ -161,6 +242,17 @@ class StoreTests(Generic[S, B]):
         data_buf = self.buffer_cls.from_bytes(data)
         await store.set(key, data_buf)
         observed = await self.get(store, key)
+        assert_bytes_equal(observed, data_buf)
+
+    async def test_set_not_open(self, store_not_open: S) -> None:
+        """
+        Ensure that data can be written to the store that's not yet open using the store.set method.
+        """
+        assert not store_not_open._is_open
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "c/0"
+        await store_not_open.set(key, data_buf)
+        observed = await self.get(store_not_open, key)
         assert_bytes_equal(observed, data_buf)
 
     async def test_set_many(self, store: S) -> None:
@@ -175,17 +267,31 @@ class StoreTests(Generic[S, B]):
         for k, v in store_dict.items():
             assert (await self.get(store, k)).to_bytes() == v.to_bytes()
 
+    async def test_set_invalid_buffer(self, store: S) -> None:
+        """
+        Ensure that set raises a Type or Value Error for invalid buffer arguments.
+        """
+        with pytest.raises(
+            (ValueError, TypeError),
+            match=r"\S+\.set\(\): `value` must be a Buffer instance. Got an instance of <class 'int'> instead.",
+        ):
+            await store.set("c/0", 0)  # type: ignore[arg-type]
+
     @pytest.mark.parametrize(
         "key_ranges",
         [
             [],
-            [("zarr.json", (0, 1))],
-            [("c/0", (0, 1)), ("zarr.json", (0, None))],
-            [("c/0/0", (0, 1)), ("c/0/1", (None, 2)), ("c/0/2", (0, 3))],
+            [("zarr.json", RangeByteRequest(0, 2))],
+            [("c/0", RangeByteRequest(0, 2)), ("zarr.json", None)],
+            [
+                ("c/0/0", RangeByteRequest(0, 2)),
+                ("c/0/1", SuffixByteRequest(2)),
+                ("c/0/2", OffsetByteRequest(2)),
+            ],
         ],
     )
     async def test_get_partial_values(
-        self, store: S, key_ranges: list[tuple[str, tuple[int | None, int | None]]]
+        self, store: S, key_ranges: list[tuple[str, ByteRequest]]
     ) -> None:
         # put all of the data
         for key, _ in key_ranges:
@@ -367,7 +473,7 @@ class LatencyStore(WrapperStore[Store]):
         await self._store.set(key, value)
 
     async def get(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         """
         Add latency to the ``get`` method.
@@ -380,7 +486,7 @@ class LatencyStore(WrapperStore[Store]):
             The key to get
         prototype : BufferPrototype
             The BufferPrototype to use.
-        byte_range : ByteRangeRequest, optional
+        byte_range : ByteRequest, optional
             An optional byte range.
 
         Returns

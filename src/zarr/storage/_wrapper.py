@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from types import TracebackType
     from typing import Any, Self
 
-    from zarr.abc.store import ByteRangeRequest
+    from zarr.abc.store import ByteRequest
     from zarr.core.buffer import Buffer, BufferPrototype
     from zarr.core.common import BytesLike
 
@@ -56,6 +56,14 @@ class WrapperStore(Store, Generic[T_Store]):
     async def is_empty(self, prefix: str) -> bool:
         return await self._store.is_empty(prefix)
 
+    @property
+    def _is_open(self) -> bool:
+        return self._store._is_open
+
+    @_is_open.setter
+    def _is_open(self, value: bool) -> None:
+        raise NotImplementedError("WrapperStore must be opened via the `_open` method")
+
     async def clear(self) -> None:
         return await self._store.clear()
 
@@ -67,17 +75,23 @@ class WrapperStore(Store, Generic[T_Store]):
         return self._store._check_writable()
 
     def __eq__(self, value: object) -> bool:
-        return type(self) is type(value) and self._store.__eq__(value)
+        return type(self) is type(value) and self._store.__eq__(value._store)  # type: ignore[attr-defined]
+
+    def __str__(self) -> str:
+        return f"wrapping-{self._store}"
+
+    def __repr__(self) -> str:
+        return f"WrapperStore({self._store.__class__.__name__}, '{self._store}')"
 
     async def get(
-        self, key: str, prototype: BufferPrototype, byte_range: ByteRangeRequest | None = None
+        self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         return await self._store.get(key, prototype, byte_range)
 
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         return await self._store.get_partial_values(prototype, key_ranges)
 
@@ -133,7 +147,7 @@ class WrapperStore(Store, Generic[T_Store]):
         self._store.close()
 
     async def _get_many(
-        self, requests: Iterable[tuple[str, BufferPrototype, ByteRangeRequest | None]]
+        self, requests: Iterable[tuple[str, BufferPrototype, ByteRequest | None]]
     ) -> AsyncGenerator[tuple[str, Buffer | None], None]:
         async for req in self._store._get_many(requests):
             yield req

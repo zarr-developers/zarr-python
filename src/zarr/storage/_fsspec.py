@@ -3,15 +3,22 @@ from __future__ import annotations
 import warnings
 from typing import TYPE_CHECKING, Any
 
-from zarr.abc.store import ByteRangeRequest, Store
-from zarr.storage.common import _dereference_path
+from zarr.abc.store import (
+    ByteRequest,
+    OffsetByteRequest,
+    RangeByteRequest,
+    Store,
+    SuffixByteRequest,
+)
+from zarr.core.buffer import Buffer
+from zarr.storage._common import _dereference_path
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
 
     from fsspec.asyn import AsyncFileSystem
 
-    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.buffer import BufferPrototype
     from zarr.core.common import BytesLike
 
 
@@ -166,6 +173,17 @@ class FsspecStore(Store):
         opts = {"asynchronous": True, **opts}
 
         fs, path = url_to_fs(url, **opts)
+        if not fs.async_impl:
+            try:
+                from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+
+                fs = AsyncFileSystemWrapper(fs)
+            except ImportError as e:
+                raise ImportError(
+                    f"The filesystem for URL '{url}' is synchronous, and the required "
+                    "AsyncFileSystemWrapper is not available. Upgrade fsspec to version "
+                    "2024.12.0 or later to enable this functionality."
+                ) from e
 
         # fsspec is not consistent about removing the scheme from the path, so check and strip it here
         # https://github.com/fsspec/filesystem_spec/issues/1722
@@ -199,7 +217,7 @@ class FsspecStore(Store):
         self,
         key: str,
         prototype: BufferPrototype,
-        byte_range: ByteRangeRequest | None = None,
+        byte_range: ByteRequest | None = None,
     ) -> Buffer | None:
         # docstring inherited
         if not self._is_open:
@@ -207,23 +225,26 @@ class FsspecStore(Store):
         path = _dereference_path(self.path, key)
 
         try:
-            if byte_range:
-                # fsspec uses start/end, not start/length
-                start, length = byte_range
-                if start is not None and length is not None:
-                    end = start + length
-                elif length is not None:
-                    end = length
-                else:
-                    end = None
-            value = prototype.buffer.from_bytes(
-                await (
-                    self.fs._cat_file(path, start=byte_range[0], end=end)
-                    if byte_range
-                    else self.fs._cat_file(path)
+            if byte_range is None:
+                value = prototype.buffer.from_bytes(await self.fs._cat_file(path))
+            elif isinstance(byte_range, RangeByteRequest):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(
+                        path,
+                        start=byte_range.start,
+                        end=byte_range.end,
+                    )
                 )
-            )
-
+            elif isinstance(byte_range, OffsetByteRequest):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(path, start=byte_range.offset, end=None)
+                )
+            elif isinstance(byte_range, SuffixByteRequest):
+                value = prototype.buffer.from_bytes(
+                    await self.fs._cat_file(path, start=-byte_range.suffix, end=None)
+                )
+            else:
+                raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         except self.allowed_exceptions:
             return None
         except OSError as e:
@@ -244,6 +265,10 @@ class FsspecStore(Store):
         if not self._is_open:
             await self._open()
         self._check_writable()
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"FsspecStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
         path = _dereference_path(self.path, key)
         # write data
         if byte_range:
@@ -270,25 +295,35 @@ class FsspecStore(Store):
     async def get_partial_values(
         self,
         prototype: BufferPrototype,
-        key_ranges: Iterable[tuple[str, ByteRangeRequest]],
+        key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
         # docstring inherited
         if key_ranges:
-            paths, starts, stops = zip(
-                *(
-                    (
-                        _dereference_path(self.path, k[0]),
-                        k[1][0],
-                        ((k[1][0] or 0) + k[1][1]) if k[1][1] is not None else None,
-                    )
-                    for k in key_ranges
-                ),
-                strict=False,
-            )
+            # _cat_ranges expects a list of paths, start, and end ranges, so we need to reformat each ByteRequest.
+            key_ranges = list(key_ranges)
+            paths: list[str] = []
+            starts: list[int | None] = []
+            stops: list[int | None] = []
+            for key, byte_range in key_ranges:
+                paths.append(_dereference_path(self.path, key))
+                if byte_range is None:
+                    starts.append(None)
+                    stops.append(None)
+                elif isinstance(byte_range, RangeByteRequest):
+                    starts.append(byte_range.start)
+                    stops.append(byte_range.end)
+                elif isinstance(byte_range, OffsetByteRequest):
+                    starts.append(byte_range.offset)
+                    stops.append(None)
+                elif isinstance(byte_range, SuffixByteRequest):
+                    starts.append(-byte_range.suffix)
+                    stops.append(None)
+                else:
+                    raise ValueError(f"Unexpected byte_range, got {byte_range}.")
         else:
             return []
         # TODO: expectations for exceptions or missing keys?
-        res = await self.fs._cat_ranges(list(paths), starts, stops, on_error="return")
+        res = await self.fs._cat_ranges(paths, starts, stops, on_error="return")
         # the following is an s3-specific condition we probably don't want to leak
         res = [b"" if (isinstance(r, OSError) and "not satisfiable" in str(r)) else r for r in res]
         for r in res:
