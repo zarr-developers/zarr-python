@@ -10,6 +10,7 @@ from zarr.abc.store import (
     Store,
     SuffixByteRequest,
 )
+from zarr.core.buffer import Buffer
 from zarr.storage._common import _dereference_path
 
 if TYPE_CHECKING:
@@ -17,7 +18,7 @@ if TYPE_CHECKING:
 
     from fsspec.asyn import AsyncFileSystem
 
-    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.buffer import BufferPrototype
     from zarr.core.common import BytesLike
 
 
@@ -172,6 +173,17 @@ class FsspecStore(Store):
         opts = {"asynchronous": True, **opts}
 
         fs, path = url_to_fs(url, **opts)
+        if not fs.async_impl:
+            try:
+                from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+
+                fs = AsyncFileSystemWrapper(fs)
+            except ImportError as e:
+                raise ImportError(
+                    f"The filesystem for URL '{url}' is synchronous, and the required "
+                    "AsyncFileSystemWrapper is not available. Upgrade fsspec to version "
+                    "2024.12.0 or later to enable this functionality."
+                ) from e
 
         # fsspec is not consistent about removing the scheme from the path, so check and strip it here
         # https://github.com/fsspec/filesystem_spec/issues/1722
@@ -253,6 +265,10 @@ class FsspecStore(Store):
         if not self._is_open:
             await self._open()
         self._check_writable()
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"FsspecStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
         path = _dereference_path(self.path, key)
         # write data
         if byte_range:

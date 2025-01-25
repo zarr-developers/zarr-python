@@ -1,2 +1,4 @@
 needs release notes:
-- all: ['!docs/release-notes.rst']
+  - all:
+    - changed-files:
+      - any-glob-to-any-file: '!changes/*.rst'

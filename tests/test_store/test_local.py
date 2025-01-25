@@ -8,6 +8,7 @@ import zarr
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import LocalStore
 from zarr.testing.store import StoreTests
+from zarr.testing.utils import assert_bytes_equal
 
 if TYPE_CHECKING:
     import pathlib
@@ -53,3 +54,23 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
 
         store = self.store_cls(root=target)
         zarr.group(store=store)
+
+    def test_invalid_root_raises(self):
+        """
+        Test that a TypeError is raised when a non-str/Path type is used for the `root` argument
+        """
+        with pytest.raises(
+            TypeError,
+            match=r"'root' must be a string or Path instance. Got an instance of <class 'int'> instead.",
+        ):
+            LocalStore(root=0)
+
+    async def test_get_with_prototype_default(self, store: LocalStore):
+        """
+        Ensure that data can be read via ``store.get`` if the prototype keyword argument is unspecified, i.e. set to ``None``.
+        """
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "c/0"
+        await self.set(store, key, data_buf)
+        observed = await store.get(key, prototype=None)
+        assert_bytes_equal(observed, data_buf)
