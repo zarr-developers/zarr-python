@@ -5,7 +5,6 @@ import os
 from typing import TYPE_CHECKING
 
 import pytest
-from botocore.session import Session
 from packaging.version import parse as parse_version
 
 import zarr.api.asynchronous
@@ -26,6 +25,7 @@ s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
 moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
 moto = pytest.importorskip("moto")
+botocore = pytest.importorskip("botocore")
 
 # ### amended from s3fs ### #
 test_bucket_name = "test"
@@ -52,7 +52,7 @@ def s3_base() -> Generator[None, None, None]:
 
 def get_boto3_client() -> botocore.client.BaseClient:
     # NB: we use the sync botocore client for setup
-    session = Session()
+    session = botocore.session.Session()
     return session.create_client("s3", endpoint_url=endpoint_url)
 
 
