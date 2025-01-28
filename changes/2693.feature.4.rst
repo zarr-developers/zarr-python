@@ -1,0 +1,1 @@
+Separate instantiating and opening a store in StoreTests.
