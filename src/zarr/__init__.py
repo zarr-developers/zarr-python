@@ -30,7 +30,7 @@ from zarr.api.synchronous import (
 )
 from zarr.core.array import Array, AsyncArray
 from zarr.core.config import config
-from zarr.core.group import AsyncGroup, Group
+from zarr.core.group import AsyncGroup, Group, create_hierarchy, create_nodes
 
 # in case setuptools scm screw up and find version to be 0.0.0
 assert not __version__.startswith("0.0.0")
@@ -50,6 +50,8 @@ __all__ = [
     "create",
     "create_array",
     "create_group",
+    "create_hierarchy",
+    "create_nodes",
     "empty",
     "empty_like",
     "full",
