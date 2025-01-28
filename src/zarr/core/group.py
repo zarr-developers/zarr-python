@@ -2856,8 +2856,11 @@ async def create_hierarchy(
 
     Parameters
     ----------
-    store_path : StorePath
-        The StorePath object pointing to the root of the hierarchy.
+    store : Store
+        The storage backend to use.
+    path : str
+        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
+        ``path`` prior to creating nodes.
     nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
         A dictionary defining the hierarchy. The keys are the paths of the nodes
         in the hierarchy, and the values are the metadata of the nodes. The
@@ -2865,7 +2868,7 @@ async def create_hierarchy(
         or ArrayV2Metadata.
     semaphore : asyncio.Semaphore | None
         An optional semaphore to limit the number of concurrent tasks. If not
-        provided, the number of concurrent tasks is not limited.
+        provided, the number of concurrent tasks is unlimited.
     allow_root : bool
         Whether to allow a root node to be created. If ``False``, attempting to create a root node
         will result in an error. Use this option when calling this function as part of a method
@@ -2966,9 +2969,32 @@ async def create_nodes(
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     semaphore: asyncio.Semaphore | None = None,
 ) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
-    """
-    Create a collection of zarr arrays and groups concurrently and atomically. To ensure atomicity,
-    no attempt is made to ensure that intermediate groups are created.
+    """Create a collection of arrays and / or groups concurrently.
+
+    Note: no attempt is made to validate that these arrays and / or groups collectively form a
+    valid Zarr hierarchy. It is the responsibility of the caller of this function to ensure that
+    the ``nodes`` parameter satisfies any correctness constraints.
+
+    Parameters
+    ----------
+    store : Store
+        The storage backend to use.
+    path : str
+        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
+        ``path`` prior to creating nodes.
+    nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
+        A dictionary defining the hierarchy. The keys are the paths of the nodes
+        in the hierarchy, and the values are the metadata of the nodes. The
+        metadata must be either an instance of GroupMetadata, ArrayV3Metadata
+        or ArrayV2Metadata.
+    semaphore : asyncio.Semaphore | None
+        An optional semaphore to limit the number of concurrent tasks. If not
+        provided, the number of concurrent tasks is unlimited.
+
+    Yields
+    ------
+    AsyncGroup | AsyncArray
+        The created nodes in the order they are created.
     """
     ctx: asyncio.Semaphore | contextlib.nullcontext[None]
 
@@ -2979,7 +3005,7 @@ async def create_nodes(
 
     create_tasks: list[Coroutine[None, None, str]] = []
     for key, value in nodes.items():
-        # transform the key, which is relative to a store_path.path, to a key in the store
+        # make the key absolute
         write_prefix = _join_paths([path, key])
         create_tasks.extend(_persist_metadata(store, write_prefix, value))
 
