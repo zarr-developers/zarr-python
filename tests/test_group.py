@@ -1545,7 +1545,7 @@ async def test_create_hierarchy(
         )
         assert extra_group.metadata.attributes == {"path": "group/extra"}
     else:
-        with pytest.raises(KeyError):
+        with pytest.raises(FileNotFoundError):
             read_node(store=store, path=_join_paths([path, "group/extra"]), zarr_format=zarr_format)
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
 

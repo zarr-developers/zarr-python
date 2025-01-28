@@ -693,12 +693,12 @@ class AsyncGroup:
         # Consolidated metadata lets us avoid some I/O operations so try that first.
         if self.metadata.consolidated_metadata is not None:
             return self._getitem_consolidated(store_path, key, prefix=self.name)
-        elif self.metadata.zarr_format == 3:
-            return await _read_node_v3(store=self.store, path=store_path.path)
-        elif self.metadata.zarr_format == 2:
-            return await _read_node_v2(store=self.store, path=store_path.path)
-        else:
-            raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
+        try:
+            return await _read_node_a(
+                store=store_path.store, path=store_path.path, zarr_format=self.metadata.zarr_format
+            )
+        except FileNotFoundError as e:
+            raise KeyError(key) from e
 
     def _getitem_consolidated(
         self, store_path: StorePath, key: str, prefix: str
@@ -3419,7 +3419,7 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
     """
     Given a store_path, return ArrayV2Metadata or GroupMetadata defined by the metadata
     document stored at store_path.path / (.zgroup | .zarray). If no such document is found,
-    raise a KeyError.
+    raise a FileNotFoundError.
     """
     # TODO: consider first fetching array metadata, and only fetching group metadata when we don't
     # find an array
