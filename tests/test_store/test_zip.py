@@ -114,7 +114,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         store = await self.store_cls.open(**kws)
         assert store.read_only == read_only
 
-    async def test_externally_zipped_store(self, tmp_path: Path) -> None:
+    def test_externally_zipped_store(self, tmp_path: Path) -> None:
         # See: https://github.com/zarr-developers/zarr-python/issues/2757
         zarr_path = tmp_path / "foo.zarr"
         root = zarr.open_group(store=zarr_path, mode="w")
