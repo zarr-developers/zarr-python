@@ -694,9 +694,9 @@ class AsyncGroup:
         if self.metadata.consolidated_metadata is not None:
             return self._getitem_consolidated(store_path, key, prefix=self.name)
         elif self.metadata.zarr_format == 3:
-            return await _read_node_v3(store_path=store_path)
+            return await _read_node_v3(store=self.store, path=store_path.path)
         elif self.metadata.zarr_format == 2:
-            return await _read_node_v2(store_path=store_path)
+            return await _read_node_v2(store=self.store, path=store_path.path)
         else:
             raise ValueError(f"unexpected zarr_format: {self.metadata.zarr_format}")
 
@@ -1423,7 +1423,8 @@ class AsyncGroup:
         """
         semaphore = asyncio.Semaphore(config.get("async.concurrency"))
         async for node in create_hierarchy(
-            store_path=self.store_path,
+            store=self.store,
+            path=self.path,
             nodes=nodes,
             semaphore=semaphore,
             overwrite=overwrite,
@@ -2838,7 +2839,8 @@ class Group(SyncMixin):
 
 async def create_hierarchy(
     *,
-    store_path: StorePath,
+    store: Store,
+    path: str,
     nodes: dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata],
     semaphore: asyncio.Semaphore | None = None,
     overwrite: bool = False,
@@ -2887,7 +2889,7 @@ async def create_hierarchy(
     # we allow creating empty hierarchies -- it's a no-op
     if len(nodes_parsed) > 0:
         if overwrite:
-            await store_path.delete_dir()
+            await store.delete_dir(path)
         else:
             # attempt to fetch all of the metadata described in hierarchy
             # first figure out which zarr format we are dealing with
@@ -2901,8 +2903,8 @@ async def create_hierarchy(
             zarr_format = sample.zarr_format
             # TODO: this type hint is so long
             func: (
-                Callable[[StorePath], Coroutine[Any, Any, GroupMetadata | ArrayV3Metadata]]
-                | Callable[[StorePath], Coroutine[Any, Any, GroupMetadata | ArrayV2Metadata]]
+                Callable[[Store, str], Coroutine[Any, Any, GroupMetadata | ArrayV3Metadata]]
+                | Callable[[Store, str], Coroutine[Any, Any, GroupMetadata | ArrayV2Metadata]]
             )
             if zarr_format == 3:
                 func = _read_metadata_v3
@@ -2911,7 +2913,7 @@ async def create_hierarchy(
             else:  # pragma: no cover
                 raise ValueError(f"Invalid zarr_format: {zarr_format}")  # pragma: no cover
 
-            coros = (func(store_path=store_path / key) for key in nodes_parsed)
+            coros = (func(store=store, path=_join_paths([path, key])) for key in nodes_parsed)
             extant_node_query = dict(
                 zip(
                     nodes_parsed.keys(),
@@ -2942,24 +2944,25 @@ async def create_hierarchy(
 
                     if isinstance(value, GroupMetadata):
                         if key not in implicit_group_names:
-                            raise ContainsGroupError(store_path.store, key)
+                            raise ContainsGroupError(store, key)
                         else:
                             # as there is already a group with this name, we should not create a new one
                             redundant_implicit_groups.append(key)
                     elif isinstance(value, ArrayV2Metadata | ArrayV3Metadata):
-                        raise ContainsArrayError(store_path.store, key)
+                        raise ContainsArrayError(store, key)
 
             nodes_parsed = {
                 k: v for k, v in nodes_parsed.items() if k not in redundant_implicit_groups
             }
 
-    async for node in create_nodes(store_path=store_path, nodes=nodes_parsed, semaphore=semaphore):
+    async for node in create_nodes(store=store, path=path, nodes=nodes_parsed, semaphore=semaphore):
         yield node
 
 
 async def create_nodes(
     *,
-    store_path: StorePath,
+    store: Store,
+    path: str,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     semaphore: asyncio.Semaphore | None = None,
 ) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
@@ -2977,8 +2980,8 @@ async def create_nodes(
     create_tasks: list[Coroutine[None, None, str]] = []
     for key, value in nodes.items():
         # transform the key, which is relative to a store_path.path, to a key in the store
-        write_prefix = _join_paths([store_path.path, key])
-        create_tasks.extend(_persist_metadata(store_path.store, write_prefix, value))
+        write_prefix = _join_paths([path, key])
+        create_tasks.extend(_persist_metadata(store, write_prefix, value))
 
     created_object_keys = []
     async with ctx:
@@ -2993,7 +2996,7 @@ async def create_nodes(
             # the relative path of the object we just created -- we need this to track which metadata documents
             # were written so that we can yield a complete v2 Array / Group class after both .zattrs
             # and the metadata JSON was created.
-            object_path_relative = created_key.removeprefix(store_path.path).lstrip("/")
+            object_path_relative = created_key.removeprefix(path).lstrip("/")
             created_object_keys.append(object_path_relative)
 
             # get the node name from the object key
@@ -3008,7 +3011,7 @@ async def create_nodes(
 
             if meta_out.zarr_format == 3:
                 # yes, it is silly that we relativize, then de-relativize this same path
-                node_store_path = store_path / node_name
+                node_store_path = StorePath(store=store, path=path) / node_name
                 if isinstance(meta_out, GroupMetadata):
                     yield AsyncGroup(metadata=meta_out, store_path=node_store_path)
                 else:
@@ -3027,7 +3030,7 @@ async def create_nodes(
                     meta_done = _join_paths([node_name, ZARRAY_JSON]) in created_object_keys
 
                 if meta_done and attrs_done:
-                    node_store_path = store_path / node_name
+                    node_store_path = StorePath(store=store, path=path) / node_name
                     if isinstance(meta_out, GroupMetadata):
                         yield AsyncGroup(metadata=meta_out, store_path=node_store_path)
                     else:
@@ -3275,20 +3278,22 @@ async def _iter_members_deep(
             yield key, node
 
 
-async def _read_metadata_v3(store_path: StorePath) -> ArrayV3Metadata | GroupMetadata:
+async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupMetadata:
     """
     Given a store_path, return ArrayV3Metadata or GroupMetadata defined by the metadata
     document stored at store_path.path / zarr.json. If no such document is found, raise a KeyError.
     """
-    zarr_json_bytes = await (store_path / ZARR_JSON).get()
+    zarr_json_bytes = await store.get(
+        _join_paths([path, ZARR_JSON]), prototype=default_buffer_prototype()
+    )
     if zarr_json_bytes is None:
-        raise KeyError(store_path.path)
+        raise KeyError(path)
     else:
         zarr_json = json.loads(zarr_json_bytes.to_bytes())
         return _build_metadata_v3(zarr_json)
 
 
-async def _read_metadata_v2(store_path: StorePath) -> ArrayV2Metadata | GroupMetadata:
+async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupMetadata:
     """
     Given a store_path, return ArrayV2Metadata or GroupMetadata defined by the metadata
     document stored at store_path.path / (.zgroup | .zarray). If no such document is found,
@@ -3297,9 +3302,9 @@ async def _read_metadata_v2(store_path: StorePath) -> ArrayV2Metadata | GroupMet
     # TODO: consider first fetching array metadata, and only fetching group metadata when we don't
     # find an array
     zarray_bytes, zgroup_bytes, zattrs_bytes = await asyncio.gather(
-        (store_path / ZARRAY_JSON).get(),
-        (store_path / ZGROUP_JSON).get(),
-        (store_path / ZATTRS_JSON).get(),
+        store.get(_join_paths([path, ZARRAY_JSON]), prototype=default_buffer_prototype()),
+        store.get(_join_paths([path, ZGROUP_JSON]), prototype=default_buffer_prototype()),
+        store.get(_join_paths([path, ZATTRS_JSON]), prototype=default_buffer_prototype()),
     )
 
     if zattrs_bytes is None:
@@ -3315,7 +3320,7 @@ async def _read_metadata_v2(store_path: StorePath) -> ArrayV2Metadata | GroupMet
     else:
         if zgroup_bytes is None:
             # neither .zarray or .zgroup were found results in KeyError
-            raise KeyError(store_path.path)
+            raise KeyError(path)
         else:
             zmeta = json.loads(zgroup_bytes.to_bytes())
 
@@ -3353,11 +3358,15 @@ def _build_metadata_v2(
 
 
 def _build_node_v3(
-    metadata: ArrayV3Metadata | GroupMetadata, store_path: StorePath
+    *,
+    store: Store,
+    path: str,
+    metadata: ArrayV3Metadata | GroupMetadata,
 ) -> AsyncArray[ArrayV3Metadata] | AsyncGroup:
     """
     Take a metadata object and return a node (AsyncArray or AsyncGroup).
     """
+    store_path = StorePath(store=store, path=path)
     match metadata:
         case ArrayV3Metadata():
             return AsyncArray(metadata, store_path=store_path)
@@ -3368,12 +3377,12 @@ def _build_node_v3(
 
 
 def _build_node_v2(
-    metadata: ArrayV2Metadata | GroupMetadata, store_path: StorePath
+    *, store: Store, path: str, metadata: ArrayV2Metadata | GroupMetadata
 ) -> AsyncArray[ArrayV2Metadata] | AsyncGroup:
     """
     Take a metadata object and return a node (AsyncArray or AsyncGroup).
     """
-
+    store_path = StorePath(store=store, path=path)
     match metadata:
         case ArrayV2Metadata():
             return AsyncArray(metadata, store_path=store_path)
@@ -3383,33 +3392,33 @@ def _build_node_v2(
             raise ValueError(f"Unexpected metadata type: {type(metadata)}")  # pragma: no cover
 
 
-async def _read_node_v2(store_path: StorePath) -> AsyncArray[ArrayV2Metadata] | AsyncGroup:
+async def _read_node_v2(store: Store, path: str) -> AsyncArray[ArrayV2Metadata] | AsyncGroup:
     """
     Read a Zarr v2 AsyncArray or AsyncGroup from a location defined by a StorePath.
     """
-    metadata = await _read_metadata_v2(store_path=store_path)
-    return _build_node_v2(metadata=metadata, store_path=store_path)
+    metadata = await _read_metadata_v2(store=store, path=path)
+    return _build_node_v2(store=store, path=path, metadata=metadata)
 
 
-async def _read_node_v3(store_path: StorePath) -> AsyncArray[ArrayV3Metadata] | AsyncGroup:
+async def _read_node_v3(store: Store, path: str) -> AsyncArray[ArrayV3Metadata] | AsyncGroup:
     """
     Read a Zarr v3 AsyncArray or AsyncGroup from a location defined by a StorePath.
     """
-    metadata = await _read_metadata_v3(store_path=store_path)
-    return _build_node_v3(metadata=metadata, store_path=store_path)
+    metadata = await _read_metadata_v3(store=store, path=path)
+    return _build_node_v3(store=store, path=path, metadata=metadata)
 
 
 async def _read_node(
-    store_path: StorePath, zarr_format: ZarrFormat
+    store: Store, path: str, zarr_format: ZarrFormat
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
     """
     Read an AsyncArray or AsyncGroup from a location defined by a StorePath.
     """
     match zarr_format:
         case 2:
-            return await _read_node_v2(store_path=store_path)
+            return await _read_node_v2(store=store, path=path)
         case 3:
-            return await _read_node_v3(store_path=store_path)
+            return await _read_node_v3(store=store, path=path)
         case _:  # pragma: no cover
             raise ValueError(f"Unexpected zarr format: {zarr_format}")  # pragma: no cover
 
@@ -3449,8 +3458,9 @@ def _persist_metadata(
 
 
 async def _create_rooted_hierarchy(
-    store_path: StorePath,
     *,
+    store: Store,
+    path: str,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
 ) -> AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
@@ -3476,17 +3486,18 @@ async def _create_rooted_hierarchy(
     nodes_created = {
         x.path: x
         async for x in create_hierarchy(
-            store_path=store_path, nodes=nodes, semaphore=semaphore, overwrite=overwrite
+            store=store, path=path, nodes=nodes, semaphore=semaphore, overwrite=overwrite
         )
     }
     # the names of the created nodes will be relative to the store_path instance
-    root_relative_to_store_path = _join_paths([store_path.path, root])
+    root_relative_to_store_path = _join_paths([path, root])
     return nodes_created[root_relative_to_store_path]
 
 
 def _create_rooted_hierarchy_sync(
-    store_path: StorePath,
     *,
+    store: Store,
+    path: str,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
 ) -> Group | Array:
@@ -3495,7 +3506,7 @@ def _create_rooted_hierarchy_sync(
     ``_create_rooted_hierarchy`` and waits for the result.
     """
     async_node = sync(
-        _create_rooted_hierarchy(store_path=store_path, nodes=nodes, overwrite=overwrite)
+        _create_rooted_hierarchy(store=store, path=path, nodes=nodes, overwrite=overwrite)
     )
     if isinstance(async_node, AsyncGroup):
         return Group(async_node)

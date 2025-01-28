@@ -1473,10 +1473,9 @@ async def test_create_nodes(store: Store, zarr_format: ZarrFormat) -> None:
         "group/subgroup/array_0": meta_from_array(np.arange(4), zarr_format=zarr_format),
         "group/subgroup/array_1": meta_from_array(np.arange(5), zarr_format=zarr_format),
     }
-    spath = await make_store_path(store, path="foo")
     observed_nodes = {
         str(PurePosixPath(a.name).relative_to("/" + path)): a
-        async for a in create_nodes(store_path=spath, nodes=expected_meta)
+        async for a in create_nodes(store=store, path=path, nodes=expected_meta)
     }
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
 
@@ -1500,21 +1499,26 @@ async def test_create_hierarchy(store: Store, overwrite: bool, zarr_format: Zarr
     }
     # we expect create_hierarchy to insert a group that was missing from the hierarchy spec
     expected_meta = hierarchy_spec | {"group/subgroup": GroupMetadata(zarr_format=zarr_format)}
-    spath = await make_store_path(store, path=path)
 
     # initialize the group with some nodes
-    sync(_collect_aiterator(create_nodes(store_path=spath, nodes=pre_existing_nodes)))
+    sync(_collect_aiterator(create_nodes(store=store, path=path, nodes=pre_existing_nodes)))
 
     observed_nodes = {
         str(PurePosixPath(a.name).relative_to("/" + path)): a
-        async for a in create_hierarchy(store_path=spath, nodes=expected_meta, overwrite=overwrite)
+        async for a in create_hierarchy(
+            store=store, path=path, nodes=expected_meta, overwrite=overwrite
+        )
     }
     if not overwrite:
-        extra_group = await _read_node(spath / "group/extra", zarr_format=zarr_format)
+        extra_group = await _read_node(
+            store=store, path=_join_paths([path, "group/extra"]), zarr_format=zarr_format
+        )
         assert extra_group.metadata.attributes == {"name": "extra"}
     else:
         with pytest.raises(KeyError):
-            await _read_node(spath / "group/extra", zarr_format=zarr_format)
+            await _read_node(
+                store=store, path=_join_paths([path, "group/extra"]), zarr_format=zarr_format
+            )
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
 
 
@@ -1527,9 +1531,8 @@ async def test_create_hierarchy_existing_nodes(
     Test that create_hierarchy with overwrite = False will not overwrite an existing array or group,
     and raises an exception instead.
     """
-    spath = await make_store_path(store, path="path")
     extant_node_path = "node"
-
+    path = "path"
     if extant_node == "array":
         extant_metadata = meta_from_array(
             np.zeros(4), zarr_format=zarr_format, attributes={"extant": True}
@@ -1544,7 +1547,7 @@ async def test_create_hierarchy_existing_nodes(
     # write the extant metadata
     sync(
         _collect_aiterator(
-            create_nodes(store_path=spath, nodes={extant_node_path: extant_metadata})
+            create_nodes(store=store, path=path, nodes={extant_node_path: extant_metadata})
         )
     )
 
@@ -1553,12 +1556,16 @@ async def test_create_hierarchy_existing_nodes(
     with pytest.raises(err_cls, match=re.escape(msg)):
         sync(
             _collect_aiterator(
-                create_hierarchy(store_path=spath, nodes={"node": new_metadata}, overwrite=False)
+                create_hierarchy(
+                    store=store, path=path, nodes={"node": new_metadata}, overwrite=False
+                )
             )
         )
     # ensure that the extant metadata was not overwritten
     assert (
-        await _read_node(spath / extant_node_path, zarr_format=zarr_format)
+        await _read_node(
+            store=store, path=_join_paths([path, extant_node_path]), zarr_format=zarr_format
+        )
     ).metadata.attributes == {"extant": True}
 
 
@@ -1642,8 +1649,8 @@ async def test_create_hierarchy_invalid_nested(
 
     msg = "Only Zarr groups can contain other nodes."
     with pytest.raises(ValueError, match=msg):
-        spath = await make_store_path(store, path="foo")
-        await _collect_aiterator(create_hierarchy(store_path=spath, nodes=hierarchy_spec))
+        path = "foo"
+        await _collect_aiterator(create_hierarchy(store=store, path=path, nodes=hierarchy_spec))
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -1652,7 +1659,7 @@ async def test_create_hierarchy_invalid_mixed_format(store: Store) -> None:
     Test that create_hierarchy will not create a Zarr group that contains a both Zarr v2 and
     Zarr v3 nodes.
     """
-    spath = await make_store_path(store, path="foo")
+    path = "foo"
     msg = (
         "Got data with both Zarr v2 and Zarr v3 nodes, which is invalid. "
         "The following keys map to Zarr v2 nodes: ['v2']. "
@@ -1662,7 +1669,8 @@ async def test_create_hierarchy_invalid_mixed_format(store: Store) -> None:
     with pytest.raises(ValueError, match=re.escape(msg)):
         await _collect_aiterator(
             create_hierarchy(
-                store_path=spath,
+                store=store,
+                path=path,
                 nodes={
                     "v2": GroupMetadata(zarr_format=2),
                     "v3": GroupMetadata(zarr_format=3),
@@ -1681,7 +1689,6 @@ async def test_create_rooted_hierarchy_group(
     """
     Test that the _create_rooted_hierarchy can create a group.
     """
-    spath = await make_store_path(store, path=path)
     root_meta = {root_key: GroupMetadata(zarr_format=zarr_format, attributes={"path": root_key})}
     group_names = ["a", "a/b"]
     array_names = ["a/b/c", "a/b/d"]
@@ -1703,7 +1710,7 @@ async def test_create_rooted_hierarchy_group(
 
     nodes_create = root_meta | groups_expected_meta | arrays_expected_meta
 
-    g = await _create_rooted_hierarchy(spath, nodes=nodes_create)
+    g = await _create_rooted_hierarchy(store=store, path=path, nodes=nodes_create)
     assert g.metadata.attributes == {"path": root_key}
 
     members = await _collect_aiterator(g.members(max_depth=None))
@@ -1717,14 +1724,14 @@ async def test_create_rooted_hierarchy_group(
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 def test_create_hierarchy_implicit_groups(store: Store) -> None:
-    spath = sync(make_store_path(store, path=""))
+    path = ""
     nodes = {
         "": GroupMetadata(zarr_format=3, attributes={"implicit": False}),
         "a/b/c": GroupMetadata(zarr_format=3, attributes={"implicit": False}),
     }
 
     hierarchy_parsed = _parse_hierarchy_dict(nodes)
-    g = _create_rooted_hierarchy_sync(spath, nodes=nodes)
+    g = _create_rooted_hierarchy_sync(store=store, path=path, nodes=nodes)
     for key, value in hierarchy_parsed.items():
         assert g[key].metadata.attributes == value.attributes
 
@@ -1740,7 +1747,6 @@ def test_create_rooted_hierarchy_sync_group(
     """
     Test that the _create_rooted_hierarchy_sync can create a group.
     """
-    spath = sync(make_store_path(store, path=path))
     root_meta = {root_key: GroupMetadata(zarr_format=zarr_format, attributes={"path": root_key})}
     group_names = ["a", "a/b"]
     array_names = ["a/b/c", "a/b/d"]
@@ -1761,7 +1767,7 @@ def test_create_rooted_hierarchy_sync_group(
 
     nodes_create = root_meta | groups_expected_meta | arrays_expected_meta
 
-    g = _create_rooted_hierarchy_sync(spath, nodes=nodes_create)
+    g = _create_rooted_hierarchy_sync(store=store, path=path, nodes=nodes_create)
     assert g.metadata.attributes == {"path": root_key}
 
     members = g.members(max_depth=None)
@@ -1783,7 +1789,6 @@ async def test_create_rooted_hierarchy_array(
     """
     Test that the _create_rooted_hierarchy can create an array.
     """
-    spath = await make_store_path(store, path=path)
     root_meta = {
         root_key: meta_from_array(
             np.arange(3), zarr_format=zarr_format, attributes={"path": root_key}
@@ -1792,7 +1797,7 @@ async def test_create_rooted_hierarchy_array(
 
     nodes_create = root_meta
 
-    a = await _create_rooted_hierarchy(spath, nodes=nodes_create, overwrite=True)
+    a = await _create_rooted_hierarchy(store=store, path=path, nodes=nodes_create, overwrite=True)
     assert isinstance(a, AsyncArray)
     assert a.metadata.attributes == {"path": root_key}
 
@@ -1807,7 +1812,6 @@ async def test_create_rooted_hierarchy_sync_array(
     """
     Test that _create_rooted_hierarchy_sync can create an array.
     """
-    spath = await make_store_path(store, path=path)
     root_meta = {
         root_key: meta_from_array(
             np.arange(3), zarr_format=zarr_format, attributes={"path": root_key}
@@ -1816,7 +1820,7 @@ async def test_create_rooted_hierarchy_sync_array(
 
     nodes_create = root_meta
 
-    a = _create_rooted_hierarchy_sync(spath, nodes=nodes_create, overwrite=True)
+    a = _create_rooted_hierarchy_sync(store=store, path=path, nodes=nodes_create, overwrite=True)
     assert isinstance(a, Array)
     assert a.metadata.attributes == {"path": root_key}
 
@@ -1833,7 +1837,7 @@ async def test_create_rooted_hierarchy_invalid() -> None:
     }
     msg = "The input does not specify a root node. "
     with pytest.raises(ValueError, match=msg):
-        await _create_rooted_hierarchy(store_path=StorePath("store"), nodes=nodes)
+        await _create_rooted_hierarchy(store=store, path="", nodes=nodes)
 
 
 @pytest.mark.parametrize("paths", [("a", "/a"), ("", "/"), ("b/", "b")])
