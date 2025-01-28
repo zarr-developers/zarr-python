@@ -3096,15 +3096,22 @@ def _parse_hierarchy_dict(
     data: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
 ) -> dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]:
     """
+    Take an input Mapping of str: node pairs, and parse it into
+     a dict of str: node pairs that models valid, complete Zarr hierarchy.
+
     If the input represents a complete Zarr hierarchy, i.e. one with no implicit groups,
-    then return an identical copy of that dict. Otherwise, return a version of the input dict
-    with groups added where they are needed to make the hierarchy explicit.
+    then return a dict with the exact same data as the input.
 
-    For example, an input of {'a/b/c': ArrayMetadata} will result in a return value of
-    {'a': GroupMetadata, 'a/b': GroupMetadata, 'a/b/c': ArrayMetadata}.
+    Otherwise, return a dict derived from the input with groups as needed to make
+    the hierarchy complete.
 
-    The input is also checked for the following conditions, and an error is raised if any
-    of them are violated:
+    For example, an input of {'a/b/c': ArrayMetadata} is incomplete, because it references two
+    groups ('a' and 'a/b') but these keys are not present in the input. Applying this function
+    to that input will result in a return value of
+    {'a': GroupMetadata, 'a/b': GroupMetadata, 'a/b/c': ArrayMetadata}, i.e. the implied groups
+    were added.
+
+    The input is also checked for the following conditions; an error is raised if any are violated:
 
     - No arrays can contain group or arrays (i.e., all arrays must be leaf nodes).
     - All arrays and groups must have the same ``zarr_format`` value.
@@ -3179,18 +3186,21 @@ def _normalize_paths(paths: Iterable[str]) -> tuple[str, ...]:
 def _normalize_path_keys(data: Mapping[str, T]) -> dict[str, T]:
     """
     Normalize the keys of the input dict according to the normalization scheme used for zarr node
-    paths. If any two keys in the input normalize to the value, raise a ValueError. Return the
-    values of data with the normalized keys.
+    paths. If any two keys in the input normalize to the same value, raise a ValueError.
+    Returns a dict where the keys are the elements of the input and the values are the
+    normalized form of each key.
     """
     parsed_keys = _normalize_paths(data.keys())
-    return dict(zip(parsed_keys, data.values(), strict=False))
+    return dict(zip(parsed_keys, data.values(), strict=True))
 
 
 async def _getitem_semaphore(
     node: AsyncGroup, key: str, semaphore: asyncio.Semaphore | None
 ) -> AsyncArray[ArrayV3Metadata] | AsyncArray[ArrayV2Metadata] | AsyncGroup:
     """
-    Combine node.getitem with an optional semaphore. If the semaphore parameter is an
+    Wrap Group.getitem with an optional semaphore.
+
+    If the semaphore parameter is an
     asyncio.Semaphore instance, then the getitem operation is performed inside an async context
     manager provided by that semaphore. If the semaphore parameter is None, then getitem is invoked
     without a context manager.
