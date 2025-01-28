@@ -2926,8 +2926,8 @@ async def create_hierarchy_a(
 
             for key, value in extant_node_query.items():
                 if isinstance(value, BaseException):
-                    if isinstance(value, KeyError):
-                        # ignore KeyErrors, because they represent nodes we can safely create
+                    if isinstance(value, FileNotFoundError):
+                        # ignore FileNotFoundError, because they represent nodes we can safely create
                         pass
                     else:
                         # Any other exception is a real error
@@ -3402,13 +3402,14 @@ async def _iter_members_deep(
 async def _read_metadata_v3(store: Store, path: str) -> ArrayV3Metadata | GroupMetadata:
     """
     Given a store_path, return ArrayV3Metadata or GroupMetadata defined by the metadata
-    document stored at store_path.path / zarr.json. If no such document is found, raise a KeyError.
+    document stored at store_path.path / zarr.json. If no such document is found, raise a
+    FileNotFoundError.
     """
     zarr_json_bytes = await store.get(
         _join_paths([path, ZARR_JSON]), prototype=default_buffer_prototype()
     )
     if zarr_json_bytes is None:
-        raise KeyError(path)
+        raise FileNotFoundError(path)
     else:
         zarr_json = json.loads(zarr_json_bytes.to_bytes())
         return _build_metadata_v3(zarr_json)
@@ -3441,7 +3442,7 @@ async def _read_metadata_v2(store: Store, path: str) -> ArrayV2Metadata | GroupM
     else:
         if zgroup_bytes is None:
             # neither .zarray or .zgroup were found results in KeyError
-            raise KeyError(path)
+            raise FileNotFoundError(path)
         else:
             zmeta = json.loads(zgroup_bytes.to_bytes())
 
