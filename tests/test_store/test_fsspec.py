@@ -9,6 +9,7 @@ from botocore.session import Session
 from packaging.version import parse as parse_version
 
 import zarr.api.asynchronous
+from zarr import Array
 from zarr.abc.store import OffsetByteRequest
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
@@ -102,6 +103,19 @@ async def test_basic() -> None:
         prototype=default_buffer_prototype(), key_ranges=[("foo", OffsetByteRequest(1))]
     )
     assert out[0].to_bytes() == data[1:]
+
+
+def test_open_s3map() -> None:
+    s3_filesystem = s3fs.S3FileSystem(asynchronous=True, endpoint_url=endpoint_url, anon=False)
+    mapper = s3_filesystem.get_mapper(f"s3://{test_bucket_name}/map/foo/")
+    arr = zarr.open(store=mapper, mode="w", shape=(3, 3))
+    assert isinstance(arr, Array)
+
+    arr[...] = 3
+    z2 = zarr.open(store=mapper, mode="w", shape=(3, 3))
+    assert isinstance(z2, Array)
+    assert not (z2[:] == 3).all()
+    z2[:] = 3
 
 
 class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):

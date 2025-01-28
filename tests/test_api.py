@@ -288,6 +288,23 @@ def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
         zarr.open(store=tmp_path, mode="w-")
 
 
+@pytest.mark.xfail(
+    reason="Automatic sync -> async filesystems not implemented yet for FSMap objects."
+)
+def test_open_fsmap_file(tmp_path: pathlib.Path) -> None:
+    fsspec = pytest.importorskip("fsspec")
+    fs = fsspec.filesystem("file")
+    mapper = fs.get_mapper(tmp_path)
+    arr = zarr.open(store=mapper, mode="w", shape=(3, 3))
+    assert isinstance(arr, Array)
+
+    arr[...] = 3
+    z2 = zarr.open(store=mapper, mode="w", shape=(3, 3))
+    assert isinstance(z2, Array)
+    assert not (z2[:] == 3).all()
+    z2[:] = 3
+
+
 @pytest.mark.parametrize("zarr_format", [2, 3])
 def test_array_order(zarr_format: ZarrFormat) -> None:
     arr = zarr.ones(shape=(2, 2), order=None, zarr_format=zarr_format)
