@@ -6,7 +6,6 @@ import pickle
 import re
 import time
 import warnings
-from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
@@ -26,14 +25,16 @@ from zarr.core.group import (
     GroupMetadata,
     _build_metadata_v3,
     _create_rooted_hierarchy,
-    _create_rooted_hierarchy_sync,
+    _create_rooted_hierarchy_a,
     _join_paths,
     _normalize_path_keys,
     _normalize_paths,
     _parse_hierarchy_dict,
-    _read_node,
     create_hierarchy,
+    create_hierarchy_a,
     create_nodes,
+    create_nodes_a,
+    read_node,
 )
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import _collect_aiterator, sync
@@ -1460,7 +1461,10 @@ def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-async def test_create_nodes(store: Store, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("impl", ["async", "sync"])
+async def test_create_nodes(
+    impl: Literal["async", "sync"], store: Store, zarr_format: ZarrFormat
+) -> None:
     """
     Ensure that ``create_nodes`` can create a zarr hierarchy from a model of that
     hierarchy in dict form. Note that this creates an incomplete Zarr hierarchy.
@@ -1473,59 +1477,87 @@ async def test_create_nodes(store: Store, zarr_format: ZarrFormat) -> None:
         "group/subgroup/array_0": meta_from_array(np.arange(4), zarr_format=zarr_format),
         "group/subgroup/array_1": meta_from_array(np.arange(5), zarr_format=zarr_format),
     }
-    observed_nodes = {
-        str(PurePosixPath(a.name).relative_to("/" + path)): a
-        async for a in create_nodes(store=store, path=path, nodes=expected_meta)
-    }
+    if impl == "async":
+        created = tuple(
+            [a async for a in create_nodes_a(store=store, path=path, nodes=expected_meta)]
+        )
+    elif impl == "sync":
+        created = tuple(create_nodes(store=store, path=path, nodes=expected_meta))
+    else:
+        raise ValueError(f"Invalid impl: {impl}")
+
+    observed_nodes = {a.path.removeprefix(path + "/"): a for a in created}
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("overwrite", [True, False])
-async def test_create_hierarchy(store: Store, overwrite: bool, zarr_format: ZarrFormat) -> None:
+@pytest.mark.parametrize("impl", ["async", "sync"])
+async def test_create_hierarchy(
+    impl: Literal["async", "sync"], store: Store, overwrite: bool, zarr_format: ZarrFormat
+) -> None:
     """
     Test that ``create_hierarchy`` can create a complete Zarr hierarchy, even if the input describes
     an incomplete one.
     """
     path = "foo"
+
     hierarchy_spec = {
-        "group": GroupMetadata(attributes={"foo": 10}, zarr_format=zarr_format),
-        "group/array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
-        "group/subgroup/array_0": meta_from_array(np.arange(4), zarr_format=zarr_format),
+        "group": GroupMetadata(attributes={"path": "group"}, zarr_format=zarr_format),
+        "group/array_0": meta_from_array(
+            np.arange(3), attributes={"path": "group/array_0"}, zarr_format=zarr_format
+        ),
+        "group/subgroup/array_0": meta_from_array(
+            np.arange(4), attributes={"path": "group/subgroup/array_0"}, zarr_format=zarr_format
+        ),
     }
     pre_existing_nodes = {
-        "group/extra": GroupMetadata(zarr_format=zarr_format, attributes={"name": "extra"}),
+        "group/extra": GroupMetadata(zarr_format=zarr_format, attributes={"path": "group/extra"}),
         "": GroupMetadata(zarr_format=zarr_format, attributes={"name": "root"}),
     }
     # we expect create_hierarchy to insert a group that was missing from the hierarchy spec
     expected_meta = hierarchy_spec | {"group/subgroup": GroupMetadata(zarr_format=zarr_format)}
 
     # initialize the group with some nodes
-    sync(_collect_aiterator(create_nodes(store=store, path=path, nodes=pre_existing_nodes)))
+    _ = tuple(create_nodes(store=store, path=path, nodes=pre_existing_nodes))
 
-    observed_nodes = {
-        str(PurePosixPath(a.name).relative_to("/" + path)): a
-        async for a in create_hierarchy(
-            store=store, path=path, nodes=expected_meta, overwrite=overwrite
+    if impl == "sync":
+        created = tuple(
+            create_hierarchy(store=store, path=path, nodes=hierarchy_spec, overwrite=overwrite)
         )
-    }
+    elif impl == "async":
+        created = tuple(
+            [
+                a
+                async for a in create_hierarchy_a(
+                    store=store, path=path, nodes=hierarchy_spec, overwrite=overwrite
+                )
+            ]
+        )
+    else:
+        raise ValueError(f"Invalid impl: {impl}")
+
+    observed_nodes = {a.path.removeprefix(path + "/"): a for a in created}
+
     if not overwrite:
-        extra_group = await _read_node(
+        extra_group = read_node(
             store=store, path=_join_paths([path, "group/extra"]), zarr_format=zarr_format
         )
-        assert extra_group.metadata.attributes == {"name": "extra"}
+        assert extra_group.metadata.attributes == {"path": "group/extra"}
     else:
         with pytest.raises(KeyError):
-            await _read_node(
-                store=store, path=_join_paths([path, "group/extra"]), zarr_format=zarr_format
-            )
+            read_node(store=store, path=_join_paths([path, "group/extra"]), zarr_format=zarr_format)
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("extant_node", ["array", "group"])
+@pytest.mark.parametrize("impl", ["async", "sync"])
 async def test_create_hierarchy_existing_nodes(
-    store: Store, extant_node: Literal["array", "group"], zarr_format: ZarrFormat
+    impl: Literal["async", "sync"],
+    store: Store,
+    extant_node: Literal["array", "group"],
+    zarr_format: ZarrFormat,
 ) -> None:
     """
     Test that create_hierarchy with overwrite = False will not overwrite an existing array or group,
@@ -1533,6 +1565,7 @@ async def test_create_hierarchy_existing_nodes(
     """
     extant_node_path = "node"
     path = "path"
+
     if extant_node == "array":
         extant_metadata = meta_from_array(
             np.zeros(4), zarr_format=zarr_format, attributes={"extant": True}
@@ -1545,27 +1578,33 @@ async def test_create_hierarchy_existing_nodes(
         err_cls = ContainsGroupError
 
     # write the extant metadata
-    sync(
-        _collect_aiterator(
-            create_nodes(store=store, path=path, nodes={extant_node_path: extant_metadata})
-        )
-    )
+    tuple(create_nodes(store=store, path=path, nodes={extant_node_path: extant_metadata}))
 
     msg = f"{extant_node} exists in store {store!r} at path {extant_node_path!r}."
     # ensure that we cannot invoke create_hierarchy with overwrite=False here
-    with pytest.raises(err_cls, match=re.escape(msg)):
-        sync(
-            _collect_aiterator(
+    if impl == "sync":
+        with pytest.raises(err_cls, match=re.escape(msg)):
+            tuple(
                 create_hierarchy(
                     store=store, path=path, nodes={"node": new_metadata}, overwrite=False
                 )
             )
-        )
+    elif impl == "async":
+        with pytest.raises(err_cls, match=re.escape(msg)):
+            tuple(
+                [
+                    x
+                    async for x in create_hierarchy_a(
+                        store=store, path=path, nodes={"node": new_metadata}, overwrite=False
+                    )
+                ]
+            )
+    else:
+        raise ValueError(f"Invalid impl: {impl}")
+
     # ensure that the extant metadata was not overwritten
     assert (
-        await _read_node(
-            store=store, path=_join_paths([path, extant_node_path]), zarr_format=zarr_format
-        )
+        read_node(store=store, path=_join_paths([path, extant_node_path]), zarr_format=zarr_format)
     ).metadata.attributes == {"extant": True}
 
 
@@ -1628,14 +1667,15 @@ def test_group_create_hierarchy_invalid_mixed_zarr_format(
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
 @pytest.mark.parametrize("defect", ["array/array", "array/group"])
+@pytest.mark.parametrize("impl", ["async", "sync"])
 async def test_create_hierarchy_invalid_nested(
-    store: Store, defect: tuple[str, str], zarr_format
+    impl: Literal["async", "sync"], store: Store, defect: tuple[str, str], zarr_format
 ) -> None:
     """
     Test that create_hierarchy will not create a Zarr array that contains a Zarr group
     or Zarr array.
     """
-
+    path = "foo"
     if defect == "array/array":
         hierarchy_spec = {
             "array_0": meta_from_array(np.arange(3), zarr_format=zarr_format),
@@ -1648,13 +1688,21 @@ async def test_create_hierarchy_invalid_nested(
         }
 
     msg = "Only Zarr groups can contain other nodes."
-    with pytest.raises(ValueError, match=msg):
-        path = "foo"
-        await _collect_aiterator(create_hierarchy(store=store, path=path, nodes=hierarchy_spec))
+    if impl == "sync":
+        with pytest.raises(ValueError, match=msg):
+            tuple(create_hierarchy(store=store, path=path, nodes=hierarchy_spec))
+    elif impl == "async":
+        with pytest.raises(ValueError, match=msg):
+            await _collect_aiterator(
+                create_hierarchy_a(store=store, path=path, nodes=hierarchy_spec)
+            )
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-async def test_create_hierarchy_invalid_mixed_format(store: Store) -> None:
+@pytest.mark.parametrize("impl", ["async", "sync"])
+async def test_create_hierarchy_invalid_mixed_format(
+    impl: Literal["async", "sync"], store: Store
+) -> None:
     """
     Test that create_hierarchy will not create a Zarr group that contains a both Zarr v2 and
     Zarr v3 nodes.
@@ -1666,25 +1714,39 @@ async def test_create_hierarchy_invalid_mixed_format(store: Store) -> None:
         "The following keys map to Zarr v3 nodes: ['v3']."
         "Ensure that all nodes have the same Zarr format."
     )
-    with pytest.raises(ValueError, match=re.escape(msg)):
-        await _collect_aiterator(
-            create_hierarchy(
-                store=store,
-                path=path,
-                nodes={
-                    "v2": GroupMetadata(zarr_format=2),
-                    "v3": GroupMetadata(zarr_format=3),
-                },
+    nodes = {
+        "v2": GroupMetadata(zarr_format=2),
+        "v3": GroupMetadata(zarr_format=3),
+    }
+    if impl == "sync":
+        with pytest.raises(ValueError, match=re.escape(msg)):
+            tuple(
+                create_hierarchy(
+                    store=store,
+                    path=path,
+                    nodes=nodes,
+                )
             )
-        )
+    elif impl == "async":
+        with pytest.raises(ValueError, match=re.escape(msg)):
+            await _collect_aiterator(
+                create_hierarchy_a(
+                    store=store,
+                    path=path,
+                    nodes=nodes,
+                )
+            )
+    else:
+        raise ValueError(f"Invalid impl: {impl}")
 
 
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("root_key", ["", "root"])
 @pytest.mark.parametrize("path", ["", "foo"])
+@pytest.mark.parametrize("impl", ["async", "sync"])
 async def test_create_rooted_hierarchy_group(
-    store: Store, zarr_format, path: str, root_key: str
+    impl: Literal["async", "sync"], store: Store, zarr_format, path: str, root_key: str
 ) -> None:
     """
     Test that the _create_rooted_hierarchy can create a group.
@@ -1709,11 +1771,19 @@ async def test_create_rooted_hierarchy_group(
     }
 
     nodes_create = root_meta | groups_expected_meta | arrays_expected_meta
+    if impl == "async":
+        g = await _create_rooted_hierarchy_a(store=store, path=path, nodes=nodes_create)
+        assert isinstance(g, AsyncGroup)
+        members = await _collect_aiterator(g.members(max_depth=None))
+    elif impl == "sync":
+        g = _create_rooted_hierarchy(store=store, path=path, nodes=nodes_create)
+        assert isinstance(g, Group)
+        members = g.members(max_depth=None)
+    else:
+        raise ValueError(f"Unknown implementation: {impl}")
 
-    g = await _create_rooted_hierarchy(store=store, path=path, nodes=nodes_create)
     assert g.metadata.attributes == {"path": root_key}
 
-    members = await _collect_aiterator(g.members(max_depth=None))
     members_observed_meta = {k: v.metadata for k, v in members}
     members_expected_meta_relative = {
         k.removeprefix(root_key).lstrip("/"): v
@@ -1723,7 +1793,10 @@ async def test_create_rooted_hierarchy_group(
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-def test_create_hierarchy_implicit_groups(store: Store) -> None:
+@pytest.mark.parametrize("impl", ["async", "sync"])
+async def test_create_hierarchy_implicit_groups(
+    impl: Literal["async", "sync"], store: Store
+) -> None:
     path = ""
     nodes = {
         "": GroupMetadata(zarr_format=3, attributes={"implicit": False}),
@@ -1731,64 +1804,30 @@ def test_create_hierarchy_implicit_groups(store: Store) -> None:
     }
 
     hierarchy_parsed = _parse_hierarchy_dict(nodes)
-    g = _create_rooted_hierarchy_sync(store=store, path=path, nodes=nodes)
-    for key, value in hierarchy_parsed.items():
-        assert g[key].metadata.attributes == value.attributes
-
-
-# TODO: simplify testing sync versions of async functions.
-@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize("root_key", ["", "root"])
-@pytest.mark.parametrize("path", ["", "foo"])
-def test_create_rooted_hierarchy_sync_group(
-    store: Store, zarr_format, path: str, root_key: str
-) -> None:
-    """
-    Test that the _create_rooted_hierarchy_sync can create a group.
-    """
-    root_meta = {root_key: GroupMetadata(zarr_format=zarr_format, attributes={"path": root_key})}
-    group_names = ["a", "a/b"]
-    array_names = ["a/b/c", "a/b/d"]
-
-    # just to ensure that we don't use the same name twice in tests
-    assert set(group_names) & set(array_names) == set()
-
-    groups_expected_meta = {
-        _join_paths([root_key, node_name]): GroupMetadata(
-            zarr_format=zarr_format, attributes={"path": node_name}
-        )
-        for node_name in group_names
-    }
-    arrays_expected_meta = {
-        _join_paths([root_key, node_name]): meta_from_array(np.zeros(4), zarr_format=zarr_format)
-        for node_name in array_names
-    }
-
-    nodes_create = root_meta | groups_expected_meta | arrays_expected_meta
-
-    g = _create_rooted_hierarchy_sync(store=store, path=path, nodes=nodes_create)
-    assert g.metadata.attributes == {"path": root_key}
-
-    members = g.members(max_depth=None)
-    members_observed_meta = {k: v.metadata for k, v in members}
-    members_expected_meta_relative = {
-        k.removeprefix(root_key).lstrip("/"): v
-        for k, v in (groups_expected_meta | arrays_expected_meta).items()
-    }
-    assert members_observed_meta == members_expected_meta_relative
+    if impl == "sync":
+        g = _create_rooted_hierarchy(store=store, path=path, nodes=nodes)
+        for key, value in hierarchy_parsed.items():
+            assert g[key].metadata.attributes == value.attributes
+    elif impl == "async":
+        g = await _create_rooted_hierarchy_a(store=store, path=path, nodes=nodes)
+        for key, value in hierarchy_parsed.items():
+            assert (await g.getitem(key)).metadata.attributes == value.attributes
+    else:
+        raise ValueError(f"Unknown implementation: {impl}")
 
 
 @pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
 @pytest.mark.parametrize("zarr_format", [2, 3])
 @pytest.mark.parametrize("root_key", ["", "root"])
 @pytest.mark.parametrize("path", ["", "foo"])
+@pytest.mark.parametrize("impl", ["async", "sync"])
 async def test_create_rooted_hierarchy_array(
-    store: Store, zarr_format, path: str, root_key: str
+    impl: Literal["async", "sync"], store: Store, zarr_format, path: str, root_key: str
 ) -> None:
     """
-    Test that the _create_rooted_hierarchy can create an array.
+    Test that _create_rooted_hierarchy can create an array.
     """
+
     root_meta = {
         root_key: meta_from_array(
             np.arange(3), zarr_format=zarr_format, attributes={"path": root_key}
@@ -1797,35 +1836,21 @@ async def test_create_rooted_hierarchy_array(
 
     nodes_create = root_meta
 
-    a = await _create_rooted_hierarchy(store=store, path=path, nodes=nodes_create, overwrite=True)
-    assert isinstance(a, AsyncArray)
-    assert a.metadata.attributes == {"path": root_key}
-
-
-@pytest.mark.parametrize("store", ["memory", "local"], indirect=True)
-@pytest.mark.parametrize("zarr_format", [2, 3])
-@pytest.mark.parametrize("root_key", ["", "root"])
-@pytest.mark.parametrize("path", ["", "foo"])
-async def test_create_rooted_hierarchy_sync_array(
-    store: Store, zarr_format, path: str, root_key: str
-) -> None:
-    """
-    Test that _create_rooted_hierarchy_sync can create an array.
-    """
-    root_meta = {
-        root_key: meta_from_array(
-            np.arange(3), zarr_format=zarr_format, attributes={"path": root_key}
+    if impl == "sync":
+        a = _create_rooted_hierarchy(store=store, path=path, nodes=nodes_create, overwrite=True)
+        assert isinstance(a, Array)
+    elif impl == "async":
+        a = await _create_rooted_hierarchy_a(
+            store=store, path=path, nodes=nodes_create, overwrite=True
         )
-    }
-
-    nodes_create = root_meta
-
-    a = _create_rooted_hierarchy_sync(store=store, path=path, nodes=nodes_create, overwrite=True)
-    assert isinstance(a, Array)
+        assert isinstance(a, AsyncArray)
+    else:
+        raise ValueError(f"Invalid impl: {impl}")
     assert a.metadata.attributes == {"path": root_key}
 
 
-async def test_create_rooted_hierarchy_invalid() -> None:
+@pytest.mark.parametrize("impl", ["async", "sync"])
+async def test_create_rooted_hierarchy_invalid(impl: Literal["async", "sync"]) -> None:
     """
     Ensure _create_rooted_hierarchy will raise a ValueError if the input does not contain
     a root node.
@@ -1836,8 +1861,15 @@ async def test_create_rooted_hierarchy_invalid() -> None:
         "b": GroupMetadata(zarr_format=zarr_format),
     }
     msg = "The input does not specify a root node. "
-    with pytest.raises(ValueError, match=msg):
-        await _create_rooted_hierarchy(store=store, path="", nodes=nodes)
+
+    if impl == "async":
+        with pytest.raises(ValueError, match=msg):
+            await _create_rooted_hierarchy_a(store=store, path="", nodes=nodes)
+    elif impl == "sync":
+        with pytest.raises(ValueError, match=msg):
+            _create_rooted_hierarchy(store=store, path="", nodes=nodes)
+    else:
+        raise ValueError(f"Invalid impl: {impl}")
 
 
 @pytest.mark.parametrize("paths", [("a", "/a"), ("", "/"), ("b/", "b")])
