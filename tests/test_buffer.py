@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -30,6 +31,9 @@ except ImportError:
     cp = None
 
 
+import zarr.api.asynchronous
+from zarr.core.buffer.core import ScalarWrapper
+
 if TYPE_CHECKING:
     import types
 
@@ -38,6 +42,54 @@ def test_nd_array_like(xp: types.ModuleType) -> None:
     ary = xp.arange(10)
     assert isinstance(ary, ArrayLike)
     assert isinstance(ary, NDArrayLike)
+
+
+@pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1), False, True])
+def test_scalar_wrapper(value: Any) -> None:
+    x = ScalarWrapper(value)
+    assert x == value
+    assert value == x
+    assert x == x[()]
+    assert x.view(str) == x
+    assert x.copy() == x
+    assert x.transpose() == x
+    assert x.ravel() == x
+    assert x.all() == bool(value)
+    if isinstance(value, (int, float)):
+        assert -x == -value
+        assert abs(x) == abs(value)
+        assert int(x) == int(value)
+        assert float(x) == float(value)
+        assert complex(x) == complex(value)
+        assert x + 1 == value + 1
+        assert x - 1 == value - 1
+        assert x * 2 == value * 2
+        assert x / 2 == value / 2
+        assert x // 2 == value // 2
+        assert x % 2 == value % 2
+        assert x**2 == value**2
+        assert x == value
+        assert x != value + 1
+        assert bool(x) == bool(value)
+        assert hash(x) == hash(value)
+        assert str(x) == str(value)
+        assert format(x, "") == format(value, "")
+        x.fill(2)
+        x[()] += 1
+        assert x == 3
+    elif isinstance(value, str):
+        assert str(x) == value
+        with pytest.raises(TypeError, match=re.escape("bad operand type for abs(): 'str'")):
+            abs(x)
+
+    with pytest.raises(ValueError, match="Cannot reshape scalar to non-scalar shape."):
+        x.reshape((1, 2))
+    with pytest.raises(IndexError, match="Invalid index for scalar."):
+        x[10] = value
+    with pytest.raises(IndexError, match="Invalid index for scalar."):
+        x[10]
+    with pytest.raises(TypeError, match=re.escape("len() of unsized object.")):
+        len(x)
 
 
 @pytest.mark.asyncio

@@ -159,8 +159,8 @@ class ScalarWrapper:
         self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K", *, copy: bool = True
     ) -> Self:
         if copy:
-            return self.__class__(self._value, dtype)
-        self._dtype = dtype
+            return self.__class__(self._value, np.dtype(dtype))
+        self._dtype = np.dtype(dtype)
         return self
 
     def fill(self, value: Any) -> None:
