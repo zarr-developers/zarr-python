@@ -142,7 +142,7 @@ class ScalarWrapper:
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = True
     ) -> npt.NDArray[Any]:
-        return np.array(self._value, dtype=dtype, copy=copy)
+        return np.array(self._value, dtype=dtype or self._dtype, copy=copy)
 
     def reshape(
         self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = "C"
@@ -557,7 +557,7 @@ class NDBuffer:
         """
         if self._data.size != 1:
             raise ValueError("Buffer does not contain a single scalar value")
-        return ScalarWrapper(self.as_numpy_array().item())
+        return ScalarWrapper(self.as_numpy_array().item(), self.dtype)
 
     @property
     def dtype(self) -> np.dtype[Any]:
