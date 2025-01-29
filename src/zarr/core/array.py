@@ -2218,8 +2218,10 @@ class Array:
             raise ValueError(msg)
 
         arr_np = self[...]
+        if self.ndim==0:
+            arr_np = np.array(arr_np)
 
-        if dtype is not None and hasattr(arr_np, "astype"):
+        if dtype is not None:
             arr_np = arr_np.astype(dtype)
 
         return arr_np
