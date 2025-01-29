@@ -928,7 +928,7 @@ class OIndex:
     array: Array
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
-    def __getitem__(self, selection: OrthogonalSelection | Array) -> npt.ArrayLike:
+    def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayLike:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
@@ -1037,7 +1037,7 @@ class BlockIndexer(Indexer):
 class BlockIndex:
     array: Array
 
-    def __getitem__(self, selection: BasicSelection) -> npt.ArrayLike:
+    def __getitem__(self, selection: BasicSelection) -> NDArrayLike:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
@@ -1226,7 +1226,7 @@ class VIndex:
     array: Array
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
-    def __getitem__(self, selection: CoordinateSelection | MaskSelection | Array) -> npt.ArrayLike:
+    def __getitem__(self, selection: CoordinateSelection | MaskSelection | Array) -> NDArrayLike:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
