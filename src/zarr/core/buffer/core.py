@@ -171,7 +171,7 @@ class ScalarWrapper:
     def all(self) -> bool:
         return bool(self._value)
 
-    def __eq__(self, other: object) -> Self: # type: ignore[explicit-override, override]
+    def __eq__(self, other: object) -> Self:  # type: ignore[explicit-override, override]
         return self.__class__(self._value == other)
 
     def __repr__(self) -> str:
