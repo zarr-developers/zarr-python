@@ -1,0 +1,1 @@
+Add a test for using Stores as a context managers in StoreTests.
