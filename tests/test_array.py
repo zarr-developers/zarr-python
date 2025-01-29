@@ -1306,14 +1306,20 @@ async def test_create_array_data_ignored_params(store: Store) -> None:
     Test that specify data AND shape AND dtype results in a warning
     """
     data = np.arange(10)
-    with pytest.warns(UserWarning, match="The shape parameter will be ignored"):
+    with pytest.raises(
+        ValueError, match="The data parameter was used, but the shape parameter was also used."
+    ):
         await create_array(store, data=data, shape=data.shape, dtype=None, overwrite=True)
 
     # we catch shape first, so specifying a dtype should raise the same warning as before
-    with pytest.warns(UserWarning, match="The shape parameter will be ignored"):
+    with pytest.raises(
+        ValueError, match="The data parameter was used, but the shape parameter was also used."
+    ):
         await create_array(store, data=data, shape=data.shape, dtype=data.dtype, overwrite=True)
 
-    with pytest.warns(UserWarning, match="The dtype parameter will be ignored"):
+    with pytest.raises(
+        ValueError, match="The data parameter was used, but the dtype parameter was also used."
+    ):
         await create_array(store, data=data, shape=None, dtype=data.dtype, overwrite=True)
 
 

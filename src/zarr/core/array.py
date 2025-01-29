@@ -4373,29 +4373,29 @@ def _parse_data_params(
                 "Either provide a value for data, or specify shape."
             )
             raise ValueError(msg)
+        shape_out = shape
         if dtype is None:
             msg = (
                 "The data parameter was set to None, but dtype was not specified."
                 "Either provide an array-like value for data, or specify dtype."
             )
             raise ValueError(msg)
-
+        dtype_out = dtype
     else:
         if shape is not None:
             msg = (
                 "The data parameter was used, but the shape parameter was also "
-                "used. The shape parameter will be ignored, and the data.shape "
-                "attribute will be used instead."
+                "used. This is an error. Either use the data parameter, or the shape parameter, "
+                "but not both."
             )
-            warnings.warn(msg, UserWarning, stacklevel=2)
-        shape = data.shape
-
+            raise ValueError(msg)
+        shape_out = data.shape
         if dtype is not None:
             msg = (
                 "The data parameter was used, but the dtype parameter was also "
-                "used. The dtype parameter will be ignored, and the data.dtype "
-                "attribute will be used instead."
+                "used. This is an error. Either use the data parameter, or the dtype parameter, "
+                "but not both."
             )
-            warnings.warn(msg, UserWarning, stacklevel=2)
-        dtype = data.dtype
-    return data, shape, dtype  # type: ignore[return-value]
+            raise ValueError(msg)
+        dtype_out = data.dtype
+    return data, shape_out, dtype_out
