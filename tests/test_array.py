@@ -649,15 +649,15 @@ def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105, dtype="i4")
     z[:] = a
     assert (105,) == z.shape
-    assert (105,) == z[:].shape # type: ignore
+    assert (105,) == z[:].shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype # type: ignore
+    assert np.dtype("i4") == z[:].dtype
     assert (10,) == z.chunks
     np.testing.assert_array_equal(a, z[:])
 
     z.resize(205)
     assert (205,) == z.shape
-    assert (205,) == z[:].shape # type: ignore
+    assert (205,) == z[:].shape
     assert np.dtype("i4") == z.dtype
     assert np.dtype("i4") == z[:].dtype
     assert (10,) == z.chunks
