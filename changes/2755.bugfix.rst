@@ -1,2 +1,3 @@
-Upon creation, an empty ``zarr.core.buffer.cpu.NDBuffer`` is filled with zeros to ensure deterministic behavior.
+The array returned by ``zarr.empty`` and an empty ``zarr.core.buffer.cpu.NDBuffer`` will now be filled with the
+specified fill value, or with zeros if no fill value is provided.
 This fixes a bug where Zarr format 2 data with no fill value was written with un-predictable chunk sizes.
