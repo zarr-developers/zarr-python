@@ -140,7 +140,7 @@ class ScalarWrapper:
         self._value = value
 
     def __array__(
-        self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
+        self, dtype: npt.DTypeLike | None = None, copy: bool | None = True
     ) -> npt.NDArray[Any]:
         return np.array(self._value, dtype=dtype, copy=copy)
 
