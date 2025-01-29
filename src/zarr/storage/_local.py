@@ -96,7 +96,7 @@ class LocalStore(Store):
             root = Path(root)
         if not isinstance(root, Path):
             raise TypeError(
-                f'"root" must be a string or Path instance. Got an object with type {type(root)} instead.'
+                f"'root' must be a string or Path instance. Got an instance of {type(root)} instead."
             )
         self.root = root
 
@@ -169,7 +169,9 @@ class LocalStore(Store):
         self._check_writable()
         assert isinstance(key, str)
         if not isinstance(value, Buffer):
-            raise TypeError("LocalStore.set(): `value` must a Buffer instance")
+            raise TypeError(
+                f"LocalStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
         path = self.root / key
         await asyncio.to_thread(_put, path, value, start=None, exclusive=exclusive)
 
