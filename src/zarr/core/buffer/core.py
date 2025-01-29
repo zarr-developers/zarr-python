@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
     from zarr.codecs.bytes import Endian
     from zarr.core.common import BytesLike, ChunkCoords
+    from zarr.core.indexing import Selection
 
 # Everything here is imported into ``zarr.core.buffer`` namespace.
 __all__: list[str] = []
@@ -129,12 +130,12 @@ class ScalarWrapper:
     def __len__(self) -> int:
         raise TypeError("len() of unsized object.")
 
-    def __getitem__(self, key: slice) -> Self:
+    def __getitem__(self, key: Selection) -> Self:
         if key != slice(None) and key != Ellipsis and key != ():
             raise IndexError("Invalid index for scalar.")
         return self
 
-    def __setitem__(self, key: slice, value: Any) -> None:
+    def __setitem__(self, key: Selection, value: Any) -> None:
         if key != slice(None) and key != Ellipsis and key != ():
             raise IndexError("Invalid index for scalar.")
         self._value = value
@@ -560,7 +561,7 @@ class NDBuffer:
         """
         if self._data.size != 1:
             raise ValueError("Buffer does not contain a single scalar value")
-        return ScalarWrapper(self.as_numpy_array().item(), self.dtype)
+        return ScalarWrapper(self.as_numpy_array().item(), np.dtype(self.dtype))
 
     @property
     def dtype(self) -> np.dtype[Any]:
