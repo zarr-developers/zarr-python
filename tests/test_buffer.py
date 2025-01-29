@@ -151,3 +151,5 @@ def test_numpy_buffer_prototype() -> None:
     ndbuffer = cpu.buffer_prototype.nd_buffer.create(shape=(1, 2), dtype=np.dtype("int64"))
     assert isinstance(buffer.as_array_like(), np.ndarray)
     assert isinstance(ndbuffer.as_ndarray_like(), np.ndarray)
+    with pytest.raises(ValueError, match="Buffer does not contain a single scalar value"):
+        ndbuffer.as_scalar()

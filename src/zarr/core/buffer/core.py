@@ -127,16 +127,16 @@ class ScalarWrapper:
         return ()
 
     def __len__(self) -> int:
-        raise TypeError("ScalarWrapper object has no len()")
+        raise TypeError("len() of unsized object.")
 
     def __getitem__(self, key: slice) -> Self:
-        if key != slice(None):
-            raise IndexError("Invalid index for scalar")
+        if key != slice(None) and key != Ellipsis and key != ():
+            raise IndexError("Invalid index for scalar.")
         return self
 
     def __setitem__(self, key: slice, value: Any) -> None:
-        if key != slice(None):
-            raise IndexError("Invalid index for scalar")
+        if key != slice(None) and key != Ellipsis and key != ():
+            raise IndexError("Invalid index for scalar.")
         self._value = value
 
     def __array__(
@@ -148,16 +148,19 @@ class ScalarWrapper:
         self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = "C"
     ) -> Self:
         if shape != () and shape != -1:
-            raise ValueError("Cannot reshape scalar to non-scalar shape")
+            raise ValueError("Cannot reshape scalar to non-scalar shape.")
         return self
 
     def view(self, dtype: npt.DTypeLike) -> Self:
-        return self
+        return self.astype(dtype)
 
     def astype(
         self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K", *, copy: bool = True
     ) -> Self:
-        raise TypeError("ScalarWrapper object has no astype()")
+        if copy:
+            return self.__class__(self._value, dtype)
+        self._dtype = dtype
+        return self
 
     def fill(self, value: Any) -> None:
         self._value = value
