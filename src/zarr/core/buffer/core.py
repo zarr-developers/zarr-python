@@ -154,16 +154,13 @@ class ScalarWrapper:
     def astype(
         self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K", *, copy: bool = True
     ) -> Self:
-        if copy:
-            return ScalarWrapper(dtype.type(self._value))
-        self._value = dtype.type(self._value)
-        return self
+        raise TypeError("ScalarWrapper object has no astype()")
 
     def fill(self, value: Any) -> None:
         self._value = value
 
     def copy(self) -> Self:
-        return ScalarWrapper(self._value)
+        return self.__class__(self._value)
 
     def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None = None) -> Self:
         return self
@@ -175,7 +172,7 @@ class ScalarWrapper:
         return bool(self._value)
 
     def __eq__(self, other: object) -> Self:
-        return ScalarWrapper(self._value == other)
+        return self.__class__(self._value == other)
 
     def __repr__(self) -> str:
         return f"ScalarWrapper({self._value!r})"
@@ -208,7 +205,7 @@ class ScalarWrapper:
         return -self._value
 
     def __abs__(self) -> Any:
-        if isinstance(self._value, (int, float, complex)):
+        if hasattr(self._value, "__abs__"):
             return abs(self._value)
         raise TypeError(f"bad operand type for abs(): '{self._value.__class__.__name__}'")
 
