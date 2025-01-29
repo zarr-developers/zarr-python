@@ -1267,4 +1267,3 @@ async def test_scalar_array() -> None:
     assert arr.ndim == 0
     assert arr[()].ndim == 0
     assert isinstance(arr[()], ScalarWrapper)
-

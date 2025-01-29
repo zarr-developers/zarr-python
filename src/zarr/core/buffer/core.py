@@ -104,6 +104,7 @@ class NDArrayLike(Protocol):
         our hands are tied.
         """
 
+
 class ScalarWrapper:
     def __init__(self, value: Any) -> None:
         self._value: Any = value
@@ -140,7 +141,9 @@ class ScalarWrapper:
     def __array__(self) -> npt.NDArray[Any]:
         return np.array(self._value)
 
-    def reshape(self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = "C") -> Self:
+    def reshape(
+        self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = "C"
+    ) -> Self:
         if shape != () and shape != -1:
             raise ValueError("Cannot reshape scalar to non-scalar shape")
         return self
@@ -148,7 +151,9 @@ class ScalarWrapper:
     def view(self, dtype: npt.DTypeLike) -> Self:
         return self
 
-    def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K", *, copy: bool = True) -> Self:
+    def astype(
+        self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K", *, copy: bool = True
+    ) -> Self:
         if copy:
             return ScalarWrapper(dtype.type(self._value))
         self._value = dtype.type(self._value)
