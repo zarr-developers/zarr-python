@@ -1,0 +1,1 @@
+Test that data can be written to a store that's not yet open using the store.set method in StoreTests
