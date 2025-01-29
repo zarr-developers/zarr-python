@@ -138,8 +138,9 @@ class ScalarWrapper:
             raise IndexError("Invalid index for scalar")
         self._value = value
 
-    def __array__(self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
-) -> npt.NDArray[Any]:
+    def __array__(
+        self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
+    ) -> npt.NDArray[Any]:
         return np.array(self._value, dtype=dtype, copy=copy)
 
     def reshape(

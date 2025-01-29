@@ -31,7 +31,7 @@ from zarr.core.array import (
     chunks_initialized,
     create_array,
 )
-from zarr.core.buffer import default_buffer_prototype, NDArrayLike
+from zarr.core.buffer import NDArrayLike, default_buffer_prototype
 from zarr.core.buffer.core import ScalarWrapper
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
@@ -1257,6 +1257,7 @@ async def test_create_array_v2_no_shards(store: MemoryStore) -> None:
             zarr_format=2,
         )
 
+
 @pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1)])
 def test_scalar_array(value: Any) -> None:
     arr = zarr.array(value)
@@ -1282,7 +1283,7 @@ def test_scalar_array(value: Any) -> None:
         assert x / 2 == value / 2
         assert x // 2 == value // 2
         assert x % 2 == value % 2
-        assert x ** 2 == value ** 2
+        assert x**2 == value**2
         assert x == value
         assert x != value + 1
         assert bool(x) == bool(value)

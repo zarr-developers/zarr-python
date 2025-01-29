@@ -2218,7 +2218,7 @@ class Array:
             raise ValueError(msg)
 
         arr_np = self[...]
-        if self.ndim==0:
+        if self.ndim == 0:
             arr_np = np.array(arr_np)
 
         if dtype is not None:
