@@ -106,7 +106,7 @@ class NDArrayLike(Protocol):
 
 
 class ScalarWrapper:
-    def __init__(self, value: Any, dtype: npt.DTypeLike | None = None) -> None:
+    def __init__(self, value: Any, dtype: np.dtype[Any] | None = None) -> None:
         self._value: Any = value
         self._dtype: np.dtype[Any] = dtype or np.dtype(type(self._value))
 
@@ -140,7 +140,7 @@ class ScalarWrapper:
         self._value = value
 
     def __array__(
-        self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
+        self, dtype: npt.DTypeLike | None = None, copy: bool | None = True
     ) -> npt.NDArray[Any]:
         return np.array(self._value, dtype=dtype, copy=copy)
 
