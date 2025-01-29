@@ -1400,6 +1400,7 @@ class AsyncGroup:
     async def create_hierarchy(
         self,
         nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
+        *,
         overwrite: bool,
     ) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
         """
@@ -1421,16 +1422,37 @@ class AsyncGroup:
         -------
             An asynchronous iterator over the created arrays and / or groups.
         """
+        # check that all the nodes have the same zarr_format as Self
+        for key, value in nodes.items():
+            if value.zarr_format != self.metadata.zarr_format:
+                msg = (
+                    "The zarr_format of the nodes must be the same as the parent group. "
+                    f"The node at {key} has zarr_format {value.zarr_format}, but the parent group"
+                    f" has zarr_format {self.metadata.zarr_format}."
+                )
+                raise ValueError(msg)
+
         semaphore = asyncio.Semaphore(config.get("async.concurrency"))
-        async for node in create_hierarchy_a(
-            store=self.store,
-            path=self.path,
-            nodes=nodes,
-            semaphore=semaphore,
-            overwrite=overwrite,
-            allow_root=False,
-        ):
-            yield node
+
+        try:
+            async for node in create_hierarchy_a(
+                store=self.store,
+                path=self.path,
+                nodes=nodes,
+                semaphore=semaphore,
+                overwrite=overwrite,
+                allow_root=False,
+            ):
+                yield node
+
+        except RootedHierarchyError as e:
+            msg = (
+                "The input defines a root node, but a root node already exists, namely this Group instance."
+                "It is an error to use this method to create a root node. "
+                "Remove the root node from the input dict, or use a function like "
+                "create_rooted_hierarchy to create a rooted hierarchy."
+            )
+            raise ValueError(msg) from e
 
     async def keys(self) -> AsyncGenerator[str, None]:
         """Iterate over member names."""
@@ -2057,17 +2079,21 @@ class Group(SyncMixin):
     def create_hierarchy(
         self,
         nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
+        *,
         overwrite: bool = False,
-    ) -> Iterator[
-        tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]
-    ]:
+    ) -> Iterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
         """
         Create a hierarchy of arrays or groups rooted at this group.
 
         This method takes a dictionary where the keys are the names of the arrays or groups
         to create and the values are the metadata objects for the arrays or groups.
 
-        The method returns a dict containing the created nodes.
+        This method returns an iterator of created Group or Array objects.
+
+        Note: this method will create additional groups as needed to ensure that a hierarchy is
+        complete. Usage like ``create_hierarchy({'a/b': GroupMetadata()})`` defines an implicit
+        group at ``a``. This function will ensure that the group at ``a`` exists, first by checking
+        if one already exists, and if not, creating one.
 
         Parameters
         ----------
@@ -2076,30 +2102,21 @@ class Group(SyncMixin):
 
         Returns
         -------
-            A dict containing the created nodes, with the same keys as the input
+            An iterator of Array or Group objects.
+
+        Examples
+        --------
+        >>> import zarr
+        >>> from zarr.core.group import GroupMetadata
+        >>> root = zarr.create_group(store={})
+        >>> for key, val in root.create_hierarchy({'a/b/c': GroupMetadata()}):
+        ...   print(key, val)
+        ...
+        <AsyncGroup memory://123209880766144/a>
+        <AsyncGroup memory://123209880766144/a/b/c>
+        <AsyncGroup memory://123209880766144/a/b>
         """
-        # check that all the nodes have the same zarr_format as Self
-        for key, value in nodes.items():
-            if value.zarr_format != self.metadata.zarr_format:
-                msg = (
-                    "The zarr_format of the nodes must be the same as the parent group. "
-                    f"The node at {key} has zarr_format {value.zarr_format}, but the parent group"
-                    f" has zarr_format {self.metadata.zarr_format}."
-                )
-                raise ValueError(msg)
-        try:
-            nodes_created = self._sync_iter(
-                self._async_group.create_hierarchy(nodes, overwrite=overwrite)
-            )
-            for n in nodes_created:
-                yield (_join_paths([self.path, n.name]), n)
-        except RootedHierarchyError as e:
-            msg = (
-                "The input defines a root node, but a root node already exists, namely this Group instance."
-                "It is an error to use this method to create a root node. "
-                "Remove the root node from the input dict, or use a function like _from_flat to create a rooted hierarchy."
-            )
-            raise ValueError(msg) from e
+        yield from self._sync_iter(self._async_group.create_hierarchy(nodes, overwrite=overwrite))
 
     def keys(self) -> Generator[str, None]:
         """Return an iterator over group member names.
@@ -2879,14 +2896,7 @@ async def create_hierarchy_a(
     AsyncGroup | AsyncArray
         The created nodes in the order they are created.
     """
-    nodes_parsed = _parse_hierarchy_dict(nodes)
-
-    if not allow_root and "" in nodes_parsed:
-        msg = (
-            "Found the key '' in nodes (after key name normalization). That key denotes the root of a hierarchy, but ``allow_root`` is False, and so creating this node "
-            "is not allowed. Either remove this key from ``nodes``, or set ``allow_root`` to True."
-        )
-        raise RootedHierarchyError(msg)
+    nodes_parsed = _parse_hierarchy_dict(data=nodes, allow_root=allow_root)
 
     # we allow creating empty hierarchies -- it's a no-op
     if len(nodes_parsed) > 0:
@@ -3178,7 +3188,9 @@ def _join_paths(paths: Iterable[str]) -> str:
 
 
 def _parse_hierarchy_dict(
+    *,
     data: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    allow_root: bool = True,
 ) -> dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]:
     """
     Take an input Mapping of str: node pairs, and parse it into
@@ -3200,6 +3212,11 @@ def _parse_hierarchy_dict(
 
     - No arrays can contain group or arrays (i.e., all arrays must be leaf nodes).
     - All arrays and groups must have the same ``zarr_format`` value.
+
+    if ``allow_root`` is set to False, then the input is also checked to ensure that it does not
+    contain a key that normalizes to the empty string (''), as this is reserved for the root node,
+    and in some situations creating a root node is not permitted, for example, when creating a
+    hierarchy relative to an existing group.
 
     This function ensures that the input is transformed into a specification of a complete and valid
     Zarr hierarchy.
@@ -3227,6 +3244,15 @@ def _parse_hierarchy_dict(
         _normalize_path_keys(data)
     )
 
+    if not allow_root and "" in data_normed:
+        msg = (
+            "Found the empty string '' in data after key name normalization. "
+            "That key denotes the root of a hierarchy, but ``allow_root`` is False, "
+            "and so creating this node is not allowed. Remove the problematic key from the input, "
+            "or set ``allow_root`` to True."
+        )
+        raise RootedHierarchyError(msg)
+
     out: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {**data_normed}
 
     for k, v in data.items():
@@ -3246,6 +3272,7 @@ def _parse_hierarchy_dict(
                         "This is invalid. Only Zarr groups can contain other nodes."
                     )
                     raise ValueError(msg)
+
     return out
 
 

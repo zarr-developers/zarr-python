@@ -371,7 +371,7 @@ def test_group_getitem(store: Store, zarr_format: ZarrFormat, consolidated: bool
             )
 
         with pytest.raises(KeyError):
-            # We've chosen to trust the consolidted metadata, which doesn't
+            # We've chosen to trust the consolidated metadata, which doesn't
             # contain this array
             group["subgroup/subarray"]
 
@@ -1803,7 +1803,7 @@ async def test_create_hierarchy_implicit_groups(
         "a/b/c": GroupMetadata(zarr_format=3, attributes={"implicit": False}),
     }
 
-    hierarchy_parsed = _parse_hierarchy_dict(nodes)
+    hierarchy_parsed = _parse_hierarchy_dict(data=nodes)
     if impl == "sync":
         g = _create_rooted_hierarchy(store=store, path=path, nodes=nodes)
         for key, value in hierarchy_parsed.items():
