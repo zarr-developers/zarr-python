@@ -104,6 +104,77 @@ class NDArrayLike(Protocol):
         our hands are tied.
         """
 
+class ScalarWrapper:
+    def __init__(self, value: Any) -> None:
+        self._value: Any = value
+
+    @property
+    def shape(self) -> tuple[()]:
+        return ()
+
+    @property
+    def ndim(self) -> int:
+        return 0
+
+    def __repr__(self) -> str:
+        return f"ScalarWrapper({self._value!r})"
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._value, name)
+
+    def __eq__(self, other: object) -> Any:
+        return self._value == other
+
+    def __add__(self, other: Any) -> Any:
+        return self._value + other
+
+    def __sub__(self, other: Any) -> Any:
+        return self._value - other
+
+    def __mul__(self, other: Any) -> Any:
+        return self._value * other
+
+    def __truediv__(self, other: Any) -> Any:
+        return self._value / other
+
+    def __floordiv__(self, other: Any) -> Any:
+        return self._value // other
+
+    def __mod__(self, other: Any) -> Any:
+        return self._value % other
+
+    def __pow__(self, other: Any) -> Any:
+        return self._value**other
+
+    def __neg__(self) -> Any:
+        return -self._value
+
+    def __abs__(self) -> Any:
+        if(isinstance(self._value, (int, float, complex))):
+            return abs(self._value)
+        raise TypeError(f"bad operand type for abs(): '{self._value.__class__.__name__}'")
+
+    def __int__(self) -> int:
+        return int(self._value)
+
+    def __float__(self) -> float:
+        return float(self._value)
+
+    def __complex__(self) -> complex:
+        return complex(self._value)
+
+    def __bool__(self) -> bool:
+        return bool(self._value)
+
+    def __hash__(self) -> int:
+        return hash(self._value)
+
+    def __str__(self) -> str:
+        return str(self._value)
+
+    def __format__(self, format_spec: str) -> str:
+        return format(self._value, format_spec)
+
 
 def check_item_key_is_1d_contiguous(key: Any) -> None:
     """Raises error if `key` isn't a 1d contiguous slice"""
@@ -418,6 +489,17 @@ class NDBuffer:
             NumPy array of this buffer (might be a data copy)
         """
         ...
+
+    def as_scalar(self) -> ScalarWrapper:
+        """Returns the buffer as a scalar value
+
+        Returns
+        -------
+            ScalarWrapper of this buffer
+        """
+        if self._data.size != 1:
+            raise ValueError("Buffer does not contain a single scalar value")
+        return ScalarWrapper(self.as_numpy_array().item())
 
     @property
     def dtype(self) -> np.dtype[Any]:
