@@ -287,8 +287,6 @@ class FsspecStore(Store):
         # docstring inherited
         if not self.supports_deletes:
             raise NotImplementedError('This method is only available for stores that support deletes.')
-        if not self.supports_listing:
-            raise NotImplementedError('This method is only available for stores that support directory listing.')
         self._check_writable()
 
         path_to_delete = _dereference_path(self.path, prefix)

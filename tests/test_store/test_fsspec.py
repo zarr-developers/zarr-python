@@ -220,14 +220,7 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
     async def test_delete_dir_unsupported_deletes(self, store: FsspecStore) -> None:
         store.supports_deletes = False
         with pytest.raises(
-            NotImplementedError, match=".*only available for stores that support deletes."
-        ):
-            await store.delete_dir("test_prefix")
-
-    async def test_delete_dir_unsupported_listing(self, store: FsspecStore) -> None:
-        store.supports_listing = False
-        with pytest.raises(
-            NotImplementedError, match=".*only available for stores that support directory listing."
+            NotImplementedError, match="This method is only available for stores that support deletes."
         ):
             await store.delete_dir("test_prefix")
 
