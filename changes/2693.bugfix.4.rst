@@ -1,0 +1,1 @@
+Update equality for LoggingStore and WrapperStore such that 'other' must also be a LoggingStore or WrapperStore respectively, rather than only checking the types of the stores they wrap.
