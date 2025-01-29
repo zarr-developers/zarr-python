@@ -4035,10 +4035,10 @@ async def create_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    shape : ChunkCoords | None
-        Shape of the array.
+    shape : ChunkCoords, optional
+        Shape of the array. Can be ``None`` if ``data`` is provided.
     dtype : npt.DTypeLike | None
-        Data type of the array.
+        Data type of the array. Can be ``None`` if ``data`` is provided.
     data : Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
         or ``None``.

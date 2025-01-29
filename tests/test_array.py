@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 import zarr.api.asynchronous
+import zarr.api.synchronous as sync_api
 from zarr import Array, AsyncArray, Group
 from zarr.abc.store import Store
 from zarr.codecs import (
@@ -38,13 +39,14 @@ from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
 from zarr.core.indexing import BasicIndexer, ceildiv
-from zarr.core.metadata.v3 import DataType
+from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath
 
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike
+    from zarr.core.metadata.v2 import ArrayV2Metadata
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -1259,16 +1261,26 @@ async def test_create_array_v2_no_shards(store: MemoryStore) -> None:
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
-async def test_create_array_data(store: Store) -> None:
+@pytest.mark.parametrize("impl", ["sync", "async"])
+async def test_create_array_data(impl: Literal["sync", "async"], store: Store) -> None:
     """
     Test that we can invoke ``create_array`` with a ``data`` parameter.
     """
     data = np.arange(10)
-    arr = await create_array(store, name="foo", data=data)
-    stored = await arr._get_selection(
-        BasicIndexer(..., shape=arr.shape, chunk_grid=arr.metadata.chunk_grid),
-        prototype=default_buffer_prototype(),
-    )
+    name = "foo"
+    arr: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array
+    if impl == "sync":
+        arr = sync_api.create_array(store, name=name, data=data)
+        stored = arr[:]
+    elif impl == "async":
+        arr = await create_array(store, name=name, data=data, zarr_format=3)
+        stored = await arr._get_selection(
+            BasicIndexer(..., shape=arr.shape, chunk_grid=arr.metadata.chunk_grid),
+            prototype=default_buffer_prototype(),
+        )
+    else:
+        raise ValueError(f"Invalid impl: {impl}")
+
     assert np.array_equal(stored, data)
 
 
