@@ -2208,7 +2208,7 @@ class Array:
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
-    ) -> npt.ArrayLike:
+    ) -> NDArrayLike:
         """
         This method is used by numpy when converting zarr.Array into a numpy array.
         For more information, see https://numpy.org/devdocs/user/basics.interoperability.html#the-array-method
