@@ -261,7 +261,7 @@ async def test_delete_dir_wrapped_filesystem(tmpdir) -> None:
     """The local fs is not async so we should expect it to be wrapped automatically"""
     from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
-    store = FsspecStore.from_url(tmpdir / "test/path", storage_options={"auto_mkdir": True})
+    store = FsspecStore.from_url(f"{tmpdir}/test/path", storage_options={"auto_mkdir": True})
 
     assert isinstance(store.fs, AsyncFileSystemWrapper)
     assert store.fs.async_impl
