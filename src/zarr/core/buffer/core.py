@@ -106,12 +106,13 @@ class NDArrayLike(Protocol):
 
 
 class ScalarWrapper:
-    def __init__(self, value: Any) -> None:
+    def __init__(self, value: Any, dtype: npt.DTypeLike | None = None) -> None:
         self._value: Any = value
+        self._dtype: npt.DTypeLike = dtype or np.dtype(type(self._value))
 
     @property
     def dtype(self) -> np.dtype[Any]:
-        return np.dtype(type(self._value))
+        return self._dtype
 
     @property
     def ndim(self) -> int:

@@ -1244,7 +1244,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 out_buffer,
                 drop_axes=indexer.drop_axes,
             )
-        if indexer.shape == ():
+        if isinstance(indexer, BasicIndexer) and indexer.shape == ():
             return out_buffer.as_scalar()
         return out_buffer.as_ndarray_like()
 
