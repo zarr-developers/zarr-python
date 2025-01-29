@@ -895,7 +895,8 @@ def create_array(
 
 # TODO: add type annotations for kwargs
 def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
-    """Create an empty array.
+    """Create an empty array with the specified shape. The contents will be filled with the
+    array's fill value or zeros if no fill value is provided.
 
     Parameters
     ----------
@@ -908,12 +909,6 @@ def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
     -------
     Array
         The new array.
-
-    Notes
-    -----
-    The contents of an empty Zarr array are not defined. On attempting to
-    retrieve data from an empty Zarr array, any values may be returned,
-    and these are not guaranteed to be stable from one access to the next.
     """
     return Array(sync(async_api.empty(shape, **kwargs)))
 
@@ -921,7 +916,8 @@ def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
 # TODO: move ArrayLike to common module
 # TODO: add type annotations for kwargs
 def empty_like(a: ArrayLike, **kwargs: Any) -> Array:
-    """Create an empty array like another array.
+    """Create an empty array like another array. The contents will be filled with the
+    array's fill value or zeros if no fill value is provided.
 
     Parameters
     ----------
