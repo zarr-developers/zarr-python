@@ -118,7 +118,7 @@ def load(
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
     zarr_version: ZarrFormat | None = None,
-) -> npt.ArrayLike | dict[str, npt.ArrayLike]:
+) -> NDArrayLike | dict[str, NDArrayLike]:
     """Load data from an array or group into memory.
 
     Parameters

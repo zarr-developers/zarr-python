@@ -109,21 +109,74 @@ class ScalarWrapper:
         self._value: Any = value
 
     @property
-    def shape(self) -> tuple[()]:
-        return ()
+    def dtype(self) -> np.dtype[Any]:
+        return np.dtype(type(self._value))
 
     @property
     def ndim(self) -> int:
         return 0
+
+    @property
+    def size(self) -> int:
+        return 1
+
+    @property
+    def shape(self) -> tuple[()]:
+        return ()
+
+    def __len__(self) -> int:
+        raise TypeError("ScalarWrapper object has no len()")
+
+    def __getitem__(self, key: slice) -> Self:
+        if key != slice(None):
+            raise IndexError("Invalid index for scalar")
+        return self
+
+    def __setitem__(self, key: slice, value: Any) -> None:
+        if key != slice(None):
+            raise IndexError("Invalid index for scalar")
+        self._value = value
+
+    def __array__(self) -> npt.NDArray[Any]:
+        return np.array(self._value)
+
+    def reshape(self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = "C") -> Self:
+        if shape != () and shape != -1:
+            raise ValueError("Cannot reshape scalar to non-scalar shape")
+        return self
+
+    def view(self, dtype: npt.DTypeLike) -> Self:
+        return self
+
+    def astype(self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K", *, copy: bool = True) -> Self:
+        if copy:
+            return ScalarWrapper(dtype.type(self._value))
+        self._value = dtype.type(self._value)
+        return self
+
+    def fill(self, value: Any) -> None:
+        self._value = value
+
+    def copy(self) -> Self:
+        return ScalarWrapper(self._value)
+
+    def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None = None) -> Self:
+        return self
+
+    def ravel(self, order: Literal["K", "A", "C", "F"] = "C") -> Self:
+        return self
+
+    def all(self) -> bool:
+        return bool(self._value)
+
+    def __eq__(self, other: object) -> Self:
+        return ScalarWrapper(self._value == other)
 
     def __repr__(self) -> str:
         return f"ScalarWrapper({self._value!r})"
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._value, name)
-
-    def __eq__(self, other: object) -> Any:
-        return self._value == other
 
     def __add__(self, other: Any) -> Any:
         return self._value + other
@@ -150,7 +203,7 @@ class ScalarWrapper:
         return -self._value
 
     def __abs__(self) -> Any:
-        if(isinstance(self._value, (int, float, complex))):
+        if isinstance(self._value, (int, float, complex)):
             return abs(self._value)
         raise TypeError(f"bad operand type for abs(): '{self._value.__class__.__name__}'")
 
