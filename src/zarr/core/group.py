@@ -3633,7 +3633,7 @@ async def _create_rooted_hierarchy_a(
         )
         raise ValueError(msg)
     else:
-        root = roots[0]
+        root_key = roots[0]
 
     semaphore = asyncio.Semaphore(config.get("async.concurrency"))
 
@@ -3643,9 +3643,7 @@ async def _create_rooted_hierarchy_a(
             store=store, path=path, nodes=nodes, semaphore=semaphore, overwrite=overwrite
         )
     }
-    # the names of the created nodes will be relative to the store_path instance
-    root_relative_to_store_path = _join_paths([path, root])
-    return nodes_created[root_relative_to_store_path]
+    return nodes_created[_join_paths([path, root_key])]
 
 
 def _create_rooted_hierarchy(
