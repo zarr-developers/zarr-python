@@ -1,1 +1,2 @@
 Upon creation, an empty ``zarr.core.buffer.cpu.NDBuffer`` is filled with zeros to ensure deterministic behavior.
+This fixes a bug where Zarr format 2 data with no fill value was written with un-predictable chunk sizes.
