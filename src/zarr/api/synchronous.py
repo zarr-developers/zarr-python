@@ -778,7 +778,8 @@ def create_array(
         Shape of the array. Can be ``None`` if ``data`` is provided.
     dtype : npt.DTypeLike, optional
         Data type of the array. Can be ``None`` if ``data`` is provided.
-    data : Array-like data to use for initializing the array. If this parameter is provided, the
+    data : np.ndarray, optional
+        Array-like data to use for initializing the array. If this parameter is provided, the
         ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
         or ``None``.
     chunks : ChunkCoords, optional
