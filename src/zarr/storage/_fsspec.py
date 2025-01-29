@@ -293,12 +293,8 @@ class FsspecStore(Store):
 
         path_to_delete = _dereference_path(self.path, prefix)
 
-        # this is probably the same condition as `if self.fs.async_impl`
-        if hasattr(self.fs, "_rm") and inspect.iscoroutinefunction(self.fs._rm):
-            with suppress(*self.allowed_exceptions):
-                await self.fs._rm(path_to_delete, recursive=True)
-        else:
-            raise NotImplementedError("The store does not support async deletes")
+        with suppress(*self.allowed_exceptions):
+            await self.fs._rm(path_to_delete, recursive=True)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
