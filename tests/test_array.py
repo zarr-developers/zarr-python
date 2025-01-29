@@ -4,7 +4,7 @@ import math
 import pickle
 import re
 from itertools import accumulate
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numcodecs
 import numpy as np
@@ -1273,6 +1273,7 @@ def test_scalar_array(value: Any) -> None:
     assert x == value
     assert value == x
     if isinstance(value, (int, float)):
+        x = cast(ScalarWrapper, x)
         assert -x == -value
         assert abs(x) == abs(value)
         assert int(x) == int(value)
