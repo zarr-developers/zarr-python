@@ -1,0 +1,1 @@
+Use stdout rather than stderr as the default stream for LoggingStore.

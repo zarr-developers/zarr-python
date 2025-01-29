@@ -1,0 +1,3 @@
+Change StoreTest's ``test_store_repr``, ``test_store_supports_writes``,
+``test_store_supports_partial_writes``, and ``test_store_supports_listing``
+to to be implemented using ``@abstractmethod``, rather raising ``NotImplementedError``.
