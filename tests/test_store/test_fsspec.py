@@ -264,7 +264,7 @@ async def test_delete_dir_wrapped_filesystem(tmpdir) -> None:
     store = FsspecStore.from_url(f"{tmpdir}/test/path", storage_options={"auto_mkdir": True})
 
     assert isinstance(store.fs, AsyncFileSystemWrapper)
-    assert store.fs.async_impl
+    assert store.fs.asynchronous
 
     await store.set("zarr.json", cpu.Buffer.from_bytes(b"root"))
     await store.set("foo-bar/zarr.json", cpu.Buffer.from_bytes(b"root"))
