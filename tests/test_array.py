@@ -649,15 +649,15 @@ def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105, dtype="i4")
     z[:] = a
     assert (105,) == z.shape
-    assert (105,) == z[:].shape  # type: ignore[union-attr]
+    assert (105,) == z[:].shape # type: ignore
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype  # type: ignore[union-attr]
+    assert np.dtype("i4") == z[:].dtype # type: ignore
     assert (10,) == z.chunks
     np.testing.assert_array_equal(a, z[:])
 
     z.resize(205)
     assert (205,) == z.shape
-    assert (205,) == z[:].shape  # type: ignore[union-attr]
+    assert (205,) == z[:].shape # type: ignore
     assert np.dtype("i4") == z.dtype
     assert np.dtype("i4") == z[:].dtype
     assert (10,) == z.chunks
@@ -666,9 +666,9 @@ def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
 
     z.resize(55)
     assert (55,) == z.shape
-    assert (55,) == z[:].shape  # type: ignore[union-attr]
+    assert (55,) == z[:].shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype  # type: ignore[union-attr]
+    assert np.dtype("i4") == z[:].dtype
     assert (10,) == z.chunks
     np.testing.assert_array_equal(a[:55], z[:])
 
@@ -676,7 +676,7 @@ def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     new_shape = (105,)
     z.shape = new_shape
     assert new_shape == z.shape
-    assert new_shape == z[:].shape  # type: ignore[union-attr]
+    assert new_shape == z[:].shape
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -692,7 +692,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
     z[:] = a
     assert (105, 105) == z.shape
-    assert (105, 105) == z[:].shape  # type: ignore[union-attr]
+    assert (105, 105) == z[:].shape
     assert np.dtype("i4") == z.dtype
     assert np.dtype("i4") == z[:].dtype
     assert (10, 10) == z.chunks
@@ -700,7 +700,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
 
     z.resize((205, 205))
     assert (205, 205) == z.shape
-    assert (205, 205) == z[:].shape  # type: ignore[union-attr]
+    assert (205, 205) == z[:].shape
     assert np.dtype("i4") == z.dtype
     assert np.dtype("i4") == z[:].dtype
     assert (10, 10) == z.chunks
@@ -710,7 +710,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
 
     z.resize((55, 55))
     assert (55, 55) == z.shape
-    assert (55, 55) == z[:].shape  # type: ignore[union-attr]
+    assert (55, 55) == z[:].shape
     assert np.dtype("i4") == z.dtype
     assert np.dtype("i4") == z[:].dtype
     assert (10, 10) == z.chunks
@@ -718,7 +718,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
 
     z.resize((55, 1))
     assert (55, 1) == z.shape
-    assert (55, 1) == z[:].shape  # type: ignore[union-attr]
+    assert (55, 1) == z[:].shape
     assert np.dtype("i4") == z.dtype
     assert np.dtype("i4") == z[:].dtype
     assert (10, 10) == z.chunks
@@ -726,7 +726,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
 
     z.resize((1, 55))
     assert (1, 55) == z.shape
-    assert (1, 55) == z[:].shape  # type: ignore[union-attr]
+    assert (1, 55) == z[:].shape
     assert np.dtype("i4") == z.dtype
     assert np.dtype("i4") == z[:].dtype
     assert (10, 10) == z.chunks
@@ -737,7 +737,7 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     new_shape = (105, 105)
     z.shape = new_shape
     assert new_shape == z.shape
-    assert new_shape == z[:].shape  # type: ignore[union-attr]
+    assert new_shape == z[:].shape
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
