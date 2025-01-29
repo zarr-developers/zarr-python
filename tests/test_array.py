@@ -31,7 +31,7 @@ from zarr.core.array import (
     chunks_initialized,
     create_array,
 )
-from zarr.core.buffer import default_buffer_prototype
+from zarr.core.buffer import default_buffer_prototype, NDArrayLike
 from zarr.core.buffer.core import ScalarWrapper
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
@@ -1257,13 +1257,37 @@ async def test_create_array_v2_no_shards(store: MemoryStore) -> None:
             zarr_format=2,
         )
 
-
-async def test_scalar_array() -> None:
-    arr = zarr.array(1.5)
-    assert arr[...] == 1.5
-    assert arr[()] == 1.5
+@pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1)])
+def test_scalar_array(value: Any) -> None:
+    arr = zarr.array(value)
+    assert arr[...] == value
     assert arr.shape == ()
-    assert arr[()].shape == ()
     assert arr.ndim == 0
-    assert arr[()].ndim == 0
+
+    x = arr[()]
     assert isinstance(arr[()], ScalarWrapper)
+    assert isinstance(arr[()], NDArrayLike)
+    assert x.shape == arr.shape
+    assert x.ndim == arr.ndim
+    assert x == value
+    assert value == x
+    if isinstance(value, (int, float)):
+        assert -x == -value
+        assert abs(x) == abs(value)
+        assert int(x) == int(value)
+        assert float(x) == float(value)
+        assert x + 1 == value + 1
+        assert x - 1 == value - 1
+        assert x * 2 == value * 2
+        assert x / 2 == value / 2
+        assert x // 2 == value // 2
+        assert x % 2 == value % 2
+        assert x ** 2 == value ** 2
+        assert x == value
+        assert x != value + 1
+        assert bool(x) == bool(value)
+        assert hash(x) == hash(value)
+        assert str(x) == str(value)
+        assert format(x, "") == format(value, "")
+    elif isinstance(value, str):
+        assert str(x) == value
