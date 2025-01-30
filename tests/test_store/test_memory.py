@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -15,6 +16,10 @@ if TYPE_CHECKING:
     from zarr.core.common import ZarrFormat
 
 
+# TODO: work out where this warning is coming from and fix it
+@pytest.mark.filterwarnings(
+    re.escape("ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited")
+)
 class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     store_cls = MemoryStore
     buffer_cls = cpu.Buffer
