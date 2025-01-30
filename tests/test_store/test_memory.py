@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from zarr.core.buffer import Buffer, cpu, gpu
@@ -8,6 +10,10 @@ from zarr.testing.store import StoreTests
 from zarr.testing.utils import gpu_test
 
 
+# TODO: work out where this warning is coming from and fix it
+@pytest.mark.filterwarnings(
+    re.escape("ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited")
+)
 class TestMemoryStore(StoreTests[MemoryStore, cpu.Buffer]):
     store_cls = MemoryStore
     buffer_cls = cpu.Buffer
