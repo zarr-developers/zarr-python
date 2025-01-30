@@ -25,13 +25,13 @@ buffers used internally by Zarr.
 .. code-block:: python
 
    >>> import zarr
-   >>> import cupy as cp
-   >>> zarr.config.enable_gpu()
-   >>> store = zarr.storage.MemoryStore()
-   >>> z = zarr.create_array(
+   >>> import cupy as cp  # doctest: +SKIP
+   >>> zarr.config.enable_gpu()  # doctest: +SKIP
+   >>> store = zarr.storage.MemoryStore()  # doctest: +SKIP
+   >>> z = zarr.create_array(  # doctest: +SKIP
    ...     store=store, shape=(100, 100), chunks=(10, 10), dtype="float32",
    ... )
-   >>> type(z[:10, :10])
+   >>> type(z[:10, :10])  # doctest: +SKIP
    cupy.ndarray
 
 Note that the output type is a ``cupy.ndarray`` rather than a NumPy array.
