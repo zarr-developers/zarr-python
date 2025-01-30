@@ -11,6 +11,7 @@ from numcodecs.zstd import Zstd
 
 import zarr
 import zarr.core.buffer
+import zarr.core.group.sync
 import zarr.storage
 from zarr import config
 from zarr.abc.store import Store
@@ -100,7 +101,7 @@ async def test_v2_encode_decode(dtype, expected_dtype, fill_value, fill_value_en
         }
     ):
         store = zarr.storage.MemoryStore()
-        g = zarr.group(store=store, zarr_format=2)
+        g = zarr.core.group.sync.group(store=store, zarr_format=2)
         g.create_array(
             name="foo", shape=(3,), chunks=(3,), dtype=dtype, fill_value=fill_value, compressor=None
         )

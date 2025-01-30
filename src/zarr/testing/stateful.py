@@ -18,6 +18,7 @@ import zarr
 from zarr import Array
 from zarr.abc.store import Store
 from zarr.core.buffer import Buffer, BufferPrototype, cpu, default_buffer_prototype
+import zarr.core.group.sync
 from zarr.core.sync import SyncMixin
 from zarr.storage import LocalStore, MemoryStore
 from zarr.testing.strategies import key_ranges, node_names, np_array_and_chunks, numpy_arrays
@@ -50,7 +51,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         self.store = store
 
         self.model = MemoryStore()
-        zarr.group(store=self.model)
+        zarr.core.group.sync.group(store=self.model)
 
         # Track state of the hierarchy, these should contain fully qualified paths
         self.all_groups: set[str] = set()
@@ -60,7 +61,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     def init_store(self) -> None:
         # This lets us reuse the fixture provided store.
         self._sync(self.store.clear())
-        zarr.group(store=self.store)
+        zarr.core.group.sync.group(store=self.store)
 
     def can_add(self, path: str) -> bool:
         return path not in self.all_groups and path not in self.all_arrays
@@ -76,8 +77,8 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         assume(self.can_add(path))
         note(f"Adding group: path='{path}'")
         self.all_groups.add(path)
-        zarr.group(store=self.store, path=path)
-        zarr.group(store=self.model, path=path)
+        zarr.core.group.sync.group(store=self.store, path=path)
+        zarr.core.group.sync.group(store=self.model, path=path)
 
     @rule(
         data=st.data(),
@@ -144,7 +145,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         prefix, array_name = split_prefix_name(array_path)
         note(f"Deleting array '{array_path}' ({prefix=!r}, {array_name=!r}) using del")
         for store in [self.model, self.store]:
-            group = zarr.open_group(path=prefix, store=store)
+            group = zarr.core.group.sync.open_group(path=prefix, store=store)
             group[array_name]  # check that it exists
             del group[array_name]
         self.all_arrays.remove(array_path)
@@ -157,14 +158,14 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         )
         prefix, group_name = split_prefix_name(group_path)
         note(f"Deleting group '{group_path=!r}', {prefix=!r}, {group_name=!r} using delete")
-        members = zarr.open_group(store=self.model, path=group_path).members(max_depth=None)
+        members = zarr.core.group.sync.open_group(store=self.model, path=group_path).members(max_depth=None)
         for _, obj in members:
             if isinstance(obj, Array):
                 self.all_arrays.remove(obj.path)
             else:
                 self.all_groups.remove(obj.path)
         for store in [self.store, self.model]:
-            group = zarr.open_group(store=store, path=prefix)
+            group = zarr.core.group.sync.open_group(store=store, path=prefix)
             group[group_name]  # check that it exists
             del group[group_name]
         if group_path != "/":

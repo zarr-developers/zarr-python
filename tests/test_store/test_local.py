@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-import zarr
+import zarr.core.group.sync
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import LocalStore
 from zarr.testing.store import StoreTests
@@ -53,7 +53,7 @@ class TestLocalStore(StoreTests[LocalStore, cpu.Buffer]):
         assert not target.exists()
 
         store = self.store_cls(root=target)
-        zarr.group(store=store)
+        zarr.core.group.sync.group(store=store)
 
     def test_invalid_root_raises(self):
         """

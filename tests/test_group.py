@@ -14,12 +14,18 @@ from numcodecs import Blosc
 import zarr
 import zarr.api.asynchronous
 import zarr.api.synchronous
+from zarr.core.group.async import AsyncGroup
+from zarr.core.group.metadata import GroupMetadata
+from zarr.core.group.sync import Group
+import zarr.core.group.sync
+import zarr.core.group.sync
+import zarr.core.group.sync
 import zarr.storage
-from zarr import Array, AsyncArray, AsyncGroup, Group
+from zarr import Array, AsyncArray
 from zarr.abc.store import Store
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata
+from zarr.core.group.metadata import ConsolidatedMetadata
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
@@ -183,7 +189,7 @@ def test_group_members(store: Store, zarr_format: ZarrFormat, consolidated_metad
     )
     if consolidated_metadata:
         with warn_context:
-            zarr.consolidate_metadata(store=store, zarr_format=zarr_format)
+            zarr.core.group.sync.consolidate_metadata(store=store, zarr_format=zarr_format)
         # now that we've consolidated the store, we shouldn't get the warnings from the unrecognized objects anymore
         # we use a nullcontext to handle these cases
         warn_context = contextlib.nullcontext()
@@ -488,7 +494,7 @@ def test_group_child_iterators(store: Store, zarr_format: ZarrFormat, consolidat
     expected_arrays = list(zip(expected_array_keys, expected_array_values, strict=False))
 
     if consolidate:
-        group = zarr.consolidate_metadata(store)
+        group = zarr.core.group.sync.consolidate_metadata(store)
         if zarr_format == 2:
             metadata = {
                 "subarray": {
@@ -1209,7 +1215,7 @@ async def test_members_name(store: Store, consolidate: bool, zarr_format: ZarrFo
     assert paths == expected
 
     # regression test for https://github.com/zarr-developers/zarr-python/pull/2356
-    g = zarr.open_group(store, use_consolidated=False)
+    g = zarr.core.group.sync.open_group(store, use_consolidated=False)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         assert list(g)
@@ -1223,7 +1229,7 @@ async def test_open_mutable_mapping():
 
 
 def test_open_mutable_mapping_sync():
-    group = zarr.open_group(
+    group = zarr.core.group.sync.open_group(
         store={},
     )
     assert isinstance(group.store_path.store, MemoryStore)
@@ -1323,17 +1329,17 @@ class TestConsolidated:
         root = Group.from_store(store=store)
 
         # fine to be missing by default
-        zarr.open_group(store=store)
+        zarr.core.group.sync.open_group(store=store)
 
         with pytest.raises(ValueError, match="Consolidated metadata requested."):
-            zarr.open_group(store=store, use_consolidated=True)
+            zarr.core.group.sync.open_group(store=store, use_consolidated=True)
 
         # Now create consolidated metadata...
         root.create_group("g0")
-        zarr.consolidate_metadata(store)
+        zarr.core.group.sync.consolidate_metadata(store)
 
         # and explicitly ignore it.
-        group = zarr.open_group(store=store, use_consolidated=False)
+        group = zarr.core.group.sync.open_group(store=store, use_consolidated=False)
         assert group.metadata.consolidated_metadata is None
 
     async def test_open_consolidated_raises_async(self, store: Store) -> None:
@@ -1372,7 +1378,7 @@ class TestGroupMetadata:
 class TestInfo:
     def test_info(self):
         store = zarr.storage.MemoryStore()
-        A = zarr.group(store=store, path="A")
+        A = zarr.core.group.sync.group(store=store, path="A")
         B = A.create_group(name="B")
 
         B.create_array(name="x", shape=(1,), dtype="uint8")
@@ -1416,7 +1422,7 @@ def test_group_deprecated_positional_args(method: str) -> None:
     else:
         kwargs = {}
 
-    root = zarr.group()
+    root = zarr.core.group.sync.group()
     with pytest.warns(FutureWarning, match=r"Pass name=.* as keyword args."):
         arr = getattr(root, method)("foo", shape=1, **kwargs)
         assert arr.shape == (1,)
@@ -1432,7 +1438,7 @@ def test_group_deprecated_positional_args(method: str) -> None:
 @pytest.mark.parametrize("store", ["local", "memory"], indirect=["store"])
 def test_delitem_removes_children(store: Store, zarr_format: ZarrFormat) -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2191
-    g1 = zarr.group(store=store, zarr_format=zarr_format)
+    g1 = zarr.core.group.sync.group(store=store, zarr_format=zarr_format)
     g1.create_group("0")
     g1.create_group("0/0")
     arr = g1.create_array("0/0/0", shape=(1,), dtype="uint8")
@@ -1451,7 +1457,7 @@ def test_group_members_performance(store: MemoryStore) -> None:
     get_latency = 0.1
 
     # use the input store to create some groups
-    group_create = zarr.group(store=store)
+    group_create = zarr.core.group.sync.group(store=store)
     num_groups = 10
 
     # Create some groups
@@ -1460,7 +1466,7 @@ def test_group_members_performance(store: MemoryStore) -> None:
 
     latency_store = LatencyStore(store, get_latency=get_latency)
     # create a group with some latency on get operations
-    group_read = zarr.group(store=latency_store)
+    group_read = zarr.core.group.sync.group(store=latency_store)
 
     # check how long it takes to iterate over the groups
     # if .members is sensitive to IO latency,
@@ -1482,7 +1488,7 @@ def test_group_members_concurrency_limit(store: MemoryStore) -> None:
     get_latency = 0.02
 
     # use the input store to create some groups
-    group_create = zarr.group(store=store)
+    group_create = zarr.core.group.sync.group(store=store)
     num_groups = 10
 
     # Create some groups
@@ -1491,7 +1497,7 @@ def test_group_members_concurrency_limit(store: MemoryStore) -> None:
 
     latency_store = LatencyStore(store, get_latency=get_latency)
     # create a group with some latency on get operations
-    group_read = zarr.group(store=latency_store)
+    group_read = zarr.core.group.sync.group(store=latency_store)
 
     # check how long it takes to iterate over the groups
     # if .members is sensitive to IO latency,

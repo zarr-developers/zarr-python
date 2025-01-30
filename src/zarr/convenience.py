@@ -10,7 +10,6 @@ Convenience helpers.
 import warnings
 
 from zarr.api.synchronous import (
-    consolidate_metadata,
     copy,
     copy_all,
     copy_store,
@@ -19,9 +18,8 @@ from zarr.api.synchronous import (
     open_consolidated,
     save,
     save_array,
-    save_group,
-    tree,
 )
+from zarr.core.group.sync import consolidate_metadata, save_group, tree
 
 __all__ = [
     "consolidate_metadata",

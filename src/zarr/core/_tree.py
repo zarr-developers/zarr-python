@@ -3,7 +3,7 @@ import os
 from collections.abc import Sequence
 from typing import Any
 
-from zarr.core.group import AsyncGroup
+from zarr.core.group.async import AsyncGroup
 
 try:
     import rich

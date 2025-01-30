@@ -9,16 +9,17 @@ from numcodecs import Blosc
 
 import zarr.api.asynchronous
 import zarr.api.synchronous
+from zarr.core.group.async import AsyncGroup
+from zarr.core.group.core import group
+from zarr.core.group.metadata import GroupMetadata
 import zarr.storage
 from zarr.api.asynchronous import (
-    AsyncGroup,
     consolidate_metadata,
-    group,
     open,
     open_consolidated,
 )
 from zarr.core.buffer import cpu, default_buffer_prototype
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata
+from zarr.core.group.metadata import ConsolidatedMetadata
 from zarr.core.metadata import ArrayV3Metadata
 from zarr.core.metadata.v2 import ArrayV2Metadata
 from zarr.storage import StorePath

@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from _pytest.compat import LEGACY_PATH
 
-from zarr import Group
+from zarr.core.group.sync import Group
 from zarr.core.common import AccessModeLiteral, ZarrFormat
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StoreLike, StorePath
 from zarr.storage._common import contains_array, contains_group, make_store_path

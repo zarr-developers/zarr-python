@@ -12,7 +12,7 @@ import pytest
 
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
-from zarr import Array, AsyncArray, Group
+from zarr import Array, AsyncArray
 from zarr.abc.store import Store
 from zarr.codecs import (
     BytesCodec,
@@ -37,7 +37,8 @@ from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
-from zarr.core.group import AsyncGroup
+from zarr.core.group.async import AsyncGroup
+from zarr.core.group.sync import Group
 from zarr.core.indexing import BasicIndexer, ceildiv
 from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.core.sync import sync

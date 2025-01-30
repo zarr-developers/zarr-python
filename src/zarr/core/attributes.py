@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from zarr.core.array import Array
-    from zarr.core.group import Group
+    from zarr.core.group.sync import Group
 
 
 class Attributes(MutableMapping[str, JSON]):

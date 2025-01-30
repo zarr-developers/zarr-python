@@ -9,8 +9,9 @@ import numpy.typing as npt
 import pytest
 from hypothesis import HealthCheck, Verbosity, settings
 
-from zarr import AsyncGroup, config
+from zarr import config
 from zarr.abc.store import Store
+from zarr.core.group.async import AsyncGroup
 from zarr.core.sync import sync
 from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipStore
 

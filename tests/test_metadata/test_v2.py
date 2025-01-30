@@ -7,10 +7,11 @@ import numpy as np
 import pytest
 
 import zarr.api.asynchronous
+from zarr.core.group.metadata import GroupMetadata
 import zarr.storage
 from zarr.core.buffer import cpu
 from zarr.core.buffer.core import default_buffer_prototype
-from zarr.core.group import ConsolidatedMetadata, GroupMetadata
+from zarr.core.group.metadata import ConsolidatedMetadata
 from zarr.core.metadata import ArrayV2Metadata
 from zarr.core.metadata.v2 import parse_zarr_format
 

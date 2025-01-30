@@ -9,21 +9,21 @@ from numpy.testing import assert_array_equal
 import zarr
 import zarr.api.asynchronous
 import zarr.core.group
-from zarr import Array, Group
+from zarr import Array
 from zarr.abc.store import Store
 from zarr.api.synchronous import (
     create,
     create_array,
-    create_group,
-    group,
     load,
     open,
-    open_group,
     save,
     save_array,
-    save_group,
 )
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+from zarr.core.group.sync import Group, create_group, group, open_group, save_group
+import zarr.core.group.sync
+import zarr.core.group.sync
+import zarr.core.group.sync
 from zarr.errors import MetadataValidationError
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
@@ -354,15 +354,15 @@ def test_load_array(memory_store: Store) -> None:
 
 def test_tree() -> None:
     pytest.importorskip("rich")
-    g1 = zarr.group()
+    g1 = zarr.core.group.sync.group()
     g1.create_group("foo")
     g3 = g1.create_group("bar")
     g3.create_group("baz")
     g5 = g3.create_group("qux")
     g5.create_array("baz", shape=(100,), chunks=(10,), dtype="float64")
     with pytest.warns(DeprecationWarning):
-        assert repr(zarr.tree(g1)) == repr(g1.tree())
-        assert str(zarr.tree(g1)) == str(g1.tree())
+        assert repr(zarr.core.group.sync.tree(g1)) == repr(g1.tree())
+        assert str(zarr.core.group.sync.tree(g1)) == str(g1.tree())
 
 
 # @pytest.mark.parametrize("stores_from_path", [False, True])
@@ -1069,7 +1069,7 @@ def test_open_group_positional_args_deprecated() -> None:
 def test_open_falls_back_to_open_group() -> None:
     # https://github.com/zarr-developers/zarr-python/issues/2309
     store = MemoryStore()
-    zarr.open_group(store, attributes={"key": "value"})
+    zarr.core.group.sync.open_group(store, attributes={"key": "value"})
 
     group = zarr.open(store)
     assert isinstance(group, Group)

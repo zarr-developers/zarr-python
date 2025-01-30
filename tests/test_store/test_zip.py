@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
-import zarr
+import zarr.core.group.sync
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.storage import ZipStore
 from zarr.testing.store import StoreTests
@@ -65,7 +65,7 @@ class TestZipStore(StoreTests[ZipStore, cpu.Buffer]):
         assert store.supports_listing
 
     def test_api_integration(self, store: ZipStore) -> None:
-        root = zarr.open_group(store=store, mode="a")
+        root = zarr.core.group.sync.open_group(store=store, mode="a")
 
         data = np.arange(10000, dtype=np.uint16).reshape(100, 100)
         z = root.create_array(

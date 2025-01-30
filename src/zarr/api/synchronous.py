@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
-from typing_extensions import deprecated
 
 import zarr.api.asynchronous as async_api
 import zarr.core.array
 from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
-from zarr.core.group import Group
+from zarr.core.group.sync import Group
 from zarr.core.sync import sync
 
 if TYPE_CHECKING:
@@ -40,7 +39,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "array",
-    "consolidate_metadata",
+    ,
     "copy",
     "copy_all",
     "copy_store",
@@ -66,40 +65,6 @@ __all__ = [
     "zeros",
     "zeros_like",
 ]
-
-
-def consolidate_metadata(
-    store: StoreLike,
-    path: str | None = None,
-    zarr_format: ZarrFormat | None = None,
-) -> Group:
-    """
-    Consolidate the metadata of all nodes in a hierarchy.
-
-    Upon completion, the metadata of the root node in the Zarr hierarchy will be
-    updated to include all the metadata of child nodes.
-
-    Parameters
-    ----------
-    store : StoreLike
-        The store-like object whose metadata you wish to consolidate.
-    path : str, optional
-        A path to a group in the store to consolidate at. Only children
-        below that group will be consolidated.
-
-        By default, the root node is used so all the metadata in the
-        store is consolidated.
-    zarr_format : {2, 3, None}, optional
-        The zarr format of the hierarchy. By default the zarr format
-        is inferred.
-
-    Returns
-    -------
-    group: Group
-        The group, with the ``consolidated_metadata`` field set to include
-        the metadata of each child node.
-    """
-    return Group(sync(async_api.consolidate_metadata(store, path=path, zarr_format=zarr_format)))
 
 
 def copy(*args: Any, **kwargs: Any) -> tuple[int, int, int]:
@@ -288,74 +253,6 @@ def save_array(
     )
 
 
-def save_group(
-    store: StoreLike,
-    *args: NDArrayLike,
-    zarr_version: ZarrFormat | None = None,  # deprecated
-    zarr_format: ZarrFormat | None = None,
-    path: str | None = None,
-    storage_options: dict[str, Any] | None = None,
-    **kwargs: NDArrayLike,
-) -> None:
-    """Save several NumPy arrays to the local file system.
-
-    Follows a similar API to the NumPy savez()/savez_compressed() functions.
-
-    Parameters
-    ----------
-    store : Store or str
-        Store or path to directory in file system or name of zip file.
-    *args : ndarray
-        NumPy arrays with data to save.
-    zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving.
-    path : str or None, optional
-        Path within the store where the group will be saved.
-    storage_options : dict
-        If using an fsspec URL to create the store, these will be passed to
-        the backend implementation. Ignored otherwise.
-    **kwargs
-        NumPy arrays with data to save.
-    """
-
-    return sync(
-        async_api.save_group(
-            store,
-            *args,
-            zarr_version=zarr_version,
-            zarr_format=zarr_format,
-            path=path,
-            storage_options=storage_options,
-            **kwargs,
-        )
-    )
-
-
-@deprecated("Use Group.tree instead.")
-def tree(grp: Group, expand: bool | None = None, level: int | None = None) -> Any:
-    """Provide a rich display of the hierarchy.
-
-    .. deprecated:: 3.0.0
-        `zarr.tree()` is deprecated and will be removed in a future release.
-        Use `group.tree()` instead.
-
-    Parameters
-    ----------
-    grp : Group
-        Zarr or h5py group.
-    expand : bool, optional
-        Only relevant for HTML representation. If True, tree will be fully expanded.
-    level : int, optional
-        Maximum depth to descend into hierarchy.
-
-    Returns
-    -------
-    TreeRepr
-        A pretty-printable object displaying the hierarchy.
-    """
-    return sync(async_api.tree(grp._async_group, expand=expand, level=level))
-
-
 # TODO: add type annotations for kwargs
 def array(data: npt.ArrayLike, **kwargs: Any) -> Array:
     """Create an array filled with `data`.
@@ -374,219 +271,6 @@ def array(data: npt.ArrayLike, **kwargs: Any) -> Array:
     """
 
     return Array(sync(async_api.array(data=data, **kwargs)))
-
-
-@_deprecate_positional_args
-def group(
-    store: StoreLike | None = None,
-    *,
-    overwrite: bool = False,
-    chunk_store: StoreLike | None = None,  # not used
-    cache_attrs: bool | None = None,  # not used, default changed
-    synchronizer: Any | None = None,  # not used
-    path: str | None = None,
-    zarr_version: ZarrFormat | None = None,  # deprecated
-    zarr_format: ZarrFormat | None = None,
-    meta_array: Any | None = None,  # not used
-    attributes: dict[str, JSON] | None = None,
-    storage_options: dict[str, Any] | None = None,
-) -> Group:
-    """Create a group.
-
-    Parameters
-    ----------
-    store : Store or str, optional
-        Store or path to directory in file system.
-    overwrite : bool, optional
-        If True, delete any pre-existing data in `store` at `path` before
-        creating the group.
-    chunk_store : Store, optional
-        Separate storage for chunks. If not provided, `store` will be used
-        for storage of both chunks and metadata.
-    cache_attrs : bool, optional
-        If True (default), user attributes will be cached for attribute read
-        operations. If False, user attributes are reloaded from the store prior
-        to all attribute read operations.
-    synchronizer : object, optional
-        Array synchronizer.
-    path : str, optional
-        Group path within store.
-    meta_array : array-like, optional
-        An array instance to use for determining arrays to create and return
-        to users. Use `numpy.empty(())` by default.
-    zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving.
-    storage_options : dict
-        If using an fsspec URL to create the store, these will be passed to
-        the backend implementation. Ignored otherwise.
-
-    Returns
-    -------
-    g : Group
-        The new group.
-    """
-    return Group(
-        sync(
-            async_api.group(
-                store=store,
-                overwrite=overwrite,
-                chunk_store=chunk_store,
-                cache_attrs=cache_attrs,
-                synchronizer=synchronizer,
-                path=path,
-                zarr_version=zarr_version,
-                zarr_format=zarr_format,
-                meta_array=meta_array,
-                attributes=attributes,
-                storage_options=storage_options,
-            )
-        )
-    )
-
-
-@_deprecate_positional_args
-def open_group(
-    store: StoreLike | None = None,
-    *,
-    mode: AccessModeLiteral = "a",
-    cache_attrs: bool | None = None,  # default changed, not used in async api
-    synchronizer: Any = None,  # not used in async api
-    path: str | None = None,
-    chunk_store: StoreLike | None = None,  # not used in async api
-    storage_options: dict[str, Any] | None = None,  # not used in async api
-    zarr_version: ZarrFormat | None = None,  # deprecated
-    zarr_format: ZarrFormat | None = None,
-    meta_array: Any | None = None,  # not used in async api
-    attributes: dict[str, JSON] | None = None,
-    use_consolidated: bool | str | None = None,
-) -> Group:
-    """Open a group using file-mode-like semantics.
-
-    Parameters
-    ----------
-    store : Store, str, or mapping, optional
-        Store or path to directory in file system or name of zip file.
-
-        Strings are interpreted as paths on the local file system
-        and used as the ``root`` argument to :class:`zarr.storage.LocalStore`.
-
-        Dictionaries are used as the ``store_dict`` argument in
-        :class:`zarr.storage.MemoryStore``.
-
-        By default (``store=None``) a new :class:`zarr.storage.MemoryStore`
-        is created.
-
-    mode : {'r', 'r+', 'a', 'w', 'w-'}, optional
-        Persistence mode: 'r' means read only (must exist); 'r+' means
-        read/write (must exist); 'a' means read/write (create if doesn't
-        exist); 'w' means create (overwrite if exists); 'w-' means create
-        (fail if exists).
-    cache_attrs : bool, optional
-        If True (default), user attributes will be cached for attribute read
-        operations. If False, user attributes are reloaded from the store prior
-        to all attribute read operations.
-    synchronizer : object, optional
-        Array synchronizer.
-    path : str, optional
-        Group path within store.
-    chunk_store : Store or str, optional
-        Store or path to directory in file system or name of zip file.
-    storage_options : dict
-        If using an fsspec URL to create the store, these will be passed to
-        the backend implementation. Ignored otherwise.
-    meta_array : array-like, optional
-        An array instance to use for determining arrays to create and return
-        to users. Use `numpy.empty(())` by default.
-    attributes : dict
-        A dictionary of JSON-serializable values with user-defined attributes.
-    use_consolidated : bool or str, default None
-        Whether to use consolidated metadata.
-
-        By default, consolidated metadata is used if it's present in the
-        store (in the ``zarr.json`` for Zarr format 3 and in the ``.zmetadata`` file
-        for Zarr format 2).
-
-        To explicitly require consolidated metadata, set ``use_consolidated=True``,
-        which will raise an exception if consolidated metadata is not found.
-
-        To explicitly *not* use consolidated metadata, set ``use_consolidated=False``,
-        which will fall back to using the regular, non consolidated metadata.
-
-        Zarr format 2 allows configuring the key storing the consolidated metadata
-        (``.zmetadata`` by default). Specify the custom key as ``use_consolidated``
-        to load consolidated metadata from a non-default key.
-
-    Returns
-    -------
-    g : Group
-        The new group.
-    """
-    return Group(
-        sync(
-            async_api.open_group(
-                store=store,
-                mode=mode,
-                cache_attrs=cache_attrs,
-                synchronizer=synchronizer,
-                path=path,
-                chunk_store=chunk_store,
-                storage_options=storage_options,
-                zarr_version=zarr_version,
-                zarr_format=zarr_format,
-                meta_array=meta_array,
-                attributes=attributes,
-                use_consolidated=use_consolidated,
-            )
-        )
-    )
-
-
-def create_group(
-    store: StoreLike,
-    *,
-    path: str | None = None,
-    zarr_format: ZarrFormat | None = None,
-    overwrite: bool = False,
-    attributes: dict[str, Any] | None = None,
-    storage_options: dict[str, Any] | None = None,
-) -> Group:
-    """Create a group.
-
-    Parameters
-    ----------
-    store : Store or str
-        Store or path to directory in file system.
-    path : str, optional
-        Group path within store.
-    overwrite : bool, optional
-        If True, pre-existing data at ``path`` will be deleted before
-        creating the group.
-    zarr_format : {2, 3, None}, optional
-        The zarr format to use when saving.
-        If no ``zarr_format`` is provided, the default format will be used.
-        This default can be changed by modifying the value of ``default_zarr_format``
-        in :mod:`zarr.core.config`.
-    storage_options : dict
-        If using an fsspec URL to create the store, these will be passed to
-        the backend implementation. Ignored otherwise.
-
-    Returns
-    -------
-    Group
-        The new group.
-    """
-    return Group(
-        sync(
-            async_api.create_group(
-                store=store,
-                path=path,
-                overwrite=overwrite,
-                storage_options=storage_options,
-                zarr_format=zarr_format,
-                attributes=attributes,
-            )
-        )
-    )
 
 
 # TODO: add type annotations for kwargs

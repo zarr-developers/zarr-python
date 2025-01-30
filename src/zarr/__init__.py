@@ -1,36 +1,31 @@
 from zarr._version import version as __version__
 from zarr.api.synchronous import (
     array,
-    consolidate_metadata,
     copy,
     copy_all,
     copy_store,
     create,
     create_array,
-    create_group,
     empty,
     empty_like,
     full,
     full_like,
-    group,
     load,
     ones,
     ones_like,
     open,
     open_array,
     open_consolidated,
-    open_group,
     open_like,
     save,
     save_array,
-    save_group,
-    tree,
     zeros,
     zeros_like,
 )
 from zarr.core.array import Array, AsyncArray
 from zarr.core.config import config
-from zarr.core.group import AsyncGroup, Group
+from zarr.core.group.async import AsyncGroup
+from zarr.core.group.sync import Group, consolidate_metadata, create_group, group, open_group, save_group, tree
 
 # in case setuptools scm screw up and find version to be 0.0.0
 assert not __version__.startswith("0.0.0")

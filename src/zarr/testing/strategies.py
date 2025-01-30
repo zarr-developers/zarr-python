@@ -6,7 +6,7 @@ import numpy as np
 from hypothesis import given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
-import zarr
+import zarr.core.group.sync
 from zarr.abc.store import RangeByteRequest
 from zarr.core.array import Array
 from zarr.core.common import ZarrFormat
@@ -141,7 +141,7 @@ def arrays(
     expected_attrs = {} if attributes is None else attributes
 
     array_path = _dereference_path(path, name)
-    root = zarr.open_group(store, mode="w", zarr_format=zarr_format)
+    root = zarr.core.group.sync.open_group(store, mode="w", zarr_format=zarr_format)
 
     a = root.create_array(
         array_path,
