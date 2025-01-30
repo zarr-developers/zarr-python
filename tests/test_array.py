@@ -11,7 +11,9 @@ import numpy as np
 import pytest
 
 import zarr.api.asynchronous
+import zarr.api.synchronous as sync_api
 from zarr import Array, AsyncArray, Group
+from zarr.abc.store import Store
 from zarr.codecs import (
     BytesCodec,
     GzipCodec,
@@ -37,14 +39,15 @@ from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.core.group import AsyncGroup
-from zarr.core.indexing import ceildiv
-from zarr.core.metadata.v3 import DataType
+from zarr.core.indexing import BasicIndexer, ceildiv
+from zarr.core.metadata.v3 import ArrayV3Metadata, DataType
 from zarr.core.sync import sync
 from zarr.errors import ContainsArrayError, ContainsGroupError
 from zarr.storage import LocalStore, MemoryStore, StorePath
 
 if TYPE_CHECKING:
     from zarr.core.array_spec import ArrayConfigLike
+    from zarr.core.metadata.v2 import ArrayV2Metadata
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=["store"])
@@ -1256,6 +1259,69 @@ async def test_create_array_v2_no_shards(store: MemoryStore) -> None:
             shards=(5,),
             zarr_format=2,
         )
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+@pytest.mark.parametrize("impl", ["sync", "async"])
+async def test_create_array_data(impl: Literal["sync", "async"], store: Store) -> None:
+    """
+    Test that we can invoke ``create_array`` with a ``data`` parameter.
+    """
+    data = np.arange(10)
+    name = "foo"
+    arr: AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | Array
+    if impl == "sync":
+        arr = sync_api.create_array(store, name=name, data=data)
+        stored = arr[:]
+    elif impl == "async":
+        arr = await create_array(store, name=name, data=data, zarr_format=3)
+        stored = await arr._get_selection(
+            BasicIndexer(..., shape=arr.shape, chunk_grid=arr.metadata.chunk_grid),
+            prototype=default_buffer_prototype(),
+        )
+    else:
+        raise ValueError(f"Invalid impl: {impl}")
+
+    assert np.array_equal(stored, data)
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_data_invalid_params(store: Store) -> None:
+    """
+    Test that failing to specify data AND shape / dtype results in a ValueError
+    """
+    with pytest.raises(ValueError, match="shape was not specified"):
+        await create_array(store, data=None, shape=None, dtype=None)
+
+    # we catch shape=None first, so specifying a dtype should raise the same exception as before
+    with pytest.raises(ValueError, match="shape was not specified"):
+        await create_array(store, data=None, shape=None, dtype="uint8")
+
+    with pytest.raises(ValueError, match="dtype was not specified"):
+        await create_array(store, data=None, shape=(10, 10))
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+async def test_create_array_data_ignored_params(store: Store) -> None:
+    """
+    Test that specify data AND shape AND dtype results in a warning
+    """
+    data = np.arange(10)
+    with pytest.raises(
+        ValueError, match="The data parameter was used, but the shape parameter was also used."
+    ):
+        await create_array(store, data=data, shape=data.shape, dtype=None, overwrite=True)
+
+    # we catch shape first, so specifying a dtype should raise the same warning as before
+    with pytest.raises(
+        ValueError, match="The data parameter was used, but the shape parameter was also used."
+    ):
+        await create_array(store, data=data, shape=data.shape, dtype=data.dtype, overwrite=True)
+
+    with pytest.raises(
+        ValueError, match="The data parameter was used, but the dtype parameter was also used."
+    ):
+        await create_array(store, data=data, shape=None, dtype=data.dtype, overwrite=True)
 
 
 @pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1)])
