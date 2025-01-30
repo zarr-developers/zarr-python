@@ -3,24 +3,35 @@
 Using GPUs with Zarr
 ====================
 
-Zarr can be used along with GPUs to accelerate your workload. Currently,
-Zarr supports reading data into GPU memory. In the future, Zarr will
-support GPU-accelerated codecs and file IO.
+Zarr can use GPUs to accelerate your workload by running
+:meth:`zarr.config.enable_gpu`.
+
+.. note::
+
+   `zarr-python` currently supports reading the ndarray data into device (GPU)
+   memory as the final stage of the codec pipeline. Data will still be read into
+   or copied to host (CPU) memory for encoding and decoding.
+
+   In the future, codecs will be available compressing and decompressing data on
+   the GPU, avoiding the need to move data between the host and device for
+   compression and decompression.
 
 Reading data into device memory
 -------------------------------
+
+:meth:`zarr.config.enable_gpu` configures Zarr to use GPU memory for the data
+buffers used internally by Zarr.
 
 .. code-block:: python
 
    >>> import zarr
    >>> import cupy as cp
-   >>> zarr.config.enable_cuda()
+   >>> zarr.config.enable_gpu()
    >>> store = zarr.storage.MemoryStore()
-   >>> z = zarr.create_array(store=store, shape=(100, 100), chunks=(10, 10), dtype="float32")
+   >>> z = zarr.create_array(
+   ...     store=store, shape=(100, 100), chunks=(10, 10), dtype="float32",
+   ... )
    >>> type(z[:10, :10])
    cupy.ndarray
 
-:meth:`zarr.config.enable_cuda` updates the Zarr configuration to use device
-memory for all data buffers used by Zarr. This means that any reads from a Zarr
-store will return a CuPy ndarray rather than a NumPy ndarray. Any buffers used
-for metadata will be on the host.
+Note that the output type is a ``cupy.ndarray`` rather than a NumPy array.
