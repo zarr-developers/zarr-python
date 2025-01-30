@@ -176,10 +176,10 @@ class Store(ABC):
         Parameters
         ----------
         key : str
+        prototype : BufferPrototype
+            The prototype of the output buffer. Stores may support a default buffer prototype.
         byte_range : ByteRequest, optional
-
             ByteRequest may be one of the following. If not provided, all data associated with the key is retrieved.
-
             - RangeByteRequest(int, int): Request a specific range of bytes in the form (start, end). The end is exclusive. If the given range is zero-length or starts after the end of the object, an error will be returned. Additionally, if the range ends after the end of the object, the entire remainder of the object will be returned. Otherwise, the exact requested range will be returned.
             - OffsetByteRequest(int): Request all bytes starting from a given byte offset. This is equivalent to bytes={int}- as an HTTP header.
             - SuffixByteRequest(int): Request the last int bytes. Note that here, int is the size of the request, not the byte offset. This is equivalent to bytes=-{int} as an HTTP header.
@@ -200,6 +200,8 @@ class Store(ABC):
 
         Parameters
         ----------
+        prototype : BufferPrototype
+            The prototype of the output buffer. Stores may support a default buffer prototype.
         key_ranges : Iterable[tuple[str, tuple[int | None, int | None]]]
             Ordered set of key, range pairs, a key may occur multiple times with different ranges
 

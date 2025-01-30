@@ -83,6 +83,7 @@ src/zarr/_version.py
 data/*
 src/fixture/
 fixture/
+junit.xml
 
 .DS_Store
 tests/.hypothesis

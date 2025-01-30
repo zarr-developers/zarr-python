@@ -1,0 +1,1 @@
+Test that a ValueError is raised for invalid byte range syntax in StoreTests.
