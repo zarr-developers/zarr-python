@@ -1296,6 +1296,8 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                 out_buffer,
                 drop_axes=indexer.drop_axes,
             )
+        if isinstance(indexer, BasicIndexer) and indexer.shape == ():
+            return out_buffer.as_scalar()
         return out_buffer.as_ndarray_like()
 
     async def getitem(
@@ -2268,6 +2270,8 @@ class Array:
             raise ValueError(msg)
 
         arr_np = self[...]
+        if self.ndim == 0:
+            arr_np = np.array(arr_np)
 
         if dtype is not None:
             arr_np = arr_np.astype(dtype)
