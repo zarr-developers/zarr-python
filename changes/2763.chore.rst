@@ -1,0 +1,3 @@
+Created a type alias ``ChunkKeyEncodingLike`` to model the union of ``ChunkKeyEncoding`` instances and the dict form of the
+parameters of those instances. ``ChunkKeyEncodingLike`` should be used by high-level functions to provide a convenient
+way for creating ``ChunkKeyEncoding`` objects.

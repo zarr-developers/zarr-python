@@ -1,0 +1,2 @@
+Fixed the fsspec tests to skip if ``botocore`` is not installed.
+Previously they would have failed with an import error.

@@ -5,7 +5,7 @@ import os
 from typing import TYPE_CHECKING
 
 import pytest
-from botocore.session import Session
+from packaging.version import parse as parse_version
 
 import zarr.api.asynchronous
 from zarr.abc.store import OffsetByteRequest
@@ -25,6 +25,7 @@ s3fs = pytest.importorskip("s3fs")
 requests = pytest.importorskip("requests")
 moto_server = pytest.importorskip("moto.moto_server.threaded_moto_server")
 moto = pytest.importorskip("moto")
+botocore = pytest.importorskip("botocore")
 
 # ### amended from s3fs ### #
 test_bucket_name = "test"
@@ -51,7 +52,7 @@ def s3_base() -> Generator[None, None, None]:
 
 def get_boto3_client() -> botocore.client.BaseClient:
     # NB: we use the sync botocore client for setup
-    session = Session()
+    session = botocore.session.Session()
     return session.create_client("s3", endpoint_url=endpoint_url)
 
 
@@ -215,3 +216,31 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         store_kwargs["path"] += "/abc"
         store = await self.store_cls.open(**store_kwargs)
         assert await store.is_empty("")
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+def test_wrap_sync_filesystem():
+    """The local fs is not async so we should expect it to be wrapped automatically"""
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+
+    store = FsspecStore.from_url("local://test/path")
+
+    assert isinstance(store.fs, AsyncFileSystemWrapper)
+    assert store.fs.async_impl
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+def test_no_wrap_async_filesystem():
+    """An async fs should not be wrapped automatically; fsspec's https filesystem is such an fs"""
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+
+    store = FsspecStore.from_url("https://test/path")
+
+    assert not isinstance(store.fs, AsyncFileSystemWrapper)
+    assert store.fs.async_impl

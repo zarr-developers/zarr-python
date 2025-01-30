@@ -56,6 +56,14 @@ class WrapperStore(Store, Generic[T_Store]):
     async def is_empty(self, prefix: str) -> bool:
         return await self._store.is_empty(prefix)
 
+    @property
+    def _is_open(self) -> bool:
+        return self._store._is_open
+
+    @_is_open.setter
+    def _is_open(self, value: bool) -> None:
+        raise NotImplementedError("WrapperStore must be opened via the `_open` method")
+
     async def clear(self) -> None:
         return await self._store.clear()
 
@@ -67,7 +75,13 @@ class WrapperStore(Store, Generic[T_Store]):
         return self._store._check_writable()
 
     def __eq__(self, value: object) -> bool:
-        return type(self) is type(value) and self._store.__eq__(value)
+        return type(self) is type(value) and self._store.__eq__(value._store)  # type: ignore[attr-defined]
+
+    def __str__(self) -> str:
+        return f"wrapping-{self._store}"
+
+    def __repr__(self) -> str:
+        return f"WrapperStore({self._store.__class__.__name__}, '{self._store}')"
 
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
