@@ -3,6 +3,149 @@ Release notes
 
 .. towncrier release notes start
 
+3.0.2 (2025-01-31)
+------------------
+
+Features
+~~~~~~~~
+
+- Test ``getsize()`` and ``getsize_prefix()`` in ``StoreTests``. (:issue:`2693`)
+- Test that a ``ValueError`` is raised for invalid byte range syntax in ``StoreTests``. (:issue:`2693`)
+- Separate instantiating and opening a store in ``StoreTests``. (:issue:`2693`)
+- Add a test for using Stores as a context managers in ``StoreTests``. (:issue:`2693`)
+- Implemented ``LogingStore.open()``. (:issue:`2693`)
+- ``LoggingStore`` is now a generic class. (:issue:`2693`)
+- Change StoreTest's ``test_store_repr``, ``test_store_supports_writes``,
+  ``test_store_supports_partial_writes``, and ``test_store_supports_listing``
+  to to be implemented using ``@abstractmethod``, rather raising ``NotImplementedError``. (:issue:`2693`)
+- Test the error raised for invalid buffer arguments in ``StoreTests``. (:issue:`2693`)
+- Test that data can be written to a store that's not yet open using the store.set method in ``StoreTests``. (:issue:`2693`)
+- Adds a new function ``init_array`` for initializing an array in storage, and refactors ``create_array``
+  to use ``init_array``. ``create_array`` takes two a new parameters: ``data``, an optional array-like object, and ``write_data``, a bool which defaults to ``True``.
+  If ``data`` is given to ``create_array``, then the ``dtype`` and ``shape`` attributes of ``data`` are used to define the
+  corresponding attributes of the resulting Zarr array. Additionally, if ``data`` given and ``write_data`` is ``True``,
+  then the values in ``data`` will be written to the newly created array. (:issue:`2761`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Wrap sync fsspec filesystems with ``AsyncFileSystemWrapper``. (:issue:`2533`)
+- Added backwards compatibility for Zarr format 2 structured arrays. (:issue:`2681`)
+- Update equality for ``LoggingStore`` and ``WrapperStore`` such that 'other' must also be a ``LoggingStore`` or ``WrapperStore`` respectively, rather than only checking the types of the stores they wrap. (:issue:`2693`)
+- Ensure that ``ZipStore`` is open before getting or setting any values. (:issue:`2693`)
+- Use stdout rather than stderr as the default stream for ``LoggingStore``. (:issue:`2693`)
+- Match the errors raised by read only stores in ``StoreTests``. (:issue:`2693`)
+- Fixed ``ZipStore`` to make sure the correct attributes are saved when instances are pickled.
+  This fixes a previous bug that prevent using ``ZipStore`` with a ``ProcessPoolExecutor``. (:issue:`2762`)
+- Updated the optional test dependencies to include ``botocore`` and ``fsspec``. (:issue:`2768`)
+- Fixed the fsspec tests to skip if ``botocore`` is not installed.
+  Previously they would have failed with an import error. (:issue:`2768`)
+- Optimize full chunk writes. (:issue:`2782`)
+
+
+Improved Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+- Changed the machinery for creating changelog entries.
+  Now individual entries should be added as files to the `changes` directory in the `zarr-python` repository, instead of directly to the changelog file. (:issue:`2736`)
+
+
+3.0.2 (2025-01-30)
+------------------
+
+Features
+~~~~~~~~
+
+- Test ``getsize()`` and ``getsize_prefix()`` in ``StoreTests``. (:issue:`2693`)
+- Test that a ``ValueError`` is raised for invalid byte range syntax in ``StoreTests``. (:issue:`2693`)
+- Separate instantiating and opening a store in ``StoreTests``. (:issue:`2693`)
+- Add a test for using Stores as a context managers in ``StoreTests``. (:issue:`2693`)
+- Implemented ``LogingStore.open()``. (:issue:`2693`)
+- ``LoggingStore`` is now a generic class. (:issue:`2693`)
+- Change StoreTest's ``test_store_repr``, ``test_store_supports_writes``,
+  ``test_store_supports_partial_writes``, and ``test_store_supports_listing``
+  to to be implemented using ``@abstractmethod``, rather raising ``NotImplementedError``. (:issue:`2693`)
+- Test the error raised for invalid buffer arguments in ``StoreTests``. (:issue:`2693`)
+- Test that data can be written to a store that's not yet open using the store.set method in ``StoreTests``. (:issue:`2693`)
+- Adds a new function ``init_array`` for initializing an array in storage, and refactors ``create_array``
+  to use ``init_array``. ``create_array`` takes two a new parameters: ``data``, an optional array-like object, and ``write_data``, a bool which defaults to ``True``.
+  If ``data`` is given to ``create_array``, then the ``dtype`` and ``shape`` attributes of ``data`` are used to define the
+  corresponding attributes of the resulting Zarr array. Additionally, if ``data`` given and ``write_data`` is ``True``,
+  then the values in ``data`` will be written to the newly created array. (:issue:`2761`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Wrap sync fsspec filesystems with ``AsyncFileSystemWrapper``. (:issue:`2533`)
+- Added backwards compatibility for Zarr format 2 structured arrays. (:issue:`2681`)
+- Update equality for ``LoggingStore`` and ``WrapperStore`` such that 'other' must also be a ``LoggingStore`` or ``WrapperStore`` respectively, rather than only checking the types of the stores they wrap. (:issue:`2693`)
+- Ensure that ``ZipStore`` is open before getting or setting any values. (:issue:`2693`)
+- Use stdout rather than stderr as the default stream for ``LoggingStore``. (:issue:`2693`)
+- Match the errors raised by read only stores in ``StoreTests``. (:issue:`2693`)
+- Fixed ``ZipStore`` to make sure the correct attributes are saved when instances are pickled.
+  This fixes a previous bug that prevent using ``ZipStore`` with a ``ProcessPoolExecutor``. (:issue:`2762`)
+- Updated the optional test dependencies to include ``botocore`` and ``fsspec``. (:issue:`2768`)
+- Fixed the fsspec tests to skip if ``botocore`` is not installed.
+  Previously they would have failed with an import error. (:issue:`2768`)
+- Optimize full chunk writes. (:issue:`2782`)
+
+
+Improved Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+- Changed the machinery for creating changelog entries.
+  Now individual entries should be added as files to the `changes` directory in the `zarr-python` repository, instead of directly to the changelog file. (:issue:`2736`)
+
+
+3.0.2 (2025-01-30)
+------------------
+
+Features
+~~~~~~~~
+
+- Test getsize() and getsize_prefix() in StoreTests. (:issue:`2693`)
+- Test that a ValueError is raised for invalid byte range syntax in StoreTests. (:issue:`2693`)
+- Separate instantiating and opening a store in StoreTests. (:issue:`2693`)
+- Add a test for using Stores as a context managers in StoreTests. (:issue:`2693`)
+- Implemented open() for LoggingStore. (:issue:`2693`)
+- LoggingStore is now a generic class. (:issue:`2693`)
+- Change StoreTest's ``test_store_repr``, ``test_store_supports_writes``,
+  ``test_store_supports_partial_writes``, and ``test_store_supports_listing``
+  to to be implemented using ``@abstractmethod``, rather raising ``NotImplementedError``. (:issue:`2693`)
+- Test the error raised for invalid buffer arguments in StoreTests. (:issue:`2693`)
+- Test that data can be written to a store that's not yet open using the store.set method in StoreTests (:issue:`2693`)
+- Adds a new function ``init_array`` for initializing an array in storage, and refactors ``create_array``
+  to use ``init_array``. ``create_array`` takes two a new parameters: ``data``, an optional array-like object, and ``write_data``, a bool which defaults to ``True``.
+  If ``data`` is given to ``create_array``, then the ``dtype`` and ``shape`` attributes of ``data`` are used to define the
+  corresponding attributes of the resulting Zarr array. Additionally, if ``data`` given and ``write_data`` is ``True``,
+  then the values in ``data`` will be written to the newly created array. (:issue:`2761`)
+
+
+Bugfixes
+~~~~~~~~
+
+- Wrap sync fsspec filesystems with AsyncFileSystemWrapper in xarray.to_zarr (:issue:`2533`)
+- Added backwards compatibility for Zarr format 2 structured arrays. (:issue:`2681`)
+- Update equality for LoggingStore and WrapperStore such that 'other' must also be a LoggingStore or WrapperStore respectively, rather than only checking the types of the stores they wrap. (:issue:`2693`)
+- Ensure that ZipStore is open before getting or setting any values. (:issue:`2693`)
+- Use stdout rather than stderr as the default stream for LoggingStore. (:issue:`2693`)
+- Match the errors raised by read only stores in StoreTests. (:issue:`2693`)
+- Fixed ZipStore to make sure the correct attributes are saved when instances are pickled.
+  This fixes a previous bug that prevent using ZipStore with a ProcessPoolExecutor. (:issue:`2762`)
+- Updated the optional test dependencies to include ``botocore`` and ``fsspec``. (:issue:`2768`)
+- Fixed the fsspec tests to skip if ``botocore`` is not installed.
+  Previously they would have failed with an import error. (:issue:`2768`)
+- Optimize full chunk writes (:issue:`2782`)
+
+
+Improved Documentation
+~~~~~~~~~~~~~~~~~~~~~~
+
+- Changed the machinery for creating changelog entries.
+  Now individual entries should be added as files to the `changes` directory in the `zarr-python` repository, instead of directly to the changelog file. (:issue:`2736`)
+
 
 3.0.1 (Jan. 17, 2025)
 ---------------------
