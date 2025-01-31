@@ -1,1 +1,0 @@
-Ensure that ZipStore is open before getting or setting any values.
