@@ -1,0 +1,1 @@
+Use removeprefix rather than replace when removing filename prefixes in `FsspecStore.list`
