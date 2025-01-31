@@ -1156,4 +1156,6 @@ def test_gpu_basic(store: Store, zarr_format: ZarrFormat | None) -> None:
         z[:10, :10] = src[:10, :10]
 
         result = z[:10, :10]
+        # assert_array_equal doesn't check the type
+        assert isinstance(result, type(src))
         cp.testing.assert_array_equal(result, src[:10, :10])
