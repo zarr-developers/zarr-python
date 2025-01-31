@@ -763,6 +763,7 @@ def create_array(
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
     config: ArrayConfig | ArrayConfigLike | None = None,
+    write_data: bool = True,
 ) -> Array:
     """Create an array.
 
@@ -856,6 +857,11 @@ def create_array(
         Whether to overwrite an array with the same name in the store, if one exists.
     config : ArrayConfig or ArrayConfigLike, optional
         Runtime configuration for the array.
+    write_data : bool
+        If a pre-existing array-like object was provided to this function via the ``data`` parameter
+        then ``write_data`` determines whether the values in that array-like object should be
+        written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+        array will be left empty.
 
     Returns
     -------
@@ -896,6 +902,7 @@ def create_array(
                 storage_options=storage_options,
                 overwrite=overwrite,
                 config=config,
+                write_data=write_data,
             )
         )
     )
