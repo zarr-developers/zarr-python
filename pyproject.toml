@@ -64,6 +64,8 @@ keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 # User extras
 remote = [
     "fsspec>=2023.10.0",
+    "obstore==0.3.0",
+
 ]
 gpu = [
     "cupy-cuda12x",
@@ -84,6 +86,7 @@ test = [
     "mypy",
     "hypothesis",
     "universal-pathlib",
+    "obstore==0.3.0",
 ]
 optional = ["rich", "universal-pathlib"]
 docs = [

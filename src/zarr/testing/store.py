@@ -42,7 +42,7 @@ class StoreTests(Generic[S, B]):
     async def set(self, store: S, key: str, value: Buffer) -> None:
         """
         Insert a value into a storage backend, with a specific key.
-        This should not not use any store methods. Bypassing the store methods allows them to be
+        This should not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
         ...
@@ -51,7 +51,7 @@ class StoreTests(Generic[S, B]):
     async def get(self, store: S, key: str) -> Buffer:
         """
         Retrieve a value from a storage backend, by key.
-        This should not not use any store methods. Bypassing the store methods allows them to be
+        This should not use any store methods. Bypassing the store methods allows them to be
         tested.
         """
         ...
@@ -152,6 +152,7 @@ class StoreTests(Generic[S, B]):
         """
         Ensure that data can be read from the store using the store.get method.
         """
+        data = b"\x01\x02\x03\x04"
         data_buf = self.buffer_cls.from_bytes(data)
         await self.set(store, key, data_buf)
         observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
