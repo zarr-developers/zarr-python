@@ -50,12 +50,12 @@ Improved Documentation
 - Changed the machinery for creating changelog entries.
   Now individual entries should be added as files to the `changes` directory in the `zarr-python` repository, instead of directly to the changelog file. (:issue:`2736`)
 
-Chores
-~~~~~~
+Other
+~~~~~
 
 - Created a type alias ``ChunkKeyEncodingLike`` to model the union of ``ChunkKeyEncoding`` instances and the dict form of the
-parameters of those instances. ``ChunkKeyEncodingLike`` should be used by high-level functions to provide a convenient
-way for creating ``ChunkKeyEncoding`` objects. (:issue:`2763`)
+  parameters of those instances. ``ChunkKeyEncodingLike`` should be used by high-level functions to provide a convenient
+  way for creating ``ChunkKeyEncoding`` objects. (:issue:`2763`)
 
 
 3.0.1 (Jan. 17, 2025)
