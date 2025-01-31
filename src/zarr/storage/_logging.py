@@ -88,7 +88,7 @@ class LoggingStore(WrapperStore[T_Store]):
         op = f"{type(self._store).__name__}.{method}"
         if hint:
             op = f"{op}({hint})"
-        self.logger.info("Calling %s", op)
+        self.logger.info(" Calling %s", op)
         start_time = time.time()
         try:
             self.counter[method] += 1
