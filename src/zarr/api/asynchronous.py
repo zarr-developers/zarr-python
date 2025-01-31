@@ -1065,7 +1065,8 @@ async def create(
 async def empty(
     shape: ChunkCoords, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-    """Create an empty array.
+    """Create an empty array with the specified shape. The contents will be filled with the
+    array's fill value or zeros if no fill value is provided.
 
     Parameters
     ----------
@@ -1073,12 +1074,6 @@ async def empty(
         Shape of the empty array.
     **kwargs
         Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
-
-    Notes
-    -----
-    The contents of an empty Zarr array are not defined. On attempting to
-    retrieve data from an empty Zarr array, any values may be returned,
-    and these are not guaranteed to be stable from one access to the next.
     """
 
     return await create(shape=shape, fill_value=None, **kwargs)
@@ -1087,7 +1082,8 @@ async def empty(
 async def empty_like(
     a: ArrayLike, **kwargs: Any
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-    """Create an empty array like `a`.
+    """Create an empty array like `a`. The contents will be filled with the
+    array's fill value or zeros if no fill value is provided.
 
     Parameters
     ----------
