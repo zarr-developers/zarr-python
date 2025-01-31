@@ -19,6 +19,7 @@ from zarr.core.indexing import (
     OrthogonalSelection,
     Selection,
     _iter_grid,
+    is_total_slice,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -1963,3 +1964,8 @@ def test_iter_chunk_regions():
         assert_array_equal(a[region], np.ones_like(a[region]))
         a[region] = 0
         assert_array_equal(a[region], np.zeros_like(a[region]))
+
+
+def test_is_total_slice():
+    assert is_total_slice((0, slice(4, 6)), (1, 2))
+    assert is_total_slice((slice(0, 1, None), slice(4, 6)), (1, 2))

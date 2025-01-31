@@ -5,6 +5,7 @@ import pickle
 import re
 from itertools import accumulate
 from typing import TYPE_CHECKING, Any, Literal
+from unittest import mock
 
 import numcodecs
 import numpy as np
@@ -1438,3 +1439,11 @@ async def test_from_array_arraylike(
         np.testing.assert_array_equal(result[...], np.array(src))
     else:
         np.testing.assert_array_equal(result[...], np.full_like(src, fill_value))
+
+
+async def test_orthogonal_set_total_slice() -> None:
+    """Ensure that a whole chunk overwrite does not read chunks"""
+    store = MemoryStore()
+    array = zarr.create_array(store, shape=(20, 20), chunks=(1, 2), dtype=int, fill_value=-1)
+    with mock.patch("zarr.storage.MemoryStore.get", side_effect=ValueError):
+        array[0, slice(4, 10)] = np.arange(6)
