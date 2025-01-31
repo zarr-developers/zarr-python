@@ -3992,7 +3992,7 @@ async def from_array(
             else:
                 compressors = "auto"
         if serializer == "keep":
-            if zarr_format == 3:
+            if zarr_format == 3 and data.metadata.zarr_format == 3:
                 serializer = cast(SerializerLike, data.serializer)
             else:
                 serializer = "auto"

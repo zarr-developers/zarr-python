@@ -1365,6 +1365,7 @@ async def test_creation_from_other_zarr_format(
     assert result.fill_value == src.fill_value
     assert result.dtype == src.dtype
     assert result.chunks == src.chunks
+    assert result.metadata.zarr_format == new_format
     if src_format == new_format:
         assert result.metadata == src.metadata
 
