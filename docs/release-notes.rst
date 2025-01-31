@@ -21,7 +21,7 @@ Features
 - Test the error raised for invalid buffer arguments in ``StoreTests``. (:issue:`2693`)
 - Test that data can be written to a store that's not yet open using the store.set method in ``StoreTests``. (:issue:`2693`)
 - Adds a new function ``init_array`` for initializing an array in storage, and refactors ``create_array``
-  to use ``init_array``. ``create_array`` takes two a new parameters: ``data``, an optional array-like object, and ``write_data``, a bool which defaults to ``True``.
+  to use ``init_array``. ``create_array`` takes two new parameters: ``data``, an optional array-like object, and ``write_data``, a bool which defaults to ``True``.
   If ``data`` is given to ``create_array``, then the ``dtype`` and ``shape`` attributes of ``data`` are used to define the
   corresponding attributes of the resulting Zarr array. Additionally, if ``data`` given and ``write_data`` is ``True``,
   then the values in ``data`` will be written to the newly created array. (:issue:`2761`)
