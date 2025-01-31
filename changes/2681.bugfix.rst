@@ -1,1 +1,0 @@
-Added backwards compatibility for Zarr format 2 structured arrays.

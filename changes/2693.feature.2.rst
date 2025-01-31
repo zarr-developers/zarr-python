@@ -1,1 +1,0 @@
-LoggingStore is now a generic class.
