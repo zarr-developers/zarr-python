@@ -1396,7 +1396,7 @@ async def test_from_array(
     new_fill_value = 3
     new_attributes = {"foo": "bar"}
 
-    result = zarr.array(
+    result = zarr.from_array(
         src,
         store=store2,
         chunks=new_chunks,

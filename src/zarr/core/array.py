@@ -3972,6 +3972,10 @@ async def from_array(
         >>> await arr5.getitem(...)
         array([[0, 0],[0, 0]])
     """
+    mode: Literal["a"] = "a"
+    config_parsed = parse_array_config(config)
+    store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
+
     if isinstance(data, Array):
         if chunks == "keep":
             chunks = data.chunks
@@ -4016,51 +4020,51 @@ async def from_array(
             serializer = "auto"
     if not hasattr(data, "dtype") or not hasattr(data, "shape"):
         data = np.array(data)
-    new_array = await create_array(
-        store,
-        name=name,
+
+    meta = await init_array(
+        store_path=store_path,
         shape=data.shape,
         dtype=data.dtype,
         chunks=chunks,
         shards=shards,
         filters=filters,
         compressors=compressors,
-        serializer=(serializer or "auto"),
+        serializer=serializer,
         fill_value=fill_value,
         order=order,
         zarr_format=zarr_format,
         attributes=attributes,
         chunk_key_encoding=chunk_key_encoding,
         dimension_names=dimension_names,
-        storage_options=storage_options,
         overwrite=overwrite,
-        config=config,
     )
+    result = AsyncArray(metadata=meta, store_path=store_path, config=config_parsed)
+
     if write_data:
         if isinstance(data, Array):
 
             async def _copy_array_region(chunk_coords: ChunkCoords | slice, _data: Array) -> None:
                 arr = await _data._async_array.getitem(chunk_coords)
-                await new_array.setitem(chunk_coords, arr)
+                await result.setitem(chunk_coords, arr)
 
             # Stream data from the source array to the new array
             await concurrent_map(
-                [(region, data) for region in new_array._iter_chunk_regions()],
+                [(region, data) for region in result._iter_chunk_regions()],
                 _copy_array_region,
                 zarr.core.config.config.get("async.concurrency"),
             )
         else:
 
             async def _copy_arraylike_region(chunk_coords: slice, _data: NDArrayLike) -> None:
-                await new_array.setitem(chunk_coords, _data[chunk_coords])
+                await result.setitem(chunk_coords, _data[chunk_coords])
 
             # Stream data from the source array to the new array
             await concurrent_map(
-                [(region, data) for region in new_array._iter_chunk_regions()],
+                [(region, data) for region in result._iter_chunk_regions()],
                 _copy_arraylike_region,
                 zarr.core.config.config.get("async.concurrency"),
             )
-    return new_array
+    return result
 
 
 async def init_array(
@@ -4408,39 +4412,54 @@ async def create_array(
     >>>     fill_value=0)
     <AsyncArray memory://140349042942400 shape=(100, 100) dtype=int32>
     """
-    mode: Literal["a"] = "a"
-    config_parsed = parse_array_config(config)
-    store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
-
     data_parsed, shape_parsed, dtype_parsed = _parse_data_params(
         data=data, shape=shape, dtype=dtype
     )
-    meta = await init_array(
-        store_path=store_path,
-        shape=shape_parsed,
-        dtype=dtype_parsed,
-        chunks=chunks,
-        shards=shards,
-        filters=filters,
-        compressors=compressors,
-        serializer=serializer,
-        fill_value=fill_value,
-        order=order,
-        zarr_format=zarr_format,
-        attributes=attributes,
-        chunk_key_encoding=chunk_key_encoding,
-        dimension_names=dimension_names,
-        overwrite=overwrite,
-    )
-
-    result = AsyncArray(metadata=meta, store_path=store_path, config=config_parsed)
-    if write_data is True and data_parsed is not None:
-        await result._set_selection(
-            BasicIndexer(..., shape=result.shape, chunk_grid=result.metadata.chunk_grid),
-            data_parsed,
-            prototype=default_buffer_prototype(),
+    if data_parsed is not None:
+        return await from_array(
+            data=data_parsed,
+            store=store,
+            write_data=write_data,
+            name=name,
+            chunks=chunks,
+            shards=shards,
+            filters=filters,
+            compressors=compressors,
+            serializer=serializer,
+            fill_value=fill_value,
+            order=order,
+            zarr_format=zarr_format,
+            attributes=attributes,
+            chunk_key_encoding=chunk_key_encoding,
+            dimension_names=dimension_names,
+            storage_options=storage_options,
+            overwrite=overwrite,
+            config=config,
         )
-    return result
+    else:
+        mode: Literal["a"] = "a"
+        config_parsed = parse_array_config(config)
+        store_path = await make_store_path(
+            store, path=name, mode=mode, storage_options=storage_options
+        )
+        meta = await init_array(
+            store_path=store_path,
+            shape=shape_parsed,
+            dtype=dtype_parsed,
+            chunks=chunks,
+            shards=shards,
+            filters=filters,
+            compressors=compressors,
+            serializer=serializer,
+            fill_value=fill_value,
+            order=order,
+            zarr_format=zarr_format,
+            attributes=attributes,
+            chunk_key_encoding=chunk_key_encoding,
+            dimension_names=dimension_names,
+            overwrite=overwrite,
+        )
+        return AsyncArray(metadata=meta, store_path=store_path, config=config_parsed)
 
 
 def _parse_chunk_key_encoding(
