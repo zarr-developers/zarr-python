@@ -72,6 +72,10 @@ class TestWrapperStore(StoreTests[WrapperStore, Buffer]):
             store._is_open = True
 
 
+# TODO: work out where warning is coming from and fix
+@pytest.mark.filterwarnings(
+    "ignore:coroutine 'ClientCreatorContext.__aexit__' was never awaited:RuntimeWarning"
+)
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
 async def test_wrapped_set(store: Store, capsys: pytest.CaptureFixture[str]) -> None:
     # define a class that prints when it sets
