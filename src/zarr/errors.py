@@ -57,3 +57,10 @@ class NodeTypeValidationError(MetadataValidationError):
     This can be raised when the value is invalid or unexpected given the context,
     for example an 'array' node when we expected a 'group'.
     """
+
+
+class RootedHierarchyError(BaseZarrError):
+    """
+    Exception raised when attempting to create a rooted hierarchy in a context where that is not
+    permitted.
+    """
