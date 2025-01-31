@@ -1959,3 +1959,6 @@ def test_vectorized_indexing_incompatible_shape(store) -> None:
 def test_is_total_slice():
     assert is_total_slice((0, slice(4, 6)), (1, 2))
     assert is_total_slice((slice(0, 1, None), slice(4, 6)), (1, 2))
+    assert is_total_slice((slice(0, 1, None), slice(4, None)), (1, 2))
+    # slice(5, None) starts in the middle of a chunk
+    assert not is_total_slice((slice(0, 1, None), slice(5, None)), (1, 2))
