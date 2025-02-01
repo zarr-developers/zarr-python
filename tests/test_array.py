@@ -1396,7 +1396,7 @@ async def test_from_array(
     src[:] = np.arange(1000).reshape((100, 10))
 
     new_fill_value = 3
-    new_attributes = {"foo": "bar"}
+    new_attributes: dict[str, JSON] = {"foo": "bar"}
 
     result = zarr.from_array(
         src,
