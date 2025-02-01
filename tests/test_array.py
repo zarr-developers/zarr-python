@@ -1340,7 +1340,7 @@ async def test_creation_from_other_zarr_format(
     store: Store,
     store2: Store,
     src_format: ZarrFormat,
-    new_format: ZarrFormat,
+    new_format: ZarrFormat | None,
 ) -> None:
     if src_format == 2:
         src = zarr.create(
