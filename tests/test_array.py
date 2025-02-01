@@ -1335,7 +1335,7 @@ async def test_scalar_array() -> None:
 @pytest.mark.parametrize("store", ["local"], indirect=True)
 @pytest.mark.parametrize("store2", ["local"], indirect=["store2"])
 @pytest.mark.parametrize("src_format", [2, 3])
-@pytest.mark.parametrize("new_format", [2, 3])
+@pytest.mark.parametrize("new_format", [2, 3, None])
 async def test_creation_from_other_zarr_format(
     store: Store,
     store2: Store,
@@ -1365,9 +1365,18 @@ async def test_creation_from_other_zarr_format(
     assert result.fill_value == src.fill_value
     assert result.dtype == src.dtype
     assert result.chunks == src.chunks
-    assert result.metadata.zarr_format == new_format
+    expected_format = src_format if new_format is None else new_format
+    assert result.metadata.zarr_format == expected_format
     if src_format == new_format:
         assert result.metadata == src.metadata
+
+    result2 = zarr.array(
+        data=src,
+        store=store2,
+        overwrite=True,
+        zarr_format=new_format,
+    )
+    np.testing.assert_array_equal(result2[:], src[:])
 
 
 @pytest.mark.parametrize("store", ["local", "memory", "zip"], indirect=True)
