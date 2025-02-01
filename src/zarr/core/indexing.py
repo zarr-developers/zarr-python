@@ -1373,10 +1373,13 @@ def is_total_slice(item: Selection, shape: ChunkCoords) -> bool:
         item = (item,)
     if isinstance(item, tuple):
         return all(
-            isinstance(dim_sel, slice)
-            and (
-                (dim_sel == slice(None))
-                or ((dim_sel.stop - dim_sel.start == dim_len) and (dim_sel.step in [1, None]))
+            (isinstance(dim_sel, int) and dim_len == 1)
+            or (
+                isinstance(dim_sel, slice)
+                and (
+                    (dim_sel == slice(None))
+                    or ((dim_sel.stop - dim_sel.start == dim_len) and (dim_sel.step in [1, None]))
+                )
             )
             for dim_sel, dim_len in zip(item, shape, strict=False)
         )

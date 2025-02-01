@@ -14,6 +14,7 @@ from zarr.core.sync import sync
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+    import numpy as np
     import numpy.typing as npt
 
     from zarr.abc.codec import Codec
@@ -744,8 +745,9 @@ def create_array(
     store: str | StoreLike,
     *,
     name: str | None = None,
-    shape: ShapeLike,
-    dtype: npt.DTypeLike,
+    shape: ShapeLike | None = None,
+    dtype: npt.DTypeLike | None = None,
+    data: np.ndarray[Any, np.dtype[Any]] | None = None,
     chunks: ChunkCoords | Literal["auto"] = "auto",
     shards: ShardsLike | None = None,
     filters: FiltersLike = "auto",
@@ -772,10 +774,14 @@ def create_array(
     name : str or None, optional
         The name of the array within the store. If ``name`` is ``None``, the array will be located
         at the root of the store.
-    shape : ChunkCoords
-        Shape of the array.
-    dtype : npt.DTypeLike
-        Data type of the array.
+    shape : ChunkCoords, optional
+        Shape of the array. Can be ``None`` if ``data`` is provided.
+    dtype : npt.DTypeLike, optional
+        Data type of the array. Can be ``None`` if ``data`` is provided.
+    data : np.ndarray, optional
+        Array-like data to use for initializing the array. If this parameter is provided, the
+        ``shape`` and ``dtype`` parameters must be identical to ``data.shape`` and ``data.dtype``,
+        or ``None``.
     chunks : ChunkCoords, optional
         Chunk shape of the array.
         If not specified, default are guessed based on the shape and dtype.
@@ -874,6 +880,7 @@ def create_array(
                 name=name,
                 shape=shape,
                 dtype=dtype,
+                data=data,
                 chunks=chunks,
                 shards=shards,
                 filters=filters,
