@@ -3807,7 +3807,7 @@ async def from_array(
     serializer: SerializerLike | Literal["keep"] = "keep",
     fill_value: Any | None = None,
     order: MemoryOrder | None = None,
-    zarr_format: ZarrFormat | None = 3,
+    zarr_format: ZarrFormat | None = None,
     attributes: dict[str, JSON] | None = None,
     chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
     dimension_names: Iterable[str] | None = None,
