@@ -693,7 +693,7 @@ class AsyncGroup:
         if self.metadata.consolidated_metadata is not None:
             return self._getitem_consolidated(store_path, key, prefix=self.name)
         try:
-            return await _read_node_a(
+            return await read_node(
                 store=store_path.store, path=store_path.path, zarr_format=self.metadata.zarr_format
             )
         except FileNotFoundError as e:
@@ -2997,60 +2997,58 @@ async def create_nodes(
 
     # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
     # then we should consider adding a keyword argument this this function
-    ctx = asyncio.Semaphore(config.get("async.concurrency"))
-
+    semaphore = asyncio.Semaphore(config.get("async.concurrency"))
     create_tasks: list[Coroutine[None, None, str]] = []
+
     for key, value in nodes.items():
         # make the key absolute
         write_prefix = _join_paths([path, key])
-        create_tasks.extend(_persist_metadata(store, write_prefix, value))
+        create_tasks.extend(_persist_metadata(store, write_prefix, value, semaphore=semaphore))
 
     created_object_keys = []
-    async with ctx:
-        for coro in asyncio.as_completed(create_tasks):
-            created_key = await coro
-            # the created key will be in the store key space, i.e. it is an absolute path. The key
-            # will also end with the name of a metadata document. We have to remove the store_path.path
-            # component of the key to bring it back to the relative key space of store_path
 
-            # we need this to track which metadata documents were written so that we can yield a
-            # complete v2 Array / Group class after both .zattrs and the metadata JSON was created.
-            object_path_relative = created_key.removeprefix(path).lstrip("/")
-            created_object_keys.append(object_path_relative)
+    for coro in asyncio.as_completed(create_tasks):
+        created_key = await coro
+        # the created key will be in the store key space, i.e. it is an absolute path. The key
+        # will also end with the name of a metadata document. We have to remove the store_path.path
+        # component of the key to bring it back to the relative key space of store_path
 
-            # get the node name from the object key
-            if len(object_path_relative.split("/")) == 1:
-                # this is the root node
-                meta_out = nodes[""]
-                node_name = ""
+        # we need this to track which metadata documents were written so that we can yield a
+        # complete v2 Array / Group class after both .zattrs and the metadata JSON was created.
+        object_path_relative = created_key.removeprefix(path).lstrip("/")
+        created_object_keys.append(object_path_relative)
+
+        # get the node name from the object key
+        if len(object_path_relative.split("/")) == 1:
+            # this is the root node
+            meta_out = nodes[""]
+            node_name = ""
+        else:
+            # turn "foo/<anything>" into "foo"
+            node_name = object_path_relative[: object_path_relative.rfind("/")]
+            meta_out = nodes[node_name]
+
+        if meta_out.zarr_format == 3:
+            yield _build_node(store=store, path=_join_paths([path, node_name]), metadata=meta_out)
+        else:
+            # For zarr v2
+            # we only want to yield when both the metadata and attributes are created
+            # so we track which keys have been created, and wait for both the meta key and
+            # the attrs key to be created before yielding back the AsyncArray / AsyncGroup
+
+            attrs_done = _join_paths([node_name, ZATTRS_JSON]) in created_object_keys
+
+            if isinstance(meta_out, GroupMetadata):
+                meta_done = _join_paths([node_name, ZGROUP_JSON]) in created_object_keys
             else:
-                # turn "foo/<anything>" into "foo"
-                node_name = object_path_relative[: object_path_relative.rfind("/")]
-                meta_out = nodes[node_name]
+                meta_done = _join_paths([node_name, ZARRAY_JSON]) in created_object_keys
 
-            if meta_out.zarr_format == 3:
+            if meta_done and attrs_done:
                 yield _build_node(
                     store=store, path=_join_paths([path, node_name]), metadata=meta_out
                 )
-            else:
-                # For zarr v2
-                # we only want to yield when both the metadata and attributes are created
-                # so we track which keys have been created, and wait for both the meta key and
-                # the attrs key to be created before yielding back the AsyncArray / AsyncGroup
 
-                attrs_done = _join_paths([node_name, ZATTRS_JSON]) in created_object_keys
-
-                if isinstance(meta_out, GroupMetadata):
-                    meta_done = _join_paths([node_name, ZGROUP_JSON]) in created_object_keys
-                else:
-                    meta_done = _join_paths([node_name, ZARRAY_JSON]) in created_object_keys
-
-                if meta_done and attrs_done:
-                    yield _build_node(
-                        store=store, path=_join_paths([path, node_name]), metadata=meta_out
-                    )
-
-                continue
+            continue
 
 
 T = TypeVar("T")
@@ -3448,7 +3446,7 @@ async def _read_node_v3(store: Store, path: str) -> AsyncArray[ArrayV3Metadata] 
     return _build_node(store=store, path=path, metadata=metadata)
 
 
-async def _read_node_a(
+async def read_node(
     store: Store, path: str, zarr_format: ZarrFormat
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
     """
@@ -3463,15 +3461,9 @@ async def _read_node_a(
             raise ValueError(f"Unexpected zarr format: {zarr_format}")  # pragma: no cover
 
 
-def read_node(store: Store, path: str, zarr_format: ZarrFormat) -> Array | Group:
-    """
-    Read an Array or Group from a path in a Store.
-    """
-
-    return _parse_async_node(sync(_read_node_a(store=store, path=path, zarr_format=zarr_format)))
-
-
-async def _set_return_key(*, store: Store, key: str, value: Buffer) -> str:
+async def _set_return_key(
+    *, store: Store, key: str, value: Buffer, semaphore: asyncio.Semaphore | None = None
+) -> str:
     """
     Write a value to storage at the given key. The key is returned.
     Useful when saving values via routines that return results in execution order,
@@ -3486,13 +3478,23 @@ async def _set_return_key(*, store: Store, key: str, value: Buffer) -> str:
         The key to save the value to.
     value : Buffer
         The value to save.
+    semaphore : asyncio.Semaphore | None
+        An optional semaphore to use to limit the number of concurrent writes.
     """
-    await store.set(key, value)
+
+    if semaphore is not None:
+        async with semaphore:
+            await store.set(key, value)
+    else:
+        await store.set(key, value)
     return key
 
 
 def _persist_metadata(
-    store: Store, path: str, metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata
+    store: Store,
+    path: str,
+    metadata: ArrayV2Metadata | ArrayV3Metadata | GroupMetadata,
+    semaphore: asyncio.Semaphore | None = None,
 ) -> tuple[Coroutine[None, None, str], ...]:
     """
     Prepare to save a metadata document to storage, returning a tuple of coroutines that must be awaited.
@@ -3500,7 +3502,7 @@ def _persist_metadata(
 
     to_save = metadata.to_buffer_dict(default_buffer_prototype())
     return tuple(
-        _set_return_key(store=store, key=_join_paths([path, key]), value=value)
+        _set_return_key(store=store, key=_join_paths([path, key]), value=value, semaphore=semaphore)
         for key, value in to_save.items()
     )
 

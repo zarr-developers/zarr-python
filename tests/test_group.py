@@ -19,6 +19,7 @@ import zarr.api.synchronous as sync_api
 import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
+from zarr.api.synchronous import read_node
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
@@ -32,7 +33,6 @@ from zarr.core.group import (
     create_hierarchy,
     create_nodes,
     create_rooted_hierarchy,
-    read_node,
 )
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import _collect_aiterator, sync
@@ -1509,7 +1509,6 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
         start = time.time()
         _ = tuple(sync_api.create_nodes(store=latency_store, path="", nodes=groups))
         elapsed = time.time() - start
-
         assert elapsed > num_groups * set_latency
 
 

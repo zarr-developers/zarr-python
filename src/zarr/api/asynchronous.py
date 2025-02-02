@@ -30,6 +30,7 @@ from zarr.core.group import (
     create_hierarchy,
     create_nodes,
     create_rooted_hierarchy,
+    read_node,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
@@ -71,6 +72,7 @@ __all__ = [
     "open_consolidated",
     "open_group",
     "open_like",
+    "read_node",
     "save",
     "save_array",
     "save_group",
