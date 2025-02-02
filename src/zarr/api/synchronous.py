@@ -65,6 +65,7 @@ __all__ = [
     "open_consolidated",
     "open_group",
     "open_like",
+    "read_node",
     "save",
     "save_array",
     "save_group",
