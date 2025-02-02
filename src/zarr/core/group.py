@@ -3451,7 +3451,21 @@ async def read_node(
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
     """
     Read an AsyncArray or AsyncGroup from a path in a Store.
+
+    Parameters
+    ----------
+    store : Store
+        The store-like object to read from.
+    path : str
+        The path to the node to read.
+    zarr_format : {2, 3}
+        The zarr format of the node to read.
+
+    Returns
+    -------
+    AsyncArray | AsyncGroup
     """
+
     match zarr_format:
         case 2:
             return await _read_node_v2(store=store, path=path)
