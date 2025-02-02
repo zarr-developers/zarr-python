@@ -3432,7 +3432,18 @@ def _build_node(
 
 async def _read_node_v2(store: Store, path: str) -> AsyncArray[ArrayV2Metadata] | AsyncGroup:
     """
-    Read a Zarr v2 AsyncArray or AsyncGroup from a location defined by a StorePath.
+    Read a Zarr v2 AsyncArray or AsyncGroup from a path in a Store.
+
+    Parameters
+    ----------
+    store : Store
+        The store-like object to read from.
+    path : str
+        The path to the node to read.
+
+    Returns
+    -------
+    AsyncArray | AsyncGroup
     """
     metadata = await _read_metadata_v2(store=store, path=path)
     return _build_node(store=store, path=path, metadata=metadata)
@@ -3440,7 +3451,18 @@ async def _read_node_v2(store: Store, path: str) -> AsyncArray[ArrayV2Metadata] 
 
 async def _read_node_v3(store: Store, path: str) -> AsyncArray[ArrayV3Metadata] | AsyncGroup:
     """
-    Read a Zarr v3 AsyncArray or AsyncGroup from a location defined by a StorePath.
+    Read a Zarr v3 AsyncArray or AsyncGroup from a path in a Store.
+
+    Parameters
+    ----------
+    store : Store
+        The store-like object to read from.
+    path : str
+        The path to the node to read.
+
+    Returns
+    -------
+    AsyncArray | AsyncGroup
     """
     metadata = await _read_metadata_v3(store=store, path=path)
     return _build_node(store=store, path=path, metadata=metadata)
