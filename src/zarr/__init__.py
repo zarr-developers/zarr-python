@@ -8,6 +8,9 @@ from zarr.api.synchronous import (
     create,
     create_array,
     create_group,
+    create_hierarchy,
+    create_nodes,
+    create_rooted_hierarchy,
     empty,
     empty_like,
     full,
@@ -30,7 +33,7 @@ from zarr.api.synchronous import (
 )
 from zarr.core.array import Array, AsyncArray
 from zarr.core.config import config
-from zarr.core.group import AsyncGroup, Group, create_hierarchy, create_nodes
+from zarr.core.group import AsyncGroup, Group
 
 # in case setuptools scm screw up and find version to be 0.0.0
 assert not __version__.startswith("0.0.0")
@@ -52,6 +55,7 @@ __all__ = [
     "create_group",
     "create_hierarchy",
     "create_nodes",
+    "create_rooted_hierarchy",
     "empty",
     "empty_like",
     "full",

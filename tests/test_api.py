@@ -8,6 +8,7 @@ from numpy.testing import assert_array_equal
 
 import zarr
 import zarr.api.asynchronous
+import zarr.api.synchronous
 import zarr.core.group
 from zarr import Array, Group
 from zarr.abc.store import Store
@@ -1121,3 +1122,10 @@ def test_open_array_with_mode_r_plus(store: Store) -> None:
     assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
+
+
+def test_api_exports() -> None:
+    """
+    Test that the sync API and the async API export the same objects
+    """
+    assert zarr.api.asynchronous.__all__ == zarr.api.synchronous.__all__

@@ -57,7 +57,7 @@ from zarr.core.common import (
 from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import V3JsonEncoder
-from zarr.core.sync import SyncMixin, _collect_aiterator, sync
+from zarr.core.sync import SyncMixin, sync
 from zarr.errors import (
     ContainsArrayError,
     ContainsGroupError,
@@ -1435,7 +1435,7 @@ class AsyncGroup:
         semaphore = asyncio.Semaphore(config.get("async.concurrency"))
 
         try:
-            async for node in create_hierarchy_a(
+            async for node in create_hierarchy(
                 store=self.store,
                 path=self.path,
                 nodes=nodes,
@@ -2081,7 +2081,7 @@ class Group(SyncMixin):
         nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
         *,
         overwrite: bool = False,
-    ) -> Iterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+    ) -> Iterator[Group | Array]:
         """
         Create a hierarchy of arrays or groups rooted at this group.
 
@@ -2116,7 +2116,8 @@ class Group(SyncMixin):
         <AsyncGroup memory://123209880766144/a/b/c>
         <AsyncGroup memory://123209880766144/a/b>
         """
-        yield from self._sync_iter(self._async_group.create_hierarchy(nodes, overwrite=overwrite))
+        for node in self._sync_iter(self._async_group.create_hierarchy(nodes, overwrite=overwrite)):
+            yield _parse_async_node(node)
 
     def keys(self) -> Generator[str, None]:
         """Return an iterator over group member names.
@@ -2854,7 +2855,7 @@ class Group(SyncMixin):
         )
 
 
-async def create_hierarchy_a(
+async def create_hierarchy(
     *,
     store: Store,
     path: str,
@@ -2967,58 +2968,11 @@ async def create_hierarchy_a(
                 k: v for k, v in nodes_parsed.items() if k not in redundant_implicit_groups
             }
 
-    async for node in create_nodes_a(
-        store=store, path=path, nodes=nodes_parsed, semaphore=semaphore
-    ):
+    async for node in create_nodes(store=store, path=path, nodes=nodes_parsed, semaphore=semaphore):
         yield node
 
 
-def create_hierarchy(
-    store: Store,
-    path: str,
-    nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
-    overwrite: bool = False,
-    allow_root: bool = True,
-) -> Iterator[Group | Array]:
-    """
-    Create a complete zarr hierarchy concurrently. Groups that are implicitly defined by the input
-    will be created as needed.
-
-    This function takes a parsed hierarchy dictionary and creates all the nodes in the hierarchy
-    concurrently. Arrays and Groups are yielded in the order they are created.
-
-    Parameters
-    ----------
-    store : Store
-        The storage backend to use.
-    path : str
-        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
-        ``path`` prior to creating nodes.
-    nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
-        A dictionary defining the hierarchy. The keys are the paths of the nodes
-        in the hierarchy, and the values are the metadata of the nodes. The
-        metadata must be either an instance of GroupMetadata, ArrayV3Metadata
-        or ArrayV2Metadata.
-    allow_root : bool
-        Whether to allow a root node to be created. If ``False``, attempting to create a root node
-        will result in an error. Use this option when calling this function as part of a method
-        defined on ``AsyncGroup`` instances, because in this case the root node has already been
-        created.
-
-    Yields
-    ------
-    Group | Array
-        The created nodes in the order they are created.
-    """
-    coro = create_hierarchy_a(
-        store=store, path=path, nodes=nodes, overwrite=overwrite, allow_root=allow_root
-    )
-
-    for result in sync(_collect_aiterator(coro)):
-        yield _parse_async_node(result)
-
-
-async def create_nodes_a(
+async def create_nodes(
     *,
     store: Store,
     path: str,
@@ -3117,46 +3071,6 @@ async def create_nodes_a(
                     )
 
                 continue
-
-
-def create_nodes(
-    *,
-    store: Store,
-    path: str,
-    nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
-    semaphore: asyncio.Semaphore | None = None,
-) -> Iterator[Group | Array]:
-    """Create a collection of arrays and / or groups concurrently.
-
-    Note: no attempt is made to validate that these arrays and / or groups collectively form a
-    valid Zarr hierarchy. It is the responsibility of the caller of this function to ensure that
-    the ``nodes`` parameter satisfies any correctness constraints.
-
-    Parameters
-    ----------
-    store : Store
-        The storage backend to use.
-    path : str
-        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
-        ``path`` prior to creating nodes.
-    nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
-        A dictionary defining the hierarchy. The keys are the paths of the nodes
-        in the hierarchy, and the values are the metadata of the nodes. The
-        metadata must be either an instance of GroupMetadata, ArrayV3Metadata
-        or ArrayV2Metadata.
-    semaphore : asyncio.Semaphore | None
-        An optional semaphore to limit the number of concurrent tasks. If not
-        provided, the number of concurrent tasks is unlimited.
-
-    Yields
-    ------
-    Group | Array
-        The created nodes in the order they are created.
-    """
-    coro = create_nodes_a(store=store, path=path, nodes=nodes, semaphore=semaphore)
-
-    for result in sync(_collect_aiterator(coro)):
-        yield _parse_async_node(result)
 
 
 T = TypeVar("T")
@@ -3611,7 +3525,7 @@ def _persist_metadata(
     )
 
 
-async def _create_rooted_hierarchy_a(
+async def create_rooted_hierarchy(
     *,
     store: Store,
     path: str,
@@ -3639,25 +3553,8 @@ async def _create_rooted_hierarchy_a(
 
     nodes_created = {
         x.path: x
-        async for x in create_hierarchy_a(
+        async for x in create_hierarchy(
             store=store, path=path, nodes=nodes, semaphore=semaphore, overwrite=overwrite
         )
     }
     return nodes_created[_join_paths([path, root_key])]
-
-
-def _create_rooted_hierarchy(
-    *,
-    store: Store,
-    path: str,
-    nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
-    overwrite: bool = False,
-) -> Group | Array:
-    """
-    Create a ``Group`` from a store and a dict of metadata documents. Calls the async method
-    ``_create_rooted_hierarchy`` and waits for the result.
-    """
-    async_node = sync(
-        _create_rooted_hierarchy_a(store=store, path=path, nodes=nodes, overwrite=overwrite)
-    )
-    return _parse_async_node(async_node)
