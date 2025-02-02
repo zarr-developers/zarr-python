@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import itertools
 import json
 import logging
@@ -1432,14 +1431,11 @@ class AsyncGroup:
                 )
                 raise ValueError(msg)
 
-        semaphore = asyncio.Semaphore(config.get("async.concurrency"))
-
         try:
             async for node in create_hierarchy(
                 store=self.store,
                 path=self.path,
                 nodes=nodes,
-                semaphore=semaphore,
                 overwrite=overwrite,
                 allow_root=False,
             ):
@@ -2860,7 +2856,6 @@ async def create_hierarchy(
     store: Store,
     path: str,
     nodes: dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata],
-    semaphore: asyncio.Semaphore | None = None,
     overwrite: bool = False,
     allow_root: bool = True,
 ) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
@@ -2883,9 +2878,6 @@ async def create_hierarchy(
         in the hierarchy, and the values are the metadata of the nodes. The
         metadata must be either an instance of GroupMetadata, ArrayV3Metadata
         or ArrayV2Metadata.
-    semaphore : asyncio.Semaphore | None
-        An optional semaphore to limit the number of concurrent tasks. If not
-        provided, the number of concurrent tasks is unlimited.
     allow_root : bool
         Whether to allow a root node to be created. If ``False``, attempting to create a root node
         will result in an error. Use this option when calling this function as part of a method
@@ -2968,7 +2960,7 @@ async def create_hierarchy(
                 k: v for k, v in nodes_parsed.items() if k not in redundant_implicit_groups
             }
 
-    async for node in create_nodes(store=store, path=path, nodes=nodes_parsed, semaphore=semaphore):
+    async for node in create_nodes(store=store, path=path, nodes=nodes_parsed):
         yield node
 
 
@@ -2977,7 +2969,6 @@ async def create_nodes(
     store: Store,
     path: str,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
-    semaphore: asyncio.Semaphore | None = None,
 ) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
     """Create a collection of arrays and / or groups concurrently.
 
@@ -2997,21 +2988,16 @@ async def create_nodes(
         in the hierarchy, and the values are the metadata of the nodes. The
         metadata must be either an instance of GroupMetadata, ArrayV3Metadata
         or ArrayV2Metadata.
-    semaphore : asyncio.Semaphore | None
-        An optional semaphore to limit the number of concurrent tasks. If not
-        provided, the number of concurrent tasks is unlimited.
 
     Yields
     ------
     AsyncGroup | AsyncArray
         The created nodes in the order they are created.
     """
-    ctx: asyncio.Semaphore | contextlib.nullcontext[None]
 
-    if semaphore is None:
-        ctx = contextlib.nullcontext()
-    else:
-        ctx = semaphore
+    # Note: the only way to alter this value is via the config. If that's undesirable for some reason,
+    # then we should consider adding a keyword argument this this function
+    ctx = asyncio.Semaphore(config.get("async.concurrency"))
 
     create_tasks: list[Coroutine[None, None, str]] = []
     for key, value in nodes.items():
@@ -3023,15 +3009,12 @@ async def create_nodes(
     async with ctx:
         for coro in asyncio.as_completed(create_tasks):
             created_key = await coro
+            # the created key will be in the store key space, i.e. it is an absolute path. The key
+            # will also end with the name of a metadata document. We have to remove the store_path.path
+            # component of the key to bring it back to the relative key space of store_path
 
-            # the created key will be in the store key space, and it will end with the name of
-            # a metadata document.
-            #  we have to remove the store_path.path
-            # component of that path to bring it back to the relative key space of store_path
-
-            # the relative path of the object we just created -- we need this to track which metadata documents
-            # were written so that we can yield a complete v2 Array / Group class after both .zattrs
-            # and the metadata JSON was created.
+            # we need this to track which metadata documents were written so that we can yield a
+            # complete v2 Array / Group class after both .zattrs and the metadata JSON was created.
             object_path_relative = created_key.removeprefix(path).lstrip("/")
             created_object_keys.append(object_path_relative)
 
@@ -3046,12 +3029,9 @@ async def create_nodes(
                 meta_out = nodes[node_name]
 
             if meta_out.zarr_format == 3:
-                # yes, it is silly that we relativize, then de-relativize this same path
-                node_store_path = StorePath(store=store, path=path) / node_name
-                if isinstance(meta_out, GroupMetadata):
-                    yield AsyncGroup(metadata=meta_out, store_path=node_store_path)
-                else:
-                    yield AsyncArray(metadata=meta_out, store_path=node_store_path)
+                yield _build_node(
+                    store=store, path=_join_paths([path, node_name]), metadata=meta_out
+                )
             else:
                 # For zarr v2
                 # we only want to yield when both the metadata and attributes are created
@@ -3549,12 +3529,8 @@ async def create_rooted_hierarchy(
     else:
         root_key = roots[0]
 
-    semaphore = asyncio.Semaphore(config.get("async.concurrency"))
-
     nodes_created = {
         x.path: x
-        async for x in create_hierarchy(
-            store=store, path=path, nodes=nodes, semaphore=semaphore, overwrite=overwrite
-        )
+        async for x in create_hierarchy(store=store, path=path, nodes=nodes, overwrite=overwrite)
     }
     return nodes_created[_join_paths([path, root_key])]

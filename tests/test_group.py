@@ -21,6 +21,7 @@ from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.config import config as zarr_config
 from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
@@ -1485,6 +1486,31 @@ async def test_create_nodes(
 
     observed_nodes = {a.path.removeprefix(path + "/"): a for a in created}
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
+
+
+@pytest.mark.parametrize("store", ["memory"], indirect=True)
+def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
+    """
+    Test that the execution time of create_nodes can be constrained by the async concurrency
+    configuration setting.
+    """
+    set_latency = 0.02
+    num_groups = 10
+    groups = {str(idx): GroupMetadata() for idx in range(num_groups)}
+
+    latency_store = LatencyStore(store, set_latency=set_latency)
+
+    # check how long it takes to iterate over the groups
+    # if create_nodes is sensitive to IO latency,
+    # this should take (num_groups * get_latency) seconds
+    # otherwise, it should take only marginally more than get_latency seconds
+
+    with zarr_config.set({"async.concurrency": 1}):
+        start = time.time()
+        _ = tuple(sync_api.create_nodes(store=latency_store, path="", nodes=groups))
+        elapsed = time.time() - start
+
+        assert elapsed > num_groups * set_latency
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
