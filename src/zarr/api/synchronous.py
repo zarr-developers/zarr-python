@@ -56,6 +56,7 @@ __all__ = [
     "empty_like",
     "full",
     "full_like",
+    "get_node",
     "group",
     "load",
     "ones",
@@ -65,7 +66,6 @@ __all__ = [
     "open_consolidated",
     "open_group",
     "open_like",
-    "read_node",
     "save",
     "save_array",
     "save_group",
@@ -1247,9 +1247,9 @@ def create_rooted_hierarchy(
     return _parse_async_node(async_node)
 
 
-def read_node(store: Store, path: str, zarr_format: ZarrFormat) -> Array | Group:
+def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> Array | Group:
     """
-    Read an Array or Group from a path in a Store.
+    Get an Array or Group from a path in a Store.
 
     Parameters
     ----------
@@ -1266,5 +1266,5 @@ def read_node(store: Store, path: str, zarr_format: ZarrFormat) -> Array | Group
     """
 
     return _parse_async_node(
-        sync(async_api.read_node(store=store, path=path, zarr_format=zarr_format))
+        sync(async_api.get_node(store=store, path=path, zarr_format=zarr_format))
     )

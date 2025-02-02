@@ -19,7 +19,7 @@ import zarr.api.synchronous as sync_api
 import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
-from zarr.api.synchronous import read_node
+from zarr.api.synchronous import get_node
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
@@ -1564,13 +1564,13 @@ async def test_create_hierarchy(
     observed_nodes = {a.path.removeprefix(path + "/"): a for a in created}
 
     if not overwrite:
-        extra_group = read_node(
+        extra_group = get_node(
             store=store, path=_join_paths([path, "group/extra"]), zarr_format=zarr_format
         )
         assert extra_group.metadata.attributes == {"path": "group/extra"}
     else:
         with pytest.raises(FileNotFoundError):
-            read_node(store=store, path=_join_paths([path, "group/extra"]), zarr_format=zarr_format)
+            get_node(store=store, path=_join_paths([path, "group/extra"]), zarr_format=zarr_format)
     assert expected_meta == {k: v.metadata for k, v in observed_nodes.items()}
 
 
@@ -1628,7 +1628,7 @@ async def test_create_hierarchy_existing_nodes(
 
     # ensure that the extant metadata was not overwritten
     assert (
-        read_node(store=store, path=_join_paths([path, extant_node_path]), zarr_format=zarr_format)
+        get_node(store=store, path=_join_paths([path, extant_node_path]), zarr_format=zarr_format)
     ).metadata.attributes == {"extant": True}
 
 

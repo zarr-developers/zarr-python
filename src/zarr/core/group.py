@@ -693,7 +693,7 @@ class AsyncGroup:
         if self.metadata.consolidated_metadata is not None:
             return self._getitem_consolidated(store_path, key, prefix=self.name)
         try:
-            return await read_node(
+            return await get_node(
                 store=store_path.store, path=store_path.path, zarr_format=self.metadata.zarr_format
             )
         except FileNotFoundError as e:
@@ -3430,7 +3430,7 @@ def _build_node(
             raise ValueError(f"Unexpected metadata type: {type(metadata)}")  # pragma: no cover
 
 
-async def _read_node_v2(store: Store, path: str) -> AsyncArray[ArrayV2Metadata] | AsyncGroup:
+async def _get_node_v2(store: Store, path: str) -> AsyncArray[ArrayV2Metadata] | AsyncGroup:
     """
     Read a Zarr v2 AsyncArray or AsyncGroup from a path in a Store.
 
@@ -3449,7 +3449,7 @@ async def _read_node_v2(store: Store, path: str) -> AsyncArray[ArrayV2Metadata] 
     return _build_node(store=store, path=path, metadata=metadata)
 
 
-async def _read_node_v3(store: Store, path: str) -> AsyncArray[ArrayV3Metadata] | AsyncGroup:
+async def _get_node_v3(store: Store, path: str) -> AsyncArray[ArrayV3Metadata] | AsyncGroup:
     """
     Read a Zarr v3 AsyncArray or AsyncGroup from a path in a Store.
 
@@ -3468,11 +3468,11 @@ async def _read_node_v3(store: Store, path: str) -> AsyncArray[ArrayV3Metadata] 
     return _build_node(store=store, path=path, metadata=metadata)
 
 
-async def read_node(
+async def get_node(
     store: Store, path: str, zarr_format: ZarrFormat
 ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata] | AsyncGroup:
     """
-    Read an AsyncArray or AsyncGroup from a path in a Store.
+    Get an AsyncArray or AsyncGroup from a path in a Store.
 
     Parameters
     ----------
@@ -3490,9 +3490,9 @@ async def read_node(
 
     match zarr_format:
         case 2:
-            return await _read_node_v2(store=store, path=path)
+            return await _get_node_v2(store=store, path=path)
         case 3:
-            return await _read_node_v3(store=store, path=path)
+            return await _get_node_v3(store=store, path=path)
         case _:  # pragma: no cover
             raise ValueError(f"Unexpected zarr format: {zarr_format}")  # pragma: no cover
 
