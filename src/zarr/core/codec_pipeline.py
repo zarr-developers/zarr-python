@@ -35,6 +35,22 @@ T = TypeVar("T")
 U = TypeVar("U")
 
 
+def normalize_slices(
+    idxr: tuple[int | slice, ...], shape: tuple[int, ...]
+) -> tuple[int | slice, ...]:
+    # replace slice objects with stop==None with size
+    out = []
+    for i, size in zip(idxr, shape, strict=False):
+        if not isinstance(i, slice):
+            out.append(i)
+            continue
+        if i.step not in [1, None] or i.start not in [0, None]:
+            out.append(i)
+            continue
+        out.append(slice(i.start, i.stop if i.stop is not None else size, i.step))
+    return tuple(out)
+
+
 def _unzip2(iterable: Iterable[tuple[T, U]]) -> tuple[list[T], list[U]]:
     out0: list[T] = []
     out1: list[U] = []
@@ -279,7 +295,10 @@ class BatchedCodecPipeline(CodecPipeline):
                 chunk_array_batch, batch_info, strict=False
             ):
                 if chunk_array is not None:
-                    tmp = chunk_array[chunk_selection]
+                    normalized_selection = normalize_slices(
+                        chunk_selection, out[out_selection].shape
+                    )
+                    tmp = chunk_array[normalized_selection]
                     if drop_axes != ():
                         tmp = tmp.squeeze(axis=drop_axes)
                     out[out_selection] = tmp
@@ -322,7 +341,9 @@ class BatchedCodecPipeline(CodecPipeline):
                     for idx in range(chunk_spec.ndim)
                 )
                 chunk_value = chunk_value[item]
-        chunk_array[chunk_selection] = chunk_value
+
+        normalized_selection = normalize_slices(chunk_selection, chunk_value.shape)
+        chunk_array[normalized_selection] = chunk_value
         return chunk_array
 
     async def write_batch(
