@@ -103,6 +103,7 @@ docs = [
     'numcodecs[msgpack]',
     'rich',
     's3fs',
+    'astroid<4'
 ]
 
 
