@@ -429,5 +429,5 @@ filename = "docs/release-notes.rst"
 underlines = ["-", "~", "^"]
 issue_format = ":issue:`{issue}`"
 
-[codespell]
-ignore-words-list = astroid
+[tool.codespell]
+ignore-words-list = "astroid"
