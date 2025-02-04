@@ -8,7 +8,6 @@ import numpy as np
 from zarr.core.common import (
     MemoryOrder,
     parse_bool,
-    parse_fill_value,
     parse_order,
     parse_shapelike,
 )
@@ -102,11 +101,10 @@ class ArraySpec:
     ) -> None:
         shape_parsed = parse_shapelike(shape)
         dtype_parsed = np.dtype(dtype)
-        fill_value_parsed = parse_fill_value(fill_value)
 
         object.__setattr__(self, "shape", shape_parsed)
         object.__setattr__(self, "dtype", dtype_parsed)
-        object.__setattr__(self, "fill_value", fill_value_parsed)
+        object.__setattr__(self, "fill_value", fill_value)
         object.__setattr__(self, "config", config)
         object.__setattr__(self, "prototype", prototype)
 

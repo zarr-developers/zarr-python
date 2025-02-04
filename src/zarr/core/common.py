@@ -150,9 +150,11 @@ def parse_shapelike(data: int | Iterable[int]) -> tuple[int, ...]:
     return data_tuple
 
 
-def parse_fill_value(data: Any) -> Any:
+def parse_fill_value(fill_value: Any, dtype: Any, zarr_format: ZarrFormat) -> Any:
+    if zarr_format == 2 and (dtype is str or dtype == "str") and fill_value == 0:
+        fill_value = ""
     # todo: real validation
-    return data
+    return fill_value
 
 
 def parse_order(data: Any) -> Literal["C", "F"]:

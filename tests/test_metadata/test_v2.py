@@ -298,3 +298,18 @@ def test_zstd_checksum() -> None:
         arr.metadata.to_buffer_dict(default_buffer_prototype())[".zarray"].to_bytes()
     )
     assert "checksum" not in metadata["compressor"]
+
+
+def test_0_fill_str_type():
+    array = zarr.create_array(
+        store=zarr.storage.MemoryStore(),
+        dtype=str,
+        shape=(5,),
+        chunks=(2,),
+        fill_value=0,
+        zarr_format=2,
+        overwrite=True,
+    )
+
+    # Ensure the array initializes correctly with the fill value
+    np.testing.assert_array_equal(array[:], ["", "", "", "", ""])

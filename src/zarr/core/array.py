@@ -58,6 +58,7 @@ from zarr.core.common import (
     _warn_order_kwarg,
     concurrent_map,
     parse_dtype,
+    parse_fill_value,
     parse_order,
     parse_shapelike,
     product,
@@ -3901,6 +3902,7 @@ async def init_array(
 
     from zarr.codecs.sharding import ShardingCodec, ShardingCodecIndexLocation
 
+    fill_value_parsed = parse_fill_value(fill_value, dtype, zarr_format)
     dtype_parsed = parse_dtype(dtype, zarr_format=zarr_format)
     shape_parsed = parse_shapelike(shape)
     chunk_key_encoding_parsed = _parse_chunk_key_encoding(
@@ -3947,7 +3949,7 @@ async def init_array(
             dtype=dtype_parsed,
             chunks=chunk_shape_parsed,
             dimension_separator=chunk_key_encoding_parsed.separator,
-            fill_value=fill_value,
+            fill_value=fill_value_parsed,
             order=order_parsed,
             filters=filters_parsed,
             compressor=compressor_parsed,
@@ -3985,7 +3987,7 @@ async def init_array(
         meta = AsyncArray._create_metadata_v3(
             shape=shape_parsed,
             dtype=dtype_parsed,
-            fill_value=fill_value,
+            fill_value=fill_value_parsed,
             chunk_shape=chunks_out,
             chunk_key_encoding=chunk_key_encoding_parsed,
             codecs=codecs_out,
