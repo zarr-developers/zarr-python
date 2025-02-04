@@ -1156,7 +1156,7 @@ class TestCreateArray:
             if default_compressors is None:
                 expected_compressors = ()
             else:
-                expected_compressors = (expected_compressors,)  # type: ignore[assignment]
+                expected_compressors = (default_compressors,)  # type: ignore[assignment]
             expected_serializer = None
         else:
             raise ValueError(f"Invalid zarr_format: {zarr_format}")
