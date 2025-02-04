@@ -1149,7 +1149,6 @@ class TestCreateArray:
             default_filters, default_compressors = _get_default_chunk_encoding_v2(
                 np_dtype=np.dtype(dtype)
             )
-            # TODO: remove these type checking shields when we coherently type all the compressors / filters
             if default_filters is None:
                 expected_filters = ()
             else:
