@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Coroutine, Iterable
     from typing import Any
 
-    from obstore import ListStream, ObjectMeta, OffsetRange, SuffixRange
+    from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
     from obstore.store import ObjectStore as _ObjectStore
 
     from zarr.core.buffer import Buffer, BufferPrototype
@@ -168,8 +168,8 @@ class ObjectStore(Store):
         return _transform_list(objects)
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
-        objects: ListStream[list[ObjectMeta]] = obs.list_with_delimiter(self.store, prefix=prefix)
-        return _transform_list_dir(objects, prefix)
+        coroutine = obs.list_with_delimiter_async(self.store, prefix=prefix)
+        return _transform_list_dir(coroutine, prefix)
 
 
 async def _transform_list(
@@ -179,33 +179,24 @@ async def _transform_list(
         for item in batch:
             yield item["path"]
 
+
 # ['zarr.json', 'c/0', 'c/1'] -> ['zarr.json']
-# ['zarr.json', 'c/0', 'c/1'] -> ['zarr.json, 'c']  | ['zarr.json, 'c', 'c']
+# ['zarr.json', 'c/0', 'c/1'] -> ['zarr.json, 'c']
 async def _transform_list_dir(
-    list_stream: obstore.ListResult , None], prefix: str
+    list_result_coroutine: Coroutine[Any, Any, ListResult], prefix: str
 ) -> AsyncGenerator[str, None]:
+    """
+    Transform the result of list_with_delimiter into an async generator of prefixes and paths.
+    """
+    list_result = await list_result_coroutine
+
     # We assume that the underlying object-store implementation correctly handles the
     # prefix, so we don't double-check that the returned results actually start with the
     # given prefix.
-    prefixes = list_stream["common_prefixes"]
-    objects = [obj["path"].lstrip(prefix) for obj in list_stream["objects"]]
-    full = prefixes + objects
-    for item in full:
+    prefixes = list_result["common_prefixes"]
+    objects = [obj["path"].lstrip(prefix) for obj in list_result["objects"]]
+    for item in prefixes + objects:
         yield item
-
-    # prefix_len = len(prefix)
-    # async for batch in list_stream:
-    #     returned_prefixes = []
-    #     for item in batch:
-    #         # Yield this item if "/" does not exist after the prefix
-    #         item_path = item["path"][prefix_len:]
-    #         if "/" not in item_path:
-    #             yield item_path
-    #         else:
-    #             prefix = item_path.split("/")[0]
-    #             if prefix in returned_prefixes:
-    #                 returned_prefixes.append(prefix)
-    #                 yield prefix
 
 
 class _BoundedRequest(TypedDict):
