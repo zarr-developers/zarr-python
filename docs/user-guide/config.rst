@@ -53,6 +53,7 @@ This is the current default configuration::
                                                    'level': 0}},
               'v2_default_filters': {'bytes': [{'id': 'vlen-bytes'}],
                                      'numeric': None,
+                                     'raw': None,
                                      'string': [{'id': 'vlen-utf8'}]},
               'v3_default_compressors': {'bytes': [{'configuration': {'checksum': False,
                                                                       'level': 0},

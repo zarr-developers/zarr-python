@@ -50,3 +50,7 @@ repos:
     rev: v1.8.0
     hooks:
       - id: numpydoc-validation
+  - repo: https://github.com/twisted/towncrier
+    rev: 23.11.0
+    hooks:
+      - id: towncrier-check
