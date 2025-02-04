@@ -403,24 +403,16 @@ class SliceDimIndexer:
                 dim_chunk_sel_start = self.start - dim_offset
                 dim_out_offset = 0
 
-            # Use None to indicate this selection ends at the chunk edge
-            # This is useful for is_total_slice at boundary chunks,
             if self.stop > dim_limit:
                 # selection ends after current chunk
-                dim_chunk_sel_stop = None  # dim_chunk_len
+                dim_chunk_sel_stop = dim_chunk_len
 
             else:
                 # selection ends within current chunk
-                if dim_chunk_ix == (self.nchunks - 1):
-                    # all of the last chunk is included
-                    dim_chunk_sel_stop = None
-                else:
-                    dim_chunk_sel_stop = self.stop - dim_offset
+                dim_chunk_sel_stop = self.stop - dim_offset
 
             dim_chunk_sel = slice(dim_chunk_sel_start, dim_chunk_sel_stop, self.step)
-            dim_chunk_nitems = ceildiv(
-                ((dim_chunk_sel_stop or dim_chunk_len) - dim_chunk_sel_start), self.step
-            )
+            dim_chunk_nitems = ceildiv((dim_chunk_sel_stop - dim_chunk_sel_start), self.step)
 
             # If there are no elements on the selection within this chunk, then skip
             if dim_chunk_nitems == 0:
@@ -1386,17 +1378,7 @@ def is_total_slice(item: Selection, shape: ChunkCoords) -> bool:
                 isinstance(dim_sel, slice)
                 and (
                     (dim_sel == slice(None))
-                    or (
-                        dim_sel.stop is not None
-                        and (dim_sel.stop - dim_sel.start == dim_len)
-                        and (dim_sel.step in [1, None])
-                    )
-                    # starts exactly at a chunk
-                    or (
-                        (dim_sel.start % dim_len == 0)
-                        and dim_sel.stop is None
-                        and (dim_sel.step in [1, None])
-                    )
+                    or ((dim_sel.stop - dim_sel.start == dim_len) and (dim_sel.step in [1, None]))
                 )
             )
             for dim_sel, dim_len in zip(item, shape, strict=False)
