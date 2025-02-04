@@ -168,7 +168,7 @@ class ObjectStore(Store):
         return _transform_list(objects)
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
-        objects: ListStream[list[ObjectMeta]] = obs.list(self.store, prefix=prefix)
+        objects: ListStream[list[ObjectMeta]] = obs.list_with_delimiter(self.store, prefix=prefix)
         return _transform_list_dir(objects, prefix)
 
 
@@ -179,20 +179,33 @@ async def _transform_list(
         for item in batch:
             yield item["path"]
 
-
+# ['zarr.json', 'c/0', 'c/1'] -> ['zarr.json']
+# ['zarr.json', 'c/0', 'c/1'] -> ['zarr.json, 'c']  | ['zarr.json, 'c', 'c']
 async def _transform_list_dir(
-    list_stream: AsyncGenerator[list[ObjectMeta], None], prefix: str
+    list_stream: obstore.ListResult , None], prefix: str
 ) -> AsyncGenerator[str, None]:
     # We assume that the underlying object-store implementation correctly handles the
     # prefix, so we don't double-check that the returned results actually start with the
     # given prefix.
-    prefix_len = len(prefix) + 1  # If one is not added to the length, all items will contain "/"
-    async for batch in list_stream:
-        for item in batch:
-            # Yield this item if "/" does not exist after the prefix
-            item_path = item["path"][prefix_len:]
-            if "/" not in item_path:
-                yield item_path
+    prefixes = list_stream["common_prefixes"]
+    objects = [obj["path"].lstrip(prefix) for obj in list_stream["objects"]]
+    full = prefixes + objects
+    for item in full:
+        yield item
+
+    # prefix_len = len(prefix)
+    # async for batch in list_stream:
+    #     returned_prefixes = []
+    #     for item in batch:
+    #         # Yield this item if "/" does not exist after the prefix
+    #         item_path = item["path"][prefix_len:]
+    #         if "/" not in item_path:
+    #             yield item_path
+    #         else:
+    #             prefix = item_path.split("/")[0]
+    #             if prefix in returned_prefixes:
+    #                 returned_prefixes.append(prefix)
+    #                 yield prefix
 
 
 class _BoundedRequest(TypedDict):
