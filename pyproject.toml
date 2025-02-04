@@ -428,3 +428,6 @@ directory = 'changes'
 filename = "docs/release-notes.rst"
 underlines = ["-", "~", "^"]
 issue_format = ":issue:`{issue}`"
+
+[codespell]
+ignore-words-list = astroid
