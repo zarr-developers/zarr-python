@@ -1146,11 +1146,18 @@ class TestCreateArray:
             )
 
         elif zarr_format == 2:
-            expected_filters, expected_compressors = _get_default_chunk_encoding_v2(
+            default_filters, default_compressors = _get_default_chunk_encoding_v2(
                 np_dtype=np.dtype(dtype)
             )
-            expected_filters = () if expected_filters is None else expected_filters
-            expected_compressors = () if expected_compressors is None else (expected_compressors,)
+            # TODO: remove these type checking shields when we coherently type all the compressors / filters
+            if default_filters is None:
+                expected_filters = ()
+            else:
+                expected_filters = default_filters
+            if default_compressors is None:
+                expected_compressors = ()
+            else:
+                expected_compressors = (expected_compressors,)
             expected_serializer = None
         else:
             raise ValueError(f"Invalid zarr_format: {zarr_format}")
