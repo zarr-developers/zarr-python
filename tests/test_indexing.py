@@ -19,7 +19,6 @@ from zarr.core.indexing import (
     OrthogonalSelection,
     Selection,
     _iter_grid,
-    is_total_slice,
     make_slice_selection,
     normalize_integer_selection,
     oindex,
@@ -1954,11 +1953,3 @@ def test_vectorized_indexing_incompatible_shape(store) -> None:
     )
     with pytest.raises(ValueError, match="Attempting to set"):
         arr[np.array([1, 2]), np.array([1, 2])] = np.array([[-1, -2], [-3, -4]])
-
-
-def test_is_total_slice():
-    assert is_total_slice((0, slice(4, 6)), (1, 2))
-    assert is_total_slice((slice(0, 1, None), slice(4, 6)), (1, 2))
-    assert is_total_slice((slice(0, 1, None), slice(4, None)), (1, 2))
-    # slice(5, None) starts in the middle of a chunk
-    assert not is_total_slice((slice(0, 1, None), slice(5, None)), (1, 2))
