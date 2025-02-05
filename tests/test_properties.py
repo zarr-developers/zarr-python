@@ -6,7 +6,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import given, settings
+from hypothesis import given
 
 from zarr.testing.strategies import (
     arrays,
@@ -38,7 +38,6 @@ def test_basic_indexing(data: st.DataObject) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
-@settings(report_multiple_bugs=False)
 @given(data=st.data())
 def test_oindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
