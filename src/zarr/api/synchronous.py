@@ -7,17 +7,19 @@ from typing_extensions import deprecated
 import zarr.api.asynchronous as async_api
 import zarr.core.array
 from zarr._compat import _deprecate_positional_args
+from zarr.abc.store import Store
 from zarr.core.array import Array, AsyncArray
-from zarr.core.group import Group
-from zarr.core.sync import sync
+from zarr.core.group import Group, GroupMetadata, _parse_async_node
+from zarr.core.sync import _collect_aiterator, sync
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
+    from collections.abc import Iterable, Iterator
 
     import numpy as np
     import numpy.typing as npt
 
     from zarr.abc.codec import Codec
+    from zarr.abc.store import Store
     from zarr.api.asynchronous import ArrayLike, PathLike
     from zarr.core.array import (
         CompressorsLike,
@@ -36,6 +38,7 @@ if TYPE_CHECKING:
         ShapeLike,
         ZarrFormat,
     )
+    from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
     from zarr.storage import StoreLike
 
 __all__ = [
@@ -46,10 +49,14 @@ __all__ = [
     "copy_store",
     "create",
     "create_array",
+    "create_hierarchy",
+    "create_nodes",
+    "create_rooted_hierarchy",
     "empty",
     "empty_like",
     "full",
     "full_like",
+    "get_node",
     "group",
     "load",
     "ones",
@@ -1124,3 +1131,140 @@ def zeros_like(a: ArrayLike, **kwargs: Any) -> Array:
         The new array.
     """
     return Array(sync(async_api.zeros_like(a, **kwargs)))
+
+
+def create_hierarchy(
+    store: Store,
+    path: str,
+    nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    overwrite: bool = False,
+    allow_root: bool = True,
+) -> Iterator[Group | Array]:
+    """
+    Create a complete zarr hierarchy concurrently. Groups that are implicitly defined by the input
+    will be created as needed.
+
+    This function takes a parsed hierarchy dictionary and creates all the nodes in the hierarchy
+    concurrently. Arrays and Groups are yielded in the order they are created.
+
+    Parameters
+    ----------
+    store : Store
+        The storage backend to use.
+    path : str
+        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
+        ``path`` prior to creating nodes.
+    nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
+        A dictionary defining the hierarchy. The keys are the paths of the nodes
+        in the hierarchy, and the values are the metadata of the nodes. The
+        metadata must be either an instance of GroupMetadata, ArrayV3Metadata
+        or ArrayV2Metadata.
+    allow_root : bool
+        Whether to allow a root node to be created. If ``False``, attempting to create a root node
+        will result in an error. Use this option when calling this function as part of a method
+        defined on ``AsyncGroup`` instances, because in this case the root node has already been
+        created.
+
+    Yields
+    ------
+    Group | Array
+        The created nodes in the order they are created.
+    """
+    coro = async_api.create_hierarchy(
+        store=store, path=path, nodes=nodes, overwrite=overwrite, allow_root=allow_root
+    )
+
+    for result in sync(_collect_aiterator(coro)):
+        yield _parse_async_node(result)
+
+
+def create_nodes(
+    *, store: Store, path: str, nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
+) -> Iterator[Group | Array]:
+    """Create a collection of arrays and / or groups concurrently.
+
+    Note: no attempt is made to validate that these arrays and / or groups collectively form a
+    valid Zarr hierarchy. It is the responsibility of the caller of this function to ensure that
+    the ``nodes`` parameter satisfies any correctness constraints.
+
+    Parameters
+    ----------
+    store : Store
+        The storage backend to use.
+    path : str
+        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
+        ``path`` prior to creating nodes.
+    nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
+        A dictionary defining the hierarchy. The keys are the paths of the nodes
+        in the hierarchy, and the values are the metadata of the nodes. The
+        metadata must be either an instance of GroupMetadata, ArrayV3Metadata
+        or ArrayV2Metadata.
+
+    Yields
+    ------
+    Group | Array
+        The created nodes.
+    """
+    coro = async_api.create_nodes(store=store, path=path, nodes=nodes)
+
+    for result in sync(_collect_aiterator(coro)):
+        yield _parse_async_node(result)
+
+
+def create_rooted_hierarchy(
+    *,
+    store: Store,
+    path: str,
+    nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    overwrite: bool = False,
+) -> Group | Array:
+    """
+    Create a Zarr hierarchy with a root, and return the root node, which could be a ``Group``
+    or ``Array`` instance.
+
+    Parameters
+    ----------
+    store : Store
+        The storage backend to use.
+    path : str
+        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
+        ``path`` prior to creating nodes.
+    nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
+        A dictionary defining the hierarchy. The keys are the paths of the nodes
+        in the hierarchy, and the values are the metadata of the nodes. The
+        metadata must be either an instance of GroupMetadata, ArrayV3Metadata
+        or ArrayV2Metadata.
+    overwrite : bool
+        Whether to overwrite existing nodes. Default is ``False``.
+
+    Returns
+    -------
+    Group | Array
+    """
+    async_node = sync(
+        async_api.create_rooted_hierarchy(store=store, path=path, nodes=nodes, overwrite=overwrite)
+    )
+    return _parse_async_node(async_node)
+
+
+def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> Array | Group:
+    """
+    Get an Array or Group from a path in a Store.
+
+    Parameters
+    ----------
+    store : Store
+        The store-like object to read from.
+    path : str
+        The path to the node to read.
+    zarr_format : {2, 3}
+        The zarr format of the node to read.
+
+    Returns
+    -------
+    Array | Group
+    """
+
+    return _parse_async_node(
+        sync(async_api.get_node(store=store, path=path, zarr_format=zarr_format))
+    )
