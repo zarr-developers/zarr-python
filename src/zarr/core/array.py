@@ -3809,7 +3809,7 @@ async def from_array(
     order: MemoryOrder | None = None,
     zarr_format: ZarrFormat | None = None,
     attributes: dict[str, JSON] | None = None,
-    chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
+    chunk_key_encoding: ChunkKeyEncodingLike | None = None,
     dimension_names: Iterable[str] | None = None,
     storage_options: dict[str, Any] | None = None,
     overwrite: bool = False,
