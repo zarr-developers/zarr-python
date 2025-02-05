@@ -55,10 +55,7 @@ class ObjectStore(Store):
     """The underlying obstore instance."""
 
     def __eq__(self, value: object) -> bool:
-        if not isinstance(value, ObjectStore):
-            return False
-
-        return bool(self.store.__eq__(value.store))
+        return isinstance(value, type(self)) and self.store == value.store
 
     def __init__(self, store: _ObjectStore, *, read_only: bool = False) -> None:
         if not isinstance(
