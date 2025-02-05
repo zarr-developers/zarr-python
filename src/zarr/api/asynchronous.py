@@ -1074,6 +1074,12 @@ async def empty(
         Shape of the empty array.
     **kwargs
         Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
+
+    Notes
+    -----
+    The contents of an empty Zarr array are not defined. On attempting to
+    retrieve data from an empty Zarr array, any values may be returned,
+    and these are not guaranteed to be stable from one access to the next.
     """
 
     return await create(shape=shape, fill_value=None, **kwargs)
@@ -1096,6 +1102,12 @@ async def empty_like(
     -------
     Array
         The new array.
+
+    Notes
+    -----
+    The contents of an empty Zarr array are not defined. On attempting to
+    retrieve data from an empty Zarr array, any values may be returned,
+    and these are not guaranteed to be stable from one access to the next.
     """
     like_kwargs = _like_args(a, kwargs)
     return await empty(**like_kwargs)

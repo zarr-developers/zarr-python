@@ -1516,7 +1516,6 @@ class AsyncGroup:
         retrieve data from an empty Zarr array, any values may be returned,
         and these are not guaranteed to be stable from one access to the next.
         """
-
         return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def zeros(
@@ -2456,6 +2455,11 @@ class Group(SyncMixin):
         **kwargs
             Keyword arguments passed to :func:`zarr.api.asynchronous.create`.
 
+        Notes
+        -----
+        The contents of an empty Zarr array are not defined. On attempting to
+        retrieve data from an empty Zarr array, any values may be returned,
+        and these are not guaranteed to be stable from one access to the next.
         """
         return Array(self._sync(self._async_group.empty(name=name, shape=shape, **kwargs)))
 
@@ -2545,6 +2549,12 @@ class Group(SyncMixin):
         -------
         Array
             The new array.
+
+        Notes
+        -----
+        The contents of an empty Zarr array are not defined. On attempting to
+        retrieve data from an empty Zarr array, any values may be returned,
+        and these are not guaranteed to be stable from one access to the next.
         """
         return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 

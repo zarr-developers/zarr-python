@@ -916,6 +916,12 @@ def empty(shape: ChunkCoords, **kwargs: Any) -> Array:
     -------
     Array
         The new array.
+
+    Notes
+    -----
+    The contents of an empty Zarr array are not defined. On attempting to
+    retrieve data from an empty Zarr array, any values may be returned,
+    and these are not guaranteed to be stable from one access to the next.
     """
     return Array(sync(async_api.empty(shape, **kwargs)))
 
@@ -937,6 +943,12 @@ def empty_like(a: ArrayLike, **kwargs: Any) -> Array:
     -------
     Array
         The new array.
+
+    Notes
+    -----
+    The contents of an empty Zarr array are not defined. On attempting to
+    retrieve data from an empty Zarr array, any values may be returned,
+    and these are not guaranteed to be stable from one access to the next.
     """
     return Array(sync(async_api.empty_like(a, **kwargs)))
 
