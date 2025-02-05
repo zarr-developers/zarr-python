@@ -909,10 +909,10 @@ def create_array(
 
 
 def from_array(
-    data: Array | npt.ArrayLike,
     store: str | StoreLike,
-    write_data: bool = True,
     *,
+    data: Array | npt.ArrayLike,
+    write_data: bool = True,
     name: str | None = None,
     chunks: Literal["auto", "keep"] | ChunkCoords = "keep",
     shards: ShardsLike | None = None,
