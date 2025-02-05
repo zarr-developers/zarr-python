@@ -205,14 +205,20 @@ def orthogonal_indices(
             npst.integer_array_indices(
                 shape=(size,), result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1)
             )
-            # | npst.basic_indices(shape=(size,), allow_ellipsis=False)
+            | basic_indices(shape=(size,), allow_ellipsis=False).map(
+                lambda x: (x,) if not isinstance(x, tuple) else x
+            )
         )
+        if isinstance(idxr, int):
+            idxr = np.array([idxr])
         zindexer.append(idxr)
-        if isinstance(idxr, np.ndarray):
-            newshape = [1] * ndim
-            newshape[axis] = idxr.size
-            idxr = idxr.reshape(newshape)
-            npindexer.append(idxr)
+        if isinstance(idxr, slice):
+            idxr = np.arange(*idxr.indices(size))
+        elif isinstance(idxr, (tuple, int)):
+            idxr = np.array(idxr)
+        newshape = [1] * ndim
+        newshape[axis] = idxr.size
+        npindexer.append(idxr.reshape(newshape))
     return tuple(zindexer), np.broadcast_arrays(*npindexer)
 
 
