@@ -1,16 +1,15 @@
 # ruff: noqa: E402
+import pickle
+from typing import Any
+
 import pytest
 
 obstore = pytest.importorskip("obstore")
-
-import pickle
-import re
+from obstore.store import LocalStore
 
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import ObjectStore
 from zarr.testing.store import StoreTests
-
-PATTERN = r'LocalStore\("([^"]+)"\)'
 
 
 class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
@@ -18,8 +17,8 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
     buffer_cls = cpu.Buffer
 
     @pytest.fixture
-    def store_kwargs(self, tmpdir) -> dict[str, str | bool]:
-        store = obstore.store.LocalStore(prefix=tmpdir)
+    def store_kwargs(self, tmpdir) -> dict[str, Any]:
+        store = LocalStore(prefix=tmpdir)
         return {"store": store, "read_only": False}
 
     @pytest.fixture
@@ -27,15 +26,13 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
         return self.store_cls(**store_kwargs)
 
     async def get(self, store: ObjectStore, key: str) -> Buffer:
-        # TODO: Use new store.prefix in obstore 0.4.0
-        store_path = re.search(PATTERN, str(store)).group(1)
-        new_local_store = obstore.store.LocalStore(prefix=store_path)
+        assert isinstance(store.store, LocalStore)
+        new_local_store = LocalStore(prefix=store.store.prefix)
         return self.buffer_cls.from_bytes(obstore.get(new_local_store, key).bytes())
 
     async def set(self, store: ObjectStore, key: str, value: Buffer) -> None:
-        # TODO: Use new store.prefix in obstore 0.4.0
-        store_path = re.search(PATTERN, str(store)).group(1)
-        new_local_store = obstore.store.LocalStore(prefix=store_path)
+        assert isinstance(store.store, LocalStore)
+        new_local_store = LocalStore(prefix=store.store.prefix)
         obstore.put(new_local_store, key, value.to_bytes())
 
     def test_store_repr(self, store: ObjectStore) -> None:

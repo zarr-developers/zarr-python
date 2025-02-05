@@ -64,8 +64,7 @@ keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 # User extras
 remote = [
     "fsspec>=2023.10.0",
-    "obstore==0.4.0b2",
-
+    "obstore==0.4.0b3",
 ]
 gpu = [
     "cupy-cuda12x",
