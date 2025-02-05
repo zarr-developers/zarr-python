@@ -36,12 +36,19 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 
 
 class ObjectStore(Store):
-    """A Zarr store that uses obstore for fast read/write from AWS, GCP, and Azure.
+    """A Zarr store that uses obstore for fast read/write from AWS, GCP, Azure.
 
     Parameters
     ----------
     store : obstore.store.ObjectStore
         An obstore store instance that is set up with the proper credentials.
+    read_only : bool
+        Whether to open the store in read-only mode.
+
+    Warnings
+    --------
+    ObjectStore is experimental and subject to API changes without notice. Please
+    raise an issue with any comments/concerns about the store.
     """
 
     store: _ObjectStore
@@ -84,6 +91,7 @@ class ObjectStore(Store):
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
+        # docstring inherited
         try:
             if byte_range is None:
                 resp = await obs.get_async(self.store, key)
@@ -113,9 +121,11 @@ class ObjectStore(Store):
         prototype: BufferPrototype,
         key_ranges: Iterable[tuple[str, ByteRequest | None]],
     ) -> list[Buffer | None]:
+        # docstring inherited
         return await _get_partial_values(self.store, prototype=prototype, key_ranges=key_ranges)
 
     async def exists(self, key: str) -> bool:
+        # docstring inherited
         try:
             await obs.head_async(self.store, key)
         except FileNotFoundError:
@@ -125,9 +135,11 @@ class ObjectStore(Store):
 
     @property
     def supports_writes(self) -> bool:
+        # docstring inherited
         return True
 
     async def set(self, key: str, value: Buffer) -> None:
+        # docstring inherited
         self._check_writable()
         if not isinstance(value, Buffer):
             raise TypeError(
@@ -137,6 +149,7 @@ class ObjectStore(Store):
         await obs.put_async(self.store, key, buf)
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
+        # docstring inherited
         self._check_writable()
         buf = value.to_bytes()
         with contextlib.suppress(obs.exceptions.AlreadyExistsError):
@@ -144,34 +157,42 @@ class ObjectStore(Store):
 
     @property
     def supports_deletes(self) -> bool:
+        # docstring inherited
         return True
 
     async def delete(self, key: str) -> None:
+        # docstring inherited
         self._check_writable()
         await obs.delete_async(self.store, key)
 
     @property
     def supports_partial_writes(self) -> bool:
+        # docstring inherited
         return False
 
     async def set_partial_values(
         self, key_start_values: Iterable[tuple[str, int, BytesLike]]
     ) -> None:
+        # docstring inherited
         raise NotImplementedError
 
     @property
     def supports_listing(self) -> bool:
+        # docstring inherited
         return True
 
     def list(self) -> AsyncGenerator[str, None]:
+        # docstring inherited
         objects: ListStream[list[ObjectMeta]] = obs.list(self.store)
         return _transform_list(objects)
 
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
+        # docstring inherited
         objects: ListStream[list[ObjectMeta]] = obs.list(self.store, prefix=prefix)
         return _transform_list(objects)
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
+        # docstring inherited
         coroutine = obs.list_with_delimiter_async(self.store, prefix=prefix)
         return _transform_list_dir(coroutine, prefix)
 
@@ -179,18 +200,19 @@ class ObjectStore(Store):
 async def _transform_list(
     list_stream: AsyncGenerator[list[ObjectMeta], None],
 ) -> AsyncGenerator[str, None]:
+    """
+    Transform the result of list into an async generator of paths.
+    """
     async for batch in list_stream:
         for item in batch:
             yield item["path"]
 
 
-# ['zarr.json', 'c/0', 'c/1'] -> ['zarr.json']
-# ['zarr.json', 'c/0', 'c/1'] -> ['zarr.json, 'c']
 async def _transform_list_dir(
     list_result_coroutine: Coroutine[Any, Any, ListResult], prefix: str
 ) -> AsyncGenerator[str, None]:
     """
-    Transform the result of list_with_delimiter into an async generator of prefixes and paths.
+    Transform the result of list_with_delimiter into an async generator of paths.
     """
     list_result = await list_result_coroutine
 
