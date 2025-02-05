@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from zarr.core.common import ChunkCoords
 
 import json
+import numbers
 from dataclasses import dataclass, field, fields, replace
 
 import numcodecs
@@ -149,18 +150,20 @@ class ArrayV2Metadata(Metadata):
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, default=_json_convert, indent=json_indent).encode()
+                json.dumps(
+                    zarray_dict, default=_json_convert, indent=json_indent, allow_nan=False
+                ).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
-                json.dumps(zattrs_dict, indent=json_indent).encode()
+                json.dumps(zattrs_dict, indent=json_indent, allow_nan=False).encode()
             ),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ArrayV2Metadata:
-        # make a copy to protect the original from modification
+        # Make a copy to protect the original from modification.
         _data = data.copy()
-        # check that the zarr_format attribute is correct
+        # Check that the zarr_format attribute is correct.
         _ = parse_zarr_format(_data.pop("zarr_format"))
         dtype = parse_dtype(_data["dtype"])
 
@@ -169,20 +172,46 @@ class ArrayV2Metadata(Metadata):
             if fill_value_encoded is not None:
                 fill_value = base64.standard_b64decode(fill_value_encoded)
                 _data["fill_value"] = fill_value
-
-        # zarr v2 allowed arbitrary keys here.
-        # We don't want the ArrayV2Metadata constructor to fail just because someone put an
-        # extra key in the metadata.
+        else:
+            fill_value = _data.get("fill_value")
+            if fill_value is not None:
+                if np.issubdtype(dtype, np.datetime64):
+                    if fill_value == "NaT":
+                        _data["fill_value"] = np.array("NaT", dtype=dtype)[()]
+                    else:
+                        _data["fill_value"] = np.array(fill_value, dtype=dtype)[()]
+                elif dtype.kind == "c" and isinstance(fill_value, list):
+                    if len(fill_value) == 2:
+                        val = complex(float(fill_value[0]), float(fill_value[1]))
+                        _data["fill_value"] = np.array(val, dtype=dtype)[()]
+                elif dtype.kind in "f" and isinstance(fill_value, str):
+                    if fill_value in {"NaN", "Infinity", "-Infinity"}:
+                        _data["fill_value"] = np.array(fill_value, dtype=dtype)[()]
+        # zarr v2 allowed arbitrary keys in the metadata.
+        # Filter the keys to only those expected by the constructor.
         expected = {x.name for x in fields(cls)}
-        # https://github.com/zarr-developers/zarr-python/issues/2269
-        # handle the renames
         expected |= {"dtype", "chunks"}
-
         _data = {k: v for k, v in _data.items() if k in expected}
 
         return cls(**_data)
 
     def to_dict(self) -> dict[str, JSON]:
+        def _sanitize_fill_value(fv: Any):
+            if fv is None:
+                return fv
+            elif isinstance(fv, np.datetime64):
+                if np.isnat(fv):
+                    return "NaT"
+                return np.datetime_as_string(fv)
+            elif isinstance(fv, numbers.Real):
+                if np.isnan(fv):
+                    fv = "NaN"
+                elif np.isinf(fv):
+                    fv = "Infinity" if fv > 0 else "-Infinity"
+            elif isinstance(fv, numbers.Complex):
+                fv = [_sanitize_fill_value(fv.real), _sanitize_fill_value(fv.imag)]
+            return fv
+
         zarray_dict = super().to_dict()
 
         if self.dtype.kind in "SV" and self.fill_value is not None:
@@ -192,6 +221,7 @@ class ArrayV2Metadata(Metadata):
             fill_value = base64.standard_b64encode(cast(bytes, self.fill_value)).decode("ascii")
             zarray_dict["fill_value"] = fill_value
 
+        zarray_dict["fill_value"] = _sanitize_fill_value(zarray_dict["fill_value"])
         _ = zarray_dict.pop("dtype")
         dtype_json: JSON
         # In the case of zarr v2, the simplest i.e., '|VXX' dtype is represented as a string
@@ -300,7 +330,6 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
     -------
         An instance of `dtype`, or `None`, or any python object (in the case of an object dtype)
     """
-
     if fill_value is None or dtype.hasobject:
         # no fill value
         pass

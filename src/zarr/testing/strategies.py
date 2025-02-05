@@ -3,8 +3,9 @@ from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
+import numcodecs
 import numpy as np
-from hypothesis import given, settings  # noqa: F401
+from hypothesis import assume, given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
 import zarr
@@ -344,3 +345,136 @@ def key_ranges(
     )
     key_tuple = st.tuples(keys, byte_ranges)
     return st.lists(key_tuple, min_size=1, max_size=10)
+
+
+def simple_text():
+    """A strategy for generating simple text strings."""
+    return st.text(st.characters(min_codepoint=32, max_codepoint=126), min_size=1, max_size=10)
+
+
+def simple_attrs():
+    """A strategy for generating simple attribute dictionaries."""
+    return st.dictionaries(
+        simple_text(),
+        st.one_of(
+            st.integers(),
+            st.floats(allow_nan=False, allow_infinity=False),
+            st.booleans(),
+            simple_text(),
+        ),
+    )
+
+
+def array_shapes(min_dims=1, max_dims=3, max_len=100):
+    """A strategy for generating array shapes."""
+    return st.lists(
+        st.integers(min_value=1, max_value=max_len), min_size=min_dims, max_size=max_dims
+    )
+
+
+# def zarr_compressors():
+#     """A strategy for generating Zarr compressors."""
+#     return st.sampled_from([None, Blosc(), GZip(), Zstd(), LZ4()])
+
+
+# def zarr_codecs():
+#     """A strategy for generating Zarr codecs."""
+#     return st.sampled_from([BytesCodec(), Blosc(), GZip(), Zstd(), LZ4()])
+
+
+def zarr_filters():
+    """A strategy for generating Zarr filters."""
+    return st.lists(
+        st.just(numcodecs.Delta(dtype="i4")), min_size=0, max_size=2
+    )  # Example filter, expand as needed
+
+
+def zarr_storage_transformers():
+    """A strategy for generating Zarr storage transformers."""
+    return st.lists(
+        st.dictionaries(
+            simple_text(), st.one_of(st.integers(), st.floats(), st.booleans(), simple_text())
+        ),
+        min_size=0,
+        max_size=2,
+    )
+
+
+@st.composite
+def array_metadata_v2(draw: st.DrawFn) -> ArrayV2Metadata:
+    """Generates valid ArrayV2Metadata objects for property-based testing."""
+    dims = draw(st.integers(min_value=1, max_value=3))  # Limit dimensions for complexity
+    shape = tuple(draw(array_shapes(min_dims=dims, max_dims=dims, max_len=100)))
+    max_chunk_len = max(shape) if shape else 100
+    chunks = tuple(
+        draw(
+            st.lists(
+                st.integers(min_value=1, max_value=max_chunk_len), min_size=dims, max_size=dims
+            )
+        )
+    )
+
+    # Validate shape and chunks relationship
+    assume(all(c <= s for s, c in zip(shape, chunks, strict=False)))  # Chunk size must be <= shape
+
+    dtype = draw(v2_dtypes())
+    fill_value = draw(st.one_of([st.none(), npst.from_dtype(dtype)]))
+    order = draw(st.sampled_from(["C", "F"]))
+    dimension_separator = draw(st.sampled_from([".", "/"]))
+    # compressor = draw(zarr_compressors())
+    filters = tuple(draw(zarr_filters())) if draw(st.booleans()) else None
+    attributes = draw(simple_attrs())
+
+    # Construct the metadata object.  Type hints are crucial here for correctness.
+    return ArrayV2Metadata(
+        shape=shape,
+        dtype=dtype,
+        chunks=chunks,
+        fill_value=fill_value,
+        order=order,
+        dimension_separator=dimension_separator,
+        #    compressor=compressor,
+        filters=filters,
+        attributes=attributes,
+    )
+
+
+@st.composite
+def array_metadata_v3(draw: st.DrawFn) -> ArrayV3Metadata:
+    """Generates valid ArrayV3Metadata objects for property-based testing."""
+    dims = draw(st.integers(min_value=1, max_value=3))
+    shape = tuple(draw(array_shapes(min_dims=dims, max_dims=dims, max_len=100)))
+    max_chunk_len = max(shape) if shape else 100
+    chunks = tuple(
+        draw(
+            st.lists(
+                st.integers(min_value=1, max_value=max_chunk_len), min_size=dims, max_size=dims
+            )
+        )
+    )
+    assume(all(c <= s for s, c in zip(shape, chunks, strict=False)))
+
+    dtype = draw(v3_dtypes())
+    fill_value = draw(npst.from_dtype(dtype))
+    chunk_grid = RegularChunkGrid(chunks)  # Ensure chunks is passed as tuple.
+    chunk_key_encoding = DefaultChunkKeyEncoding(separator="/")  # Or st.sampled_from(["/", "."])
+    # codecs = tuple(draw(st.lists(zarr_codecs(), min_size=0, max_size=3)))
+    attributes = draw(simple_attrs())
+    dimension_names = (
+        tuple(draw(st.lists(st.one_of(st.none(), simple_text()), min_size=dims, max_size=dims)))
+        if draw(st.booleans())
+        else None
+    )
+    storage_transformers = tuple(draw(zarr_storage_transformers()))
+
+    return ArrayV3Metadata(
+        shape=shape,
+        data_type=dtype,
+        chunk_grid=chunk_grid,
+        chunk_key_encoding=chunk_key_encoding,
+        fill_value=fill_value,
+        #    codecs=codecs,
+        attributes=attributes,
+        dimension_names=dimension_names,
+        storage_transformers=storage_transformers,
+    )

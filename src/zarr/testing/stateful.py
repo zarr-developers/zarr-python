@@ -85,7 +85,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     @rule(
         data=st.data(),
         name=node_names,
-        array_and_chunks=np_array_and_chunks(arrays=numpy_arrays(zarr_formats=st.just(3))),
+        array_and_chunks=np_array_and_chunks(nparrays=numpy_arrays(zarr_formats=st.just(3))),
     )
     def add_array(
         self,
