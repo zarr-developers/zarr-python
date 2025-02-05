@@ -3801,7 +3801,7 @@ async def from_array(
     write_data: bool = True,
     name: str | None = None,
     chunks: Literal["auto", "keep"] | ChunkCoords = "keep",
-    shards: ShardsLike | None = None,
+    shards: ShardsLike | None | Literal["keep"] = "keep",
     filters: FiltersLike | Literal["keep"] = "keep",
     compressors: CompressorsLike | Literal["keep"] = "keep",
     serializer: SerializerLike | Literal["keep"] = "keep",
@@ -3840,7 +3840,15 @@ async def from_array(
 
         If not specified, defaults to "keep" if data is a zarr Array, otherwise "auto".
     shards : ChunkCoords, optional
-        Shard shape of the array. The default value of ``None`` results in no sharding at all.
+        Shard shape of the array.
+        Following values are supported:
+
+        - "auto": Automatically determine the shard shape based on the array's shape and chunk shape.
+        - "keep": Retain the shard shape of the data array if it is a zarr Array.
+        - ChunkCoords: A tuple of integers representing the shard shape.
+        - None: No sharding.
+
+        If not specified, defaults to "keep" if data is a zarr Array, otherwise None.
     filters : Iterable[Codec] or "auto" or "keep", optional
         Iterable of filters to apply to each chunk of the array, in order, before serializing that
         chunk to bytes.
@@ -3979,6 +3987,8 @@ async def from_array(
     if isinstance(data, Array):
         if chunks == "keep":
             chunks = data.chunks
+        if shards == "keep":
+            shards = data.shards
         if zarr_format is None:
             zarr_format = data.metadata.zarr_format
         if filters == "keep":
@@ -4010,6 +4020,8 @@ async def from_array(
     else:
         if chunks == "keep":
             chunks = "auto"
+        if shards == "keep":
+            shards = None
         if zarr_format is None:
             zarr_format = 3
         if filters == "keep":
