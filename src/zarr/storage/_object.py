@@ -82,12 +82,6 @@ class ObjectStore(Store):
     def __repr__(self) -> str:
         return f"ObjectStore({self})"
 
-    def __getstate__(self) -> None:
-        raise NotImplementedError("Pickling has not been implement for ObjectStore")
-
-    def __setstate__(self) -> None:
-        raise NotImplementedError("Pickling has not been implement for ObjectStore")
-
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:

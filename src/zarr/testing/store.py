@@ -100,8 +100,6 @@ class StoreTests(Generic[S, B]):
         assert store == store2
 
     def test_serializable_store(self, store: S) -> None:
-        if isinstance(store, ObjectStore):
-            pytest.xfail("Serialization not implemented for ObjectStore")
         new_store: S = pickle.loads(pickle.dumps(store))
         assert new_store == store
         assert new_store.read_only == store.read_only
