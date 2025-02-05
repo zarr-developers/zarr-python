@@ -1,0 +1,1 @@
+The docs environment is now built with ``astroid`` pinned to a version less than 4. This allows the docs to build in CI.
