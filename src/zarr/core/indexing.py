@@ -421,7 +421,9 @@ class SliceDimIndexer:
 
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
-            is_complete_chunk = dim_chunk_sel_start == 0 and (self.stop >= dim_limit)
+            is_complete_chunk = (
+                dim_chunk_sel_start == 0 and (self.stop >= dim_limit) and self.step in [1, None]
+            )
             yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
