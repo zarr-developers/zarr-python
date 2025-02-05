@@ -546,7 +546,7 @@ async def array(
     """
 
     if isinstance(data, Array):
-        return await from_array(data, **kwargs)
+        return await from_array(data=data, **kwargs)
 
     # ensure data is array-like
     if not hasattr(data, "shape") or not hasattr(data, "dtype"):

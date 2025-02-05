@@ -3948,22 +3948,22 @@ async def from_array(
         >>>     chunks=(10,10),
         >>>     dtype='int32',
         >>>     fill_value=0)
-        >>> arr2 = await zarr.api.asynchronous.from_array(arr, store=store2)
+        >>> arr2 = await zarr.api.asynchronous.from_array(store2, data=arr)
         <AsyncArray file://example.zarr shape=(100, 100) dtype=int32>
 
     Create an array from an existing NumPy array::
 
         >>> arr3 = await zarr.api.asynchronous.from_array(
-        >>>     np.arange(10000, dtype='i4').reshape(100, 100),
-        >>>     store=zarr.storage.MemoryStore(),
+        >>>     zarr.storage.MemoryStore(),
+        >>>     data=np.arange(10000, dtype='i4').reshape(100, 100),
         >>> )
         <AsyncArray memory://123286956732800 shape=(100, 100) dtype=int32>
 
     Create an array from any array-like object::
 
         >>> arr4 = await zarr.api.asynchronous.from_array(
-        >>>     [[1, 2], [3, 4]],
-        >>>     store=zarr.storage.MemoryStore(),
+        >>>     zarr.storage.MemoryStore(),
+        >>>     data=[[1, 2], [3, 4]],
         >>> )
         <AsyncArray memory://123286959761024 shape=(2, 2) dtype=int64>
         >>> await arr4.getitem(...)
@@ -3972,8 +3972,8 @@ async def from_array(
     Create an array from an existing Array without copying the data::
 
         >>> arr5 = await zarr.api.asynchronous.from_array(
-        >>>     Array(arr4),
-        >>>     store=zarr.storage.MemoryStore(),
+        >>>     zarr.storage.MemoryStore(),
+        >>>     data=Array(arr4),
         >>>     write_data=False,
         >>> )
         <AsyncArray memory://140678602965568 shape=(2, 2) dtype=int64>
@@ -4429,8 +4429,8 @@ async def create_array(
     )
     if data_parsed is not None:
         return await from_array(
+            store,
             data=data_parsed,
-            store=store,
             write_data=write_data,
             name=name,
             chunks=chunks,

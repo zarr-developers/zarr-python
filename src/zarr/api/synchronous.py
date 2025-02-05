@@ -1062,23 +1062,23 @@ def from_array(
         >>>     chunks=(10,10),
         >>>     dtype='int32',
         >>>     fill_value=0)
-        >>> arr2 = zarr.from_array(arr, store=store2)
+        >>> arr2 = zarr.from_array(store2, data=arr)
         <Array file://example.zarr shape=(100, 100) dtype=int32>
 
     Create an array from an existing NumPy array::
 
         >>> import numpy as np
         >>> arr3 = zarr.from_array(
-        >>>     np.arange(10000, dtype='i4').reshape(100, 100),
-        >>>     store=zarr.storage.MemoryStore(),
+                zarr.storage.MemoryStore(),
+        >>>     data=np.arange(10000, dtype='i4').reshape(100, 100),
         >>> )
         <Array memory://125477403529984 shape=(100, 100) dtype=int32>
 
     Create an array from any array-like object::
 
         >>> arr4 = zarr.from_array(
-        >>>     [[1, 2], [3, 4]],
-        >>>     store= zarr.storage.MemoryStore(),
+        >>>     zarr.storage.MemoryStore(),
+        >>>     data=[[1, 2], [3, 4]],
         >>> )
         <Array memory://125477392154368 shape=(2, 2) dtype=int64>
         >>> arr4[...]
@@ -1087,8 +1087,8 @@ def from_array(
     Create an array from an existing Array without copying the data::
 
         >>> arr5 = zarr.from_array(
-        >>>     arr4,
-        >>>     store=zarr.storage.MemoryStore(),
+        >>>     zarr.storage.MemoryStore(),
+        >>>     data=arr4,
         >>>     write_data=False,
         >>> )
         <Array memory://140678602965568 shape=(2, 2) dtype=int64>
@@ -1098,9 +1098,9 @@ def from_array(
     return Array(
         sync(
             zarr.core.array.from_array(
-                data,
                 store,
-                write_data,
+                data=data,
+                write_data=write_data,
                 name=name,
                 chunks=chunks,
                 shards=shards,

@@ -1357,8 +1357,8 @@ async def test_creation_from_other_zarr_format(
 
     src[:] = np.arange(50 * 50).reshape((50, 50))
     result = zarr.from_array(
-        src,
         store=store2,
+        data=src,
         zarr_format=new_format,
     )
     np.testing.assert_array_equal(result[:], src[:])
@@ -1408,7 +1408,7 @@ async def test_from_array(
     new_attributes: dict[str, JSON] = {"foo": "bar"}
 
     result = zarr.from_array(
-        src,
+        data=src,
         store=store2,
         chunks=new_chunks,
         fill_value=new_fill_value,
@@ -1443,7 +1443,7 @@ async def test_from_array_arraylike(
 ) -> None:
     fill_value = 42
     result = zarr.from_array(
-        src, store=store, chunks=chunks, write_data=write_data, fill_value=fill_value
+        store, data=src, chunks=chunks, write_data=write_data, fill_value=fill_value
     )
     if write_data:
         np.testing.assert_array_equal(result[...], np.array(src))
