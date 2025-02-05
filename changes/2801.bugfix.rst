@@ -1,0 +1,1 @@
+Ensure utf8 compliant strings are used to construct numpy arrays in property-based tests
