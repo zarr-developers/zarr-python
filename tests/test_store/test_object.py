@@ -1,5 +1,4 @@
 # ruff: noqa: E402
-import pickle
 from typing import Any
 
 import pytest
@@ -49,8 +48,3 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
 
     def test_store_supports_listing(self, store: ObjectStore) -> None:
         assert store.supports_listing
-
-    @pytest.mark.xfail(reason="Not Implemented")
-    def test_serializable_store(self, store: ObjectStore) -> None:
-        foo = pickle.dumps(store)
-        assert pickle.loads(foo) == store
