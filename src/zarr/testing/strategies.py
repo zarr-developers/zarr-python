@@ -201,14 +201,15 @@ def orthogonal_indices(
     npindexer = []
     ndim = len(shape)
     for axis, size in enumerate(shape):
-        (idxr,) = draw(
+        val = draw(
             npst.integer_array_indices(
                 shape=(size,), result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1)
             )
-            | basic_indices(shape=(size,), allow_ellipsis=False).map(
-                lambda x: (x,) if not isinstance(x, tuple) else x
-            )
+            | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+            .map(lambda x: (x,) if not isinstance(x, tuple) else x)  # bare ints, slices
+            .filter(lambda x: bool(x))  # skip empty tuple
         )
+        (idxr,) = val
         if isinstance(idxr, int):
             idxr = np.array([idxr])
         zindexer.append(idxr)
