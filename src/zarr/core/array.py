@@ -3984,52 +3984,30 @@ async def from_array(
     config_parsed = parse_array_config(config)
     store_path = await make_store_path(store, path=name, mode=mode, storage_options=storage_options)
 
-    if isinstance(data, Array):
-        if chunks == "keep":
-            chunks = data.chunks
-        if shards == "keep":
-            shards = data.shards
-        if zarr_format is None:
-            zarr_format = data.metadata.zarr_format
-        if filters == "keep":
-            if zarr_format == data.metadata.zarr_format:
-                filters = data.filters or None
-            else:
-                filters = "auto"
-        if compressors == "keep":
-            if zarr_format == data.metadata.zarr_format:
-                compressors = data.compressors or None
-            else:
-                compressors = "auto"
-        if serializer == "keep":
-            if zarr_format == 3 and data.metadata.zarr_format == 3:
-                serializer = cast(SerializerLike, data.serializer)
-            else:
-                serializer = "auto"
-        if fill_value is None:
-            fill_value = data.fill_value
-        if order is None:
-            order = data.order
-        if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
-            if isinstance(data.metadata, ArrayV2Metadata):
-                chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}
-            elif isinstance(data.metadata, ArrayV3Metadata):
-                chunk_key_encoding = data.metadata.chunk_key_encoding
-        if dimension_names is None and data.metadata.zarr_format == 3:
-            dimension_names = data.metadata.dimension_names
-    else:
-        if chunks == "keep":
-            chunks = "auto"
-        if shards == "keep":
-            shards = None
-        if zarr_format is None:
-            zarr_format = 3
-        if filters == "keep":
-            filters = "auto"
-        if compressors == "keep":
-            compressors = "auto"
-        if serializer == "keep":
-            serializer = "auto"
+    (
+        chunks,
+        shards,
+        filters,
+        compressors,
+        serializer,
+        fill_value,
+        order,
+        zarr_format,
+        chunk_key_encoding,
+        dimension_names,
+    ) = _parse_keep_array_attr(
+        data=data,
+        chunks=chunks,
+        shards=shards,
+        filters=filters,
+        compressors=compressors,
+        serializer=serializer,
+        fill_value=fill_value,
+        order=order,
+        zarr_format=zarr_format,
+        chunk_key_encoding=chunk_key_encoding,
+        dimension_names=dimension_names,
+    )
     if not hasattr(data, "dtype") or not hasattr(data, "shape"):
         data = np.array(data)
 
@@ -4472,6 +4450,90 @@ async def create_array(
             overwrite=overwrite,
         )
         return AsyncArray(metadata=meta, store_path=store_path, config=config_parsed)
+
+
+def _parse_keep_array_attr(
+    data: Array | npt.ArrayLike,
+    chunks: Literal["auto", "keep"] | ChunkCoords,
+    shards: ShardsLike | None | Literal["keep"],
+    filters: FiltersLike | Literal["keep"],
+    compressors: CompressorsLike | Literal["keep"],
+    serializer: SerializerLike | Literal["keep"],
+    fill_value: Any | None,
+    order: MemoryOrder | None,
+    zarr_format: ZarrFormat | None,
+    chunk_key_encoding: ChunkKeyEncodingLike | None,
+    dimension_names: Iterable[str] | None,
+) -> tuple[
+    ChunkCoords | Literal["auto"],
+    ShardsLike | None,
+    FiltersLike,
+    CompressorsLike,
+    SerializerLike,
+    Any | None,
+    MemoryOrder | None,
+    ZarrFormat,
+    ChunkKeyEncodingLike | None,
+    Iterable[str] | None,
+]:
+    if isinstance(data, Array):
+        if chunks == "keep":
+            chunks = data.chunks
+        if shards == "keep":
+            shards = data.shards
+        if zarr_format is None:
+            zarr_format = data.metadata.zarr_format
+        if filters == "keep":
+            if zarr_format == data.metadata.zarr_format:
+                filters = data.filters or None
+            else:
+                filters = "auto"
+        if compressors == "keep":
+            if zarr_format == data.metadata.zarr_format:
+                compressors = data.compressors or None
+            else:
+                compressors = "auto"
+        if serializer == "keep":
+            if zarr_format == 3 and data.metadata.zarr_format == 3:
+                serializer = cast(SerializerLike, data.serializer)
+            else:
+                serializer = "auto"
+        if fill_value is None:
+            fill_value = data.fill_value
+        if order is None:
+            order = data.order
+        if chunk_key_encoding is None and zarr_format == data.metadata.zarr_format:
+            if isinstance(data.metadata, ArrayV2Metadata):
+                chunk_key_encoding = {"name": "v2", "separator": data.metadata.dimension_separator}
+            elif isinstance(data.metadata, ArrayV3Metadata):
+                chunk_key_encoding = data.metadata.chunk_key_encoding
+        if dimension_names is None and data.metadata.zarr_format == 3:
+            dimension_names = data.metadata.dimension_names
+    else:
+        if chunks == "keep":
+            chunks = "auto"
+        if shards == "keep":
+            shards = None
+        if zarr_format is None:
+            zarr_format = 3
+        if filters == "keep":
+            filters = "auto"
+        if compressors == "keep":
+            compressors = "auto"
+        if serializer == "keep":
+            serializer = "auto"
+    return (
+        chunks,
+        shards,
+        filters,
+        compressors,
+        serializer,
+        fill_value,
+        order,
+        zarr_format,
+        chunk_key_encoding,
+        dimension_names,
+    )
 
 
 def _parse_chunk_key_encoding(
