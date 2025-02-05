@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import pickle
 from collections import defaultdict
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, TypedDict
@@ -70,14 +71,21 @@ class ObjectStore(Store):
             ),
         ):
             raise TypeError(f"expected ObjectStore class, got {store!r}")
-        self.store = store
         super().__init__(read_only=read_only)
+        self.store = store
 
     def __str__(self) -> str:
         return f"object://{self.store}"
 
     def __repr__(self) -> str:
         return f"ObjectStore({self})"
+
+    def __getstate__(self) -> dict:
+        self.__dict__.update({"store": pickle.dumps(self.store)})
+        return self.__dict__.copy()
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
 
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
