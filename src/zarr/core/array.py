@@ -3819,10 +3819,10 @@ async def from_array(
 
     Parameters
     ----------
-    data : Array | array-like
-        The array to copy.
     store : str or Store
         Store or path to directory in file system or name of zip file for the new array.
+    data : Array | array-like
+        The array to copy.
     write_data : bool, default True
         Whether to copy the data from the input array to the new array.
         If ``write_data`` is ``False``, the new array will be created with the same metadata as the
