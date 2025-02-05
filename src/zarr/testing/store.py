@@ -152,7 +152,6 @@ class StoreTests(Generic[S, B]):
         """
         Ensure that data can be read from the store using the store.get method.
         """
-        data = b"\x01\x02\x03\x04"
         data_buf = self.buffer_cls.from_bytes(data)
         await self.set(store, key, data_buf)
         observed = await store.get(key, prototype=default_buffer_prototype(), byte_range=byte_range)
