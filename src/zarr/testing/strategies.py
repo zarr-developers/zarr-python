@@ -188,6 +188,34 @@ def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs: Any) -> Any:
     )
 
 
+@st.composite  # type: ignore[misc]
+def orthogonal_indices(
+    draw: st.DrawFn, *, shape: tuple[int]
+) -> tuple[tuple[np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
+    """
+    Strategy that returns
+    (1) a tuple of integer arrays used for orthogonal indexing of Zarr arrays.
+    (2) an tuple of integer arrays that can be used for equivalent indexing of numpy arrays
+    """
+    zindexer = []
+    npindexer = []
+    ndim = len(shape)
+    for axis, size in enumerate(shape):
+        (idxr,) = draw(
+            npst.integer_array_indices(
+                shape=(size,), result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1)
+            )
+            # | npst.basic_indices(shape=(size,), allow_ellipsis=False)
+        )
+        zindexer.append(idxr)
+        if isinstance(idxr, np.ndarray):
+            newshape = [1] * ndim
+            newshape[axis] = idxr.size
+            idxr = idxr.reshape(newshape)
+            npindexer.append(idxr)
+    return tuple(zindexer), np.broadcast_arrays(*npindexer)
+
+
 def key_ranges(
     keys: SearchStrategy = node_names, max_size: int | None = None
 ) -> SearchStrategy[list[int]]:

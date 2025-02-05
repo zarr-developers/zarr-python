@@ -6,9 +6,15 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import given
+from hypothesis import given, settings
 
-from zarr.testing.strategies import arrays, basic_indices, numpy_arrays, zarr_formats
+from zarr.testing.strategies import (
+    arrays,
+    basic_indices,
+    numpy_arrays,
+    orthogonal_indices,
+    zarr_formats,
+)
 
 
 @given(data=st.data(), zarr_format=zarr_formats)
@@ -30,6 +36,18 @@ def test_basic_indexing(data: st.DataObject) -> None:
     zarray[indexer] = new_data
     nparray[indexer] = new_data
     assert_array_equal(nparray, zarray[:])
+
+
+@settings(report_multiple_bugs=False)
+@given(data=st.data())
+def test_oindex(data: st.DataObject) -> None:
+    # integer_array_indices can't handle 0-size dimensions.
+    zarray = data.draw(arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    nparray = zarray[:]
+
+    zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
+    actual = zarray.oindex[zindexer]
+    assert_array_equal(nparray[npindexer], actual)
 
 
 @given(data=st.data())
