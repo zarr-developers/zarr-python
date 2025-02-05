@@ -34,7 +34,8 @@ from zarr.core.array import (
     chunks_initialized,
     create_array,
 )
-from zarr.core.buffer import default_buffer_prototype
+from zarr.core.buffer import NDArrayLike, default_buffer_prototype
+from zarr.core.buffer.core import ScalarWrapper
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
@@ -1324,11 +1325,19 @@ async def test_create_array_data_ignored_params(store: Store) -> None:
         await create_array(store, data=data, shape=None, dtype=data.dtype, overwrite=True)
 
 
-async def test_scalar_array() -> None:
-    arr = zarr.array(1.5)
-    assert arr[...] == 1.5
-    assert arr[()] == 1.5
+@pytest.mark.parametrize("value", [1, 1.4, "a", b"a", np.array(1)])
+@pytest.mark.parametrize("zarr_format", [2, 3])
+def test_scalar_array(value: Any, zarr_format: ZarrFormat) -> None:
+    arr = zarr.array(value, zarr_format=zarr_format)
+    assert arr[...] == value
     assert arr.shape == ()
+    assert arr.ndim == 0
+
+    x = arr[()]
+    assert isinstance(arr[()], ScalarWrapper)
+    assert isinstance(arr[()], NDArrayLike)
+    assert x.shape == arr.shape
+    assert x.ndim == arr.ndim
 
 
 async def test_orthogonal_set_total_slice() -> None:
