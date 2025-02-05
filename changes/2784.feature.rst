@@ -1,0 +1,1 @@
+Avoid reading chunks during writes where possible. :issue:`757`

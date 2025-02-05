@@ -1335,5 +1335,14 @@ async def test_orthogonal_set_total_slice() -> None:
     """Ensure that a whole chunk overwrite does not read chunks"""
     store = MemoryStore()
     array = zarr.create_array(store, shape=(20, 20), chunks=(1, 2), dtype=int, fill_value=-1)
-    with mock.patch("zarr.storage.MemoryStore.get", side_effect=ValueError):
+    with mock.patch("zarr.storage.MemoryStore.get", side_effect=RuntimeError):
         array[0, slice(4, 10)] = np.arange(6)
+
+    array = zarr.create_array(
+        store, shape=(20, 21), chunks=(1, 2), dtype=int, fill_value=-1, overwrite=True
+    )
+    with mock.patch("zarr.storage.MemoryStore.get", side_effect=RuntimeError):
+        array[0, :] = np.arange(21)
+
+    with mock.patch("zarr.storage.MemoryStore.get", side_effect=RuntimeError):
+        array[:] = 1
