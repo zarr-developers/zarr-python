@@ -220,10 +220,9 @@ def orthogonal_indices(
         newshape = [1] * ndim
         newshape[axis] = idxr.size
         npindexer.append(idxr.reshape(newshape))
-    from hypothesis import note
 
-    note(val)
-    return tuple(zindexer), np.broadcast_arrays(*npindexer)
+    # casting the output of broadcast_arrays is needed for numpy 1.25
+    return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
 
 
 def key_ranges(
