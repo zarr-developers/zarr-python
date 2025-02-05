@@ -77,6 +77,7 @@ async def store(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
 
 @pytest.fixture
 async def store2(request: pytest.FixtureRequest, tmpdir: LEGACY_PATH) -> Store:
+    """Fixture to create a second store for testing copy operations between stores"""
     param = request.param
     store2_path = tmpdir.mkdir("store2")
     return await parse_store(param, str(store2_path))
