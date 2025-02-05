@@ -1,3 +1,4 @@
+import json
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
@@ -8,7 +9,11 @@ import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 from hypothesis import given
 
+from zarr.core.buffer import default_buffer_prototype
+from zarr.core.common import ZARRAY_JSON, parse_shapelike
+from zarr.core.metadata.v2 import ArrayV2Metadata, parse_fill_value, parse_dtype, parse_shapelike
 from zarr.testing.strategies import arrays, basic_indices, numpy_arrays, zarr_formats
+from zarr.testing.v2metadata import array_metadata_v2_inputs
 
 
 @given(data=st.data(), zarr_format=zarr_formats)
@@ -69,3 +74,38 @@ def test_vindex(data: st.DataObject) -> None:
 #     nparray = data.draw(np_arrays)
 #     zarray = data.draw(arrays(arrays=st.just(nparray)))
 #     assert_array_equal(nparray, zarray[:])
+
+
+@given(array_metadata_v2_inputs())
+def test_v2meta_fill_value_serialization(inputs):
+    metadata = ArrayV2Metadata(**inputs)
+    buffer_dict = metadata.to_buffer_dict(prototype=default_buffer_prototype())
+    zarray_dict = json.loads(buffer_dict[ZARRAY_JSON].to_bytes().decode())
+
+    if isinstance(inputs["fill_value"], (float, np.floating)) and np.isnan(inputs["fill_value"]):
+        assert zarray_dict["fill_value"] == "NaN"
+    else:
+        assert zarray_dict["fill_value"] == inputs["fill_value"]
+
+
+@given(npst.from_dtype(dtype=np.dtype("float64"), allow_nan=True, allow_infinity=True))
+def test_v2meta_nan_and_infinity(fill_value):
+    metadata = ArrayV2Metadata(
+        shape=[10],
+        dtype=np.dtype("float64"),
+        chunks=[5],
+        fill_value=fill_value,
+        order="C",
+    )
+
+    buffer_dict = metadata.to_buffer_dict(prototype=default_buffer_prototype())
+    zarray_dict = json.loads(buffer_dict[ZARRAY_JSON].to_bytes().decode())
+
+    if np.isnan(fill_value):
+        assert zarray_dict["fill_value"] == "NaN"
+    elif np.isinf(fill_value) and fill_value > 0:
+        assert zarray_dict["fill_value"] == "Infinity"
+    elif np.isinf(fill_value):
+        assert zarray_dict["fill_value"] == "-Infinity"
+    else:
+        assert zarray_dict["fill_value"] == fill_value
