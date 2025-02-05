@@ -4478,7 +4478,7 @@ def _parse_keep_array_attr(
 ]:
     if isinstance(data, Array):
         if chunks == "keep":
-            chunks = data.chunks
+            parsed_chunks = data.chunks
         if shards == "keep":
             shards = data.shards
         if zarr_format is None:
