@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
     from obstore.store import ObjectStore as _ObjectStore
 
-    from zarr.core.buffer import Buffer, BufferPrototype
+    from zarr.core.buffer import BufferPrototype
     from zarr.core.common import BytesLike
 
 ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
@@ -104,7 +104,7 @@ class ObjectStore(Store):
                 )
                 return prototype.buffer.from_bytes(await resp.bytes_async())
             else:
-                raise ValueError(f"Unexpected input to `get`: {byte_range}")
+                raise ValueError(f"Unexpected byte_range, got {byte_range}")
         except ALLOWED_EXCEPTIONS:
             return None
 
@@ -129,6 +129,10 @@ class ObjectStore(Store):
 
     async def set(self, key: str, value: Buffer) -> None:
         self._check_writable()
+        if not isinstance(value, Buffer):
+            raise TypeError(
+                f"ObjectStore.set(): `value` must be a Buffer instance. Got an instance of {type(value)} instead."
+            )
         buf = value.to_bytes()
         await obs.put_async(self.store, key, buf)
 
@@ -193,8 +197,8 @@ async def _transform_list_dir(
     # We assume that the underlying object-store implementation correctly handles the
     # prefix, so we don't double-check that the returned results actually start with the
     # given prefix.
-    prefixes = list_result["common_prefixes"]
-    objects = [obj["path"].lstrip(prefix) for obj in list_result["objects"]]
+    prefixes = [obj.lstrip(prefix).lstrip("/") for obj in list_result["common_prefixes"]]
+    objects = [obj["path"].lstrip(prefix).lstrip("/") for obj in list_result["objects"]]
     for item in prefixes + objects:
         yield item
 

@@ -10,7 +10,7 @@ from zarr.core.buffer import Buffer, cpu
 from zarr.storage.object_store import ObjectStore
 from zarr.testing.store import StoreTests
 
-PATTERN = r"file://(/[\w/.-]+)"
+PATTERN = r'LocalStore\("([^"]+)"\)'
 
 
 class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
@@ -27,13 +27,13 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
         return self.store_cls(**store_kwargs)
 
     async def get(self, store: ObjectStore, key: str) -> Buffer:
-        # TODO: There must be a better way to get the path to the store
+        # TODO: Use new store.prefix in obstore 0.4.0
         store_path = re.search(PATTERN, str(store)).group(1)
         new_local_store = obstore.store.LocalStore(prefix=store_path)
         return self.buffer_cls.from_bytes(obstore.get(new_local_store, key).bytes())
 
     async def set(self, store: ObjectStore, key: str, value: Buffer) -> None:
-        # TODO: There must be a better way to get the path to the store
+        # TODO: Use new store.prefix in obstore 0.4.0
         store_path = re.search(PATTERN, str(store)).group(1)
         new_local_store = obstore.store.LocalStore(prefix=store_path)
         obstore.put(new_local_store, key, value.to_bytes())
@@ -41,7 +41,7 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
     def test_store_repr(self, store: ObjectStore) -> None:
         from fnmatch import fnmatch
 
-        pattern = "ObjectStore(object://LocalStore(file:///*))"
+        pattern = "ObjectStore(object://LocalStore(*))"
         assert fnmatch(f"{store!r}", pattern)
 
     def test_store_supports_writes(self, store: ObjectStore) -> None:
