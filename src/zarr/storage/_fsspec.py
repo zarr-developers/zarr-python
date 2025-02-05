@@ -16,7 +16,9 @@ from zarr.storage._common import _dereference_path
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Iterable
 
+    from fsspec import AbstractFileSystem
     from fsspec.asyn import AsyncFileSystem
+    from fsspec.mapping import FSMap
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import BytesLike
@@ -27,6 +29,20 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
     IsADirectoryError,
     NotADirectoryError,
 )
+
+
+def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
+    try:
+        from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+
+        fs = AsyncFileSystemWrapper(fs)
+    except ImportError as e:
+        raise ImportError(
+            f"The filesystem '{fs}' is synchronous, and the required "
+            "AsyncFileSystemWrapper is not available. Upgrade fsspec to version "
+            "2024.12.0 or later to enable this functionality."
+        ) from e
+    return fs
 
 
 class FsspecStore(Store):
@@ -137,6 +153,37 @@ class FsspecStore(Store):
         )
 
     @classmethod
+    def from_mapper(
+        cls,
+        fs_map: FSMap,
+        read_only: bool = False,
+        allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
+    ) -> FsspecStore:
+        """
+        Create a FsspecStore from an upath object.
+
+        Parameters
+        ----------
+        read_only : bool
+            Whether the store is read-only, defaults to False.
+        allowed_exceptions : tuple, optional
+            The exceptions that are allowed to be raised when accessing the
+            store. Defaults to ALLOWED_EXCEPTIONS.
+
+        Returns
+        -------
+        FsspecStore
+        """
+        if not fs_map.fs.async_impl or not fs_map.fs.asynchronous:
+            raise TypeError("Filesystem needs to support async operations.")
+        return cls(
+            fs=fs_map.fs,
+            path=fs_map.root,
+            read_only=read_only,
+            allowed_exceptions=allowed_exceptions,
+        )
+
+    @classmethod
     def from_url(
         cls,
         url: str,
@@ -174,16 +221,7 @@ class FsspecStore(Store):
 
         fs, path = url_to_fs(url, **opts)
         if not fs.async_impl:
-            try:
-                from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
-
-                fs = AsyncFileSystemWrapper(fs)
-            except ImportError as e:
-                raise ImportError(
-                    f"The filesystem for URL '{url}' is synchronous, and the required "
-                    "AsyncFileSystemWrapper is not available. Upgrade fsspec to version "
-                    "2024.12.0 or later to enable this functionality."
-                ) from e
+            fs = _make_async(fs)
 
         # fsspec is not consistent about removing the scheme from the path, so check and strip it here
         # https://github.com/fsspec/filesystem_spec/issues/1722
