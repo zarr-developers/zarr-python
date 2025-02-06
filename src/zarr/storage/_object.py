@@ -133,7 +133,7 @@ class ObjectStore(Store):
     def __repr__(self) -> str:
         return f"ObjectStore({self})"
 
-    def __getstate__(self) -> dict:
+    def __getstate__(self) -> dict[Any, Any]:
         self.__dict__.update({"store": pickle.dumps(self.store)})
         return self.__dict__.copy()
 
