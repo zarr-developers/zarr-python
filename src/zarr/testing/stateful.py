@@ -25,9 +25,6 @@ from zarr.testing.strategies import keys as zarr_keys
 
 MAX_BINARY_SIZE = 100
 
-# Handle possible case-insensitive file systems (e.g. MacOS)
-node_names = node_names.map(lambda x: x.lower())
-
 
 def split_prefix_name(path: str) -> tuple[str, str]:
     split = path.rsplit("/", maxsplit=1)
@@ -71,6 +68,9 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     # -------------------- store operations -----------------------
     @rule(name=node_names, data=st.data())
     def add_group(self, name: str, data: DataObject) -> None:
+        # Handle possible case-insensitive file systems (e.g. MacOS)
+        if isinstance(self.store, LocalStore):
+            name = name.lower()
         if self.all_groups:
             parent = data.draw(st.sampled_from(sorted(self.all_groups)), label="Group parent")
         else:
@@ -93,6 +93,9 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
         name: str,
         array_and_chunks: tuple[np.ndarray[Any, Any], tuple[int, ...]],
     ) -> None:
+        # Handle possible case-insensitive file systems (e.g. MacOS)
+        if isinstance(self.store, LocalStore):
+            name = name.lower()
         array, chunks = array_and_chunks
         fill_value = data.draw(npst.from_dtype(array.dtype))
         if self.all_groups:
