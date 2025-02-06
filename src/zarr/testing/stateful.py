@@ -141,6 +141,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
     #     self.model.rename(from_group, new_path)
     #     self.repo.store.rename(from_group, new_path)
 
+    @precondition(lambda self: self.store.supports_deletes)
     @precondition(lambda self: len(self.all_arrays) >= 1)
     @rule(data=st.data())
     def delete_array_using_del(self, data: DataObject) -> None:
@@ -155,6 +156,7 @@ class ZarrHierarchyStateMachine(SyncMixin, RuleBasedStateMachine):
             del group[array_name]
         self.all_arrays.remove(array_path)
 
+    @precondition(lambda self: self.store.supports_deletes)
     @precondition(lambda self: len(self.all_groups) >= 2)  # fixme don't delete root
     @rule(data=st.data())
     def delete_group_using_del(self, data: DataObject) -> None:
@@ -290,6 +292,10 @@ class SyncStoreWrapper(zarr.core.sync.SyncMixin):
     def supports_writes(self) -> bool:
         return self.store.supports_writes
 
+    @property
+    def supports_deletes(self) -> bool:
+        return self.store.supports_deletes
+
 
 class ZarrStoreStateMachine(RuleBasedStateMachine):
     """ "
@@ -372,6 +378,7 @@ class ZarrStoreStateMachine(RuleBasedStateMachine):
             model_vals_ls,
         )
 
+    @precondition(lambda self: self.store.supports_deletes)
     @precondition(lambda self: len(self.model.keys()) > 0)
     @rule(data=st.data())
     def delete(self, data: DataObject) -> None:
