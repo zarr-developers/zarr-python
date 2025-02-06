@@ -1,13 +1,14 @@
 # Stateful tests for arbitrary Zarr stores.
 import pytest
 from hypothesis.stateful import (
-    Settings,
     run_state_machine_as_test,
 )
 
 from zarr.abc.store import Store
-from zarr.storage import LocalStore, MemoryStore, ZipStore
+from zarr.storage import ZipStore
 from zarr.testing.stateful import ZarrHierarchyStateMachine, ZarrStoreStateMachine
+
+pytestmark = pytest.mark.slow_hypothesis
 
 
 def test_zarr_hierarchy(sync_store: Store):
@@ -16,10 +17,8 @@ def test_zarr_hierarchy(sync_store: Store):
 
     if isinstance(sync_store, ZipStore):
         pytest.skip(reason="ZipStore does not support delete")
-    if isinstance(sync_store, MemoryStore):
-        run_state_machine_as_test(
-            mk_test_instance_sync, settings=Settings(report_multiple_bugs=False, max_examples=50)
-        )
+
+    run_state_machine_as_test(mk_test_instance_sync)
 
 
 def test_zarr_store(sync_store: Store) -> None:
@@ -28,11 +27,5 @@ def test_zarr_store(sync_store: Store) -> None:
 
     if isinstance(sync_store, ZipStore):
         pytest.skip(reason="ZipStore does not support delete")
-    elif isinstance(sync_store, LocalStore):
-        pytest.skip(reason="This test has errors")
-    elif isinstance(sync_store, MemoryStore):
-        run_state_machine_as_test(mk_test_instance_sync, settings=Settings(max_examples=50))
-    else:
-        run_state_machine_as_test(
-            mk_test_instance_sync, settings=Settings(report_multiple_bugs=True)
-        )
+
+    run_state_machine_as_test(mk_test_instance_sync)

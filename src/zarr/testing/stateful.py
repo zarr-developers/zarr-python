@@ -25,6 +25,9 @@ from zarr.testing.strategies import keys as zarr_keys
 
 MAX_BINARY_SIZE = 100
 
+# Handle possible case-insensitive file systems (e.g. MacOS)
+node_names = node_names.map(lambda x: x.lower())
+
 
 def split_prefix_name(path: str) -> tuple[str, str]:
     split = path.rsplit("/", maxsplit=1)
