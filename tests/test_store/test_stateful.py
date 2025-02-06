@@ -5,7 +5,7 @@ from hypothesis.stateful import (
 )
 
 from zarr.abc.store import Store
-from zarr.storage import ZipStore
+from zarr.storage import LocalStore, ZipStore
 from zarr.testing.stateful import ZarrHierarchyStateMachine, ZarrStoreStateMachine
 
 pytestmark = pytest.mark.slow_hypothesis
@@ -28,4 +28,6 @@ def test_zarr_store(sync_store: Store) -> None:
     if isinstance(sync_store, ZipStore):
         pytest.skip(reason="ZipStore does not support delete")
 
+    if isinstance(sync_store, LocalStore):
+        pytest.skip(reason="Test isn't suitable for LocalStore.")
     run_state_machine_as_test(mk_test_instance_sync)
