@@ -5,9 +5,17 @@ import contextlib
 import pickle
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict, TypeVar
 
 import obstore as obs
+from obstore.store import (
+    AzureStore,
+    GCSStore,
+    HTTPStore,
+    LocalStore,
+    MemoryStore,
+    S3Store,
+)
 
 from zarr.abc.store import (
     ByteRequest,
@@ -35,6 +43,8 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
     NotADirectoryError,
 )
 
+S = TypeVar("S", bound=Store)
+
 
 class ObjectStore(Store):
     """A Zarr store that uses obstore for fast read/write from AWS, GCP, Azure.
@@ -56,7 +66,50 @@ class ObjectStore(Store):
     """The underlying obstore instance."""
 
     def __eq__(self, value: object) -> bool:
-        return isinstance(value, type(self)) and self.store == value.store
+        if not isinstance(self.store, type(value.store)):
+            return False
+        if not self.read_only == value.read_only:
+            return False
+
+        match value.store:
+            case AzureStore():
+                if (
+                    (self.store.config != value.store.config)
+                    or (self.store.client_options != value.store.client_options)
+                    or (self.store.prefix != value.store.prefix)
+                    or (self.store.retry_config != value.store.retry_config)
+                ):
+                    return False
+            case GCSStore():
+                if (
+                    (self.store.config != value.store.config)
+                    or (self.store.client_options != value.store.client_options)
+                    or (self.store.prefix != value.store.prefix)
+                    or (self.store.retry_config != value.store.retry_config)
+                ):
+                    return False
+            case S3Store():
+                if (
+                    (self.store.config != value.store.config)
+                    or (self.store.client_options != value.store.client_options)
+                    or (self.store.prefix != value.store.prefix)
+                    or (self.store.retry_config != value.store.retry_config)
+                ):
+                    return False
+            case HTTPStore():
+                if (
+                    (self.store.url != value.store.url)
+                    or (self.store.client_options != value.store.client_options)
+                    or (self.store.retry_config != value.store.retry_config)
+                ):
+                    return False
+            case LocalStore():
+                if self.store.prefix != value.store.prefix:
+                    return False
+            case MemoryStore():
+                if self.store is not value.store:
+                    return False  # Two memory stores can't be equal because we can't pickle memory stores
+        return True
 
     def __init__(self, store: _ObjectStore, *, read_only: bool = False) -> None:
         if not isinstance(
