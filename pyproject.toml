@@ -73,10 +73,12 @@ test = [
     "coverage",
     "pytest",
     "pytest-cov",
+    'zarr[remote]',
+    "botocore",
     "s3fs",
+    "moto[s3,server]",
     "pytest-asyncio",
     "pytest-accept",
-    "moto[s3,server]",
     "requests",
     "rich",
     "mypy",
@@ -101,6 +103,7 @@ docs = [
     'numcodecs[msgpack]',
     'rich',
     's3fs',
+    'astroid<4'
 ]
 
 
@@ -425,3 +428,6 @@ directory = 'changes'
 filename = "docs/release-notes.rst"
 underlines = ["-", "~", "^"]
 issue_format = ":issue:`{issue}`"
+
+[tool.codespell]
+ignore-words-list = "astroid"
