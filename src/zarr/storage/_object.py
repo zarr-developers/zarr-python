@@ -137,7 +137,7 @@ class ObjectStore(Store):
         self.__dict__.update({"store": pickle.dumps(self.store)})
         return self.__dict__.copy()
 
-    def __setstate__(self, state: dict) -> None:
+    def __setstate__(self, state: dict[Any, Any]) -> None:
         self.__dict__.update(state)
 
     async def get(
