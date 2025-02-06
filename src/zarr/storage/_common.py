@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+import importlib.util
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -11,6 +13,10 @@ from zarr.errors import ContainsArrayAndGroupError, ContainsArrayError, Contains
 from zarr.storage._local import LocalStore
 from zarr.storage._memory import MemoryStore
 from zarr.storage._utils import normalize_path
+
+_has_fsspec = importlib.util.find_spec("fsspec")
+if _has_fsspec:
+    from fsspec.mapping import FSMap
 
 if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
@@ -228,7 +234,7 @@ StoreLike = Store | StorePath | Path | str | dict[str, Buffer]
 
 
 async def make_store_path(
-    store_like: StoreLike | None,
+    store_like: StoreLike | FSMap | None,
     *,
     path: str | None = "",
     mode: AccessModeLiteral | None = None,
@@ -311,28 +317,18 @@ async def make_store_path(
             # We deliberate only consider dict[str, Buffer] here, and not arbitrary mutable mappings.
             # By only allowing dictionaries, which are in-memory, we know that MemoryStore appropriate.
             store = await MemoryStore.open(store_dict=store_like, read_only=_read_only)
+        elif _has_fsspec:
+            if not isinstance(store_like, FSMap):
+                raise (TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'"))
+            if path:
+                raise TypeError("'path' was provided but is not used for FSMap store_like objects")
+            if storage_options:
+                raise TypeError(
+                    "'storage_options was provided but is not used for FSMap store_like objects"
+                )
+            store = FsspecStore.from_mapper(store_like, read_only=_read_only)
         else:
-            try:  # type: ignore[unreachable]
-                import fsspec
-
-                if isinstance(store_like, fsspec.mapping.FSMap):
-                    if path:
-                        raise TypeError(
-                            "'path' was provided but is not used for FSMap store_like objects"
-                        )
-                    if storage_options:
-                        raise TypeError(
-                            "'storage_options was provided but is not used for FSMap store_like objects"
-                        )
-                    store = FsspecStore.from_mapper(store_like, read_only=_read_only)
-                else:
-                    raise (
-                        TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'")
-                    )
-            except ImportError:
-                raise (
-                    TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'")
-                ) from None
+            raise (TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'"))
 
         result = await StorePath.open(store, path=path_normalized, mode=mode)
 
