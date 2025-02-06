@@ -2,11 +2,20 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import pickle
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict, TypeVar
 
 import obstore as obs
+from obstore.store import (
+    AzureStore,
+    GCSStore,
+    HTTPStore,
+    LocalStore,
+    MemoryStore,
+    S3Store,
+)
 
 from zarr.abc.store import (
     ByteRequest,
@@ -34,6 +43,8 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
     NotADirectoryError,
 )
 
+S = TypeVar("S", bound=Store)
+
 
 class ObjectStore(Store):
     """A Zarr store that uses obstore for fast read/write from AWS, GCP, Azure.
@@ -55,10 +66,50 @@ class ObjectStore(Store):
     """The underlying obstore instance."""
 
     def __eq__(self, value: object) -> bool:
-        if not isinstance(value, ObjectStore):
+        if not isinstance(self.store, type(value.store)):
+            return False
+        if not self.read_only == value.read_only:
             return False
 
-        return bool(self.store.__eq__(value.store))
+        match value.store:
+            case AzureStore():
+                if (
+                    (self.store.config != value.store.config)
+                    or (self.store.client_options != value.store.client_options)
+                    or (self.store.prefix != value.store.prefix)
+                    or (self.store.retry_config != value.store.retry_config)
+                ):
+                    return False
+            case GCSStore():
+                if (
+                    (self.store.config != value.store.config)
+                    or (self.store.client_options != value.store.client_options)
+                    or (self.store.prefix != value.store.prefix)
+                    or (self.store.retry_config != value.store.retry_config)
+                ):
+                    return False
+            case S3Store():
+                if (
+                    (self.store.config != value.store.config)
+                    or (self.store.client_options != value.store.client_options)
+                    or (self.store.prefix != value.store.prefix)
+                    or (self.store.retry_config != value.store.retry_config)
+                ):
+                    return False
+            case HTTPStore():
+                if (
+                    (self.store.url != value.store.url)
+                    or (self.store.client_options != value.store.client_options)
+                    or (self.store.retry_config != value.store.retry_config)
+                ):
+                    return False
+            case LocalStore():
+                if self.store.prefix != value.store.prefix:
+                    return False
+            case MemoryStore():
+                if self.store is not value.store:
+                    return False  # Two memory stores can't be equal because we can't pickle memory stores
+        return True
 
     def __init__(self, store: _ObjectStore, *, read_only: bool = False) -> None:
         if not isinstance(
@@ -73,8 +124,8 @@ class ObjectStore(Store):
             ),
         ):
             raise TypeError(f"expected ObjectStore class, got {store!r}")
-        self.store = store
         super().__init__(read_only=read_only)
+        self.store = store
 
     def __str__(self) -> str:
         return f"object://{self.store}"
@@ -82,11 +133,12 @@ class ObjectStore(Store):
     def __repr__(self) -> str:
         return f"ObjectStore({self})"
 
-    def __getstate__(self) -> None:
-        raise NotImplementedError("Pickling has not been implement for ObjectStore")
+    def __getstate__(self) -> dict:
+        self.__dict__.update({"store": pickle.dumps(self.store)})
+        return self.__dict__.copy()
 
-    def __setstate__(self) -> None:
-        raise NotImplementedError("Pickling has not been implement for ObjectStore")
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
 
     async def get(
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
