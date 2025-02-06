@@ -29,5 +29,8 @@ def test_zarr_store(sync_store: Store) -> None:
         pytest.skip(reason="ZipStore does not support delete")
 
     if isinstance(sync_store, LocalStore):
+        # This test uses arbitrary keys, which are passed to `set` and `delete`.
+        # It assumes that `set` and `delete` are the only two operations that modify state.
+        # But LocalStore, directories can hang around even after a key is delete-d.
         pytest.skip(reason="Test isn't suitable for LocalStore.")
     run_state_machine_as_test(mk_test_instance_sync)
