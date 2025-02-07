@@ -99,10 +99,16 @@ class StoreTests(Generic[S, B]):
         store2 = self.store_cls(**store_kwargs)
         assert store == store2
 
-    def test_serializable_store(self, store: S) -> None:
+    async def test_serializable_store(self, store: S) -> None:
         new_store: S = pickle.loads(pickle.dumps(store))
         assert new_store == store
         assert new_store.read_only == store.read_only
+        # quickly roundtrip data to a key to test that new store works
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "foo"
+        await store.set(key, data_buf)
+        observed = await store.get(key, prototype=default_buffer_prototype())
+        assert_bytes_equal(observed, data_buf)
 
     def test_store_read_only(self, store: S) -> None:
         assert not store.read_only
@@ -403,6 +409,37 @@ class StoreTests(Generic[S, B]):
                     expected += (key,)
             expected = tuple(sorted(expected))
             assert observed == expected
+
+    async def test_list_empty_path(self, store: S) -> None:
+        """
+        Verify that list and list_prefix work correctly when path is an empty string,
+        i.e. no unwanted replacement occurs.
+        """
+        data = self.buffer_cls.from_bytes(b"")
+        store_dict = {
+            "foo/bar/zarr.json": data,
+            "foo/bar/c/1": data,
+            "foo/baz/c/0": data,
+        }
+        await store._set_many(store_dict.items())
+
+        # Test list()
+        observed_list = await _collect_aiterator(store.list())
+        observed_list_sorted = sorted(observed_list)
+        expected_list_sorted = sorted(store_dict.keys())
+        assert observed_list_sorted == expected_list_sorted
+
+        # Test list_prefix() with an empty prefix
+        observed_prefix_empty = await _collect_aiterator(store.list_prefix(""))
+        observed_prefix_empty_sorted = sorted(observed_prefix_empty)
+        expected_prefix_empty_sorted = sorted(store_dict.keys())
+        assert observed_prefix_empty_sorted == expected_prefix_empty_sorted
+
+        # Test list_prefix() with a non-empty prefix
+        observed_prefix = await _collect_aiterator(store.list_prefix("foo/bar/"))
+        observed_prefix_sorted = sorted(observed_prefix)
+        expected_prefix_sorted = sorted(k for k in store_dict if k.startswith("foo/bar/"))
+        assert observed_prefix_sorted == expected_prefix_sorted
 
     async def test_list_dir(self, store: S) -> None:
         root = "foo"

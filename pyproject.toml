@@ -104,6 +104,7 @@ docs = [
     'numcodecs[msgpack]',
     'rich',
     's3fs',
+    'astroid<4'
 ]
 
 
@@ -161,7 +162,7 @@ run = "run-coverage --no-cov"
 run-pytest = "run"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
-run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+run-hypothesis = "run-coverage --hypothesis-profile ci --run-slow-hypothesis tests/test_properties.py tests/test_store/test_stateful*"
 list-env = "pip list"
 
 [tool.hatch.envs.doctest]
@@ -399,7 +400,8 @@ filterwarnings = [
     "ignore:.*is currently not part in the Zarr format 3 specification.*:UserWarning",
 ]
 markers = [
-    "gpu: mark a test as requiring CuPy and GPU"
+    "gpu: mark a test as requiring CuPy and GPU",
+    "slow_hypothesis: slow hypothesis tests",
 ]
 
 [tool.repo-review]
@@ -429,3 +431,6 @@ directory = 'changes'
 filename = "docs/release-notes.rst"
 underlines = ["-", "~", "^"]
 issue_format = ":issue:`{issue}`"
+
+[tool.codespell]
+ignore-words-list = "astroid"
