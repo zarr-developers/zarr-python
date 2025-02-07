@@ -1,0 +1,1 @@
+:py:class:`LocalStore` learned to ``delete_dir``. This makes array and group deletes more efficient.
