@@ -4,7 +4,7 @@ from typing import Any
 import pytest
 
 obstore = pytest.importorskip("obstore")
-from obstore.store import LocalStore
+from obstore.store import LocalStore, MemoryStore
 
 from zarr.core.buffer import Buffer, cpu
 from zarr.storage import ObjectStore
@@ -43,8 +43,29 @@ class TestObjectStore(StoreTests[ObjectStore, cpu.Buffer]):
     def test_store_supports_writes(self, store: ObjectStore) -> None:
         assert store.supports_writes
 
-    def test_store_supports_partial_writes(self, store: ObjectStore) -> None:
+    async def test_store_supports_partial_writes(self, store: ObjectStore) -> None:
         assert not store.supports_partial_writes
+        with pytest.raises(NotImplementedError):
+            await store.set_partial_values([("foo", 0, b"\x01\x02\x03\x04")])
 
     def test_store_supports_listing(self, store: ObjectStore) -> None:
         assert store.supports_listing
+
+    def test_store_equal(self, store: ObjectStore) -> None:
+        """Test store equality"""
+        # Test equality against a different instance type
+        assert store != 0
+        # Test equality against a different store type
+        new_memory_store = ObjectStore(MemoryStore())
+        assert store != new_memory_store
+        # Test equality against a read only store
+        new_local_store = ObjectStore(LocalStore(prefix=store.store.prefix), read_only=True)
+        assert store != new_local_store
+        # Test two memory stores cannot be equal
+        second_memory_store = ObjectStore(MemoryStore())
+        assert new_memory_store != second_memory_store
+
+    def test_store_init_raises(self) -> None:
+        """Test __init__ raises appropriate error for improper store type"""
+        with pytest.raises(TypeError):
+            ObjectStore("path/to/store")
