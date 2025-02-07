@@ -99,10 +99,16 @@ class StoreTests(Generic[S, B]):
         store2 = self.store_cls(**store_kwargs)
         assert store == store2
 
-    def test_serializable_store(self, store: S) -> None:
+    async def test_serializable_store(self, store: S) -> None:
         new_store: S = pickle.loads(pickle.dumps(store))
         assert new_store == store
         assert new_store.read_only == store.read_only
+        # quickly roundtrip data to a key to test that new store works
+        data_buf = self.buffer_cls.from_bytes(b"\x01\x02\x03\x04")
+        key = "foo"
+        await store.set(key, data_buf)
+        observed = await store.get(key, prototype=default_buffer_prototype())
+        assert_bytes_equal(observed, data_buf)
 
     def test_store_read_only(self, store: S) -> None:
         assert not store.read_only
