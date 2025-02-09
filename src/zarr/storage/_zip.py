@@ -108,7 +108,8 @@ class ZipStore(Store):
         self._sync_open()
 
     def __getstate__(self) -> dict[str, Any]:
-        state = self.__dict__
+        # We need a copy to not modify the state of the original store
+        state = self.__dict__.copy()
         for attr in ["_zf", "_lock"]:
             state.pop(attr, None)
         return state
