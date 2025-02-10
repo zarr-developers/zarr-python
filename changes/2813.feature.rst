@@ -1,0 +1,1 @@
+Add `zarr.testing.strategies.array_metadata` to generate ArrayV2Metadata and ArrayV3Metadata instances.
