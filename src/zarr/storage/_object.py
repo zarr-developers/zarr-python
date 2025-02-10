@@ -157,22 +157,22 @@ class ObjectStore(Store):
         try:
             if byte_range is None:
                 resp = await obs.get_async(self.store, key)
-                return prototype.buffer.from_bytes(await resp.bytes_async())
+                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
             elif isinstance(byte_range, RangeByteRequest):
-                resp = await obs.get_range_async(
+                bytes = await obs.get_range_async(
                     self.store, key, start=byte_range.start, end=byte_range.end
                 )
-                return prototype.buffer.from_bytes(memoryview(resp))
+                return prototype.buffer.from_bytes(bytes)  # type: ignore[arg-type]
             elif isinstance(byte_range, OffsetByteRequest):
                 resp = await obs.get_async(
                     self.store, key, options={"range": {"offset": byte_range.offset}}
                 )
-                return prototype.buffer.from_bytes(await resp.bytes_async())
+                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
             elif isinstance(byte_range, SuffixByteRequest):
                 resp = await obs.get_async(
                     self.store, key, options={"range": {"suffix": byte_range.suffix}}
                 )
-                return prototype.buffer.from_bytes(await resp.bytes_async())
+                return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
             else:
                 raise ValueError(f"Unexpected byte_range, got {byte_range}")
         except ALLOWED_EXCEPTIONS:
@@ -260,7 +260,7 @@ class ObjectStore(Store):
 
 
 async def _transform_list(
-    list_stream: AsyncGenerator[list[ObjectMeta], None],
+    list_stream: ListStream[list[ObjectMeta]],
 ) -> AsyncGenerator[str, None]:
     """
     Transform the result of list into an async generator of paths.
@@ -271,7 +271,7 @@ async def _transform_list(
 
 
 async def _transform_list_dir(
-    list_result_coroutine: Coroutine[Any, Any, ListResult], prefix: str
+    list_result_coroutine: Coroutine[Any, Any, ListResult[list[ObjectMeta]]], prefix: str
 ) -> AsyncGenerator[str, None]:
     """
     Transform the result of list_with_delimiter into an async generator of paths.
@@ -317,7 +317,7 @@ class _OtherRequest(TypedDict):
     path: str
     """The path to request from."""
 
-    range: OffsetRange | SuffixRange
+    range: OffsetRange | SuffixRange | None
     """The range request type."""
 
 
@@ -353,7 +353,7 @@ async def _make_bounded_requests(
         buffer_responses.append(
             {
                 "original_request_index": request["original_request_index"],
-                "buffer": prototype.buffer.from_bytes(memoryview(response)),
+                "buffer": prototype.buffer.from_bytes(response),  # type: ignore[arg-type]
             }
         )
 
@@ -378,7 +378,7 @@ async def _make_other_request(
     return [
         {
             "original_request_index": request["original_request_index"],
-            "buffer": prototype.buffer.from_bytes(buffer),
+            "buffer": prototype.buffer.from_bytes(buffer),  # type: ignore[arg-type]
         }
     ]
 
