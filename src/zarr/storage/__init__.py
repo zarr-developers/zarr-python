@@ -8,7 +8,6 @@ from zarr.storage._fsspec import FsspecStore
 from zarr.storage._local import LocalStore
 from zarr.storage._logging import LoggingStore
 from zarr.storage._memory import GpuMemoryStore, MemoryStore
-from zarr.storage._object import ObjectStore
 from zarr.storage._wrapper import WrapperStore
 from zarr.storage._zip import ZipStore
 
@@ -18,7 +17,6 @@ __all__ = [
     "LocalStore",
     "LoggingStore",
     "MemoryStore",
-    "ObjectStore",
     "StoreLike",
     "StorePath",
     "WrapperStore",

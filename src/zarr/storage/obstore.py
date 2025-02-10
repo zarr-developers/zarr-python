@@ -5,7 +5,7 @@ import contextlib
 import pickle
 from collections import defaultdict
 from collections.abc import Iterable
-from typing import TYPE_CHECKING, Any, TypedDict, TypeVar
+from typing import TYPE_CHECKING, Any, TypedDict
 
 import obstore as obs
 from obstore.store import (
@@ -37,13 +37,13 @@ if TYPE_CHECKING:
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import BytesLike
 
-ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
+__all__ = ["ObjectStore"]
+
+_ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
     FileNotFoundError,
     IsADirectoryError,
     NotADirectoryError,
 )
-
-S = TypeVar("S", bound=Store)
 
 
 class ObjectStore(Store):
@@ -175,7 +175,7 @@ class ObjectStore(Store):
                 return prototype.buffer.from_bytes(await resp.bytes_async())  # type: ignore[arg-type]
             else:
                 raise ValueError(f"Unexpected byte_range, got {byte_range}")
-        except ALLOWED_EXCEPTIONS:
+        except _ALLOWED_EXCEPTIONS:
             return None
 
     async def get_partial_values(
