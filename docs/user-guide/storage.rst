@@ -99,6 +99,25 @@ Zarr data (metadata and chunks) to a dictionary.:
    >>> zarr.create_array(store=store, shape=(2,), dtype='float64')
    <Array memory://... shape=(2,) dtype=float64>
 
+Object Store
+~~~~~~~~~~~~
+
+
+:class:`zarr.storage.ObjectStore` stores the contents of the Zarr hierarchy using any ObjectStore
+`storage implementation <https://developmentseed.org/obstore/latest/api/store/>`_, such as
+AWS S3, Google Cloud Storage, and Azure Blob Storage. This store is backed by `obstore <https://developmentseed.org/obstore/latest/>`_, which
+builds on the production quality Rust library `object_store <https://docs.rs/object_store/latest/object_store/>`_.
+
+
+   >>> from obstore.store import MemoryStore
+   >>> store = zarr.storage.ObjectStore(MemoryStore())
+   >>> zarr.create_array(store=store, shape=(2,), dtype='float64')
+   <Array object://... shape=(2,) dtype=float64>
+
+
+.. warning::
+   The :class:`zarr.storage.ObjectStore` class is experimental.
+
 .. _user-guide-custom-stores:
 
 Developing custom stores
