@@ -1,3 +1,4 @@
+import sys
 from typing import Any
 
 import hypothesis.extra.numpy as npst
@@ -246,7 +247,7 @@ def orthogonal_indices(
 
 
 def key_ranges(
-    keys: SearchStrategy = node_names, max_size: int | None = None
+    keys: SearchStrategy = node_names, max_size: int = sys.maxsize
 ) -> SearchStrategy[list[int]]:
     """
     Function to generate key_ranges strategy for get_partial_values()
@@ -255,10 +256,14 @@ def key_ranges(
         [(key, (range_start, range_end)),
          (key, (range_start, range_end)),...]
     """
+
+    def make_request(start: int, length: int) -> RangeByteRequest:
+        return RangeByteRequest(start, end=min(start + length, max_size))
+
     byte_ranges = st.builds(
-        RangeByteRequest,
+        make_request,
         start=st.integers(min_value=0, max_value=max_size),
-        end=st.integers(min_value=0, max_value=max_size),
+        length=st.integers(min_value=0, max_value=max_size),
     )
     key_tuple = st.tuples(keys, byte_ranges)
     return st.lists(key_tuple, min_size=1, max_size=10)
