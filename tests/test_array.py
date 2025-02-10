@@ -1341,7 +1341,7 @@ async def test_orthogonal_set_total_slice() -> None:
 
 
 @pytest.mark.skipif(
-    Version(numcodecs.__version__) <= Version("0.15.1"),
+    Version(numcodecs.__version__) < Version("0.15.1"),
     reason="codec configuration is overwritten on older versions. GH2800",
 )
 def test_roundtrip_numcodecs() -> None:
