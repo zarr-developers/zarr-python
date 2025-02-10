@@ -19,8 +19,8 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-    - id: check-yaml
-    - id: trailing-whitespace
+      - id: check-yaml
+      - id: trailing-whitespace
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.14.1
     hooks:
@@ -31,10 +31,10 @@ repos:
           - packaging
           - donfig
           - numcodecs[crc32c]
-          - numpy==2.1  # until https://github.com/numpy/numpy/issues/28034 is resolved
+          - numpy==2.1 # until https://github.com/numpy/numpy/issues/28034 is resolved
           - typing_extensions
           - universal-pathlib
-          - obstore==0.3.0-beta.8
+          - obstore==0.4.0
           # Tests
           - pytest
   - repo: https://github.com/scientific-python/cookie

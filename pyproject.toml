@@ -64,7 +64,7 @@ keywords = ["Python", "compressed", "ndimensional-arrays", "zarr"]
 # User extras
 remote = [
     "fsspec>=2023.10.0",
-    "obstore==0.4.0b4",
+    "obstore==0.4.0",
 ]
 gpu = [
     "cupy-cuda12x",
@@ -212,7 +212,6 @@ dependencies = [
     'universal_pathlib @ git+https://github.com/fsspec/universal_pathlib',
     'typing_extensions @ git+https://github.com/python/typing_extensions',
     'donfig @ git+https://github.com/pytroll/donfig',
-    "obstore @ git+https://github.com/developmentseed/obstore@main#subdirectory=obstore",
     # test deps
     'hypothesis',
     'pytest',
