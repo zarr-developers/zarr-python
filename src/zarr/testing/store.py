@@ -5,7 +5,8 @@ import pickle
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from zarr.storage import ObjectStore, WrapperStore
+from zarr.storage import WrapperStore
+from zarr.storage.obstore import ObjectStore
 
 if TYPE_CHECKING:
     from typing import Any

@@ -7,7 +7,7 @@ obstore = pytest.importorskip("obstore")
 from obstore.store import LocalStore, MemoryStore
 
 from zarr.core.buffer import Buffer, cpu
-from zarr.storage import ObjectStore
+from zarr.storage.obstore import ObjectStore
 from zarr.testing.store import StoreTests
 
 
