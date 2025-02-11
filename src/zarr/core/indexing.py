@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from zarr.core.common import ChunkCoords
 
 IntSequence = list[int] | npt.NDArray[np.intp]
-ArrayOfIntOrBool = npt.NDArray[np.intp] | npt.NDArray[np.bool_]
+ArrayOfIntOrBool = IntSequence | npt.NDArray[np.bool_]
 BasicSelector = int | slice | EllipsisType
 Selector = BasicSelector | ArrayOfIntOrBool
 BasicSelection = BasicSelector | tuple[BasicSelector, ...]  # also used for BlockIndex
