@@ -481,8 +481,12 @@ class ShardingCodec(
         )
 
         # setup output array
+        if hasattr(indexer, "sel_shape"):
+            out_shape = indexer.sel_shape
+        else:
+            out_shape = indexer.shape
         out = shard_spec.prototype.nd_buffer.create(
-            shape=indexer.shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
+            shape=out_shape, dtype=shard_spec.dtype, order=shard_spec.order, fill_value=0
         )
 
         indexed_chunks = list(indexer)

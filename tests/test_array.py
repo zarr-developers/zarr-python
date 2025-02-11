@@ -1420,3 +1420,18 @@ def test_multiprocessing(store: Store, method: Literal["fork", "spawn", "forkser
 
     results = pool.starmap(_index_array, [(arr, slice(len(data)))])
     assert all(np.array_equal(r, data) for r in results)
+
+
+async def test_sharding_coordinate_selection() -> None:
+    store = MemoryStore()
+    g = zarr.open_group(store, mode="w")
+    arr = g.create_array(
+        name="a",
+        shape=(10, 20, 30),
+        chunks=(5, 1, 30),
+        overwrite=True,
+        dtype=np.float32,
+        shards=(5, 20, 30),
+    )
+    arr[:] = 1
+    assert (arr[5, [0, 1]] == 1).all()
