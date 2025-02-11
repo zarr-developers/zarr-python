@@ -101,7 +101,9 @@ def reset_resources_after_fork() -> None:
     _executor = None
 
 
-os.register_at_fork(after_in_child=reset_resources_after_fork)
+# this is only available on certain operating systems
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=reset_resources_after_fork)
 
 
 async def _runner(coro: Coroutine[Any, Any, T]) -> T | BaseException:
