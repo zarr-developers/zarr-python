@@ -1433,5 +1433,5 @@ async def test_sharding_coordinate_selection() -> None:
         dtype=np.float32,
         shards=(5, 20, 30),
     )
-    arr[:] = 1
-    assert (arr[5, [0, 1]] == 1).all()
+    arr[:] = np.arange(10*20*30).reshape((10, 20, 30))
+    assert (arr[5, [0, 1]] == np.vstack([np.arange(3000, 3030), np.arange(3030, 3060)])).all()
