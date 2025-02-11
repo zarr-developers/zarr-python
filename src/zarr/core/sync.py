@@ -96,9 +96,13 @@ def reset_resources_after_fork() -> None:
     forked processes will retain invalid references to the parent process's resources.
     """
     global loop, iothread, _executor
-    loop[0] = None
-    iothread[0] = None
-    _executor = None
+    # These lines are excluded from coverage because this function only runs in a child process,
+    # which is not observed by the test coverage instrumentation. Despite the apparent lack of
+    # test coverage, this function should be adequately tested by any test that uses Zarr IO with
+    # multiprocessing.
+    loop[0] = None  # pragma: no cover
+    iothread[0] = None  # pragma: no cover
+    _executor = None  # pragma: no cover
 
 
 # this is only available on certain operating systems
