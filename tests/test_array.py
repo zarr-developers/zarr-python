@@ -1382,3 +1382,22 @@ def test_roundtrip_numcodecs() -> None:
     metadata = root["test"].metadata.to_dict()
     expected = (*filters, BYTES_CODEC, *compressors)
     assert metadata["codecs"] == expected
+
+
+def _index_array(arr: Array, index: Any) -> Any:
+    return arr[index]
+
+
+@pytest.mark.parametrize("store", ["local"], indirect=True)
+def test_multiprocessing(store: Store) -> None:
+    """
+    Test that arrays can be pickled and indexed in child processes
+    """
+    data = np.arange(100)
+    arr = zarr.create_array(store=store, data=data)
+    from multiprocessing import Pool
+
+    pool = Pool()
+
+    results = pool.starmap(_index_array, [(arr, slice(len(data)))] * 3)
+    assert all(np.array_equal(r, data) for r in results)
