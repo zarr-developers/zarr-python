@@ -1,8 +1,10 @@
 import dataclasses
 import json
 import math
+import multiprocessing as mp
 import pickle
 import re
+import sys
 from itertools import accumulate
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
@@ -1388,16 +1390,33 @@ def _index_array(arr: Array, index: Any) -> Any:
     return arr[index]
 
 
+@pytest.mark.parametrize(
+    "method",
+    [
+        pytest.param(
+            "fork",
+            marks=pytest.mark.skipif(
+                sys.platform in ("win32", "darwin"), reason="fork not supported on Windows or OSX"
+            ),
+        ),
+        "spawn",
+        pytest.param(
+            "forkserver",
+            marks=pytest.mark.skipif(
+                sys.platform == "win32", reason="forkserver not supported on Windows"
+            ),
+        ),
+    ],
+)
 @pytest.mark.parametrize("store", ["local"], indirect=True)
-def test_multiprocessing(store: Store) -> None:
+def test_multiprocessing(store: Store, method: Literal["fork", "spawn"]) -> None:
     """
     Test that arrays can be pickled and indexed in child processes
     """
     data = np.arange(100)
     arr = zarr.create_array(store=store, data=data)
-    from multiprocessing import Pool
+    ctx = mp.get_context(method)
+    pool = ctx.Pool()
 
-    pool = Pool()
-
-    results = pool.starmap(_index_array, [(arr, slice(len(data)))] * 3)
+    results = pool.starmap(_index_array, [(arr, slice(len(data)))])
     assert all(np.array_equal(r, data) for r in results)
