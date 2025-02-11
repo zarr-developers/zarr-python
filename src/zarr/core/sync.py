@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import logging
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING, TypeVar
@@ -87,6 +88,20 @@ def cleanup_resources() -> None:
 
 
 atexit.register(cleanup_resources)
+
+
+def reset_resources_after_fork() -> None:
+    """
+    Ensure that global resources are reset after a fork. Without this function,
+    forked processes will retain invalid references to the parent process's resources.
+    """
+    global loop, iothread, _executor
+    loop[0] = None
+    iothread[0] = None
+    _executor = None
+
+
+os.register_at_fork(after_in_child=reset_resources_after_fork)
 
 
 async def _runner(coro: Coroutine[Any, Any, T]) -> T | BaseException:
