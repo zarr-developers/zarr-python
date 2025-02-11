@@ -1409,7 +1409,7 @@ def _index_array(arr: Array, index: Any) -> Any:
     ],
 )
 @pytest.mark.parametrize("store", ["local"], indirect=True)
-def test_multiprocessing(store: Store, method: Literal["fork", "spawn"]) -> None:
+def test_multiprocessing(store: Store, method: Literal["fork", "spawn", "forkserver"]) -> None:
     """
     Test that arrays can be pickled and indexed in child processes
     """
