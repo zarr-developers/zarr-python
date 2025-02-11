@@ -10,6 +10,7 @@ from unittest import mock
 import numcodecs
 import numpy as np
 import pytest
+from packaging.version import Version
 
 import zarr.api.asynchronous
 import zarr.api.synchronous as sync_api
@@ -1346,3 +1347,47 @@ async def test_orthogonal_set_total_slice() -> None:
     array = zarr.create_array(store, shape=(20, 20), chunks=(1, 2), dtype=int, fill_value=-1)
     with mock.patch("zarr.storage.MemoryStore.get", side_effect=ValueError):
         array[0, slice(4, 10)] = np.arange(6)
+
+
+@pytest.mark.skipif(
+    Version(numcodecs.__version__) < Version("0.15.1"),
+    reason="codec configuration is overwritten on older versions. GH2800",
+)
+def test_roundtrip_numcodecs() -> None:
+    store = MemoryStore()
+
+    compressors = [
+        {"name": "numcodecs.shuffle", "configuration": {"elementsize": 2}},
+        {"name": "numcodecs.zlib", "configuration": {"level": 4}},
+    ]
+    filters = [
+        {
+            "name": "numcodecs.fixedscaleoffset",
+            "configuration": {
+                "scale": 100.0,
+                "offset": 0.0,
+                "dtype": "<f8",
+                "astype": "<i2",
+            },
+        },
+    ]
+
+    # Create the array with the correct codecs
+    root = zarr.group(store)
+    root.create_array(
+        "test",
+        shape=(720, 1440),
+        chunks=(720, 1440),
+        dtype="float64",
+        compressors=compressors,
+        filters=filters,
+        fill_value=-9.99,
+        dimension_names=["lat", "lon"],
+    )
+
+    BYTES_CODEC = {"name": "bytes", "configuration": {"endian": "little"}}
+    # Read in the array again and check compressor config
+    root = zarr.open_group(store, mode="r")
+    metadata = root["test"].metadata.to_dict()
+    expected = (*filters, BYTES_CODEC, *compressors)
+    assert metadata["codecs"] == expected
