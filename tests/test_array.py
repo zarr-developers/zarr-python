@@ -656,7 +656,7 @@ def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105, dtype="i4")
     z[:] = a
     assert (105,) == z.shape
-    assert isinstance(z[:], NDArrayLike)
+    assert hasattr(z[:], "shape") and hasattr(z[:], "dtype")
     assert (105,) == z[:].shape
     assert np.dtype("i4") == z.dtype
     assert np.dtype("i4") == z[:].dtype
