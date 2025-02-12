@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
+    from zarr.core.buffer.core import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
 
@@ -348,7 +349,7 @@ async def open_consolidated(
 
 async def save(
     store: StoreLike,
-    *args: NDArrayOrScalarLike,
+    *args: NDArrayLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -381,7 +382,7 @@ async def save(
 
 async def save_array(
     store: StoreLike,
-    arr: NDArrayOrScalarLike,
+    arr: NDArrayLike,
     *,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
@@ -412,8 +413,8 @@ async def save_array(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_format()
     )
-    if not isinstance(arr, NDArrayOrScalarLike):
-        raise TypeError("arr argument must be numpy or other NDArrayOrScalarLike array")
+    if not isinstance(arr, NDArrayLike):
+        raise TypeError("arr argument must be numpy or other NDArrayLike array")
 
     mode = kwargs.pop("mode", "a")
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
@@ -436,12 +437,12 @@ async def save_array(
 
 async def save_group(
     store: StoreLike,
-    *args: NDArrayOrScalarLike,
+    *args: NDArrayLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
-    **kwargs: NDArrayOrScalarLike,
+    **kwargs: NDArrayLike,
 ) -> None:
     """Convenience function to save several NumPy arrays to the local file system, following a
     similar API to the NumPy savez()/savez_compressed() functions.
@@ -474,14 +475,14 @@ async def save_group(
     )
 
     for arg in args:
-        if not isinstance(arg, NDArrayOrScalarLike):
+        if not isinstance(arg, NDArrayLike):
             raise TypeError(
-                "All arguments must be numpy or other NDArrayOrScalarLike arrays (except store, path, storage_options, and zarr_format)"
+                "All arguments must be numpy or other NDArrayLike arrays (except store, path, storage_options, and zarr_format)"
             )
     for k, v in kwargs.items():
-        if not isinstance(v, NDArrayOrScalarLike):
+        if not isinstance(v, NDArrayLike):
             raise TypeError(
-                f"Keyword argument '{k}' must be a numpy or other NDArrayOrScalarLike array"
+                f"Keyword argument '{k}' must be a numpy or other NDArrayLike array"
             )
 
     if len(args) == 0 and len(kwargs) == 0:
