@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import inspect
 import operator
 import pickle
 import time
@@ -29,6 +30,8 @@ from zarr.testing.store import LatencyStore
 from .conftest import parse_store
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from _pytest.compat import LEGACY_PATH
 
     from zarr.core.common import JSON, ZarrFormat
@@ -1505,3 +1508,18 @@ def test_group_members_concurrency_limit(store: MemoryStore) -> None:
         elapsed = time.time() - start
 
         assert elapsed > num_groups * get_latency
+
+
+@pytest.mark.parametrize(
+    ("a_func", "b_func"),
+    [(zarr.core.group.AsyncGroup.create_array, zarr.core.group.Group.create_array)],
+)
+def test_consistent_signatures(
+    a_func: Callable[[object], object], b_func: Callable[[object], object]
+) -> None:
+    """
+    Ensure that pairs of functions have consistent signatures
+    """
+    base_sig = inspect.signature(a_func)
+    test_sig = inspect.signature(b_func)
+    assert test_sig.parameters == base_sig.parameters
