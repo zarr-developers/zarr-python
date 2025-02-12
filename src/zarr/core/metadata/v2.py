@@ -144,15 +144,26 @@ class ArrayV2Metadata(Metadata):
                 return o.name
             raise TypeError
 
+        def _sanitize_fill_value(fv: Any):
+            if isinstance(fv, (float, np.floating)):
+                if np.isnan(fv):
+                    fv = "NaN"
+                elif np.isinf(fv):
+                    fv = "Infinity" if fv > 0 else "-Infinity"
+            elif isinstance(fv, (np.complex64, np.complexfloating)):
+                fv = [_sanitize_fill_value(fv.real), _sanitize_fill_value(fv.imag)]
+            return fv        
+
         zarray_dict = self.to_dict()
+        zarray_dict["fill_value"] = _sanitize_fill_value(zarray_dict["fill_value"])
         zattrs_dict = zarray_dict.pop("attributes", {})
         json_indent = config.get("json_indent")
         return {
             ZARRAY_JSON: prototype.buffer.from_bytes(
-                json.dumps(zarray_dict, default=_json_convert, indent=json_indent).encode()
+                json.dumps(zarray_dict, default=_json_convert, indent=json_indent, allow_nan=False).encode()
             ),
             ZATTRS_JSON: prototype.buffer.from_bytes(
-                json.dumps(zattrs_dict, indent=json_indent).encode()
+                json.dumps(zattrs_dict, indent=json_indent, allow_nan=False).encode()
             ),
         }
 
@@ -300,7 +311,6 @@ def parse_fill_value(fill_value: object, dtype: np.dtype[Any]) -> Any:
     -------
         An instance of `dtype`, or `None`, or any python object (in the case of an object dtype)
     """
-
     if fill_value is None or dtype.hasobject:
         # no fill value
         pass
