@@ -103,13 +103,13 @@ Object Store
 ~~~~~~~~~~~~
 
 
-:class:`zarr.storage.obstore.ObjectStore` stores the contents of the Zarr hierarchy using any ObjectStore
+:class:`zarr.storage.ObjectStore` stores the contents of the Zarr hierarchy using any ObjectStore
 `storage implementation <https://developmentseed.org/obstore/latest/api/store/>`_, such as
 AWS S3, Google Cloud Storage, and Azure Blob Storage. This store is backed by `obstore <https://developmentseed.org/obstore/latest/>`_, which
 builds on the production quality Rust library `object_store <https://docs.rs/object_store/latest/object_store/>`_.
 
 
-   >>> from zarr.storage.obstore import ObjectStore
+   >>> from zarr.storage import ObjectStore
    >>> from obstore.store import MemoryStore
    >>>
    >>> store = ObjectStore(MemoryStore())
@@ -118,7 +118,7 @@ builds on the production quality Rust library `object_store <https://docs.rs/obj
 
 
 .. warning::
-   The :class:`zarr.storage.obstore.ObjectStore` class is experimental.
+   The :class:`zarr.storage.ObjectStore` class is experimental.
 
 .. _user-guide-custom-stores:
 

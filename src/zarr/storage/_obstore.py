@@ -7,16 +7,6 @@ from collections import defaultdict
 from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, TypedDict
 
-import obstore as obs
-from obstore.store import (
-    AzureStore,
-    GCSStore,
-    HTTPStore,
-    LocalStore,
-    MemoryStore,
-    S3Store,
-)
-
 from zarr.abc.store import (
     ByteRequest,
     OffsetByteRequest,
@@ -32,7 +22,7 @@ if TYPE_CHECKING:
     from typing import Any
 
     from obstore import ListResult, ListStream, ObjectMeta, OffsetRange, SuffixRange
-    from obstore.store import ObjectStore as _ObjectStore
+    from obstore.store import ObjectStore as _UpstreamObjectStore
 
     from zarr.core.buffer import BufferPrototype
     from zarr.core.common import BytesLike
@@ -62,10 +52,19 @@ class ObjectStore(Store):
     raise an issue with any comments/concerns about the store.
     """
 
-    store: _ObjectStore
+    store: _UpstreamObjectStore
     """The underlying obstore instance."""
 
     def __eq__(self, value: object) -> bool:
+        from obstore.store import (
+            AzureStore,
+            GCSStore,
+            HTTPStore,
+            LocalStore,
+            MemoryStore,
+            S3Store,
+        )
+
         if not isinstance(value, ObjectStore):
             return False
 
@@ -119,7 +118,11 @@ class ObjectStore(Store):
                     return False  # Two memory stores can't be equal because we can't pickle memory stores
         return True
 
-    def __init__(self, store: _ObjectStore, *, read_only: bool = False) -> None:
+    def __init__(self, store: _UpstreamObjectStore, *, read_only: bool = False) -> None:
+        import obstore as obs
+
+        self.obs = obs
+
         if not isinstance(
             store,
             (
@@ -154,6 +157,8 @@ class ObjectStore(Store):
         self, key: str, prototype: BufferPrototype, byte_range: ByteRequest | None = None
     ) -> Buffer | None:
         # docstring inherited
+        import obstore as obs
+
         try:
             if byte_range is None:
                 resp = await obs.get_async(self.store, key)
@@ -188,6 +193,8 @@ class ObjectStore(Store):
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
+        import obstore as obs
+
         try:
             await obs.head_async(self.store, key)
         except FileNotFoundError:
@@ -202,6 +209,8 @@ class ObjectStore(Store):
 
     async def set(self, key: str, value: Buffer) -> None:
         # docstring inherited
+        import obstore as obs
+
         self._check_writable()
         if not isinstance(value, Buffer):
             raise TypeError(
@@ -212,6 +221,8 @@ class ObjectStore(Store):
 
     async def set_if_not_exists(self, key: str, value: Buffer) -> None:
         # docstring inherited
+        import obstore as obs
+
         self._check_writable()
         buf = value.to_bytes()
         with contextlib.suppress(obs.exceptions.AlreadyExistsError):
@@ -224,6 +235,8 @@ class ObjectStore(Store):
 
     async def delete(self, key: str) -> None:
         # docstring inherited
+        import obstore as obs
+
         self._check_writable()
         await obs.delete_async(self.store, key)
 
@@ -245,16 +258,22 @@ class ObjectStore(Store):
 
     def list(self) -> AsyncGenerator[str, None]:
         # docstring inherited
+        import obstore as obs
+
         objects: ListStream[list[ObjectMeta]] = obs.list(self.store)
         return _transform_list(objects)
 
     def list_prefix(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
+        import obstore as obs
+
         objects: ListStream[list[ObjectMeta]] = obs.list(self.store, prefix=prefix)
         return _transform_list(objects)
 
     def list_dir(self, prefix: str) -> AsyncGenerator[str, None]:
         # docstring inherited
+        import obstore as obs
+
         coroutine = obs.list_with_delimiter_async(self.store, prefix=prefix)
         return _transform_list_dir(coroutine, prefix)
 
@@ -332,7 +351,7 @@ class _Response(TypedDict):
 
 
 async def _make_bounded_requests(
-    store: obs.store.ObjectStore,
+    store: _UpstreamObjectStore,
     path: str,
     requests: list[_BoundedRequest],
     prototype: BufferPrototype,
@@ -343,6 +362,7 @@ async def _make_bounded_requests(
     within a single file, and will e.g. merge concurrent requests. This only uses one
     single Python coroutine.
     """
+    import obstore as obs
 
     starts = [r["start"] for r in requests]
     ends = [r["end"] for r in requests]
@@ -361,7 +381,7 @@ async def _make_bounded_requests(
 
 
 async def _make_other_request(
-    store: obs.store.ObjectStore,
+    store: _UpstreamObjectStore,
     request: _OtherRequest,
     prototype: BufferPrototype,
 ) -> list[_Response]:
@@ -370,6 +390,8 @@ async def _make_other_request(
     We return a `list[_Response]` for symmetry with `_make_bounded_requests` so that all
     futures can be gathered together.
     """
+    import obstore as obs
+
     if request["range"] is None:
         resp = await obs.get_async(store, request["path"])
     else:
@@ -384,7 +406,7 @@ async def _make_other_request(
 
 
 async def _get_partial_values(
-    store: obs.store.ObjectStore,
+    store: _UpstreamObjectStore,
     prototype: BufferPrototype,
     key_ranges: Iterable[tuple[str, ByteRequest | None]],
 ) -> list[Buffer | None]:
