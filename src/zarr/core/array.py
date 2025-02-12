@@ -2271,12 +2271,7 @@ class Array:
             raise ValueError(msg)
 
         arr = self[...]
-        arr_np: NDArrayLike
-
-        if not hasattr(arr, "astype"):
-            arr_np = np.array(arr, dtype=dtype)
-        else:
-            arr_np = arr
+        arr_np: NDArrayLike = np.array(arr, dtype=dtype)
 
         if dtype is not None:
             arr_np = arr_np.astype(dtype)
@@ -3330,7 +3325,7 @@ class Array:
             value = np.array(value).reshape(-1)
 
         if not is_scalar(value, self.dtype) and (
-            isinstance(value, NDArrayOrScalarLike) and indexer.shape != value.shape
+            isinstance(value, NDArrayLike) and indexer.shape != value.shape
         ):
             raise ValueError(
                 f"Attempting to set a selection of {indexer.sel_shape[0]} "
