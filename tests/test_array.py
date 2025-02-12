@@ -38,7 +38,6 @@ from zarr.core.array import (
     create_array,
 )
 from zarr.core.buffer import default_buffer_prototype
-from zarr.core.buffer.core import NDArrayLike
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
@@ -656,10 +655,9 @@ def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     a = np.arange(105, dtype="i4")
     z[:] = a
     assert (105,) == z.shape
-    assert hasattr(z[:], "shape") and hasattr(z[:], "dtype")
-    assert (105,) == z[:].shape
+    assert hasattr(z[:], "shape") and (105,) == z[:].shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert hasattr(z[:], "dtype") and np.dtype("i4") == z[:].dtype
     assert (10,) == z.chunks
     np.testing.assert_array_equal(a, z[:])
 
