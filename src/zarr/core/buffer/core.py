@@ -106,7 +106,7 @@ class NDArrayLike(Protocol):
 
 
 ScalarType = int | float | complex | bytes | str | bool | np.generic
-NDArrayOrScalarLike = ScalarType | NDArrayLike
+NDArrayLikeOrScalar = ScalarType | NDArrayLike
 
 
 def check_item_key_is_1d_contiguous(key: Any) -> None:

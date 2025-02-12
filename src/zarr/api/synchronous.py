@@ -26,7 +26,7 @@ if TYPE_CHECKING:
         ShardsLike,
     )
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
-    from zarr.core.buffer import NDArrayLike, NDArrayOrScalarLike
+    from zarr.core.buffer import NDArrayLike, NDArrayLikeOrScalar
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
         JSON,
@@ -119,7 +119,7 @@ def load(
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
     zarr_version: ZarrFormat | None = None,
-) -> NDArrayOrScalarLike | dict[str, NDArrayOrScalarLike]:
+) -> NDArrayLikeOrScalar | dict[str, NDArrayLikeOrScalar]:
     """Load data from an array or group into memory.
 
     Parameters
