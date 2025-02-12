@@ -35,8 +35,7 @@ from zarr.core.array import (
     chunks_initialized,
     create_array,
 )
-from zarr.core.buffer import NDArrayLike, default_buffer_prototype
-from zarr.core.buffer.core import ScalarWrapper
+from zarr.core.buffer import default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
@@ -1335,8 +1334,8 @@ def test_scalar_array(value: Any, zarr_format: ZarrFormat) -> None:
     assert arr.ndim == 0
 
     x = arr[()]
-    assert isinstance(arr[()], ScalarWrapper)
-    assert isinstance(arr[()], NDArrayLike)
+    assert isinstance(arr[()], np.generic)
+    # assert isinstance(arr[()], NDArrayLike)
     assert x.shape == arr.shape
     assert x.ndim == arr.ndim
 

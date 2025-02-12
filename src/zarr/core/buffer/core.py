@@ -552,7 +552,7 @@ class NDBuffer:
         """
         ...
 
-    def as_scalar(self) -> ScalarWrapper:
+    def as_scalar(self) -> np.generic:
         """Returns the buffer as a scalar value
 
         Returns
@@ -561,7 +561,7 @@ class NDBuffer:
         """
         if self._data.size != 1:
             raise ValueError("Buffer does not contain a single scalar value")
-        return ScalarWrapper(self.as_numpy_array().item(), np.dtype(self.dtype))
+        return self.dtype.type(self.as_numpy_array().item())
 
     @property
     def dtype(self) -> np.dtype[Any]:
