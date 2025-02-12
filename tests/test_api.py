@@ -23,6 +23,7 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
+from zarr.core.buffer.core import NDArrayLike
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
 from zarr.storage import MemoryStore
@@ -235,6 +236,7 @@ def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
     z2 = zarr.open(store=tmp_path, mode="r")
     assert isinstance(z2, Array)
     assert z2.fill_value == 1
+    assert isinstance(z2[:], NDArrayLike)
     assert (z2[:] == 1).all()
     with pytest.raises(ValueError):
         z2[:] = 3

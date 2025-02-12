@@ -11,7 +11,8 @@ from zarr.codecs.crc32c_ import Crc32cCodec
 from zarr.codecs.gzip import GzipCodec
 from zarr.codecs.transpose import TransposeCodec
 from zarr.codecs.zstd import ZstdCodec
-from zarr.core.buffer import ArrayLike, BufferPrototype, NDArrayLike, cpu, gpu
+from zarr.core.buffer import ArrayLike, BufferPrototype, cpu, gpu
+from zarr.core.buffer.core import NDArrayLike
 from zarr.storage import MemoryStore, StorePath
 from zarr.testing.buffer import (
     NDBufferUsingTestNDArrayLike,

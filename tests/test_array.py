@@ -1394,13 +1394,6 @@ def test_roundtrip_numcodecs() -> None:
     assert metadata["codecs"] == expected
 
 
-def test_tmp():
-    a = np.array(1)
-    print(type(a[()]))
-    z = zarr.array(a, store=MemoryStore())
-    print(type(z[()]))
-
-
 def _index_array(arr: Array, index: Any) -> Any:
     return arr[index]
 

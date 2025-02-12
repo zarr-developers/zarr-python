@@ -11,7 +11,7 @@ from typing_extensions import deprecated
 
 from zarr.core.array import Array, AsyncArray, create_array, get_array_metadata
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
-from zarr.core.buffer import NDArrayOrScalarLike
+from zarr.core.buffer.core import NDArrayLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
     from zarr.abc.codec import Codec
-    from zarr.core.buffer.core import NDArrayLike
+    from zarr.core.buffer import NDArrayOrScalarLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding
     from zarr.storage import StoreLike
 
@@ -481,9 +481,7 @@ async def save_group(
             )
     for k, v in kwargs.items():
         if not isinstance(v, NDArrayLike):
-            raise TypeError(
-                f"Keyword argument '{k}' must be a numpy or other NDArrayLike array"
-            )
+            raise TypeError(f"Keyword argument '{k}' must be a numpy or other NDArrayLike array")
 
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")
