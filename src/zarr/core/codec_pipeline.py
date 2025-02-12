@@ -56,6 +56,19 @@ def resolve_batched(codec: Codec, chunk_specs: Iterable[ArraySpec]) -> Iterable[
     return [codec.resolve_metadata(chunk_spec) for chunk_spec in chunk_specs]
 
 
+def fill_value_or_default(chunk_spec: ArraySpec) -> Any:
+    fill_value = chunk_spec.fill_value
+    if fill_value is None:
+        # Zarr V2 allowed `fill_value` to be null in the metadata.
+        # Zarr V3 requires it to be set. This has already been
+        # validated when decoding the metadata, but we support reading
+        # Zarr V2 data and need to support the case where fill_value
+        # is None.
+        return _default_fill_value(dtype=chunk_spec.dtype)
+    else:
+        return fill_value
+
+
 @dataclass(frozen=True)
 class BatchedCodecPipeline(CodecPipeline):
     """Default codec pipeline.
@@ -247,17 +260,7 @@ class BatchedCodecPipeline(CodecPipeline):
                 if chunk_array is not None:
                     out[out_selection] = chunk_array
                 else:
-                    fill_value = chunk_spec.fill_value
-
-                    if fill_value is None:
-                        # Zarr V2 allowed `fill_value` to be null in the metadata.
-                        # Zarr V3 requires it to be set. This has already been
-                        # validated when decoding the metadata, but we support reading
-                        # Zarr V2 data and need to support the case where fill_value
-                        # is None.
-                        fill_value = _default_fill_value(dtype=chunk_spec.dtype)
-
-                    out[out_selection] = fill_value
+                    out[out_selection] = fill_value_or_default(chunk_spec)
         else:
             chunk_bytes_batch = await concurrent_map(
                 [
@@ -284,10 +287,7 @@ class BatchedCodecPipeline(CodecPipeline):
                         tmp = tmp.squeeze(axis=drop_axes)
                     out[out_selection] = tmp
                 else:
-                    fill_value = chunk_spec.fill_value
-                    if fill_value is None:
-                        fill_value = _default_fill_value(dtype=chunk_spec.dtype)
-                    out[out_selection] = fill_value
+                    out[out_selection] = fill_value_or_default(chunk_spec)
 
     def _merge_chunk_array(
         self,
@@ -305,7 +305,7 @@ class BatchedCodecPipeline(CodecPipeline):
                 shape=chunk_spec.shape,
                 dtype=chunk_spec.dtype,
                 order=chunk_spec.order,
-                fill_value=chunk_spec.fill_value,
+                fill_value=fill_value_or_default(chunk_spec),
             )
         else:
             chunk_array = existing_chunk_array.copy()  # make a writable copy
@@ -394,7 +394,7 @@ class BatchedCodecPipeline(CodecPipeline):
                     chunk_array_batch.append(None)  # type: ignore[unreachable]
                 else:
                     if not chunk_spec.config.write_empty_chunks and chunk_array.all_equal(
-                        chunk_spec.fill_value
+                        fill_value_or_default(chunk_spec)
                     ):
                         chunk_array_batch.append(None)
                     else:
