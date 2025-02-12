@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import sys
 from abc import ABC, abstractmethod
 from typing import (
@@ -106,7 +107,9 @@ class NDArrayLike(Protocol):
         """
 
 
-ScalarType = int | float | complex | bool | np.generic
+ScalarType = (
+    int | float | complex | bytes | str | bool | datetime.datetime | datetime.timedelta | np.generic
+)
 NDArrayOrScalarLike = ScalarType | NDArrayLike
 
 

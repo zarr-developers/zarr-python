@@ -284,7 +284,7 @@ def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
     assert isinstance(z2, Array)
     result = z2[:]
     assert isinstance(result, NDArrayLike)
-    assert (result == 3).all()
+    assert not (result == 3).all()
     z2[:] = 3
 
 
