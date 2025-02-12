@@ -706,44 +706,54 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     )
     a = np.arange(105 * 105, dtype="i4").reshape((105, 105))
     z[:] = a
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (105, 105) == z.shape
-    assert (105, 105) == z[:].shape
+    assert (105, 105) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
-    np.testing.assert_array_equal(a, z[:])
+    np.testing.assert_array_equal(a, result)
 
     z.resize((205, 205))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (205, 205) == z.shape
-    assert (205, 205) == z[:].shape
+    assert (205, 205) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
     np.testing.assert_array_equal(a, z[:105, :105])
     np.testing.assert_array_equal(np.zeros((100, 205), dtype="i4"), z[105:, :])
     np.testing.assert_array_equal(np.zeros((205, 100), dtype="i4"), z[:, 105:])
 
     z.resize((55, 55))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (55, 55) == z.shape
-    assert (55, 55) == z[:].shape
+    assert (55, 55) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
-    np.testing.assert_array_equal(a[:55, :55], z[:])
+    np.testing.assert_array_equal(a[:55, :55], result)
 
     z.resize((55, 1))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (55, 1) == z.shape
-    assert (55, 1) == z[:].shape
+    assert (55, 1) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
-    np.testing.assert_array_equal(a[:55, :1], z[:])
+    np.testing.assert_array_equal(a[:55, :1], result)
 
     z.resize((1, 55))
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (1, 55) == z.shape
-    assert (1, 55) == z[:].shape
+    assert (1, 55) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10, 10) == z.chunks
     np.testing.assert_array_equal(a[:1, :10], z[:, :10])
     np.testing.assert_array_equal(np.zeros((1, 55 - 10), dtype="i4"), z[:, 10:55])
@@ -751,8 +761,10 @@ def test_resize_2d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     # via shape setter
     new_shape = (105, 105)
     z.shape = new_shape
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert new_shape == z.shape
-    assert new_shape == z[:].shape
+    assert new_shape == result.shape
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
