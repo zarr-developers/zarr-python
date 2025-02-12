@@ -34,7 +34,7 @@ from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, parse_array_confi
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
-    NDArrayLike,
+    NDArrayOrScalarLike,
     NDBuffer,
     default_buffer_prototype,
 )
@@ -1255,7 +1255,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         prototype: BufferPrototype,
         out: NDBuffer | None = None,
         fields: Fields | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayOrScalarLike:
         # check fields are sensible
         out_dtype = check_fields(fields, self.dtype)
 
@@ -1305,7 +1305,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
         selection: BasicSelection,
         *,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayOrScalarLike:
         """
         Asynchronous function that retrieves a subset of the array's data based on the provided selection.
 
@@ -1318,7 +1318,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
 
         Returns
         -------
-        NDArrayLike
+        NDArrayOrScalarLike
             The retrieved subset of the array's data.
 
         Examples
@@ -1396,11 +1396,11 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
             if not hasattr(value, "dtype") or value.dtype.name != self.metadata.dtype.name:
                 if hasattr(value, "astype"):
-                    # Handle things that are already NDArrayLike more efficiently
+                    # Handle things that are already NDArrayOrScalarLike more efficiently
                     value = value.astype(dtype=self.metadata.dtype, order="A")
                 else:
                     value = np.array(value, dtype=self.metadata.dtype, order="A")
-        value = cast(NDArrayLike, value)
+        value = cast(NDArrayOrScalarLike, value)
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass
         # Buffer and NDBuffer between components.
@@ -2260,7 +2260,7 @@ class Array:
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
-    ) -> NDArrayLike:
+    ) -> NDArrayOrScalarLike:
         """
         This method is used by numpy when converting zarr.Array into a numpy array.
         For more information, see https://numpy.org/devdocs/user/basics.interoperability.html#the-array-method
@@ -2278,7 +2278,7 @@ class Array:
 
         return arr_np
 
-    def __getitem__(self, selection: Selection) -> NDArrayLike:
+    def __getitem__(self, selection: Selection) -> NDArrayOrScalarLike:
         """Retrieve data for an item or region of the array.
 
         Parameters
@@ -2289,7 +2289,7 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
+        NDArrayOrScalarLike
              An array-like containing the data for the requested region.
 
         Examples
@@ -2536,7 +2536,7 @@ class Array:
         out: NDBuffer | None = None,
         prototype: BufferPrototype | None = None,
         fields: Fields | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayOrScalarLike:
         """Retrieve data for an item or region of the array.
 
         Parameters
@@ -2554,7 +2554,7 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
+        NDArrayOrScalarLike
             An array-like containing the data for the requested region.
 
         Examples
@@ -2756,7 +2756,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayOrScalarLike:
         """Retrieve data by making a selection for each dimension of the array. For
         example, if an array has 2 dimensions, allows selecting specific rows and/or
         columns. The selection for each dimension can be either an integer (indexing a
@@ -2778,7 +2778,7 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
+        NDArrayOrScalarLike
             An array-like containing the data for the requested selection.
 
         Examples
@@ -2992,7 +2992,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayOrScalarLike:
         """Retrieve a selection of individual items, by providing a Boolean array of the
         same shape as the array against which the selection is being made, where True
         values indicate a selected item.
@@ -3012,7 +3012,7 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
+        NDArrayOrScalarLike
             An array-like containing the data for the requested selection.
 
         Examples
@@ -3154,7 +3154,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayOrScalarLike:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
 
@@ -3172,7 +3172,7 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
+        NDArrayOrScalarLike
             An array-like containing the data for the requested coordinate selection.
 
         Examples
@@ -3325,7 +3325,7 @@ class Array:
             value = np.array(value).reshape(-1)
 
         if not is_scalar(value, self.dtype) and (
-            isinstance(value, NDArrayLike) and indexer.shape != value.shape
+            isinstance(value, NDArrayOrScalarLike) and indexer.shape != value.shape
         ):
             raise ValueError(
                 f"Attempting to set a selection of {indexer.sel_shape[0]} "
@@ -3342,7 +3342,7 @@ class Array:
         out: NDBuffer | None = None,
         fields: Fields | None = None,
         prototype: BufferPrototype | None = None,
-    ) -> NDArrayLike:
+    ) -> NDArrayOrScalarLike:
         """Retrieve a selection of individual items, by providing the indices
         (coordinates) for each selected item.
 
@@ -3360,7 +3360,7 @@ class Array:
 
         Returns
         -------
-        NDArrayLike
+        NDArrayOrScalarLike
             An array-like containing the data for the requested block selection.
 
         Examples

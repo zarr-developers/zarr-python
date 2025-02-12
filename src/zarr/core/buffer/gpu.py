@@ -12,7 +12,7 @@ import numpy as np
 import numpy.typing as npt
 
 from zarr.core.buffer import core
-from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayLike
+from zarr.core.buffer.core import ArrayLike, BufferPrototype, NDArrayOrScalarLike
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -136,7 +136,7 @@ class NDBuffer(core.NDBuffer):
         ndarray-like object that is convertible to a regular Numpy array.
     """
 
-    def __init__(self, array: NDArrayLike) -> None:
+    def __init__(self, array: NDArrayOrScalarLike) -> None:
         if cp is None:
             raise ImportError(
                 "Cannot use zarr.buffer.gpu.NDBuffer without cupy. Please install cupy."

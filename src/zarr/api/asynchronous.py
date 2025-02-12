@@ -11,7 +11,7 @@ from typing_extensions import deprecated
 
 from zarr.core.array import Array, AsyncArray, create_array, get_array_metadata
 from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
-from zarr.core.buffer import NDArrayLike
+from zarr.core.buffer import NDArrayOrScalarLike
 from zarr.core.common import (
     JSON,
     AccessModeLiteral,
@@ -232,7 +232,7 @@ async def load(
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
     zarr_version: ZarrFormat | None = None,
-) -> NDArrayLike | dict[str, NDArrayLike]:
+) -> NDArrayOrScalarLike | dict[str, NDArrayOrScalarLike]:
     """Load data from an array or group into memory.
 
     Parameters
@@ -348,7 +348,7 @@ async def open_consolidated(
 
 async def save(
     store: StoreLike,
-    *args: NDArrayLike,
+    *args: NDArrayOrScalarLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -381,7 +381,7 @@ async def save(
 
 async def save_array(
     store: StoreLike,
-    arr: NDArrayLike,
+    arr: NDArrayOrScalarLike,
     *,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
@@ -412,8 +412,8 @@ async def save_array(
         _handle_zarr_version_or_format(zarr_version=zarr_version, zarr_format=zarr_format)
         or _default_zarr_format()
     )
-    if not isinstance(arr, NDArrayLike):
-        raise TypeError("arr argument must be numpy or other NDArrayLike array")
+    if not isinstance(arr, NDArrayOrScalarLike):
+        raise TypeError("arr argument must be numpy or other NDArrayOrScalarLike array")
 
     mode = kwargs.pop("mode", "a")
     store_path = await make_store_path(store, path=path, mode=mode, storage_options=storage_options)
@@ -436,12 +436,12 @@ async def save_array(
 
 async def save_group(
     store: StoreLike,
-    *args: NDArrayLike,
+    *args: NDArrayOrScalarLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
-    **kwargs: NDArrayLike,
+    **kwargs: NDArrayOrScalarLike,
 ) -> None:
     """Convenience function to save several NumPy arrays to the local file system, following a
     similar API to the NumPy savez()/savez_compressed() functions.
@@ -474,13 +474,15 @@ async def save_group(
     )
 
     for arg in args:
-        if not isinstance(arg, NDArrayLike):
+        if not isinstance(arg, NDArrayOrScalarLike):
             raise TypeError(
-                "All arguments must be numpy or other NDArrayLike arrays (except store, path, storage_options, and zarr_format)"
+                "All arguments must be numpy or other NDArrayOrScalarLike arrays (except store, path, storage_options, and zarr_format)"
             )
     for k, v in kwargs.items():
-        if not isinstance(v, NDArrayLike):
-            raise TypeError(f"Keyword argument '{k}' must be a numpy or other NDArrayLike array")
+        if not isinstance(v, NDArrayOrScalarLike):
+            raise TypeError(
+                f"Keyword argument '{k}' must be a numpy or other NDArrayOrScalarLike array"
+            )
 
     if len(args) == 0 and len(kwargs) == 0:
         raise ValueError("at least one array must be provided")

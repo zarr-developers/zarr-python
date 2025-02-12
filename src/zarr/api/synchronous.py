@@ -26,7 +26,7 @@ if TYPE_CHECKING:
         ShardsLike,
     )
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
-    from zarr.core.buffer import NDArrayLike
+    from zarr.core.buffer import NDArrayOrScalarLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
         JSON,
@@ -119,7 +119,7 @@ def load(
     path: str | None = None,
     zarr_format: ZarrFormat | None = None,
     zarr_version: ZarrFormat | None = None,
-) -> NDArrayLike | dict[str, NDArrayLike]:
+) -> NDArrayOrScalarLike | dict[str, NDArrayOrScalarLike]:
     """Load data from an array or group into memory.
 
     Parameters
@@ -216,7 +216,7 @@ def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwar
 
 def save(
     store: StoreLike,
-    *args: NDArrayLike,
+    *args: NDArrayOrScalarLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -247,7 +247,7 @@ def save(
 @_deprecate_positional_args
 def save_array(
     store: StoreLike,
-    arr: NDArrayLike,
+    arr: NDArrayOrScalarLike,
     *,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
@@ -290,12 +290,12 @@ def save_array(
 
 def save_group(
     store: StoreLike,
-    *args: NDArrayLike,
+    *args: NDArrayOrScalarLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
-    **kwargs: NDArrayLike,
+    **kwargs: NDArrayOrScalarLike,
 ) -> None:
     """Save several NumPy arrays to the local file system.
 

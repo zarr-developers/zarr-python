@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from typing import Self
 
-    from zarr.core.buffer.core import ArrayLike, NDArrayLike
+    from zarr.core.buffer.core import ArrayLike, NDArrayOrScalarLike
     from zarr.core.common import BytesLike
 
 
@@ -142,7 +142,7 @@ class NDBuffer(core.NDBuffer):
         ndarray-like object that is convertible to a regular Numpy array.
     """
 
-    def __init__(self, array: NDArrayLike) -> None:
+    def __init__(self, array: NDArrayOrScalarLike) -> None:
         super().__init__(array)
 
     @classmethod

@@ -29,7 +29,7 @@ from zarr.core.common import product
 
 if TYPE_CHECKING:
     from zarr.core.array import Array
-    from zarr.core.buffer import NDArrayLike
+    from zarr.core.buffer import NDArrayOrScalarLike
     from zarr.core.chunk_grids import ChunkGrid
     from zarr.core.common import ChunkCoords
 
@@ -929,7 +929,7 @@ class OIndex:
     array: Array
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
-    def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayLike:
+    def __getitem__(self, selection: OrthogonalSelection | Array) -> NDArrayOrScalarLike:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.
@@ -1038,7 +1038,7 @@ class BlockIndexer(Indexer):
 class BlockIndex:
     array: Array
 
-    def __getitem__(self, selection: BasicSelection) -> NDArrayLike:
+    def __getitem__(self, selection: BasicSelection) -> NDArrayOrScalarLike:
         fields, new_selection = pop_fields(selection)
         new_selection = ensure_tuple(new_selection)
         new_selection = replace_lists(new_selection)
@@ -1227,7 +1227,9 @@ class VIndex:
     array: Array
 
     # TODO: develop Array generic and move zarr.Array[np.intp] | zarr.Array[np.bool_] to ArrayOfIntOrBool
-    def __getitem__(self, selection: CoordinateSelection | MaskSelection | Array) -> NDArrayLike:
+    def __getitem__(
+        self, selection: CoordinateSelection | MaskSelection | Array
+    ) -> NDArrayOrScalarLike:
         from zarr.core.array import Array
 
         # if input is a Zarr array, we materialize it now.

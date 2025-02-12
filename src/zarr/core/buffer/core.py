@@ -9,6 +9,7 @@ from typing import (
     NamedTuple,
     Protocol,
     SupportsIndex,
+    Union,
     cast,
     runtime_checkable,
 )
@@ -104,6 +105,9 @@ class NDArrayLike(Protocol):
         This is true, but since NumPy's ndarray is defined as an element-wise equal,
         our hands are tied.
         """
+
+
+NDArrayLike = Union["np.ScalarType", NDArrayLike]
 
 
 class ScalarWrapper:
@@ -552,7 +556,7 @@ class NDBuffer:
         """
         ...
 
-    def as_scalar(self) -> np.generic:
+    def as_scalar(self) -> np.ScalarType:
         """Returns the buffer as a scalar value
 
         Returns
