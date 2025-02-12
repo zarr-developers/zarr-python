@@ -8,6 +8,7 @@ import zarr.api.asynchronous as async_api
 import zarr.core.array
 from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
+from zarr.core.buffer.core import NDArrayLike
 from zarr.core.group import Group
 from zarr.core.sync import sync
 
@@ -216,7 +217,7 @@ def open_consolidated(*args: Any, use_consolidated: Literal[True] = True, **kwar
 
 def save(
     store: StoreLike,
-    *args: NDArrayOrScalarLike,
+    *args: NDArrayLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
@@ -247,7 +248,7 @@ def save(
 @_deprecate_positional_args
 def save_array(
     store: StoreLike,
-    arr: NDArrayOrScalarLike,
+    arr: NDArrayLike,
     *,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
@@ -290,12 +291,12 @@ def save_array(
 
 def save_group(
     store: StoreLike,
-    *args: NDArrayOrScalarLike,
+    *args: NDArrayLike,
     zarr_version: ZarrFormat | None = None,  # deprecated
     zarr_format: ZarrFormat | None = None,
     path: str | None = None,
     storage_options: dict[str, Any] | None = None,
-    **kwargs: NDArrayOrScalarLike,
+    **kwargs: NDArrayLike,
 ) -> None:
     """Save several NumPy arrays to the local file system.
 

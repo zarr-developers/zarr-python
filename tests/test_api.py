@@ -237,7 +237,7 @@ def test_open_with_mode_r(tmp_path: pathlib.Path) -> None:
     assert isinstance(z2, Array)
     assert z2.fill_value == 1
     assert isinstance(z2[:], NDArrayLike)
-    assert (z2[:] == 1).all()
+    assert (z2[:] == 1).all() # type: ignore [operator]
     with pytest.raises(ValueError):
         z2[:] = 3
 
@@ -249,7 +249,8 @@ def test_open_with_mode_r_plus(tmp_path: pathlib.Path) -> None:
     zarr.ones(store=tmp_path, shape=(3, 3))
     z2 = zarr.open(store=tmp_path, mode="r+")
     assert isinstance(z2, Array)
-    assert (z2[:] == 1).all()
+    assert isinstance(z2[:], NDArrayLike)
+    assert (z2[:] == 1).all() # type: ignore [operator]
     z2[:] = 3
 
 
@@ -265,7 +266,8 @@ async def test_open_with_mode_a(tmp_path: pathlib.Path) -> None:
     arr[...] = 1
     z2 = zarr.open(store=tmp_path, mode="a")
     assert isinstance(z2, Array)
-    assert (z2[:] == 1).all()
+    assert isinstance(z2[:], NDArrayLike)
+    assert (z2[:] == 1).all() # type: ignore [operator]
     z2[:] = 3
 
 
@@ -277,7 +279,8 @@ def test_open_with_mode_w(tmp_path: pathlib.Path) -> None:
     arr[...] = 3
     z2 = zarr.open(store=tmp_path, mode="w", shape=(3, 3))
     assert isinstance(z2, Array)
-    assert not (z2[:] == 3).all()
+    assert isinstance(z2[:], NDArrayLike)
+    assert (z2[:] == 3).all() # type: ignore [operator]
     z2[:] = 3
 
 
