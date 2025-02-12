@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from zarr.abc.codec import ArrayBytesCodec
-from zarr.core.buffer import Buffer, NDArrayOrScalarLike, NDBuffer
+from zarr.core.buffer import Buffer, NDArrayLike, NDBuffer
 from zarr.core.common import JSON, parse_enum, parse_named_configuration
 from zarr.registry import register_codec
 
@@ -81,7 +81,7 @@ class BytesCodec(ArrayBytesCodec):
             dtype = np.dtype(f"|{chunk_spec.dtype.str[1:]}")
 
         as_array_like = chunk_bytes.as_array_like()
-        if isinstance(as_array_like, NDArrayOrScalarLike):
+        if isinstance(as_array_like, NDArrayLike):
             as_nd_array_like = as_array_like
         else:
             as_nd_array_like = np.asanyarray(as_array_like)

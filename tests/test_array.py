@@ -37,8 +37,7 @@ from zarr.core.array import (
     chunks_initialized,
     create_array,
 )
-from zarr.core.buffer import NDArrayOrScalarLike, default_buffer_prototype
-from zarr.core.buffer.core import NDArrayLike
+from zarr.core.buffer import NDArrayLike, NDArrayOrScalarLike, default_buffer_prototype
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat

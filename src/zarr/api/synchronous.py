@@ -26,8 +26,7 @@ if TYPE_CHECKING:
         ShardsLike,
     )
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
-    from zarr.core.buffer import NDArrayOrScalarLike
-    from zarr.core.buffer.core import NDArrayLike
+    from zarr.core.buffer import NDArrayLike, NDArrayOrScalarLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
         JSON,

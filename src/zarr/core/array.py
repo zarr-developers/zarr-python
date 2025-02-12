@@ -34,11 +34,11 @@ from zarr.core.array_spec import ArrayConfig, ArrayConfigLike, parse_array_confi
 from zarr.core.attributes import Attributes
 from zarr.core.buffer import (
     BufferPrototype,
+    NDArrayLike,
     NDArrayOrScalarLike,
     NDBuffer,
     default_buffer_prototype,
 )
-from zarr.core.buffer.core import NDArrayLike
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -1397,7 +1397,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
             # ), f"shape of value doesn't match indexer shape. Expected {indexer.shape}, got {value.shape}"
             if not hasattr(value, "dtype") or value.dtype.name != self.metadata.dtype.name:
                 if hasattr(value, "astype"):
-                    # Handle things that are already NDArrayOrScalarLike more efficiently
+                    # Handle things that are already NDArrayLike more efficiently
                     value = value.astype(dtype=self.metadata.dtype, order="A")
                 else:
                     value = np.array(value, dtype=self.metadata.dtype, order="A")
@@ -2290,7 +2290,7 @@ class Array:
         Returns
         -------
         NDArrayOrScalarLike
-             An array-like containing the data for the requested region.
+             An array-like or scalar containing the data for the requested region.
 
         Examples
         --------
@@ -2555,7 +2555,7 @@ class Array:
         Returns
         -------
         NDArrayOrScalarLike
-            An array-like containing the data for the requested region.
+            An array-like or scalar containing the data for the requested region.
 
         Examples
         --------
@@ -2779,7 +2779,7 @@ class Array:
         Returns
         -------
         NDArrayOrScalarLike
-            An array-like containing the data for the requested selection.
+            An array-like or scalar containing the data for the requested selection.
 
         Examples
         --------
@@ -3013,7 +3013,7 @@ class Array:
         Returns
         -------
         NDArrayOrScalarLike
-            An array-like containing the data for the requested selection.
+            An array-like or scalar containing the data for the requested selection.
 
         Examples
         --------
@@ -3173,7 +3173,7 @@ class Array:
         Returns
         -------
         NDArrayOrScalarLike
-            An array-like containing the data for the requested coordinate selection.
+            An array-like or scalar containing the data for the requested coordinate selection.
 
         Examples
         --------
@@ -3361,7 +3361,7 @@ class Array:
         Returns
         -------
         NDArrayOrScalarLike
-            An array-like containing the data for the requested block selection.
+            An array-like or scalar containing the data for the requested block selection.
 
         Examples
         --------

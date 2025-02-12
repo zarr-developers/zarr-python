@@ -16,8 +16,7 @@ from zarr.codecs import (
     ShardingCodecIndexLocation,
     TransposeCodec,
 )
-from zarr.core.buffer import default_buffer_prototype
-from zarr.core.buffer.core import NDArrayLike
+from zarr.core.buffer import NDArrayLike, default_buffer_prototype
 from zarr.storage import StorePath
 
 from ..conftest import ArrayRequest
