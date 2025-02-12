@@ -1,0 +1,1 @@
+Ensure that invocations of ``create_array`` use consistent keyword arguments.
