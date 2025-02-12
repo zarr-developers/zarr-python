@@ -1,5 +1,7 @@
+import inspect
 import pathlib
 import warnings
+from collections.abc import Callable
 from typing import Literal
 
 import numpy as np
@@ -8,6 +10,7 @@ from numpy.testing import assert_array_equal
 
 import zarr
 import zarr.api.asynchronous
+import zarr.api.synchronous
 import zarr.core.group
 from zarr import Array, Group
 from zarr.abc.store import Store
@@ -1121,3 +1124,25 @@ def test_open_array_with_mode_r_plus(store: Store) -> None:
     assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
+
+
+@pytest.mark.parametrize(
+    ("a_func", "b_func"),
+    [
+        (zarr.api.asynchronous.create_array, zarr.api.synchronous.create_array),
+        (zarr.api.asynchronous.save, zarr.api.synchronous.save),
+        (zarr.api.asynchronous.save_array, zarr.api.synchronous.save_array),
+        (zarr.api.asynchronous.save_group, zarr.api.synchronous.save_group),
+        (zarr.api.asynchronous.open_group, zarr.api.synchronous.open_group),
+        (zarr.api.asynchronous.create, zarr.api.synchronous.create),
+    ],
+)
+def test_consistent_signatures(
+    a_func: Callable[[object], object], b_func: Callable[[object], object]
+) -> None:
+    """
+    Ensure that pairs of functions have the same signature
+    """
+    base_sig = inspect.signature(a_func)
+    test_sig = inspect.signature(b_func)
+    assert test_sig.parameters == base_sig.parameters
