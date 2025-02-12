@@ -107,7 +107,7 @@ class NDArrayLike(Protocol):
         """
 
 
-NDArrayLike = Union["np.ScalarType", NDArrayLike]
+NDArrayOrScalarLike = "np.ScalarType" | NDArrayLike
 
 
 class ScalarWrapper:
