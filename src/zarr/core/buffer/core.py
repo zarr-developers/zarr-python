@@ -22,7 +22,6 @@ if TYPE_CHECKING:
 
     from zarr.codecs.bytes import Endian
     from zarr.core.common import BytesLike, ChunkCoords
-    from zarr.core.indexing import Selection
 
 # Everything here is imported into ``zarr.core.buffer`` namespace.
 __all__: list[str] = []
@@ -108,138 +107,6 @@ class NDArrayLike(Protocol):
 
 ScalarType = int | float | complex | bytes | str | bool | np.generic
 NDArrayOrScalarLike = ScalarType | NDArrayLike
-
-
-class ScalarWrapper:
-    def __init__(self, value: Any, dtype: np.dtype[Any] | None = None) -> None:
-        self._value: Any = value
-        self._dtype: np.dtype[Any] = dtype or np.dtype(type(self._value))
-
-    @property
-    def dtype(self) -> np.dtype[Any]:
-        return self._dtype
-
-    @property
-    def ndim(self) -> int:
-        return 0
-
-    @property
-    def size(self) -> int:
-        return 1
-
-    @property
-    def shape(self) -> tuple[()]:
-        return ()
-
-    def __len__(self) -> int:
-        raise TypeError("len() of unsized object.")
-
-    def __getitem__(self, key: Selection) -> Self:
-        if key != slice(None) and key != Ellipsis and key != ():
-            raise IndexError("Invalid index for scalar.")
-        return self
-
-    def __setitem__(self, key: Selection, value: Any) -> None:
-        if key != slice(None) and key != Ellipsis and key != ():
-            raise IndexError("Invalid index for scalar.")
-        self._value = value
-
-    def __array__(
-        self, dtype: npt.DTypeLike | None = None, copy: bool | None = True
-    ) -> npt.NDArray[Any]:
-        return np.array(self._value, dtype=dtype or self._dtype, copy=copy)
-
-    def reshape(
-        self, shape: tuple[int, ...] | Literal[-1], *, order: Literal["A", "C", "F"] = "C"
-    ) -> Self:
-        if shape != () and shape != -1:
-            raise ValueError("Cannot reshape scalar to non-scalar shape.")
-        return self
-
-    def view(self, dtype: npt.DTypeLike) -> Self:
-        return self.astype(dtype)
-
-    def astype(
-        self, dtype: npt.DTypeLike, order: Literal["K", "A", "C", "F"] = "K", *, copy: bool = True
-    ) -> Self:
-        if copy:
-            return self.__class__(self._value, np.dtype(dtype))
-        self._dtype = np.dtype(dtype)
-        return self
-
-    def fill(self, value: Any) -> None:
-        self._value = value
-
-    def copy(self) -> Self:
-        return self.__class__(self._value)
-
-    def transpose(self, axes: SupportsIndex | Sequence[SupportsIndex] | None = None) -> Self:
-        return self
-
-    def ravel(self, order: Literal["K", "A", "C", "F"] = "C") -> Self:
-        return self
-
-    def all(self) -> bool:
-        return bool(self._value)
-
-    def __eq__(self, other: object) -> Self:  # type: ignore[explicit-override, override]
-        return self.__class__(self._value == other)
-
-    def __repr__(self) -> str:
-        return f"ScalarWrapper({self._value!r})"
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._value, name)
-
-    def __add__(self, other: Any) -> Any:
-        return self._value + other
-
-    def __sub__(self, other: Any) -> Any:
-        return self._value - other
-
-    def __mul__(self, other: Any) -> Any:
-        return self._value * other
-
-    def __truediv__(self, other: Any) -> Any:
-        return self._value / other
-
-    def __floordiv__(self, other: Any) -> Any:
-        return self._value // other
-
-    def __mod__(self, other: Any) -> Any:
-        return self._value % other
-
-    def __pow__(self, other: Any) -> Any:
-        return self._value**other
-
-    def __neg__(self) -> Any:
-        return -self._value
-
-    def __abs__(self) -> Any:
-        if hasattr(self._value, "__abs__"):
-            return abs(self._value)
-        raise TypeError(f"bad operand type for abs(): '{self._value.__class__.__name__}'")
-
-    def __int__(self) -> int:
-        return int(self._value)
-
-    def __float__(self) -> float:
-        return float(self._value)
-
-    def __complex__(self) -> complex:
-        return complex(self._value)
-
-    def __bool__(self) -> bool:
-        return bool(self._value)
-
-    def __hash__(self) -> int:
-        return hash(self._value)
-
-    def __str__(self) -> str:
-        return str(self._value)
-
-    def __format__(self, format_spec: str) -> str:
-        return format(self._value, format_spec)
 
 
 def check_item_key_is_1d_contiguous(key: Any) -> None:
@@ -557,12 +424,7 @@ class NDBuffer:
         ...
 
     def as_scalar(self) -> ScalarType:
-        """Returns the buffer as a scalar value
-
-        Returns
-        -------
-            ScalarWrapper of this buffer
-        """
+        """Returns the buffer as a scalar value"""
         if self._data.size != 1:
             raise ValueError("Buffer does not contain a single scalar value")
         value: ScalarType = self.dtype.type(self.as_numpy_array().item())

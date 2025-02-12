@@ -1,3 +1,3 @@
-0-dimensional arrays are now returning an instance of ``ScalarWrapper``, which behaves like a scalar
-but follow the ``NDArrayLike`` interface. This change is to make the behavior of 0-dimensional arrays
-consistent with ``numpy`` scalars while not breaking the output format of the ``NDArrayLike`` interface.
+0-dimensional arrays are now returning a scalar. Therefore, the return type of ``__getitem__`` changed
+to NDArrayOrScalarLike. This change is to make the behavior of 0-dimensional arrays consistent with
+``numpy`` scalars.
