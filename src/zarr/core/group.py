@@ -1005,8 +1005,9 @@ class AsyncGroup:
         self,
         name: str,
         *,
-        shape: ShapeLike,
-        dtype: npt.DTypeLike,
+        shape: ShapeLike | None = None,
+        dtype: npt.DTypeLike | None = None,
+        data: np.ndarray[Any, np.dtype[Any]] | None = None,
         chunks: ChunkCoords | Literal["auto"] = "auto",
         shards: ShardsLike | None = None,
         filters: FiltersLike = "auto",
@@ -1016,11 +1017,12 @@ class AsyncGroup:
         fill_value: Any | None = 0,
         order: MemoryOrder | None = None,
         attributes: dict[str, JSON] | None = None,
-        chunk_key_encoding: ChunkKeyEncoding | ChunkKeyEncodingLike | None = None,
+        chunk_key_encoding: ChunkKeyEncodingLike | None = None,
         dimension_names: Iterable[str] | None = None,
         storage_options: dict[str, Any] | None = None,
         overwrite: bool = False,
         config: ArrayConfig | ArrayConfigLike | None = None,
+        write_data: bool = True,
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
         """Create an array within this group.
 
@@ -1108,6 +1110,11 @@ class AsyncGroup:
             Whether to overwrite an array with the same name in the store, if one exists.
         config : ArrayConfig or ArrayConfigLike, optional
             Runtime configuration for the array.
+        write_data : bool
+            If a pre-existing array-like object was provided to this function via the ``data`` parameter
+            then ``write_data`` determines whether the values in that array-like object should be
+            written to the Zarr array created by this function. If ``write_data`` is ``False``, then the
+            array will be left empty.
 
         Returns
         -------
@@ -1122,6 +1129,7 @@ class AsyncGroup:
             name=name,
             shape=shape,
             dtype=dtype,
+            data=data,
             chunks=chunks,
             shards=shards,
             filters=filters,
@@ -1136,6 +1144,7 @@ class AsyncGroup:
             storage_options=storage_options,
             overwrite=overwrite,
             config=config,
+            write_data=write_data,
         )
 
     @deprecated("Use AsyncGroup.create_array instead.")
