@@ -313,3 +313,22 @@ def test_structured_dtype_roundtrip(fill_value, tmp_path) -> None:
     za[...] = a
     za = zarr.open_array(store=array_path)
     assert (a == za[:]).all()
+
+
+@pytest.mark.parametrize("fill_value", [None, b"x"], ids=["no_fill", "fill"])
+def test_other_dtype_roundtrip(fill_value, tmp_path) -> None:
+    a = np.array([b"a\0\0", b"bb", b"ccc"], dtype="V7")
+    array_path = tmp_path / "data.zarr"
+    za = zarr.create(
+        shape=(3,),
+        store=array_path,
+        chunks=(2,),
+        fill_value=fill_value,
+        zarr_format=2,
+        dtype=a.dtype,
+    )
+    if fill_value is not None:
+        assert (np.array([fill_value] * a.shape[0], dtype=a.dtype) == za[:]).all()
+    za[...] = a
+    za = zarr.open_array(store=array_path)
+    assert (a == za[:]).all()
