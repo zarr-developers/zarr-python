@@ -9,7 +9,6 @@ from typing import (
     NamedTuple,
     Protocol,
     SupportsIndex,
-    Union,
     cast,
     runtime_checkable,
 )
@@ -107,7 +106,8 @@ class NDArrayLike(Protocol):
         """
 
 
-NDArrayOrScalarLike = "np.ScalarType" | NDArrayLike
+ScalarType = int | float | complex | bool | np.generic
+NDArrayOrScalarLike = ScalarType | NDArrayLike
 
 
 class ScalarWrapper:
@@ -556,7 +556,7 @@ class NDBuffer:
         """
         ...
 
-    def as_scalar(self) -> np.ScalarType:
+    def as_scalar(self) -> ScalarType:
         """Returns the buffer as a scalar value
 
         Returns
@@ -565,7 +565,8 @@ class NDBuffer:
         """
         if self._data.size != 1:
             raise ValueError("Buffer does not contain a single scalar value")
-        return self.dtype.type(self.as_numpy_array().item())
+        value: ScalarType = self.dtype.type(self.as_numpy_array().item())
+        return value
 
     @property
     def dtype(self) -> np.dtype[Any]:
