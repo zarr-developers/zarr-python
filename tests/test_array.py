@@ -37,7 +37,7 @@ from zarr.core.array import (
     chunks_initialized,
     create_array,
 )
-from zarr.core.buffer import default_buffer_prototype
+from zarr.core.buffer import NDArrayOrScalarLike, default_buffer_prototype
 from zarr.core.buffer.core import NDArrayLike
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
@@ -1355,12 +1355,7 @@ def test_scalar_array(value: Any, zarr_format: ZarrFormat) -> None:
     assert arr[...] == value
     assert arr.shape == ()
     assert arr.ndim == 0
-
-    x = arr[()]
-    assert isinstance(arr[()], np.generic)
-    # assert isinstance(arr[()], NDArrayLike)
-    assert x.shape == arr.shape
-    assert x.ndim == arr.ndim
+    assert isinstance(arr[()], NDArrayOrScalarLike)
 
 
 async def test_orthogonal_set_total_slice() -> None:

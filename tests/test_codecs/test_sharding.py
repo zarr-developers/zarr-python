@@ -17,6 +17,7 @@ from zarr.codecs import (
     TransposeCodec,
 )
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.buffer.core import NDArrayLike
 from zarr.storage import StorePath
 
 from ..conftest import ArrayRequest
@@ -66,6 +67,7 @@ def test_sharding(
         assert np.all(arr[empty_region] == arr.metadata.fill_value)
 
     read_data = arr[write_region]
+    assert isinstance(read_data, NDArrayLike)
     assert data.shape == read_data.shape
     assert np.array_equal(data, read_data)
 
@@ -130,6 +132,7 @@ def test_sharding_partial(
     assert np.all(read_data == 0)
 
     read_data = a[10:, 10:, 10:]
+    assert isinstance(read_data, NDArrayLike)
     assert data.shape == read_data.shape
     assert np.array_equal(data, read_data)
 
@@ -275,6 +278,7 @@ def test_nested_sharding(
     a[:, :, :] = data
 
     read_data = a[0 : data.shape[0], 0 : data.shape[1], 0 : data.shape[2]]
+    assert isinstance(read_data, NDArrayLike)
     assert data.shape == read_data.shape
     assert np.array_equal(data, read_data)
 
@@ -322,6 +326,7 @@ def test_nested_sharding_create_array(
     a[:, :, :] = data
 
     read_data = a[0 : data.shape[0], 0 : data.shape[1], 0 : data.shape[2]]
+    assert isinstance(read_data, NDArrayLike)
     assert data.shape == read_data.shape
     assert np.array_equal(data, read_data)
 
