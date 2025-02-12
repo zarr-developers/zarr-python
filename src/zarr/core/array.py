@@ -38,6 +38,7 @@ from zarr.core.buffer import (
     NDBuffer,
     default_buffer_prototype,
 )
+from zarr.core.buffer.core import NDArrayLike
 from zarr.core.chunk_grids import RegularChunkGrid, _auto_partition, normalize_chunks
 from zarr.core.chunk_key_encodings import (
     ChunkKeyEncoding,
@@ -1400,7 +1401,7 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     value = value.astype(dtype=self.metadata.dtype, order="A")
                 else:
                     value = np.array(value, dtype=self.metadata.dtype, order="A")
-        value = cast(NDArrayOrScalarLike, value)
+        value = cast(NDArrayLike, value)
         # We accept any ndarray like object from the user and convert it
         # to a NDBuffer (or subclass). From this point onwards, we only pass
         # Buffer and NDBuffer between components.
@@ -2260,7 +2261,7 @@ class Array:
 
     def __array__(
         self, dtype: npt.DTypeLike | None = None, copy: bool | None = None
-    ) -> NDArrayOrScalarLike:
+    ) -> NDArrayLike:
         """
         This method is used by numpy when converting zarr.Array into a numpy array.
         For more information, see https://numpy.org/devdocs/user/basics.interoperability.html#the-array-method
@@ -2269,9 +2270,13 @@ class Array:
             msg = "`copy=False` is not supported. This method always creates a copy."
             raise ValueError(msg)
 
-        arr_np = self[...]
-        if self.ndim == 0:
-            arr_np = np.array(arr_np)
+        arr = self[...]
+        arr_np: NDArrayLike
+
+        if not hasattr(arr, "astype"):
+            arr_np = np.array(arr, dtype=dtype)
+        else:
+            arr_np = arr
 
         if dtype is not None:
             arr_np = arr_np.astype(dtype)
