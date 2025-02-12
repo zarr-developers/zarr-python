@@ -38,6 +38,7 @@ from zarr.core.array import (
     create_array,
 )
 from zarr.core.buffer import default_buffer_prototype
+from zarr.core.buffer.core import NDArrayLike
 from zarr.core.buffer.cpu import NDBuffer
 from zarr.core.chunk_grids import _auto_partition
 from zarr.core.common import JSON, MemoryOrder, ZarrFormat
@@ -654,35 +655,43 @@ def test_resize_1d(store: MemoryStore, zarr_format: ZarrFormat) -> None:
     )
     a = np.arange(105, dtype="i4")
     z[:] = a
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (105,) == z.shape
-    assert hasattr(z[:], "shape") and (105,) == z[:].shape
+    assert (105,) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert hasattr(z[:], "dtype") and np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10,) == z.chunks
-    np.testing.assert_array_equal(a, z[:])
+    np.testing.assert_array_equal(a, result)
 
     z.resize(205)
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (205,) == z.shape
-    assert (205,) == z[:].shape
+    assert (205,) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10,) == z.chunks
     np.testing.assert_array_equal(a, z[:105])
     np.testing.assert_array_equal(np.zeros(100, dtype="i4"), z[105:])
 
     z.resize(55)
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert (55,) == z.shape
-    assert (55,) == z[:].shape
+    assert (55,) == result.shape
     assert np.dtype("i4") == z.dtype
-    assert np.dtype("i4") == z[:].dtype
+    assert np.dtype("i4") == result.dtype
     assert (10,) == z.chunks
-    np.testing.assert_array_equal(a[:55], z[:])
+    np.testing.assert_array_equal(a[:55], result)
 
     # via shape setter
     new_shape = (105,)
     z.shape = new_shape
+    result = z[:]
+    assert isinstance(result, NDArrayLike)
     assert new_shape == z.shape
-    assert new_shape == z[:].shape
+    assert new_shape == result.shape
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)

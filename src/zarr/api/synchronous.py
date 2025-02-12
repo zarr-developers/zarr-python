@@ -8,7 +8,6 @@ import zarr.api.asynchronous as async_api
 import zarr.core.array
 from zarr._compat import _deprecate_positional_args
 from zarr.core.array import Array, AsyncArray
-from zarr.core.buffer.core import NDArrayLike
 from zarr.core.group import Group
 from zarr.core.sync import sync
 
@@ -28,6 +27,7 @@ if TYPE_CHECKING:
     )
     from zarr.core.array_spec import ArrayConfig, ArrayConfigLike
     from zarr.core.buffer import NDArrayOrScalarLike
+    from zarr.core.buffer.core import NDArrayLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import (
         JSON,
