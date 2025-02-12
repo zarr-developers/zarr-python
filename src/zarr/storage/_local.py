@@ -208,6 +208,19 @@ class LocalStore(Store):
         else:
             await asyncio.to_thread(path.unlink, True)  # Q: we may want to raise if path is missing
 
+    async def delete_dir(self, prefix: str) -> None:
+        # docstring inherited
+        self._check_writable()
+        path = self.root / prefix
+        if path.is_dir():
+            shutil.rmtree(path)
+        elif path.is_file():
+            raise ValueError(f"delete_dir was passed a {prefix=!r} that is a file")
+        else:
+            # Non-existent directory
+            # This path is tested by test_group:test_create_creates_parents for one
+            pass
+
     async def exists(self, key: str) -> bool:
         # docstring inherited
         path = self.root / key
