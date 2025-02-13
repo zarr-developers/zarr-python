@@ -1,13 +1,16 @@
 import sys
-from typing import Any
+from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
+import numcodecs
+import numcodecs.zarr3 as ncodecs
 import numpy as np
 from hypothesis import given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
 import zarr
+from zarr import codecs as zcodecs
 from zarr.abc.store import RangeByteRequest
 from zarr.core.array import Array
 from zarr.core.common import ZarrFormat
@@ -86,9 +89,49 @@ paths = st.just("/") | keys
 # i.e. stores.examples() will always return the same object per Store class.
 # So we map a clear to reset the store.
 stores = st.builds(MemoryStore, st.just({})).map(lambda x: sync(x.clear()))
-compressors = st.sampled_from([None, "default"])
-zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([2, 3])
+zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([3, 2])
 array_shapes = npst.array_shapes(max_dims=4, min_side=0)
+
+
+@st.composite  # type: ignore[misc]
+def codecs(
+    draw: st.DrawFn,
+    *,
+    zarr_formats: st.SearchStrategy[Literal[2, 3]] = zarr_formats,
+    dtypes: st.SearchStrategy[np.dtype] | None = None,
+) -> Any:
+    zarr_format = draw(zarr_formats)
+    # we intentional don't parameterize over `level` or `clevel` to reduce the search space
+    zarr_codecs = st.one_of(
+        st.builds(zcodecs.ZstdCodec),
+        st.builds(
+            zcodecs.BloscCodec,
+            shuffle=st.builds(
+                zcodecs.BloscShuffle.from_int, num=st.integers(min_value=0, max_value=2)
+            ),
+        ),
+        st.builds(zcodecs.GzipCodec),
+        st.builds(zcodecs.Crc32cCodec),
+    )
+    num_codecs_v2 = st.one_of(
+        st.builds(numcodecs.Zlib),
+        st.builds(numcodecs.LZMA),
+        st.builds(numcodecs.Zstd),
+        st.builds(numcodecs.Zlib),
+    )
+    num_codecs_v3 = st.one_of(
+        st.builds(ncodecs.Blosc),
+        st.builds(ncodecs.LZMA),
+        # st.builds(ncodecs.PCodec),
+        # st.builds(ncodecs.ZFPY),
+    )
+    codec_kwargs = {"filters": draw(st.none() | st.just(()))}
+    if zarr_format == 2:
+        codec_kwargs["compressors"] = draw(num_codecs_v2 | st.none() | st.just(()))
+    else:
+        # Intentionally prioritize using a codec over no codec
+        codec_kwargs["compressors"] = draw(zarr_codecs | num_codecs_v3 | st.none() | st.just(()))
+    return codec_kwargs
 
 
 @st.composite  # type: ignore[misc]
@@ -139,12 +182,12 @@ def arrays(
     draw: st.DrawFn,
     *,
     shapes: st.SearchStrategy[tuple[int, ...]] = array_shapes,
-    compressors: st.SearchStrategy = compressors,
     stores: st.SearchStrategy[StoreLike] = stores,
     paths: st.SearchStrategy[str | None] = paths,
     array_names: st.SearchStrategy = array_names,
     arrays: st.SearchStrategy | None = None,
     attrs: st.SearchStrategy = attrs,
+    codecs: st.SearchStrategy = codecs,
     zarr_formats: st.SearchStrategy = zarr_formats,
 ) -> Array:
     store = draw(stores)
@@ -157,21 +200,20 @@ def arrays(
     nparray, chunks = draw(np_array_and_chunks(arrays=arrays))
     # test that None works too.
     fill_value = draw(st.one_of([st.none(), npst.from_dtype(nparray.dtype)]))
-    # compressor = draw(compressors)
 
     expected_attrs = {} if attributes is None else attributes
 
     array_path = _dereference_path(path, name)
     root = zarr.open_group(store, mode="w", zarr_format=zarr_format)
-
+    codec_kwargs = draw(codecs(zarr_formats=st.just(zarr_format), dtypes=st.just(nparray.dtype)))
     a = root.create_array(
         array_path,
         shape=nparray.shape,
         chunks=chunks,
         dtype=nparray.dtype,
         attributes=attributes,
-        # compressor=compressor,  # FIXME
         fill_value=fill_value,
+        **codec_kwargs,
     )
 
     assert isinstance(a, Array)
