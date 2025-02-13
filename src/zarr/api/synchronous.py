@@ -1150,11 +1150,12 @@ def create_hierarchy(
 ) -> Iterator[Group | Array]:
     """
     Create a complete zarr hierarchy from a collection of metadata objects.
-    
+
     Groups that are implicitly defined by the input will be created as needed.
 
     This function takes a parsed hierarchy dictionary and creates all the nodes in the hierarchy
-    concurrently. Arrays and Groups are yielded in the order they are created.
+    concurrently. Arrays and Groups are yielded in the order they are created. This order is not
+    deterministic.
 
     Parameters
     ----------
