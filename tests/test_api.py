@@ -1,4 +1,14 @@
-import pathlib
+from __future__ import annotations
+
+import inspect
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from zarr.abc.store import Store
+    from zarr.core.common import JSON, MemoryOrder, ZarrFormat
+    import pathlib
+
 import warnings
 from typing import Literal
 
@@ -11,7 +21,6 @@ import zarr.api.asynchronous
 import zarr.api.synchronous
 import zarr.core.group
 from zarr import Array, Group
-from zarr.abc.store import Store
 from zarr.api.synchronous import (
     create,
     create_array,
@@ -24,7 +33,6 @@ from zarr.api.synchronous import (
     save_array,
     save_group,
 )
-from zarr.core.common import JSON, MemoryOrder, ZarrFormat
 from zarr.errors import MetadataValidationError
 from zarr.storage import MemoryStore
 from zarr.storage._utils import normalize_path
@@ -1122,6 +1130,27 @@ def test_open_array_with_mode_r_plus(store: Store) -> None:
     assert isinstance(z2, Array)
     assert (z2[:] == 1).all()
     z2[:] = 3
+
+
+@pytest.mark.parametrize(
+    ("a_func", "b_func"),
+    [
+        (zarr.api.asynchronous.create_hierarchy, zarr.api.synchronous.create_hierarchy),
+        (
+            zarr.api.asynchronous.create_rooted_hierarchy,
+            zarr.api.synchronous.create_rooted_hierarchy,
+        ),
+    ],
+)
+def test_consistent_signatures(
+    a_func: Callable[[object], object], b_func: Callable[[object], object]
+) -> None:
+    """
+    Ensure that pairs of functions have the same signature
+    """
+    base_sig = inspect.signature(a_func)
+    test_sig = inspect.signature(b_func)
+    assert test_sig.parameters == base_sig.parameters
 
 
 def test_api_exports() -> None:

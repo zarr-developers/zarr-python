@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import inspect
 import operator
 import pickle
 import re
@@ -1510,6 +1511,21 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
         _ = tuple(sync_api.create_nodes(store=latency_store, path="", nodes=groups))
         elapsed = time.time() - start
         assert elapsed > num_groups * set_latency
+
+
+@pytest.mark.parametrize(
+    ("a_func", "b_func"),
+    [(zarr.core.group.AsyncGroup.create_hierarchy, zarr.core.group.Group.create_hierarchy)],
+)
+def test_consistent_signatures(
+    a_func: Callable[[object], object], b_func: Callable[[object], object]
+) -> None:
+    """
+    Ensure that pairs of functions have consistent signatures
+    """
+    base_sig = inspect.signature(a_func)
+    test_sig = inspect.signature(b_func)
+    assert test_sig.parameters == base_sig.parameters
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
