@@ -321,9 +321,9 @@ async def make_store_path(
             if not isinstance(store_like, FSMap):
                 raise (TypeError(f"Unsupported type for store_like: '{type(store_like).__name__}'"))
             if path:
-                raise TypeError("'path' was provided but is not used for FSMap store_like objects")
+                raise ValueError("'path' was provided but is not used for FSMap store_like objects")
             if storage_options:
-                raise TypeError(
+                raise ValueError(
                     "'storage_options was provided but is not used for FSMap store_like objects"
                 )
             store = FsspecStore.from_mapper(store_like, read_only=_read_only)

@@ -118,6 +118,22 @@ def test_open_s3map() -> None:
     z2[:] = 3
 
 
+def test_open_s3map_raises() -> None:
+    with pytest.raises(TypeError, match="Unsupported type for store_like:.*"):
+        zarr.open(store=0, mode="w", shape=(3, 3))
+    s3_filesystem = s3fs.S3FileSystem(asynchronous=True, endpoint_url=endpoint_url, anon=False)
+    mapper = s3_filesystem.get_mapper(f"s3://{test_bucket_name}/map/foo/")
+    with pytest.raises(
+        ValueError, match="'path' was provided but is not used for FSMap store_like objects"
+    ):
+        zarr.open(store=mapper, mode="w", shape=(3, 3), path="foo")
+    with pytest.raises(
+        ValueError,
+        match="'storage_options was provided but is not used for FSMap store_like objects",
+    ):
+        zarr.open(store=mapper, mode="w", shape=(3, 3), storage_options={"anon": True})
+
+
 class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
     store_cls = FsspecStore
     buffer_cls = cpu.Buffer
