@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import logging
+import os
 import threading
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import TYPE_CHECKING, Any, TypeVar
@@ -87,6 +88,26 @@ def cleanup_resources() -> None:
 
 
 atexit.register(cleanup_resources)
+
+
+def reset_resources_after_fork() -> None:
+    """
+    Ensure that global resources are reset after a fork. Without this function,
+    forked processes will retain invalid references to the parent process's resources.
+    """
+    global loop, iothread, _executor
+    # These lines are excluded from coverage because this function only runs in a child process,
+    # which is not observed by the test coverage instrumentation. Despite the apparent lack of
+    # test coverage, this function should be adequately tested by any test that uses Zarr IO with
+    # multiprocessing.
+    loop[0] = None  # pragma: no cover
+    iothread[0] = None  # pragma: no cover
+    _executor = None  # pragma: no cover
+
+
+# this is only available on certain operating systems
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=reset_resources_after_fork)
 
 
 async def _runner(coro: Coroutine[Any, Any, T]) -> T | BaseException:
