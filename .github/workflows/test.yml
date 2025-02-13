@@ -43,7 +43,7 @@ jobs:
             os: 'windows-latest'
           - python-version: '3.11'
             dependency-set: 'min_deps'
-          - python-version: '3.33'
+          - python-version: '3.13'
             dependency-set: 'upstream'
     runs-on: ${{ matrix.os }}
 
