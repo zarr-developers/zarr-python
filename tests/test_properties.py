@@ -13,6 +13,7 @@ from hypothesis import given
 from zarr.abc.store import Store
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.testing.strategies import (
+    array_metadata,
     arrays,
     basic_indices,
     numpy_arrays,
