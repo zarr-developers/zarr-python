@@ -4,6 +4,7 @@ import json
 import os
 from typing import TYPE_CHECKING
 
+import numpy as np
 import pytest
 from packaging.version import parse as parse_version
 
@@ -110,12 +111,12 @@ def test_open_s3map() -> None:
     mapper = s3_filesystem.get_mapper(f"s3://{test_bucket_name}/map/foo/")
     arr = zarr.open(store=mapper, mode="w", shape=(3, 3))
     assert isinstance(arr, Array)
-
-    arr[...] = 3
-    z2 = zarr.open(store=mapper, mode="w", shape=(3, 3))
-    assert isinstance(z2, Array)
-    assert not (z2[:] == 3).all()
-    z2[:] = 3
+    # Set values
+    arr[:] = 1
+    # Read set values
+    arr = zarr.open(store=mapper, mode="r", shape=(3, 3))
+    assert isinstance(arr, Array)
+    np.testing.assert_array_equal(np.ones((3, 3)), arr[:])
 
 
 def test_open_s3map_raises() -> None:
