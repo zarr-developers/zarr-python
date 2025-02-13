@@ -87,7 +87,7 @@ paths = st.just("/") | keys
 # So we map a clear to reset the store.
 stores = st.builds(MemoryStore, st.just({})).map(lambda x: sync(x.clear()))
 compressors = st.sampled_from([None, "default"])
-zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([2, 3])
+zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([3, 2])
 array_shapes = npst.array_shapes(max_dims=4, min_side=0)
 
 
