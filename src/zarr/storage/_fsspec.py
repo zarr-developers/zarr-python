@@ -174,10 +174,12 @@ class FsspecStore(Store):
         allowed_exceptions: tuple[type[Exception], ...] = ALLOWED_EXCEPTIONS,
     ) -> FsspecStore:
         """
-        Create a FsspecStore from an upath object.
+        Create a FsspecStore from a FSMap object.
 
         Parameters
         ----------
+        fs_map : FSMap
+            Fsspec mutable mapping object.
         read_only : bool
             Whether the store is read-only, defaults to False.
         allowed_exceptions : tuple, optional
