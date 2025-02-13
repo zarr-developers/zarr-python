@@ -43,8 +43,10 @@ jobs:
             os: 'windows-latest'
           - python-version: '3.11'
             dependency-set: 'min_deps'
+            os: 'ubuntu-latest'
           - python-version: '3.13'
             dependency-set: 'upstream'
+            os: 'ubuntu-latest'
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -60,15 +62,32 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install hatch
+    - name: Set environment name
+      id : hatch-env-name
+      run : |
+        if [[ ${{ matrix.dependency-set }} = 'upstream' ]]; then
+          HATCH_ENV="upstream"
+        elif [[ ${{ matrix.dependency-set }} = 'min_deps' ]]; then
+          HATCH_ENV="min_deps"
+        else
+          HATCH_ENV="test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }}"
+        fi
+        echo "HATCH_ENV=${HATCH_ENV}" >> "$GITHUB_OUTPUT"
+
     - name: Set Up Hatch Env
+      env:
+          HATCH_ENV: ${{ steps.hatch-env-name.outputs.HATCH_ENV }}
       run: |
-        hatch env create test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }}
-        hatch env run -e test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} list-env
+        hatch env create ${HATCH_ENV}
+        hatch env run -e ${HATCH_ENV} list-env
     - name: Run Tests
+      env:
+          HATCH_ENV: ${{ steps.hatch-env-name.outputs.HATCH_ENV }}
       run: |
-        hatch env run --env test.py${{ matrix.python-version }}-${{ matrix.numpy-version }}-${{ matrix.dependency-set }} run-coverage
+        hatch env run --env ${HATCH_ENV} run-coverage
     - name: Upload coverage
       uses: codecov/codecov-action@v5
+      if: ${{ !env.ACT }} # Skip during local testing
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         verbose: true # optional (default = false)
@@ -99,7 +118,6 @@ jobs:
 
   test-complete:
     name: Test complete
-
     needs:
       [
         test,

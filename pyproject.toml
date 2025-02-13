@@ -228,6 +228,7 @@ PIP_PRE = "1"
 run = "pytest --verbose"
 run-mypy = "mypy src"
 run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
 list-env = "pip list"
 
 [tool.hatch.envs.min_deps]
@@ -257,6 +258,7 @@ dependencies = [
 [tool.hatch.envs.min_deps.scripts]
 run = "pytest --verbose"
 run-hypothesis = "pytest --hypothesis-profile ci tests/test_properties.py tests/test_store/test_stateful*"
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
 list-env = "pip list"
 
 
