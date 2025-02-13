@@ -121,8 +121,6 @@ class ObjectStore(Store):
     def __init__(self, store: _UpstreamObjectStore, *, read_only: bool = False) -> None:
         import obstore as obs
 
-        self.obs = obs
-
         if not isinstance(
             store,
             (
