@@ -1498,7 +1498,8 @@ class AsyncGroup:
     async def empty(
         self, *, name: str, shape: ChunkCoords, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-        """Create an empty array in this Group.
+        """Create an empty array with the specified shape in this Group. The contents will
+        be filled with the array's fill value or zeros if no fill value is provided.
 
         Parameters
         ----------
@@ -1515,7 +1516,6 @@ class AsyncGroup:
         retrieve data from an empty Zarr array, any values may be returned,
         and these are not guaranteed to be stable from one access to the next.
         """
-
         return await async_api.empty(shape=shape, store=self.store_path, path=name, **kwargs)
 
     async def zeros(
@@ -1592,7 +1592,8 @@ class AsyncGroup:
     async def empty_like(
         self, *, name: str, data: async_api.ArrayLike, **kwargs: Any
     ) -> AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
-        """Create an empty sub-array like `data`.
+        """Create an empty sub-array like `data`. The contents will be filled with
+        the array's fill value or zeros if no fill value is provided.
 
         Parameters
         ----------
@@ -2442,7 +2443,8 @@ class Group(SyncMixin):
 
     @_deprecate_positional_args
     def empty(self, *, name: str, shape: ChunkCoords, **kwargs: Any) -> Array:
-        """Create an empty array in this Group.
+        """Create an empty array with the specified shape in this Group. The contents will be filled with
+        the array's fill value or zeros if no fill value is provided.
 
         Parameters
         ----------
@@ -2531,7 +2533,8 @@ class Group(SyncMixin):
 
     @_deprecate_positional_args
     def empty_like(self, *, name: str, data: async_api.ArrayLike, **kwargs: Any) -> Array:
-        """Create an empty sub-array like `data`.
+        """Create an empty sub-array like `data`. The contents will be filled
+        with the array's fill value or zeros if no fill value is provided.
 
         Parameters
         ----------
@@ -2546,6 +2549,12 @@ class Group(SyncMixin):
         -------
         Array
             The new array.
+
+        Notes
+        -----
+        The contents of an empty Zarr array are not defined. On attempting to
+        retrieve data from an empty Zarr array, any values may be returned,
+        and these are not guaranteed to be stable from one access to the next.
         """
         return Array(self._sync(self._async_group.empty_like(name=name, data=data, **kwargs)))
 

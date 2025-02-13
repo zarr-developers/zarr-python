@@ -1,3 +1,4 @@
+import sys
 from typing import Any
 
 import hypothesis.extra.numpy as npst
@@ -208,8 +209,45 @@ def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs: Any) -> Any:
     )
 
 
+@st.composite  # type: ignore[misc]
+def orthogonal_indices(
+    draw: st.DrawFn, *, shape: tuple[int]
+) -> tuple[tuple[np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
+    """
+    Strategy that returns
+    (1) a tuple of integer arrays used for orthogonal indexing of Zarr arrays.
+    (2) an tuple of integer arrays that can be used for equivalent indexing of numpy arrays
+    """
+    zindexer = []
+    npindexer = []
+    ndim = len(shape)
+    for axis, size in enumerate(shape):
+        val = draw(
+            npst.integer_array_indices(
+                shape=(size,), result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1)
+            )
+            | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+            .map(lambda x: (x,) if not isinstance(x, tuple) else x)  # bare ints, slices
+            .filter(lambda x: bool(x))  # skip empty tuple
+        )
+        (idxr,) = val
+        if isinstance(idxr, int):
+            idxr = np.array([idxr])
+        zindexer.append(idxr)
+        if isinstance(idxr, slice):
+            idxr = np.arange(*idxr.indices(size))
+        elif isinstance(idxr, (tuple, int)):
+            idxr = np.array(idxr)
+        newshape = [1] * ndim
+        newshape[axis] = idxr.size
+        npindexer.append(idxr.reshape(newshape))
+
+    # casting the output of broadcast_arrays is needed for numpy 1.25
+    return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
+
+
 def key_ranges(
-    keys: SearchStrategy = node_names, max_size: int | None = None
+    keys: SearchStrategy = node_names, max_size: int = sys.maxsize
 ) -> SearchStrategy[list[int]]:
     """
     Function to generate key_ranges strategy for get_partial_values()
@@ -218,10 +256,14 @@ def key_ranges(
         [(key, (range_start, range_end)),
          (key, (range_start, range_end)),...]
     """
+
+    def make_request(start: int, length: int) -> RangeByteRequest:
+        return RangeByteRequest(start, end=min(start + length, max_size))
+
     byte_ranges = st.builds(
-        RangeByteRequest,
+        make_request,
         start=st.integers(min_value=0, max_value=max_size),
-        end=st.integers(min_value=0, max_value=max_size),
+        length=st.integers(min_value=0, max_value=max_size),
     )
     key_tuple = st.tuples(keys, byte_ranges)
     return st.lists(key_tuple, min_size=1, max_size=10)
