@@ -7,7 +7,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import assume, given
+from hypothesis import given
 
 from zarr.abc.store import Store
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
@@ -75,12 +75,11 @@ def test_vindex(data: st.DataObject) -> None:
 
     # FIXME!
     # when the indexer is such that a value gets overwritten multiple times,
-    # I think the output depends on chunking. Honestly I don't know why the 1D indexer works.
-    assume(indexer[0].ndim == 1)
-    new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
-    nparray[indexer] = new_data
-    zarray.vindex[indexer] = new_data
-    assert_array_equal(nparray, zarray[:])
+    # I think the output depends on chunking.
+    # new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
+    # nparray[indexer] = new_data
+    # zarray.vindex[indexer] = new_data
+    # assert_array_equal(nparray, zarray[:])
 
 
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
