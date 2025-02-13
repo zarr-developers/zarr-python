@@ -32,17 +32,30 @@ ALLOWED_EXCEPTIONS: tuple[type[Exception], ...] = (
 
 
 def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
+    """Convert a sync FSSpec filesystem to an async FFSpec filesystem
+
+    If the filesystem class supports async operations, a new async instance is created
+    from the existing instance.
+
+    If the filesystem class does not support async operations, the existing instance
+    is wrapped with AsyncFileSystemWrapper.
+    """
+    if fs.async_impl and fs.asynchronous:
+        return fs
+    if fs.async_impl:
+        raise NotImplementedError(
+            f"The filesystem '{fs}' is synchronous and wrapping synchronous filesystems using from_mapper has not been implemented. See https://github.com/zarr-developers/zarr-python/issues/2706 for more details."
+        )
     try:
         from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
-        fs = AsyncFileSystemWrapper(fs)
+        return AsyncFileSystemWrapper(fs)
     except ImportError as e:
         raise ImportError(
             f"The filesystem '{fs}' is synchronous, and the required "
             "AsyncFileSystemWrapper is not available. Upgrade fsspec to version "
             "2024.12.0 or later to enable this functionality."
         ) from e
-    return fs
 
 
 class FsspecStore(Store):
@@ -174,14 +187,8 @@ class FsspecStore(Store):
         -------
         FsspecStore
         """
-        if not fs_map.fs.async_impl:
-            raise NotImplementedError(
-                f"The filesystem '{fs_map.fs}' is synchronous and wrapping synchronous filesystems using from_mapper has not been implemented. See https://github.com/zarr-developers/zarr-python/issues/2706 for more details."
-            )
         if not fs_map.fs.asynchronous:
-            raise NotImplementedError(
-                f"The filesystem '{fs_map.fs}' is synchronous and conversion to an async instance has not been implemented. See https://github.com/zarr-developers/zarr-python/issues/2706 for more details."
-            )
+            fs_map.fs = _make_async(fs_map.fs)
         return cls(
             fs=fs_map.fs,
             path=fs_map.root,
