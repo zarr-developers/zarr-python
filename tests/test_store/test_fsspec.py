@@ -14,6 +14,7 @@ from zarr.abc.store import OffsetByteRequest
 from zarr.core.buffer import Buffer, cpu, default_buffer_prototype
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.storage import FsspecStore
+from zarr.storage._fsspec import _make_async
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
@@ -152,6 +153,15 @@ def test_open_s3map_raises() -> None:
         match="'storage_options was provided but is not used for FSMap store_like objects",
     ):
         zarr.open(store=mapper, mode="w", shape=(3, 3), storage_options={"anon": True})
+
+
+@pytest.mark.parametrize("asynchronous", [True, False])
+def test_make_async(asynchronous: bool) -> None:
+    s3_filesystem = s3fs.S3FileSystem(
+        asynchronous=asynchronous, endpoint_url=endpoint_url, anon=False
+    )
+    fs = _make_async(s3_filesystem)
+    assert fs.asynchronous
 
 
 class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
