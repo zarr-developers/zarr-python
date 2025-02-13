@@ -1,8 +1,10 @@
 import dataclasses
 import json
 import math
+import multiprocessing as mp
 import pickle
 import re
+import sys
 from itertools import accumulate
 from typing import TYPE_CHECKING, Any, Literal
 from unittest import mock
@@ -1336,8 +1338,17 @@ async def test_orthogonal_set_total_slice() -> None:
     """Ensure that a whole chunk overwrite does not read chunks"""
     store = MemoryStore()
     array = zarr.create_array(store, shape=(20, 20), chunks=(1, 2), dtype=int, fill_value=-1)
-    with mock.patch("zarr.storage.MemoryStore.get", side_effect=ValueError):
+    with mock.patch("zarr.storage.MemoryStore.get", side_effect=RuntimeError):
         array[0, slice(4, 10)] = np.arange(6)
+
+    array = zarr.create_array(
+        store, shape=(20, 21), chunks=(1, 2), dtype=int, fill_value=-1, overwrite=True
+    )
+    with mock.patch("zarr.storage.MemoryStore.get", side_effect=RuntimeError):
+        array[0, :] = np.arange(21)
+
+    with mock.patch("zarr.storage.MemoryStore.get", side_effect=RuntimeError):
+        array[:] = 1
 
 
 @pytest.mark.skipif(
@@ -1382,3 +1393,54 @@ def test_roundtrip_numcodecs() -> None:
     metadata = root["test"].metadata.to_dict()
     expected = (*filters, BYTES_CODEC, *compressors)
     assert metadata["codecs"] == expected
+
+
+def _index_array(arr: Array, index: Any) -> Any:
+    return arr[index]
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        pytest.param(
+            "fork",
+            marks=pytest.mark.skipif(
+                sys.platform in ("win32", "darwin"), reason="fork not supported on Windows or OSX"
+            ),
+        ),
+        "spawn",
+        pytest.param(
+            "forkserver",
+            marks=pytest.mark.skipif(
+                sys.platform == "win32", reason="forkserver not supported on Windows"
+            ),
+        ),
+    ],
+)
+@pytest.mark.parametrize("store", ["local"], indirect=True)
+def test_multiprocessing(store: Store, method: Literal["fork", "spawn", "forkserver"]) -> None:
+    """
+    Test that arrays can be pickled and indexed in child processes
+    """
+    data = np.arange(100)
+    arr = zarr.create_array(store=store, data=data)
+    ctx = mp.get_context(method)
+    pool = ctx.Pool()
+
+    results = pool.starmap(_index_array, [(arr, slice(len(data)))])
+    assert all(np.array_equal(r, data) for r in results)
+
+
+async def test_sharding_coordinate_selection() -> None:
+    store = MemoryStore()
+    g = zarr.open_group(store, mode="w")
+    arr = g.create_array(
+        name="a",
+        shape=(2, 3, 4),
+        chunks=(1, 2, 2),
+        overwrite=True,
+        dtype=np.float32,
+        shards=(2, 4, 4),
+    )
+    arr[:] = np.arange(2 * 3 * 4).reshape((2, 3, 4))
+    assert (arr[1, [0, 1]] == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()  # type: ignore[index]

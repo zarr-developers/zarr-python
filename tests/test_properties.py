@@ -13,10 +13,10 @@ from hypothesis import given
 from zarr.abc.store import Store
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.testing.strategies import (
-    array_metadata,
     arrays,
     basic_indices,
     numpy_arrays,
+    orthogonal_indices,
     stores,
     zarr_formats,
 )
@@ -41,6 +41,17 @@ def test_basic_indexing(data: st.DataObject) -> None:
     zarray[indexer] = new_data
     nparray[indexer] = new_data
     assert_array_equal(nparray, zarray[:])
+
+
+@given(data=st.data())
+def test_oindex(data: st.DataObject) -> None:
+    # integer_array_indices can't handle 0-size dimensions.
+    zarray = data.draw(arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    nparray = zarray[:]
+
+    zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
+    actual = zarray.oindex[zindexer]
+    assert_array_equal(nparray[npindexer], actual)
 
 
 @given(data=st.data())
