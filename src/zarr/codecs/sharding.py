@@ -531,7 +531,11 @@ class ShardingCodec(
             ],
             out,
         )
-        return out
+
+        if hasattr(indexer, "sel_shape"):
+            return out.reshape(indexer.sel_shape)
+        else:
+            return out
 
     async def _encode_single(
         self,
