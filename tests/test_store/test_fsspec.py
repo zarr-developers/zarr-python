@@ -17,6 +17,7 @@ from zarr.storage import FsspecStore
 from zarr.testing.store import StoreTests
 
 if TYPE_CHECKING:
+    import pathlib
     from collections.abc import Generator
 
     import botocore.client
@@ -106,8 +107,23 @@ async def test_basic() -> None:
     assert out[0].to_bytes() == data[1:]
 
 
+@pytest.mark.xfail(reason="See https://github.com/zarr-developers/zarr-python/issues/2808")
+def test_open_fsmap_file(tmp_path: pathlib.Path) -> None:
+    fsspec = pytest.importorskip("fsspec")
+    fs = fsspec.filesystem("file")
+    mapper = fs.get_mapper(tmp_path)
+    arr = zarr.open(store=mapper, mode="w", shape=(3, 3))
+    assert isinstance(arr, Array)
+    # Set values
+    arr[:] = 1
+    # Read set values
+    arr = zarr.open(store=mapper, mode="r", shape=(3, 3))
+    assert isinstance(arr, Array)
+    np.testing.assert_array_equal(np.ones((3, 3)), arr[:])
+
+
 @pytest.mark.parametrize("asynchronous", [True, False])
-def test_open_s3map(asynchronous: bool) -> None:
+def test_open_fsmap_s3(asynchronous: bool) -> None:
     s3_filesystem = s3fs.S3FileSystem(
         asynchronous=asynchronous, endpoint_url=endpoint_url, anon=False
     )

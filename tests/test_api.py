@@ -51,11 +51,11 @@ def test_create(memory_store: Store) -> None:
 
     # create array with float shape
     with pytest.raises(TypeError):
-        z = create(shape=(400.5, 100), store=store, overwrite=True)  # type: ignore [arg-type]
+        z = create(shape=(400.5, 100), store=store, overwrite=True)
 
     # create array with float chunk shape
     with pytest.raises(TypeError):
-        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)  # type: ignore [arg-type]
+        z = create(shape=(400, 100), chunks=(16, 16.5), store=store, overwrite=True)
 
 
 # TODO: parametrize over everything this function takes
@@ -200,7 +200,7 @@ def test_save(store: Store, n_args: int, n_kwargs: int) -> None:
         assert isinstance(array, Array)
         assert_array_equal(array[:], data)
     else:
-        save(store, *args, **kwargs)  # type: ignore[arg-type]
+        save(store, *args, **kwargs)
         group = open(store)
         assert isinstance(group, Group)
         for array in group.array_values():
@@ -286,23 +286,6 @@ def test_open_with_mode_w_minus(tmp_path: pathlib.Path) -> None:
     arr[...] = 1
     with pytest.raises(FileExistsError):
         zarr.open(store=tmp_path, mode="w-")
-
-
-@pytest.mark.xfail(
-    reason="Automatic sync -> async filesystems not implemented yet for FSMap objects."
-)
-def test_open_fsmap_file(tmp_path: pathlib.Path) -> None:
-    fsspec = pytest.importorskip("fsspec")
-    fs = fsspec.filesystem("file")
-    mapper = fs.get_mapper(tmp_path)
-    arr = zarr.open(store=mapper, mode="w", shape=(3, 3))
-    assert isinstance(arr, Array)
-
-    arr[...] = 3
-    z2 = zarr.open(store=mapper, mode="w", shape=(3, 3))
-    assert isinstance(z2, Array)
-    assert not (z2[:] == 3).all()
-    z2[:] = 3
 
 
 @pytest.mark.parametrize("zarr_format", [2, 3])
@@ -1115,13 +1098,13 @@ async def test_metadata_validation_error() -> None:
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_group(zarr_format="3.0")  # type: ignore[arg-type]
+        await zarr.api.asynchronous.open_group(zarr_format="3.0")
 
     with pytest.raises(
         MetadataValidationError,
         match="Invalid value for 'zarr_format'. Expected '2, 3, or None'. Got '3.0'.",
     ):
-        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")  # type: ignore[arg-type]
+        await zarr.api.asynchronous.open_array(shape=(1,), zarr_format="3.0")
 
 
 @pytest.mark.parametrize(
