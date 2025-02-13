@@ -3152,7 +3152,7 @@ def _parse_hierarchy_dict(
             "and so creating this node is not allowed. Remove the problematic key from the input, "
             "or set ``allow_root`` to True."
         )
-        raise RootedHierarchyError(msg)
+        raise NestedRootError(msg)
 
     out: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {**data_normed}
 

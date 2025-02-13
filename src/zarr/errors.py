@@ -59,8 +59,7 @@ class NodeTypeValidationError(MetadataValidationError):
     """
 
 
-class RootedHierarchyError(BaseZarrError):
+class NestedRootError(BaseZarrError):
     """
-    Exception raised when attempting to create a rooted hierarchy in a context where that is not
-    permitted.
+    Exception raised when attempting to create a root node relative to a pre-existing root node.
     """
