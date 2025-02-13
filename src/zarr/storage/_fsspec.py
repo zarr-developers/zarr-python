@@ -174,8 +174,14 @@ class FsspecStore(Store):
         -------
         FsspecStore
         """
-        if not fs_map.fs.async_impl or not fs_map.fs.asynchronous:
-            raise TypeError("Filesystem needs to support async operations.")
+        if not fs_map.fs.async_impl:
+            raise NotImplementedError(
+                f"The filesystem '{fs_map.fs}' is synchronous and wrapping synchronous filesystems using from_mapper has not been implemented. See https://github.com/zarr-developers/zarr-python/issues/2706 for more details."
+            )
+        if not fs_map.fs.asynchronous:
+            raise NotImplementedError(
+                f"The filesystem '{fs_map.fs}' is synchronous and conversion to an async instance has not been implemented. See https://github.com/zarr-developers/zarr-python/issues/2706 for more details."
+            )
         return cls(
             fs=fs_map.fs,
             path=fs_map.root,
