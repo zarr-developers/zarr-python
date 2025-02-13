@@ -106,8 +106,11 @@ async def test_basic() -> None:
     assert out[0].to_bytes() == data[1:]
 
 
-def test_open_s3map() -> None:
-    s3_filesystem = s3fs.S3FileSystem(asynchronous=True, endpoint_url=endpoint_url, anon=False)
+@pytest.mark.parametrize("asynchronous", [True, False])
+def test_open_s3map(asynchronous: bool) -> None:
+    s3_filesystem = s3fs.S3FileSystem(
+        asynchronous=asynchronous, endpoint_url=endpoint_url, anon=False
+    )
     mapper = s3_filesystem.get_mapper(f"s3://{test_bucket_name}/map/foo/")
     arr = zarr.open(store=mapper, mode="w", shape=(3, 3))
     assert isinstance(arr, Array)
