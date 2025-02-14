@@ -321,12 +321,12 @@ class ChunkDimProjection(NamedTuple):
         Selection of items from chunk array.
     dim_out_sel
         Selection of items in target (output) array.
-
     """
 
     dim_chunk_ix: int
     dim_chunk_sel: Selector
     dim_out_sel: Selector | None
+    is_complete_chunk: bool
 
 
 @dataclass(frozen=True)
@@ -346,7 +346,8 @@ class IntDimIndexer:
         dim_offset = dim_chunk_ix * self.dim_chunk_len
         dim_chunk_sel = self.dim_sel - dim_offset
         dim_out_sel = None
-        yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
+        is_complete_chunk = self.dim_chunk_len == 1
+        yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
 @dataclass(frozen=True)
@@ -420,7 +421,10 @@ class SliceDimIndexer:
 
             dim_out_sel = slice(dim_out_offset, dim_out_offset + dim_chunk_nitems)
 
-            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
+            is_complete_chunk = (
+                dim_chunk_sel_start == 0 and (self.stop >= dim_limit) and self.step in [1, None]
+            )
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
 def check_selection_length(selection: SelectionNormalized, shape: ChunkCoords) -> None:
@@ -493,12 +497,14 @@ class ChunkProjection(NamedTuple):
         Selection of items from chunk array.
     out_selection
         Selection of items in target (output) array.
-
+    is_complete_chunk:
+        True if a complete chunk is indexed
     """
 
     chunk_coords: ChunkCoords
     chunk_selection: tuple[Selector, ...] | npt.NDArray[np.intp]
     out_selection: tuple[Selector, ...] | npt.NDArray[np.intp] | slice
+    is_complete_chunk: bool
 
 
 def is_slice(s: Any) -> TypeGuard[slice]:
@@ -574,8 +580,8 @@ class BasicIndexer(Indexer):
             out_selection = tuple(
                 p.dim_out_sel for p in dim_projections if p.dim_out_sel is not None
             )
-
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
+            is_complete_chunk = all(p.is_complete_chunk for p in dim_projections)
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
 
 
 @dataclass(frozen=True)
@@ -643,8 +649,9 @@ class BoolArrayDimIndexer:
                 start = self.chunk_nitems_cumsum[dim_chunk_ix - 1]
             stop = self.chunk_nitems_cumsum[dim_chunk_ix]
             dim_out_sel = slice(start, stop)
+            is_complete_chunk = False  # TODO
 
-            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
 class Order(Enum):
@@ -783,8 +790,8 @@ class IntArrayDimIndexer:
             # find region in chunk
             dim_offset = dim_chunk_ix * self.dim_chunk_len
             dim_chunk_sel = self.dim_sel[start:stop] - dim_offset
-
-            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel)
+            is_complete_chunk = False  # TODO
+            yield ChunkDimProjection(dim_chunk_ix, dim_chunk_sel, dim_out_sel, is_complete_chunk)
 
 
 def slice_to_range(s: slice, length: int) -> range:
@@ -921,7 +928,8 @@ class OrthogonalIndexer(Indexer):
                 if not is_basic_selection(out_selection):
                     out_selection = ix_(out_selection, self.shape)
 
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
+            is_complete_chunk = all(p.is_complete_chunk for p in dim_projections)
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
 
 
 @dataclass(frozen=True)
@@ -1030,8 +1038,8 @@ class BlockIndexer(Indexer):
             out_selection = tuple(
                 p.dim_out_sel for p in dim_projections if p.dim_out_sel is not None
             )
-
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
+            is_complete_chunk = all(p.is_complete_chunk for p in dim_projections)
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
 
 
 @dataclass(frozen=True)
@@ -1198,7 +1206,8 @@ class CoordinateIndexer(Indexer):
                 for (dim_sel, dim_chunk_offset) in zip(self.selection, chunk_offsets, strict=True)
             )
 
-            yield ChunkProjection(chunk_coords, chunk_selection, out_selection)
+            is_complete_chunk = False  # TODO
+            yield ChunkProjection(chunk_coords, chunk_selection, out_selection, is_complete_chunk)
 
 
 @dataclass(frozen=True)
@@ -1359,29 +1368,6 @@ def morton_order_iter(chunk_shape: ChunkCoords) -> Iterator[ChunkCoords]:
 
 def c_order_iter(chunks_per_shard: ChunkCoords) -> Iterator[ChunkCoords]:
     return itertools.product(*(range(x) for x in chunks_per_shard))
-
-
-def is_total_slice(item: Selection, shape: ChunkCoords) -> bool:
-    """Determine whether `item` specifies a complete slice of array with the
-    given `shape`. Used to optimize __setitem__ operations on the Chunk
-    class."""
-
-    # N.B., assume shape is normalized
-    if item == slice(None):
-        return True
-    if isinstance(item, slice):
-        item = (item,)
-    if isinstance(item, tuple):
-        return all(
-            isinstance(dim_sel, slice)
-            and (
-                (dim_sel == slice(None))
-                or ((dim_sel.stop - dim_sel.start == dim_len) and (dim_sel.step in [1, None]))
-            )
-            for dim_sel, dim_len in zip(item, shape, strict=False)
-        )
-    else:
-        raise TypeError(f"expected slice or tuple of slices, found {item!r}")
 
 
 def get_indexer(

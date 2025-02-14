@@ -230,6 +230,27 @@ during development at `http://0.0.0.0:8000/ <http://0.0.0.0:8000/>`_. This can b
 
     $ hatch --env docs run serve
 
+.. _changelog:
+
+Changelog
+~~~~~~~~~
+
+zarr-python uses `towncrier`_ to manage release notes. Most pull requests should
+include at least one news fragment describing the changes. To add a release
+note, you'll need the GitHub issue or pull request number and the type of your
+change (``feature``, ``bugfix``, ``doc``, ``removal``, ``misc``). With that, run
+```towncrier create``` with your development environment, which will prompt you
+for the issue number, change type, and the news text::
+
+   towncrier create
+
+Alternatively, you can manually create the files in the ``changes`` directory
+using the naming convention ``{issue-number}.{change-type}.rst``.
+
+See the `towncrier`_ docs for more.
+
+.. _towncrier: https://towncrier.readthedocs.io/en/stable/tutorial.html
+
 Development best practices, policies and procedures
 ---------------------------------------------------
 
