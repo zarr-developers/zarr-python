@@ -2,13 +2,25 @@ import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
+from zarr.core.buffer import default_buffer_prototype
+
 pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
 from hypothesis import given
 
-from zarr.testing.strategies import arrays, basic_indices, numpy_arrays, zarr_formats
+from zarr.abc.store import Store
+from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.testing.strategies import (
+    array_metadata,
+    arrays,
+    basic_indices,
+    numpy_arrays,
+    orthogonal_indices,
+    stores,
+    zarr_formats,
+)
 
 
 @given(data=st.data(), zarr_format=zarr_formats)
@@ -33,6 +45,17 @@ def test_basic_indexing(data: st.DataObject) -> None:
 
 
 @given(data=st.data())
+def test_oindex(data: st.DataObject) -> None:
+    # integer_array_indices can't handle 0-size dimensions.
+    zarray = data.draw(arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
+    nparray = zarray[:]
+
+    zindexer, npindexer = data.draw(orthogonal_indices(shape=nparray.shape))
+    actual = zarray.oindex[zindexer]
+    assert_array_equal(nparray[npindexer], actual)
+
+
+@given(data=st.data())
 def test_vindex(data: st.DataObject) -> None:
     # integer_array_indices can't handle 0-size dimensions.
     zarray = data.draw(arrays(shapes=npst.array_shapes(max_dims=4, min_side=1)))
@@ -45,6 +68,17 @@ def test_vindex(data: st.DataObject) -> None:
     )
     actual = zarray.vindex[indexer]
     assert_array_equal(nparray[indexer], actual)
+
+
+@given(store=stores, meta=array_metadata())  # type: ignore[misc]
+async def test_roundtrip_array_metadata(
+    store: Store, meta: ArrayV2Metadata | ArrayV3Metadata
+) -> None:
+    asdict = meta.to_buffer_dict(prototype=default_buffer_prototype())
+    for key, expected in asdict.items():
+        await store.set(f"0/{key}", expected)
+        actual = await store.get(f"0/{key}", prototype=default_buffer_prototype())
+        assert actual == expected
 
 
 # @st.composite

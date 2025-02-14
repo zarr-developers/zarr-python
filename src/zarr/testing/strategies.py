@@ -1,5 +1,5 @@
 import sys
-from typing import Any
+from typing import Any, Literal
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
@@ -8,9 +8,13 @@ from hypothesis import given, settings  # noqa: F401
 from hypothesis.strategies import SearchStrategy
 
 import zarr
-from zarr.abc.store import RangeByteRequest
+from zarr.abc.store import RangeByteRequest, Store
+from zarr.codecs.bytes import BytesCodec
 from zarr.core.array import Array
+from zarr.core.chunk_grids import RegularChunkGrid
+from zarr.core.chunk_key_encodings import DefaultChunkKeyEncoding
 from zarr.core.common import ZarrFormat
+from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.sync import sync
 from zarr.storage import MemoryStore, StoreLike
 from zarr.storage._common import _dereference_path
@@ -67,6 +71,11 @@ def safe_unicode_for_dtype(dtype: np.dtype[np.str_]) -> st.SearchStrategy[str]:
     )
 
 
+def clear_store(x: Store) -> Store:
+    sync(x.clear())
+    return x
+
+
 # From https://zarr-specs.readthedocs.io/en/latest/v3/core/v3.0.html#node-names
 # 1. must not be the empty string ("")
 # 2. must not include the character "/"
@@ -85,10 +94,57 @@ paths = st.just("/") | keys
 # st.builds will only call a new store constructor for different keyword arguments
 # i.e. stores.examples() will always return the same object per Store class.
 # So we map a clear to reset the store.
-stores = st.builds(MemoryStore, st.just({})).map(lambda x: sync(x.clear()))
+stores = st.builds(MemoryStore, st.just({})).map(clear_store)
 compressors = st.sampled_from([None, "default"])
 zarr_formats: st.SearchStrategy[ZarrFormat] = st.sampled_from([2, 3])
 array_shapes = npst.array_shapes(max_dims=4, min_side=0)
+
+
+@st.composite  # type: ignore[misc]
+def dimension_names(draw: st.DrawFn, *, ndim: int | None = None) -> list[None | str] | None:
+    simple_text = st.text(zarr_key_chars, min_size=0)
+    return draw(st.none() | st.lists(st.none() | simple_text, min_size=ndim, max_size=ndim))  # type: ignore[no-any-return]
+
+
+@st.composite  # type: ignore[misc]
+def array_metadata(
+    draw: st.DrawFn,
+    *,
+    array_shapes: st.SearchStrategy[tuple[int, ...]] = npst.array_shapes,
+    zarr_formats: st.SearchStrategy[Literal[2, 3]] = zarr_formats,
+    attributes: st.SearchStrategy[dict[str, Any]] = attrs,
+) -> ArrayV2Metadata | ArrayV3Metadata:
+    zarr_format = draw(zarr_formats)
+    # separator = draw(st.sampled_from(['/', '\\']))
+    shape = draw(array_shapes())
+    ndim = len(shape)
+    chunk_shape = draw(array_shapes(min_dims=ndim, max_dims=ndim))
+    dtype = draw(v3_dtypes())
+    fill_value = draw(npst.from_dtype(dtype))
+    if zarr_format == 2:
+        return ArrayV2Metadata(
+            shape=shape,
+            chunks=chunk_shape,
+            dtype=dtype,
+            fill_value=fill_value,
+            order=draw(st.sampled_from(["C", "F"])),
+            attributes=draw(attributes),
+            dimension_separator=draw(st.sampled_from([".", "/"])),
+            filters=None,
+            compressor=None,
+        )
+    else:
+        return ArrayV3Metadata(
+            shape=shape,
+            data_type=dtype,
+            chunk_grid=RegularChunkGrid(chunk_shape=chunk_shape),
+            fill_value=fill_value,
+            attributes=draw(attributes),
+            dimension_names=draw(dimension_names(ndim=ndim)),
+            chunk_key_encoding=DefaultChunkKeyEncoding(separator="/"),  # FIXME
+            codecs=[BytesCodec()],
+            storage_transformers=(),
+        )
 
 
 @st.composite  # type: ignore[misc]
@@ -207,6 +263,43 @@ def basic_indices(draw: st.DrawFn, *, shape: tuple[int], **kwargs: Any) -> Any:
             )
         )
     )
+
+
+@st.composite  # type: ignore[misc]
+def orthogonal_indices(
+    draw: st.DrawFn, *, shape: tuple[int]
+) -> tuple[tuple[np.ndarray[Any, Any], ...], tuple[np.ndarray[Any, Any], ...]]:
+    """
+    Strategy that returns
+    (1) a tuple of integer arrays used for orthogonal indexing of Zarr arrays.
+    (2) an tuple of integer arrays that can be used for equivalent indexing of numpy arrays
+    """
+    zindexer = []
+    npindexer = []
+    ndim = len(shape)
+    for axis, size in enumerate(shape):
+        val = draw(
+            npst.integer_array_indices(
+                shape=(size,), result_shape=npst.array_shapes(min_side=1, max_side=size, max_dims=1)
+            )
+            | basic_indices(min_dims=1, shape=(size,), allow_ellipsis=False)
+            .map(lambda x: (x,) if not isinstance(x, tuple) else x)  # bare ints, slices
+            .filter(lambda x: bool(x))  # skip empty tuple
+        )
+        (idxr,) = val
+        if isinstance(idxr, int):
+            idxr = np.array([idxr])
+        zindexer.append(idxr)
+        if isinstance(idxr, slice):
+            idxr = np.arange(*idxr.indices(size))
+        elif isinstance(idxr, (tuple, int)):
+            idxr = np.array(idxr)
+        newshape = [1] * ndim
+        newshape[axis] = idxr.size
+        npindexer.append(idxr.reshape(newshape))
+
+    # casting the output of broadcast_arrays is needed for numpy 1.25
+    return tuple(zindexer), tuple(np.broadcast_arrays(*npindexer))
 
 
 def key_ranges(

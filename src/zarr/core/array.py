@@ -1289,8 +1289,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                         self.metadata.get_chunk_spec(chunk_coords, _config, prototype=prototype),
                         chunk_selection,
                         out_selection,
+                        is_complete_chunk,
                     )
-                    for chunk_coords, chunk_selection, out_selection in indexer
+                    for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
                 ],
                 out_buffer,
                 drop_axes=indexer.drop_axes,
@@ -1416,8 +1417,9 @@ class AsyncArray(Generic[T_ArrayMetadata]):
                     self.metadata.get_chunk_spec(chunk_coords, _config, prototype),
                     chunk_selection,
                     out_selection,
+                    is_complete_chunk,
                 )
-                for chunk_coords, chunk_selection, out_selection in indexer
+                for chunk_coords, chunk_selection, out_selection, is_complete_chunk in indexer
             ],
             value_buffer,
             drop_axes=indexer.drop_axes,

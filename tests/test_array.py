@@ -1336,8 +1336,17 @@ async def test_orthogonal_set_total_slice() -> None:
     """Ensure that a whole chunk overwrite does not read chunks"""
     store = MemoryStore()
     array = zarr.create_array(store, shape=(20, 20), chunks=(1, 2), dtype=int, fill_value=-1)
-    with mock.patch("zarr.storage.MemoryStore.get", side_effect=ValueError):
+    with mock.patch("zarr.storage.MemoryStore.get", side_effect=RuntimeError):
         array[0, slice(4, 10)] = np.arange(6)
+
+    array = zarr.create_array(
+        store, shape=(20, 21), chunks=(1, 2), dtype=int, fill_value=-1, overwrite=True
+    )
+    with mock.patch("zarr.storage.MemoryStore.get", side_effect=RuntimeError):
+        array[0, :] = np.arange(21)
+
+    with mock.patch("zarr.storage.MemoryStore.get", side_effect=RuntimeError):
+        array[:] = 1
 
 
 @pytest.mark.skipif(
@@ -1418,3 +1427,18 @@ def test_multiprocessing(store: Store, method: Literal["fork", "spawn", "forkser
 
     results = pool.starmap(_index_array, [(arr, slice(len(data)))])
     assert all(np.array_equal(r, data) for r in results)
+
+
+async def test_sharding_coordinate_selection() -> None:
+    store = MemoryStore()
+    g = zarr.open_group(store, mode="w")
+    arr = g.create_array(
+        name="a",
+        shape=(2, 3, 4),
+        chunks=(1, 2, 2),
+        overwrite=True,
+        dtype=np.float32,
+        shards=(2, 4, 4),
+    )
+    arr[:] = np.arange(2 * 3 * 4).reshape((2, 3, 4))
+    assert (arr[1, [0, 1]] == np.array([[12, 13, 14, 15], [16, 17, 18, 19]])).all()  # type: ignore[index]
