@@ -6,16 +6,10 @@ import json
 import logging
 import warnings
 from collections import defaultdict
+from collections.abc import Iterator, Mapping
 from dataclasses import asdict, dataclass, field, fields, replace
 from itertools import accumulate
-from typing import (
-    TYPE_CHECKING,
-    Literal,
-    TypeVar,
-    assert_never,
-    cast,
-    overload,
-)
+from typing import TYPE_CHECKING, Literal, TypeVar, assert_never, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -57,12 +51,7 @@ from zarr.core.config import config
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v3 import V3JsonEncoder
 from zarr.core.sync import SyncMixin, sync
-from zarr.errors import (
-    ContainsArrayError,
-    ContainsGroupError,
-    MetadataValidationError,
-    RootedHierarchyError,
-)
+from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import StoreLike, StorePath
 from zarr.storage._common import ensure_no_existing_node, make_store_path
 from zarr.storage._utils import normalize_path
@@ -71,12 +60,9 @@ if TYPE_CHECKING:
     from collections.abc import (
         AsyncGenerator,
         AsyncIterator,
-        Callable,
         Coroutine,
         Generator,
         Iterable,
-        Iterator,
-        Mapping,
     )
     from typing import Any
 
@@ -428,6 +414,15 @@ class GroupMetadata(Metadata):
         if self.consolidated_metadata:
             result["consolidated_metadata"] = self.consolidated_metadata.to_dict()
         return result
+
+
+@dataclass(frozen=True)
+class ImplicitGroupMarker(GroupMetadata):
+    """
+    Marker for an implicit group. Instances of this class are only used in the context of group
+    creation as a placeholder to represent groups that should only be created if they do not
+    already exist in storage
+    """
 
 
 @dataclass(frozen=True)
@@ -1394,14 +1389,14 @@ class AsyncGroup:
         ):
             yield member
 
-    # TODO: find a better name for this. create_tree could work.
-    # TODO: include an example in the docstring
     async def create_hierarchy(
         self,
         nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
         *,
-        overwrite: bool,
-    ) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+        overwrite: bool = False,
+    ) -> AsyncIterator[
+        tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]
+    ]:
         """
         Create a hierarchy of arrays or groups rooted at this group.
 
@@ -1430,25 +1425,24 @@ class AsyncGroup:
                     f" has zarr_format {self.metadata.zarr_format}."
                 )
                 raise ValueError(msg)
+            if normalize_path(key) == "":
+                msg = (
+                    "The input defines a root node, but a root node already exists, namely this Group instance."
+                    "It is an error to use this method to create a root node. "
+                    "Remove the root node from the input dict, or use a function like "
+                    "create_rooted_hierarchy to create a rooted hierarchy."
+                )
+                raise ValueError(msg)
 
-        try:
-            async for node in create_hierarchy(
-                store=self.store,
-                path=self.path,
-                nodes=nodes,
-                overwrite=overwrite,
-                allow_root=False,
-            ):
-                yield node
+        # insert ImplicitGroupMetadata to represent self
+        nodes_rooted = nodes | {"": ImplicitGroupMarker(zarr_format=self.metadata.zarr_format)}
 
-        except RootedHierarchyError as e:
-            msg = (
-                "The input defines a root node, but a root node already exists, namely this Group instance."
-                "It is an error to use this method to create a root node. "
-                "Remove the root node from the input dict, or use a function like "
-                "create_rooted_hierarchy to create a rooted hierarchy."
-            )
-            raise ValueError(msg) from e
+        async for key, node in create_hierarchy(
+            store=self.store,
+            nodes=nodes_rooted,
+            overwrite=overwrite,
+        ):
+            yield key, node
 
     async def keys(self) -> AsyncGenerator[str, None]:
         """Iterate over member names."""
@@ -2078,7 +2072,7 @@ class Group(SyncMixin):
         nodes: dict[str, ArrayV2Metadata | ArrayV3Metadata | GroupMetadata],
         *,
         overwrite: bool = False,
-    ) -> Iterator[Group | Array]:
+    ) -> Iterator[tuple[str, Group | Array]]:
         """
         Create a hierarchy of arrays or groups rooted at this group.
 
@@ -2099,7 +2093,7 @@ class Group(SyncMixin):
 
         Returns
         -------
-            An iterator of Array or Group objects.
+            An iterator of (name, Array or Group) tuples.
 
         Examples
         --------
@@ -2113,8 +2107,10 @@ class Group(SyncMixin):
         <AsyncGroup memory://123209880766144/a/b/c>
         <AsyncGroup memory://123209880766144/a/b>
         """
-        for node in self._sync_iter(self._async_group.create_hierarchy(nodes, overwrite=overwrite)):
-            yield _parse_async_node(node)
+        for key, node in self._sync_iter(
+            self._async_group.create_hierarchy(nodes, overwrite=overwrite)
+        ):
+            yield (key, _parse_async_node(node))
 
     def keys(self) -> Generator[str, None]:
         """Return an iterator over group member names.
@@ -2863,71 +2859,86 @@ class Group(SyncMixin):
 async def create_hierarchy(
     *,
     store: Store,
-    path: str,
-    nodes: dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata],
+    nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
-    allow_root: bool = True,
-) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+) -> AsyncIterator[
+    tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]
+]:
     """
-    Create a complete zarr hierarchy concurrently. Groups that are implicitly defined by the input
-    will be created as needed.
+    Create a complete zarr hierarchy from a collection of metadata objects.
 
-    This function takes a parsed hierarchy dictionary and creates all the nodes in the hierarchy
-    concurrently. AsyncArrays and AsyncGroups are yielded in the order they are created.
+    This function will parse its input to ensure that the hierarchy is valid. In this context,
+    "valid" means that the following requirements are met:
+    * All nodes have the same zarr format.
+    * There are no nodes descending from arrays.
+    * There are no implicit groups. Any implicit groups will be inserted as needed. For example,
+    an input like ```{'a': GroupMetadata, 'a/b/c': GroupMetadata}``` defines an implicit group at
+    the path ```a/b```, and also at the root of the hierarchy, which we denote with the empty string.
+    After parsing, that group will be added and the input will be:
+    ```{'': GroupMetadata, 'a': GroupMetadata, 'a/b': GroupMetadata, 'a/b/c': GroupMetadata}```
+
+    After input parsing, this function then creates all the nodes in the hierarchy concurrently.
+
+    Arrays and Groups are yielded in the order they are created. This order is not stable and
+    should not be relied on.
 
     Parameters
     ----------
     store : Store
         The storage backend to use.
-    path : str
-        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
-        ``path`` prior to creating nodes.
     nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
         A dictionary defining the hierarchy. The keys are the paths of the nodes
         in the hierarchy, and the values are the metadata of the nodes. The
         metadata must be either an instance of GroupMetadata, ArrayV3Metadata
         or ArrayV2Metadata.
-    allow_root : bool
-        Whether to allow a root node to be created. If ``False``, attempting to create a root node
-        will result in an error. Use this option when calling this function as part of a method
-        defined on ``AsyncGroup`` instances, because in this case the root node has already been
-        created.
+    overwrite : bool
+        Whether to overwrite existing nodes. Defaults to ``False``, in which case an error is
+        raised instead of overwriting an existing array or group.
 
     Yields
     ------
     AsyncGroup | AsyncArray
         The created nodes in the order they are created.
-    """
-    nodes_parsed = _parse_hierarchy_dict(data=nodes, allow_root=allow_root)
 
-    # we allow creating empty hierarchies -- it's a no-op
+    Examples
+    --------
+
+    """
+    # normalize the keys to be valid paths
+    nodes_normed_keys = _normalize_path_keys(nodes)
+
+    # ensure that all nodes have the same zarr_format, and add implicit groups as needed
+    nodes_parsed = _parse_hierarchy_dict(data=nodes_normed_keys)
+    redundant_implicit_groups = []
+
+    # empty hierarchies should be a no-op
     if len(nodes_parsed) > 0:
         if overwrite:
-            await store.delete_dir(path)
+            # only remove elements from the store  if they would be overwritten by nodes
+            should_delete_keys = (
+                k for k, v in nodes_parsed.items() if not isinstance(v, ImplicitGroupMarker)
+            )
+            await asyncio.gather(
+                *(store.delete_dir(key) for key in should_delete_keys), return_exceptions=True
+            )
         else:
             # attempt to fetch all of the metadata described in hierarchy
             # first figure out which zarr format we are dealing with
             sample, *_ = nodes_parsed.values()
-            redundant_implicit_groups = []
-            # TODO: decide if this set difference is sufficient for detecting implicit groups.
-            # an alternative would be to use an explicit implicit group class.
-
-            implicit_group_names = set(nodes_parsed.keys()) - set(nodes.keys())
 
             zarr_format = sample.zarr_format
-            # TODO: this type hint is so long
-            func: (
-                Callable[[Store, str], Coroutine[Any, Any, GroupMetadata | ArrayV3Metadata]]
-                | Callable[[Store, str], Coroutine[Any, Any, GroupMetadata | ArrayV2Metadata]]
+            # This type is long.
+            coros: (
+                Generator[Coroutine[Any, Any, ArrayV2Metadata | GroupMetadata], None, None]
+                | Generator[Coroutine[Any, Any, ArrayV3Metadata | GroupMetadata], None, None]
             )
-            if zarr_format == 3:
-                func = _read_metadata_v3
-            elif zarr_format == 2:
-                func = _read_metadata_v2
+            if zarr_format == 2:
+                coros = (_read_metadata_v2(store=store, path=key) for key in nodes_parsed)
+            elif zarr_format == 3:
+                coros = (_read_metadata_v3(store=store, path=key) for key in nodes_parsed)
             else:  # pragma: no cover
                 raise ValueError(f"Invalid zarr_format: {zarr_format}")  # pragma: no cover
 
-            coros = (func(store=store, path=_join_paths([path, key])) for key in nodes_parsed)
             extant_node_query = dict(
                 zip(
                     nodes_parsed.keys(),
@@ -2935,50 +2946,54 @@ async def create_hierarchy(
                     strict=False,
                 )
             )
-
-            for key, value in extant_node_query.items():
-                if isinstance(value, BaseException):
-                    if isinstance(value, FileNotFoundError):
+            # iterate over the existing arrays / groups and figure out which of them conflict
+            # with the arrays / groups we want to create
+            for key, extant_node in extant_node_query.items():
+                proposed_node = nodes_parsed[key]
+                if isinstance(extant_node, BaseException):
+                    if isinstance(extant_node, FileNotFoundError):
                         # ignore FileNotFoundError, because they represent nodes we can safely create
                         pass
                     else:
                         # Any other exception is a real error
-                        raise value
+                        raise extant_node
                 else:
-                    # this is a node that already exists, but a node with this name was specified in
-                    # nodes_parsed.
-                    # Two cases produce exceptions:
-                    # 1. The node is a group, and a node with this name was explicitly defined in
-                    # nodes
-                    # 2. The node is an array.
-                    # The third case is when this extant node is a group, but its name was not
-                    # explicitly defined in nodes. This means it was added as an implicit group by
-                    # _parse_hierarchy_dict, and we can remove the reference to this node from
-                    # nodes_parsed. We don't need to create this node.
-
-                    if isinstance(value, GroupMetadata):
-                        if key not in implicit_group_names:
-                            raise ContainsGroupError(store, key)
-                        else:
-                            # as there is already a group with this name, we should not create a new one
+                    # this is a node that already exists, but a node with the same key was specified
+                    #  in nodes_parsed.
+                    if isinstance(extant_node, GroupMetadata):
+                        # a group already exists where we want to create a group
+                        if isinstance(proposed_node, ImplicitGroupMarker):
+                            # we have proposed an implicit group, which is OK -- we will just skip
+                            # creating this particular metadata document
                             redundant_implicit_groups.append(key)
-                    elif isinstance(value, ArrayV2Metadata | ArrayV3Metadata):
+                        else:
+                            # we have proposed an explicit group, which is an error, given that a
+                            # group already exists.
+                            raise ContainsGroupError(store, key)
+                    elif isinstance(extant_node, ArrayV2Metadata | ArrayV3Metadata):
+                        # we are trying to overwrite an existing array. this is an error.
                         raise ContainsArrayError(store, key)
 
-            nodes_parsed = {
-                k: v for k, v in nodes_parsed.items() if k not in redundant_implicit_groups
-            }
+    nodes_explicit: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {}
 
-    async for node in create_nodes(store=store, path=path, nodes=nodes_parsed):
-        yield node
+    for k, v in nodes_parsed.items():
+        if k not in redundant_implicit_groups:
+            if isinstance(v, ImplicitGroupMarker):
+                nodes_explicit[k] = GroupMetadata(zarr_format=v.zarr_format)
+            else:
+                nodes_explicit[k] = v
+
+    async for key, node in create_nodes(store=store, nodes=nodes_explicit):
+        yield key, node
 
 
 async def create_nodes(
     *,
     store: Store,
-    path: str,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
-) -> AsyncIterator[AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]:
+) -> AsyncIterator[
+    tuple[str, AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]]
+]:
     """Create a collection of arrays and / or groups concurrently.
 
     Note: no attempt is made to validate that these arrays and / or groups collectively form a
@@ -2989,9 +3004,6 @@ async def create_nodes(
     ----------
     store : Store
         The storage backend to use.
-    path : str
-        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
-        ``path`` prior to creating nodes.
     nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
         A dictionary defining the hierarchy. The keys are the paths of the nodes
         in the hierarchy, and the values are the metadata of the nodes. The
@@ -3011,34 +3023,27 @@ async def create_nodes(
 
     for key, value in nodes.items():
         # make the key absolute
-        write_prefix = _join_paths([path, key])
-        create_tasks.extend(_persist_metadata(store, write_prefix, value, semaphore=semaphore))
+        create_tasks.extend(_persist_metadata(store, key, value, semaphore=semaphore))
 
     created_object_keys = []
 
     for coro in asyncio.as_completed(create_tasks):
         created_key = await coro
-        # the created key will be in the store key space, i.e. it is an absolute path. The key
-        # will also end with the name of a metadata document. We have to remove the store_path.path
-        # component of the key to bring it back to the relative key space of store_path
-
         # we need this to track which metadata documents were written so that we can yield a
         # complete v2 Array / Group class after both .zattrs and the metadata JSON was created.
-        object_path_relative = created_key.removeprefix(path).lstrip("/")
-        created_object_keys.append(object_path_relative)
+        created_object_keys.append(created_key)
 
         # get the node name from the object key
-        if len(object_path_relative.split("/")) == 1:
+        if len(created_key.split("/")) == 1:
             # this is the root node
             meta_out = nodes[""]
             node_name = ""
         else:
             # turn "foo/<anything>" into "foo"
-            node_name = object_path_relative[: object_path_relative.rfind("/")]
+            node_name = created_key[: created_key.rfind("/")]
             meta_out = nodes[node_name]
-
         if meta_out.zarr_format == 3:
-            yield _build_node(store=store, path=_join_paths([path, node_name]), metadata=meta_out)
+            yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
         else:
             # For zarr v2
             # we only want to yield when both the metadata and attributes are created
@@ -3053,9 +3058,7 @@ async def create_nodes(
                 meta_done = _join_paths([node_name, ZARRAY_JSON]) in created_object_keys
 
             if meta_done and attrs_done:
-                yield _build_node(
-                    store=store, path=_join_paths([path, node_name]), metadata=meta_out
-                )
+                yield node_name, _build_node(store=store, path=node_name, metadata=meta_out)
 
             continue
 
@@ -3064,7 +3067,7 @@ T = TypeVar("T")
 
 
 def _get_roots(
-    data: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+    data: Iterable[str],
 ) -> tuple[str, ...]:
     """
     Return the keys of the root(s) of the hierarchy. A root is a key with the fewest number of
@@ -3090,21 +3093,20 @@ def _join_paths(paths: Iterable[str]) -> str:
 
 def _parse_hierarchy_dict(
     *,
-    data: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
-    allow_root: bool = True,
-) -> dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]:
+    data: Mapping[str, ImplicitGroupMarker | GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+) -> dict[str, ImplicitGroupMarker | GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]:
     """
     Take an input Mapping of str: node pairs, and parse it into
-     a dict of str: node pairs that models valid, complete Zarr hierarchy.
+     a dict of str: node pairs that models a valid, complete Zarr hierarchy.
 
     If the input represents a complete Zarr hierarchy, i.e. one with no implicit groups,
     then return a dict with the exact same data as the input.
 
-    Otherwise, return a dict derived from the input with groups as needed to make
+    Otherwise, return a dict derived from the input with GroupMetadata inserted as needed to make
     the hierarchy complete.
 
     For example, an input of {'a/b/c': ArrayMetadata} is incomplete, because it references two
-    groups ('a' and 'a/b') but these keys are not present in the input. Applying this function
+    groups ('a' and 'a/b') that are not specified in the input. Applying this function
     to that input will result in a return value of
     {'a': GroupMetadata, 'a/b': GroupMetadata, 'a/b/c': ArrayMetadata}, i.e. the implied groups
     were added.
@@ -3123,10 +3125,42 @@ def _parse_hierarchy_dict(
     Zarr hierarchy.
     """
 
-    observed_zarr_formats: dict[ZarrFormat, list[str | None]] = {2: [], 3: []}
+    data_purified = _ensure_consistent_zarr_format(data)
 
-    # We will iterate over the dict again, but a full pass here ensures that the error message
-    # is comprehensive, and I think the performance cost will be negligible.
+    data_normed_keys = _normalize_path_keys(data_purified)
+
+    out: dict[str, ImplicitGroupMarker | GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {
+        **data_normed_keys
+    }
+
+    for k, v in data.items():
+        key_split = k.split("/")
+        *subpaths, _ = accumulate(key_split, lambda a, b: _join_paths([a, b]))
+
+        for subpath in subpaths:
+            # If a component is not already in the output dict, add ImplicitGroupMetadata
+            if subpath not in out:
+                out[subpath] = ImplicitGroupMarker(zarr_format=v.zarr_format)
+            else:
+                if not isinstance(out[subpath], GroupMetadata | ImplicitGroupMarker):
+                    msg = (
+                        f"The node at {subpath} contains other nodes, but it is not a Zarr group. "
+                        "This is invalid. Only Zarr groups can contain other nodes."
+                    )
+                    raise ValueError(msg)
+
+    return out
+
+
+def _ensure_consistent_zarr_format(
+    data: Mapping[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
+) -> Mapping[str, GroupMetadata | ArrayV2Metadata] | Mapping[str, GroupMetadata | ArrayV3Metadata]:
+    """
+    Ensure that all values of the input dict have the same zarr format. If any do not,
+    then a value error is raised.
+    """
+    observed_zarr_formats: dict[ZarrFormat, list[str]] = {2: [], 3: []}
+
     for k, v in data.items():
         observed_zarr_formats[v.zarr_format].append(k)
 
@@ -3139,42 +3173,11 @@ def _parse_hierarchy_dict(
         )
         raise ValueError(msg)
 
-    # normalize the keys of the dict
-
-    data_normed: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = (
-        _normalize_path_keys(data)
+    return cast(
+        Mapping[str, GroupMetadata | ArrayV2Metadata]
+        | Mapping[str, GroupMetadata | ArrayV3Metadata],
+        data,
     )
-
-    if not allow_root and "" in data_normed:
-        msg = (
-            "Found the empty string '' in data after key name normalization. "
-            "That key denotes the root of a hierarchy, but ``allow_root`` is False, "
-            "and so creating this node is not allowed. Remove the problematic key from the input, "
-            "or set ``allow_root`` to True."
-        )
-        raise NestedRootError(msg)
-
-    out: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata] = {**data_normed}
-
-    for k, v in data.items():
-        # TODO: ensure that the key is a valid path
-        key_split = k.split("/")
-        # we use /.join here because it checks the types of its inputs, unlike an f string
-        *subpaths, _ = accumulate(key_split, lambda a, b: "/".join([a, b]))  # noqa: FLY002
-
-        for subpath in subpaths:
-            # If a component is not already in the output dict, add a group
-            if subpath not in out:
-                out[subpath] = GroupMetadata(zarr_format=v.zarr_format)
-            else:
-                if not isinstance(out[subpath], GroupMetadata):
-                    msg = (
-                        f"The node at {subpath} contains other nodes, but it is not a Zarr group. "
-                        "This is invalid. Only Zarr groups can contain other nodes."
-                    )
-                    raise ValueError(msg)
-
-    return out
 
 
 def _normalize_paths(paths: Iterable[str]) -> tuple[str, ...]:
@@ -3555,7 +3558,6 @@ def _persist_metadata(
 async def create_rooted_hierarchy(
     *,
     store: Store,
-    path: str,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
 ) -> AsyncGroup | AsyncArray[ArrayV2Metadata] | AsyncArray[ArrayV3Metadata]:
@@ -3564,7 +3566,7 @@ async def create_rooted_hierarchy(
     This function ensures that its input contains a specification of a root node,
     calls ``create_hierarchy`` to create nodes, and returns the root node of the hierarchy.
     """
-    roots = _get_roots(nodes)
+    roots = _get_roots(nodes.keys())
     if len(roots) != 1:
         msg = (
             "The input does not specify a root node. "
@@ -3576,8 +3578,7 @@ async def create_rooted_hierarchy(
     else:
         root_key = roots[0]
 
-    nodes_created = {
-        x.path: x
-        async for x in create_hierarchy(store=store, path=path, nodes=nodes, overwrite=overwrite)
-    }
-    return nodes_created[_join_paths([path, root_key])]
+    nodes_created = [
+        x async for x in create_hierarchy(store=store, nodes=nodes, overwrite=overwrite)
+    ]
+    return dict(nodes_created)[root_key]

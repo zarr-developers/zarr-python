@@ -1142,12 +1142,11 @@ def zeros_like(a: ArrayLike, **kwargs: Any) -> Array:
 
 
 def create_hierarchy(
+    *,
     store: Store,
-    path: str,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
-    allow_root: bool = True,
-) -> Iterator[Group | Array]:
+) -> Iterator[tuple[str, Group | Array]]:
     """
     Create a complete zarr hierarchy from a collection of metadata objects.
 
@@ -1161,36 +1160,29 @@ def create_hierarchy(
     ----------
     store : Store
         The storage backend to use.
-    path : str
-        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
-        ``path`` prior to creating nodes.
     nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
         A dictionary defining the hierarchy. The keys are the paths of the nodes
         in the hierarchy, and the values are the metadata of the nodes. The
         metadata must be either an instance of GroupMetadata, ArrayV3Metadata
         or ArrayV2Metadata.
-    allow_root : bool
-        Whether to allow a root node to be created. If ``False``, attempting to create a root node
-        will result in an error. Use this option when calling this function as part of a method
-        defined on ``AsyncGroup`` instances, because in this case the root node has already been
-        created.
+    overwrite : bool
+        Whether to overwrite existing nodes. Defaults to ``False``, in which case an error will be
+        raised instead of overwriting an existing array or group.
 
     Yields
     ------
-    Group | Array
-        The created nodes in the order they are created.
+    tuple[str, Group | Array]
+        (key, node) pairs the order they are created.
     """
-    coro = async_api.create_hierarchy(
-        store=store, path=path, nodes=nodes, overwrite=overwrite, allow_root=allow_root
-    )
+    coro = async_api.create_hierarchy(store=store, nodes=nodes, overwrite=overwrite)
 
-    for result in sync(_collect_aiterator(coro)):
-        yield _parse_async_node(result)
+    for key, value in sync(_collect_aiterator(coro)):
+        yield key, _parse_async_node(value)
 
 
 def create_nodes(
-    *, store: Store, path: str, nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
-) -> Iterator[Group | Array]:
+    *, store: Store, nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
+) -> Iterator[tuple[str, Group | Array]]:
     """Create a collection of arrays and / or groups concurrently.
 
     Note: no attempt is made to validate that these arrays and / or groups collectively form a
@@ -1201,9 +1193,6 @@ def create_nodes(
     ----------
     store : Store
         The storage backend to use.
-    path : str
-        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
-        ``path`` prior to creating nodes.
     nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
         A dictionary defining the hierarchy. The keys are the paths of the nodes
         in the hierarchy, and the values are the metadata of the nodes. The
@@ -1215,16 +1204,15 @@ def create_nodes(
     Group | Array
         The created nodes.
     """
-    coro = async_api.create_nodes(store=store, path=path, nodes=nodes)
+    coro = async_api.create_nodes(store=store, nodes=nodes)
 
-    for result in sync(_collect_aiterator(coro)):
-        yield _parse_async_node(result)
+    for key, value in sync(_collect_aiterator(coro)):
+        yield key, _parse_async_node(value)
 
 
 def create_rooted_hierarchy(
     *,
     store: Store,
-    path: str,
     nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
     overwrite: bool = False,
 ) -> Group | Array:
@@ -1252,7 +1240,7 @@ def create_rooted_hierarchy(
     Group | Array
     """
     async_node = sync(
-        async_api.create_rooted_hierarchy(store=store, path=path, nodes=nodes, overwrite=overwrite)
+        async_api.create_rooted_hierarchy(store=store, nodes=nodes, overwrite=overwrite)
     )
     return _parse_async_node(async_node)
 

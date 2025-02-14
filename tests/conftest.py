@@ -28,9 +28,10 @@ from zarr.storage import FsspecStore, LocalStore, MemoryStore, StorePath, ZipSto
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable
     from typing import Any, Literal
-    from zarr.abc.codec import Codec
+
     from _pytest.compat import LEGACY_PATH
 
+    from zarr.abc.codec import Codec
     from zarr.core.array import CompressorsLike, FiltersLike, SerializerLike, ShardsLike
     from zarr.core.chunk_key_encodings import ChunkKeyEncoding, ChunkKeyEncodingLike
     from zarr.core.common import ChunkCoords, MemoryOrder, ShapeLike, ZarrFormat
@@ -290,7 +291,7 @@ def create_array_metadata(
             dtype=dtype_parsed,
         )
 
-        sub_codecs = (*array_array, array_bytes, *bytes_bytes)
+        sub_codecs: tuple[Codec, ...] = (*array_array, array_bytes, *bytes_bytes)
         codecs_out: tuple[Codec, ...]
         if shard_shape_parsed is not None:
             index_location = None
@@ -299,7 +300,9 @@ def create_array_metadata(
             if index_location is None:
                 index_location = ShardingCodecIndexLocation.end
             sharding_codec = ShardingCodec(
-                chunk_shape=chunk_shape_parsed, codecs=sub_codecs, index_location=index_location
+                chunk_shape=chunk_shape_parsed,
+                codecs=sub_codecs,
+                index_location=index_location,
             )
             sharding_codec.validate(
                 shape=chunk_shape_parsed,

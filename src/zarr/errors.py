@@ -57,9 +57,3 @@ class NodeTypeValidationError(MetadataValidationError):
     This can be raised when the value is invalid or unexpected given the context,
     for example an 'array' node when we expected a 'group'.
     """
-
-
-class NestedRootError(BaseZarrError):
-    """
-    Exception raised when attempting to create a root node relative to a pre-existing root node.
-    """

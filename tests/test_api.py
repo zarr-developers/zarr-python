@@ -4,10 +4,11 @@ import inspect
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    import pathlib
     from collections.abc import Callable
+
     from zarr.abc.store import Store
     from zarr.core.common import JSON, MemoryOrder, ZarrFormat
-    import pathlib
 
 import warnings
 from typing import Literal
