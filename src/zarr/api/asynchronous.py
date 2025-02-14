@@ -28,9 +28,6 @@ from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
     create_hierarchy,
-    create_nodes,
-    create_rooted_hierarchy,
-    get_node,
 )
 from zarr.core.metadata import ArrayMetadataDict, ArrayV2Metadata, ArrayV3Metadata
 from zarr.core.metadata.v2 import _default_compressor, _default_filters
@@ -57,13 +54,10 @@ __all__ = [
     "create",
     "create_array",
     "create_hierarchy",
-    "create_nodes",
-    "create_rooted_hierarchy",
     "empty",
     "empty_like",
     "full",
     "full_like",
-    "get_node",
     "group",
     "load",
     "ones",

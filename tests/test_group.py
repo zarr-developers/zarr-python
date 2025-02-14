@@ -16,11 +16,10 @@ from numcodecs import Blosc
 import zarr
 import zarr.api.asynchronous
 import zarr.api.synchronous
-import zarr.api.synchronous as sync_api
 import zarr.storage
 from zarr import Array, AsyncArray, AsyncGroup, Group
 from zarr.abc.store import Store
-from zarr.api.synchronous import get_node
+from zarr.core import sync_group
 from zarr.core._info import GroupInfo
 from zarr.core.buffer import default_buffer_prototype
 from zarr.core.config import config as zarr_config
@@ -28,19 +27,18 @@ from zarr.core.group import (
     ConsolidatedMetadata,
     GroupMetadata,
     _build_metadata_v3,
-    _join_paths,
-    _normalize_path_keys,
-    _normalize_paths,
+    _get_roots,
     create_hierarchy,
     create_nodes,
     create_rooted_hierarchy,
+    get_node,
 )
 from zarr.core.metadata.v3 import ArrayV3Metadata
 from zarr.core.sync import _collect_aiterator, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import LocalStore, MemoryStore, StorePath, ZipStore
 from zarr.storage._common import make_store_path
-from zarr.storage._utils import normalize_path
+from zarr.storage._utils import _join_paths
 from zarr.testing.store import LatencyStore
 
 from .conftest import meta_from_array, parse_store
@@ -1478,7 +1476,7 @@ async def test_create_nodes(
         "group/subgroup/array_1": meta_from_array(np.arange(5), zarr_format=zarr_format),
     }
     if impl == "sync":
-        observed_nodes = dict(sync_api.create_nodes(store=store, nodes=node_spec))
+        observed_nodes = dict(sync_group.create_nodes(store=store, nodes=node_spec))
     elif impl == "async":
         observed_nodes = dict(await _collect_aiterator(create_nodes(store=store, nodes=node_spec)))
     else:
@@ -1506,14 +1504,20 @@ def test_create_nodes_concurrency_limit(store: MemoryStore) -> None:
 
     with zarr_config.set({"async.concurrency": 1}):
         start = time.time()
-        _ = tuple(sync_api.create_nodes(store=latency_store, nodes=groups))
+        _ = tuple(sync_group.create_nodes(store=latency_store, nodes=groups))
         elapsed = time.time() - start
         assert elapsed > num_groups * set_latency
 
 
 @pytest.mark.parametrize(
     ("a_func", "b_func"),
-    [(zarr.core.group.AsyncGroup.create_hierarchy, zarr.core.group.Group.create_hierarchy)],
+    [
+        (zarr.core.group.AsyncGroup.create_hierarchy, zarr.core.group.Group.create_hierarchy),
+        (zarr.core.group.create_hierarchy, zarr.core.sync_group.create_hierarchy),
+        (zarr.core.group.create_nodes, zarr.core.sync_group.create_nodes),
+        (zarr.core.group.create_rooted_hierarchy, zarr.core.sync_group.create_rooted_hierarchy),
+        (zarr.core.group.get_node, zarr.core.sync_group.get_node),
+    ],
 )
 def test_consistent_signatures(
     a_func: Callable[[object], object], b_func: Callable[[object], object]
@@ -1554,11 +1558,11 @@ async def test_create_hierarchy(
     expected_meta = hierarchy_spec | {"group/subgroup": GroupMetadata(zarr_format=zarr_format)}
 
     # initialize the group with some nodes
-    _ = dict(sync_api.create_nodes(store=store, nodes=pre_existing_nodes))
+    _ = dict(sync_group.create_nodes(store=store, nodes=pre_existing_nodes))
 
     if impl == "sync":
         created = dict(
-            sync_api.create_hierarchy(store=store, nodes=hierarchy_spec, overwrite=overwrite)
+            sync_group.create_hierarchy(store=store, nodes=hierarchy_spec, overwrite=overwrite)
         )
     elif impl == "async":
         created = dict(
@@ -1572,11 +1576,11 @@ async def test_create_hierarchy(
     else:
         raise ValueError(f"Invalid impl: {impl}")
     if not overwrite:
-        extra_group = get_node(store=store, path="group/extra", zarr_format=zarr_format)
+        extra_group = sync_group.get_node(store=store, path="group/extra", zarr_format=zarr_format)
         assert extra_group.metadata.attributes == {"path": "group/extra"}
     else:
         with pytest.raises(FileNotFoundError):
-            get_node(store=store, path="group/extra", zarr_format=zarr_format)
+            await get_node(store=store, path="group/extra", zarr_format=zarr_format)
     assert expected_meta == {k: v.metadata for k, v in created.items()}
 
 
@@ -1607,14 +1611,14 @@ async def test_create_hierarchy_existing_nodes(
         err_cls = ContainsGroupError
 
     # write the extant metadata
-    tuple(sync_api.create_nodes(store=store, nodes={extant_node_path: extant_metadata}))
+    tuple(sync_group.create_nodes(store=store, nodes={extant_node_path: extant_metadata}))
 
     msg = f"{extant_node} exists in store {store!r} at path {extant_node_path!r}."
     # ensure that we cannot invoke create_hierarchy with overwrite=False here
     if impl == "sync":
         with pytest.raises(err_cls, match=re.escape(msg)):
             tuple(
-                sync_api.create_hierarchy(
+                sync_group.create_hierarchy(
                     store=store, nodes={"node": new_metadata}, overwrite=False
                 )
             )
@@ -1633,7 +1637,7 @@ async def test_create_hierarchy_existing_nodes(
 
     # ensure that the extant metadata was not overwritten
     assert (
-        get_node(store=store, path=extant_node_path, zarr_format=zarr_format)
+        await get_node(store=store, path=extant_node_path, zarr_format=zarr_format)
     ).metadata.attributes == {"extant": True}
 
 
@@ -1680,7 +1684,7 @@ async def test_group_create_hierarchy(
         if overwrite:
             assert k in all_members
             # check that we did not erase the root group
-            assert get_node(store=store, path="", zarr_format=zarr_format) == g
+            assert sync_group.get_node(store=store, path="", zarr_format=zarr_format) == g
         else:
             assert all_members[k].metadata == v == extant_created[k].metadata
 
@@ -1747,7 +1751,7 @@ async def test_create_hierarchy_invalid_nested(
     msg = "Only Zarr groups can contain other nodes."
     if impl == "sync":
         with pytest.raises(ValueError, match=msg):
-            tuple(sync_api.create_hierarchy(store=store, nodes=hierarchy_spec))
+            tuple(sync_group.create_hierarchy(store=store, nodes=hierarchy_spec))
     elif impl == "async":
         with pytest.raises(ValueError, match=msg):
             await _collect_aiterator(create_hierarchy(store=store, nodes=hierarchy_spec))
@@ -1775,7 +1779,7 @@ async def test_create_hierarchy_invalid_mixed_format(
     if impl == "sync":
         with pytest.raises(ValueError, match=re.escape(msg)):
             tuple(
-                sync_api.create_hierarchy(
+                sync_group.create_hierarchy(
                     store=store,
                     nodes=nodes,
                 )
@@ -1823,7 +1827,7 @@ async def test_create_rooted_hierarchy_group(
 
     nodes_create = root_meta | groups_expected_meta | arrays_expected_meta
     if impl == "sync":
-        g = sync_api.create_rooted_hierarchy(store=store, nodes=nodes_create)
+        g = sync_group.create_rooted_hierarchy(store=store, nodes=nodes_create)
         assert isinstance(g, Group)
         members = g.members(max_depth=None)
     elif impl == "async":
@@ -1862,7 +1866,7 @@ async def test_create_rooted_hierarchy_array(
     nodes_create = root_meta
 
     if impl == "sync":
-        a = sync_api.create_rooted_hierarchy(store=store, nodes=nodes_create, overwrite=True)
+        a = sync_group.create_rooted_hierarchy(store=store, nodes=nodes_create, overwrite=True)
         assert isinstance(a, Array)
     elif impl == "async":
         a = await create_rooted_hierarchy(store=store, nodes=nodes_create, overwrite=True)
@@ -1886,46 +1890,12 @@ async def test_create_rooted_hierarchy_invalid(impl: Literal["async", "sync"]) -
     msg = "The input does not specify a root node. "
     if impl == "sync":
         with pytest.raises(ValueError, match=msg):
-            sync_api.create_rooted_hierarchy(store=store, nodes=nodes)
+            sync_group.create_rooted_hierarchy(store=store, nodes=nodes)
     elif impl == "async":
         with pytest.raises(ValueError, match=msg):
             await create_rooted_hierarchy(store=store, nodes=nodes)
     else:
         raise ValueError(f"Invalid impl: {impl}")
-
-
-@pytest.mark.parametrize("paths", [("a", "/a"), ("", "/"), ("b/", "b")])
-def test_normalize_paths_invalid(paths: tuple[str, str]) -> None:
-    """
-    Ensure that calling _normalize_paths on values that will normalize to the same value
-    will generate a ValueError.
-    """
-    a, b = paths
-    msg = f"After normalization, the value '{b}' collides with '{a}'. "
-    with pytest.raises(ValueError, match=msg):
-        _normalize_paths(paths)
-
-
-@pytest.mark.parametrize(
-    "paths", [("/a", "a/b"), ("a", "a/b"), ("a/", "a///b"), ("/a/", "//a/b///")]
-)
-def test_normalize_paths_valid(paths: tuple[str, str]) -> None:
-    """
-    Ensure that calling _normalize_paths on values that normalize to distinct values
-    returns a tuple of those normalized values.
-    """
-    expected = tuple(map(normalize_path, paths))
-    assert _normalize_paths(paths) == expected
-
-
-def test_normalize_path_keys() -> None:
-    """
-    Test that normalize_path_keys returns a dict where each key has been normalized.
-    """
-    data = {"": 10, "a": "hello", "a/b": None, "/a/b/c/d": None}
-    observed = _normalize_path_keys(data)
-    expected = {normalize_path(k): v for k, v in data.items()}
-    assert observed == expected
 
 
 @pytest.mark.parametrize("store", ["memory"], indirect=True)
@@ -2012,3 +1982,14 @@ def test_build_metadata_v3(option: Literal["array", "group", "invalid"]) -> None
             msg = "Invalid value for 'node_type'. Expected 'array or group'. Got 'nothing (the key is missing)'."
             with pytest.raises(MetadataValidationError, match=re.escape(msg)):
                 _build_metadata_v3(metadata_dict)
+
+
+@pytest.mark.parametrize("roots", [("",), ("a", "b")])
+def test_get_roots(roots: tuple[str, ...]):
+    root_nodes = {k: GroupMetadata(attributes={"name": k}) for k in roots}
+    child_nodes = {
+        _join_paths([k, "foo"]): GroupMetadata(attributes={"name": _join_paths([k, "foo"])})
+        for k in roots
+    }
+    data = root_nodes | child_nodes
+    assert set(_get_roots(data)) == set(roots)

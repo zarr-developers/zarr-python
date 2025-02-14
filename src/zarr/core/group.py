@@ -54,7 +54,7 @@ from zarr.core.sync import SyncMixin, sync
 from zarr.errors import ContainsArrayError, ContainsGroupError, MetadataValidationError
 from zarr.storage import StoreLike, StorePath
 from zarr.storage._common import ensure_no_existing_node, make_store_path
-from zarr.storage._utils import normalize_path
+from zarr.storage._utils import _join_paths, _normalize_path_keys, normalize_path
 
 if TYPE_CHECKING:
     from collections.abc import (
@@ -3063,9 +3063,6 @@ async def create_nodes(
             continue
 
 
-T = TypeVar("T")
-
-
 def _get_roots(
     data: Iterable[str],
 ) -> tuple[str, ...]:
@@ -3080,15 +3077,6 @@ def _get_roots(
     for key_split in keys_split:
         groups[len(key_split)].append("/".join(key_split))
     return tuple(groups[min(groups.keys())])
-
-
-def _join_paths(paths: Iterable[str]) -> str:
-    """
-    Filter out instances of '' and join the remaining strings with '/'.
-
-    Because the root node of a zarr hierarchy is represented by an empty string,
-    """
-    return "/".join(filter(lambda v: v != "", paths))
 
 
 def _parse_hierarchy_dict(
@@ -3178,36 +3166,6 @@ def _ensure_consistent_zarr_format(
         | Mapping[str, GroupMetadata | ArrayV3Metadata],
         data,
     )
-
-
-def _normalize_paths(paths: Iterable[str]) -> tuple[str, ...]:
-    """
-    Normalize the input paths according to the normalization scheme used for zarr node paths.
-    If any two paths normalize to the same value, raise a ValueError.
-    """
-    path_map: dict[str, str] = {}
-    for path in paths:
-        parsed = normalize_path(path)
-        if parsed in path_map:
-            msg = (
-                f"After normalization, the value '{path}' collides with '{path_map[parsed]}'. "
-                f"Both '{path}' and '{path_map[parsed]}' normalize to the same value: '{parsed}'. "
-                f"You should use either '{path}' or '{path_map[parsed]}', but not both."
-            )
-            raise ValueError(msg)
-        path_map[parsed] = path
-    return tuple(path_map.keys())
-
-
-def _normalize_path_keys(data: Mapping[str, T]) -> dict[str, T]:
-    """
-    Normalize the keys of the input dict according to the normalization scheme used for zarr node
-    paths. If any two keys in the input normalize to the same value, raise a ValueError.
-    Returns a dict where the keys are the elements of the input and the values are the
-    normalized form of each key.
-    """
-    parsed_keys = _normalize_paths(data.keys())
-    return dict(zip(parsed_keys, data.values(), strict=True))
 
 
 async def _getitem_semaphore(
