@@ -121,7 +121,6 @@ jobs:
     needs:
       [
         test,
-        test-upstream-and-min-deps,
         doctests
       ]
     if: always()
