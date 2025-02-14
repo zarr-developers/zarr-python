@@ -220,7 +220,8 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
     async def test_delete_dir_unsupported_deletes(self, store: FsspecStore) -> None:
         store.supports_deletes = False
         with pytest.raises(
-            NotImplementedError, match="This method is only available for stores that support deletes."
+            NotImplementedError,
+            match="This method is only available for stores that support deletes.",
         ):
             await store.delete_dir("test_prefix")
 
@@ -258,10 +259,11 @@ def test_no_wrap_async_filesystem():
     reason="No AsyncFileSystemWrapper",
 )
 async def test_delete_dir_wrapped_filesystem(tmpdir) -> None:
-    """The local fs is not async so we should expect it to be wrapped automatically"""
     from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+    from fsspec.implementations.local import LocalFileSystem
 
-    store = FsspecStore.from_url(f"{tmpdir}/test/path", storage_options={"auto_mkdir": True})
+    wrapped_fs = AsyncFileSystemWrapper(LocalFileSystem(auto_mkdir=True))
+    store = FsspecStore(wrapped_fs, read_only=False, path=f"{tmpdir}/test/path")
 
     assert isinstance(store.fs, AsyncFileSystemWrapper)
     assert store.fs.asynchronous
