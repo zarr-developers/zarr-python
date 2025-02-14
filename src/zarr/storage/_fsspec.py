@@ -47,6 +47,12 @@ def _make_async(fs: AbstractFileSystem) -> AsyncFileSystem:
         fs_dict = fs.to_dict()
         fs_dict["asynchronous"] = True
         return AbstractFileSystem.from_dict(fs_dict)
+    from fsspec.implementations.local import LocalFileSystem
+
+    if type(fs) is LocalFileSystem and not fs.auto_mkdir:
+        raise ValueError(
+            f"LocalFilesystem {fs} was created with auto_mkdir=False but Zarr requires the filesystem to automatically create directories"
+        )
     try:
         from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
 
