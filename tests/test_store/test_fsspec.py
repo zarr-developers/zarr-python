@@ -335,3 +335,36 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         store_kwargs["path"] += "/abc"
         store = await self.store_cls.open(**store_kwargs)
         assert await store.is_empty("")
+
+    async def test_delete_dir_unsupported_deletes(self, store: FsspecStore) -> None:
+        store.supports_deletes = False
+        with pytest.raises(
+            NotImplementedError,
+            match="This method is only available for stores that support deletes.",
+        ):
+            await store.delete_dir("test_prefix")
+
+
+@pytest.mark.skipif(
+    parse_version(fsspec.__version__) < parse_version("2024.12.0"),
+    reason="No AsyncFileSystemWrapper",
+)
+async def test_delete_dir_wrapped_filesystem(tmpdir) -> None:
+    from fsspec.implementations.asyn_wrapper import AsyncFileSystemWrapper
+    from fsspec.implementations.local import LocalFileSystem
+
+    wrapped_fs = AsyncFileSystemWrapper(LocalFileSystem(auto_mkdir=True))
+    store = FsspecStore(wrapped_fs, read_only=False, path=f"{tmpdir}/test/path")
+
+    assert isinstance(store.fs, AsyncFileSystemWrapper)
+    assert store.fs.asynchronous
+
+    await store.set("zarr.json", cpu.Buffer.from_bytes(b"root"))
+    await store.set("foo-bar/zarr.json", cpu.Buffer.from_bytes(b"root"))
+    await store.set("foo/zarr.json", cpu.Buffer.from_bytes(b"bar"))
+    await store.set("foo/c/0", cpu.Buffer.from_bytes(b"chunk"))
+    await store.delete_dir("foo")
+    assert await store.exists("zarr.json")
+    assert await store.exists("foo-bar/zarr.json")
+    assert not await store.exists("foo/zarr.json")
+    assert not await store.exists("foo/c/0")

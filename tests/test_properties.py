@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
@@ -8,10 +7,11 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import given
+from hypothesis import assume, given
 
 from zarr.abc.store import Store
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.sync import sync
 from zarr.testing.strategies import (
     array_metadata,
     arrays,
@@ -30,6 +30,24 @@ def test_roundtrip(data: st.DataObject, zarr_format: int) -> None:
     assert_array_equal(nparray, zarray[:])
 
 
+@given(array=arrays())
+def test_array_creates_implicit_groups(array):
+    path = array.path
+    ancestry = path.split("/")[:-1]
+    for i in range(len(ancestry)):
+        parent = "/".join(ancestry[: i + 1])
+        if array.metadata.zarr_format == 2:
+            assert (
+                sync(array.store.get(f"{parent}/.zgroup", prototype=default_buffer_prototype()))
+                is not None
+            )
+        elif array.metadata.zarr_format == 3:
+            assert (
+                sync(array.store.get(f"{parent}/zarr.json", prototype=default_buffer_prototype()))
+                is not None
+            )
+
+
 @given(data=st.data())
 def test_basic_indexing(data: st.DataObject) -> None:
     zarray = data.draw(arrays())
@@ -38,7 +56,7 @@ def test_basic_indexing(data: st.DataObject) -> None:
     actual = zarray[indexer]
     assert_array_equal(nparray[indexer], actual)
 
-    new_data = np.ones_like(actual)
+    new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
     zarray[indexer] = new_data
     nparray[indexer] = new_data
     assert_array_equal(nparray, zarray[:])
@@ -54,6 +72,12 @@ def test_oindex(data: st.DataObject) -> None:
     actual = zarray.oindex[zindexer]
     assert_array_equal(nparray[npindexer], actual)
 
+    assume(zarray.shards is None)  # GH2834
+    new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
+    nparray[npindexer] = new_data
+    zarray.oindex[zindexer] = new_data
+    assert_array_equal(nparray, zarray[:])
+
 
 @given(data=st.data())
 def test_vindex(data: st.DataObject) -> None:
@@ -68,6 +92,14 @@ def test_vindex(data: st.DataObject) -> None:
     )
     actual = zarray.vindex[indexer]
     assert_array_equal(nparray[indexer], actual)
+
+    # FIXME!
+    # when the indexer is such that a value gets overwritten multiple times,
+    # I think the output depends on chunking.
+    # new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
+    # nparray[indexer] = new_data
+    # zarray.vindex[indexer] = new_data
+    # assert_array_equal(nparray, zarray[:])
 
 
 @given(store=stores, meta=array_metadata())  # type: ignore[misc]
