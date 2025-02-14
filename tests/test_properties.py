@@ -7,7 +7,7 @@ pytest.importorskip("hypothesis")
 
 import hypothesis.extra.numpy as npst
 import hypothesis.strategies as st
-from hypothesis import given
+from hypothesis import assume, given
 
 from zarr.abc.store import Store
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
@@ -53,6 +53,7 @@ def test_oindex(data: st.DataObject) -> None:
     actual = zarray.oindex[zindexer]
     assert_array_equal(nparray[npindexer], actual)
 
+    assume(zarray.shards is None)  # GH2834
     new_data = data.draw(npst.arrays(shape=st.just(actual.shape), dtype=nparray.dtype))
     nparray[npindexer] = new_data
     zarray.oindex[zindexer] = new_data
