@@ -50,7 +50,6 @@ __all__ = [
     "create",
     "create_array",
     "create_hierarchy",
-    "create_nodes",
     "empty",
     "empty_like",
     "full",
@@ -1173,36 +1172,6 @@ def create_hierarchy(
         (key, node) pairs the order they are created.
     """
     coro = async_api.create_hierarchy(store=store, nodes=nodes, overwrite=overwrite)
-
-    for key, value in sync(_collect_aiterator(coro)):
-        yield key, _parse_async_node(value)
-
-
-def create_nodes(
-    *, store: Store, nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata]
-) -> Iterator[tuple[str, Group | Array]]:
-    """Create a collection of arrays and / or groups concurrently.
-
-    Note: no attempt is made to validate that these arrays and / or groups collectively form a
-    valid Zarr hierarchy. It is the responsibility of the caller of this function to ensure that
-    the ``nodes`` parameter satisfies any correctness constraints.
-
-    Parameters
-    ----------
-    store : Store
-        The storage backend to use.
-    nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
-        A dictionary defining the hierarchy. The keys are the paths of the nodes
-        in the hierarchy, and the values are the metadata of the nodes. The
-        metadata must be either an instance of GroupMetadata, ArrayV3Metadata
-        or ArrayV2Metadata.
-
-    Yields
-    ------
-    Group | Array
-        The created nodes.
-    """
-    coro = async_api.create_nodes(store=store, nodes=nodes)
 
     for key, value in sync(_collect_aiterator(coro)):
         yield key, _parse_async_node(value)

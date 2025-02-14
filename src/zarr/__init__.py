@@ -9,7 +9,6 @@ from zarr.api.synchronous import (
     create_array,
     create_group,
     create_hierarchy,
-    create_nodes,
     empty,
     empty_like,
     full,
