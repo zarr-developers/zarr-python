@@ -353,7 +353,7 @@ def _default_fill_value(dtype: np.dtype[Any]) -> Any:
         return dtype.type("nat")
     elif dtype.kind == "V":
         if dtype.fields is not None:
-            default = tuple([_default_fill_value(field[0]) for field in dtype.fields.values()])
+            default = tuple(_default_fill_value(field[0]) for field in dtype.fields.values())
             return np.array([default], dtype=dtype)
         else:
             return np.zeros(1, dtype=dtype)
