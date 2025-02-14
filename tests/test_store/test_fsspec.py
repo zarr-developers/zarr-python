@@ -187,6 +187,10 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         )
         assert dict(group.attrs) == {"key": "value-3"}
 
+    @pytest.mark.skipif(
+        parse_version(fsspec.__version__) < parse_version("2024.03.01"),
+        reason="Prior bug in from_upath",
+    )
     def test_from_upath(self) -> None:
         upath = pytest.importorskip("upath")
         path = upath.UPath(
