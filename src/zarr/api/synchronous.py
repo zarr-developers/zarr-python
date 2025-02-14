@@ -51,12 +51,10 @@ __all__ = [
     "create_array",
     "create_hierarchy",
     "create_nodes",
-    "create_rooted_hierarchy",
     "empty",
     "empty_like",
     "full",
     "full_like",
-    "get_node",
     "group",
     "load",
     "ones",
@@ -1208,61 +1206,3 @@ def create_nodes(
 
     for key, value in sync(_collect_aiterator(coro)):
         yield key, _parse_async_node(value)
-
-
-def create_rooted_hierarchy(
-    *,
-    store: Store,
-    nodes: dict[str, GroupMetadata | ArrayV2Metadata | ArrayV3Metadata],
-    overwrite: bool = False,
-) -> Group | Array:
-    """
-    Create a Zarr hierarchy with a root, and return the root node, which could be a ``Group``
-    or ``Array`` instance.
-
-    Parameters
-    ----------
-    store : Store
-        The storage backend to use.
-    path : str
-        The name of the root of the created hierarchy. Every key in ``nodes`` will be prefixed with
-        ``path`` prior to creating nodes.
-    nodes : dict[str, GroupMetadata | ArrayV3Metadata | ArrayV2Metadata]
-        A dictionary defining the hierarchy. The keys are the paths of the nodes
-        in the hierarchy, and the values are the metadata of the nodes. The
-        metadata must be either an instance of GroupMetadata, ArrayV3Metadata
-        or ArrayV2Metadata.
-    overwrite : bool
-        Whether to overwrite existing nodes. Default is ``False``.
-
-    Returns
-    -------
-    Group | Array
-    """
-    async_node = sync(
-        async_api.create_rooted_hierarchy(store=store, nodes=nodes, overwrite=overwrite)
-    )
-    return _parse_async_node(async_node)
-
-
-def get_node(store: Store, path: str, zarr_format: ZarrFormat) -> Array | Group:
-    """
-    Get an Array or Group from a path in a Store.
-
-    Parameters
-    ----------
-    store : Store
-        The store-like object to read from.
-    path : str
-        The path to the node to read.
-    zarr_format : {2, 3}
-        The zarr format of the node to read.
-
-    Returns
-    -------
-    Array | Group
-    """
-
-    return _parse_async_node(
-        sync(async_api.get_node(store=store, path=path, zarr_format=zarr_format))
-    )
