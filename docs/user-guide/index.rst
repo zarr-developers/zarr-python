@@ -23,6 +23,7 @@ Advanced Topics
     performance
     consolidated_metadata
     extending
+    gpu
 
 
 .. Coming soon
