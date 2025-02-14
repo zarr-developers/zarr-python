@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import warnings
-import inspect
 from contextlib import suppress
 from typing import TYPE_CHECKING, Any
 
@@ -291,7 +290,9 @@ class FsspecStore(Store):
     async def delete_dir(self, prefix: str) -> None:
         # docstring inherited
         if not self.supports_deletes:
-            raise NotImplementedError('This method is only available for stores that support deletes.')
+            raise NotImplementedError(
+                "This method is only available for stores that support deletes."
+            )
         self._check_writable()
 
         path_to_delete = _dereference_path(self.path, prefix)
