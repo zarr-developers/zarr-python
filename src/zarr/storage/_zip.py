@@ -241,11 +241,12 @@ class ZipStore(Store):
 
     async def delete(self, key: str) -> None:
         # docstring inherited
-        # we choose to only raise NotImplementedError here if the key exists
-        # this allows the array/group APIs to avoid the overhead of existence checks
+        # If key is present it is replaced by an empty byte literal as a way of representing it as deleted
         self._check_writable()
         if await self.exists(key):
-            raise NotImplementedError
+            with self._lock:
+                empty_buffer = Buffer.from_bytes(b"")
+                self._set(key, empty_buffer)
 
     async def exists(self, key: str) -> bool:
         # docstring inherited
