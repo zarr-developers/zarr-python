@@ -38,9 +38,15 @@ def test_array_creates_implicit_groups(array):
     for i in range(len(ancestry)):
         parent = "/".join(ancestry[: i + 1])
         if array.metadata.zarr_format == 2:
-            sync(array.store.get(f"{parent}/.zgroup", prototype=default_buffer_prototype()))
+            assert (
+                sync(array.store.get(f"{parent}/.zgroup", prototype=default_buffer_prototype()))
+                is not None
+            )
         elif array.metadata.zarr_format == 3:
-            sync(array.store.get(f"{parent}/zarr.json", prototype=default_buffer_prototype()))
+            assert (
+                sync(array.store.get(f"{parent}/zarr.json", prototype=default_buffer_prototype()))
+                is not None
+            )
 
 
 @given(data=st.data())
