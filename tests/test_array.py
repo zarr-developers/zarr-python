@@ -1299,7 +1299,6 @@ class TestCreateArray:
             assert arr._config.write_empty_chunks == write_empty_chunks
 
     @staticmethod
-    @pytest.mark.parametrize("zarr_format", [2, 3])
     @pytest.mark.parametrize("path", [None, "", "/", "/foo", "foo", "foo/bar"])
     async def test_name(store: Store, zarr_format: ZarrFormat, path: str | None) -> None:
         arr = await create_array(
