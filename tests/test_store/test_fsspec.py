@@ -114,7 +114,12 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
 
     @pytest.fixture
     def store_kwargs(self, request) -> dict[str, str | bool]:
-        fs, path = fsspec.url_to_fs(
+        try:
+            from fsspec import url_to_fs
+        except ImportError:
+            # before fsspec==2024.3.1
+            from fsspec.core import url_to_fs
+        fs, path = url_to_fs(
             f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=True
         )
         return {"fs": fs, "path": path}
@@ -186,6 +191,10 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
         )
         assert dict(group.attrs) == {"key": "value-3"}
 
+    @pytest.mark.skipif(
+        parse_version(fsspec.__version__) < parse_version("2024.03.01"),
+        reason="Prior bug in from_upath",
+    )
     def test_from_upath(self) -> None:
         upath = pytest.importorskip("upath")
         path = upath.UPath(
@@ -208,7 +217,12 @@ class TestFsspecStoreS3(StoreTests[FsspecStore, cpu.Buffer]):
             self.store_cls(**store_kwargs)
 
     def test_init_warns_if_fs_asynchronous_is_false(self) -> None:
-        fs, path = fsspec.url_to_fs(
+        try:
+            from fsspec import url_to_fs
+        except ImportError:
+            # before fsspec==2024.3.1
+            from fsspec.core import url_to_fs
+        fs, path = url_to_fs(
             f"s3://{test_bucket_name}", endpoint_url=endpoint_url, anon=False, asynchronous=False
         )
         store_kwargs = {"fs": fs, "path": path}
