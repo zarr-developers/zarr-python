@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from zarr.core.common import ChunkCoords
 
 
-class ArrayConfigLike(TypedDict):
+class ArrayConfigParams(TypedDict):
     """
     A TypedDict model of the attributes of an ArrayConfig class, but with no required fields.
     This allows for partial construction of an ArrayConfig, with the assumption that the unset
@@ -56,13 +56,13 @@ class ArrayConfig:
         object.__setattr__(self, "write_empty_chunks", write_empty_chunks_parsed)
 
     @classmethod
-    def from_dict(cls, data: ArrayConfigLike) -> Self:
+    def from_dict(cls, data: ArrayConfigParams) -> Self:
         """
         Create an ArrayConfig from a dict. The keys of that dict are a subset of the
         attributes of the ArrayConfig class. Any keys missing from that dict will be set to the
         the values in the ``array`` namespace of ``zarr.config``.
         """
-        kwargs_out: ArrayConfigLike = {}
+        kwargs_out: ArrayConfigParams = {}
         for f in fields(ArrayConfig):
             field_name = cast(Literal["order", "write_empty_chunks"], f.name)
             if field_name not in data:
@@ -72,7 +72,10 @@ class ArrayConfig:
         return cls(**kwargs_out)
 
 
-def parse_array_config(data: ArrayConfig | ArrayConfigLike | None) -> ArrayConfig:
+ArrayConfigLike = ArrayConfig | ArrayConfigParams
+
+
+def parse_array_config(data: ArrayConfigLike | None) -> ArrayConfig:
     """
     Convert various types of data to an ArrayConfig.
     """

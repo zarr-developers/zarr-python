@@ -12,6 +12,7 @@ from hypothesis import given
 
 from zarr.abc.store import Store
 from zarr.core.metadata import ArrayV2Metadata, ArrayV3Metadata
+from zarr.core.sync import sync
 from zarr.testing.strategies import (
     array_metadata,
     arrays,
@@ -28,6 +29,24 @@ def test_roundtrip(data: st.DataObject, zarr_format: int) -> None:
     nparray = data.draw(numpy_arrays(zarr_formats=st.just(zarr_format)))
     zarray = data.draw(arrays(arrays=st.just(nparray), zarr_formats=st.just(zarr_format)))
     assert_array_equal(nparray, zarray[:])
+
+
+@given(array=arrays())
+def test_array_creates_implicit_groups(array):
+    path = array.path
+    ancestry = path.split("/")[:-1]
+    for i in range(len(ancestry)):
+        parent = "/".join(ancestry[: i + 1])
+        if array.metadata.zarr_format == 2:
+            assert (
+                sync(array.store.get(f"{parent}/.zgroup", prototype=default_buffer_prototype()))
+                is not None
+            )
+        elif array.metadata.zarr_format == 3:
+            assert (
+                sync(array.store.get(f"{parent}/zarr.json", prototype=default_buffer_prototype()))
+                is not None
+            )
 
 
 @given(data=st.data())
