@@ -1,0 +1,3 @@
+0-dimensional arrays are now returning a scalar. Therefore, the return type of ``__getitem__`` changed
+to NDArrayLikeOrScalar. This change is to make the behavior of 0-dimensional arrays consistent with
+``numpy`` scalars.
