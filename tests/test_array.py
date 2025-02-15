@@ -1114,7 +1114,7 @@ class TestCreateArray:
             None,
             numcodecs.Zstd(level=3),
             (),
-            (numcodecs.Zstd(level=3),),
+            (numcodecs.Zstd(level=2),),
             "zstd",
         ],
     )
@@ -1124,7 +1124,7 @@ class TestCreateArray:
             "auto",
             None,
             numcodecs.GZip(level=1),
-            (numcodecs.GZip(level=1)),
+            (numcodecs.GZip(level=2)),
             "gzip",
             ("gzip", "zstd"),
         ],

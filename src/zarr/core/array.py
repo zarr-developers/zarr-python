@@ -3773,7 +3773,6 @@ FiltersLike: TypeAlias = (
     | ArrayArrayCodec
     | Iterable[numcodecs.abc.Codec]
     | numcodecs.abc.Codec
-    | Literal["auto"]
     | str
     | None
 )
@@ -3783,11 +3782,10 @@ CompressorsLike: TypeAlias = (
     | dict[str, JSON]
     | BytesBytesCodec
     | numcodecs.abc.Codec
-    | Literal["auto"]
     | str
     | None
 )
-SerializerLike: TypeAlias = dict[str, JSON] | ArrayBytesCodec | Literal["auto"] | str
+SerializerLike: TypeAlias = dict[str, JSON] | ArrayBytesCodec | str
 
 
 class ShardsConfigParam(TypedDict):
