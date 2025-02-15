@@ -1167,7 +1167,7 @@ class TestCreateArray:
                 dtype="uint8",
                 shape=(10,),
                 zarr_format=2,
-                compressors=bad_compressor, # type: ignore[arg-type]
+                compressors=bad_compressor,
             )
         with pytest.raises(KeyError):
             await create_array(
